@@ -1,7 +1,9 @@
 .github
 .gitignore
+.claude
+.vscode
 test
 node_modules
-keywords/process_keywords.py
-keywords/generate_from_pydyna.py
+keywords/**
+!keywords/field_data.json
 **/*.ipynb
