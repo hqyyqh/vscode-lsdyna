@@ -759,9 +759,11 @@ function activate(context) {
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
-    context.subscriptions.push(
-        vscode.languages.registerInlayHintsProvider({ language: 'lsdyna' }, new LsdynaInlayHintsProvider())
-    );
+    if (vscode.languages.registerInlayHintsProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerInlayHintsProvider({ language: 'lsdyna' }, new LsdynaInlayHintsProvider())
+        );
+    }
 
     const includeTreeProvider = new LsdynaIncludeTreeProvider();
     context.subscriptions.push(
