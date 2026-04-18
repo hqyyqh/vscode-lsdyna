@@ -1,5 +1,7 @@
 # VS Code LS-DYNA extension
-<img alt="Visual Studio Marketplace Version" src="https://img.shields.io/visual-studio-marketplace/v/ryanosullivan.lsdyna?style=for-the-badge">
+![Version](https://img.shields.io/badge/version-2.0.1-blue)
+
+
 <img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
 
 ## Integrates [LS-DYNA](https://www.lstc.com/) into VS Code.
