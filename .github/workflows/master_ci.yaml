@@ -33,7 +33,19 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Check if version changed
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          PREVIOUS=$(git show HEAD~1:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version" 2>/dev/null || echo "none")
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
       - name: Publish to VSCode Marketplace
+        if: steps.version.outputs.changed == 'true'
         run: npx @vscode/vsce publish -p ${{ secrets.PUBLISHER_TOKEN }}
       - name: Publish to Open VSX
         run: npx ovsx publish -p ${{ secrets.OPENVSX_KEY }}
