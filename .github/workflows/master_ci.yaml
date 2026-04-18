@@ -10,34 +10,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: 12
+          node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Run tests
+        run: npm test
+
   publish:
     name: Publishing
     needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
-          node-version: 12
+          node-version: 20
       - name: Install dependencies
         run: npm install
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release
-      - name: Vscode release plugin
-        uses: JCofman/vscodeaction@master
-        env:
-          PUBLISHER_TOKEN: ${{ secrets.PUBLISHER_TOKEN }}
-        with:
-          args: publish -p $PUBLISHER_TOKEN 
+      - name: Publish to VSCode Marketplace
+        run: npx @vscode/vsce publish -p ${{ secrets.PUBLISHER_TOKEN }}
+      - name: Publish to Open VSX
+        run: npx ovsx publish -p ${{ secrets.OPENVSX_KEY }}
