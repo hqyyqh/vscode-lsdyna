@@ -14,6 +14,10 @@
     "engines": {
         "vscode": "^1.50.0"
     },
+    "activationEvents": [
+        "onLanguage:lsdyna",
+        "onLanguage:lsprepost-command-file"
+    ],
     "main": "./src/extension.js",
     "categories": [
         "Programming Languages"
