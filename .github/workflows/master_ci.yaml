@@ -48,4 +48,5 @@ jobs:
         if: steps.version.outputs.changed == 'true'
         run: npx @vscode/vsce publish -p ${{ secrets.PUBLISHER_TOKEN }}
       - name: Publish to Open VSX
+        if: steps.version.outputs.changed == 'true'
         run: npx ovsx publish -p ${{ secrets.OPENVSX_KEY }}
