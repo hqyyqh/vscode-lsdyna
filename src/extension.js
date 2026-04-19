@@ -341,6 +341,23 @@ class LsdynaFieldHoverProvider {
         const text = line.text;
         const trimmed = text.trimStart();
 
+        // Hover on &parameter references
+        const paramPattern = /&(\w+)/g;
+        let pm;
+        while ((pm = paramPattern.exec(text)) !== null) {
+            const start = pm.index;
+            const end = pm.index + pm[0].length;
+            if (position.character >= start && position.character < end) {
+                const defs = findParameterDefinitions(document);
+                const def = defs.get(pm[1].toUpperCase());
+                if (def?.value) {
+                    const md = new vscode.MarkdownString(`**${pm[1]}** = ${def.value}`);
+                    return new vscode.Hover(md, new vscode.Range(position.line, start, position.line, end));
+                }
+                return null;
+            }
+        }
+
         // Hover on keyword lines
         if (trimmed.startsWith('*')) {
             const kwName = trimmed.slice(1).toUpperCase().split(/[\s,$]/)[0];
@@ -411,32 +428,6 @@ class LsdynaParameterCodeLensProvider {
     }
 }
 
-class LsdynaInlayHintsProvider {
-    provideInlayHints(document, range) {
-        const defs = findParameterDefinitions(document);
-        const hints = [];
-        const pattern = /&(\w+)/g;
-
-        for (let i = range.start.line; i <= range.end.line; i++) {
-            const line = document.lineAt(i).text;
-            if (line.startsWith('$')) continue;
-            pattern.lastIndex = 0;
-            let m;
-            while ((m = pattern.exec(line)) !== null) {
-                const def = defs.get(m[1].toUpperCase());
-                if (def?.value) {
-                    const hint = new vscode.InlayHint(
-                        new vscode.Position(i, m.index + m[0].length),
-                        ` = ${def.value}`,
-                        vscode.InlayHintKind.Parameter
-                    );
-                    hints.push(hint);
-                }
-            }
-        }
-        return hints;
-    }
-}
 
 function getSearchPath(document) {
     const textPath = path.dirname(document.uri.fsPath);
@@ -759,11 +750,6 @@ function activate(context) {
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
-    if (vscode.languages.registerInlayHintsProvider) {
-        context.subscriptions.push(
-            vscode.languages.registerInlayHintsProvider({ language: 'lsdyna' }, new LsdynaInlayHintsProvider())
-        );
-    }
 
     const includeTreeProvider = new LsdynaIncludeTreeProvider();
     context.subscriptions.push(
