@@ -55602,5 +55602,159 @@
             "$0"
         ],
         "description": "SET_SOLID_GENERATE_INCREMENT_COLLECT"
-    }
+    },
+         "*TERMINATION_BODY": {
+          "body": [
+               "*TERMINATION_BODY",
+               "$#     pid      stop      maxc      minc",
+               "         $1",
+               "$"
+          ],
+          "description": "TERMINATION_BODY",
+          "prefix": [
+               "*TERMINATION_BODY",
+               "TERMINATION_BODY"
+          ]
+     },
+     "*TERMINATION_CONTACT": {
+          "body": [
+               "*TERMINATION_CONTACT",
+               "$#     cid     actim       dur     thres       dof",
+               "         $1",
+               "$"
+          ],
+          "description": "TERMINATION_CONTACT",
+          "prefix": [
+               "*TERMINATION_CONTACT",
+               "TERMINATION_CONTACT"
+          ]
+     },
+     "*TERMINATION_CURVE": {
+          "body": [
+               "*TERMINATION_CURVE",
+               "$#    lcid     atime",
+               "",
+               "$"
+          ],
+          "description": "TERMINATION_CURVE",
+          "prefix": [
+               "*TERMINATION_CURVE",
+               "TERMINATION_CURVE"
+          ]
+     },
+     "*TERMINATION_DELETED_SHELLS": {
+          "body": [
+               "*TERMINATION_DELETED_SHELLS",
+               "$#     pid       nds",
+               "",
+               "$"
+          ],
+          "description": "TERMINATION_DELETED_SHELLS",
+          "prefix": [
+               "*TERMINATION_DELETED_SHELLS",
+               "TERMINATION_DELETED_SHELLS"
+          ]
+     },
+     "*TERMINATION_DELETED_SHELLS_SET": {
+          "body": [
+               "*TERMINATION_DELETED_SHELLS_SET",
+               "$#    psid       nds",
+               "",
+               "$"
+          ],
+          "description": "TERMINATION_DELETED_SHELLS_SET",
+          "prefix": [
+               "*TERMINATION_DELETED_SHELLS_SET",
+               "TERMINATION_DELETED_SHELLS_SET"
+          ]
+     },
+     "*TERMINATION_DELETED_SOLIDS": {
+          "body": [
+               "*TERMINATION_DELETED_SOLIDS",
+               "$#     pid       nds",
+               "",
+               "$"
+          ],
+          "description": "TERMINATION_DELETED_SOLIDS",
+          "prefix": [
+               "*TERMINATION_DELETED_SOLIDS",
+               "TERMINATION_DELETED_SOLIDS"
+          ]
+     },
+     "*TERMINATION_DELETED_SOLIDS_SET": {
+          "body": [
+               "*TERMINATION_DELETED_SOLIDS_SET",
+               "$#    psid       nds",
+               "",
+               "$"
+          ],
+          "description": "TERMINATION_DELETED_SOLIDS_SET",
+          "prefix": [
+               "*TERMINATION_DELETED_SOLIDS_SET",
+               "TERMINATION_DELETED_SOLIDS_SET"
+          ]
+     },
+     "*TERMINATION_NODE": {
+          "body": [
+               "*TERMINATION_NODE",
+               "$#     nid      stop      maxc      minc",
+               "         $1",
+               "$"
+          ],
+          "description": "TERMINATION_NODE",
+          "prefix": [
+               "*TERMINATION_NODE",
+               "TERMINATION_NODE"
+          ]
+     },
+     "*TERMINATION_SENSOR": {
+          "body": [
+               "*TERMINATION_SENSOR",
+               "$#    swid",
+               "         $1",
+               "$"
+          ],
+          "description": "TERMINATION_SENSOR",
+          "prefix": [
+               "*TERMINATION_SENSOR",
+               "TERMINATION_SENSOR"
+          ]
+     },
+     "*TITLE": {
+          "body": [
+               "*TITLE",
+               "$# title",
+               "$1",
+               "$"
+          ],
+          "description": "TITLE",
+          "prefix": [
+               "*TITLE",
+               "TITLE"
+          ]
+     },
+     "*lsbox": {
+          "body": [
+               "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$",
+               "$                                                                              $",
+               "$                                       $1                                     $",
+               "$                                                                              $",
+               "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$"
+          ],
+          "description": "lsbox",
+          "prefix": [
+               "*lsbox",
+               "lsbox"
+          ]
+     },
+     "*lsline": {
+          "body": [
+               "$---+----1----+----2----+----3----+----4----+----5----+----6----+----7----+----8"
+          ],
+          "description": "lsline",
+          "prefix": [
+               "*lsline",
+               "lsline"
+          ]
+     }
 }
