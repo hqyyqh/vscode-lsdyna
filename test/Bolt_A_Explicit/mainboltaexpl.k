@@ -64,7 +64,8 @@ $ Add submodels/ to include search path (tests *INCLUDE_PATH_RELATIVE)
 submodels
 $
 *INCLUDE
-includes.k
+inclu +
+des.k
 $control_explicit.k
 $control_implicit.k
 $
@@ -77,7 +78,9 @@ $bolted_connection_d_penta.k
 $
 $ Resolved via INCLUDE_PATH_RELATIVE -> submodels/material_props.k
 *INCLUDE
-material_props.k
+mat +
+eri +
+al_props.k
 $
 $ Intentionally missing - tests unresolved include warning
 *INCLUDE
