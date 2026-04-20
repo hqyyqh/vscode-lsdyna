@@ -53,10 +53,10 @@ class LsdynaDocumentLinkProvider {
     provideDocumentLinks(document) {
         const searchPaths = getSearchPath(document);
         return findIncludeFileLines(document)
-            .flatMap(({ lineIndex, startChar, fileName }) => {
+            .flatMap(({ lineIndex, startChar, endLineIndex, endChar, fileName }) => {
                 try {
                     const fullPath = searchFileFromPaths(fileName, searchPaths);
-                    const range = new vscode.Range(lineIndex, startChar, lineIndex, startChar + fileName.length);
+                    const range = new vscode.Range(lineIndex, startChar, endLineIndex, endChar);
                     return [new vscode.DocumentLink(range, vscode.Uri.file(fullPath))];
                 } catch (e) {
                     return [];
@@ -94,9 +94,18 @@ function findIncludeFileLines(document) {
         }
 
         if (filenameCard !== null && cardCount === filenameCard) {
-            const fileName = line.trim();
+            let fileName = line;
+            let startLine = i;
+            while (fileName.endsWith(' +')) {
+                fileName = fileName.slice(0, -2);
+                i++;
+                if (i < lines.length) fileName += lines[i];
+            }
+            fileName = fileName.trim();
             if (fileName) {
-                results.push({ lineIndex: i, startChar: line.indexOf(fileName), fileName });
+                const startChar = lines[startLine].indexOf(lines[startLine].trim());
+                const endChar = lines[i].trimEnd().length;
+                results.push({ lineIndex: startLine, startChar, endLineIndex: i, endChar, fileName });
             }
         }
     }
