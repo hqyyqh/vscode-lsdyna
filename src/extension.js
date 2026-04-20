@@ -130,12 +130,14 @@ function findParameterDefinitions(document) {
         }
         if (!inParamBlock) continue;
 
-        // Format: R  paramName  value  (type is single char R/I/C)
-        const m = line.match(/^(\s*[RICric]\s+)(\w+)\s+(.*\S)/);
+        // Space-delimited: R  paramName  value
+        let m = line.match(/^(\s*[RICric]\s*)(\w+)\s+(.*\S)/);
+        // Fixed-width fallback: type(1) + name(9) + expression with no space separator
+        if (!m) m = line.match(/^(\s*[RICric])(\w{1,9})(\S.*)/);
         if (m) {
             const startChar = m[1].length;
             const name = m[2];
-            const value = m[3];
+            const value = m[3].trim();
             defs.set(name.toUpperCase(), { lineIndex: i, startChar, length: name.length, name, value });
         }
     }
@@ -166,9 +168,10 @@ function findParameterReferences(document) {
 
         // Bare name references in *PARAMETER_EXPRESSION value expressions
         if (inExprBlock) {
-            const defMatch = line.match(/^(\s*[RICric]\s+\w+\s+)/);
-            if (defMatch) {
-                const exprStart = defMatch[1].length;
+            const spaceMatch = line.match(/^(\s*[RICric]\s*)(\w+)\s+/);
+            const fwMatch = !spaceMatch && line.match(/^(\s*[RICric])(\w{1,9})/);
+            const exprStart = spaceMatch ? spaceMatch[0].length : fwMatch ? fwMatch[0].length : null;
+            if (exprStart !== null) {
                 const barePattern = /\b([A-Za-z]\w*)\b/g;
                 let bm;
                 while ((bm = barePattern.exec(line.slice(exprStart))) !== null) {
@@ -529,17 +532,23 @@ function findPreviousKeyword(lines, currentLine) {
 
 // --- Shared include traversal ---
 
-function collectIncludeFiles(filePath, visited = new Set()) {
-    if (visited.has(filePath) || !fs.existsSync(filePath)) return [];
-    visited.add(filePath);
-    const content = fs.readFileSync(filePath, 'utf8');
-    const fakeDoc = { getText: () => content, uri: { fsPath: filePath } };
-    const searchPaths = getSearchPath(fakeDoc);
-    const files = [filePath];
-    for (const { fileName } of findIncludeFileLines(fakeDoc)) {
-        try {
-            files.push(...collectIncludeFiles(searchFileFromPaths(fileName, searchPaths), new Set(visited)));
-        } catch (e) { /* unresolvable, skip */ }
+async function collectIncludeFiles(rootPath, onProgress) {
+    const visited = new Set();
+    const queue = [rootPath];
+    const files = [];
+    while (queue.length > 0) {
+        const filePath = queue.shift();
+        if (visited.has(filePath) || !fs.existsSync(filePath)) continue;
+        visited.add(filePath);
+        files.push(filePath);
+        if (onProgress) onProgress(files.length);
+        const content = fs.readFileSync(filePath, 'utf8');
+        const fakeDoc = { getText: () => content, uri: { fsPath: filePath } };
+        const searchPaths = getSearchPath(fakeDoc);
+        for (const { fileName } of findIncludeFileLines(fakeDoc)) {
+            try { queue.push(searchFileFromPaths(fileName, searchPaths)); } catch (e) {}
+        }
+        await new Promise(r => setImmediate(r));
     }
     return files;
 }
@@ -567,18 +576,23 @@ class LsdynaIncludeTreeProvider {
         this.root = null;
     }
 
-    scan() {
+    async scan() {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'lsdyna') {
             vscode.window.showWarningMessage('Open an LS-DYNA file first.');
             return;
         }
-        this.root = this._buildItem(editor.document.uri.fsPath, new Set());
-        this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-        this._onDidChangeTreeData.fire(undefined);
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
+            async (progress) => {
+                this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);
+                this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+                this._onDidChangeTreeData.fire(undefined);
+            }
+        );
     }
 
-    _buildItem(filePath, visited) {
+    async _buildItem(filePath, visited, progress) {
         const exists = fs.existsSync(filePath);
         const item = new IncludeItem(filePath, exists);
 
@@ -588,6 +602,8 @@ class LsdynaIncludeTreeProvider {
         }
 
         visited.add(filePath);
+        progress.report({ message: path.basename(filePath) });
+
         const content = fs.readFileSync(filePath, 'utf8');
         const fakeDoc = { getText: () => content, uri: { fsPath: filePath } };
         const searchPaths = getSearchPath(fakeDoc);
@@ -601,13 +617,14 @@ class LsdynaIncludeTreeProvider {
                 childPath = path.resolve(path.dirname(filePath), fileName);
                 childExists = false;
             }
-            item.children.push(this._buildItem(childPath, new Set(visited)));
+            item.children.push(await this._buildItem(childPath, new Set(visited), progress));
         }
 
         item.collapsibleState = item.children.length > 0
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
 
+        await new Promise(r => setImmediate(r));
         return item;
     }
 
@@ -708,7 +725,7 @@ class LsdynaKeywordIndexProvider {
         this._onDidChangeTreeData.fire(undefined);
     }
 
-    scan() {
+    async scan() {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'lsdyna') {
             vscode.window.showWarningMessage('Open an LS-DYNA file first.');
@@ -716,9 +733,17 @@ class LsdynaKeywordIndexProvider {
         }
         const rootFile = editor.document.uri.fsPath;
         const rootDir = path.dirname(rootFile);
-        this.roots = this._buildRoots(collectIncludeFiles(rootFile), rootDir);
-        this._setMode('recursive');
-        this._onDidChangeTreeData.fire(undefined);
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
+            async (progress) => {
+                const files = await collectIncludeFiles(rootFile, (count) => {
+                    progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
+                });
+                this.roots = this._buildRoots(files, rootDir);
+                this._setMode('recursive');
+                this._onDidChangeTreeData.fire(undefined);
+            }
+        );
     }
 
     setLocal() {
