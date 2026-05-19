@@ -1,21 +1,36 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { fakeDoc } = require('./helpers');
 
 const {
+    collectIncludeDecorationSets,
+    collectIncludeDocumentLinks,
+    collectLineLengthDiagnostics,
+    createActiveDocumentDebouncer,
     findParameterDefinitions,
     findParameterReferences,
     findIncludeFileLines,
+    getFilenameFromDocument,
     getSearchPath,
     getParameterAtCursor,
+    isIncludeLine,
+    LsdynaFieldHoverProvider,
+    LsdynaKeywordSymbolProvider,
+    LsDynaFoldingProvider,
+    findNextKeywordInDocument,
+    findPreviousKeywordInDocument,
     startLineOfCurrentKeyword,
     endLineOfCurrentKeyword,
     getFilenameFromKeyword,
     searchFileFromPaths,
     findNextKeyword,
     findPreviousKeyword,
+    LsdynaIncludeTreeProvider,
+    LsdynaKeywordIndexProvider,
 } = require('../src/extension')._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -130,6 +145,12 @@ describe('findIncludeFileLines', () => {
         assert.equal(lines[0].fileName, 'geometry.k');
     });
 
+    it('finds multiple filenames under a single *INCLUDE block', () => {
+        const doc = fakeDoc('*INCLUDE\na.key\nb.key\nc.key\n');
+        const lines = findIncludeFileLines(doc);
+        assert.deepEqual(lines.map(line => line.fileName), ['a.key', 'b.key', 'c.key']);
+    });
+
     it('skips *INCLUDE_PATH entries', () => {
         const doc = fakeDoc('*INCLUDE_PATH\n/some/dir\n*INCLUDE\ngeometry.k\n');
         const lines = findIncludeFileLines(doc);
@@ -156,6 +177,14 @@ describe('findIncludeFileLines', () => {
         const lines = findIncludeFileLines(doc);
         assert.equal(lines.length, 1);
         assert.equal(lines[0].fileName, 'real.k');
+    });
+
+    it('skips comment lines inside include continuations', () => {
+        const doc = fakeDoc('*INCLUDE\npart_a +\n$ skip me\npart_b.key\n');
+        const lines = findIncludeFileLines(doc);
+        assert.equal(lines.length, 1);
+        assert.equal(lines[0].fileName, 'part_apart_b.key');
+        assert.equal(lines[0].endLineIndex, 3);
     });
 
     it('finds correct line index and startChar', () => {
@@ -217,6 +246,42 @@ describe('getSearchPath', () => {
         const paths = getSearchPath(doc);
         const submodels = path.join(FIXTURE_DIR, 'submodels');
         assert.ok(paths.includes(submodels), 'should include submodels/');
+    });
+
+    it('reuses one include parse for repeated lookups on the same document version', () => {
+        const doc = fakeDoc('*INCLUDE_PATH\n/shared\n*INCLUDE\na.key\n', '/project/main.k');
+        doc.version = 1;
+
+        let lineAtCalls = 0;
+        const originalLineAt = doc.lineAt;
+        doc.lineAt = (index) => {
+            lineAtCalls++;
+            return originalLineAt(index);
+        };
+
+        getSearchPath(doc);
+        findIncludeFileLines(doc);
+        getSearchPath(doc);
+
+        assert.equal(lineAtCalls, doc.lineCount);
+    });
+
+    it('invalidates cached include parse results when the document version changes', () => {
+        const doc = fakeDoc('*INCLUDE\na.key\n', '/project/main.k');
+        doc.version = 1;
+
+        let lineAtCalls = 0;
+        const originalLineAt = doc.lineAt;
+        doc.lineAt = (index) => {
+            lineAtCalls++;
+            return originalLineAt(index);
+        };
+
+        getSearchPath(doc);
+        doc.version = 2;
+        findIncludeFileLines(doc);
+
+        assert.equal(lineAtCalls, doc.lineCount * 2);
     });
 });
 
@@ -324,6 +389,16 @@ describe('getFilenameFromKeyword', () => {
         assert.equal(getFilenameFromKeyword(lines, 1), 'geometry.k');
     });
 
+    it('combines continued filenames inside *INCLUDE blocks', () => {
+        const lines = ['*INCLUDE', 'part_a +', 'part_b.key'];
+        assert.equal(getFilenameFromKeyword(lines, 1), 'part_apart_b.key');
+    });
+
+    it('returns the selected filename inside a multi-file *INCLUDE block', () => {
+        const lines = ['*INCLUDE', 'a.key', 'b.key', 'c.key'];
+        assert.equal(getFilenameFromKeyword(lines, 2), 'b.key');
+    });
+
     it('throws on *INCLUDE_PATH (no filename card)', () => {
         const lines = ['*INCLUDE_PATH', '/some/path'];
         assert.throws(() => getFilenameFromKeyword(lines, 1));
@@ -337,6 +412,255 @@ describe('getFilenameFromKeyword', () => {
     it('skips comment lines before filename', () => {
         const lines = ['*INCLUDE', '$ a comment', 'real.k'];
         assert.equal(getFilenameFromKeyword(lines, 0), 'real.k');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// document-based keyword helpers
+// ---------------------------------------------------------------------------
+
+describe('document-based keyword helpers', () => {
+    it('extracts include filenames without reading the whole document text', () => {
+        const doc = fakeDoc('*INCLUDE\na.key\nb.key\n');
+        doc.getText = () => { throw new Error('getText should not be used'); };
+
+        assert.equal(getFilenameFromDocument(doc, 2), 'b.key');
+    });
+
+    it('navigates between keyword lines without reading the whole document text', () => {
+        const doc = fakeDoc('*A\ndata\n*B\nmore\n*C\n');
+        doc.getText = () => { throw new Error('getText should not be used'); };
+
+        assert.equal(findNextKeywordInDocument(doc, 0), 2);
+        assert.equal(findPreviousKeywordInDocument(doc, 4), 2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// LsdynaIncludeTreeProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaIncludeTreeProvider', () => {
+    it('builds include trees without readFileSync on scanned files', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const submodelsDir = path.join(tempRoot, 'submodels');
+        const mainFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+        const bFile = path.join(submodelsDir, 'b.key');
+
+        fs.mkdirSync(submodelsDir);
+        fs.writeFileSync(mainFile, '*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\na.key\nb.key\n');
+        fs.writeFileSync(aFile, '*KEYWORD\n');
+        fs.writeFileSync(bFile, '*KEYWORD\n');
+
+        const provider = new LsdynaIncludeTreeProvider();
+        const originalReadFileSync = fs.readFileSync;
+        fs.readFileSync = function patchedReadFileSync(filePath) {
+            if (filePath === mainFile || filePath === aFile || filePath === bFile) {
+                throw new Error('include tree scanning should not use readFileSync for deck files');
+            }
+            return originalReadFileSync.apply(this, arguments);
+        };
+
+        try {
+            const root = await provider._buildItem(mainFile, new Set(), { report() {} });
+            assert.deepEqual(
+                root.children.map(child => child.filePath).sort(),
+                [aFile, bFile].sort()
+            );
+        } finally {
+            fs.readFileSync = originalReadFileSync;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// LsdynaKeywordIndexProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaKeywordIndexProvider', () => {
+    it('yields during large single-file keyword scans', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-index-'));
+        const bigFile = path.join(tempRoot, 'big.k');
+        const lines = ['*KEYWORD'];
+        for (let i = 0; i < 50000; i++) lines.push(`$ line ${i}`);
+        fs.writeFileSync(bigFile, lines.join('\n'));
+
+        const provider = new LsdynaKeywordIndexProvider();
+        const originalSetImmediate = global.setImmediate;
+        let yieldCount = 0;
+        global.setImmediate = (callback, ...args) => {
+            yieldCount++;
+            callback(...args);
+            return yieldCount;
+        };
+
+        try {
+            await provider._buildRootsAsync([bigFile], tempRoot);
+            assert.ok(yieldCount >= 2, `expected at least 2 yields, got ${yieldCount}`);
+        } finally {
+            global.setImmediate = originalSetImmediate;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Debounce helpers
+// ---------------------------------------------------------------------------
+
+describe('createActiveDocumentDebouncer', () => {
+    it('refreshes only if the changed document is still active when the timer fires', () => {
+        const scheduled = new Map();
+        let nextTimerId = 1;
+        let activeDocument = { uri: { fsPath: '/a.k' } };
+        const refreshed = [];
+
+        const debouncer = createActiveDocumentDebouncer(
+            () => activeDocument,
+            (document) => refreshed.push(document.uri.fsPath),
+            500,
+            (callback) => {
+                const timerId = nextTimerId++;
+                scheduled.set(timerId, callback);
+                return timerId;
+            },
+            (timerId) => scheduled.delete(timerId)
+        );
+
+        const changedDocument = { uri: { fsPath: '/a.k' } };
+        debouncer(changedDocument);
+        activeDocument = { uri: { fsPath: '/b.k' } };
+        scheduled.forEach(callback => callback());
+
+        assert.deepEqual(refreshed, []);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// large document guards
+// ---------------------------------------------------------------------------
+
+describe('large document guards', () => {
+    function createHugeDoc() {
+        return {
+            languageId: 'lsdyna',
+            lineCount: 100001,
+            version: 1,
+            uri: { fsPath: '/project/huge.k' },
+            lineAt() {
+                throw new Error('lineAt should not be used for very large automatic scans');
+            },
+        };
+    }
+
+    it('skips automatic line-length diagnostics for very large documents', () => {
+        assert.deepEqual(collectLineLengthDiagnostics(createHugeDoc()), []);
+    });
+
+    it('skips automatic include decorations for very large documents', () => {
+        assert.deepEqual(collectIncludeDecorationSets(createHugeDoc()), { resolved: [], missing: [] });
+    });
+
+    it('uses multi-line ranges for continued include decorations', () => {
+        const doc = fakeDoc('*INCLUDE\npart_a +\npart_b.key\n', '/project/main.k');
+        doc.languageId = 'lsdyna';
+
+        const { missing } = collectIncludeDecorationSets(doc);
+
+        assert.equal(missing.length, 1);
+        assert.equal(missing[0].range.start.line, 1);
+        assert.equal(missing[0].range.end.line, 2);
+        assert.equal(missing[0].range.end.character, 'part_b.key'.length);
+    });
+
+    it('splits continued include decorations around skipped comment lines', () => {
+        const doc = fakeDoc('*INCLUDE\npart_a +\n$ skip me\npart_b.key\n', '/project/main.k');
+        doc.languageId = 'lsdyna';
+
+        const { missing } = collectIncludeDecorationSets(doc);
+
+        assert.equal(missing.length, 2);
+        assert.deepEqual(
+            missing.map(item => [item.range.start.line, item.range.end.line]),
+            [[1, 1], [3, 3]]
+        );
+    });
+
+    it('skips automatic include document links for very large documents', () => {
+        assert.deepEqual(collectIncludeDocumentLinks(createHugeDoc()), []);
+    });
+
+    it('splits continued include document links around skipped comment lines', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-links-'));
+        const includeFile = path.join(tempRoot, 'part_apart_b.key');
+        const mainFile = path.join(tempRoot, 'main.k');
+
+        fs.writeFileSync(includeFile, '*KEYWORD\n');
+        fs.writeFileSync(mainFile, '*INCLUDE\npart_a +\n$ skip me\npart_b.key\n');
+
+        try {
+            const doc = fakeDoc(fs.readFileSync(mainFile, 'utf8'), mainFile);
+            const links = collectIncludeDocumentLinks(doc);
+
+            assert.equal(links.length, 2);
+            assert.deepEqual(
+                links.map(link => [link.range.start.line, link.range.end.line]),
+                [[1, 1], [3, 3]]
+            );
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('treats very large documents as not being on an include line without scanning', () => {
+        assert.equal(isIncludeLine(createHugeDoc(), 10), false);
+    });
+
+    it('treats continuation lines as include lines but skips comment gaps', () => {
+        const doc = fakeDoc('*INCLUDE\npart_a +\n$ skip me\npart_b.key\n');
+        doc.languageId = 'lsdyna';
+
+        assert.equal(isIncludeLine(doc, 1), true);
+        assert.equal(isIncludeLine(doc, 2), false);
+        assert.equal(isIncludeLine(doc, 3), true);
+    });
+
+    it('skips local keyword index refresh for very large documents', () => {
+        const provider = new LsdynaKeywordIndexProvider();
+        provider.roots = [{ label: 'stale' }];
+
+        provider.refreshFromDocument(createHugeDoc());
+
+        assert.deepEqual(provider.roots, []);
+    });
+
+    it('skips folding ranges for very large documents', () => {
+        const provider = new LsDynaFoldingProvider();
+        assert.deepEqual(provider.provideFoldingRanges(createHugeDoc()), []);
+    });
+
+    it('skips keyword symbols for very large documents', () => {
+        const provider = new LsdynaKeywordSymbolProvider();
+        assert.deepEqual(provider.provideDocumentSymbols(createHugeDoc()), []);
+    });
+
+    it('skips hover work for very large documents', () => {
+        const provider = new LsdynaFieldHoverProvider();
+        assert.equal(provider.provideHover(createHugeDoc(), { line: 0, character: 0 }), null);
+    });
+
+    it('skips parameter definitions for very large documents', () => {
+        assert.equal(findParameterDefinitions(createHugeDoc()).size, 0);
+    });
+
+    it('skips parameter references for very large documents', () => {
+        assert.deepEqual(findParameterReferences(createHugeDoc()), []);
+    });
+
+    it('returns no parameter at cursor for very large documents', () => {
+        assert.equal(getParameterAtCursor(createHugeDoc(), { line: 0, character: 0 }), null);
     });
 });
 
