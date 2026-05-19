@@ -1,11 +1,18 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
+const readline = require('readline');
+
+const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
+const STREAM_SCAN_YIELD_INTERVAL = 50000;
+const includeDirectiveCache = new WeakMap();
 
 // --- Folding ---
 
 class LsDynaFoldingProvider {
     provideFoldingRanges(document) {
+        if (shouldSkipAutomaticDocumentScan(document)) return [];
+
         const ranges = [];
         let foldStart = -1;
 
@@ -30,6 +37,8 @@ class LsDynaFoldingProvider {
 
 class LsdynaKeywordSymbolProvider {
     provideDocumentSymbols(document) {
+        if (shouldSkipAutomaticDocumentScan(document)) return [];
+
         const symbols = [];
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
@@ -51,77 +60,301 @@ class LsdynaKeywordSymbolProvider {
 
 class LsdynaDocumentLinkProvider {
     provideDocumentLinks(document) {
-        const searchPaths = getSearchPath(document);
-        return findIncludeFileLines(document)
-            .flatMap(({ lineIndex, startChar, endLineIndex, endChar, fileName }) => {
-                try {
-                    const fullPath = searchFileFromPaths(fileName, searchPaths);
-                    const range = new vscode.Range(lineIndex, startChar, endLineIndex, endChar);
-                    return [new vscode.DocumentLink(range, vscode.Uri.file(fullPath))];
-                } catch (e) {
-                    return [];
-                }
-            });
+        return collectIncludeDocumentLinks(document);
     }
 }
 
 // --- Helpers ---
 
-function findIncludeFileLines(document) {
-    const results = [];
-    const lines = document.getText().split('\n');
-    let keyword = '';
-    let cardCount = 0;
+function createIncludeDirectiveState(basePath) {
+    return {
+        basePath,
+        keyword: '',
+        cardCount: 0,
+        includeEntries: [],
+        searchPaths: [basePath],
+        pendingInclude: null,
+    };
+}
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith('$')) continue;
-        if (line.startsWith('*')) {
-            keyword = line.trim();
-            cardCount = 0;
+function getIncludeDirectiveRule(keyword) {
+    if (keyword === '*INCLUDE') {
+        return { repeatable: true, filenameCard: 1 };
+    }
+    if (keyword.startsWith('*INCLUDE_MULTISCALE_SPOTWELD')) {
+        return { repeatable: false, filenameCard: 2 };
+    }
+    if (keyword.startsWith('*INCLUDE') && !keyword.startsWith('*INCLUDE_PATH')) {
+        return { repeatable: false, filenameCard: 1 };
+    }
+    return null;
+}
+
+function createIncludeSegment(line, lineIndex) {
+    const trimmed = line.trim();
+    return {
+        lineIndex,
+        startChar: line.indexOf(trimmed),
+        endChar: line.trimEnd().length,
+    };
+}
+
+function startIncludeEntry(line, lineIndex) {
+    const trimmed = line.trim();
+    const segment = createIncludeSegment(line, lineIndex);
+    return {
+        lineIndex: segment.lineIndex,
+        startChar: segment.startChar,
+        endLineIndex: segment.lineIndex,
+        endChar: segment.endChar,
+        parts: [trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed],
+        segments: [segment],
+        awaitingContinuation: trimmed.endsWith(' +'),
+    };
+}
+
+function appendIncludeEntry(entry, line, lineIndex) {
+    const trimmed = line.trim();
+    const segment = createIncludeSegment(line, lineIndex);
+    entry.parts.push(trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed);
+    entry.segments.push(segment);
+    entry.endLineIndex = segment.lineIndex;
+    entry.endChar = segment.endChar;
+    entry.awaitingContinuation = trimmed.endsWith(' +');
+}
+
+function includeEntryContainsLine(entry, lineIndex) {
+    return (entry.segments || []).some(segment => segment.lineIndex === lineIndex);
+}
+
+function getIncludeEntryRanges(entry) {
+    if (!entry.segments || entry.segments.length === 0) {
+        return [{
+            lineIndex: entry.lineIndex,
+            startChar: entry.startChar,
+            endLineIndex: entry.endLineIndex,
+            endChar: entry.endChar,
+        }];
+    }
+
+    const [firstSegment, ...remainingSegments] = entry.segments;
+    const ranges = [{
+        lineIndex: firstSegment.lineIndex,
+        startChar: firstSegment.startChar,
+        endLineIndex: firstSegment.lineIndex,
+        endChar: firstSegment.endChar,
+    }];
+
+    for (const segment of remainingSegments) {
+        const currentRange = ranges[ranges.length - 1];
+        if (segment.lineIndex === currentRange.endLineIndex + 1) {
+            currentRange.endLineIndex = segment.lineIndex;
+            currentRange.endChar = segment.endChar;
             continue;
         }
 
-        cardCount++;
+        ranges.push({
+            lineIndex: segment.lineIndex,
+            startChar: segment.startChar,
+            endLineIndex: segment.lineIndex,
+            endChar: segment.endChar,
+        });
+    }
 
-        let filenameCard = null;
-        if (keyword === '*INCLUDE') {
-            filenameCard = 1;
-        } else if (keyword.startsWith('*INCLUDE_MULTISCALE_SPOTWELD')) {
-            filenameCard = 2;
-        } else if (keyword.startsWith('*INCLUDE') && !keyword.startsWith('*INCLUDE_PATH')) {
-            filenameCard = 1;
+    return ranges;
+}
+
+function flushIncludeEntry(state) {
+    if (!state.pendingInclude) return;
+    const fileName = state.pendingInclude.parts.join('').trim();
+    if (fileName) {
+        const { lineIndex, startChar, endLineIndex, endChar, segments } = state.pendingInclude;
+        state.includeEntries.push({ lineIndex, startChar, endLineIndex, endChar, fileName, segments });
+    }
+    state.pendingInclude = null;
+}
+
+function processIncludeDirectiveLine(state, line, lineIndex) {
+    const trimmed = line.trim();
+
+    if (line.startsWith('*')) {
+        flushIncludeEntry(state);
+        state.keyword = trimmed;
+        state.cardCount = 0;
+        return;
+    }
+
+    if (state.pendingInclude) {
+        if (!trimmed || trimmed.startsWith('$')) return;
+        appendIncludeEntry(state.pendingInclude, line, lineIndex);
+        if (!state.pendingInclude.awaitingContinuation) {
+            flushIncludeEntry(state);
         }
+        return;
+    }
 
-        if (filenameCard !== null && cardCount === filenameCard) {
-            let fileName = line;
-            let startLine = i;
-            while (fileName.endsWith(' +')) {
-                fileName = fileName.slice(0, -2);
-                i++;
-                if (i < lines.length) fileName += lines[i];
+    if (!trimmed || trimmed.startsWith('$')) return;
+
+    if (state.keyword === '*INCLUDE_PATH') {
+        state.searchPaths.push(trimmed);
+        return;
+    }
+    if (state.keyword === '*INCLUDE_PATH_RELATIVE') {
+        state.searchPaths.push(path.resolve(state.basePath, trimmed));
+        return;
+    }
+
+    const includeRule = getIncludeDirectiveRule(state.keyword);
+    if (!includeRule) return;
+
+    state.cardCount++;
+    if (includeRule.repeatable || state.cardCount === includeRule.filenameCard) {
+        state.pendingInclude = startIncludeEntry(line, lineIndex);
+        if (!state.pendingInclude.awaitingContinuation) {
+            flushIncludeEntry(state);
+        }
+    }
+}
+
+function finalizeIncludeDirectiveState(state) {
+    flushIncludeEntry(state);
+    return { includeEntries: state.includeEntries, searchPaths: state.searchPaths };
+}
+
+function getIncludeDirectiveData(document) {
+    const version = document.version ?? null;
+    const cached = includeDirectiveCache.get(document);
+    if (cached && cached.version === version) {
+        return cached.value;
+    }
+
+    const value = collectIncludeDirectivesFromLineReader(
+        document.lineCount,
+        i => document.lineAt(i).text,
+        path.dirname(document.uri.fsPath)
+    );
+
+    includeDirectiveCache.set(document, { version, value });
+    return value;
+}
+
+function shouldSkipAutomaticDocumentScan(document) {
+    return Boolean(document) && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
+}
+
+function collectIncludeDocumentLinks(document) {
+    if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+
+    const searchPaths = getSearchPath(document);
+    return findIncludeFileLines(document)
+        .flatMap((entry) => {
+            try {
+                const fullPath = searchFileFromPaths(entry.fileName, searchPaths);
+                return getIncludeEntryRanges(entry)
+                    .map(({ lineIndex, startChar, endLineIndex, endChar }) =>
+                        new vscode.DocumentLink(
+                            new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
+                            vscode.Uri.file(fullPath)
+                        )
+                    );
+            } catch (e) {
+                return [];
             }
-            fileName = fileName.trim();
-            if (fileName) {
-                const startChar = lines[startLine].indexOf(lines[startLine].trim());
-                const endChar = lines[i].trimEnd().length;
-                results.push({ lineIndex: startLine, startChar, endLineIndex: i, endChar, fileName });
-            }
+        });
+}
+
+function collectLineLengthDiagnostics(document) {
+    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) return [];
+
+    const issues = [];
+    for (let i = 0; i < document.lineCount; i++) {
+        const line = document.lineAt(i);
+        if (!line.text.startsWith('$') && line.text.length > 80) {
+            issues.push(new vscode.Diagnostic(
+                new vscode.Range(i, 80, i, line.text.length),
+                `Line exceeds 80 characters (${line.text.length}); LS-DYNA may truncate it`,
+                vscode.DiagnosticSeverity.Warning
+            ));
+        }
+    }
+    return issues;
+}
+
+function collectIncludeDecorationSets(document) {
+    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) {
+        return { resolved: [], missing: [] };
+    }
+
+    const searchPaths = getSearchPath(document);
+    const resolved = [];
+    const missing = [];
+
+    for (const entry of findIncludeFileLines(document)) {
+        const ranges = getIncludeEntryRanges(entry)
+            .map(({ lineIndex, startChar, endLineIndex, endChar }) => ({
+                range: new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
+            }));
+        try {
+            searchFileFromPaths(entry.fileName, searchPaths);
+            resolved.push(...ranges);
+        } catch (e) {
+            missing.push(...ranges);
         }
     }
 
-    return results;
+    return { resolved, missing };
+}
+
+function isIncludeLine(document, currentLine) {
+    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) {
+        return false;
+    }
+
+    return findIncludeFileLines(document)
+        .some(entry => includeEntryContainsLine(entry, currentLine));
+}
+
+function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
+    const state = createIncludeDirectiveState(basePath);
+    for (let i = 0; i < lineCount; i++) {
+        processIncludeDirectiveLine(state, getLine(i), i);
+    }
+    return finalizeIncludeDirectiveState(state);
+}
+
+async function collectIncludeDirectivesFromFile(filePath) {
+    const state = createIncludeDirectiveState(path.dirname(filePath));
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    let lineIndex = 0;
+
+    try {
+        for await (const line of lines) {
+            processIncludeDirectiveLine(state, line, lineIndex);
+            lineIndex++;
+            if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) await new Promise(r => setImmediate(r));
+        }
+    } finally {
+        lines.close();
+    }
+
+    return finalizeIncludeDirectiveState(state);
+}
+
+function findIncludeFileLines(document) {
+    return getIncludeDirectiveData(document).includeEntries;
 }
 
 // --- Parameter helpers ---
 
 function findParameterDefinitions(document) {
+    if (shouldSkipAutomaticDocumentScan(document)) return new Map();
+
     const defs = new Map(); // UPPERCASE name -> { lineIndex, startChar, length, name }
-    const lines = document.getText().split('\n');
     let inParamBlock = false;
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (let i = 0; i < document.lineCount; i++) {
+        const line = document.lineAt(i).text;
         if (line.startsWith('$')) continue;
         if (line.startsWith('*')) {
             const kw = line.trim();
@@ -145,14 +378,15 @@ function findParameterDefinitions(document) {
 }
 
 function findParameterReferences(document) {
+    if (shouldSkipAutomaticDocumentScan(document)) return [];
+
     const defs = findParameterDefinitions(document);
     const refs = [];
-    const lines = document.getText().split('\n');
     const ampPattern = /&(\w+)/g;
     let inExprBlock = false;
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (let i = 0; i < document.lineCount; i++) {
+        const line = document.lineAt(i).text;
         if (line.startsWith('$')) continue;
         if (line.startsWith('*')) {
             inExprBlock = line.trim().startsWith('*PARAMETER_EXPRESSION');
@@ -187,6 +421,8 @@ function findParameterReferences(document) {
 }
 
 function getParameterAtCursor(document, position) {
+    if (shouldSkipAutomaticDocumentScan(document)) return null;
+
     const line = document.lineAt(position.line).text;
 
     // On a &reference
@@ -196,11 +432,11 @@ function getParameterAtCursor(document, position) {
     }
 
     // On a definition line under *PARAMETER*
-    const lines = document.getText().split('\n');
     let keyword = '';
     for (let i = position.line; i >= 0; i--) {
-        if (lines[i].startsWith('$')) continue;
-        if (lines[i].startsWith('*')) { keyword = lines[i].trim(); break; }
+        const l = document.lineAt(i).text;
+        if (l.startsWith('$')) continue;
+        if (l.startsWith('*')) { keyword = l.trim(); break; }
     }
     if (keyword === '*PARAMETER' || keyword.startsWith('*PARAMETER_')) {
         const m = line.match(/^(\s*[RICric]\s+)(\w+)/);
@@ -349,6 +585,8 @@ function keywordHoverMarkdown(kwName, entry) {
 
 class LsdynaFieldHoverProvider {
     provideHover(document, position) {
+        if (shouldSkipAutomaticDocumentScan(document)) return null;
+
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
@@ -442,70 +680,67 @@ class LsdynaParameterCodeLensProvider {
 
 
 function getSearchPath(document) {
-    const textPath = path.dirname(document.uri.fsPath);
-    const paths = [textPath];
-    const lines = document.getText().split('\n');
-    let keyword = '';
-    for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        if (!trimmed || trimmed.startsWith('$')) continue;
-        if (trimmed.startsWith('*')) { keyword = trimmed; continue; }
-        if (keyword === '*INCLUDE_PATH') {
-            paths.push(trimmed);
-        } else if (keyword === '*INCLUDE_PATH_RELATIVE') {
-            paths.push(path.resolve(textPath, trimmed));
-        }
-    }
-    return paths;
+    return getIncludeDirectiveData(document).searchPaths;
 }
 
-function startLineOfCurrentKeyword(lines, lineindex) {
+function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     for (let i = lineindex; i >= 0; i--) {
-        if (lines[i].startsWith('*')) return i;
+        if (getLine(i).startsWith('*')) return i;
     }
     throw new Error('Not on any keyword.');
 }
 
+function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
+    for (let i = lineindex + 1; i < lineCount; i++) {
+        if (getLine(i).startsWith('*')) return i - 1;
+    }
+    return lineCount - 1;
+}
+
+function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, basePath) {
+    const linestart = startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex);
+    const keyword = getLine(linestart).trim();
+    if (keyword.startsWith('*INCLUDE_PATH')) {
+        throw new Error('This keyword does not have a filename card.');
+    }
+    if (!keyword.startsWith('*INCLUDE')) {
+        throw new Error('This keyword is not supported.');
+    }
+
+    const lineend = endLineOfCurrentKeywordFromLineReader(lineCount, getLine, linestart);
+    const blockLen = lineend - linestart + 1;
+    const { includeEntries: entries } = collectIncludeDirectivesFromLineReader(
+        blockLen,
+        i => getLine(linestart + i),
+        basePath
+    );
+    const relIdx = lineindex - linestart;
+    const currentEntry = entries.find(entry => includeEntryContainsLine(entry, relIdx));
+
+    if (currentEntry) return currentEntry.fileName;
+    if (entries.length > 0) return entries[0].fileName;
+    throw new Error('No file to jump to.');
+}
+
+function startLineOfCurrentKeyword(lines, lineindex) {
+    return startLineOfCurrentKeywordFromLineReader(lines.length, i => lines[i], lineindex);
+}
+
 function endLineOfCurrentKeyword(lines, lineindex) {
-    for (let i = lineindex + 1; i < lines.length; i++) {
-        if (lines[i].startsWith('*')) return i - 1;
-    }
-    return lines.length - 1;
-}
-
-function getFilenameFromCurrentCard(lines, lineindex) {
-    if (lines[lineindex].startsWith('*')) lineindex++;
-    while (!lines[lineindex].startsWith('*')) {
-        if (lines[lineindex].startsWith('$')) { lineindex++; continue; }
-        return lines[lineindex].trim();
-    }
-    throw new Error('No file to jump to.');
-}
-
-function getFileNameFromNthCard(lines, lineindex, nth) {
-    let card = 1;
-    for (let i = lineindex + 1; !lines[i].startsWith('*'); i++) {
-        if (lines[i].startsWith('$')) continue;
-        if (card === nth) return lines[i].trim();
-        card++;
-    }
-    throw new Error('No file to jump to.');
+    return endLineOfCurrentKeywordFromLineReader(lines.length, i => lines[i], lineindex);
 }
 
 function getFilenameFromKeyword(lines, lineindex) {
-    const linestart = startLineOfCurrentKeyword(lines, lineindex);
-    const keyword = lines[linestart].trim();
-    if (keyword === '*INCLUDE') {
-        return getFilenameFromCurrentCard(lines, lineindex);
-    } else if (keyword.startsWith('*INCLUDE_PATH')) {
-        throw new Error('This keyword does not have a filename card.');
-    } else if (keyword.startsWith('*INCLUDE_MULTISCALE_SPOTWELD')) {
-        return getFileNameFromNthCard(lines, linestart, 2);
-    } else if (keyword.startsWith('*INCLUDE')) {
-        return getFileNameFromNthCard(lines, linestart, 1);
-    } else {
-        throw new Error('This keyword is not supported.');
-    }
+    return getFilenameFromKeywordFromLineReader(lines.length, i => lines[i], lineindex, '.');
+}
+
+function getFilenameFromDocument(document, lineindex) {
+    return getFilenameFromKeywordFromLineReader(
+        document.lineCount,
+        i => document.lineAt(i).text,
+        lineindex,
+        path.dirname(document.uri.fsPath)
+    );
 }
 
 function searchFileFromPaths(filePath, paths) {
@@ -516,18 +751,46 @@ function searchFileFromPaths(filePath, paths) {
     throw new Error(`${filePath} not found.`);
 }
 
-function findNextKeyword(lines, currentLine) {
-    for (let i = currentLine + 1; i < lines.length; i++) {
-        if (lines[i].startsWith('*')) return i;
+function findNextKeywordFromLineReader(lineCount, getLine, currentLine) {
+    for (let i = currentLine + 1; i < lineCount; i++) {
+        if (getLine(i).startsWith('*')) return i;
     }
     throw new Error('No more keywords found.');
 }
 
-function findPreviousKeyword(lines, currentLine) {
+function findNextKeyword(lines, currentLine) {
+    return findNextKeywordFromLineReader(lines.length, i => lines[i], currentLine);
+}
+
+function findNextKeywordInDocument(document, currentLine) {
+    return findNextKeywordFromLineReader(document.lineCount, i => document.lineAt(i).text, currentLine);
+}
+
+function findPreviousKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine - 1; i >= 0; i--) {
-        if (lines[i].startsWith('*')) return i;
+        if (getLine(i).startsWith('*')) return i;
     }
     throw new Error('No previous keywords found.');
+}
+
+function findPreviousKeyword(lines, currentLine) {
+    return findPreviousKeywordFromLineReader(lines.length, i => lines[i], currentLine);
+}
+
+function findPreviousKeywordInDocument(document, currentLine) {
+    return findPreviousKeywordFromLineReader(document.lineCount, i => document.lineAt(i).text, currentLine);
+}
+
+function createActiveDocumentDebouncer(getActiveDocument, refreshDocument, delayMs = 500, schedule = setTimeout, cancel = clearTimeout) {
+    let timer;
+    return (changedDocument) => {
+        cancel(timer);
+        timer = schedule(() => {
+            if (getActiveDocument() === changedDocument) {
+                refreshDocument(changedDocument);
+            }
+        }, delayMs);
+    };
 }
 
 // --- Shared include traversal ---
@@ -542,10 +805,8 @@ async function collectIncludeFiles(rootPath, onProgress) {
         visited.add(filePath);
         files.push(filePath);
         if (onProgress) onProgress(files.length);
-        const content = fs.readFileSync(filePath, 'utf8');
-        const fakeDoc = { getText: () => content, uri: { fsPath: filePath } };
-        const searchPaths = getSearchPath(fakeDoc);
-        for (const { fileName } of findIncludeFileLines(fakeDoc)) {
+        const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(filePath);
+        for (const { fileName } of includeEntries) {
             try { queue.push(searchFileFromPaths(fileName, searchPaths)); } catch (e) {}
         }
         await new Promise(r => setImmediate(r));
@@ -604,11 +865,18 @@ class LsdynaIncludeTreeProvider {
         visited.add(filePath);
         progress.report({ message: path.basename(filePath) });
 
-        const content = fs.readFileSync(filePath, 'utf8');
-        const fakeDoc = { getText: () => content, uri: { fsPath: filePath } };
-        const searchPaths = getSearchPath(fakeDoc);
+        let includeEntries;
+        let searchPaths;
+        try {
+            ({ includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(filePath));
+        } catch (error) {
+            item.description = 'scan failed';
+            item.tooltip = `${filePath}\n${error.message}`;
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            return item;
+        }
 
-        for (const { fileName } of findIncludeFileLines(fakeDoc)) {
+        for (const { fileName } of includeEntries) {
             let childPath, childExists;
             try {
                 childPath = searchFileFromPaths(fileName, searchPaths);
@@ -672,20 +940,26 @@ class LsdynaKeywordIndexProvider {
         vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', mode);
     }
 
-    _buildRoots(filePaths, rootDir) {
+    async _buildRootsAsync(filePaths, rootDir) {
         const keywordMap = new Map();
         for (const filePath of filePaths) {
-            const lines = fs.existsSync(filePath)
-                ? fs.readFileSync(filePath, 'utf8').split('\n')
-                : filePath.split('\n'); // accept raw text for single-doc case
-            for (let i = 0; i < lines.length; i++) {
-                const trimmed = lines[i].trim();
-                if (!trimmed.startsWith('*')) continue;
-                const keyword = trimmed.slice(1);
-                if (!keyword) continue;
-                if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
-                keywordMap.get(keyword).push({ filePath, lineIndex: i });
+            if (!fs.existsSync(filePath)) continue;
+            const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+            const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+            let lineIndex = 0;
+            for await (const line of rl) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('*')) {
+                    const keyword = trimmed.slice(1);
+                    if (keyword) {
+                        if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
+                        keywordMap.get(keyword).push({ filePath, lineIndex });
+                    }
+                }
+                lineIndex++;
+                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) await new Promise(r => setImmediate(r));
             }
+            await new Promise(r => setImmediate(r));
         }
         return [...keywordMap.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
@@ -701,12 +975,16 @@ class LsdynaKeywordIndexProvider {
     refreshFromDocument(document) {
         if (this._mode !== 'local') return;
         if (!document || document.languageId !== 'lsdyna') return;
+        if (shouldSkipAutomaticDocumentScan(document)) {
+            this.roots = [];
+            this._onDidChangeTreeData.fire(undefined);
+            return;
+        }
         const filePath = document.uri.fsPath;
         const rootDir = path.dirname(filePath);
-        const lines = document.getText().split('\n');
         const keywordMap = new Map();
-        for (let i = 0; i < lines.length; i++) {
-            const trimmed = lines[i].trim();
+        for (let i = 0; i < document.lineCount; i++) {
+            const trimmed = document.lineAt(i).text.trim();
             if (!trimmed.startsWith('*')) continue;
             const keyword = trimmed.slice(1);
             if (!keyword) continue;
@@ -739,7 +1017,7 @@ class LsdynaKeywordIndexProvider {
                 const files = await collectIncludeFiles(rootFile, (count) => {
                     progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
                 });
-                this.roots = this._buildRoots(files, rootDir);
+                this.roots = await this._buildRootsAsync(files, rootDir);
                 this._setMode('recursive');
                 this._onDidChangeTreeData.fire(undefined);
             }
@@ -808,10 +1086,14 @@ function activate(context) {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => keywordIndexProvider.refreshFromDocument(editor?.document))
     );
+    const scheduleKeywordIndexRefresh = createActiveDocumentDebouncer(
+        () => vscode.window.activeTextEditor?.document,
+        document => keywordIndexProvider.refreshFromDocument(document)
+    );
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
             if (vscode.window.activeTextEditor?.document === e.document) {
-                keywordIndexProvider.refreshFromDocument(e.document);
+                scheduleKeywordIndexRefresh(e.document);
             }
         })
     );
@@ -833,18 +1115,7 @@ function activate(context) {
 
     function updateDiagnostics(document) {
         if (document.languageId !== 'lsdyna') return;
-        const issues = [];
-        for (let i = 0; i < document.lineCount; i++) {
-            const line = document.lineAt(i);
-            if (!line.text.startsWith('$') && line.text.length > 80) {
-                issues.push(new vscode.Diagnostic(
-                    new vscode.Range(i, 80, i, line.text.length),
-                    `Line exceeds 80 characters (${line.text.length}); LS-DYNA may truncate it`,
-                    vscode.DiagnosticSeverity.Warning
-                ));
-            }
-        }
-        diagnostics.set(document.uri, issues);
+        diagnostics.set(document.uri, collectLineLengthDiagnostics(document));
     }
 
     context.subscriptions.push(
@@ -880,19 +1151,7 @@ function activate(context) {
 
     function updateDecorations(editor) {
         if (!editor || editor.document.languageId !== 'lsdyna') return;
-        const searchPaths = getSearchPath(editor.document);
-        const resolved = [];
-        const missing = [];
-
-        for (const { lineIndex, startChar, fileName } of findIncludeFileLines(editor.document)) {
-            const range = new vscode.Range(lineIndex, startChar, lineIndex, startChar + fileName.length);
-            try {
-                searchFileFromPaths(fileName, searchPaths);
-                resolved.push({ range });
-            } catch (e) {
-                missing.push({ range });
-            }
-        }
+        const { resolved, missing } = collectIncludeDecorationSets(editor.document);
 
         editor.setDecorations(resolvedDecoration, resolved);
         editor.setDecorations(missingDecoration, missing);
@@ -917,8 +1176,7 @@ function activate(context) {
             return;
         }
         const currentLine = editor.selection.active.line;
-        const onInclude = findIncludeFileLines(editor.document)
-            .some(({ lineIndex }) => lineIndex === currentLine);
+        const onInclude = isIncludeLine(editor.document, currentLine);
         vscode.commands.executeCommand('setContext', 'lsdyna.onIncludeLine', onInclude);
     }
 
@@ -935,10 +1193,9 @@ function activate(context) {
         vscode.commands.registerCommand('extension.openIncludeFile', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
-            const lines = editor.document.getText().split('\n');
             try {
                 const fullPath = searchFileFromPaths(
-                    getFilenameFromKeyword(lines, editor.selection.active.line),
+                    getFilenameFromDocument(editor.document, editor.selection.active.line),
                     getSearchPath(editor.document)
                 );
                 vscode.workspace.openTextDocument(fullPath).then(doc => vscode.window.showTextDocument(doc));
@@ -952,11 +1209,18 @@ function activate(context) {
         vscode.commands.registerCommand('extension.selectKeyword', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
-            const lines = editor.document.getText().split('\n');
             const currentLine = editor.selection.active.line;
             try {
-                const startLine = startLineOfCurrentKeyword(lines, currentLine);
-                const endLine = endLineOfCurrentKeyword(lines, currentLine);
+                const startLine = startLineOfCurrentKeywordFromLineReader(
+                    editor.document.lineCount,
+                    i => editor.document.lineAt(i).text,
+                    currentLine
+                );
+                const endLine = endLineOfCurrentKeywordFromLineReader(
+                    editor.document.lineCount,
+                    i => editor.document.lineAt(i).text,
+                    currentLine
+                );
                 editor.selection = new vscode.Selection(
                     new vscode.Position(startLine, 0),
                     new vscode.Position(endLine + 1, 0)
@@ -971,9 +1235,8 @@ function activate(context) {
         vscode.commands.registerCommand('extension.jumpToNextKeyword', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
-            const lines = editor.document.getText().split('\n');
             try {
-                const nextLine = findNextKeyword(lines, editor.selection.active.line);
+                const nextLine = findNextKeywordInDocument(editor.document, editor.selection.active.line);
                 const position = new vscode.Position(nextLine, 0);
                 editor.selection = new vscode.Selection(position, position);
                 editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
@@ -987,9 +1250,8 @@ function activate(context) {
         vscode.commands.registerCommand('extension.jumpToPreviousKeyword', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
-            const lines = editor.document.getText().split('\n');
             try {
-                const prevLine = findPreviousKeyword(lines, editor.selection.active.line);
+                const prevLine = findPreviousKeywordInDocument(editor.document, editor.selection.active.line);
                 const position = new vscode.Position(prevLine, 0);
                 editor.selection = new vscode.Selection(position, position);
                 editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
@@ -1006,11 +1268,24 @@ module.exports = { activate, deactivate };
 
 // Exported for unit testing
 module.exports._internals = {
+    collectIncludeDecorationSets,
+    collectIncludeDocumentLinks,
+    collectLineLengthDiagnostics,
+    createActiveDocumentDebouncer,
     findParameterDefinitions,
     findParameterReferences,
     findIncludeFileLines,
+    LsdynaIncludeTreeProvider,
+    LsdynaFieldHoverProvider,
+    LsdynaKeywordIndexProvider,
+    LsdynaKeywordSymbolProvider,
+    LsDynaFoldingProvider,
+    getFilenameFromDocument,
     getSearchPath,
     getParameterAtCursor,
+    isIncludeLine,
+    findNextKeywordInDocument,
+    findPreviousKeywordInDocument,
     startLineOfCurrentKeyword,
     endLineOfCurrentKeyword,
     getFilenameFromKeyword,
