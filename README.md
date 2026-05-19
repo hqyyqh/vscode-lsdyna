@@ -21,7 +21,7 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Word wrap off by default for fixed-width column alignment
 
 **Include Files**
-- `*INCLUDE` filenames are highlighted green (resolved) or red (missing)
+- `*INCLUDE` filenames are highlighted green (resolved) or red (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
 - Right-click an include filename → **Open \*INCLUDE File**, or Ctrl/Cmd+Click
 - Resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` style relative paths
 
@@ -33,7 +33,7 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Bare variable names in `*PARAMETER_EXPRESSION` values are highlighted the same color as `&param` references
 
 **Sidebar Panel**
-- **Include Tree** — recursively scans all `*INCLUDE` files and displays them as a tree; click any entry to open the file
+- **Include Tree** — recursively scans all `*INCLUDE` files and displays them as a tree; exact `*INCLUDE` blocks may contain multiple file entries, and disk scanning uses incremental parsing so large decks do not need to be loaded into one giant string
 - **Keyword Index** — shows all keywords used in the current file (local mode) or the full include tree (recursive mode); toggle between modes with the toolbar buttons
 ![sidebar.png](./images/sidebar.png)
 
