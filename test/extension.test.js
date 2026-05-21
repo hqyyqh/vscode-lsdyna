@@ -698,3 +698,22 @@ describe('getParameterAtCursor', () => {
         assert.equal(result, null);
     });
 });
+
+// ---------------------------------------------------------------------------
+// LsdynaFieldHoverProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaFieldHoverProvider', () => {
+    it('preserves embedded help newlines as markdown hard breaks', () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
+
+        const hover = provider.provideHover(doc, { line: 1, character: 35 });
+
+        assert.ok(hover);
+        assert.equal(
+            hover.contents[0].value,
+            '**ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.  \n中文：用于终止计算的能量比变化百分比。若未定义，则该选项不启用。'
+        );
+    });
+});

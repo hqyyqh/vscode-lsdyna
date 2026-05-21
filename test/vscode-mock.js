@@ -17,9 +17,34 @@ class Range {
     }
 }
 
+class MarkdownString {
+    constructor(value = '') {
+        this.value = value;
+    }
+
+    appendMarkdown(value) {
+        this.value += value;
+        return this;
+    }
+
+    appendText(value) {
+        this.value += String(value).replace(/\r?\n/g, '  \n');
+        return this;
+    }
+}
+
+class Hover {
+    constructor(contents, range) {
+        this.contents = Array.isArray(contents) ? contents : [contents];
+        this.range = range;
+    }
+}
+
 module.exports = {
     Position,
     Range,
+    MarkdownString,
+    Hover,
     Uri: { file: p => ({ fsPath: p }) },
     FoldingRange: class FoldingRange { constructor(s, e) { this.start = s; this.end = e; } },
     DocumentSymbol: class DocumentSymbol {},
