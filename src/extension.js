@@ -583,6 +583,10 @@ function keywordHoverMarkdown(kwName, entry) {
     return lines.join('\n');
 }
 
+function formatHoverHelpText(helpText) {
+    return helpText.replace(/\r?\n/g, '  \n');
+}
+
 class LsdynaFieldHoverProvider {
     provideHover(document, position) {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
@@ -652,7 +656,7 @@ class LsdynaFieldHoverProvider {
         if (!field) return null;
 
         const typeLabel = field.t ? ` *(${field.t})*` : '';
-        const helpText = field.h ? `\n\n${field.h}` : '';
+        const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
         const md = new vscode.MarkdownString(`**${field.n}**${typeLabel}${helpText}`);
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
         return new vscode.Hover(md, range);
