@@ -144,7 +144,7 @@ const indexClient = createIndexClient({ buildProjectIndex });
 
 ## 5.1 先稳定客户端边界，不提前切执行边界
 
-本轮的重点是把 Provider 对项目快照的依赖收口到 client 层。  
+本轮的重点是把 Provider 对项目快照的依赖收口到 client 层。
 先稳定：
 
 - `loadProjectSnapshot(rootFile)`
@@ -165,7 +165,7 @@ const indexClient = createIndexClient({ buildProjectIndex });
 - 订阅更新
 - 后台任务状态
 
-原因是这些能力当前没有测试约束，也还不是当前迁移所必需。  
+原因是这些能力当前没有测试约束，也还不是当前迁移所必需。
 先把最小入口做对，后续再按真实需求扩展。
 
 ---
