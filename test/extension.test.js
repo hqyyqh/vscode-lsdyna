@@ -543,6 +543,30 @@ describe('LsdynaIncludeTreeProvider', () => {
         }
     });
 
+    it('preserves duplicate missing include nodes when building tree items from a project snapshot', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const mainFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.key');
+        const missingFile = path.join(tempRoot, 'missing.key');
+        const provider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
+
+        fs.writeFileSync(mainFile, '*INCLUDE\nmissing.key\nmissing.key\nchild.key\n', 'utf8');
+        fs.writeFileSync(childFile, '*KEYWORD\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(mainFile);
+            const root = provider._buildRootFromSnapshot(snapshot, mainFile);
+
+            assert.deepEqual(root.children.map(child => child.filePath), [missingFile, missingFile, childFile]);
+            assert.equal(root.children[0].description, 'not found');
+            assert.equal(root.children[1].description, 'not found');
+            assert.equal(root.children[0].command, undefined);
+            assert.equal(root.children[1].command, undefined);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('uses the shared project snapshot loader during scans when available', async () => {
         const rootFile = path.join('project', 'snapshot-root', 'main.k');
         const aFile = path.join('project', 'snapshot-root', 'a.key');

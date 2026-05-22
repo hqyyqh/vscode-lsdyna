@@ -146,3 +146,62 @@ git diff --check
 **统一项目快照现在不仅能表达已解析 include，也能表达“解析失败但必须可见”的缺失 include 节点。**
 
 这让 Include Tree 的快照路径与旧递归路径在“缺失文件可视化”这一关键行为上恢复一致，同时没有扩大到其它尚未设计完成的一致性议题。
+
+---
+
+## 7. Reviewer follow-up：重复缺失 include 仍被折叠
+
+独立 review 后又发现一个更细的剩余缺口：
+
+- 同一个父文件里如果连续出现两个相同的缺失 include 指令
+- 旧递归 provider 路径会按“每次指令出现”渲染两个 `not found` 节点
+- 但快照路径仍然只显示一个
+
+### 7.1 根因
+
+第二个缺口仍然在 `ProjectGraph.addIncludeEntry()`：
+
+1. 上一轮为 `includeEntries` 加了去重逻辑
+2. 去重条件基于 `filePath + missing`
+3. 因此两个相同的缺失 include 会在树投影元数据层被合并
+
+这不是索引器漏扫，而是**树投影顺序表把“重复缺失指令”错误当成了“重复节点”**。
+
+### 7.2 Follow-up TDD
+
+先补两个失败测试：
+
+1. `test/core/project/projectIndexer.test.js`
+   - `preserves duplicate missing includes as separate tree nodes in stable order`
+2. `test/extension.test.js`
+   - `preserves duplicate missing include nodes when building tree items from a project snapshot`
+
+先跑：
+
+```powershell
+npx mocha test\core\project\projectIndexer.test.js test\extension.test.js --grep "duplicate missing include"
+```
+
+结果先失败，说明快照树和 provider 的确都把第二个缺失节点折叠掉了。
+
+### 7.3 最小修法
+
+本次 follow-up 不改 resolved 边模型，只把修复限定在缺失节点：
+
+- `entry.missing === true` 时，`addIncludeEntry()` 直接按出现顺序追加
+- 非缺失节点继续维持现有去重逻辑
+
+这样做的好处是：
+
+- reviewer 指出的缺失节点重复折叠被修正
+- resolved include 当前行为不被扩大改动
+- 树顺序仍然严格按 include 指令出现顺序稳定输出
+
+### 7.4 Follow-up 覆盖结论
+
+修完后，快照路径现在对缺失 include 已具备两层一致性：
+
+1. 缺失指令不会消失
+2. 重复缺失指令不会被合并
+
+这才和旧递归 Include Tree 路径在缺失节点可视化语义上真正对齐。

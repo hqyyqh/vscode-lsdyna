@@ -18,6 +18,10 @@ class ProjectGraph {
     addIncludeEntry(fromFile, entry) {
         this.addFile(fromFile);
         const entries = this.includeEntries.get(fromFile);
+        if (entry.missing) {
+            entries.push(entry);
+            return;
+        }
         const exists = entries.some(candidate =>
             candidate.filePath === entry.filePath && Boolean(candidate.missing) === Boolean(entry.missing)
         );
