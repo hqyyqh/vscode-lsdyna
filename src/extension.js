@@ -2,6 +2,10 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
+const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreeProvider');
+const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
+const includeScanner = require('./core/parser/includeScanner');
+const keywordScanner = require('./core/parser/keywordScanner');
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
@@ -66,161 +70,6 @@ class LsdynaDocumentLinkProvider {
 
 // --- Helpers ---
 
-function createIncludeDirectiveState(basePath) {
-    return {
-        basePath,
-        keyword: '',
-        cardCount: 0,
-        includeEntries: [],
-        searchPaths: [basePath],
-        pendingInclude: null,
-    };
-}
-
-function getIncludeDirectiveRule(keyword) {
-    if (keyword === '*INCLUDE') {
-        return { repeatable: true, filenameCard: 1 };
-    }
-    if (keyword.startsWith('*INCLUDE_MULTISCALE_SPOTWELD')) {
-        return { repeatable: false, filenameCard: 2 };
-    }
-    if (keyword.startsWith('*INCLUDE') && !keyword.startsWith('*INCLUDE_PATH')) {
-        return { repeatable: false, filenameCard: 1 };
-    }
-    return null;
-}
-
-function createIncludeSegment(line, lineIndex) {
-    const trimmed = line.trim();
-    return {
-        lineIndex,
-        startChar: line.indexOf(trimmed),
-        endChar: line.trimEnd().length,
-    };
-}
-
-function startIncludeEntry(line, lineIndex) {
-    const trimmed = line.trim();
-    const segment = createIncludeSegment(line, lineIndex);
-    return {
-        lineIndex: segment.lineIndex,
-        startChar: segment.startChar,
-        endLineIndex: segment.lineIndex,
-        endChar: segment.endChar,
-        parts: [trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed],
-        segments: [segment],
-        awaitingContinuation: trimmed.endsWith(' +'),
-    };
-}
-
-function appendIncludeEntry(entry, line, lineIndex) {
-    const trimmed = line.trim();
-    const segment = createIncludeSegment(line, lineIndex);
-    entry.parts.push(trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed);
-    entry.segments.push(segment);
-    entry.endLineIndex = segment.lineIndex;
-    entry.endChar = segment.endChar;
-    entry.awaitingContinuation = trimmed.endsWith(' +');
-}
-
-function includeEntryContainsLine(entry, lineIndex) {
-    return (entry.segments || []).some(segment => segment.lineIndex === lineIndex);
-}
-
-function getIncludeEntryRanges(entry) {
-    if (!entry.segments || entry.segments.length === 0) {
-        return [{
-            lineIndex: entry.lineIndex,
-            startChar: entry.startChar,
-            endLineIndex: entry.endLineIndex,
-            endChar: entry.endChar,
-        }];
-    }
-
-    const [firstSegment, ...remainingSegments] = entry.segments;
-    const ranges = [{
-        lineIndex: firstSegment.lineIndex,
-        startChar: firstSegment.startChar,
-        endLineIndex: firstSegment.lineIndex,
-        endChar: firstSegment.endChar,
-    }];
-
-    for (const segment of remainingSegments) {
-        const currentRange = ranges[ranges.length - 1];
-        if (segment.lineIndex === currentRange.endLineIndex + 1) {
-            currentRange.endLineIndex = segment.lineIndex;
-            currentRange.endChar = segment.endChar;
-            continue;
-        }
-
-        ranges.push({
-            lineIndex: segment.lineIndex,
-            startChar: segment.startChar,
-            endLineIndex: segment.lineIndex,
-            endChar: segment.endChar,
-        });
-    }
-
-    return ranges;
-}
-
-function flushIncludeEntry(state) {
-    if (!state.pendingInclude) return;
-    const fileName = state.pendingInclude.parts.join('').trim();
-    if (fileName) {
-        const { lineIndex, startChar, endLineIndex, endChar, segments } = state.pendingInclude;
-        state.includeEntries.push({ lineIndex, startChar, endLineIndex, endChar, fileName, segments });
-    }
-    state.pendingInclude = null;
-}
-
-function processIncludeDirectiveLine(state, line, lineIndex) {
-    const trimmed = line.trim();
-
-    if (line.startsWith('*')) {
-        flushIncludeEntry(state);
-        state.keyword = trimmed;
-        state.cardCount = 0;
-        return;
-    }
-
-    if (state.pendingInclude) {
-        if (!trimmed || trimmed.startsWith('$')) return;
-        appendIncludeEntry(state.pendingInclude, line, lineIndex);
-        if (!state.pendingInclude.awaitingContinuation) {
-            flushIncludeEntry(state);
-        }
-        return;
-    }
-
-    if (!trimmed || trimmed.startsWith('$')) return;
-
-    if (state.keyword === '*INCLUDE_PATH') {
-        state.searchPaths.push(trimmed);
-        return;
-    }
-    if (state.keyword === '*INCLUDE_PATH_RELATIVE') {
-        state.searchPaths.push(path.resolve(state.basePath, trimmed));
-        return;
-    }
-
-    const includeRule = getIncludeDirectiveRule(state.keyword);
-    if (!includeRule) return;
-
-    state.cardCount++;
-    if (includeRule.repeatable || state.cardCount === includeRule.filenameCard) {
-        state.pendingInclude = startIncludeEntry(line, lineIndex);
-        if (!state.pendingInclude.awaitingContinuation) {
-            flushIncludeEntry(state);
-        }
-    }
-}
-
-function finalizeIncludeDirectiveState(state) {
-    flushIncludeEntry(state);
-    return { includeEntries: state.includeEntries, searchPaths: state.searchPaths };
-}
-
 function getIncludeDirectiveData(document) {
     const version = document.version ?? null;
     const cached = includeDirectiveCache.get(document);
@@ -228,7 +77,7 @@ function getIncludeDirectiveData(document) {
         return cached.value;
     }
 
-    const value = collectIncludeDirectivesFromLineReader(
+    const value = includeScanner.collectIncludeDirectivesFromLineReader(
         document.lineCount,
         i => document.lineAt(i).text,
         path.dirname(document.uri.fsPath)
@@ -250,7 +99,7 @@ function collectIncludeDocumentLinks(document) {
         .flatMap((entry) => {
             try {
                 const fullPath = searchFileFromPaths(entry.fileName, searchPaths);
-                return getIncludeEntryRanges(entry)
+                return includeScanner.getIncludeEntryRanges(entry)
                     .map(({ lineIndex, startChar, endLineIndex, endChar }) =>
                         new vscode.DocumentLink(
                             new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
@@ -290,7 +139,7 @@ function collectIncludeDecorationSets(document) {
     const missing = [];
 
     for (const entry of findIncludeFileLines(document)) {
-        const ranges = getIncludeEntryRanges(entry)
+        const ranges = includeScanner.getIncludeEntryRanges(entry)
             .map(({ lineIndex, startChar, endLineIndex, endChar }) => ({
                 range: new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
             }));
@@ -311,34 +160,7 @@ function isIncludeLine(document, currentLine) {
     }
 
     return findIncludeFileLines(document)
-        .some(entry => includeEntryContainsLine(entry, currentLine));
-}
-
-function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
-    const state = createIncludeDirectiveState(basePath);
-    for (let i = 0; i < lineCount; i++) {
-        processIncludeDirectiveLine(state, getLine(i), i);
-    }
-    return finalizeIncludeDirectiveState(state);
-}
-
-async function collectIncludeDirectivesFromFile(filePath) {
-    const state = createIncludeDirectiveState(path.dirname(filePath));
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
-    const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    let lineIndex = 0;
-
-    try {
-        for await (const line of lines) {
-            processIncludeDirectiveLine(state, line, lineIndex);
-            lineIndex++;
-            if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) await new Promise(r => setImmediate(r));
-        }
-    } finally {
-        lines.close();
-    }
-
-    return finalizeIncludeDirectiveState(state);
+        .some(entry => includeScanner.includeEntryContainsLine(entry, currentLine));
 }
 
 function findIncludeFileLines(document) {
@@ -543,12 +365,17 @@ let _fieldData = null;
 
 function getFieldData() {
     if (!_fieldData) {
-        const dataPath = path.join(__dirname, '..', 'keywords', 'field_data.json');
-        try {
-            _fieldData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-        } catch {
-            _fieldData = {};
+        const dataPaths = [
+            path.join(__dirname, '..', 'keywords', 'field_data_zh.json'),
+            path.join(__dirname, '..', 'keywords', 'field_data.json'),
+        ];
+        for (const dataPath of dataPaths) {
+            try {
+                _fieldData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+                break;
+            } catch {}
         }
+        if (!_fieldData) _fieldData = {};
     }
     return _fieldData;
 }
@@ -713,13 +540,13 @@ function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, bas
 
     const lineend = endLineOfCurrentKeywordFromLineReader(lineCount, getLine, linestart);
     const blockLen = lineend - linestart + 1;
-    const { includeEntries: entries } = collectIncludeDirectivesFromLineReader(
+    const { includeEntries: entries } = includeScanner.collectIncludeDirectivesFromLineReader(
         blockLen,
         i => getLine(linestart + i),
         basePath
     );
     const relIdx = lineindex - linestart;
-    const currentEntry = entries.find(entry => includeEntryContainsLine(entry, relIdx));
+    const currentEntry = entries.find(entry => includeScanner.includeEntryContainsLine(entry, relIdx));
 
     if (currentEntry) return currentEntry.fileName;
     if (entries.length > 0) return entries[0].fileName;
@@ -809,240 +636,13 @@ async function collectIncludeFiles(rootPath, onProgress) {
         visited.add(filePath);
         files.push(filePath);
         if (onProgress) onProgress(files.length);
-        const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(filePath);
+    const { includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath);
         for (const { fileName } of includeEntries) {
             try { queue.push(searchFileFromPaths(fileName, searchPaths)); } catch (e) {}
         }
         await new Promise(r => setImmediate(r));
     }
     return files;
-}
-
-// --- Include tree ---
-
-class IncludeItem extends vscode.TreeItem {
-    constructor(filePath, exists) {
-        super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
-        this.filePath = filePath;
-        this.children = [];
-        this.tooltip = filePath;
-        this.iconPath = new vscode.ThemeIcon(exists ? 'file' : 'warning');
-        if (!exists) this.description = 'not found';
-        if (exists) {
-            this.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(filePath)] };
-        }
-    }
-}
-
-class LsdynaIncludeTreeProvider {
-    constructor() {
-        this._onDidChangeTreeData = new vscode.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-        this.root = null;
-    }
-
-    async scan() {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'lsdyna') {
-            vscode.window.showWarningMessage('Open an LS-DYNA file first.');
-            return;
-        }
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
-            async (progress) => {
-                this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);
-                this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-                this._onDidChangeTreeData.fire(undefined);
-            }
-        );
-    }
-
-    async _buildItem(filePath, visited, progress) {
-        const exists = fs.existsSync(filePath);
-        const item = new IncludeItem(filePath, exists);
-
-        if (!exists || visited.has(filePath)) {
-            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
-            return item;
-        }
-
-        visited.add(filePath);
-        progress.report({ message: path.basename(filePath) });
-
-        let includeEntries;
-        let searchPaths;
-        try {
-            ({ includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(filePath));
-        } catch (error) {
-            item.description = 'scan failed';
-            item.tooltip = `${filePath}\n${error.message}`;
-            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
-            return item;
-        }
-
-        for (const { fileName } of includeEntries) {
-            let childPath, childExists;
-            try {
-                childPath = searchFileFromPaths(fileName, searchPaths);
-                childExists = true;
-            } catch (e) {
-                childPath = path.resolve(path.dirname(filePath), fileName);
-                childExists = false;
-            }
-            item.children.push(await this._buildItem(childPath, new Set(visited), progress));
-        }
-
-        item.collapsibleState = item.children.length > 0
-            ? vscode.TreeItemCollapsibleState.Collapsed
-            : vscode.TreeItemCollapsibleState.None;
-
-        await new Promise(r => setImmediate(r));
-        return item;
-    }
-
-    getTreeItem(element) { return element; }
-    getChildren(element) {
-        if (!this.root) return [];
-        return element ? element.children : [this.root];
-    }
-}
-
-// --- Keyword index ---
-
-class KeywordItem extends vscode.TreeItem {
-    constructor(keyword) {
-        super(keyword, vscode.TreeItemCollapsibleState.Collapsed);
-        this.children = [];
-        this.iconPath = new vscode.ThemeIcon('symbol-keyword');
-    }
-}
-
-class KeywordUsageItem extends vscode.TreeItem {
-    constructor(filePath, lineIndex, rootDir) {
-        const rel = path.relative(rootDir, filePath);
-        super(`${rel}  :${lineIndex + 1}`, vscode.TreeItemCollapsibleState.None);
-        this.iconPath = new vscode.ThemeIcon('file');
-        this.tooltip = `${filePath}:${lineIndex + 1}`;
-        this.command = {
-            command: 'extension.goToKeywordUsage',
-            title: 'Go to keyword',
-            arguments: [filePath, lineIndex],
-        };
-    }
-}
-
-class LsdynaKeywordIndexProvider {
-    constructor() {
-        this._onDidChangeTreeData = new vscode.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-        this.roots = [];
-        this._mode = 'local'; // 'local' | 'recursive'
-    }
-
-    _setMode(mode) {
-        this._mode = mode;
-        vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', mode);
-    }
-
-    async _buildRootsAsync(filePaths, rootDir) {
-        const keywordMap = new Map();
-        for (const filePath of filePaths) {
-            if (!fs.existsSync(filePath)) continue;
-            const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
-            const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-            let lineIndex = 0;
-            for await (const line of rl) {
-                const trimmed = line.trim();
-                if (trimmed.startsWith('*')) {
-                    const keyword = trimmed.slice(1);
-                    if (keyword) {
-                        if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
-                        keywordMap.get(keyword).push({ filePath, lineIndex });
-                    }
-                }
-                lineIndex++;
-                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) await new Promise(r => setImmediate(r));
-            }
-            await new Promise(r => setImmediate(r));
-        }
-        return [...keywordMap.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([keyword, usages]) => {
-                const item = new KeywordItem(keyword);
-                item.children = usages.map(({ filePath, lineIndex }) =>
-                    new KeywordUsageItem(filePath, lineIndex, rootDir)
-                );
-                return item;
-            });
-    }
-
-    refreshFromDocument(document) {
-        if (this._mode !== 'local') return;
-        if (!document || document.languageId !== 'lsdyna') return;
-        if (shouldSkipAutomaticDocumentScan(document)) {
-            this.roots = [];
-            this._onDidChangeTreeData.fire(undefined);
-            return;
-        }
-        const filePath = document.uri.fsPath;
-        const rootDir = path.dirname(filePath);
-        const keywordMap = new Map();
-        for (let i = 0; i < document.lineCount; i++) {
-            const trimmed = document.lineAt(i).text.trim();
-            if (!trimmed.startsWith('*')) continue;
-            const keyword = trimmed.slice(1);
-            if (!keyword) continue;
-            if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
-            keywordMap.get(keyword).push({ filePath, lineIndex: i });
-        }
-        this.roots = [...keywordMap.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([keyword, usages]) => {
-                const item = new KeywordItem(keyword);
-                item.children = usages.map(({ filePath, lineIndex }) =>
-                    new KeywordUsageItem(filePath, lineIndex, rootDir)
-                );
-                return item;
-            });
-        this._onDidChangeTreeData.fire(undefined);
-    }
-
-    async scan() {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'lsdyna') {
-            vscode.window.showWarningMessage('Open an LS-DYNA file first.');
-            return;
-        }
-        const rootFile = editor.document.uri.fsPath;
-        const rootDir = path.dirname(rootFile);
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
-            async (progress) => {
-                const files = await collectIncludeFiles(rootFile, (count) => {
-                    progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
-                });
-                this.roots = await this._buildRootsAsync(files, rootDir);
-                this._setMode('recursive');
-                this._onDidChangeTreeData.fire(undefined);
-            }
-        );
-    }
-
-    setLocal() {
-        this._setMode('local');
-        if (vscode.window.activeTextEditor) {
-            this.refreshFromDocument(vscode.window.activeTextEditor.document);
-        } else {
-            this.roots = [];
-            this._onDidChangeTreeData.fire(undefined);
-        }
-    }
-
-    getTreeItem(element) { return element; }
-    getChildren(element) {
-        if (element) return element.children;
-        return this.roots;
-    }
 }
 
 // --- Activate ---
@@ -1067,7 +667,7 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
 
-    const includeTreeProvider = new LsdynaIncludeTreeProvider();
+    const includeTreeProvider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('lsdynaIncludeTree', includeTreeProvider)
     );
@@ -1075,7 +675,10 @@ function activate(context) {
         vscode.commands.registerCommand('extension.scanIncludeTree', () => includeTreeProvider.scan())
     );
 
-    const keywordIndexProvider = new LsdynaKeywordIndexProvider();
+    const keywordIndexProvider = new LsdynaKeywordIndexProvider({
+        collectIncludeFiles,
+        shouldSkipAutomaticDocumentScan,
+    });
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('lsdynaKeywordIndex', keywordIndexProvider)
     );
@@ -1276,6 +879,7 @@ module.exports._internals = {
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
     createActiveDocumentDebouncer,
+    collectIncludeFiles,
     findParameterDefinitions,
     findParameterReferences,
     findIncludeFileLines,
@@ -1290,6 +894,7 @@ module.exports._internals = {
     isIncludeLine,
     findNextKeywordInDocument,
     findPreviousKeywordInDocument,
+    shouldSkipAutomaticDocumentScan,
     startLineOfCurrentKeyword,
     endLineOfCurrentKeyword,
     getFilenameFromKeyword,

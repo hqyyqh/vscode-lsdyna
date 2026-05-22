@@ -5,6 +5,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { fakeDoc } = require('./helpers');
+const { LsdynaIncludeTreeProvider } = require('../src/client/providers/includeTreeProvider');
+const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordIndexProvider');
 
 const {
     collectIncludeDecorationSets,
@@ -29,8 +31,8 @@ const {
     searchFileFromPaths,
     findNextKeyword,
     findPreviousKeyword,
-    LsdynaIncludeTreeProvider,
-    LsdynaKeywordIndexProvider,
+    collectIncludeFiles,
+    shouldSkipAutomaticDocumentScan,
 } = require('../src/extension')._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -453,7 +455,7 @@ describe('LsdynaIncludeTreeProvider', () => {
         fs.writeFileSync(aFile, '*KEYWORD\n');
         fs.writeFileSync(bFile, '*KEYWORD\n');
 
-        const provider = new LsdynaIncludeTreeProvider();
+        const provider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
         const originalReadFileSync = fs.readFileSync;
         fs.readFileSync = function patchedReadFileSync(filePath) {
             if (filePath === mainFile || filePath === aFile || filePath === bFile) {
@@ -487,7 +489,7 @@ describe('LsdynaKeywordIndexProvider', () => {
         for (let i = 0; i < 50000; i++) lines.push(`$ line ${i}`);
         fs.writeFileSync(bigFile, lines.join('\n'));
 
-        const provider = new LsdynaKeywordIndexProvider();
+        const provider = new LsdynaKeywordIndexProvider({ collectIncludeFiles, shouldSkipAutomaticDocumentScan });
         const originalSetImmediate = global.setImmediate;
         let yieldCount = 0;
         global.setImmediate = (callback, ...args) => {
@@ -628,7 +630,7 @@ describe('large document guards', () => {
     });
 
     it('skips local keyword index refresh for very large documents', () => {
-        const provider = new LsdynaKeywordIndexProvider();
+        const provider = new LsdynaKeywordIndexProvider({ collectIncludeFiles, shouldSkipAutomaticDocumentScan });
         provider.roots = [{ label: 'stale' }];
 
         provider.refreshFromDocument(createHugeDoc());
