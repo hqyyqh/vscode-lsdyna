@@ -543,7 +543,7 @@ let _fieldData = null;
 
 function getFieldData() {
     if (!_fieldData) {
-        const dataPath = path.join(__dirname, '..', 'keywords', 'field_data_zh.json');
+        const dataPath = path.join(__dirname, '..', 'keywords', 'field_data.json');
         try {
             _fieldData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
         } catch {
