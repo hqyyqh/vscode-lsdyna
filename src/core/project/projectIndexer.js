@@ -44,6 +44,7 @@ async function buildProjectIndex(rootFile) {
                 graph.addMissingFile({
                     fromFile: filePath,
                     fileName,
+                    filePath: path.resolve(searchPaths[0] || path.dirname(filePath), fileName),
                 });
                 continue;
             }

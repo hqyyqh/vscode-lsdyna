@@ -8,6 +8,7 @@ const { fakeDoc, vscodeMock } = require('./helpers');
 const extensionModule = require('../src/extension');
 const { LsdynaIncludeTreeProvider } = require('../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordIndexProvider');
+const { buildProjectIndex } = require('../src/core/project/projectIndexer');
 const {
     collectIncludeDecorationSets,
     collectIncludeDocumentLinks,
@@ -514,6 +515,29 @@ describe('LsdynaIncludeTreeProvider', () => {
             assert.equal(root.filePath, mainFile);
             assert.deepEqual(root.children.map(child => child.filePath), [aFile]);
             assert.deepEqual(root.children[0].children.map(child => child.filePath), [bFile]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('preserves missing include nodes when building tree items from a project snapshot', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const mainFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.key');
+        const missingFile = path.join(tempRoot, 'missing.key');
+        const provider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
+
+        fs.writeFileSync(mainFile, '*INCLUDE\nchild.key\nmissing.key\n', 'utf8');
+        fs.writeFileSync(childFile, '*KEYWORD\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(mainFile);
+            const root = provider._buildRootFromSnapshot(snapshot, mainFile);
+
+            assert.deepEqual(root.children.map(child => child.filePath), [childFile, missingFile]);
+            assert.equal(root.children[1].description, 'not found');
+            assert.equal(root.children[1].command, undefined);
+            assert.equal(root.children[1].collapsibleState, vscodeMock.TreeItemCollapsibleState.None);
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }

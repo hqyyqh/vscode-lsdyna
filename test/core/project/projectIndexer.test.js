@@ -116,4 +116,42 @@ describe('projectIndexer', () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
+
+    it('preserves missing includes as tree nodes in include order', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+        const bFile = path.join(tempRoot, 'b.key');
+        const missingFile = path.join(tempRoot, 'missing.key');
+
+        fs.writeFileSync(rootFile, '*INCLUDE\na.key\nmissing.key\nb.key\n', 'utf8');
+        fs.writeFileSync(aFile, '*PART\n', 'utf8');
+        fs.writeFileSync(bFile, '*MAT_ELASTIC\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.graph.toTree(rootFile), {
+                filePath: rootFile,
+                children: [
+                    {
+                        filePath: aFile,
+                        children: [],
+                    },
+                    {
+                        filePath: missingFile,
+                        fileName: 'missing.key',
+                        missing: true,
+                        children: [],
+                    },
+                    {
+                        filePath: bFile,
+                        children: [],
+                    },
+                ],
+            });
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
 });
