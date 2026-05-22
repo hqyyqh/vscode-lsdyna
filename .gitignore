@@ -2,3 +2,4 @@ keywords/feeders*
 .vscode
 .vscode/settings.json
 node_modules/
+.worktrees/
