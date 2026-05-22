@@ -6,6 +6,7 @@ const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreePro
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
+const { buildProjectIndex } = require('./core/project/projectIndexer');
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
@@ -667,7 +668,10 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
 
-    const includeTreeProvider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
+    const includeTreeProvider = new LsdynaIncludeTreeProvider({
+        searchFileFromPaths,
+        buildProjectIndex,
+    });
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('lsdynaIncludeTree', includeTreeProvider)
     );

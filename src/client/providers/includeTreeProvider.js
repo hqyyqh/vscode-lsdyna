@@ -21,8 +21,9 @@ class IncludeItem extends vscode.TreeItem {
 }
 
 class LsdynaIncludeTreeProvider {
-    constructor({ searchFileFromPaths } = {}) {
+    constructor({ searchFileFromPaths, buildProjectIndex } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
+        this.buildProjectIndex = buildProjectIndex;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.root = null;
@@ -37,11 +38,30 @@ class LsdynaIncludeTreeProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
             async (progress) => {
-                this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);
+                if (this.buildProjectIndex) {
+                    const snapshot = await this.buildProjectIndex(editor.document.uri.fsPath);
+                    this.root = this._buildRootFromSnapshot(snapshot, editor.document.uri.fsPath);
+                } else {
+                    this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);
+                }
                 this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 this._onDidChangeTreeData.fire(undefined);
             }
         );
+    }
+
+    _buildItemFromTreeNode(node) {
+        const exists = fs.existsSync(node.filePath);
+        const item = new IncludeItem(node.filePath, exists);
+        item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode));
+        item.collapsibleState = item.children.length > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None;
+        return item;
+    }
+
+    _buildRootFromSnapshot(snapshot, rootFile) {
+        return this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile));
     }
 
     async _buildItem(filePath, visited, progress) {

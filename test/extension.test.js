@@ -475,6 +475,49 @@ describe('LsdynaIncludeTreeProvider', () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
+
+    it('builds include tree items from a project snapshot', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const mainFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+        const bFile = path.join(tempRoot, 'b.key');
+
+        fs.writeFileSync(mainFile, '*KEYWORD\n');
+        fs.writeFileSync(aFile, '*KEYWORD\n');
+        fs.writeFileSync(bFile, '*KEYWORD\n');
+
+        const provider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
+        const snapshot = {
+            graph: {
+                toTree(filePath) {
+                    assert.equal(filePath, mainFile);
+                    return {
+                        filePath: mainFile,
+                        children: [
+                            {
+                                filePath: aFile,
+                                children: [
+                                    {
+                                        filePath: bFile,
+                                        children: [],
+                                    },
+                                ],
+                            },
+                        ],
+                    };
+                },
+            },
+        };
+
+        try {
+            const root = provider._buildRootFromSnapshot(snapshot, mainFile);
+            assert.equal(root.filePath, mainFile);
+            assert.deepEqual(root.children.map(child => child.filePath), [aFile]);
+            assert.deepEqual(root.children[0].children.map(child => child.filePath), [bFile]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
