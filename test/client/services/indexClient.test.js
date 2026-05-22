@@ -38,6 +38,7 @@ describe('createIndexClient', () => {
                 calls.push(rootFile);
                 return snapshot;
             },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
         });
 
         assert.strictEqual(await client.loadProjectSnapshot(canonicalRoot), snapshot);
@@ -56,6 +57,7 @@ describe('createIndexClient', () => {
         let callCount = 0;
         const client = createIndexClient({
             buildProjectIndex: async () => snapshots[callCount++],
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
         });
 
         assert.strictEqual(await client.loadProjectSnapshot(canonicalRoot), snapshots[0]);
@@ -75,6 +77,7 @@ describe('createIndexClient', () => {
                 const snapshot = { rootFile: rootPath, version: buildCount };
                 resolvers.push(() => resolve(snapshot));
             }),
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
         });
 
         const staleLoad = client.loadProjectSnapshot(rootFile);
@@ -95,6 +98,63 @@ describe('createIndexClient', () => {
         assert.equal(freshSnapshot.version, 2);
         assert.strictEqual(await sharedFreshLoad, freshSnapshot);
         assert.strictEqual(await client.loadProjectSnapshot(rootFile), freshSnapshot);
+        assert.equal(buildCount, 2);
+    });
+
+    it('rebuilds cached snapshots when a tracked project file changes', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const childFile = path.resolve('project', 'child.key');
+        const snapshots = [
+            { rootFile, files: [rootFile, childFile], version: 1 },
+            { rootFile, files: [rootFile, childFile], version: 2 },
+        ];
+        const signatures = new Map([
+            [rootFile, { mtimeMs: 10, size: 100 }],
+            [childFile, { mtimeMs: 10, size: 200 }],
+        ]);
+        let buildCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => snapshots[buildCount++],
+            getFileSignature: async (filePath) => signatures.get(filePath),
+        });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[0]);
+
+        signatures.set(childFile, { mtimeMs: 20, size: 200 });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[1]);
+        assert.equal(buildCount, 2);
+    });
+
+    it('rebuilds cached snapshots when a tracked project file disappears', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const childFile = path.resolve('project', 'child.key');
+        const snapshots = [
+            { rootFile, files: [rootFile, childFile], version: 1 },
+            { rootFile, files: [rootFile], version: 2 },
+        ];
+        const missing = new Error('ENOENT');
+        missing.code = 'ENOENT';
+        const signatures = new Map([
+            [rootFile, { mtimeMs: 10, size: 100 }],
+            [childFile, { mtimeMs: 10, size: 200 }],
+        ]);
+        let buildCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => snapshots[buildCount++],
+            getFileSignature: async (filePath) => {
+                if (!signatures.has(filePath)) throw missing;
+                return signatures.get(filePath);
+            },
+        });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[0]);
+
+        signatures.delete(childFile);
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[1]);
         assert.equal(buildCount, 2);
     });
 });
