@@ -51,7 +51,7 @@ class LsdynaIncludeTreeProvider {
     }
 
     _buildItemFromTreeNode(node) {
-        const exists = fs.existsSync(node.filePath);
+        const exists = !node.missing && fs.existsSync(node.filePath);
         const item = new IncludeItem(node.filePath, exists);
         item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode));
         item.collapsibleState = item.children.length > 0
