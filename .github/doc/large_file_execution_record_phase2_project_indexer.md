@@ -62,8 +62,9 @@ async function buildProjectIndex(rootFile)
 1. 从根文件开始递归扫描 include 关系
 2. 聚合整个工程内所有文件的关键字使用
 3. 产出统一的 `ProjectGraph`
-4. 记录无法解析的缺失 include
-5. 遇到循环引用时进行熔断而不是无限递归
+4. 将图模型展开为稳定的嵌套树结构（`toTree()`）
+5. 记录无法解析的缺失 include
+6. 遇到循环引用时进行熔断而不是无限递归
 
 这虽然还不是最终版 `ProjectIndexSnapshot`，但已经建立了**项目级统一输出**。
 
@@ -90,6 +91,9 @@ async function buildProjectIndex(rootFile)
 3. **图结构输出**  
    项目快照必须给出正向 include 边和反向依赖边。
 
+4. **树形输出**
+   图模型必须能够按 include 顺序物化为嵌套树，供 Include Tree 后续直接消费。
+
 在生产代码尚未存在时先运行：
 
 ```powershell
@@ -113,8 +117,9 @@ npx mocha test/core/project/projectIndexer.test.js
    - 反向依赖边
    - 缺失文件
    - 循环链条
-4. 在 `projectIndexer` 中只做聚合，不重复实现词法扫描
-5. 保持实现最小，不提前引入缓存、线程池、协议层
+4. 给 `ProjectGraph` 增加 `toTree()`，用于稳定输出树形结构
+5. 在 `projectIndexer` 中只做聚合，不重复实现词法扫描
+6. 保持实现最小，不提前引入缓存、线程池、协议层
 
 ### 4.3 最后验证转绿
 
@@ -132,7 +137,7 @@ npm test
 
 结果：
 
-- `projectIndexer` / `ProjectGraph` 新增测试通过
+- `projectIndexer` / `ProjectGraph` / `toTree()` 新增测试通过
 - 全量测试通过
 
 ---
@@ -159,13 +164,14 @@ npm test
 
 - 给 `projectIndexer` 提供统一图输出
 - 稳定 include 边与反向依赖边
+- 提前固化 Include Tree 未来会消费的树形结构
 - 把缺失文件与循环链条收口到项目层
 
 尚未推进的内容包括：
 
 - 更完整的图查询接口
 - 图与缓存层的序列化协议
-- Provider 对图结构的直接消费
+- Provider 对图结构的直接消费与接线
 
 ---
 
@@ -180,8 +186,8 @@ npm test
 
 结果：
 
-- **新增索引器 / 图模型测试通过**
-- **全量测试：81 passing, 0 failing**
+- **新增索引器 / 图模型 / 树形输出测试通过**
+- **全量测试：82 passing, 0 failing**
 
 这说明本轮新增的项目级聚合基础没有破坏 Phase 0/1 已经稳定下来的行为。
 
@@ -195,7 +201,7 @@ npm test
    `includeScanner` / `keywordScanner`
 
 2. **项目级聚合层**  
-   `projectIndexer` + `ProjectGraph`
+   `projectIndexer` + `ProjectGraph` + `toTree()`
 
 3. **客户端展示层**  
    `includeTreeProvider` / `keywordIndexProvider`
@@ -209,8 +215,9 @@ npm test
 下一批建议按这个顺序推进：
 
 1. 将当前 `collectIncludeFiles()` 的职责迁移到项目层
-2. 让 Include Tree 与 Keyword Index 开始消费统一项目快照
-3. 再决定是否引入 `worker_threads` 与 `indexClient`
-4. 为后续缓存层定义可持久化的项目快照形状
+2. 让 Include Tree 先开始消费 `ProjectGraph.toTree()` 结果
+3. 再让 Keyword Index 消费统一项目快照
+4. 再决定是否引入 `worker_threads` 与 `indexClient`
+5. 为后续缓存层定义可持久化的项目快照形状
 
-**一句话结论：本轮已经把“大文件工程级扫描”从“多个文件各扫各的”推进到了“有统一项目快照 + 最小图模型”的阶段，这是真正接入后台扫描 MVP 之前必须完成的一步。**
+**一句话结论：本轮已经把“大文件工程级扫描”从“多个文件各扫各的”推进到了“有统一项目快照 + 最小图模型 + 可直接展开的树形输出”的阶段，这是真正接入后台扫描 MVP 之前必须完成的一步。**

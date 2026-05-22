@@ -78,4 +78,42 @@ describe('projectIndexer', () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
+
+    it('materializes a nested include tree from the project graph in include order', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+        const bFile = path.join(tempRoot, 'b.key');
+        const cFile = path.join(tempRoot, 'c.key');
+
+        fs.writeFileSync(rootFile, '*INCLUDE\na.key\nb.key\n', 'utf8');
+        fs.writeFileSync(aFile, '*INCLUDE\nc.key\n', 'utf8');
+        fs.writeFileSync(bFile, '*PART\n', 'utf8');
+        fs.writeFileSync(cFile, '*MAT_ELASTIC\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.graph.toTree(rootFile), {
+                filePath: rootFile,
+                children: [
+                    {
+                        filePath: aFile,
+                        children: [
+                            {
+                                filePath: cFile,
+                                children: [],
+                            },
+                        ],
+                    },
+                    {
+                        filePath: bFile,
+                        children: [],
+                    },
+                ],
+            });
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
 });
