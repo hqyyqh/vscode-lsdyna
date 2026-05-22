@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 
 function resolveRootFile(rootFile) {
@@ -16,9 +17,71 @@ function getRootCacheKey(rootFile) {
         : resolvedRootFile;
 }
 
-function createIndexClient({ buildProjectIndex } = {}) {
+function getTrackedSnapshotFiles(snapshot) {
+    if (Array.isArray(snapshot.files) && snapshot.files.length > 0) {
+        return snapshot.files;
+    }
+    return [snapshot.rootFile];
+}
+
+function areFileSignaturesEqual(left, right) {
+    return left
+        && right
+        && left.mtimeMs === right.mtimeMs
+        && left.size === right.size;
+}
+
+async function readFileSignature(filePath) {
+    const stat = await fs.promises.stat(filePath);
+    return {
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+    };
+}
+
+async function captureTrackedFiles(snapshot, getFileSignature) {
+    const trackedFiles = [];
+    const seen = new Set();
+
+    for (const filePath of getTrackedSnapshotFiles(snapshot)) {
+        const resolvedFilePath = resolveRootFile(filePath);
+        const fileCacheKey = getRootCacheKey(resolvedFilePath);
+        if (seen.has(fileCacheKey)) continue;
+        seen.add(fileCacheKey);
+        trackedFiles.push({
+            filePath: resolvedFilePath,
+            signature: await getFileSignature(resolvedFilePath),
+        });
+    }
+
+    return trackedFiles;
+}
+
+async function isSnapshotValid(entry, getFileSignature) {
+    if (!Array.isArray(entry.trackedFiles) || entry.trackedFiles.length === 0) {
+        return false;
+    }
+
+    for (const trackedFile of entry.trackedFiles) {
+        try {
+            const currentSignature = await getFileSignature(trackedFile.filePath);
+            if (!areFileSignaturesEqual(currentSignature, trackedFile.signature)) {
+                return false;
+            }
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function createIndexClient({ buildProjectIndex, getFileSignature = readFileSignature } = {}) {
     if (typeof buildProjectIndex !== 'function') {
         throw new TypeError('createIndexClient requires a buildProjectIndex function');
+    }
+    if (typeof getFileSignature !== 'function') {
+        throw new TypeError('createIndexClient requires getFileSignature to be a function');
     }
 
     const snapshots = new Map();
@@ -31,19 +94,36 @@ function createIndexClient({ buildProjectIndex } = {}) {
     async function loadProjectSnapshot(rootFile) {
         const resolvedRootFile = resolveRootFile(rootFile);
         const rootCacheKey = getRootCacheKey(rootFile);
-        const cachedEntry = snapshots.get(rootCacheKey);
 
-        if (cachedEntry) {
-            if (cachedEntry.snapshot) return cachedEntry.snapshot;
+        while (snapshots.has(rootCacheKey)) {
+            const cachedEntry = snapshots.get(rootCacheKey);
             if (cachedEntry.promise) return cachedEntry.promise;
+
+            const valid = await isSnapshotValid(cachedEntry, getFileSignature);
+            const currentEntry = snapshots.get(rootCacheKey);
+            if (currentEntry !== cachedEntry) continue;
+            if (valid) return cachedEntry.snapshot;
+
+            invalidate(resolvedRootFile);
         }
 
         const generation = getGeneration(rootCacheKey);
         const promise = Promise.resolve(buildProjectIndex(resolvedRootFile))
-            .then(snapshot => {
+            .then(async snapshot => {
+                let trackedFiles = null;
+                try {
+                    trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);
+                } catch (_error) {
+                    trackedFiles = null;
+                }
+
                 const currentEntry = snapshots.get(rootCacheKey);
                 if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
-                    snapshots.set(rootCacheKey, { snapshot });
+                    if (trackedFiles) {
+                        snapshots.set(rootCacheKey, { snapshot, trackedFiles });
+                    } else {
+                        snapshots.delete(rootCacheKey);
+                    }
                 }
                 return snapshot;
             })
