@@ -21,9 +21,9 @@ class IncludeItem extends vscode.TreeItem {
 }
 
 class LsdynaIncludeTreeProvider {
-    constructor({ searchFileFromPaths, buildProjectIndex } = {}) {
+    constructor({ searchFileFromPaths, loadProjectSnapshot } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
-        this.buildProjectIndex = buildProjectIndex;
+        this.loadProjectSnapshot = loadProjectSnapshot;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.root = null;
@@ -38,8 +38,8 @@ class LsdynaIncludeTreeProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
             async (progress) => {
-                if (this.buildProjectIndex) {
-                    const snapshot = await this.buildProjectIndex(editor.document.uri.fsPath);
+                if (this.loadProjectSnapshot) {
+                    const snapshot = await this.loadProjectSnapshot(editor.document.uri.fsPath);
                     this.root = this._buildRootFromSnapshot(snapshot, editor.document.uri.fsPath);
                 } else {
                     this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);

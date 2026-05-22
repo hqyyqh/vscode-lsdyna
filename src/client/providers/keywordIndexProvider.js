@@ -29,9 +29,9 @@ class KeywordUsageItem extends vscode.TreeItem {
 }
 
 class LsdynaKeywordIndexProvider {
-    constructor({ collectIncludeFiles, buildProjectIndex, shouldSkipAutomaticDocumentScan } = {}) {
+    constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
-        this.buildProjectIndex = buildProjectIndex;
+        this.loadProjectSnapshot = loadProjectSnapshot;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -107,8 +107,8 @@ class LsdynaKeywordIndexProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
             async (progress) => {
-                if (this.buildProjectIndex) {
-                    const snapshot = await this.buildProjectIndex(rootFile);
+                if (this.loadProjectSnapshot) {
+                    const snapshot = await this.loadProjectSnapshot(rootFile);
                     this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
                 } else {
                     const files = await this.collectIncludeFiles(rootFile, (count) => {

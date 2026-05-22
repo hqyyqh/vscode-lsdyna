@@ -4,6 +4,7 @@ const fs = require('fs');
 const readline = require('readline');
 const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
+const { createIndexClient } = require('./client/services/indexClient');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const { buildProjectIndex } = require('./core/project/projectIndexer');
@@ -668,9 +669,10 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
 
+    const indexClient = createIndexClient({ buildProjectIndex });
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
-        buildProjectIndex,
+        loadProjectSnapshot: indexClient.loadProjectSnapshot,
     });
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('lsdynaIncludeTree', includeTreeProvider)
@@ -681,7 +683,7 @@ function activate(context) {
 
     const keywordIndexProvider = new LsdynaKeywordIndexProvider({
         collectIncludeFiles,
-        buildProjectIndex,
+        loadProjectSnapshot: indexClient.loadProjectSnapshot,
         shouldSkipAutomaticDocumentScan,
     });
     context.subscriptions.push(
