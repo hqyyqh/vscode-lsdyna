@@ -33,10 +33,11 @@ Phase 2 原方案里同时包含：
 
 ## 3. 本轮新增内容
 
-### 3.1 新增项目级索引器
+### 3.1 新增项目级索引器与图模型
 
 新增文件：
 
+- `src/core/project/projectGraph.js`
 - `src/core/project/projectIndexer.js`
 
 当前提供的核心接口：
@@ -49,6 +50,7 @@ async function buildProjectIndex(rootFile)
 
 - `rootFile`
 - `files`
+- `graph`
 - `keywordMap`
 - `missingFiles`
 - `cycles`
@@ -59,8 +61,9 @@ async function buildProjectIndex(rootFile)
 
 1. 从根文件开始递归扫描 include 关系
 2. 聚合整个工程内所有文件的关键字使用
-3. 记录无法解析的缺失 include
-4. 遇到循环引用时进行熔断而不是无限递归
+3. 产出统一的 `ProjectGraph`
+4. 记录无法解析的缺失 include
+5. 遇到循环引用时进行熔断而不是无限递归
 
 这虽然还不是最终版 `ProjectIndexSnapshot`，但已经建立了**项目级统一输出**。
 
@@ -82,6 +85,11 @@ async function buildProjectIndex(rootFile)
 2. **缺失引用记录**  
    某个 include 丢失时，项目扫描不会中断，并且会留下缺失记录。
 
+随后继续补了一条图模型行为：
+
+3. **图结构输出**  
+   项目快照必须给出正向 include 边和反向依赖边。
+
 在生产代码尚未存在时先运行：
 
 ```powershell
@@ -100,8 +108,13 @@ npx mocha test/core/project/projectIndexer.test.js
 
 1. 复用已有 `includeScanner`
 2. 复用已有 `keywordScanner`
-3. 在 `projectIndexer` 中只做聚合，不重复实现词法扫描
-4. 保持实现最小，不提前引入缓存、线程池、协议层
+3. 新建 `ProjectGraph`，集中维护：
+   - 正向 include 边
+   - 反向依赖边
+   - 缺失文件
+   - 循环链条
+4. 在 `projectIndexer` 中只做聚合，不重复实现词法扫描
+5. 保持实现最小，不提前引入缓存、线程池、协议层
 
 ### 4.3 最后验证转绿
 
@@ -119,7 +132,7 @@ npm test
 
 结果：
 
-- `projectIndexer` 新增测试通过
+- `projectIndexer` / `ProjectGraph` 新增测试通过
 - 全量测试通过
 
 ---
@@ -140,10 +153,19 @@ npm test
 `projectIndexer` 当前在模块内部维护最小的 include 路径解析逻辑，而没有反向依赖 `src/extension.js` 里的旧入口函数。  
 这样可以避免新核心模块再次绑回旧入口。
 
-## 5.3 先建“快照”，后建“图”
+## 5.3 先建“最小图”，再建“更完整的项目状态机”
 
-虽然 Phase 2 计划里包含 `projectGraph.js`，但本轮先把**最小项目快照**做出来。  
-下一步再把 include 边、反向依赖、循环链条整理进更正式的图模型中。
+本轮已经补上了 `ProjectGraph`，但它仍然是一个**最小可用图模型**，目前重点是：
+
+- 给 `projectIndexer` 提供统一图输出
+- 稳定 include 边与反向依赖边
+- 把缺失文件与循环链条收口到项目层
+
+尚未推进的内容包括：
+
+- 更完整的图查询接口
+- 图与缓存层的序列化协议
+- Provider 对图结构的直接消费
 
 ---
 
@@ -158,8 +180,8 @@ npm test
 
 结果：
 
-- **新增索引器测试通过**
-- **全量测试：80 passing, 0 failing**
+- **新增索引器 / 图模型测试通过**
+- **全量测试：81 passing, 0 failing**
 
 这说明本轮新增的项目级聚合基础没有破坏 Phase 0/1 已经稳定下来的行为。
 
@@ -173,7 +195,7 @@ npm test
    `includeScanner` / `keywordScanner`
 
 2. **项目级聚合层**  
-   `projectIndexer`
+   `projectIndexer` + `ProjectGraph`
 
 3. **客户端展示层**  
    `includeTreeProvider` / `keywordIndexProvider`
@@ -186,9 +208,9 @@ npm test
 
 下一批建议按这个顺序推进：
 
-1. 新建 `src/core/project/projectGraph.js`
-2. 把 include 边、缺失文件、循环链条、反向依赖显式建模
-3. 将当前 `collectIncludeFiles()` 的职责迁移到项目层
-4. 再决定是否引入 `worker_threads` 与 `indexClient`
+1. 将当前 `collectIncludeFiles()` 的职责迁移到项目层
+2. 让 Include Tree 与 Keyword Index 开始消费统一项目快照
+3. 再决定是否引入 `worker_threads` 与 `indexClient`
+4. 为后续缓存层定义可持久化的项目快照形状
 
-**一句话结论：本轮已经把“大文件工程级扫描”从“多个文件各扫各的”推进到了“有统一项目快照的聚合模型”，这是进入后台扫描 MVP 之前必须完成的一步。**
+**一句话结论：本轮已经把“大文件工程级扫描”从“多个文件各扫各的”推进到了“有统一项目快照 + 最小图模型”的阶段，这是真正接入后台扫描 MVP 之前必须完成的一步。**

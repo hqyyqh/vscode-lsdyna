@@ -60,4 +60,22 @@ describe('projectIndexer', () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
+
+    it('builds a project graph with forward and reverse include edges', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.key');
+
+        fs.writeFileSync(rootFile, '*INCLUDE\nchild.key\n', 'utf8');
+        fs.writeFileSync(childFile, '*PART\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.graph.getChildren(rootFile), [childFile]);
+            assert.deepEqual(snapshot.graph.getParents(childFile), [rootFile]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
 });

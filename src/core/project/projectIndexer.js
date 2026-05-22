@@ -5,6 +5,7 @@ const path = require('path');
 
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
+const { ProjectGraph } = require('./projectGraph');
 
 function resolveIncludeFromSearchPaths(fileName, searchPaths) {
     for (const searchPath of searchPaths) {
@@ -24,14 +25,14 @@ function addKeywordUsages(keywordMap, keywords) {
 async function buildProjectIndex(rootFile) {
     const files = [];
     const keywordMap = new Map();
-    const missingFiles = [];
-    const cycles = [];
+    const graph = new ProjectGraph();
     const visited = new Set();
 
     async function visit(filePath, ancestry = []) {
         if (visited.has(filePath)) return;
         visited.add(filePath);
         files.push(filePath);
+        graph.addFile(filePath);
 
         const keywords = await keywordScanner.collectKeywordsFromFile(filePath);
         addKeywordUsages(keywordMap, keywords);
@@ -40,7 +41,7 @@ async function buildProjectIndex(rootFile) {
         for (const { fileName } of includeEntries) {
             const resolvedPath = resolveIncludeFromSearchPaths(fileName, searchPaths);
             if (!resolvedPath) {
-                missingFiles.push({
+                graph.addMissingFile({
                     fromFile: filePath,
                     fileName,
                 });
@@ -48,7 +49,7 @@ async function buildProjectIndex(rootFile) {
             }
 
             if (ancestry.includes(resolvedPath) || resolvedPath === filePath) {
-                cycles.push({
+                graph.addCycle({
                     fromFile: filePath,
                     toFile: resolvedPath,
                     path: [...ancestry, filePath, resolvedPath],
@@ -56,6 +57,7 @@ async function buildProjectIndex(rootFile) {
                 continue;
             }
 
+            graph.addIncludeEdge(filePath, resolvedPath);
             await visit(resolvedPath, [...ancestry, filePath]);
         }
     }
@@ -65,9 +67,10 @@ async function buildProjectIndex(rootFile) {
     return {
         rootFile,
         files,
+        graph,
         keywordMap,
-        missingFiles,
-        cycles,
+        missingFiles: graph.missingFiles,
+        cycles: graph.cycles,
     };
 }
 
