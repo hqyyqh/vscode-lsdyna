@@ -40,6 +40,22 @@ class ProjectGraph {
     getParents(filePath) {
         return [...(this.parents.get(filePath) || [])];
     }
+
+    toTree(rootFile, ancestry = []) {
+        if (ancestry.includes(rootFile)) {
+            return {
+                filePath: rootFile,
+                children: [],
+            };
+        }
+
+        return {
+            filePath: rootFile,
+            children: this.getChildren(rootFile).map(childFile =>
+                this.toTree(childFile, [...ancestry, rootFile])
+            ),
+        };
+    }
 }
 
 module.exports = {
