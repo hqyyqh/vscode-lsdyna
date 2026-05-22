@@ -681,6 +681,7 @@ function activate(context) {
 
     const keywordIndexProvider = new LsdynaKeywordIndexProvider({
         collectIncludeFiles,
+        buildProjectIndex,
         shouldSkipAutomaticDocumentScan,
     });
     context.subscriptions.push(

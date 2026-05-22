@@ -29,8 +29,9 @@ class KeywordUsageItem extends vscode.TreeItem {
 }
 
 class LsdynaKeywordIndexProvider {
-    constructor({ collectIncludeFiles, shouldSkipAutomaticDocumentScan } = {}) {
+    constructor({ collectIncludeFiles, buildProjectIndex, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
+        this.buildProjectIndex = buildProjectIndex;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -43,6 +44,18 @@ class LsdynaKeywordIndexProvider {
         vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', mode);
     }
 
+    _buildRootsFromKeywordMap(keywordMap, rootDir) {
+        return [...keywordMap.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([keyword, usages]) => {
+                const item = new KeywordItem(keyword);
+                item.children = usages.map(({ filePath, lineIndex }) =>
+                    new KeywordUsageItem(filePath, lineIndex, rootDir)
+                );
+                return item;
+            });
+    }
+
     async _buildRootsAsync(filePaths, rootDir) {
         const keywordMap = new Map();
         for (const filePath of filePaths) {
@@ -53,15 +66,11 @@ class LsdynaKeywordIndexProvider {
                 keywordMap.get(keyword).push({ filePath, lineIndex });
             }
         }
-        return [...keywordMap.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([keyword, usages]) => {
-                const item = new KeywordItem(keyword);
-                item.children = usages.map(({ filePath, lineIndex }) =>
-                    new KeywordUsageItem(filePath, lineIndex, rootDir)
-                );
-                return item;
-            });
+        return this._buildRootsFromKeywordMap(keywordMap, rootDir);
+    }
+
+    _buildRootsFromSnapshot(snapshot, rootDir) {
+        return this._buildRootsFromKeywordMap(snapshot.keywordMap, rootDir);
     }
 
     refreshFromDocument(document) {
@@ -83,15 +92,7 @@ class LsdynaKeywordIndexProvider {
             if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
             keywordMap.get(keyword).push({ filePath, lineIndex });
         }
-        this.roots = [...keywordMap.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([keyword, usages]) => {
-                const item = new KeywordItem(keyword);
-                item.children = usages.map(({ filePath, lineIndex }) =>
-                    new KeywordUsageItem(filePath, lineIndex, rootDir)
-                );
-                return item;
-            });
+        this.roots = this._buildRootsFromKeywordMap(keywordMap, rootDir);
         this._onDidChangeTreeData.fire(undefined);
     }
 
@@ -106,10 +107,15 @@ class LsdynaKeywordIndexProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
             async (progress) => {
-                const files = await this.collectIncludeFiles(rootFile, (count) => {
-                    progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
-                });
-                this.roots = await this._buildRootsAsync(files, rootDir);
+                if (this.buildProjectIndex) {
+                    const snapshot = await this.buildProjectIndex(rootFile);
+                    this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
+                } else {
+                    const files = await this.collectIncludeFiles(rootFile, (count) => {
+                        progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
+                    });
+                    this.roots = await this._buildRootsAsync(files, rootDir);
+                }
                 this._setMode('recursive');
                 this._onDidChangeTreeData.fire(undefined);
             }

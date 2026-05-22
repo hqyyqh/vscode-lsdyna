@@ -4,9 +4,11 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { fakeDoc } = require('./helpers');
+const { fakeDoc, vscodeMock } = require('./helpers');
+const extensionModule = require('../src/extension');
 const { LsdynaIncludeTreeProvider } = require('../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordIndexProvider');
+const { buildProjectIndex } = require('../src/core/project/projectIndexer');
 
 const {
     collectIncludeDecorationSets,
@@ -33,7 +35,7 @@ const {
     findPreviousKeyword,
     collectIncludeFiles,
     shouldSkipAutomaticDocumentScan,
-} = require('../src/extension')._internals;
+} = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
 
@@ -525,6 +527,80 @@ describe('LsdynaIncludeTreeProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaKeywordIndexProvider', () => {
+    it('builds keyword roots from a project snapshot', () => {
+        const rootDir = path.join('project', 'snapshot-root');
+        const aFile = path.join(rootDir, 'submodels', 'a.key');
+        const bFile = path.join(rootDir, 'b.key');
+        const provider = new LsdynaKeywordIndexProvider();
+        const snapshot = {
+            keywordMap: new Map([
+                ['PART', [
+                    { filePath: aFile, lineIndex: 1 },
+                    { filePath: bFile, lineIndex: 7 },
+                ]],
+                ['MAT_ELASTIC', [
+                    { filePath: bFile, lineIndex: 4 },
+                ]],
+            ]),
+        };
+
+        const roots = provider._buildRootsFromSnapshot(snapshot, rootDir);
+
+        assert.deepEqual(roots.map(item => item.label), ['MAT_ELASTIC', 'PART']);
+        assert.deepEqual(
+            roots[1].children.map(child => child.command.arguments),
+            [
+                [aFile, 1],
+                [bFile, 7],
+            ]
+        );
+    });
+
+    it('uses the project snapshot during recursive scans when available', async () => {
+        const rootFile = path.join('project', 'snapshot-root', 'main.k');
+        const provider = new LsdynaKeywordIndexProvider({
+            collectIncludeFiles: async () => {
+                throw new Error('collectIncludeFiles should not be called when buildProjectIndex is available');
+            },
+            buildProjectIndex: async (filePath) => {
+                assert.equal(filePath, rootFile);
+                return {
+                    keywordMap: new Map([
+                        ['PART', [{ filePath: rootFile, lineIndex: 2 }]],
+                    ]),
+                };
+            },
+            shouldSkipAutomaticDocumentScan,
+        });
+        const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+        const originalWithProgress = vscodeMock.window.withProgress;
+        const originalProgressLocation = vscodeMock.ProgressLocation;
+
+        vscodeMock.window.activeTextEditor = {
+            document: {
+                languageId: 'lsdyna',
+                uri: { fsPath: rootFile },
+            },
+        };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} });
+        vscodeMock.ProgressLocation = { Notification: 15 };
+
+        try {
+            await provider.scan();
+
+            assert.equal(provider._mode, 'recursive');
+            assert.deepEqual(provider.roots.map(item => item.label), ['PART']);
+            assert.deepEqual(
+                provider.roots[0].children.map(child => child.command.arguments),
+                [[rootFile, 2]]
+            );
+        } finally {
+            vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            vscodeMock.window.withProgress = originalWithProgress;
+            vscodeMock.ProgressLocation = originalProgressLocation;
+        }
+    });
+
     it('yields during large single-file keyword scans', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-index-'));
         const bigFile = path.join(tempRoot, 'big.k');
@@ -547,6 +623,45 @@ describe('LsdynaKeywordIndexProvider', () => {
         } finally {
             global.setImmediate = originalSetImmediate;
             fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('activate', () => {
+    it('injects buildProjectIndex into the keyword index provider', () => {
+        const context = { subscriptions: [] };
+        const registrations = new Map();
+        const disposable = { dispose() {} };
+        const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
+        const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
+        const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
+        const originalRegisterHoverProvider = vscodeMock.languages.registerHoverProvider;
+        const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
+
+        vscodeMock.window.registerTreeDataProvider = (viewId, provider) => {
+            registrations.set(viewId, provider);
+            return disposable;
+        };
+        vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
+        vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
+        vscodeMock.window.createTextEditorDecorationType = () => disposable;
+        vscodeMock.languages.registerHoverProvider = () => disposable;
+        vscodeMock.languages.registerCodeLensProvider = () => disposable;
+
+        try {
+            extensionModule.activate(context);
+
+            const provider = registrations.get('lsdynaKeywordIndex');
+            assert.ok(provider instanceof LsdynaKeywordIndexProvider);
+            assert.equal(provider.buildProjectIndex, buildProjectIndex);
+        } finally {
+            vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
+            vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
+            vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
+            vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
+            vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
         }
     });
 });
