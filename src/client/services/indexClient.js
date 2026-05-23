@@ -3,6 +3,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { createCacheManifestStore } = require('../../core/cache/cacheManifestStore');
+
 function resolveRootFile(rootFile) {
     if (typeof rootFile !== 'string' || rootFile.trim() === '') {
         throw new TypeError('loadProjectSnapshot requires a rootFile path');
@@ -101,6 +103,7 @@ function createIndexClient({
     getFileSignature = readFileSignature,
     estimateSnapshotSize: getSnapshotSize = estimateSnapshotSize,
     maxSnapshotBytes = Number.POSITIVE_INFINITY,
+    manifestStore = createCacheManifestStore(),
 } = {}) {
     if (typeof buildProjectIndex !== 'function') {
         throw new TypeError('createIndexClient requires a buildProjectIndex function');
@@ -114,6 +117,9 @@ function createIndexClient({
     if (typeof maxSnapshotBytes !== 'number' || Number.isNaN(maxSnapshotBytes) || maxSnapshotBytes <= 0) {
         throw new TypeError('createIndexClient requires maxSnapshotBytes to be a positive number');
     }
+    if (!manifestStore || typeof manifestStore.upsert !== 'function' || typeof manifestStore.remove !== 'function') {
+        throw new TypeError('createIndexClient requires manifestStore to support upsert and remove');
+    }
 
     const snapshots = new Map();
     const generations = new Map();
@@ -125,6 +131,12 @@ function createIndexClient({
 
     function touchSnapshotEntry(entry) {
         entry.lastAccessedAt = ++accessSequence;
+        manifestStore.upsert({
+            rootFile: entry.snapshot.rootFile,
+            trackedFiles: entry.trackedFiles.map(trackedFile => trackedFile.filePath),
+            byteSize: entry.byteSize,
+            lastAccessedAt: entry.lastAccessedAt,
+        });
     }
 
     function evictSnapshotsIfNeeded(protectedRootCacheKey) {
@@ -140,6 +152,7 @@ function createIndexClient({
                 .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt);
 
             if (evictionCandidates.length === 0) break;
+            manifestStore.remove(evictionCandidates[0][1].snapshot.rootFile);
             snapshots.delete(evictionCandidates[0][0]);
             cacheStats = getSnapshotCacheStats(snapshots);
         }
@@ -186,6 +199,7 @@ function createIndexClient({
                         snapshots.set(rootCacheKey, entry);
                         evictSnapshotsIfNeeded(rootCacheKey);
                     } else {
+                        manifestStore.remove(resolvedRootFile);
                         snapshots.delete(rootCacheKey);
                     }
                 }
@@ -194,6 +208,7 @@ function createIndexClient({
             .catch(error => {
                 const currentEntry = snapshots.get(rootCacheKey);
                 if (currentEntry && currentEntry.promise === promise) {
+                    manifestStore.remove(resolvedRootFile);
                     snapshots.delete(rootCacheKey);
                 }
                 throw error;
@@ -204,8 +219,10 @@ function createIndexClient({
     }
 
     function invalidate(rootFile) {
+        const resolvedRootFile = resolveRootFile(rootFile);
         const rootCacheKey = getRootCacheKey(rootFile);
         generations.set(rootCacheKey, getGeneration(rootCacheKey) + 1);
+        manifestStore.remove(resolvedRootFile);
         snapshots.delete(rootCacheKey);
     }
 
