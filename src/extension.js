@@ -705,6 +705,17 @@ function activate(context) {
 
     const client = startLanguageServer(context);
     const indexClient = createIndexClient({ languageClient: client });
+
+    const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
+    context.subscriptions.push(projectDiagnostics);
+
+    const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
+    indexClient.loadProjectSnapshot = async (rootFile) => {
+        const snapshot = await originalLoadProjectSnapshot(rootFile);
+        publishProjectDiagnostics(snapshot, projectDiagnostics);
+        return snapshot;
+    };
+
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
@@ -756,6 +767,7 @@ function activate(context) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
             if (vscode.window.activeTextEditor?.document === e.document) {
+                keywordIndexProvider.updateDocumentIndex(e.document, e);
                 scheduleKeywordIndexRefresh(e.document);
             }
         })
@@ -1071,10 +1083,69 @@ function createProjectSnapshotPersistentCache({
     });
 }
 
+function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
+    if (!snapshot || !snapshot.files) return;
+
+    for (const filePath of snapshot.files) {
+        diagnosticsCollection.delete(vscode.Uri.file(filePath));
+    }
+
+    const fileDiagnostics = new Map();
+
+    const addDiag = (filePath, diag) => {
+        if (!fileDiagnostics.has(filePath)) fileDiagnostics.set(filePath, []);
+        fileDiagnostics.get(filePath).push(diag);
+    };
+
+    for (const record of snapshot.missingFiles || []) {
+        if (!record.fromFile) continue;
+        const lineIdx = record.lineIndex !== undefined ? record.lineIndex : 0;
+        const start = record.startChar !== undefined ? record.startChar : 0;
+        const end = record.endChar !== undefined ? record.endChar : 80;
+        const range = new vscode.Range(
+            new vscode.Position(lineIdx, start),
+            new vscode.Position(lineIdx, end)
+        );
+        const diagnostic = new vscode.Diagnostic(
+            range,
+            `Included file "${record.fileName}" not found.`,
+            vscode.DiagnosticSeverity.Warning
+        );
+        diagnostic.source = 'lsdyna';
+        diagnostic.code = 'missing-include';
+        addDiag(record.fromFile, diagnostic);
+    }
+
+    for (const record of snapshot.cycles || []) {
+        if (!record.fromFile) continue;
+        const lineIdx = record.lineIndex !== undefined ? record.lineIndex : 0;
+        const start = record.startChar !== undefined ? record.startChar : 0;
+        const end = record.endChar !== undefined ? record.endChar : 80;
+        const range = new vscode.Range(
+            new vscode.Position(lineIdx, start),
+            new vscode.Position(lineIdx, end)
+        );
+        const cyclePathStr = record.path ? record.path.map(p => path.basename(p)).join(' -> ') : '';
+        const diagnostic = new vscode.Diagnostic(
+            range,
+            `Circular include dependency detected: ${cyclePathStr}`,
+            vscode.DiagnosticSeverity.Error
+        );
+        diagnostic.source = 'lsdyna';
+        diagnostic.code = 'circular-include';
+        addDiag(record.fromFile, diagnostic);
+    }
+
+    for (const [filePath, diags] of fileDiagnostics.entries()) {
+        diagnosticsCollection.set(vscode.Uri.file(filePath), diags);
+    }
+}
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
 module.exports._internals = {
+    publishProjectDiagnostics,
     collectIncludeDecorationSets,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,

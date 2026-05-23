@@ -51,6 +51,9 @@ class ProjectGraph {
                 filePath: record.filePath,
                 fileName: record.fileName,
                 missing: true,
+                lineIndex: record.lineIndex,
+                startChar: record.startChar,
+                endChar: record.endChar,
             });
         }
     }
@@ -76,6 +79,7 @@ class ProjectGraph {
             return {
                 filePath: rootFile,
                 children: [],
+                cycle: true,
             };
         }
 

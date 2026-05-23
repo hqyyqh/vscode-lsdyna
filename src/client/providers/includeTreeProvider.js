@@ -53,10 +53,20 @@ class LsdynaIncludeTreeProvider {
     _buildItemFromTreeNode(node) {
         const exists = !node.missing && fs.existsSync(node.filePath);
         const item = new IncludeItem(node.filePath, exists);
-        item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode));
-        item.collapsibleState = item.children.length > 0
-            ? vscode.TreeItemCollapsibleState.Collapsed
-            : vscode.TreeItemCollapsibleState.None;
+        if (node.cycle) {
+            item.description = 'circular';
+            item.iconPath = new vscode.ThemeIcon('sync');
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+        } else if (node.missing) {
+            item.description = 'missing';
+            item.iconPath = new vscode.ThemeIcon('warning');
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+        } else {
+            item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode));
+            item.collapsibleState = item.children.length > 0
+                ? vscode.TreeItemCollapsibleState.Collapsed
+                : vscode.TreeItemCollapsibleState.None;
+        }
         return item;
     }
 
