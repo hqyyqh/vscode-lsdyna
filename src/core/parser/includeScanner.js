@@ -171,18 +171,52 @@ function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
 
 async function collectIncludeDirectivesFromFile(filePath) {
     const state = createIncludeDirectiveState(path.dirname(filePath));
-    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
-    const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    const stream = fs.createReadStream(filePath);
+    let remainder = Buffer.alloc(0);
     let lineIndex = 0;
 
     try {
-        for await (const line of lines) {
-            processIncludeDirectiveLine(state, line, lineIndex);
-            lineIndex++;
-            if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) await new Promise(r => setImmediate(r));
+        for await (const chunk of stream) {
+            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
+            let offset = 0;
+            let nextNewLine = -1;
+
+            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
+                const lineStart = offset;
+                const lineEnd = nextNewLine;
+
+                // Decode line only if it starts with '*' or we are inside an include context
+                const isKeywordLine = combined[lineStart] === 0x2A;
+                const inIncludeContext = !!state.pendingInclude ||
+                    (state.keyword && state.keyword.startsWith('*INCLUDE'));
+
+                if (isKeywordLine || inIncludeContext) {
+                    const lineStr = combined.toString('utf8', lineStart, lineEnd);
+                    processIncludeDirectiveLine(state, lineStr, lineIndex);
+                }
+
+                offset = nextNewLine + 1;
+                lineIndex++;
+
+                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) {
+                    await new Promise(r => setImmediate(r));
+                }
+            }
+            remainder = combined.subarray(offset);
+        }
+
+        if (remainder.length > 0) {
+            const isKeywordLine = remainder[0] === 0x2A;
+            const inIncludeContext = !!state.pendingInclude ||
+                (state.keyword && state.keyword.startsWith('*INCLUDE'));
+
+            if (isKeywordLine || inIncludeContext) {
+                const lineStr = remainder.toString('utf8');
+                processIncludeDirectiveLine(state, lineStr, lineIndex);
+            }
         }
     } finally {
-        lines.close();
+        stream.destroy();
     }
 
     return finalizeIncludeDirectiveState(state);
