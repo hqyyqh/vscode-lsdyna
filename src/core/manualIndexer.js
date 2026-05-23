@@ -5,6 +5,17 @@ const path = require('path');
 const vscode = require('vscode');
 
 let keywordMap = new Map();
+const CACHE_VERSION = 2;
+let outputChannel;
+
+function log(msg) {
+    if (!outputChannel && typeof vscode !== 'undefined' && vscode.window) {
+        outputChannel = vscode.window.createOutputChannel("LS-DYNA Manuals");
+    }
+    if (outputChannel) {
+        outputChannel.appendLine(`[${new Date().toISOString()}] ${msg}`);
+    }
+}
 
 function cleanKeyword(raw) {
     let clean = raw.trim().toUpperCase();
@@ -265,52 +276,88 @@ function parsePdf(pdfPath) {
 
 async function initialize(context) {
     keywordMap.clear();
+    log("Initializing LS-DYNA Manuals Indexer...");
     try {
         const config = vscode.workspace.getConfiguration('lsdyna');
         const manualsDir = config.get('manualsDir') || 'LS-DYNA Manuals';
+        log(`Configured manualsDir: "${manualsDir}"`);
 
-        let resolvedDir = manualsDir;
-        if (!path.isAbsolute(resolvedDir)) {
+        let dirsToScan = [];
+        if (path.isAbsolute(manualsDir)) {
+            dirsToScan.push(manualsDir);
+        } else {
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (workspaceFolders && workspaceFolders.length > 0) {
-                resolvedDir = path.resolve(workspaceFolders[0].uri.fsPath, resolvedDir);
+                for (const folder of workspaceFolders) {
+                    dirsToScan.push(path.resolve(folder.uri.fsPath, manualsDir));
+                }
             } else {
-                resolvedDir = path.resolve(process.cwd(), resolvedDir);
+                dirsToScan.push(path.resolve(process.cwd(), manualsDir));
             }
         }
+        if (context && context.extensionPath) {
+            dirsToScan.push(path.resolve(context.extensionPath, manualsDir));
+        }
 
-        try {
-            await fs.promises.access(resolvedDir);
-        } catch {
+        const uniqueDirs = [...new Set(dirsToScan)].filter(d => {
+            const exists = fs.existsSync(d);
+            if (exists) {
+                log(`Found existing manuals directory candidate: "${d}"`);
+            }
+            return exists;
+        });
+
+        if (uniqueDirs.length === 0) {
+            log("No valid manuals directories found. Manual hovers will be disabled.");
             return;
         }
 
-        const files = await fs.promises.readdir(resolvedDir);
-        const pdfFiles = files
-            .filter(f => f.toLowerCase().endsWith('.pdf'))
-            .map(f => path.resolve(resolvedDir, f));
+        const pdfFiles = [];
+        for (const dir of uniqueDirs) {
+            log(`Scanning directory: "${dir}"`);
+            try {
+                const files = fs.readdirSync(dir);
+                const pdfs = files
+                    .filter(f => f.toLowerCase().endsWith('.pdf'))
+                    .map(f => path.resolve(dir, f));
+                log(`Found ${pdfs.length} PDF(s) in "${dir}"`);
+                for (const pdf of pdfs) {
+                    if (!pdfFiles.includes(pdf)) {
+                        pdfFiles.push(pdf);
+                    }
+                }
+            } catch (err) {
+                log(`Error reading directory "${dir}": ${err.message}`);
+            }
+        }
 
-        let cache = (context.workspaceState && context.workspaceState.get('manuals_bookmark_cache')) || {};
+        log(`Total unique PDF manuals to index: ${pdfFiles.length}`);
+        let cache = context && context.workspaceState ? (context.workspaceState.get('manuals_bookmark_cache') || {}) : {};
         let cacheUpdated = false;
 
         for (const pdfPath of pdfFiles) {
             try {
-                const stats = await fs.promises.stat(pdfPath);
+                const stats = fs.statSync(pdfPath);
                 const mtimeMs = stats.mtimeMs;
+                const fileName = path.basename(pdfPath);
 
                 let bookmarks;
-                if (cache[pdfPath] && cache[pdfPath].mtimeMs === mtimeMs) {
+                if (cache[pdfPath] && cache[pdfPath].version === CACHE_VERSION && cache[pdfPath].mtimeMs === mtimeMs && Array.isArray(cache[pdfPath].bookmarks) && cache[pdfPath].bookmarks.length > 0) {
+                    log(`Loading bookmarks for "${fileName}" from cache...`);
                     bookmarks = cache[pdfPath].bookmarks;
                 } else {
-                    const content = await fs.promises.readFile(pdfPath, 'binary');
-                    bookmarks = parsePdfContent(content);
+                    log(`Parsing bookmarks for "${fileName}" from PDF...`);
+                    bookmarks = parsePdf(pdfPath);
                     cache[pdfPath] = {
+                        version: CACHE_VERSION,
                         mtimeMs,
                         bookmarks
                     };
                     cacheUpdated = true;
                 }
+                log(`Loaded ${bookmarks.length} bookmark(s) for "${fileName}".`);
 
+                let kwCount = 0;
                 for (const bookmark of bookmarks) {
                     if (bookmark.page === null) continue;
 
@@ -325,19 +372,26 @@ async function initialize(context) {
                             if (!isDuplicate) {
                                 existing.push({ file: pdfPath, page: bookmark.page });
                                 keywordMap.set(cleaned, existing);
+                                kwCount++;
                             }
                         }
                     }
                 }
+                log(`Registered ${kwCount} keyword mapping(s) from "${fileName}".`);
             } catch (err) {
+                log(`Error processing manual PDF "${pdfPath}": ${err.message}`);
                 console.error(`Error parsing manual PDF ${pdfPath}:`, err);
             }
         }
 
-        if (cacheUpdated && context.workspaceState) {
+        log(`Indexer initialization complete. Total unique keywords indexed: ${keywordMap.size}`);
+
+        if (cacheUpdated && context && context.workspaceState) {
             await context.workspaceState.update('manuals_bookmark_cache', cache);
+            log("Saved updated bookmarks cache to workspaceState.");
         }
     } catch (e) {
+        log(`Error during manualIndexer initialization: ${e.message}`);
         console.error('Error during manualIndexer initialization:', e);
     }
 }

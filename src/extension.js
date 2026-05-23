@@ -550,7 +550,18 @@ class LsdynaFieldHoverProvider {
             const kwName = trimmed.slice(1).toUpperCase().split(/[\s,$]/)[0];
             if (!kwName) return null;
             const entry = lookupKeyword(kwName);
-            if (!entry) return null;
+            if (!entry) {
+                const cleanKw = manualIndexer.cleanKeyword(kwName);
+                const manuals = manualIndexer.getManualLocations(cleanKw);
+                if (manuals.length > 0) {
+                    const md = new vscode.MarkdownString(`**\\*${kwName}**`);
+                    md.isTrusted = true;
+                    md.supportThemeIcons = true;
+                    appendManualLinks(md, kwName);
+                    return new vscode.Hover(md);
+                }
+                return null;
+            }
             const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, entry));
             md.isTrusted = true;
             md.supportThemeIcons = true;
