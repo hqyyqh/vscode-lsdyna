@@ -216,4 +216,79 @@ describe('createIndexClient', () => {
             totalSnapshotBytes: 12,
         });
     });
+
+    it('updates the manifest store when caching, touching, and invalidating snapshots', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const { createCacheManifestStore } = require('../../../src/core/cache/cacheManifestStore');
+        const rootFile = path.resolve('project', 'main.k');
+        const childFile = path.resolve('project', 'child.key');
+        const manifestStore = createCacheManifestStore();
+        const client = createIndexClient({
+            buildProjectIndex: async () => ({ rootFile, files: [rootFile, childFile] }),
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            estimateSnapshotSize: () => 24,
+            manifestStore,
+        });
+
+        await client.loadProjectSnapshot(rootFile);
+        const initialEntry = manifestStore.get(rootFile);
+        assert.equal(initialEntry.byteSize, 24);
+        assert.equal(initialEntry.trackedFileCount, 2);
+        assert.deepEqual(initialEntry.trackedFiles, [rootFile, childFile]);
+
+        await client.loadProjectSnapshot(rootFile);
+        const touchedEntry = manifestStore.get(rootFile);
+        assert.ok(touchedEntry.lastAccessedAt > initialEntry.lastAccessedAt);
+
+        client.invalidate(rootFile);
+        assert.equal(manifestStore.get(rootFile), null);
+    });
+
+    it('rebuilds instead of restoring stale manifest entries when invalidated during cache validation', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const { createCacheManifestStore } = require('../../../src/core/cache/cacheManifestStore');
+        const rootFile = path.resolve('project', 'main.k');
+        const manifestStore = createCacheManifestStore();
+        const signatures = [{ mtimeMs: 10, size: 100 }];
+        const snapshots = [
+            { rootFile, files: [rootFile], version: 1 },
+            { rootFile, files: [rootFile], version: 2 },
+        ];
+        let buildCount = 0;
+        let validationDeferred;
+        let validateAsync = false;
+        const client = createIndexClient({
+            buildProjectIndex: async () => snapshots[buildCount++],
+            getFileSignature: async () => {
+                if (!validateAsync) return signatures[0];
+                return new Promise(resolve => {
+                    validationDeferred = () => resolve(signatures[0]);
+                });
+            },
+            manifestStore,
+        });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[0]);
+
+        validateAsync = true;
+        const pendingLoad = client.loadProjectSnapshot(rootFile);
+        while (!validationDeferred) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+
+        client.invalidate(rootFile);
+        validateAsync = false;
+        validationDeferred();
+
+        const refreshedSnapshot = await pendingLoad;
+        assert.strictEqual(refreshedSnapshot, snapshots[1]);
+        assert.equal(buildCount, 2);
+        assert.deepEqual(manifestStore.get(rootFile), {
+            rootFile,
+            trackedFiles: [rootFile],
+            trackedFileCount: 1,
+            byteSize: Buffer.byteLength(JSON.stringify(snapshots[1]), 'utf8'),
+            lastAccessedAt: 2,
+        });
+    });
 });
