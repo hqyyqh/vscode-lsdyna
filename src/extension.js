@@ -545,7 +545,19 @@ class LsdynaFieldHoverProvider {
 
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
-        const md = new vscode.MarkdownString(`**${field.n}**${typeLabel}${helpText}`);
+
+        // Build a visual card structure grid showing neighboring fields and column offsets
+        const headers = card.map(f => f.n === field.n ? `**${f.n}**` : f.n);
+        const separators = card.map(() => '---');
+        const columns = card.map(f => `${f.p + 1}-${f.p + f.w}`);
+
+        const gridTable = [
+            `| ${headers.join(' | ')} |`,
+            `| ${separators.join(' | ')} |`,
+            `| ${columns.join(' | ')} |`
+        ].join('\n');
+
+        const md = new vscode.MarkdownString(`### Field: **${field.n}**${typeLabel}${helpText}\n\n---\n**Card Structure:**\n\n${gridTable}`);
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
         return new vscode.Hover(md, range);
     }
@@ -886,10 +898,21 @@ function activate(context) {
     // Decorations: green for resolved paths, yellow for missing ones
     const resolvedDecoration = vscode.window.createTextEditorDecorationType({
         color: new vscode.ThemeColor('textLink.foreground'),
+        after: {
+            contentText: ' ✓',
+            color: new vscode.ThemeColor('testing.iconPassed'),
+            margin: '0 0 0 5px'
+        }
     });
     const missingDecoration = vscode.window.createTextEditorDecorationType({
         color: new vscode.ThemeColor('editorWarning.foreground'),
         fontStyle: 'italic',
+        after: {
+            contentText: ' ⚠ missing',
+            color: new vscode.ThemeColor('editorWarning.foreground'),
+            margin: '0 0 0 5px',
+            fontStyle: 'normal'
+        }
     });
     context.subscriptions.push(resolvedDecoration, missingDecoration);
 

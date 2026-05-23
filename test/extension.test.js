@@ -1372,7 +1372,7 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(hover);
         assert.equal(
             hover.contents[0].value,
-            '**ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.  \n中文：用于终止计算的能量比变化百分比。若未定义，则该选项不启用。'
+            '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.  \n中文：用于终止计算的能量比变化百分比。若未定义，则该选项不启用。\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
         );
     });
 });
