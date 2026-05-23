@@ -6,12 +6,25 @@ const vscode = require('vscode');
 
 const includeScanner = require('../../core/parser/includeScanner');
 
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let val = bytes;
+    while (val >= 1024 && i < sizes.length - 1) {
+        val /= 1024;
+        i++;
+    }
+    return `${val.toFixed(1)} ${sizes[i]}`;
+}
+
 class IncludeItem extends vscode.TreeItem {
     constructor(filePath, exists) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
         this.filePath = filePath;
         this.children = [];
         this.resourceUri = vscode.Uri.file(filePath);
+        this.fileSizeStr = '';
         
         if (!exists) {
             this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
@@ -19,6 +32,15 @@ class IncludeItem extends vscode.TreeItem {
             this.contextValue = 'file-missing';
         } else {
             this.contextValue = 'file';
+            try {
+                if (fs.existsSync(filePath)) {
+                    const stats = fs.statSync(filePath);
+                    this.fileSizeStr = formatBytes(stats.size);
+                    this.description = this.fileSizeStr;
+                }
+            } catch (e) {
+                // ignore
+            }
         }
         
         if (exists) {
@@ -142,7 +164,10 @@ class LsdynaIncludeTreeProvider {
                 const dir = path.dirname(rootPath);
                 const rel = path.relative(dir, node.filePath);
                 const relDir = path.dirname(rel);
-                item.description = relDir === '.' ? '' : relDir;
+                const dirStr = relDir === '.' ? '' : relDir;
+                if (dirStr) {
+                    item.description = item.fileSizeStr ? `${item.fileSizeStr} • ${dirStr}` : dirStr;
+                }
             }
         }
 
@@ -198,7 +223,10 @@ class LsdynaIncludeTreeProvider {
             const dir = path.dirname(actualRootPath);
             const rel = path.relative(dir, filePath);
             const relDir = path.dirname(rel);
-            item.description = relDir === '.' ? '' : relDir;
+            const dirStr = relDir === '.' ? '' : relDir;
+            if (dirStr) {
+                item.description = item.fileSizeStr ? `${item.fileSizeStr} • ${dirStr}` : dirStr;
+            }
         }
 
         let includeEntries;
@@ -288,4 +316,5 @@ class LsdynaIncludeTreeProvider {
 
 module.exports = {
     LsdynaIncludeTreeProvider,
+    formatBytes,
 };
