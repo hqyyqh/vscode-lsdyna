@@ -1102,7 +1102,7 @@ function activate(context) {
         color: new vscode.ThemeColor('editorWarning.foreground'),
         fontStyle: 'italic',
         after: {
-            contentText: ' ⚠ missing',
+            contentText: ' ⚠',
             color: new vscode.ThemeColor('editorWarning.foreground'),
             margin: '0 0 0 5px',
             fontStyle: 'normal'
