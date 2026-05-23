@@ -671,7 +671,20 @@ function activate(context) {
     );
 
     const indexClient = createIndexClient({ buildProjectIndex });
-    const invalidateChangedProjectRoots = createBatchedManifestInvalidator({ indexClient });
+    const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
+        loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        onError(error, rootFile) {
+            console.error(`[lsdyna] Failed to refresh project snapshot for ${rootFile}:`, error);
+        },
+    });
+    const invalidateChangedProjectRoots = createBatchedManifestInvalidator({
+        indexClient,
+        onInvalidatedRoots(roots) {
+            for (const rootFile of roots) {
+                enqueueProjectSnapshotRefresh(rootFile);
+            }
+        },
+    });
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -909,11 +922,14 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
 function createBatchedManifestInvalidator({
     indexClient,
     findAffectedRoots = findAffectedProjectRoots,
+    onInvalidatedRoots = () => {},
     delayMs = 100,
     schedule = setTimeout,
     cancel = clearTimeout,
 } = {}) {
-    const invalidateChangedFile = createManifestDrivenInvalidator({ indexClient, findAffectedRoots });
+    if (typeof onInvalidatedRoots !== 'function') {
+        throw new TypeError('createBatchedManifestInvalidator requires onInvalidatedRoots to be a function');
+    }
     let timer = null;
     const pendingRoots = new Map();
 
@@ -939,9 +955,69 @@ function createBatchedManifestInvalidator({
             const roots = [...pendingRoots.values()];
             pendingRoots.clear();
             for (const rootFile of roots) {
-                invalidateChangedFile(rootFile);
+                indexClient.invalidate(rootFile);
             }
+            onInvalidatedRoots(roots);
         }, delayMs);
+    };
+}
+
+function createProjectSnapshotRefreshQueue({
+    loadProjectSnapshot,
+    onError = () => {},
+    schedule = setImmediate,
+} = {}) {
+    if (typeof loadProjectSnapshot !== 'function') {
+        throw new TypeError('createProjectSnapshotRefreshQueue requires a loadProjectSnapshot function');
+    }
+    if (typeof onError !== 'function') {
+        throw new TypeError('createProjectSnapshotRefreshQueue requires an onError function');
+    }
+    if (typeof schedule !== 'function') {
+        throw new TypeError('createProjectSnapshotRefreshQueue requires a schedule function');
+    }
+
+    const pendingRoots = new Map();
+    let activeRootKey = null;
+    let flushScheduled = false;
+    let processing = false;
+
+    async function drainQueue() {
+        if (processing) return;
+        processing = true;
+        flushScheduled = false;
+        try {
+            while (pendingRoots.size > 0) {
+                const [rootKey, rootFile] = pendingRoots.entries().next().value;
+                pendingRoots.delete(rootKey);
+                activeRootKey = rootKey;
+                try {
+                    await loadProjectSnapshot(rootFile);
+                } catch (error) {
+                    onError(error, rootFile);
+                } finally {
+                    activeRootKey = null;
+                }
+            }
+        } finally {
+            processing = false;
+        }
+    }
+
+    return function enqueueProjectSnapshotRefresh(rootFile) {
+        const resolvedRootFile = path.resolve(rootFile);
+        const rootKey = process.platform === 'win32'
+            ? resolvedRootFile.toLowerCase()
+            : resolvedRootFile;
+        if (rootKey === activeRootKey || pendingRoots.has(rootKey)) return;
+
+        pendingRoots.set(rootKey, resolvedRootFile);
+        if (flushScheduled || processing) return;
+
+        flushScheduled = true;
+        schedule(() => {
+            drainQueue().catch(error => onError(error, null));
+        });
     };
 }
 
@@ -977,4 +1053,5 @@ module.exports._internals = {
     findPreviousKeyword,
     createManifestDrivenInvalidator,
     createBatchedManifestInvalidator,
+    createProjectSnapshotRefreshQueue,
 };

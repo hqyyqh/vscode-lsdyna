@@ -36,6 +36,7 @@ const {
     shouldSkipAutomaticDocumentScan,
     createManifestDrivenInvalidator,
     createBatchedManifestInvalidator,
+    createProjectSnapshotRefreshQueue,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -965,6 +966,112 @@ describe('createBatchedManifestInvalidator', () => {
         assert.equal(scheduledCount, 1);
         assert.equal(cancelledCount, 0);
         assert.deepEqual(invalidatedRoots, [rootFile]);
+    });
+});
+
+describe('createProjectSnapshotRefreshQueue', () => {
+    it('refreshes queued roots sequentially and deduplicates repeated roots', async () => {
+        const rootA = path.resolve('project', 'root-a.k');
+        const rootB = path.resolve('project', 'root-b.k');
+        const startedRoots = [];
+        const resolvers = [];
+        const scheduled = [];
+        const enqueueRefresh = createProjectSnapshotRefreshQueue({
+            loadProjectSnapshot(rootFile) {
+                startedRoots.push(rootFile);
+                return new Promise(resolve => resolvers.push(resolve));
+            },
+            schedule(callback) {
+                scheduled.push(callback);
+                return scheduled.length;
+            },
+        });
+
+        enqueueRefresh(rootA);
+        enqueueRefresh(rootA);
+        enqueueRefresh(rootB);
+
+        assert.equal(scheduled.length, 1);
+
+        scheduled.shift()();
+        assert.deepEqual(startedRoots, [rootA]);
+
+        resolvers.shift()();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(startedRoots, [rootA, rootB]);
+    });
+
+    it('continues refreshing later roots after a refresh failure', async () => {
+        const rootA = path.resolve('project', 'root-a.k');
+        const rootB = path.resolve('project', 'root-b.k');
+        const errors = [];
+        const startedRoots = [];
+        const scheduled = [];
+        const enqueueRefresh = createProjectSnapshotRefreshQueue({
+            async loadProjectSnapshot(rootFile) {
+                startedRoots.push(rootFile);
+                if (rootFile === rootA) throw new Error('refresh failed');
+            },
+            onError(error, rootFile) {
+                errors.push({ message: error.message, rootFile });
+            },
+            schedule(callback) {
+                scheduled.push(callback);
+                return scheduled.length;
+            },
+        });
+
+        enqueueRefresh(rootA);
+        enqueueRefresh(rootB);
+        scheduled.shift()();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepEqual(startedRoots, [rootA, rootB]);
+        assert.deepEqual(errors, [{ message: 'refresh failed', rootFile: rootA }]);
+    });
+
+    it('keeps refreshes sequential when new roots are enqueued during active processing', async () => {
+        const rootA = path.resolve('project', 'root-a.k');
+        const rootB = path.resolve('project', 'root-b.k');
+        const startedRoots = [];
+        const activeRoots = new Set();
+        let maxConcurrent = 0;
+        let resolveRootA;
+        const scheduled = [];
+        const enqueueRefresh = createProjectSnapshotRefreshQueue({
+            loadProjectSnapshot(rootFile) {
+                startedRoots.push(rootFile);
+                activeRoots.add(rootFile);
+                maxConcurrent = Math.max(maxConcurrent, activeRoots.size);
+                if (rootFile === rootA) {
+                    return new Promise(resolve => {
+                        resolveRootA = () => {
+                            activeRoots.delete(rootFile);
+                            resolve();
+                        };
+                    });
+                }
+                activeRoots.delete(rootFile);
+                return Promise.resolve();
+            },
+            schedule(callback) {
+                scheduled.push(callback);
+                return scheduled.length;
+            },
+        });
+
+        enqueueRefresh(rootA);
+        scheduled.shift()();
+        assert.deepEqual(startedRoots, [rootA]);
+
+        enqueueRefresh(rootB);
+        assert.equal(scheduled.length, 0);
+
+        resolveRootA();
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepEqual(startedRoots, [rootA, rootB]);
+        assert.equal(maxConcurrent, 1);
     });
 });
 
