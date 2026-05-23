@@ -16,7 +16,8 @@
     },
     "activationEvents": [
         "onLanguage:lsdyna",
-        "onLanguage:lsprepost-command-file"
+        "onLanguage:lsprepost-command-file",
+        "onCommand:extension.openManual"
     ],
     "main": "./src/extension.js",
     "categories": [
@@ -149,7 +150,8 @@
             },
             {
                 "command": "extension.openManual",
-                "title": "Open LS-DYNA Keyword Manual"
+                "title": "Open LS-DYNA Keyword Manual",
+                "category": "LS-DYNA"
             }
         ],
         "keybindings": [

@@ -1642,3 +1642,147 @@ describe('LsdynaIncludeCompletionProvider', () => {
     });
 });
 
+describe('extension.openManual command', () => {
+    let originalPlatform;
+    let originalExec;
+    let originalExecuteCommand;
+    let originalOpenExternal;
+    let originalGetConfiguration;
+    let originalRegisterCommand;
+
+    let execCalls = [];
+    let executeCommandCalls = [];
+    let openExternalCalls = [];
+    let registeredCommands = new Map();
+
+    before(() => {
+        originalPlatform = process.platform;
+        originalExec = require('child_process').exec;
+        originalExecuteCommand = vscodeMock.commands.executeCommand;
+        originalOpenExternal = vscodeMock.env ? vscodeMock.env.openExternal : undefined;
+        originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        originalRegisterCommand = vscodeMock.commands.registerCommand;
+
+        vscodeMock.commands.registerCommand = (id, callback) => {
+            registeredCommands.set(id, callback);
+            return { dispose() {} };
+        };
+
+        if (!vscodeMock.env) {
+            vscodeMock.env = {};
+        }
+        vscodeMock.env.openExternal = (uri) => {
+            openExternalCalls.push(uri);
+            return Promise.resolve(true);
+        };
+    });
+
+    after(() => {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+        require('child_process').exec = originalExec;
+        vscodeMock.commands.executeCommand = originalExecuteCommand;
+        if (originalOpenExternal) {
+            vscodeMock.env.openExternal = originalOpenExternal;
+        } else {
+            delete vscodeMock.env.openExternal;
+        }
+        vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        vscodeMock.commands.registerCommand = originalRegisterCommand;
+    });
+
+    beforeEach(() => {
+        execCalls = [];
+        executeCommandCalls = [];
+        openExternalCalls = [];
+        registeredCommands.clear();
+
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            cb(null);
+        };
+
+        vscodeMock.commands.executeCommand = (cmd, ...args) => {
+            executeCommandCalls.push({ cmd, args });
+            return Promise.resolve();
+        };
+
+        // Activate extension to trigger registrations
+        const context = { subscriptions: [] };
+        extensionModule.activate(context);
+    });
+
+    it('uses vscode.open when manualViewer config is vscode', async () => {
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'vscode' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        executeCommandCalls = [];
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(executeCommandCalls.length, 1);
+        assert.strictEqual(executeCommandCalls[0].cmd, 'vscode.open');
+        assert.strictEqual(executeCommandCalls[0].args[0].fsPath, pdfPath);
+    });
+
+    it('uses child_process.exec when manualViewer is system on Windows', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(execCalls.length, 1);
+        assert.strictEqual(execCalls[0], 'cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"');
+        assert.strictEqual(openExternalCalls.length, 0);
+    });
+
+    it('falls back to vscode.env.openExternal on Windows when child_process.exec fails', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            cb(new Error('Failed execution'));
+        };
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(execCalls.length, 1);
+        assert.strictEqual(openExternalCalls.length, 1);
+        assert.strictEqual(openExternalCalls[0].fsPath, pdfPath);
+    });
+
+    it('uses vscode.env.openExternal directly on non-Windows platforms', async () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = '/path/to/manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 1);
+        assert.strictEqual(openExternalCalls[0].fsPath, pdfPath);
+    });
+});
+
+

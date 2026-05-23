@@ -2,6 +2,8 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
+const child_process = require('child_process');
+const manualIndexer = require('./core/manualIndexer');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
@@ -913,6 +915,10 @@ class LsdynaIncludeCompletionProvider {
 // --- Activate ---
 
 function activate(context) {
+    manualIndexer.initialize(context).catch(err => {
+        console.error('Failed to initialize manual indexer:', err);
+    });
+
     const debugChannel = vscode.window.createOutputChannel("LS-DYNA Debug");
     context.subscriptions.push(debugChannel);
     function logDebug(message) {
@@ -1117,6 +1123,36 @@ function activate(context) {
                 vscode.commands.executeCommand('revealFileInOS', uri);
             } catch (err) {
                 vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openManual', (pdfPath, pageNum) => {
+            if (!pdfPath) return;
+            const config = vscode.workspace.getConfiguration('lsdyna');
+            const viewer = config.get('manualViewer') || 'system';
+
+            if (viewer === 'vscode') {
+                vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pdfPath));
+            } else {
+                if (process.platform === 'win32') {
+                    let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
+                    if (pageNum) {
+                        fileUrl += `#page=${pageNum}`;
+                    }
+                    try {
+                        child_process.exec(`cmd.exe /c start "" "${fileUrl}"`, (error) => {
+                            if (error) {
+                                vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                            }
+                        });
+                    } catch (e) {
+                        vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                    }
+                } else {
+                    vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                }
             }
         })
     );

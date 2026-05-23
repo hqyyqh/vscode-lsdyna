@@ -85,7 +85,18 @@ module.exports = {
     TreeItem: class TreeItem { constructor(l, s) { this.label = l; this.collapsibleState = s; } },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     EventEmitter: class EventEmitter { constructor() { this.event = null; } fire() {} },
-    window: { activeTextEditor: null, showErrorMessage: () => {}, showWarningMessage: () => {}, createOutputChannel: () => ({ appendLine: () => {} }), registerFileDecorationProvider: () => ({ dispose() {} }) },
+    window: {
+        activeTextEditor: null,
+        showErrorMessage: () => {},
+        showWarningMessage: () => {},
+        createOutputChannel: () => ({ appendLine: () => {} }),
+        registerFileDecorationProvider: () => ({ dispose() {} }),
+        registerTreeDataProvider: () => ({ dispose() {} }),
+        onDidChangeActiveTextEditor: () => ({ dispose() {} }),
+        onDidChangeTextEditorSelection: () => ({ dispose() {} }),
+        createTextEditorDecorationType: () => ({ dispose() {} }),
+        tabGroups: { onDidChangeTabs: () => ({ dispose() {} }) }
+    },
     workspace: {
         textDocuments: [],
         onDidOpenTextDocument: () => ({}),
@@ -97,7 +108,8 @@ module.exports = {
             onDidDelete: () => ({}),
             dispose() {},
         }),
+        getConfiguration: () => ({ get: () => undefined }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
+    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
 };
