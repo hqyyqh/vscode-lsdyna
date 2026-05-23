@@ -1393,6 +1393,45 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(dataHover);
         assert.ok(dataHover.contents[0].value.includes('Field: **MID**'));
     });
+
+    it('returns custom hover actions for existing include files', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-test-'));
+        const includeFile = path.join(tempRoot, 'sub.key');
+        const mainFile = path.join(tempRoot, 'main.k');
+
+        fs.writeFileSync(includeFile, '*KEYWORD\n');
+        fs.writeFileSync(mainFile, '*INCLUDE\nsub.key\n');
+
+        try {
+            const doc = fakeDoc(fs.readFileSync(mainFile, 'utf8'), mainFile);
+            doc.languageId = 'lsdyna';
+            const provider = new LsdynaFieldHoverProvider();
+
+            // Hovering over 'sub.key' on line 1, character 3
+            const hover = provider.provideHover(doc, { line: 1, character: 3 });
+
+            assert.ok(hover);
+            assert.strictEqual(hover.contents[0].supportThemeIcons, true);
+            assert.ok(hover.contents[0].value.includes('extension.openIncludeNewTab'));
+            assert.ok(hover.contents[0].value.includes('extension.openIncludeSplit'));
+            assert.ok(hover.contents[0].value.includes('extension.openIncludeFolder'));
+            assert.ok(hover.contents[0].value.includes('"在新标签打开链接"'));
+            assert.ok(hover.contents[0].value.includes('"分栏打开"'));
+            assert.ok(hover.contents[0].value.includes('"打开文件所在路径"'));
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('falls back to default field hover for non-existent include files', () => {
+        const doc = fakeDoc('*INCLUDE\nmissing_file.key\n', '/project/main.k');
+        doc.languageId = 'lsdyna';
+        const provider = new LsdynaFieldHoverProvider();
+
+        const hover = provider.provideHover(doc, { line: 1, character: 3 });
+        assert.ok(hover);
+        assert.ok(hover.contents[0].value.includes('Field: **FILENAME**'));
+    });
 });
 
 // ---------------------------------------------------------------------------
