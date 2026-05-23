@@ -114,12 +114,16 @@ function createProjectIndexer({
             const scanResult = await loadFileScan(resolvedFilePath, stats);
             addKeywordUsages(keywordMap, scanResult.keywords);
 
-            for (const { fileName } of scanResult.includeEntries) {
+            for (const entry of scanResult.includeEntries) {
+                const { fileName, lineIndex, startChar, endChar } = entry;
                 const resolvedPath = resolveIncludeFromSearchPaths(fileName, scanResult.searchPaths);
                 if (!resolvedPath) {
                     graph.addMissingFile({
                         fromFile: resolvedFilePath,
                         fileName,
+                        lineIndex,
+                        startChar,
+                        endChar,
                         filePath: path.resolve(scanResult.searchPaths[0] || path.dirname(resolvedFilePath), fileName),
                     });
                     continue;
@@ -129,6 +133,9 @@ function createProjectIndexer({
                     graph.addCycle({
                         fromFile: resolvedFilePath,
                         toFile: resolvedPath,
+                        lineIndex,
+                        startChar,
+                        endChar,
                         path: [...ancestry, resolvedFilePath, resolvedPath],
                     });
                     continue;

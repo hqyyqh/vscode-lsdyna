@@ -33,12 +33,19 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Bare variable names in `*PARAMETER_EXPRESSION` values are highlighted the same color as `&param` references
 
 **Sidebar Panel**
-- **Include Tree** — recursively scans all `*INCLUDE` files and displays them as a tree; exact `*INCLUDE` blocks may contain multiple file entries, and disk scanning uses incremental parsing so large decks do not need to be loaded into one giant string
-- **Keyword Index** — shows all keywords used in the current file (local mode) or the full include tree (recursive mode); toggle between modes with the toolbar buttons
+- **Include Tree** — recursively scans all `*INCLUDE` files and displays them as a tree; exact `*INCLUDE` blocks may contain multiple file entries, and disk scanning uses incremental parsing so large decks do not need to be loaded into one giant string. Visual markers (sync and warning icons) and descriptions highlight circular references and missing files.
+- **Keyword Index** — shows all keywords used in the current file (local mode) or the full include tree (recursive mode). Large indices (e.g., millions of `*NODE` coordinates) are automatically grouped by file and folded above a certain threshold, ensuring clean lists and fluid UI response. Toggle between modes with the toolbar buttons.
 ![sidebar.png](./images/sidebar.png)
 
 **Diagnostics**
-- Lines exceeding 80 characters (excluding comments) are flagged as warnings
+- Lines exceeding 80 characters (excluding comments) are flagged as warnings.
+- Circular include loops are flagged as errors directly on the offending `*INCLUDE` lines.
+- Missing include files are flagged as warnings directly on their inclusion lines.
+
+**Performance & Architecture**
+- **LSP Process Isolation** — Heavy scans and worker thread indexing pools run out-of-process in a separate Language Server, guaranteeing 0% UI blockage.
+- **L2 Persistent Disk Cache** — Caches project snapshots locally in the workspace global storage directory. Re-opens projects instantly with LRU cache eviction and auto-vacuuming to control disk size.
+- **Incremental Block-level Parsing** — Keeps active document keywords updated instantly on keystrokes by parsing only the modified keyword block ranges (using a fast block scanner and range-shifting block index).
 
 **Snippets**
 - Tab-completable snippets for common LS-DYNA keywords

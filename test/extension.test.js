@@ -540,7 +540,7 @@ describe('LsdynaIncludeTreeProvider', () => {
             const root = provider._buildRootFromSnapshot(snapshot, mainFile);
 
             assert.deepEqual(root.children.map(child => child.filePath), [childFile, missingFile]);
-            assert.equal(root.children[1].description, 'not found');
+            assert.equal(root.children[1].description, 'missing');
             assert.equal(root.children[1].command, undefined);
             assert.equal(root.children[1].collapsibleState, vscodeMock.TreeItemCollapsibleState.None);
         } finally {
@@ -563,8 +563,8 @@ describe('LsdynaIncludeTreeProvider', () => {
             const root = provider._buildRootFromSnapshot(snapshot, mainFile);
 
             assert.deepEqual(root.children.map(child => child.filePath), [missingFile, missingFile, childFile]);
-            assert.equal(root.children[0].description, 'not found');
-            assert.equal(root.children[1].description, 'not found');
+            assert.equal(root.children[0].description, 'missing');
+            assert.equal(root.children[1].description, 'missing');
             assert.equal(root.children[0].command, undefined);
             assert.equal(root.children[1].command, undefined);
         } finally {

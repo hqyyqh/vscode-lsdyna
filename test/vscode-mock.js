@@ -6,8 +6,13 @@ class Position {
 
 class Range {
     constructor(startLine, startChar, endLine, endChar) {
-        this.start = new Position(startLine, startChar);
-        this.end = new Position(endLine, endChar);
+        if (startLine instanceof Position) {
+            this.start = startLine;
+            this.end = startChar;
+        } else {
+            this.start = new Position(startLine, startChar);
+            this.end = new Position(endLine, endChar);
+        }
     }
     contains(pos) {
         if (pos.line < this.start.line || pos.line > this.end.line) return false;

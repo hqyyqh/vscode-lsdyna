@@ -5,6 +5,10 @@ const path = require('path');
 const vscode = require('vscode');
 
 const keywordScanner = require('../../core/parser/keywordScanner');
+const { BlockIndex } = require('../../core/incremental/blockIndex');
+
+const KEYWORD_FOLDING_THRESHOLD = 100;
+const FILE_FOLDING_THRESHOLD = 50;
 
 class KeywordItem extends vscode.TreeItem {
     constructor(keyword) {
@@ -28,6 +32,20 @@ class KeywordUsageItem extends vscode.TreeItem {
     }
 }
 
+class AggregatedKeywordUsageItem extends vscode.TreeItem {
+    constructor(filePath, count, firstLineIndex, rootDir) {
+        const rel = path.relative(rootDir, filePath);
+        super(`${rel}  (${count} usages)`, vscode.TreeItemCollapsibleState.None);
+        this.iconPath = new vscode.ThemeIcon('file-submodule');
+        this.tooltip = `${filePath} (total ${count} usages)`;
+        this.command = {
+            command: 'extension.goToKeywordUsage',
+            title: 'Go to keyword',
+            arguments: [filePath, firstLineIndex],
+        };
+    }
+}
+
 class LsdynaKeywordIndexProvider {
     constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
@@ -37,6 +55,7 @@ class LsdynaKeywordIndexProvider {
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.roots = [];
         this._mode = 'local'; // 'local' | 'recursive'
+        this.documentIndices = new Map(); // uri.toString() -> BlockIndex
     }
 
     _setMode(mode) {
@@ -49,9 +68,29 @@ class LsdynaKeywordIndexProvider {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([keyword, usages]) => {
                 const item = new KeywordItem(keyword);
-                item.children = usages.map(({ filePath, lineIndex }) =>
-                    new KeywordUsageItem(filePath, lineIndex, rootDir)
-                );
+                if (usages.length > KEYWORD_FOLDING_THRESHOLD) {
+                    const groups = new Map();
+                    for (const usage of usages) {
+                        if (!groups.has(usage.filePath)) groups.set(usage.filePath, []);
+                        groups.get(usage.filePath).push(usage);
+                    }
+
+                    const children = [];
+                    for (const [filePath, fileUsages] of groups.entries()) {
+                        if (fileUsages.length > FILE_FOLDING_THRESHOLD) {
+                            children.push(new AggregatedKeywordUsageItem(filePath, fileUsages.length, fileUsages[0].lineIndex, rootDir));
+                        } else {
+                            for (const usage of fileUsages) {
+                                children.push(new KeywordUsageItem(usage.filePath, usage.lineIndex, rootDir));
+                            }
+                        }
+                    }
+                    item.children = children;
+                } else {
+                    item.children = usages.map(({ filePath, lineIndex }) =>
+                        new KeywordUsageItem(filePath, lineIndex, rootDir)
+                    );
+                }
                 return item;
             });
     }
@@ -73,6 +112,30 @@ class LsdynaKeywordIndexProvider {
         return this._buildRootsFromKeywordMap(snapshot.keywordMap, rootDir);
     }
 
+    updateDocumentIndex(document, event) {
+        if (this._mode !== 'local') return;
+        if (!document || document.languageId !== 'lsdyna') return;
+        if (this.shouldSkipAutomaticDocumentScan(document)) return;
+
+        const uriStr = document.uri.toString();
+        let blockIndex = this.documentIndices.get(uriStr);
+        if (!blockIndex) {
+            blockIndex = new BlockIndex(document.uri.fsPath);
+            blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
+            this.documentIndices.set(uriStr, blockIndex);
+        } else if (event && event.contentChanges) {
+            for (const change of event.contentChanges) {
+                const { range, text } = change;
+                blockIndex.updateIndex(
+                    { startLine: range.start.line, endLine: range.end.line },
+                    text,
+                    document.lineCount,
+                    i => document.lineAt(i).text
+                );
+            }
+        }
+    }
+
     refreshFromDocument(document) {
         if (this._mode !== 'local') return;
         if (!document || document.languageId !== 'lsdyna') return;
@@ -82,13 +145,18 @@ class LsdynaKeywordIndexProvider {
             return;
         }
         const filePath = document.uri.fsPath;
+        const uriStr = document.uri.toString();
+        let blockIndex = this.documentIndices.get(uriStr);
+
+        if (!blockIndex) {
+            blockIndex = new BlockIndex(filePath);
+            blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
+            this.documentIndices.set(uriStr, blockIndex);
+        }
+
         const rootDir = path.dirname(filePath);
         const keywordMap = new Map();
-        for (const { keyword, lineIndex } of keywordScanner.collectKeywordsFromLineReader(
-            document.lineCount,
-            i => document.lineAt(i).text,
-            filePath
-        )) {
+        for (const { keyword, lineIndex } of blockIndex.getKeywords()) {
             if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
             keywordMap.get(keyword).push({ filePath, lineIndex });
         }

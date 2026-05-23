@@ -142,6 +142,9 @@ describe('projectIndexer', () => {
                         filePath: missingFile,
                         fileName: 'missing.key',
                         missing: true,
+                        lineIndex: 2,
+                        startChar: 0,
+                        endChar: 11,
                         children: [],
                     },
                     {
@@ -174,12 +177,18 @@ describe('projectIndexer', () => {
                         filePath: missingFile,
                         fileName: 'missing.key',
                         missing: true,
+                        lineIndex: 1,
+                        startChar: 0,
+                        endChar: 11,
                         children: [],
                     },
                     {
                         filePath: missingFile,
                         fileName: 'missing.key',
                         missing: true,
+                        lineIndex: 2,
+                        startChar: 0,
+                        endChar: 11,
                         children: [],
                     },
                     {
