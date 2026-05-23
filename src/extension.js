@@ -427,7 +427,6 @@ let _fieldData = null;
 function getFieldData() {
     if (!_fieldData) {
         const dataPaths = [
-            path.join(__dirname, '..', 'keywords', 'field_data_zh.json'),
             path.join(__dirname, '..', 'keywords', 'field_data.json'),
         ];
         for (const dataPath of dataPaths) {
