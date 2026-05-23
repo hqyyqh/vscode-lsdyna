@@ -671,7 +671,7 @@ function activate(context) {
     );
 
     const indexClient = createIndexClient({ buildProjectIndex });
-    const invalidateChangedProjectRoots = createManifestDrivenInvalidator({ indexClient });
+    const invalidateChangedProjectRoots = createBatchedManifestInvalidator({ indexClient });
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -906,6 +906,45 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
     };
 }
 
+function createBatchedManifestInvalidator({
+    indexClient,
+    findAffectedRoots = findAffectedProjectRoots,
+    delayMs = 100,
+    schedule = setTimeout,
+    cancel = clearTimeout,
+} = {}) {
+    const invalidateChangedFile = createManifestDrivenInvalidator({ indexClient, findAffectedRoots });
+    let timer = null;
+    const pendingRoots = new Map();
+
+    return function queueChangedFile(fileUriOrPath) {
+        const changedFilePath = typeof fileUriOrPath === 'string'
+            ? fileUriOrPath
+            : fileUriOrPath && fileUriOrPath.fsPath;
+        if (!changedFilePath) return;
+
+        const affectedRoots = findAffectedRoots(changedFilePath, indexClient.getManifestEntries());
+        if (affectedRoots.length === 0) return;
+        for (const rootFile of affectedRoots) {
+            const resolvedRootFile = path.resolve(rootFile);
+            const rootKey = process.platform === 'win32'
+                ? resolvedRootFile.toLowerCase()
+                : resolvedRootFile;
+            pendingRoots.set(rootKey, rootFile);
+        }
+
+        if (timer) cancel(timer);
+        timer = schedule(() => {
+            timer = null;
+            const roots = [...pendingRoots.values()];
+            pendingRoots.clear();
+            for (const rootFile of roots) {
+                invalidateChangedFile(rootFile);
+            }
+        }, delayMs);
+    };
+}
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
@@ -937,4 +976,5 @@ module.exports._internals = {
     findNextKeyword,
     findPreviousKeyword,
     createManifestDrivenInvalidator,
+    createBatchedManifestInvalidator,
 };
