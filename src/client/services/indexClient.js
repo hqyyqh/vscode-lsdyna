@@ -76,19 +76,73 @@ async function isSnapshotValid(entry, getFileSignature) {
     return true;
 }
 
-function createIndexClient({ buildProjectIndex, getFileSignature = readFileSignature } = {}) {
+function estimateSnapshotSize(snapshot) {
+    return Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
+}
+
+function getSnapshotCacheStats(snapshots) {
+    let cachedSnapshotCount = 0;
+    let totalSnapshotBytes = 0;
+
+    for (const entry of snapshots.values()) {
+        if (!entry || !entry.snapshot || typeof entry.byteSize !== 'number') continue;
+        cachedSnapshotCount += 1;
+        totalSnapshotBytes += entry.byteSize;
+    }
+
+    return {
+        cachedSnapshotCount,
+        totalSnapshotBytes,
+    };
+}
+
+function createIndexClient({
+    buildProjectIndex,
+    getFileSignature = readFileSignature,
+    estimateSnapshotSize: getSnapshotSize = estimateSnapshotSize,
+    maxSnapshotBytes = Number.POSITIVE_INFINITY,
+} = {}) {
     if (typeof buildProjectIndex !== 'function') {
         throw new TypeError('createIndexClient requires a buildProjectIndex function');
     }
     if (typeof getFileSignature !== 'function') {
         throw new TypeError('createIndexClient requires getFileSignature to be a function');
     }
+    if (typeof getSnapshotSize !== 'function') {
+        throw new TypeError('createIndexClient requires estimateSnapshotSize to be a function');
+    }
+    if (typeof maxSnapshotBytes !== 'number' || Number.isNaN(maxSnapshotBytes) || maxSnapshotBytes <= 0) {
+        throw new TypeError('createIndexClient requires maxSnapshotBytes to be a positive number');
+    }
 
     const snapshots = new Map();
     const generations = new Map();
+    let accessSequence = 0;
 
     function getGeneration(rootCacheKey) {
         return generations.get(rootCacheKey) || 0;
+    }
+
+    function touchSnapshotEntry(entry) {
+        entry.lastAccessedAt = ++accessSequence;
+    }
+
+    function evictSnapshotsIfNeeded(protectedRootCacheKey) {
+        let cacheStats = getSnapshotCacheStats(snapshots);
+        while (cacheStats.totalSnapshotBytes > maxSnapshotBytes) {
+            const evictionCandidates = [...snapshots.entries()]
+                .filter(([rootCacheKey, entry]) => (
+                    rootCacheKey !== protectedRootCacheKey
+                    && entry
+                    && entry.snapshot
+                    && typeof entry.byteSize === 'number'
+                ))
+                .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt);
+
+            if (evictionCandidates.length === 0) break;
+            snapshots.delete(evictionCandidates[0][0]);
+            cacheStats = getSnapshotCacheStats(snapshots);
+        }
     }
 
     async function loadProjectSnapshot(rootFile) {
@@ -102,7 +156,10 @@ function createIndexClient({ buildProjectIndex, getFileSignature = readFileSigna
             const valid = await isSnapshotValid(cachedEntry, getFileSignature);
             const currentEntry = snapshots.get(rootCacheKey);
             if (currentEntry !== cachedEntry) continue;
-            if (valid) return cachedEntry.snapshot;
+            if (valid) {
+                touchSnapshotEntry(cachedEntry);
+                return cachedEntry.snapshot;
+            }
 
             invalidate(resolvedRootFile);
         }
@@ -120,7 +177,14 @@ function createIndexClient({ buildProjectIndex, getFileSignature = readFileSigna
                 const currentEntry = snapshots.get(rootCacheKey);
                 if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
                     if (trackedFiles) {
-                        snapshots.set(rootCacheKey, { snapshot, trackedFiles });
+                        const entry = {
+                            snapshot,
+                            trackedFiles,
+                            byteSize: getSnapshotSize(snapshot),
+                        };
+                        touchSnapshotEntry(entry);
+                        snapshots.set(rootCacheKey, entry);
+                        evictSnapshotsIfNeeded(rootCacheKey);
                     } else {
                         snapshots.delete(rootCacheKey);
                     }
@@ -146,6 +210,9 @@ function createIndexClient({ buildProjectIndex, getFileSignature = readFileSigna
     }
 
     return {
+        getCacheStats() {
+            return getSnapshotCacheStats(snapshots);
+        },
         invalidate,
         loadProjectSnapshot,
     };

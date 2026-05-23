@@ -157,4 +157,63 @@ describe('createIndexClient', () => {
         assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshots[1]);
         assert.equal(buildCount, 2);
     });
+
+    it('evicts the least recently used snapshot when the cache size limit is exceeded', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const roots = [
+            path.resolve('project', 'a.k'),
+            path.resolve('project', 'b.k'),
+            path.resolve('project', 'c.k'),
+        ];
+        const buildCounts = new Map();
+        const client = createIndexClient({
+            buildProjectIndex: async (rootFile) => {
+                buildCounts.set(rootFile, (buildCounts.get(rootFile) || 0) + 1);
+                return { rootFile, files: [rootFile] };
+            },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            estimateSnapshotSize: () => 10,
+            maxSnapshotBytes: 20,
+        });
+
+        await client.loadProjectSnapshot(roots[0]);
+        await client.loadProjectSnapshot(roots[1]);
+        await client.loadProjectSnapshot(roots[0]);
+        await client.loadProjectSnapshot(roots[2]);
+
+        assert.equal(client.getCacheStats().cachedSnapshotCount, 2);
+        assert.equal(client.getCacheStats().totalSnapshotBytes, 20);
+
+        await client.loadProjectSnapshot(roots[1]);
+
+        assert.equal(buildCounts.get(roots[0]), 1);
+        assert.equal(buildCounts.get(roots[1]), 2);
+        assert.equal(buildCounts.get(roots[2]), 1);
+    });
+
+    it('updates snapshot cache stats after invalidation', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootA = path.resolve('project', 'a.k');
+        const rootB = path.resolve('project', 'b.k');
+        const client = createIndexClient({
+            buildProjectIndex: async (rootFile) => ({ rootFile, files: [rootFile] }),
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            estimateSnapshotSize: () => 12,
+            maxSnapshotBytes: 100,
+        });
+
+        await client.loadProjectSnapshot(rootA);
+        await client.loadProjectSnapshot(rootB);
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 2,
+            totalSnapshotBytes: 24,
+        });
+
+        client.invalidate(rootA);
+
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 1,
+            totalSnapshotBytes: 12,
+        });
+    });
 });
