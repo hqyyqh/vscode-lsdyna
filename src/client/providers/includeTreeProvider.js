@@ -18,6 +18,20 @@ function formatBytes(bytes) {
     return `${val.toFixed(1)} ${sizes[i]}`;
 }
 
+function formatShortBytes(bytes) {
+    if (bytes === 0) return '0B';
+    const sizes = ['B', 'K', 'M', 'G', 'T'];
+    let i = 0;
+    let val = bytes;
+    while (val >= 1024 && i < sizes.length - 1) {
+        val /= 1024;
+        i++;
+    }
+    if (i === 0) return `${Math.round(val)}${sizes[i]}`;
+    if (val < 10) return `${val.toFixed(1)}${sizes[i]}`;
+    return `${Math.round(val)}${sizes[i]}`;
+}
+
 class IncludeItem extends vscode.TreeItem {
     constructor(filePath, exists) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
@@ -36,7 +50,6 @@ class IncludeItem extends vscode.TreeItem {
                 if (fs.existsSync(filePath)) {
                     const stats = fs.statSync(filePath);
                     this.fileSizeStr = formatBytes(stats.size);
-                    this.description = this.fileSizeStr;
                 }
             } catch (e) {
                 // ignore
@@ -81,7 +94,7 @@ class LsdynaIncludeTreeProvider {
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.root = null;
-        this.resolvedPaths = new Set();
+        this.resolvedPaths = new Map();
         this.missingPaths = new Set();
     }
 
@@ -113,7 +126,14 @@ class LsdynaIncludeTreeProvider {
                         if (node.missing) {
                             this.missingPaths.add(node.filePath);
                         } else {
-                            this.resolvedPaths.add(node.filePath);
+                            let shortSize = '';
+                            try {
+                                if (fs.existsSync(node.filePath)) {
+                                    const stats = fs.statSync(node.filePath);
+                                    shortSize = formatShortBytes(stats.size);
+                                }
+                            } catch (e) {}
+                            this.resolvedPaths.set(node.filePath, shortSize);
                         }
                         if (node.children) {
                             node.children.forEach(collectPaths);
@@ -129,7 +149,14 @@ class LsdynaIncludeTreeProvider {
                         if (item.contextValue === 'file-missing') {
                             this.missingPaths.add(item.filePath);
                         } else {
-                            this.resolvedPaths.add(item.filePath);
+                            let shortSize = '';
+                            try {
+                                if (fs.existsSync(item.filePath)) {
+                                    const stats = fs.statSync(item.filePath);
+                                    shortSize = formatShortBytes(stats.size);
+                                }
+                            } catch (e) {}
+                            this.resolvedPaths.set(item.filePath, shortSize);
                         }
                         if (item.children) {
                             item.children.forEach(collectTreePaths);
@@ -166,7 +193,7 @@ class LsdynaIncludeTreeProvider {
                 const relDir = path.dirname(rel);
                 const dirStr = relDir === '.' ? '' : relDir;
                 if (dirStr) {
-                    item.description = item.fileSizeStr ? `${item.fileSizeStr} • ${dirStr}` : dirStr;
+                    item.description = dirStr;
                 }
             }
         }
@@ -176,10 +203,7 @@ class LsdynaIncludeTreeProvider {
         tooltip.appendMarkdown(`- **Path**: \`${node.filePath}\`\n`);
         if (node.cycle) {
             tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
-        } else if (node.missing) {
-            tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
-        } else {
-            tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
+        } else if (!node.missing && item.children.length > 0) {
             tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
         }
         item.tooltip = tooltip;
@@ -208,8 +232,6 @@ class LsdynaIncludeTreeProvider {
             tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
             if (visited.has(filePath)) {
                 tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
-            } else {
-                tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
             }
             item.tooltip = tooltip;
 
@@ -225,7 +247,7 @@ class LsdynaIncludeTreeProvider {
             const relDir = path.dirname(rel);
             const dirStr = relDir === '.' ? '' : relDir;
             if (dirStr) {
-                item.description = item.fileSizeStr ? `${item.fileSizeStr} • ${dirStr}` : dirStr;
+                item.description = dirStr;
             }
         }
 
@@ -264,8 +286,9 @@ class LsdynaIncludeTreeProvider {
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
         tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
-        tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
-        tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+        if (item.children.length > 0) {
+            tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+        }
         item.tooltip = tooltip;
 
         await new Promise(r => setImmediate(r));
@@ -277,18 +300,14 @@ class LsdynaIncludeTreeProvider {
             return item;
         }
         try {
-            const stats = fs.statSync(item.filePath);
-            const sizeKB = (stats.size / 1024).toFixed(1);
-            
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(item.filePath)}**\n\n`);
             tooltip.appendMarkdown(`- **Path**: \`${item.filePath}\`\n`);
-            tooltip.appendMarkdown(`- **Size**: \`${sizeKB} KB\`\n`);
+            if (item.fileSizeStr) {
+                tooltip.appendMarkdown(`- **Size**: \`${item.fileSizeStr}\`\n`);
+            }
             
-            if (item.contextValue === 'file-missing') {
-                tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
-            } else {
-                tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
+            if (item.contextValue !== 'file-missing') {
                 if (item.children && item.children.length > 0) {
                     tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
                 }
@@ -317,4 +336,5 @@ class LsdynaIncludeTreeProvider {
 module.exports = {
     LsdynaIncludeTreeProvider,
     formatBytes,
+    formatShortBytes,
 };

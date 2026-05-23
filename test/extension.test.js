@@ -1396,17 +1396,25 @@ describe('readFileSnippet', () => {
 });
 
 // ---------------------------------------------------------------------------
-// formatBytes
+// formatBytes & formatShortBytes
 // ---------------------------------------------------------------------------
 
 describe('formatBytes', () => {
     it('converts byte counts to readable file size strings with appropriate units', () => {
-        const { formatBytes } = require('../src/client/providers/includeTreeProvider');
+        const { formatBytes, formatShortBytes } = require('../src/client/providers/includeTreeProvider');
         assert.strictEqual(formatBytes(0), '0 B');
         assert.strictEqual(formatBytes(512), '512.0 B');
         assert.strictEqual(formatBytes(1024), '1.0 KB');
         assert.strictEqual(formatBytes(1536), '1.5 KB');
         assert.strictEqual(formatBytes(1024 * 1024), '1.0 MB');
         assert.strictEqual(formatBytes(1024 * 1024 * 1024 * 2.5), '2.5 GB');
+
+        assert.strictEqual(formatShortBytes(0), '0B');
+        assert.strictEqual(formatShortBytes(512), '512B');
+        assert.strictEqual(formatShortBytes(1024), '1.0K');
+        assert.strictEqual(formatShortBytes(1536), '1.5K');
+        assert.strictEqual(formatShortBytes(1024 * 45), '45K');
+        assert.strictEqual(formatShortBytes(1024 * 1024 * 1.2), '1.2M');
+        assert.strictEqual(formatShortBytes(1024 * 1024 * 1024 * 125), '125G');
     });
 });

@@ -743,7 +743,7 @@ class LsdynaFileDecorationProvider {
 
         if (this.includeTreeProvider.resolvedPaths.has(fsPath)) {
             return {
-                badge: '✓',
+                badge: this.includeTreeProvider.resolvedPaths.get(fsPath),
                 tooltip: 'Resolved Include Reference',
                 color: new vscode.ThemeColor('testing.iconPassed')
             };
