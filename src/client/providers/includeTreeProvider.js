@@ -11,9 +11,14 @@ class IncludeItem extends vscode.TreeItem {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
         this.filePath = filePath;
         this.children = [];
-        this.tooltip = filePath;
-        this.iconPath = new vscode.ThemeIcon(exists ? 'file' : 'warning');
-        if (!exists) this.description = 'not found';
+        
+        if (!exists) {
+            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+            this.description = 'not found';
+        } else {
+            this.resourceUri = vscode.Uri.file(filePath);
+        }
+        
         if (exists) {
             this.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(filePath)] };
         }
@@ -76,7 +81,7 @@ class LsdynaIncludeTreeProvider {
                     const snapshot = await this.loadProjectSnapshot(uri.fsPath);
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
                 } else {
-                    this.root = await this._buildItem(uri.fsPath, new Set(), progress);
+                    this.root = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
                 }
                 this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 this._onDidChangeTreeData.fire(undefined);
@@ -84,41 +89,85 @@ class LsdynaIncludeTreeProvider {
         );
     }
 
-    _buildItemFromTreeNode(node) {
+    _buildItemFromTreeNode(node, rootPath) {
         const exists = !node.missing && fs.existsSync(node.filePath);
         const item = new IncludeItem(node.filePath, exists);
         if (node.cycle) {
             item.description = 'circular';
-            item.iconPath = new vscode.ThemeIcon('sync');
+            item.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else if (node.missing) {
             item.description = 'missing';
-            item.iconPath = new vscode.ThemeIcon('warning');
+            item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else {
-            item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode));
+            item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode, rootPath || node.filePath));
             item.collapsibleState = item.children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None;
+
+            if (rootPath && rootPath !== node.filePath) {
+                const dir = path.dirname(rootPath);
+                const rel = path.relative(dir, node.filePath);
+                const relDir = path.dirname(rel);
+                item.description = relDir === '.' ? '' : relDir;
+            }
         }
+
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`### Include File: **${path.basename(node.filePath)}**\n\n`);
+        tooltip.appendMarkdown(`- **Path**: \`${node.filePath}\`\n`);
+        if (node.cycle) {
+            tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
+        } else if (node.missing) {
+            tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
+        } else {
+            tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
+            tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+        }
+        item.tooltip = tooltip;
+
         return item;
     }
 
     _buildRootFromSnapshot(snapshot, rootFile) {
-        return this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile));
+        return this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile), rootFile);
     }
 
-    async _buildItem(filePath, visited, progress) {
+    async _buildItem(filePath, visited, progress, rootPath) {
         const exists = fs.existsSync(filePath);
         const item = new IncludeItem(filePath, exists);
+        const actualRootPath = rootPath || filePath;
 
         if (!exists || visited.has(filePath)) {
+            if (visited.has(filePath)) {
+                item.description = 'circular';
+                item.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
+            }
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+
+            const tooltip = new vscode.MarkdownString();
+            tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+            if (visited.has(filePath)) {
+                tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
+            } else {
+                tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
+            }
+            item.tooltip = tooltip;
+
             return item;
         }
 
         visited.add(filePath);
         progress.report({ message: path.basename(filePath) });
+
+        if (actualRootPath !== filePath) {
+            const dir = path.dirname(actualRootPath);
+            const rel = path.relative(dir, filePath);
+            const relDir = path.dirname(rel);
+            item.description = relDir === '.' ? '' : relDir;
+        }
 
         let includeEntries;
         let searchPaths;
@@ -126,7 +175,14 @@ class LsdynaIncludeTreeProvider {
             ({ includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath));
         } catch (error) {
             item.description = 'scan failed';
-            item.tooltip = `${filePath}\n${error.message}`;
+
+            const tooltip = new vscode.MarkdownString();
+            tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+            tooltip.appendMarkdown(`- **Status**: ❌ *Scan failed*\n`);
+            tooltip.appendMarkdown(`- **Error**: ${error.message}\n`);
+            item.tooltip = tooltip;
+
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
             return item;
         }
@@ -138,12 +194,19 @@ class LsdynaIncludeTreeProvider {
             } catch (e) {
                 childPath = path.resolve(path.dirname(filePath), fileName);
             }
-            item.children.push(await this._buildItem(childPath, new Set(visited), progress));
+            item.children.push(await this._buildItem(childPath, new Set(visited), progress, actualRootPath));
         }
 
         item.collapsibleState = item.children.length > 0
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
+
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
+        tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+        item.tooltip = tooltip;
 
         await new Promise(r => setImmediate(r));
         return item;

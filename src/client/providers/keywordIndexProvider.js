@@ -20,10 +20,18 @@ class KeywordItem extends vscode.TreeItem {
 
 class KeywordUsageItem extends vscode.TreeItem {
     constructor(filePath, lineIndex, rootDir) {
+        super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
+        this.resourceUri = vscode.Uri.file(filePath);
+        this.description = `:line ${lineIndex + 1}`;
+        
         const rel = path.relative(rootDir, filePath);
-        super(`${rel}  :${lineIndex + 1}`, vscode.TreeItemCollapsibleState.None);
-        this.iconPath = new vscode.ThemeIcon('file');
-        this.tooltip = `${filePath}:${lineIndex + 1}`;
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`### Keyword Occurrence\n\n`);
+        tooltip.appendMarkdown(`- **File**: \`${rel}\`\n`);
+        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **Line**: ${lineIndex + 1}\n`);
+        this.tooltip = tooltip;
+
         this.command = {
             command: 'extension.goToKeywordUsage',
             title: 'Go to keyword',
@@ -34,10 +42,19 @@ class KeywordUsageItem extends vscode.TreeItem {
 
 class AggregatedKeywordUsageItem extends vscode.TreeItem {
     constructor(filePath, count, firstLineIndex, rootDir) {
+        super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
+        this.resourceUri = vscode.Uri.file(filePath);
+        this.description = `${count} usages`;
+        
         const rel = path.relative(rootDir, filePath);
-        super(`${rel}  (${count} usages)`, vscode.TreeItemCollapsibleState.None);
-        this.iconPath = new vscode.ThemeIcon('file-submodule');
-        this.tooltip = `${filePath} (total ${count} usages)`;
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`### Aggregated Usages\n\n`);
+        tooltip.appendMarkdown(`- **File**: \`${rel}\`\n`);
+        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **Total Usages**: ${count}\n`);
+        tooltip.appendMarkdown(`- **First Occurrence**: Line ${firstLineIndex + 1}\n`);
+        this.tooltip = tooltip;
+
         this.command = {
             command: 'extension.goToKeywordUsage',
             title: 'Go to keyword',
@@ -93,6 +110,13 @@ class LsdynaKeywordIndexProvider {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([keyword, usages]) => {
                 const item = new KeywordItem(keyword);
+                item.description = `${usages.length} usage${usages.length === 1 ? '' : 's'}`;
+
+                const tooltip = new vscode.MarkdownString();
+                tooltip.appendMarkdown(`### Keyword: **${keyword}**\n\n`);
+                tooltip.appendMarkdown(`- **Total Occurrences**: ${usages.length}\n`);
+                item.tooltip = tooltip;
+
                 if (usages.length > KEYWORD_FOLDING_THRESHOLD) {
                     const groups = new Map();
                     for (const usage of usages) {
