@@ -95,7 +95,25 @@ module.exports = {
         onDidChangeActiveTextEditor: () => ({ dispose() {} }),
         onDidChangeTextEditorSelection: () => ({ dispose() {} }),
         createTextEditorDecorationType: () => ({ dispose() {} }),
-        tabGroups: { onDidChangeTabs: () => ({ dispose() {} }) }
+        tabGroups: { onDidChangeTabs: () => ({ dispose() {} }) },
+        createWebviewPanel: (viewType, title, showOptions, options) => {
+            const panel = {
+                webview: {
+                    asWebviewUri: uri => uri,
+                    cspSource: 'vscode-resource:',
+                    postMessage: () => Promise.resolve(true)
+                },
+                reveal: () => {},
+                onDidDispose: (callback) => {
+                    panel._disposeCallback = callback;
+                    return { dispose() {} };
+                },
+                dispose: () => {
+                    if (panel._disposeCallback) panel._disposeCallback();
+                }
+            };
+            return panel;
+        }
     },
     workspace: {
         textDocuments: [],
@@ -112,4 +130,5 @@ module.exports = {
     },
     languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
+    ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
 };
