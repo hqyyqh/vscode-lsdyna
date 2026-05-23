@@ -479,6 +479,37 @@ class LsdynaFieldHoverProvider {
     provideHover(document, position) {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
 
+        // Hover on include file paths
+        const includeEntries = findIncludeFileLines(document);
+        const includeEntry = includeEntries.find(entry => includeScanner.includeEntryContainsLine(entry, position.line));
+        if (includeEntry) {
+            const ranges = includeScanner.getIncludeEntryRanges(includeEntry);
+            const rangeOnLine = ranges.find(r => r.lineIndex === position.line && position.character >= r.startChar && position.character <= r.endChar);
+            if (rangeOnLine) {
+                try {
+                    const searchPaths = getSearchPath(document);
+                    const fullPath = searchFileFromPaths(includeEntry.fileName, searchPaths);
+                    const uri = vscode.Uri.file(fullPath);
+                    const hoverRange = new vscode.Range(rangeOnLine.lineIndex, rangeOnLine.startChar, rangeOnLine.lineIndex, rangeOnLine.endChar);
+                    
+                    const openNewTabArgs = encodeURIComponent(JSON.stringify([fullPath]));
+                    const openSplitArgs = encodeURIComponent(JSON.stringify([fullPath]));
+                    const openFolderArgs = encodeURIComponent(JSON.stringify([fullPath]));
+                    
+                    const md = new vscode.MarkdownString(
+                        `[$(go-to-file)](command:extension.openIncludeNewTab?${openNewTabArgs} "在新标签打开链接") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[$(split-horizontal)](command:extension.openIncludeSplit?${openSplitArgs} "分栏打开") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[$(folder-opened)](command:extension.openIncludeFolder?${openFolderArgs} "打开文件所在路径")`
+                    );
+                    md.isTrusted = true;
+                    md.supportThemeIcons = true;
+                    return new vscode.Hover(md, hoverRange);
+                } catch (e) {
+                    // File does not exist, fall through to default keyword/field hover
+                }
+            }
+        }
+
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
@@ -898,9 +929,9 @@ function activate(context) {
         vscode.languages.registerDocumentSymbolProvider({ language: 'lsdyna' }, new LsdynaKeywordSymbolProvider())
     );
 
-    context.subscriptions.push(
-        vscode.languages.registerDocumentLinkProvider({ language: 'lsdyna' }, new LsdynaDocumentLinkProvider())
-    );
+    // context.subscriptions.push(
+    //     vscode.languages.registerDocumentLinkProvider({ language: 'lsdyna' }, new LsdynaDocumentLinkProvider())
+    // );
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider({ language: 'lsdyna' }, new LsdynaFieldHoverProvider())
@@ -1056,6 +1087,37 @@ function activate(context) {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
                 vscode.commands.executeCommand('revealFileInOS', uri);
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openIncludeNewTab', (filePath) => {
+            try {
+                const uri = vscode.Uri.file(filePath);
+                vscode.commands.executeCommand('vscode.open', uri, { preview: false });
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
+            }
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openIncludeSplit', (filePath) => {
+            try {
+                const uri = vscode.Uri.file(filePath);
+                vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to split open file: ${err.message}`);
+            }
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openIncludeFolder', (filePath) => {
+            try {
+                const uri = vscode.Uri.file(filePath);
+                vscode.commands.executeCommand('revealFileInOS', uri);
+            } catch (err) {
+                vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
             }
         })
     );
