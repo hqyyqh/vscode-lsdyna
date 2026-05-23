@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
+const readline = require('readline');
 
 const keywordScanner = require('../../core/parser/keywordScanner');
 const { BlockIndex } = require('../../core/incremental/blockIndex');
@@ -287,6 +288,40 @@ class LsdynaKeywordIndexProvider {
     }
 }
 
+function readFileSnippet(filePath, lineIndex, maxLines = 6) {
+    return new Promise((resolve) => {
+        if (!fs.existsSync(filePath)) {
+            return resolve(null);
+        }
+        const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+        
+        let current = 0;
+        const lines = [];
+        
+        rl.on('line', (line) => {
+            if (current >= lineIndex && current < lineIndex + maxLines) {
+                lines.push(line);
+            }
+            if (current >= lineIndex + maxLines) {
+                rl.close();
+            }
+            current++;
+        });
+        
+        rl.on('close', () => {
+            stream.destroy();
+            resolve(lines.join('\n'));
+        });
+        
+        rl.on('error', () => {
+            stream.destroy();
+            resolve(null);
+        });
+    });
+}
+
 module.exports = {
     LsdynaKeywordIndexProvider,
+    readFileSnippet,
 };
