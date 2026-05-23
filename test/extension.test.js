@@ -1401,7 +1401,7 @@ describe('readFileSnippet', () => {
 
 describe('formatBytes', () => {
     it('converts byte counts to readable file size strings with appropriate units', () => {
-        const { formatBytes, formatShortBytes } = require('../src/client/providers/includeTreeProvider');
+        const { formatBytes, formatShortBytes, formatVividBytes, applyVividDescription } = require('../src/client/providers/includeTreeProvider');
         assert.strictEqual(formatBytes(0), '0 B');
         assert.strictEqual(formatBytes(512), '512.0 B');
         assert.strictEqual(formatBytes(1024), '1.0 KB');
@@ -1409,12 +1409,65 @@ describe('formatBytes', () => {
         assert.strictEqual(formatBytes(1024 * 1024), '1.0 MB');
         assert.strictEqual(formatBytes(1024 * 1024 * 1024 * 2.5), '2.5 GB');
 
-        assert.strictEqual(formatShortBytes(0), '0B');
-        assert.strictEqual(formatShortBytes(512), '512B');
-        assert.strictEqual(formatShortBytes(1024), '1.0K');
-        assert.strictEqual(formatShortBytes(1536), '1.5K');
-        assert.strictEqual(formatShortBytes(1024 * 45), '45K');
-        assert.strictEqual(formatShortBytes(1024 * 1024 * 1.2), '1.2M');
-        assert.strictEqual(formatShortBytes(1024 * 1024 * 1024 * 125), '125G');
+        assert.strictEqual(formatShortBytes(0), '0');
+        assert.strictEqual(formatShortBytes(512), '1k');
+        assert.strictEqual(formatShortBytes(1024), '1k');
+        assert.strictEqual(formatShortBytes(1536), '2k');
+        assert.strictEqual(formatShortBytes(1024 * 45), 'K');
+        assert.strictEqual(formatShortBytes(1024 * 1024 * 1.2), '1M');
+        assert.strictEqual(formatShortBytes(1024 * 1024 * 1024 * 125), 'G');
+
+        // Test formatVividBytes
+        assert.strictEqual(formatVividBytes(0), '▏ 0 B');
+        assert.strictEqual(formatVividBytes(512), '▏ 512.0 B');
+        assert.strictEqual(formatVividBytes(1024 * 5), '▏ 5.0 KB');
+        assert.strictEqual(formatVividBytes(1024 * 45), '▌ 45.0 KB');
+        assert.strictEqual(formatVividBytes(1024 * 1024 * 1.2), '█ 1.2 MB');
+
+        // Test applyVividDescription
+        const mockItem1 = { contextValue: 'file', description: '', fileSizeVal: 1024 * 5 };
+        applyVividDescription(mockItem1, 'sub');
+        assert.strictEqual(mockItem1.description, 'sub  •  ▏ 5.0 KB');
+
+        const mockItem2 = { contextValue: 'file-missing', description: 'not found' };
+        applyVividDescription(mockItem2, 'sub');
+        assert.strictEqual(mockItem2.description, 'sub  •  not found');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// LsdynaFileDecorationProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaFileDecorationProvider', () => {
+    it('provides file decorations with size badge and status colors', () => {
+        const { LsdynaFileDecorationProvider, normalizePathKey } = extensionModule._internals;
+        const includeTreeProvider = {
+            resolvedPaths: new Map([
+                [normalizePathKey('some/file.k'), '']
+            ]),
+            missingPaths: new Set([
+                normalizePathKey('some/missing.k')
+            ])
+        };
+        const provider = new LsdynaFileDecorationProvider(includeTreeProvider);
+
+        // Test resolved
+        const resolvedUri = { scheme: 'file', fsPath: 'some/file.k' };
+        const resolvedDec = provider.provideFileDecoration(resolvedUri);
+        assert.ok(resolvedDec);
+        assert.strictEqual(resolvedDec.badge, undefined);
+        assert.strictEqual(resolvedDec.color.constructor.name, 'ThemeColor');
+
+        // Test missing
+        const missingUri = { scheme: 'file', fsPath: 'some/missing.k' };
+        const missingDec = provider.provideFileDecoration(missingUri);
+        assert.ok(missingDec);
+        assert.strictEqual(missingDec.badge, '⚠');
+
+        // Test untracked
+        const untrackedUri = { scheme: 'file', fsPath: 'some/other.k' };
+        const untrackedDec = provider.provideFileDecoration(untrackedUri);
+        assert.strictEqual(untrackedDec, undefined);
     });
 });

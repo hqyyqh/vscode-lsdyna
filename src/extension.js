@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
-const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreeProvider');
+const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
@@ -731,9 +731,9 @@ class LsdynaFileDecorationProvider {
 
     provideFileDecoration(uri) {
         if (uri.scheme !== 'file') return undefined;
-        const fsPath = uri.fsPath;
+        const key = normalizePathKey(uri.fsPath);
 
-        if (this.includeTreeProvider.missingPaths.has(fsPath)) {
+        if (this.includeTreeProvider.missingPaths.has(key)) {
             return {
                 badge: '⚠',
                 tooltip: 'Missing Include Reference',
@@ -741,9 +741,8 @@ class LsdynaFileDecorationProvider {
             };
         }
 
-        if (this.includeTreeProvider.resolvedPaths.has(fsPath)) {
+        if (this.includeTreeProvider.resolvedPaths.has(key)) {
             return {
-                badge: this.includeTreeProvider.resolvedPaths.get(fsPath),
                 tooltip: 'Resolved Include Reference',
                 color: new vscode.ThemeColor('testing.iconPassed')
             };
@@ -921,7 +920,7 @@ function activate(context) {
         vscode.commands.registerCommand('extension.revealInExplorer', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                vscode.commands.executeCommand('revealInExplorer', uri);
+                vscode.commands.executeCommand('revealFileInOS', uri);
             }
         })
     );
@@ -1327,4 +1326,6 @@ module.exports._internals = {
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
     createProjectSnapshotPersistentCache,
+    LsdynaFileDecorationProvider,
+    normalizePathKey,
 };

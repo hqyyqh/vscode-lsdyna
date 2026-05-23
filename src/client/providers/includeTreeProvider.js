@@ -19,17 +19,78 @@ function formatBytes(bytes) {
 }
 
 function formatShortBytes(bytes) {
-    if (bytes === 0) return '0B';
-    const sizes = ['B', 'K', 'M', 'G', 'T'];
+    if (bytes <= 0) return '0';
+    if (bytes < 1024) {
+        return '1k';
+    }
+    const kb = bytes / 1024;
+    if (kb < 10) {
+        return `${Math.round(kb)}k`;
+    }
+    if (kb < 1024) {
+        return 'K';
+    }
+    const mb = kb / 1024;
+    if (mb < 10) {
+        return `${Math.round(mb)}M`;
+    }
+    if (mb < 1024) {
+        return 'M';
+    }
+    const gb = mb / 1024;
+    if (gb < 10) {
+        return `${Math.round(gb)}G`;
+    }
+    return 'G';
+}
+
+function formatVividBytes(bytes) {
+    if (bytes === 0) return '▏ 0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let val = bytes;
     while (val >= 1024 && i < sizes.length - 1) {
         val /= 1024;
         i++;
     }
-    if (i === 0) return `${Math.round(val)}${sizes[i]}`;
-    if (val < 10) return `${val.toFixed(1)}${sizes[i]}`;
-    return `${Math.round(val)}${sizes[i]}`;
+    let block = '▌';
+    if (bytes < 10 * 1024) {
+        block = '▏';
+    } else if (bytes >= 1024 * 1024) {
+        block = '█';
+    }
+    return `${block} ${val.toFixed(1)} ${sizes[i]}`;
+}
+
+function applyVividDescription(item, relDir) {
+    let statusText = '';
+    if (item.description === 'not found') {
+        statusText = 'not found';
+    } else if (item.description === 'missing') {
+        statusText = 'missing';
+    } else if (item.description === 'circular') {
+        statusText = 'circular';
+    } else if (item.description === 'scan failed') {
+        statusText = 'scan failed';
+    } else if (item.fileSizeVal !== undefined) {
+        statusText = formatVividBytes(item.fileSizeVal);
+    }
+
+    if (relDir && statusText) {
+        item.description = `${relDir}  •  ${statusText}`;
+    } else if (relDir) {
+        item.description = relDir;
+    } else if (statusText) {
+        item.description = statusText;
+    } else {
+        item.description = '';
+    }
+}
+
+function normalizePathKey(filePath) {
+    if (!filePath) return '';
+    const resolved = path.resolve(filePath);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 class IncludeItem extends vscode.TreeItem {
@@ -39,6 +100,7 @@ class IncludeItem extends vscode.TreeItem {
         this.children = [];
         this.resourceUri = vscode.Uri.file(filePath);
         this.fileSizeStr = '';
+        this.fileSizeVal = undefined;
         
         if (!exists) {
             this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
@@ -50,6 +112,7 @@ class IncludeItem extends vscode.TreeItem {
                 if (fs.existsSync(filePath)) {
                     const stats = fs.statSync(filePath);
                     this.fileSizeStr = formatBytes(stats.size);
+                    this.fileSizeVal = stats.size;
                 }
             } catch (e) {
                 // ignore
@@ -59,6 +122,7 @@ class IncludeItem extends vscode.TreeItem {
         if (exists) {
             this.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(filePath)] };
         }
+        applyVividDescription(this, '');
     }
 }
 
@@ -123,8 +187,9 @@ class LsdynaIncludeTreeProvider {
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
                     
                     const collectPaths = (node) => {
+                        const key = normalizePathKey(node.filePath);
                         if (node.missing) {
-                            this.missingPaths.add(node.filePath);
+                            this.missingPaths.add(key);
                         } else {
                             let shortSize = '';
                             try {
@@ -133,7 +198,7 @@ class LsdynaIncludeTreeProvider {
                                     shortSize = formatShortBytes(stats.size);
                                 }
                             } catch (e) {}
-                            this.resolvedPaths.set(node.filePath, shortSize);
+                            this.resolvedPaths.set(key, shortSize);
                         }
                         if (node.children) {
                             node.children.forEach(collectPaths);
@@ -146,8 +211,9 @@ class LsdynaIncludeTreeProvider {
                     this.root = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
                     
                     const collectTreePaths = (item) => {
+                        const key = normalizePathKey(item.filePath);
                         if (item.contextValue === 'file-missing') {
-                            this.missingPaths.add(item.filePath);
+                            this.missingPaths.add(key);
                         } else {
                             let shortSize = '';
                             try {
@@ -156,7 +222,7 @@ class LsdynaIncludeTreeProvider {
                                     shortSize = formatShortBytes(stats.size);
                                 }
                             } catch (e) {}
-                            this.resolvedPaths.set(item.filePath, shortSize);
+                            this.resolvedPaths.set(key, shortSize);
                         }
                         if (item.children) {
                             item.children.forEach(collectTreePaths);
@@ -186,17 +252,16 @@ class LsdynaIncludeTreeProvider {
             item.collapsibleState = item.children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None;
-
-            if (rootPath && rootPath !== node.filePath) {
-                const dir = path.dirname(rootPath);
-                const rel = path.relative(dir, node.filePath);
-                const relDir = path.dirname(rel);
-                const dirStr = relDir === '.' ? '' : relDir;
-                if (dirStr) {
-                    item.description = dirStr;
-                }
-            }
         }
+
+        let dirStr = '';
+        if (rootPath && rootPath !== node.filePath) {
+            const dir = path.dirname(rootPath);
+            const rel = path.relative(dir, node.filePath);
+            const relDir = path.dirname(rel);
+            dirStr = relDir === '.' ? '' : relDir;
+        }
+        applyVividDescription(item, dirStr);
 
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### Include File: **${path.basename(node.filePath)}**\n\n`);
@@ -220,12 +285,21 @@ class LsdynaIncludeTreeProvider {
         const item = new IncludeItem(filePath, exists);
         const actualRootPath = rootPath || filePath;
 
+        let dirStr = '';
+        if (actualRootPath !== filePath) {
+            const dir = path.dirname(actualRootPath);
+            const rel = path.relative(dir, filePath);
+            const relDir = path.dirname(rel);
+            dirStr = relDir === '.' ? '' : relDir;
+        }
+
         if (!exists || visited.has(filePath)) {
             if (visited.has(filePath)) {
                 item.description = 'circular';
                 item.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
             }
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            applyVividDescription(item, dirStr);
 
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
@@ -241,22 +315,13 @@ class LsdynaIncludeTreeProvider {
         visited.add(filePath);
         progress.report({ message: path.basename(filePath) });
 
-        if (actualRootPath !== filePath) {
-            const dir = path.dirname(actualRootPath);
-            const rel = path.relative(dir, filePath);
-            const relDir = path.dirname(rel);
-            const dirStr = relDir === '.' ? '' : relDir;
-            if (dirStr) {
-                item.description = dirStr;
-            }
-        }
-
         let includeEntries;
         let searchPaths;
         try {
             ({ includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath));
         } catch (error) {
             item.description = 'scan failed';
+            applyVividDescription(item, dirStr);
 
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
@@ -282,6 +347,8 @@ class LsdynaIncludeTreeProvider {
         item.collapsibleState = item.children.length > 0
             ? vscode.TreeItemCollapsibleState.Collapsed
             : vscode.TreeItemCollapsibleState.None;
+
+        applyVividDescription(item, dirStr);
 
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
@@ -337,4 +404,7 @@ module.exports = {
     LsdynaIncludeTreeProvider,
     formatBytes,
     formatShortBytes,
+    formatVividBytes,
+    applyVividDescription,
+    normalizePathKey,
 };

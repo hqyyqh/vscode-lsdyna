@@ -145,7 +145,7 @@
             {
                 "command": "extension.revealInExplorer",
                 "title": "Reveal in Explorer",
-                "icon": "$(reveal)"
+                "icon": "$(folder-opened)"
             }
         ],
         "keybindings": [
