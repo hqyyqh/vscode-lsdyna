@@ -1158,7 +1158,7 @@ function activate(context) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.openManual', (pdfPath, pageNum) => {
+        vscode.commands.registerCommand('extension.openManual', async (pdfPath, pageNum) => {
             if (!pdfPath) return;
             if (typeof pdfPath !== 'string') return;
             if (pdfPath.includes('"') || pdfPath.includes('&') || pdfPath.includes('|') || pdfPath.includes(';')) {
@@ -1172,18 +1172,51 @@ function activate(context) {
                 vscode.commands.executeCommand('vscode.open', vscode.Uri.file(pdfPath));
             } else {
                 if (process.platform === 'win32') {
-                    let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
-                    if (pageNum) {
-                        fileUrl += `#page=${pageNum}`;
-                    }
                     try {
-                        child_process.exec(`cmd.exe /c start "" "${fileUrl}"`, (error) => {
-                            if (error) {
-                                vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                        const defaultViewer = await getDefaultPdfViewerOnWindows();
+                        if (defaultViewer) {
+                            const exeLower = defaultViewer.exePath.toLowerCase();
+                            let cmd = `"${defaultViewer.exePath}"`;
+                            
+                            if (exeLower.includes('msedge.exe') || exeLower.includes('chrome.exe') || exeLower.includes('firefox.exe') || exeLower.includes('iexplore.exe')) {
+                                let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
+                                if (pageNum) {
+                                    fileUrl += `#page=${pageNum}`;
+                                }
+                                cmd += ` "${fileUrl}"`;
+                            } else if (exeLower.includes('acrobat.exe') || exeLower.includes('acrord32.exe')) {
+                                if (pageNum) {
+                                    cmd += ` /A "page=${pageNum}"`;
+                                }
+                                cmd += ` "${pdfPath}"`;
+                            } else if (exeLower.includes('foxitreader.exe') || exeLower.includes('foxitpdfreader.exe')) {
+                                cmd += ` "${pdfPath}"`;
+                                if (pageNum) {
+                                    cmd += ` /A page=${pageNum}`;
+                                }
+                            } else if (exeLower.includes('sumatrapdf.exe')) {
+                                cmd += ` "${pdfPath}"`;
+                                if (pageNum) {
+                                    cmd += ` -page ${pageNum}`;
+                                }
+                            } else {
+                                let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
+                                if (pageNum) {
+                                    fileUrl += `#page=${pageNum}`;
+                                }
+                                cmd += ` "${fileUrl}"`;
                             }
-                        });
+                            
+                            child_process.exec(cmd, (error) => {
+                                if (error) {
+                                    openManualFallback(pdfPath, pageNum);
+                                }
+                            });
+                        } else {
+                            openManualFallback(pdfPath, pageNum);
+                        }
                     } catch (e) {
-                        vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                        openManualFallback(pdfPath, pageNum);
                     }
                 } else {
                     vscode.env.openExternal(vscode.Uri.file(pdfPath));
@@ -1554,6 +1587,85 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 
     for (const [filePath, diags] of fileDiagnostics.entries()) {
         diagnosticsCollection.set(vscode.Uri.file(filePath), diags);
+    }
+}
+
+function expandEnvVars(str) {
+    return str.replace(/%([^%]+)%/g, (_, name) => process.env[name] || `%${name}%`);
+}
+
+function getDefaultPdfViewerOnWindows() {
+    return new Promise((resolve) => {
+        const progIdCmd = 'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.pdf\\UserChoice" /v ProgId';
+        child_process.exec(progIdCmd, (err, stdout) => {
+            if (err || !stdout) {
+                return resolve(null);
+            }
+            const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/);
+            if (!match) {
+                return resolve(null);
+            }
+            const progId = match[1];
+            
+            const cmdQuery = `reg query "HKCR\\${progId}\\shell\\open\\command"`;
+            child_process.exec(cmdQuery, (cmdErr, cmdStdout) => {
+                if (cmdErr || !cmdStdout) {
+                    return resolve(null);
+                }
+                const lines = cmdStdout.split('\n');
+                let commandLine = '';
+                for (const line of lines) {
+                    if (line.includes('REG_SZ') || line.includes('REG_EXPAND_SZ')) {
+                        const idx = line.indexOf('REG_SZ');
+                        if (idx !== -1) {
+                            commandLine = line.substring(idx + 6).trim();
+                        } else {
+                            const expIdx = line.indexOf('REG_EXPAND_SZ');
+                            if (expIdx !== -1) {
+                                commandLine = line.substring(expIdx + 13).trim();
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!commandLine) {
+                    return resolve(null);
+                }
+                
+                let exePath = '';
+                if (commandLine.startsWith('"')) {
+                    const closeQuoteIdx = commandLine.indexOf('"', 1);
+                    if (closeQuoteIdx !== -1) {
+                        exePath = commandLine.substring(1, closeQuoteIdx);
+                    }
+                } else {
+                    exePath = commandLine.split(' ')[0];
+                }
+                
+                exePath = expandEnvVars(exePath);
+                if (exePath && fs.existsSync(exePath)) {
+                    resolve({ exePath, progId });
+                } else {
+                    resolve(null);
+                }
+            });
+        });
+    });
+}
+
+function openManualFallback(pdfPath, pageNum) {
+    let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
+    if (pageNum) {
+        fileUrl += `#page=${pageNum}`;
+    }
+    try {
+        child_process.exec(`cmd.exe /c start "" "${fileUrl}"`, (error) => {
+            if (error) {
+                vscode.env.openExternal(vscode.Uri.file(pdfPath));
+            }
+        });
+    } catch (e) {
+        vscode.env.openExternal(vscode.Uri.file(pdfPath));
     }
 }
 
