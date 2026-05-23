@@ -855,12 +855,24 @@ class LsdynaIncludeCompletionProvider {
             return [];
         }
         const range = new vscode.Range(position.line, trimmedStart, position.line, position.character);
+        const currentPrefix = lineText.slice(trimmedStart, position.character);
 
         const items = [];
         for (const file of suggestions) {
             const item = new vscode.CompletionItem(file, vscode.CompletionItemKind.File);
             item.detail = 'Include File';
             item.range = range;
+            if (!file.includes('/') && !file.includes('\\')) {
+                if (currentPrefix.startsWith('./')) {
+                    item.filterText = './' + file;
+                } else if (currentPrefix.startsWith('.\\')) {
+                    item.filterText = '.\\' + file;
+                } else if (currentPrefix.startsWith('/')) {
+                    item.filterText = '/' + file;
+                } else if (currentPrefix.startsWith('\\')) {
+                    item.filterText = '\\' + file;
+                }
+            }
             items.push(item);
         }
 
