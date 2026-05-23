@@ -53,14 +53,25 @@
         "languages": [
             {
                 "id": "lsdyna",
-                "aliases": ["LS-Dyna", "lsdyna"],
-                "extensions": [".k", ".key", ".dyna"],
+                "aliases": [
+                    "LS-Dyna",
+                    "lsdyna"
+                ],
+                "extensions": [
+                    ".k",
+                    ".key",
+                    ".dyna"
+                ],
                 "configuration": "./language-configuration.json"
             },
             {
                 "id": "lsprepost-command-file",
-                "aliases": ["LS-PrePost Command File"],
-                "extensions": [".cfile"],
+                "aliases": [
+                    "LS-PrePost Command File"
+                ],
+                "extensions": [
+                    ".cfile"
+                ],
                 "configuration": "./language-configuration-lspp-cfile.json"
             }
         ],
@@ -192,5 +203,9 @@
         "fail": [
             "@semantic-release/github"
         ]
+    },
+    "dependencies": {
+        "vscode-languageclient": "^7.0.0",
+        "vscode-languageserver": "^7.0.0"
     }
 }
