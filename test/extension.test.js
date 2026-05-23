@@ -34,6 +34,7 @@ const {
     findPreviousKeyword,
     collectIncludeFiles,
     shouldSkipAutomaticDocumentScan,
+    createManifestDrivenInvalidator,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -763,6 +764,95 @@ describe('activate', () => {
             vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
             vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
         }
+    });
+
+    it('registers a workspace watcher for LS-DYNA project files', () => {
+        const context = { subscriptions: [] };
+        const disposable = { dispose() {} };
+        let watcherGlob;
+        const originalCreateFileSystemWatcher = vscodeMock.workspace.createFileSystemWatcher;
+        const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
+        const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
+        const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
+        const originalRegisterHoverProvider = vscodeMock.languages.registerHoverProvider;
+        const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
+
+        vscodeMock.workspace.createFileSystemWatcher = (glob) => {
+            watcherGlob = glob;
+            return {
+                onDidChange: () => disposable,
+                onDidCreate: () => disposable,
+                onDidDelete: () => disposable,
+                dispose() {},
+            };
+        };
+        vscodeMock.window.registerTreeDataProvider = () => disposable;
+        vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
+        vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
+        vscodeMock.window.createTextEditorDecorationType = () => disposable;
+        vscodeMock.languages.registerHoverProvider = () => disposable;
+        vscodeMock.languages.registerCodeLensProvider = () => disposable;
+
+        try {
+            extensionModule.activate(context);
+            assert.equal(watcherGlob, '**/*.{k,key,dyna}');
+        } finally {
+            vscodeMock.workspace.createFileSystemWatcher = originalCreateFileSystemWatcher;
+            vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
+            vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
+            vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
+            vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
+            vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
+        }
+    });
+});
+
+describe('createManifestDrivenInvalidator', () => {
+    it('invalidates every affected project root for a changed tracked file', () => {
+        const rootA = path.resolve('project', 'root-a.k');
+        const rootB = path.resolve('project', 'root-b.k');
+        const changedFile = path.resolve('project', 'shared.key');
+        const invalidatedRoots = [];
+        const invalidateChangedFile = createManifestDrivenInvalidator({
+            indexClient: {
+                getManifestEntries() {
+                    return [
+                        { rootFile: rootA, trackedFiles: [rootA, changedFile] },
+                        { rootFile: rootB, trackedFiles: [rootB, changedFile] },
+                    ];
+                },
+                invalidate(rootFile) {
+                    invalidatedRoots.push(rootFile);
+                },
+            },
+        });
+
+        invalidateChangedFile({ fsPath: changedFile });
+
+        assert.deepEqual(invalidatedRoots, [rootA, rootB]);
+    });
+
+    it('ignores untracked files', () => {
+        const rootFile = path.resolve('project', 'root.k');
+        const invalidatedRoots = [];
+        const invalidateChangedFile = createManifestDrivenInvalidator({
+            indexClient: {
+                getManifestEntries() {
+                    return [
+                        { rootFile, trackedFiles: [rootFile] },
+                    ];
+                },
+                invalidate(root) {
+                    invalidatedRoots.push(root);
+                },
+            },
+        });
+
+        invalidateChangedFile({ fsPath: path.resolve('project', 'other.key') });
+
+        assert.deepEqual(invalidatedRoots, []);
     });
 });
 

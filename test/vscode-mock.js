@@ -60,7 +60,18 @@ module.exports = {
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     EventEmitter: class EventEmitter { constructor() { this.event = null; } fire() {} },
     window: { activeTextEditor: null, showErrorMessage: () => {}, showWarningMessage: () => {} },
-    workspace: { textDocuments: [], onDidOpenTextDocument: () => ({}), onDidChangeTextDocument: () => ({}), onDidCloseTextDocument: () => ({}) },
+    workspace: {
+        textDocuments: [],
+        onDidOpenTextDocument: () => ({}),
+        onDidChangeTextDocument: () => ({}),
+        onDidCloseTextDocument: () => ({}),
+        createFileSystemWatcher: () => ({
+            onDidChange: () => ({}),
+            onDidCreate: () => ({}),
+            onDidDelete: () => ({}),
+            dispose() {},
+        }),
+    },
     languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
 };
