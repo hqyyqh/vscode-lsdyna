@@ -803,12 +803,12 @@ function activate(context) {
             }
         })
     );
-    if (vscode.window.tabGroups) {
+    if (vscode.window.tabGroups && typeof vscode.window.tabGroups.onDidChangeTabs === 'function') {
         context.subscriptions.push(
-            vscode.window.tabGroups.onDidChangeActiveTab(() => {
+            vscode.window.tabGroups.onDidChangeTabs(() => {
                 const uri = getActiveUri();
                 const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-                logDebug(`onDidChangeActiveTab: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
+                logDebug(`onDidChangeTabs: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
                 if (uri) {
                     keywordIndexProvider.refreshFromUriOrDocument(uri);
                 }
