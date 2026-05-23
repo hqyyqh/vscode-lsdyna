@@ -5,12 +5,14 @@ const readline = require('readline');
 const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
+const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const { createWorkerPool } = require('./worker/workerPool');
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
+const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
 
@@ -672,7 +674,16 @@ function activate(context) {
 
     const projectIndexLoader = createProjectIndexLoader();
     context.subscriptions.push(projectIndexLoader);
-    const indexClient = createIndexClient({ buildProjectIndex: projectIndexLoader.buildProjectIndex });
+    let persistentCache = null;
+    try {
+        persistentCache = createProjectSnapshotPersistentCache({ storageUri: context.globalStorageUri });
+    } catch (error) {
+        console.warn('[lsdyna] Failed to initialize project snapshot disk cache:', error);
+    }
+    const indexClient = createIndexClient({
+        buildProjectIndex: projectIndexLoader.buildProjectIndex,
+        persistentCache,
+    });
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
@@ -1063,6 +1074,20 @@ function createProjectIndexLoader({
     };
 }
 
+function createProjectSnapshotPersistentCache({
+    storageUri = null,
+    createStore = createDiskSnapshotStore,
+} = {}) {
+    if (!storageUri || typeof storageUri.fsPath !== 'string' || storageUri.fsPath.trim() === '') {
+        return null;
+    }
+
+    return createStore({
+        cacheDirectory: path.join(storageUri.fsPath, 'project-snapshots'),
+        maxCacheBytes: PROJECT_SNAPSHOT_DISK_CACHE_BYTES,
+    });
+}
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
@@ -1097,4 +1122,5 @@ module.exports._internals = {
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
+    createProjectSnapshotPersistentCache,
 };

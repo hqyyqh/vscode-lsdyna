@@ -2,7 +2,7 @@
 
 const { Worker } = require('worker_threads');
 
-const { ProjectGraph } = require('../core/project/projectGraph');
+const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
 
 function createWorkerPool({
     workerPath,
@@ -19,17 +19,6 @@ function createWorkerPool({
     const pendingRequests = new Map();
     let nextRequestId = 1;
     let disposed = false;
-
-    function hydrateProjectSnapshot(snapshot) {
-        const graph = ProjectGraph.fromJSON(snapshot.graph);
-        return {
-            ...snapshot,
-            graph,
-            keywordMap: new Map(snapshot.keywordMap || []),
-            missingFiles: graph.missingFiles,
-            cycles: graph.cycles,
-        };
-    }
 
     function rejectPendingRequests(error) {
         for (const pendingRequest of pendingRequests.values()) {

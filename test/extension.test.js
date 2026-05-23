@@ -38,6 +38,7 @@ const {
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
+    createProjectSnapshotPersistentCache,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -1137,6 +1138,30 @@ describe('createProjectIndexLoader', () => {
         await assert.rejects(loader.buildProjectIndex(snapshot.rootFile), /worker crashed/);
         assert.strictEqual(await loader.buildProjectIndex(snapshot.rootFile), snapshot);
         assert.deepEqual(createdPools, [1, 2]);
+    });
+});
+
+describe('createProjectSnapshotPersistentCache', () => {
+    it('returns null when no global storage path is available', () => {
+        assert.equal(createProjectSnapshotPersistentCache(), null);
+        assert.equal(createProjectSnapshotPersistentCache({ storageUri: {} }), null);
+    });
+
+    it('creates the disk snapshot store under the extension global storage directory', () => {
+        const created = [];
+        const persistentCache = createProjectSnapshotPersistentCache({
+            storageUri: { fsPath: path.resolve('storage-root') },
+            createStore(options) {
+                created.push(options);
+                return { kind: 'disk-store' };
+            },
+        });
+
+        assert.deepEqual(created, [{
+            cacheDirectory: path.resolve('storage-root', 'project-snapshots'),
+            maxCacheBytes: 256 * 1024 * 1024,
+        }]);
+        assert.deepEqual(persistentCache, { kind: 'disk-store' });
     });
 });
 
