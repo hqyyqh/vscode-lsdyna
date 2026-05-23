@@ -35,6 +35,7 @@ const {
     collectIncludeFiles,
     shouldSkipAutomaticDocumentScan,
     createManifestDrivenInvalidator,
+    createBatchedManifestInvalidator,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -853,6 +854,117 @@ describe('createManifestDrivenInvalidator', () => {
         invalidateChangedFile({ fsPath: path.resolve('project', 'other.key') });
 
         assert.deepEqual(invalidatedRoots, []);
+    });
+});
+
+describe('createBatchedManifestInvalidator', () => {
+    it('coalesces rapid file events into one invalidation per affected root', () => {
+        const rootFile = path.resolve('project', 'root.k');
+        const changedFile = path.resolve('project', 'shared.key');
+        const invalidatedRoots = [];
+        const scheduled = new Map();
+        let nextTimerId = 1;
+        const batchedInvalidator = createBatchedManifestInvalidator({
+            indexClient: {
+                getManifestEntries() {
+                    return [{ rootFile, trackedFiles: [rootFile, changedFile] }];
+                },
+                invalidate(root) {
+                    invalidatedRoots.push(root);
+                },
+            },
+            delayMs: 50,
+            schedule(callback) {
+                const timerId = nextTimerId++;
+                scheduled.set(timerId, callback);
+                return timerId;
+            },
+            cancel(timerId) {
+                scheduled.delete(timerId);
+            },
+        });
+
+        batchedInvalidator({ fsPath: changedFile });
+        batchedInvalidator({ fsPath: changedFile });
+        scheduled.forEach(callback => callback());
+
+        assert.deepEqual(invalidatedRoots, [rootFile]);
+    });
+
+    it('batches multiple roots discovered across rapid file events', () => {
+        const rootA = path.resolve('project', 'root-a.k');
+        const rootB = path.resolve('project', 'root-b.k');
+        const invalidatedRoots = [];
+        const scheduled = new Map();
+        let nextTimerId = 1;
+        const batchedInvalidator = createBatchedManifestInvalidator({
+            indexClient: {
+                getManifestEntries() {
+                    return [
+                        { rootFile: rootA, trackedFiles: [rootA, path.resolve('project', 'a.key')] },
+                        { rootFile: rootB, trackedFiles: [rootB, path.resolve('project', 'b.key')] },
+                    ];
+                },
+                invalidate(root) {
+                    invalidatedRoots.push(root);
+                },
+            },
+            delayMs: 50,
+            schedule(callback) {
+                const timerId = nextTimerId++;
+                scheduled.set(timerId, callback);
+                return timerId;
+            },
+            cancel(timerId) {
+                scheduled.delete(timerId);
+            },
+        });
+
+        batchedInvalidator({ fsPath: path.resolve('project', 'a.key') });
+        batchedInvalidator({ fsPath: path.resolve('project', 'b.key') });
+        scheduled.forEach(callback => callback());
+
+        assert.deepEqual(invalidatedRoots.sort(), [rootA, rootB].sort());
+    });
+
+    it('does not reschedule the timer for untracked file events', () => {
+        const rootFile = path.resolve('project', 'root.k');
+        const trackedFile = path.resolve('project', 'tracked.key');
+        const untrackedFile = path.resolve('project', 'other.key');
+        const invalidatedRoots = [];
+        const scheduled = new Map();
+        let nextTimerId = 1;
+        let scheduledCount = 0;
+        let cancelledCount = 0;
+        const batchedInvalidator = createBatchedManifestInvalidator({
+            indexClient: {
+                getManifestEntries() {
+                    return [{ rootFile, trackedFiles: [rootFile, trackedFile] }];
+                },
+                invalidate(root) {
+                    invalidatedRoots.push(root);
+                },
+            },
+            delayMs: 50,
+            schedule(callback) {
+                scheduledCount += 1;
+                const timerId = nextTimerId++;
+                scheduled.set(timerId, callback);
+                return timerId;
+            },
+            cancel(timerId) {
+                cancelledCount += 1;
+                scheduled.delete(timerId);
+            },
+        });
+
+        batchedInvalidator({ fsPath: trackedFile });
+        batchedInvalidator({ fsPath: untrackedFile });
+        scheduled.forEach(callback => callback());
+
+        assert.equal(scheduledCount, 1);
+        assert.equal(cancelledCount, 0);
+        assert.deepEqual(invalidatedRoots, [rootFile]);
     });
 });
 
