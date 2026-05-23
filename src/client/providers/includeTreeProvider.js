@@ -11,13 +11,13 @@ class IncludeItem extends vscode.TreeItem {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
         this.filePath = filePath;
         this.children = [];
+        this.resourceUri = vscode.Uri.file(filePath);
         
         if (!exists) {
             this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
             this.description = 'not found';
             this.contextValue = 'file-missing';
         } else {
-            this.resourceUri = vscode.Uri.file(filePath);
             this.contextValue = 'file';
         }
         
@@ -59,6 +59,8 @@ class LsdynaIncludeTreeProvider {
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.root = null;
+        this.resolvedPaths = new Set();
+        this.missingPaths = new Set();
     }
 
     async scan() {
@@ -79,11 +81,39 @@ class LsdynaIncludeTreeProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
             async (progress) => {
+                this.resolvedPaths.clear();
+                this.missingPaths.clear();
                 if (this.loadProjectSnapshot) {
                     const snapshot = await this.loadProjectSnapshot(uri.fsPath);
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
+                    
+                    const collectPaths = (node) => {
+                        if (node.missing) {
+                            this.missingPaths.add(node.filePath);
+                        } else {
+                            this.resolvedPaths.add(node.filePath);
+                        }
+                        if (node.children) {
+                            node.children.forEach(collectPaths);
+                        }
+                    };
+                    if (snapshot && snapshot.graph) {
+                        collectPaths(snapshot.graph.toTree(uri.fsPath));
+                    }
                 } else {
                     this.root = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
+                    
+                    const collectTreePaths = (item) => {
+                        if (item.contextValue === 'file-missing') {
+                            this.missingPaths.add(item.filePath);
+                        } else {
+                            this.resolvedPaths.add(item.filePath);
+                        }
+                        if (item.children) {
+                            item.children.forEach(collectTreePaths);
+                        }
+                    };
+                    collectTreePaths(this.root);
                 }
                 this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 this._onDidChangeTreeData.fire(undefined);

@@ -718,6 +718,41 @@ async function collectIncludeFiles(rootPath, onProgress) {
     return files;
 }
 
+class LsdynaFileDecorationProvider {
+    constructor(includeTreeProvider) {
+        this.includeTreeProvider = includeTreeProvider;
+        this._onDidChangeFileDecorations = new vscode.EventEmitter();
+        this.onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
+    }
+
+    refresh() {
+        this._onDidChangeFileDecorations.fire(undefined);
+    }
+
+    provideFileDecoration(uri) {
+        if (uri.scheme !== 'file') return undefined;
+        const fsPath = uri.fsPath;
+
+        if (this.includeTreeProvider.missingPaths.has(fsPath)) {
+            return {
+                badge: '⚠',
+                tooltip: 'Missing Include Reference',
+                color: new vscode.ThemeColor('editorWarning.foreground')
+            };
+        }
+
+        if (this.includeTreeProvider.resolvedPaths.has(fsPath)) {
+            return {
+                badge: '✓',
+                tooltip: 'Resolved Include Reference',
+                color: new vscode.ThemeColor('testing.iconPassed')
+            };
+        }
+
+        return undefined;
+    }
+}
+
 // --- Activate ---
 
 function activate(context) {
@@ -781,8 +816,17 @@ function activate(context) {
     context.subscriptions.push(
         vscode.window.registerTreeDataProvider('lsdynaIncludeTree', includeTreeProvider)
     );
+
+    const fileDecorationProvider = new LsdynaFileDecorationProvider(includeTreeProvider);
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.scanIncludeTree', () => includeTreeProvider.scan())
+        vscode.window.registerFileDecorationProvider(fileDecorationProvider)
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.scanIncludeTree', async () => {
+            await includeTreeProvider.scan();
+            fileDecorationProvider.refresh();
+        })
     );
 
     const keywordIndexProvider = new LsdynaKeywordIndexProvider({
@@ -863,6 +907,22 @@ function activate(context) {
                     vscode.window.showTextDocument(doc, { selection: range });
                 });
             });
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openToSide', (node) => {
+            const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
+            if (uri) {
+                vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside });
+            }
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.revealInExplorer', (node) => {
+            const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
+            if (uri) {
+                vscode.commands.executeCommand('revealInExplorer', uri);
+            }
         })
     );
 
