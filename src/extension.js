@@ -127,10 +127,29 @@ function shouldSkipAutomaticDocumentScan(document) {
     return Boolean(document) && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
 }
 
+function getActiveUri() {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) return editor.document.uri;
+    const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    if (activeTab && activeTab.input) {
+        const input = activeTab.input;
+        if (input.uri) return input.uri;
+        if (input.resource) return input.resource;
+        if (input.modified) return input.modified;
+        if (input.original) return input.original;
+    }
+    return null;
+}
+
+function isLsdynaUri(uri) {
+    if (!uri) return false;
+    const ext = path.extname(uri.fsPath).toLowerCase();
+    return ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
-    const ext = path.extname(document.uri.fsPath).toLowerCase();
-    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+    return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
 function collectIncludeDocumentLinks(document) {
@@ -690,6 +709,13 @@ async function collectIncludeFiles(rootPath, onProgress) {
 // --- Activate ---
 
 function activate(context) {
+    const debugChannel = vscode.window.createOutputChannel("LS-DYNA Debug");
+    context.subscriptions.push(debugChannel);
+    function logDebug(message) {
+        debugChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
+    }
+    logDebug("Extension activated.");
+
     context.subscriptions.push(
         vscode.languages.registerFoldingRangeProvider({ language: 'lsdyna' }, new LsDynaFoldingProvider())
     );
@@ -764,11 +790,37 @@ function activate(context) {
     );
 
     context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(editor => keywordIndexProvider.refreshFromDocument(editor?.document))
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            logDebug(`onDidChangeActiveTextEditor: editor=${editor ? editor.document.uri.toString() : 'none'}, languageId=${editor ? editor.document.languageId : 'none'}`);
+            if (editor) {
+                keywordIndexProvider.refreshFromUriOrDocument(editor.document);
+            } else {
+                const uri = getActiveUri();
+                logDebug(`onDidChangeActiveTextEditor callback fallback: getActiveUri=${uri ? uri.toString() : 'null'}`);
+                if (uri) {
+                    keywordIndexProvider.refreshFromUriOrDocument(uri);
+                }
+            }
+        })
     );
+    if (vscode.window.tabGroups) {
+        context.subscriptions.push(
+            vscode.window.tabGroups.onDidChangeActiveTab(() => {
+                const uri = getActiveUri();
+                const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+                logDebug(`onDidChangeActiveTab: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
+                if (uri) {
+                    keywordIndexProvider.refreshFromUriOrDocument(uri);
+                }
+            })
+        );
+    }
     const scheduleKeywordIndexRefresh = createActiveDocumentDebouncer(
-        () => vscode.window.activeTextEditor?.document,
-        document => keywordIndexProvider.refreshFromDocument(document)
+        () => vscode.window.activeTextEditor?.document || getActiveUri(),
+        uriOrDoc => {
+            logDebug(`Debounced keyword index refresh triggered`);
+            keywordIndexProvider.refreshFromUriOrDocument(uriOrDoc);
+        }
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
@@ -784,8 +836,10 @@ function activate(context) {
     context.subscriptions.push(workspaceWatcher.onDidCreate(uri => invalidateChangedProjectRoots(uri)));
     context.subscriptions.push(workspaceWatcher.onDidDelete(uri => invalidateChangedProjectRoots(uri)));
 
-    if (vscode.window.activeTextEditor) {
-        keywordIndexProvider.refreshFromDocument(vscode.window.activeTextEditor.document);
+    const initialUri = getActiveUri();
+    logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);
+    if (initialUri) {
+        keywordIndexProvider.refreshFromUriOrDocument(initialUri);
     }
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.goToKeywordUsage', (filePath, lineIndex) => {

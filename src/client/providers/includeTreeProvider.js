@@ -20,10 +20,29 @@ class IncludeItem extends vscode.TreeItem {
     }
 }
 
+function getActiveUri() {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) return editor.document.uri;
+    const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    if (activeTab && activeTab.input) {
+        const input = activeTab.input;
+        if (input.uri) return input.uri;
+        if (input.resource) return input.resource;
+        if (input.modified) return input.modified;
+        if (input.original) return input.original;
+    }
+    return null;
+}
+
+function isLsdynaUri(uri) {
+    if (!uri) return false;
+    const ext = path.extname(uri.fsPath).toLowerCase();
+    return ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
-    const ext = path.extname(document.uri.fsPath).toLowerCase();
-    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+    return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
 class LsdynaIncludeTreeProvider {
@@ -36,19 +55,28 @@ class LsdynaIncludeTreeProvider {
     }
 
     async scan() {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || !isLsdynaFile(editor.document)) {
-            vscode.window.showWarningMessage('Open an LS-DYNA file first.');
+        const uri = getActiveUri();
+        if (!uri || !isLsdynaUri(uri)) {
+            const editor = vscode.window.activeTextEditor;
+            const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+            const debugInfo = [
+                `activeEditor=${!!editor}`,
+                `tabGroups=${!!vscode.window.tabGroups}`,
+                `activeTab=${!!activeTab}`,
+                `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
+                `inputKeys=${activeTab?.input ? JSON.stringify(Object.keys(activeTab.input)) : 'none'}`
+            ].join(', ');
+            vscode.window.showWarningMessage(`Open an LS-DYNA file first. (Debug: ${debugInfo})`);
             return;
         }
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
             async (progress) => {
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(editor.document.uri.fsPath);
-                    this.root = this._buildRootFromSnapshot(snapshot, editor.document.uri.fsPath);
+                    const snapshot = await this.loadProjectSnapshot(uri.fsPath);
+                    this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
                 } else {
-                    this.root = await this._buildItem(editor.document.uri.fsPath, new Set(), progress);
+                    this.root = await this._buildItem(uri.fsPath, new Set(), progress);
                 }
                 this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 this._onDidChangeTreeData.fire(undefined);

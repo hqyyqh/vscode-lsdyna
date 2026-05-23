@@ -46,10 +46,29 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
     }
 }
 
+function getActiveUri() {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) return editor.document.uri;
+    const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    if (activeTab && activeTab.input) {
+        const input = activeTab.input;
+        if (input.uri) return input.uri;
+        if (input.resource) return input.resource;
+        if (input.modified) return input.modified;
+        if (input.original) return input.original;
+    }
+    return null;
+}
+
+function isLsdynaUri(uri) {
+    if (!uri) return false;
+    const ext = path.extname(uri.fsPath).toLowerCase();
+    return ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
-    const ext = path.extname(document.uri.fsPath).toLowerCase();
-    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+    return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
 class LsdynaKeywordIndexProvider {
@@ -125,7 +144,7 @@ class LsdynaKeywordIndexProvider {
         const uriStr = document.uri.toString();
         let blockIndex = this.documentIndices.get(uriStr);
         if (!blockIndex) {
-            this.refreshFromDocument(document);
+            this.refreshFromUriOrDocument(document);
             return;
         } else if (event && event.contentChanges) {
             for (const change of event.contentChanges) {
@@ -140,17 +159,26 @@ class LsdynaKeywordIndexProvider {
         }
     }
 
-    async refreshFromDocument(document) {
-        if (this._mode !== 'local') return;
-        if (!document || !isLsdynaFile(document)) return;
+    refreshFromDocument(document) {
+        return this.refreshFromUriOrDocument(document);
+    }
 
-        const filePath = document.uri.fsPath;
-        const uriStr = document.uri.toString();
+    async refreshFromUriOrDocument(uriOrDoc) {
+        if (this._mode !== 'local') return;
+        if (!uriOrDoc) return;
+
+        const isDoc = typeof uriOrDoc.uri !== 'undefined';
+        const uri = isDoc ? uriOrDoc.uri : uriOrDoc;
+        if (!isLsdynaUri(uri)) return;
+
+        const filePath = uri.fsPath;
+        const uriStr = uri.toString();
         let blockIndex = this.documentIndices.get(uriStr);
 
         if (!blockIndex) {
             blockIndex = new BlockIndex(filePath);
-            if (this.shouldSkipAutomaticDocumentScan(document)) {
+            const isLarge = isDoc ? this.shouldSkipAutomaticDocumentScan(uriOrDoc) : true;
+            if (isLarge) {
                 try {
                     await vscode.window.withProgress(
                         { location: vscode.ProgressLocation.Window, title: 'Indexing keywords…' },
@@ -164,7 +192,7 @@ class LsdynaKeywordIndexProvider {
                     return;
                 }
             } else {
-                blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
+                blockIndex.buildIndex(uriOrDoc.lineCount, i => uriOrDoc.lineAt(i).text);
             }
             this.documentIndices.set(uriStr, blockIndex);
         }
@@ -180,12 +208,21 @@ class LsdynaKeywordIndexProvider {
     }
 
     async scan() {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || !isLsdynaFile(editor.document)) {
-            vscode.window.showWarningMessage('Open an LS-DYNA file first.');
+        const uri = getActiveUri();
+        if (!uri || !isLsdynaUri(uri)) {
+            const editor = vscode.window.activeTextEditor;
+            const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+            const debugInfo = [
+                `activeEditor=${!!editor}`,
+                `tabGroups=${!!vscode.window.tabGroups}`,
+                `activeTab=${!!activeTab}`,
+                `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
+                `inputKeys=${activeTab?.input ? JSON.stringify(Object.keys(activeTab.input)) : 'none'}`
+            ].join(', ');
+            vscode.window.showWarningMessage(`Open an LS-DYNA file first. (Debug: ${debugInfo})`);
             return;
         }
-        const rootFile = editor.document.uri.fsPath;
+        const rootFile = uri.fsPath;
         const rootDir = path.dirname(rootFile);
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
@@ -207,8 +244,9 @@ class LsdynaKeywordIndexProvider {
 
     setLocal() {
         this._setMode('local');
-        if (vscode.window.activeTextEditor) {
-            this.refreshFromDocument(vscode.window.activeTextEditor.document);
+        const uri = getActiveUri();
+        if (uri) {
+            this.refreshFromUriOrDocument(uri);
         } else {
             this.roots = [];
             this._onDidChangeTreeData.fire(undefined);
