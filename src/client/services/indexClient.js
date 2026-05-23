@@ -230,6 +230,9 @@ function createIndexClient({
         getCacheStats() {
             return getSnapshotCacheStats(snapshots);
         },
+        getManifestEntries() {
+            return manifestStore.list();
+        },
         invalidate,
         loadProjectSnapshot,
     };

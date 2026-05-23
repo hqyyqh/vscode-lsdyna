@@ -5,6 +5,7 @@ const readline = require('readline');
 const { LsdynaIncludeTreeProvider } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
+const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const { buildProjectIndex } = require('./core/project/projectIndexer');
@@ -670,6 +671,7 @@ function activate(context) {
     );
 
     const indexClient = createIndexClient({ buildProjectIndex });
+    const invalidateChangedProjectRoots = createManifestDrivenInvalidator({ indexClient });
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -711,6 +713,11 @@ function activate(context) {
             }
         })
     );
+    const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
+    context.subscriptions.push(workspaceWatcher);
+    context.subscriptions.push(workspaceWatcher.onDidChange(uri => invalidateChangedProjectRoots(uri)));
+    context.subscriptions.push(workspaceWatcher.onDidCreate(uri => invalidateChangedProjectRoots(uri)));
+    context.subscriptions.push(workspaceWatcher.onDidDelete(uri => invalidateChangedProjectRoots(uri)));
 
     if (vscode.window.activeTextEditor) {
         keywordIndexProvider.refreshFromDocument(vscode.window.activeTextEditor.document);
@@ -878,6 +885,27 @@ function activate(context) {
 
 function deactivate() {}
 
+function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = findAffectedProjectRoots } = {}) {
+    if (!indexClient || typeof indexClient.invalidate !== 'function' || typeof indexClient.getManifestEntries !== 'function') {
+        throw new TypeError('createManifestDrivenInvalidator requires indexClient.invalidate and indexClient.getManifestEntries');
+    }
+    if (typeof findAffectedRoots !== 'function') {
+        throw new TypeError('createManifestDrivenInvalidator requires a findAffectedRoots function');
+    }
+
+    return function invalidateChangedFile(fileUriOrPath) {
+        const changedFilePath = typeof fileUriOrPath === 'string'
+            ? fileUriOrPath
+            : fileUriOrPath && fileUriOrPath.fsPath;
+        if (!changedFilePath) return;
+
+        const affectedRoots = findAffectedRoots(changedFilePath, indexClient.getManifestEntries());
+        for (const rootFile of affectedRoots) {
+            indexClient.invalidate(rootFile);
+        }
+    };
+}
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
@@ -908,4 +936,5 @@ module.exports._internals = {
     searchFileFromPaths,
     findNextKeyword,
     findPreviousKeyword,
+    createManifestDrivenInvalidator,
 };
