@@ -1799,7 +1799,7 @@ describe('extension.openManual command', () => {
         assert.strictEqual(executeCommandCalls[0].args[0].fsPath, pdfPath);
     });
 
-    it('uses child_process.exec when manualViewer is system on Windows', async () => {
+    it('uses child_process.exec and falls back to start command when default viewer is not detected on Windows', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         vscodeMock.workspace.getConfiguration = () => ({
             get: (key) => key === 'manualViewer' ? 'system' : undefined
@@ -1808,12 +1808,96 @@ describe('extension.openManual command', () => {
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            cb(null, '');
+        };
+
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(execCalls.length, 1);
-        assert.strictEqual(execCalls[0], 'cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"');
+        assert.strictEqual(execCalls.length, 2);
+        assert.ok(execCalls[0].includes('reg query'));
+        assert.strictEqual(execCalls[1], 'cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"');
         assert.strictEqual(openExternalCalls.length, 0);
+    });
+
+    it('launches Microsoft Edge directly with page parameter when Edge is the default viewer on Windows', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            if (cmd.includes('UserChoice')) {
+                cb(null, '    ProgId    REG_SZ    MSEdgePDF\r\n');
+            } else if (cmd.includes('MSEdgePDF')) {
+                cb(null, '    (Default)    REG_SZ    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --single-argument %1\r\n');
+            } else {
+                cb(null, '');
+            }
+        };
+
+        const originalExistsSync = require('fs').existsSync;
+        require('fs').existsSync = (p) => {
+            if (p.includes('msedge.exe')) return true;
+            return originalExistsSync(p);
+        };
+
+        try {
+            const pdfPath = 'C:\\path\\to\\manual.pdf';
+            await openManual(pdfPath, 12);
+
+            assert.strictEqual(execCalls.length, 3);
+            assert.ok(execCalls[0].includes('UserChoice'));
+            assert.ok(execCalls[1].includes('MSEdgePDF'));
+            assert.strictEqual(execCalls[2], '"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" "file:///C:/path/to/manual.pdf#page=12"');
+            assert.strictEqual(openExternalCalls.length, 0);
+        } finally {
+            require('fs').existsSync = originalExistsSync;
+        }
+    });
+
+    it('launches Acrobat Reader with /A page parameter when Acrobat is the default viewer on Windows', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            if (cmd.includes('UserChoice')) {
+                cb(null, '    ProgId    REG_SZ    Acrobat.Document.DC\r\n');
+            } else if (cmd.includes('Acrobat.Document.DC')) {
+                cb(null, '    (Default)    REG_SZ    "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe" "%1"\r\n');
+            } else {
+                cb(null, '');
+            }
+        };
+
+        const originalExistsSync = require('fs').existsSync;
+        require('fs').existsSync = (p) => {
+            if (p.includes('Acrobat.exe')) return true;
+            return originalExistsSync(p);
+        };
+
+        try {
+            const pdfPath = 'C:\\path\\to\\manual.pdf';
+            await openManual(pdfPath, 12);
+
+            assert.strictEqual(execCalls.length, 3);
+            assert.strictEqual(execCalls[2], '"C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe" /A "page=12" "C:\\path\\to\\manual.pdf"');
+            assert.strictEqual(openExternalCalls.length, 0);
+        } finally {
+            require('fs').existsSync = originalExistsSync;
+        }
     });
 
     it('falls back to vscode.env.openExternal on Windows when child_process.exec fails', async () => {
@@ -1833,7 +1917,7 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(execCalls.length, 1);
+        assert.strictEqual(execCalls.length, 2);
         assert.strictEqual(openExternalCalls.length, 1);
         assert.strictEqual(openExternalCalls[0].fsPath, pdfPath);
     });
