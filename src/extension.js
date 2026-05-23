@@ -843,9 +843,13 @@ function activate(context) {
     }
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.goToKeywordUsage', (filePath, lineIndex) => {
-            vscode.workspace.openTextDocument(filePath).then(doc => {
-                const pos = new vscode.Position(lineIndex, 0);
-                vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos) });
+            const uri = vscode.Uri.file(filePath);
+            const pos = new vscode.Position(lineIndex, 0);
+            const range = new vscode.Range(pos, pos);
+            vscode.commands.executeCommand('vscode.open', uri, { selection: range }).then(undefined, () => {
+                vscode.workspace.openTextDocument(filePath).then(doc => {
+                    vscode.window.showTextDocument(doc, { selection: range });
+                });
             });
         })
     );
@@ -938,7 +942,10 @@ function activate(context) {
                     getFilenameFromDocument(editor.document, editor.selection.active.line),
                     getSearchPath(editor.document)
                 );
-                vscode.workspace.openTextDocument(fullPath).then(doc => vscode.window.showTextDocument(doc));
+                const uri = vscode.Uri.file(fullPath);
+                vscode.commands.executeCommand('vscode.open', uri).then(undefined, () => {
+                    vscode.workspace.openTextDocument(fullPath).then(doc => vscode.window.showTextDocument(doc));
+                });
             } catch (error) {
                 vscode.window.showErrorMessage(error.message);
             }
