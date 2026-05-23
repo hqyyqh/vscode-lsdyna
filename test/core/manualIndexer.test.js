@@ -9,6 +9,7 @@ const vscode = require('vscode');
 const {
     cleanKeyword,
     parsePdf,
+    parsePdfContent,
     initialize,
     getManualLocations
 } = require('../../src/core/manualIndexer');
@@ -100,7 +101,7 @@ trailer
         });
     });
 
-    describe('parsePdf', () => {
+    describe('parsePdf & parsePdfContent', () => {
         it('returns empty array if PDF does not exist', () => {
             const result = parsePdf(path.join(tempDir, 'non_existent.pdf'));
             assert.deepEqual(result, []);
@@ -111,6 +112,168 @@ trailer
             assert.deepEqual(bookmarks, [
                 { title: '*NODE_TITLE', page: 1 },
                 { title: '*EOS_001', page: 2 }
+            ]);
+        });
+
+        it('does not cause infinite loop on cyclic Page tree', () => {
+            const cyclicPdf = `%PDF-1.5
+1 0 obj
+<<
+  /Type /Catalog
+  /Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+  /Type /Pages
+  /Kids [ 2 0 R ]
+  /Count 1
+>>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+            const bookmarks = parsePdfContent(cyclicPdf);
+            assert.deepEqual(bookmarks, []);
+        });
+
+        it('does not cause infinite loop on cyclic Outlines tree', () => {
+            const cyclicPdf = `%PDF-1.5
+1 0 obj
+<<
+  /Type /Catalog
+  /Pages 2 0 R
+  /Outlines 3 0 R
+>>
+endobj
+2 0 obj
+<<
+  /Type /Pages
+  /Kids [ 4 0 R ]
+  /Count 1
+>>
+endobj
+3 0 obj
+<<
+  /Type /Outlines
+  /First 5 0 R
+>>
+endobj
+4 0 obj
+<<
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+  /Title (Loop)
+  /Dest [ 4 0 R /XYZ ]
+  /Next 5 0 R
+>>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+            const bookmarks = parsePdfContent(cyclicPdf);
+            assert.deepEqual(bookmarks, [
+                { title: 'Loop', page: 1 }
+            ]);
+        });
+
+        it('handles nested Pages trees and does not confuse Pages with Page', () => {
+            const nestedPdf = `%PDF-1.5
+1 0 obj
+<<
+  /Type /Catalog
+  /Pages 2 0 R
+  /Outlines 3 0 R
+>>
+endobj
+2 0 obj
+<<
+  /Type /Pages
+  /Kids [ 8 0 R ]
+  /Count 2
+>>
+endobj
+8 0 obj
+<<
+  /Type /Pages
+  /Kids [ 4 0 R 5 0 R ]
+  /Count 2
+>>
+endobj
+3 0 obj
+<<
+  /Type /Outlines
+  /First 6 0 R
+>>
+endobj
+4 0 obj
+<<
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+  /Type /Page
+>>
+endobj
+6 0 obj
+<<
+  /Title (Page Two)
+  /Dest [ 5 0 R /XYZ ]
+>>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+            const bookmarks = parsePdfContent(nestedPdf);
+            assert.deepEqual(bookmarks, [
+                { title: 'Page Two', page: 2 }
+            ]);
+        });
+
+        it('does not get confused by /TitleBar or other substrings containing /Title', () => {
+            const titleConfPdf = `%PDF-1.5
+1 0 obj
+<<
+  /Type /Catalog
+  /Pages 2 0 R
+  /Outlines 3 0 R
+>>
+endobj
+2 0 obj
+<<
+  /Type /Pages
+  /Kids [ 4 0 R ]
+  /Count 1
+>>
+endobj
+3 0 obj
+<<
+  /Type /Outlines
+  /First 5 0 R
+>>
+endobj
+4 0 obj
+<<
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+  /TitleBar (Confusing Header)
+  /Title (Correct Title)
+  /Dest [ 4 0 R /XYZ ]
+>>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF`;
+            const bookmarks = parsePdfContent(titleConfPdf);
+            assert.deepEqual(bookmarks, [
+                { title: 'Correct Title', page: 1 }
             ]);
         });
     });

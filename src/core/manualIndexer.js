@@ -36,7 +36,7 @@ function parseLiteralString(content, start) {
                 // Octal escape, up to 3 digits
                 let octalStr = '';
                 let k = 1;
-                while (k <= 3 && /[0-7]/.test(content[i + k])) {
+                while (k <= 3 && i + k < content.length && /[0-7]/.test(content[i + k])) {
                     octalStr += content[i + k];
                     k++;
                 }
@@ -110,30 +110,29 @@ function decodePdfString(str) {
 }
 
 function extractTitle(objContent) {
-    const idx = objContent.indexOf('/Title');
-    if (idx === -1) return null;
-    let i = idx + 6;
-    while (i < objContent.length && (objContent[i] === ' ' || objContent[i] === '\t' || objContent[i] === '\r' || objContent[i] === '\n')) {
-        i++;
-    }
-    if (i >= objContent.length) return null;
-    let parsed = null;
-    if (objContent[i] === '(') {
-        parsed = parseLiteralString(objContent, i);
-    } else if (objContent[i] === '<') {
-        parsed = parseHexString(objContent, i);
-    }
-    if (parsed) {
-        return decodePdfString(parsed.value);
+    const titleRegex = /\/Title\b/g;
+    let match;
+    while ((match = titleRegex.exec(objContent)) !== null) {
+        const idx = match.index;
+        let i = idx + 6;
+        while (i < objContent.length && (objContent[i] === ' ' || objContent[i] === '\t' || objContent[i] === '\r' || objContent[i] === '\n')) {
+            i++;
+        }
+        if (i >= objContent.length) continue;
+        let parsed = null;
+        if (objContent[i] === '(') {
+            parsed = parseLiteralString(objContent, i);
+        } else if (objContent[i] === '<') {
+            parsed = parseHexString(objContent, i);
+        }
+        if (parsed) {
+            return decodePdfString(parsed.value);
+        }
     }
     return null;
 }
 
-function parsePdf(pdfPath) {
-    if (!fs.existsSync(pdfPath)) {
-        return [];
-    }
-    const content = fs.readFileSync(pdfPath, 'binary');
+function parsePdfContent(content) {
     const objMap = new Map();
     const regex = /(\d+)\s+0\s+obj/g;
     let match;
@@ -146,7 +145,7 @@ function parsePdf(pdfPath) {
         }
     }
 
-    const catalogObj = [...objMap.values()].find(val => val.includes('/Type/Catalog') || val.includes('/Type /Catalog'));
+    const catalogObj = [...objMap.values()].find(val => /\/Type\s*\/Catalog\b/.test(val));
     if (!catalogObj) return [];
 
     const pagesRefMatch = catalogObj.match(/\/Pages\s*(\d+)\s+\d+\s+R/);
@@ -154,15 +153,25 @@ function parsePdf(pdfPath) {
     const pagesRootId = parseInt(pagesRefMatch[1], 10);
 
     const pageIds = [];
+    const visitedPages = new Set();
+
     function traversePages(id) {
+        if (visitedPages.has(id)) return;
+        visitedPages.add(id);
+
         const obj = objMap.get(id);
         if (!obj) return;
-        if (obj.includes('/Type/Page') || obj.includes('/Type /Page')) {
+
+        const isPage = /\/Type\s*\/Page\b/.test(obj);
+        const isPages = /\/Type\s*\/Pages\b/.test(obj);
+
+        if (isPage && !isPages) {
             if (!obj.includes('/Kids')) {
                 pageIds.push(id);
                 return;
             }
         }
+
         const kidsMatch = obj.match(/\/Kids\s*\[([^\]]+)\]/);
         if (kidsMatch) {
             const kidsContent = kidsMatch[1];
@@ -176,7 +185,7 @@ function parsePdf(pdfPath) {
                 traversePages(kidId);
             }
         } else {
-            if (obj.includes('/Type/Page') || obj.includes('/Type /Page')) {
+            if (isPage && !isPages) {
                 pageIds.push(id);
             }
         }
@@ -191,8 +200,12 @@ function parsePdf(pdfPath) {
     if (!outlinesRoot) return [];
 
     const bookmarks = [];
+    const visitedOutlines = new Set();
 
     function traverseOutlines(id) {
+        if (visitedOutlines.has(id)) return;
+        visitedOutlines.add(id);
+
         const obj = objMap.get(id);
         if (!obj) return;
 
@@ -239,6 +252,14 @@ function parsePdf(pdfPath) {
     return bookmarks;
 }
 
+function parsePdf(pdfPath) {
+    if (!fs.existsSync(pdfPath)) {
+        return [];
+    }
+    const content = fs.readFileSync(pdfPath, 'binary');
+    return parsePdfContent(content);
+}
+
 async function initialize(context) {
     keywordMap.clear();
     try {
@@ -255,11 +276,13 @@ async function initialize(context) {
             }
         }
 
-        if (!fs.existsSync(resolvedDir)) {
+        try {
+            await fs.promises.access(resolvedDir);
+        } catch {
             return;
         }
 
-        const files = fs.readdirSync(resolvedDir);
+        const files = await fs.promises.readdir(resolvedDir);
         const pdfFiles = files
             .filter(f => f.toLowerCase().endsWith('.pdf'))
             .map(f => path.resolve(resolvedDir, f));
@@ -269,14 +292,15 @@ async function initialize(context) {
 
         for (const pdfPath of pdfFiles) {
             try {
-                const stats = fs.statSync(pdfPath);
+                const stats = await fs.promises.stat(pdfPath);
                 const mtimeMs = stats.mtimeMs;
 
                 let bookmarks;
                 if (cache[pdfPath] && cache[pdfPath].mtimeMs === mtimeMs) {
                     bookmarks = cache[pdfPath].bookmarks;
                 } else {
-                    bookmarks = parsePdf(pdfPath);
+                    const content = await fs.promises.readFile(pdfPath, 'binary');
+                    bookmarks = parsePdfContent(content);
                     cache[pdfPath] = {
                         mtimeMs,
                         bookmarks
@@ -322,6 +346,8 @@ function getManualLocations(kwName) {
 module.exports = {
     initialize,
     getManualLocations,
+    // 导出用于测试的方法
     parsePdf,
+    parsePdfContent,
     cleanKeyword
 };
