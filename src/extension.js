@@ -850,14 +850,21 @@ class LsdynaIncludeCompletionProvider {
             walkDir(baseDir, baseDir);
         }
 
+        const trimmedStart = lineText.length - lineText.trimStart().length;
+        if (position.character < trimmedStart) {
+            return [];
+        }
+        const range = new vscode.Range(position.line, trimmedStart, position.line, position.character);
+
         const items = [];
         for (const file of suggestions) {
             const item = new vscode.CompletionItem(file, vscode.CompletionItemKind.File);
             item.detail = 'Include File';
+            item.range = range;
             items.push(item);
         }
 
-        return items;
+        return new vscode.CompletionList(items, true);
     }
 }
 

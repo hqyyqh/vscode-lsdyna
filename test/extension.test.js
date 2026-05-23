@@ -1521,9 +1521,11 @@ describe('LsdynaIncludeCompletionProvider', () => {
         try {
             // Position is at line 5 (directly under *INCLUDE)
             const position = { line: 5, character: 0 };
-            const items = provider.provideCompletionItems(doc, position);
+            const list = provider.provideCompletionItems(doc, position);
 
-            assert.ok(items);
+            assert.ok(list);
+            assert.strictEqual(list.isIncomplete, true);
+            const items = list.items;
             const labels = items.map(item => item.label);
             
             // Should contain files from submodels (since submodels is valid)
@@ -1532,19 +1534,39 @@ describe('LsdynaIncludeCompletionProvider', () => {
             // Should not show anything from the invalidDir since it is validated to not exist
             assert.ok(!labels.includes('non_existent_xyz'));
 
+            // Check that items have a range property
+            for (const item of items) {
+                assert.ok(item.range);
+                assert.strictEqual(item.range.start.line, 5);
+                assert.strictEqual(item.range.start.character, 0);
+                assert.strictEqual(item.range.end.character, 0);
+            }
+
+            // Test case for range with prefix: '  sub1/ma'
+            // The text starts at index 2. Cursor is at index 9.
+            const prefixContent = `*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n  sub1/ma`;
+            const prefixDoc = fakeDoc(prefixContent, mainFile);
+            const prefixList = provider.provideCompletionItems(prefixDoc, { line: 3, character: 9 });
+            assert.ok(prefixList);
+            for (const item of prefixList.items) {
+                assert.strictEqual(item.range.start.line, 3);
+                assert.strictEqual(item.range.start.character, 2);
+                assert.strictEqual(item.range.end.character, 9);
+            }
+
             // Test position on keyword line (line 4) -> should be empty
-            const itemsOnKeywordLine = provider.provideCompletionItems(doc, { line: 4, character: 0 });
-            assert.strictEqual(itemsOnKeywordLine.length, 0);
+            const listOnKeywordLine = provider.provideCompletionItems(doc, { line: 4, character: 0 });
+            assert.strictEqual(listOnKeywordLine.length || listOnKeywordLine.items?.length || 0, 0);
 
             // Test position on path line (line 1) -> should be empty
-            const itemsOnPathLine = provider.provideCompletionItems(doc, { line: 1, character: 0 });
-            assert.strictEqual(itemsOnPathLine.length, 0);
+            const listOnPathLine = provider.provideCompletionItems(doc, { line: 1, character: 0 });
+            assert.strictEqual(listOnPathLine.length || listOnPathLine.items?.length || 0, 0);
 
             // Test comment line
             const commentFileContent = `*INCLUDE\n$ this is a comment\n`;
             const docWithComment = fakeDoc(commentFileContent, mainFile);
-            const itemsOnComment = provider.provideCompletionItems(docWithComment, { line: 1, character: 0 });
-            assert.strictEqual(itemsOnComment.length, 0);
+            const listOnComment = provider.provideCompletionItems(docWithComment, { line: 1, character: 0 });
+            assert.strictEqual(listOnComment.length || listOnComment.items?.length || 0, 0);
 
         } finally {
             // Cleanup

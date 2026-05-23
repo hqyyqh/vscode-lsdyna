@@ -56,6 +56,13 @@ const CompletionItemKind = {
     File: 17
 };
 
+class CompletionList {
+    constructor(items, isIncomplete = false) {
+        this.items = items;
+        this.isIncomplete = isIncomplete;
+    }
+}
+
 module.exports = {
     Position,
     Range,
@@ -63,6 +70,7 @@ module.exports = {
     Hover,
     CompletionItem,
     CompletionItemKind,
+    CompletionList,
     Uri: { file: p => ({ fsPath: p }) },
     FoldingRange: class FoldingRange { constructor(s, e) { this.start = s; this.end = e; } },
     DocumentSymbol: class DocumentSymbol {},
