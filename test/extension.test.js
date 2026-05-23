@@ -1375,6 +1375,24 @@ describe('LsdynaFieldHoverProvider', () => {
             '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.  \n中文：用于终止计算的能量比变化百分比。若未定义，则该选项不启用。\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
         );
     });
+
+    it('correctly handles _TITLE suffix by skipping the title line and alignment shift', () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc('*MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE\nAl7046\n$      MID|       RO|\n    100000    2.7E-9\n');
+
+        // Hovering on title line (line 1) should return null
+        const titleHover = provider.provideHover(doc, { line: 1, character: 2 });
+        assert.strictEqual(titleHover, null);
+
+        // Hovering on comment line (line 2) should return null
+        const commentHover = provider.provideHover(doc, { line: 2, character: 2 });
+        assert.strictEqual(commentHover, null);
+
+        // Hovering on data line (line 3) for character 5 (MID field, width 10)
+        const dataHover = provider.provideHover(doc, { line: 3, character: 5 });
+        assert.ok(dataHover);
+        assert.ok(dataHover.contents[0].value.includes('Field: **MID**'));
+    });
 });
 
 // ---------------------------------------------------------------------------
