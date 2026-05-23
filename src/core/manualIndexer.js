@@ -287,7 +287,7 @@ async function initialize(context) {
             .filter(f => f.toLowerCase().endsWith('.pdf'))
             .map(f => path.resolve(resolvedDir, f));
 
-        let cache = context.workspaceState.get('manuals_bookmark_cache') || {};
+        let cache = (context.workspaceState && context.workspaceState.get('manuals_bookmark_cache')) || {};
         let cacheUpdated = false;
 
         for (const pdfPath of pdfFiles) {
@@ -331,7 +331,7 @@ async function initialize(context) {
             }
         }
 
-        if (cacheUpdated) {
+        if (cacheUpdated && context.workspaceState) {
             await context.workspaceState.update('manuals_bookmark_cache', cache);
         }
     } catch (e) {
