@@ -8,7 +8,7 @@ const { createIndexClient } = require('./client/services/indexClient');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
-const { buildProjectIndex } = require('./core/project/projectIndexer');
+const { createWorkerPool } = require('./worker/workerPool');
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
@@ -670,7 +670,9 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
 
-    const indexClient = createIndexClient({ buildProjectIndex });
+    const projectIndexLoader = createProjectIndexLoader();
+    context.subscriptions.push(projectIndexLoader);
+    const indexClient = createIndexClient({ buildProjectIndex: projectIndexLoader.buildProjectIndex });
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
@@ -1021,6 +1023,46 @@ function createProjectSnapshotRefreshQueue({
     };
 }
 
+function createProjectIndexLoader({
+    createPool = createWorkerPool,
+    workerPath = path.join(__dirname, 'worker', 'scanWorker.js'),
+} = {}) {
+    let workerPool = null;
+
+    function isPoolDisposed(pool) {
+        return !pool || (typeof pool.isDisposed === 'function' && pool.isDisposed());
+    }
+
+    function getWorkerPool() {
+        if (isPoolDisposed(workerPool)) {
+            workerPool = null;
+        }
+        if (!workerPool) {
+            workerPool = createPool({ workerPath });
+        }
+        return workerPool;
+    }
+
+    return {
+        async buildProjectIndex(rootFile) {
+            const pool = getWorkerPool();
+            try {
+                return await pool.buildProjectIndex(rootFile);
+            } catch (error) {
+                if (workerPool === pool && isPoolDisposed(pool)) {
+                    workerPool = null;
+                }
+                throw error;
+            }
+        },
+        async dispose() {
+            if (!workerPool) return;
+            await workerPool.dispose();
+            workerPool = null;
+        },
+    };
+}
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
@@ -1054,4 +1096,5 @@ module.exports._internals = {
     createManifestDrivenInvalidator,
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
+    createProjectIndexLoader,
 };

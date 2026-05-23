@@ -37,6 +37,7 @@ const {
     createManifestDrivenInvalidator,
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
+    createProjectIndexLoader,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
@@ -1072,6 +1073,70 @@ describe('createProjectSnapshotRefreshQueue', () => {
 
         assert.deepEqual(startedRoots, [rootA, rootB]);
         assert.equal(maxConcurrent, 1);
+    });
+});
+
+describe('createProjectIndexLoader', () => {
+    it('creates the worker pool lazily on first project index request and disposes it', async () => {
+        const createdPools = [];
+        let disposed = false;
+        const snapshot = { rootFile: path.resolve('project', 'main.k') };
+        const loader = createProjectIndexLoader({
+            createPool({ workerPath }) {
+                createdPools.push(workerPath);
+                return {
+                    buildProjectIndex: async () => snapshot,
+                    dispose: async () => {
+                        disposed = true;
+                    },
+                };
+            },
+            workerPath: path.resolve('custom', 'scanWorker.js'),
+        });
+
+        assert.deepEqual(createdPools, []);
+        assert.strictEqual(await loader.buildProjectIndex(snapshot.rootFile), snapshot);
+        assert.deepEqual(createdPools, [path.resolve('custom', 'scanWorker.js')]);
+
+        await loader.dispose();
+        assert.equal(disposed, true);
+    });
+
+    it('recreates the worker pool after a fatal worker failure', async () => {
+        const createdPools = [];
+        const snapshot = { rootFile: path.resolve('project', 'main.k') };
+        let firstPoolDisposed = false;
+        const loader = createProjectIndexLoader({
+            createPool() {
+                createdPools.push(createdPools.length + 1);
+                if (createdPools.length === 1) {
+                    return {
+                        async buildProjectIndex() {
+                            firstPoolDisposed = true;
+                            throw new Error('worker crashed');
+                        },
+                        isDisposed() {
+                            return firstPoolDisposed;
+                        },
+                        dispose: async () => {},
+                    };
+                }
+
+                return {
+                    async buildProjectIndex() {
+                        return snapshot;
+                    },
+                    isDisposed() {
+                        return false;
+                    },
+                    dispose: async () => {},
+                };
+            },
+        });
+
+        await assert.rejects(loader.buildProjectIndex(snapshot.rootFile), /worker crashed/);
+        assert.strictEqual(await loader.buildProjectIndex(snapshot.rootFile), snapshot);
+        assert.deepEqual(createdPools, [1, 2]);
     });
 });
 

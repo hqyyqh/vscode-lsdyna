@@ -88,6 +88,26 @@ class ProjectGraph {
             )),
         };
     }
+
+    toJSON() {
+        return {
+            children: [...this.children.entries()].map(([filePath, childFiles]) => [filePath, [...childFiles]]),
+            includeEntries: [...this.includeEntries.entries()].map(([filePath, entries]) => [filePath, [...entries]]),
+            parents: [...this.parents.entries()].map(([filePath, parentFiles]) => [filePath, [...parentFiles]]),
+            missingFiles: [...this.missingFiles],
+            cycles: [...this.cycles],
+        };
+    }
+
+    static fromJSON(data = {}) {
+        const graph = new ProjectGraph();
+        graph.children = new Map(data.children || []);
+        graph.includeEntries = new Map(data.includeEntries || []);
+        graph.parents = new Map(data.parents || []);
+        graph.missingFiles = [...(data.missingFiles || [])];
+        graph.cycles = [...(data.cycles || [])];
+        return graph;
+    }
 }
 
 module.exports = {
