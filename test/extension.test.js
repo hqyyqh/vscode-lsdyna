@@ -1376,3 +1376,21 @@ describe('LsdynaFieldHoverProvider', () => {
         );
     });
 });
+
+// ---------------------------------------------------------------------------
+// readFileSnippet
+// ---------------------------------------------------------------------------
+
+describe('readFileSnippet', () => {
+    it('reads a specific range of lines from a file efficiently', async () => {
+        const tempFile = path.join(os.tmpdir(), `lsdyna-snippet-test-${Date.now()}.k`);
+        fs.writeFileSync(tempFile, 'line0\nline1\nline2\nline3\nline4\nline5\n', 'utf8');
+        try {
+            const { readFileSnippet } = require('../src/client/providers/keywordIndexProvider');
+            const snippet = await readFileSnippet(tempFile, 2, 3);
+            assert.strictEqual(snippet, 'line2\nline3\nline4');
+        } finally {
+            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        }
+    });
+});
