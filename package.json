@@ -50,6 +50,16 @@
                 }
             ]
         },
+        "viewsWelcome": [
+            {
+                "view": "lsdynaIncludeTree",
+                "contents": "Welcome to LS-DYNA Include Tree!\n[Scan Include Tree](command:extension.scanIncludeTree)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button."
+            },
+            {
+                "view": "lsdynaKeywordIndex",
+                "contents": "Welcome to LS-DYNA Keyword Index!\n[Scan Keyword Index](command:extension.scanKeywordIndex)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button."
+            }
+        ],
         "languages": [
             {
                 "id": "lsdyna",
@@ -126,6 +136,16 @@
                 "command": "extension.keywordIndexSetLocal",
                 "title": "View Current File",
                 "icon": "$(file-text)"
+            },
+            {
+                "command": "extension.openToSide",
+                "title": "Open to Side",
+                "icon": "$(split-horizontal)"
+            },
+            {
+                "command": "extension.revealInExplorer",
+                "title": "Reveal in Explorer",
+                "icon": "$(reveal)"
             }
         ],
         "keybindings": [
@@ -154,7 +174,7 @@
                 },
                 {
                     "command": "extension.scanKeywordIndex",
-                    "when": "view == lsdynaKeywordIndex",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'local'",
                     "group": "navigation"
                 },
                 {
@@ -185,6 +205,18 @@
                     "command": "extension.jumpToPreviousKeyword",
                     "when": "editorLangId == 'lsdyna'",
                     "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "extension.openToSide",
+                    "when": "view == lsdynaIncludeTree && viewItem == file || view == lsdynaKeywordIndex && viewItem == file",
+                    "group": "inline"
+                },
+                {
+                    "command": "extension.revealInExplorer",
+                    "when": "view == lsdynaIncludeTree && viewItem == file || view == lsdynaKeywordIndex && viewItem == file",
+                    "group": "inline"
                 }
             ]
         }
