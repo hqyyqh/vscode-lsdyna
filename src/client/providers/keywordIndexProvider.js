@@ -23,6 +23,7 @@ class KeywordUsageItem extends vscode.TreeItem {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
         this.description = `:line ${lineIndex + 1}`;
+        this.contextValue = 'file';
         
         const rel = path.relative(rootDir, filePath);
         const tooltip = new vscode.MarkdownString();
@@ -45,6 +46,7 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
         this.description = `${count} usages`;
+        this.contextValue = 'file';
         
         const rel = path.relative(rootDir, filePath);
         const tooltip = new vscode.MarkdownString();
