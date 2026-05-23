@@ -15,8 +15,10 @@ class IncludeItem extends vscode.TreeItem {
         if (!exists) {
             this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
             this.description = 'not found';
+            this.contextValue = 'file-missing';
         } else {
             this.resourceUri = vscode.Uri.file(filePath);
+            this.contextValue = 'file';
         }
         
         if (exists) {
@@ -209,6 +211,40 @@ class LsdynaIncludeTreeProvider {
         item.tooltip = tooltip;
 
         await new Promise(r => setImmediate(r));
+        return item;
+    }
+
+    async resolveTreeItem(item, element, token) {
+        if (!item.filePath || !fs.existsSync(item.filePath)) {
+            return item;
+        }
+        try {
+            const stats = fs.statSync(item.filePath);
+            const sizeKB = (stats.size / 1024).toFixed(1);
+            
+            const tooltip = new vscode.MarkdownString();
+            tooltip.appendMarkdown(`### Include File: **${path.basename(item.filePath)}**\n\n`);
+            tooltip.appendMarkdown(`- **Path**: \`${item.filePath}\`\n`);
+            tooltip.appendMarkdown(`- **Size**: \`${sizeKB} KB\`\n`);
+            
+            if (item.contextValue === 'file-missing') {
+                tooltip.appendMarkdown(`- **Status**: ❌ *Missing / Not found*\n`);
+            } else {
+                tooltip.appendMarkdown(`- **Status**: ✅ *Resolved*\n`);
+                if (item.children && item.children.length > 0) {
+                    tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+                }
+            }
+            
+            tooltip.appendMarkdown(`\n---\n`);
+            tooltip.appendMarkdown(`[Open Editor](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
+            tooltip.appendMarkdown(`[Open to Side](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
+            tooltip.isTrusted = true;
+            
+            item.tooltip = tooltip;
+        } catch (e) {
+            // Fallback to basic tooltip
+        }
         return item;
     }
 

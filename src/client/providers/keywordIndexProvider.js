@@ -280,6 +280,31 @@ class LsdynaKeywordIndexProvider {
         }
     }
 
+    async resolveTreeItem(item, element, token) {
+        if (element instanceof KeywordUsageItem) {
+            const filePath = item.resourceUri.fsPath;
+            const lineIndex = item.command.arguments[1];
+            const snippet = await readFileSnippet(filePath, lineIndex, 8);
+            if (snippet) {
+                const tooltip = new vscode.MarkdownString();
+                tooltip.appendMarkdown(`### Keyword Occurrence\n\n`);
+                tooltip.appendMarkdown(`- **File**: \`${path.basename(filePath)}\`\n`);
+                tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+                tooltip.appendMarkdown(`- **Line**: ${lineIndex + 1}\n\n`);
+                tooltip.appendMarkdown(`**Card Data Preview:**\n`);
+                tooltip.appendMarkdown(`\`\`\`lsdyna\n${snippet}\n\`\`\``);
+                
+                tooltip.appendMarkdown(`\n---\n`);
+                tooltip.appendMarkdown(`[Open File](command:vscode.open?${encodeURIComponent(JSON.stringify(item.resourceUri))}) | `);
+                tooltip.appendMarkdown(`[Open to Side](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))})`);
+                tooltip.isTrusted = true;
+                
+                item.tooltip = tooltip;
+            }
+        }
+        return item;
+    }
+
     getTreeItem(element) { return element; }
 
     getChildren(element) {
