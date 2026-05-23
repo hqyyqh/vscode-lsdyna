@@ -46,6 +46,12 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
     }
 }
 
+function isLsdynaFile(document) {
+    if (!document || !document.uri) return false;
+    const ext = path.extname(document.uri.fsPath).toLowerCase();
+    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 class LsdynaKeywordIndexProvider {
     constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
@@ -114,15 +120,13 @@ class LsdynaKeywordIndexProvider {
 
     updateDocumentIndex(document, event) {
         if (this._mode !== 'local') return;
-        if (!document || document.languageId !== 'lsdyna') return;
-        if (this.shouldSkipAutomaticDocumentScan(document)) return;
+        if (!document || !isLsdynaFile(document)) return;
 
         const uriStr = document.uri.toString();
         let blockIndex = this.documentIndices.get(uriStr);
         if (!blockIndex) {
-            blockIndex = new BlockIndex(document.uri.fsPath);
-            blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
-            this.documentIndices.set(uriStr, blockIndex);
+            this.refreshFromDocument(document);
+            return;
         } else if (event && event.contentChanges) {
             for (const change of event.contentChanges) {
                 const { range, text } = change;
@@ -136,21 +140,32 @@ class LsdynaKeywordIndexProvider {
         }
     }
 
-    refreshFromDocument(document) {
+    async refreshFromDocument(document) {
         if (this._mode !== 'local') return;
-        if (!document || document.languageId !== 'lsdyna') return;
-        if (this.shouldSkipAutomaticDocumentScan(document)) {
-            this.roots = [];
-            this._onDidChangeTreeData.fire(undefined);
-            return;
-        }
+        if (!document || !isLsdynaFile(document)) return;
+
         const filePath = document.uri.fsPath;
         const uriStr = document.uri.toString();
         let blockIndex = this.documentIndices.get(uriStr);
 
         if (!blockIndex) {
             blockIndex = new BlockIndex(filePath);
-            blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
+            if (this.shouldSkipAutomaticDocumentScan(document)) {
+                try {
+                    await vscode.window.withProgress(
+                        { location: vscode.ProgressLocation.Window, title: 'Indexing keywords…' },
+                        async () => {
+                            await blockIndex.buildIndexFromFile(filePath);
+                        }
+                    );
+                } catch (e) {
+                    this.roots = [];
+                    this._onDidChangeTreeData.fire(undefined);
+                    return;
+                }
+            } else {
+                blockIndex.buildIndex(document.lineCount, i => document.lineAt(i).text);
+            }
             this.documentIndices.set(uriStr, blockIndex);
         }
 
@@ -166,7 +181,7 @@ class LsdynaKeywordIndexProvider {
 
     async scan() {
         const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'lsdyna') {
+        if (!editor || !isLsdynaFile(editor.document)) {
             vscode.window.showWarningMessage('Open an LS-DYNA file first.');
             return;
         }

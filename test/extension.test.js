@@ -1286,11 +1286,11 @@ describe('large document guards', () => {
         assert.equal(isIncludeLine(doc, 3), true);
     });
 
-    it('skips local keyword index refresh for very large documents', () => {
+    it('skips local keyword index refresh for very large documents', async () => {
         const provider = new LsdynaKeywordIndexProvider({ collectIncludeFiles, shouldSkipAutomaticDocumentScan });
         provider.roots = [{ label: 'stale' }];
 
-        provider.refreshFromDocument(createHugeDoc());
+        await provider.refreshFromDocument(createHugeDoc());
 
         assert.deepEqual(provider.roots, []);
     });
