@@ -476,6 +476,19 @@ function formatHoverHelpText(helpText) {
     return helpText.replace(/\r?\n/g, '  \n');
 }
 
+function appendManualLinks(md, kwName) {
+    const cleanKw = manualIndexer.cleanKeyword(kwName);
+    const manuals = manualIndexer.getManualLocations(cleanKw);
+    if (manuals.length > 0) {
+        md.appendMarkdown('\n\n---');
+        for (const man of manuals) {
+            const volName = path.basename(man.file, '.pdf');
+            const openArgs = encodeURIComponent(JSON.stringify([man.file, man.page]));
+            md.appendMarkdown(`\n\n[$(book) 打开帮助文档 - ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
+        }
+    }
+}
+
 class LsdynaFieldHoverProvider {
     provideHover(document, position) {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
@@ -539,6 +552,9 @@ class LsdynaFieldHoverProvider {
             const entry = lookupKeyword(kwName);
             if (!entry) return null;
             const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, entry));
+            md.isTrusted = true;
+            md.supportThemeIcons = true;
+            appendManualLinks(md, kwName);
             return new vscode.Hover(md);
         }
 
@@ -598,6 +614,9 @@ class LsdynaFieldHoverProvider {
         ].join('\n');
 
         const md = new vscode.MarkdownString(`### Field: **${field.n}**${typeLabel}${helpText}\n\n---\n**Card Structure:**\n\n${gridTable}`);
+        md.isTrusted = true;
+        md.supportThemeIcons = true;
+        appendManualLinks(md, kwName);
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
         return new vscode.Hover(md, range);
     }
@@ -1130,6 +1149,11 @@ function activate(context) {
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.openManual', (pdfPath, pageNum) => {
             if (!pdfPath) return;
+            if (typeof pdfPath !== 'string') return;
+            if (pdfPath.includes('"') || pdfPath.includes('&') || pdfPath.includes('|') || pdfPath.includes(';')) {
+                vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                return;
+            }
             const config = vscode.workspace.getConfiguration('lsdyna');
             const viewer = config.get('manualViewer') || 'system';
 

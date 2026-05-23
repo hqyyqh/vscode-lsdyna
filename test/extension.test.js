@@ -1364,16 +1364,24 @@ describe('getParameterAtCursor', () => {
 
 describe('LsdynaFieldHoverProvider', () => {
     it('preserves embedded help newlines as markdown hard breaks', () => {
-        const provider = new LsdynaFieldHoverProvider();
-        const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualLocations = manualIndexer.getManualLocations;
+        manualIndexer.getManualLocations = () => [];
 
-        const hover = provider.provideHover(doc, { line: 1, character: 35 });
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
 
-        assert.ok(hover);
-        assert.equal(
-            hover.contents[0].value,
-            '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
-        );
+            const hover = provider.provideHover(doc, { line: 1, character: 35 });
+
+            assert.ok(hover);
+            assert.equal(
+                hover.contents[0].value,
+                '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
+            );
+        } finally {
+            manualIndexer.getManualLocations = originalGetManualLocations;
+        }
     });
 
     it('correctly handles _TITLE suffix by skipping the title line and alignment shift', () => {
@@ -1431,6 +1439,41 @@ describe('LsdynaFieldHoverProvider', () => {
         const hover = provider.provideHover(doc, { line: 1, character: 3 });
         assert.ok(hover);
         assert.ok(hover.contents[0].value.includes('Field: **FILENAME**'));
+    });
+
+    it('appends manual links to keyword and field hovers when available', () => {
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualLocations = manualIndexer.getManualLocations;
+        
+        manualIndexer.getManualLocations = (kw) => {
+            if (kw === '*CONTROL_TERMINATION') {
+                return [{ file: 'd:/manuals/Vol I.pdf', page: 20 }];
+            }
+            return [];
+        };
+
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            
+            // Hovering over keyword line *CONTROL_TERMINATION
+            const doc = fakeDoc('*CONTROL_TERMINATION\n');
+            const kwHover = provider.provideHover(doc, { line: 0, character: 3 });
+            assert.ok(kwHover);
+            assert.strictEqual(kwHover.contents[0].supportThemeIcons, true);
+            assert.ok(kwHover.contents[0].value.includes('command:extension.openManual'));
+            assert.ok(kwHover.contents[0].value.includes('Vol I (第 20 页)'));
+
+            // Hovering over field line ENDENG under *CONTROL_TERMINATION
+            const docField = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
+            const fieldHover = provider.provideHover(docField, { line: 1, character: 35 });
+            assert.ok(fieldHover);
+            assert.strictEqual(fieldHover.contents[0].supportThemeIcons, true);
+            assert.ok(fieldHover.contents[0].value.includes('command:extension.openManual'));
+            assert.ok(fieldHover.contents[0].value.includes('Vol I (第 20 页)'));
+
+        } finally {
+            manualIndexer.getManualLocations = originalGetManualLocations;
+        }
     });
 });
 

@@ -11,6 +11,9 @@ function cleanKeyword(raw) {
     if (clean.endsWith('_TITLE')) {
         clean = clean.slice(0, -6);
     }
+    if (clean && !clean.startsWith('*')) {
+        clean = '*' + clean;
+    }
     return clean;
 }
 
