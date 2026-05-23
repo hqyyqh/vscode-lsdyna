@@ -162,7 +162,20 @@
         ],
         "configurationDefaults": {
             "[lsdyna]": {
-                "editor.wordWrap": "off"
+                "editor.wordWrap": "off",
+                "editor.rulers": [
+                    10,
+                    20,
+                    30,
+                    40,
+                    50,
+                    60,
+                    70,
+                    {
+                        "column": 80,
+                        "color": "#8a5cf5"
+                    }
+                ]
             }
         },
         "menus": {
