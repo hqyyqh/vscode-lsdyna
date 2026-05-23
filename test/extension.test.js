@@ -1568,6 +1568,30 @@ describe('LsdynaIncludeCompletionProvider', () => {
             const listOnComment = provider.provideCompletionItems(docWithComment, { line: 1, character: 0 });
             assert.strictEqual(listOnComment.length || listOnComment.items?.length || 0, 0);
 
+            // Test case: triggers autocomplete with '/' for same-directory file 'file1.k'
+            const slashDoc = fakeDoc(`*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n/`, mainFile);
+            const slashList = provider.provideCompletionItems(slashDoc, { line: 3, character: 1 });
+            assert.ok(slashList);
+            const file1ItemSlash = slashList.items.find(item => item.label === 'file1.k');
+            assert.ok(file1ItemSlash, 'should suggest file1.k when typing /');
+            assert.strictEqual(file1ItemSlash.filterText, '/file1.k');
+
+            // Test case: triggers autocomplete with '\' for same-directory file 'file1.k'
+            const backslashDoc = fakeDoc(`*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n\\`, mainFile);
+            const backslashList = provider.provideCompletionItems(backslashDoc, { line: 3, character: 1 });
+            assert.ok(backslashList);
+            const file1ItemBackslash = backslashList.items.find(item => item.label === 'file1.k');
+            assert.ok(file1ItemBackslash, 'should suggest file1.k when typing \\');
+            assert.strictEqual(file1ItemBackslash.filterText, '\\file1.k');
+
+            // Test case: triggers autocomplete with './' for same-directory file 'file1.k'
+            const dotSlashDoc = fakeDoc(`*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n./`, mainFile);
+            const dotSlashList = provider.provideCompletionItems(dotSlashDoc, { line: 3, character: 2 });
+            assert.ok(dotSlashList);
+            const file1ItemDotSlash = dotSlashList.items.find(item => item.label === 'file1.k');
+            assert.ok(file1ItemDotSlash, 'should suggest file1.k when typing ./');
+            assert.strictEqual(file1ItemDotSlash.filterText, './file1.k');
+
         } finally {
             // Cleanup
             try { fs.unlinkSync(path.join(tempDir, 'file1.k')); } catch (e) {}
