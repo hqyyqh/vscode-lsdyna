@@ -355,6 +355,7 @@ trailer
                 const stats = fs.statSync(mockPdfPath);
                 const mockCache = {};
                 mockCache[path.resolve(mockPdfPath)] = {
+                    version: 2,
                     mtimeMs: stats.mtimeMs,
                     bookmarks: [
                         { title: '*CACHED_KEYWORD', page: 42 }
@@ -372,6 +373,48 @@ trailer
                 // Original PDF keywords should not be in map because we used cache
                 const nodeLocs = getManualLocations('*NODE');
                 assert.deepEqual(nodeLocs, []);
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+            }
+        });
+
+        it('re-parses PDF when cache version is mismatched or missing', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            vscode.workspace.getConfiguration = (section) => {
+                if (section === 'lsdyna') {
+                    return {
+                        get: (key) => {
+                            if (key === 'manualsDir') return tempDir;
+                            return undefined;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            try {
+                const stats = fs.statSync(mockPdfPath);
+                const mockCache = {};
+                // Cache has old version
+                mockCache[path.resolve(mockPdfPath)] = {
+                    version: 1,
+                    mtimeMs: stats.mtimeMs,
+                    bookmarks: [
+                        { title: '*CACHED_KEYWORD', page: 42 }
+                    ]
+                };
+                mockState.set('manuals_bookmark_cache', mockCache);
+
+                await initialize(mockContext);
+
+                // Should NOT use cache
+                const cachedLocs = getManualLocations('*CACHED_KEYWORD');
+                assert.deepEqual(cachedLocs, []);
+
+                // Should re-parse original PDF keywords
+                const nodeLocs = getManualLocations('*NODE');
+                assert.strictEqual(nodeLocs.length, 1);
+                assert.strictEqual(nodeLocs[0].page, 1);
             } finally {
                 vscode.workspace.getConfiguration = originalGetConfiguration;
             }

@@ -1475,6 +1475,34 @@ describe('LsdynaFieldHoverProvider', () => {
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
     });
+
+    it('displays fallback hover with manual links for keywords missing in field_data.json but present in PDF bookmarks', () => {
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualLocations = manualIndexer.getManualLocations;
+        
+        // Mock a keyword that is NOT in field_data.json but is in the manuals
+        manualIndexer.getManualLocations = (kw) => {
+            if (kw === '*SOME_UNUSUAL_KEYWORD') {
+                return [{ file: 'd:/manuals/Vol III.pdf', page: 99 }];
+            }
+            return [];
+        };
+
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            
+            // Hovering over keyword line *SOME_UNUSUAL_KEYWORD
+            const doc = fakeDoc('*SOME_UNUSUAL_KEYWORD\n');
+            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            assert.ok(hover);
+            assert.strictEqual(hover.contents[0].supportThemeIcons, true);
+            assert.ok(hover.contents[0].value.includes('**\\*SOME_UNUSUAL_KEYWORD**'));
+            assert.ok(hover.contents[0].value.includes('command:extension.openManual'));
+            assert.ok(hover.contents[0].value.includes('Vol III (第 99 页)'));
+        } finally {
+            manualIndexer.getManualLocations = originalGetManualLocations;
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
