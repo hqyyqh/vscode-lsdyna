@@ -533,9 +533,17 @@ class LsdynaFieldHoverProvider {
             if (!t.startsWith('$') && t.length > 0) cardIndex++;
         }
 
+        let effectiveCardIndex = cardIndex;
+        if (kwName.endsWith('_TITLE')) {
+            if (cardIndex === 0) {
+                return null; // Title line has no card structure fields
+            }
+            effectiveCardIndex = cardIndex - 1;
+        }
+
         const cards = entry.c;
         // For repeating keywords, clamp to last card
-        const clampedIndex = entry.r ? Math.min(cardIndex, cards.length - 1) : cardIndex;
+        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
         const card = cards[clampedIndex];
         if (!card || card.length === 0) return null;
 
