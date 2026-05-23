@@ -127,6 +127,12 @@ function shouldSkipAutomaticDocumentScan(document) {
     return Boolean(document) && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
 }
 
+function isLsdynaFile(document) {
+    if (!document || !document.uri) return false;
+    const ext = path.extname(document.uri.fsPath).toLowerCase();
+    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 function collectIncludeDocumentLinks(document) {
     if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -149,7 +155,7 @@ function collectIncludeDocumentLinks(document) {
 }
 
 function collectLineLengthDiagnostics(document) {
-    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) return [];
+    if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) return [];
 
     const issues = [];
     for (let i = 0; i < document.lineCount; i++) {
@@ -166,7 +172,7 @@ function collectLineLengthDiagnostics(document) {
 }
 
 function collectIncludeDecorationSets(document) {
-    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) {
+    if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
         return { resolved: [], missing: [] };
     }
 
@@ -191,7 +197,7 @@ function collectIncludeDecorationSets(document) {
 }
 
 function isIncludeLine(document, currentLine) {
-    if (!document || document.languageId !== 'lsdyna' || shouldSkipAutomaticDocumentScan(document)) {
+    if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
         return false;
     }
 
@@ -794,7 +800,7 @@ function activate(context) {
     context.subscriptions.push(diagnostics);
 
     function updateDiagnostics(document) {
-        if (document.languageId !== 'lsdyna') return;
+        if (!isLsdynaFile(document)) return;
         diagnostics.set(document.uri, collectLineLengthDiagnostics(document));
     }
 
@@ -830,7 +836,7 @@ function activate(context) {
     context.subscriptions.push(resolvedDecoration, missingDecoration);
 
     function updateDecorations(editor) {
-        if (!editor || editor.document.languageId !== 'lsdyna') return;
+        if (!editor || !isLsdynaFile(editor.document)) return;
         const { resolved, missing } = collectIncludeDecorationSets(editor.document);
 
         editor.setDecorations(resolvedDecoration, resolved);
@@ -851,7 +857,7 @@ function activate(context) {
     updateDecorations(vscode.window.activeTextEditor);
 
     function updateIncludeLineContext(editor) {
-        if (!editor || editor.document.languageId !== 'lsdyna') {
+        if (!editor || !isLsdynaFile(editor.document)) {
             vscode.commands.executeCommand('setContext', 'lsdyna.onIncludeLine', false);
             return;
         }

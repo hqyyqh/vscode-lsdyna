@@ -20,6 +20,12 @@ class IncludeItem extends vscode.TreeItem {
     }
 }
 
+function isLsdynaFile(document) {
+    if (!document || !document.uri) return false;
+    const ext = path.extname(document.uri.fsPath).toLowerCase();
+    return document.languageId === 'lsdyna' || ext === '.k' || ext === '.key' || ext === '.dyna';
+}
+
 class LsdynaIncludeTreeProvider {
     constructor({ searchFileFromPaths, loadProjectSnapshot } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
@@ -31,7 +37,7 @@ class LsdynaIncludeTreeProvider {
 
     async scan() {
         const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'lsdyna') {
+        if (!editor || !isLsdynaFile(editor.document)) {
             vscode.window.showWarningMessage('Open an LS-DYNA file first.');
             return;
         }
