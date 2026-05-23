@@ -45,11 +45,24 @@ class Hover {
     }
 }
 
+class CompletionItem {
+    constructor(label, kind) {
+        this.label = label;
+        this.kind = kind;
+    }
+}
+
+const CompletionItemKind = {
+    File: 17
+};
+
 module.exports = {
     Position,
     Range,
     MarkdownString,
     Hover,
+    CompletionItem,
+    CompletionItemKind,
     Uri: { file: p => ({ fsPath: p }) },
     FoldingRange: class FoldingRange { constructor(s, e) { this.start = s; this.end = e; } },
     DocumentSymbol: class DocumentSymbol {},
@@ -77,6 +90,6 @@ module.exports = {
             dispose() {},
         }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
+    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
 };

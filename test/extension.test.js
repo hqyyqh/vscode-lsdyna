@@ -1489,3 +1489,71 @@ describe('LsdynaFileDecorationProvider', () => {
         assert.strictEqual(untrackedDec, undefined);
     });
 });
+
+// ---------------------------------------------------------------------------
+// LsdynaIncludeCompletionProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaIncludeCompletionProvider', () => {
+    it('provides completion items for includes inside valid paths', () => {
+        const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaIncludeCompletionProvider();
+
+        // Create a temporary workspace layout
+        const tempDir = path.join(os.tmpdir(), `lsdyna-completion-test-${Date.now()}`);
+        fs.mkdirSync(tempDir);
+        
+        const subDir = path.join(tempDir, 'submodels');
+        fs.mkdirSync(subDir);
+
+        const invalidDir = path.join(os.tmpdir(), 'non_existent_folder_xyz_12345');
+        
+        fs.writeFileSync(path.join(tempDir, 'file1.k'), '');
+        fs.writeFileSync(path.join(subDir, 'file2.k'), '');
+
+        // Main file has valid relative path and invalid absolute path from another machine
+        const mainFileContent = `*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE_PATH\n${invalidDir}\n*INCLUDE\n`;
+        const mainFile = path.join(tempDir, 'main.k');
+        fs.writeFileSync(mainFile, mainFileContent);
+
+        const doc = fakeDoc(mainFileContent, mainFile);
+
+        try {
+            // Position is at line 5 (directly under *INCLUDE)
+            const position = { line: 5, character: 0 };
+            const items = provider.provideCompletionItems(doc, position);
+
+            assert.ok(items);
+            const labels = items.map(item => item.label);
+            
+            // Should contain files from submodels (since submodels is valid)
+            assert.ok(labels.includes('file2.k'));
+            
+            // Should not show anything from the invalidDir since it is validated to not exist
+            assert.ok(!labels.includes('non_existent_xyz'));
+
+            // Test position on keyword line (line 4) -> should be empty
+            const itemsOnKeywordLine = provider.provideCompletionItems(doc, { line: 4, character: 0 });
+            assert.strictEqual(itemsOnKeywordLine.length, 0);
+
+            // Test position on path line (line 1) -> should be empty
+            const itemsOnPathLine = provider.provideCompletionItems(doc, { line: 1, character: 0 });
+            assert.strictEqual(itemsOnPathLine.length, 0);
+
+            // Test comment line
+            const commentFileContent = `*INCLUDE\n$ this is a comment\n`;
+            const docWithComment = fakeDoc(commentFileContent, mainFile);
+            const itemsOnComment = provider.provideCompletionItems(docWithComment, { line: 1, character: 0 });
+            assert.strictEqual(itemsOnComment.length, 0);
+
+        } finally {
+            // Cleanup
+            try { fs.unlinkSync(path.join(tempDir, 'file1.k')); } catch (e) {}
+            try { fs.unlinkSync(path.join(subDir, 'file2.k')); } catch (e) {}
+            try { fs.rmdirSync(subDir); } catch (e) {}
+            try { fs.unlinkSync(mainFile); } catch (e) {}
+            try { fs.rmdirSync(tempDir); } catch (e) {}
+        }
+    });
+});
+

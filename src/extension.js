@@ -760,6 +760,107 @@ class LsdynaFileDecorationProvider {
     }
 }
 
+class LsdynaIncludeCompletionProvider {
+    provideCompletionItems(document, position, token, context) {
+        if (!document || !document.uri || !document.uri.fsPath) return [];
+        if (shouldSkipAutomaticDocumentScan(document)) return [];
+
+        const lineText = document.lineAt(position.line).text;
+        if (lineText.trimStart().startsWith('$')) {
+            return [];
+        }
+
+        // Find enclosing keyword
+        let kwLine = -1;
+        for (let i = position.line; i >= 0; i--) {
+            const text = document.lineAt(i).text.trimStart();
+            if (text.startsWith('*')) {
+                kwLine = i;
+                break;
+            }
+        }
+
+        if (kwLine === -1 || position.line === kwLine) return [];
+
+        const kwText = document.lineAt(kwLine).text.trim().toUpperCase();
+        if (!kwText.startsWith('*INCLUDE') || kwText.startsWith('*INCLUDE_PATH')) {
+            return [];
+        }
+
+        const searchPaths = getSearchPath(document);
+        const validPaths = [];
+        for (const p of searchPaths) {
+            let targetPath = p;
+            if (!path.isAbsolute(p)) {
+                targetPath = path.resolve(path.dirname(document.uri.fsPath), p);
+            }
+            try {
+                if (fs.existsSync(targetPath)) {
+                    const stats = fs.statSync(targetPath);
+                    if (stats.isDirectory()) {
+                        validPaths.push(targetPath);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        const suggestions = new Set();
+        const maxFiles = 300;
+        const maxDepth = 3;
+
+        function walkDir(dir, baseDir, depth = 0) {
+            if (depth > maxDepth || suggestions.size >= maxFiles) {
+                return;
+            }
+            try {
+                const list = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of list) {
+                    if (suggestions.size >= maxFiles) break;
+
+                    const name = entry.name;
+                    if (name.startsWith('.') || 
+                        name === 'node_modules' || 
+                        name === 'venv' || 
+                        name === '.git' ||
+                        name === '.github' ||
+                        name === '.vscode' ||
+                        name === 'build' ||
+                        name === 'dist' ||
+                        name === 'out' ||
+                        name === 'target') {
+                        continue;
+                    }
+
+                    const fullPath = path.join(dir, name);
+                    if (entry.isDirectory()) {
+                        walkDir(fullPath, baseDir, depth + 1);
+                    } else if (entry.isFile()) {
+                        const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+                        suggestions.add(relPath);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        for (const baseDir of validPaths) {
+            walkDir(baseDir, baseDir);
+        }
+
+        const items = [];
+        for (const file of suggestions) {
+            const item = new vscode.CompletionItem(file, vscode.CompletionItemKind.File);
+            item.detail = 'Include File';
+            items.push(item);
+        }
+
+        return items;
+    }
+}
+
 // --- Activate ---
 
 function activate(context) {
@@ -787,6 +888,13 @@ function activate(context) {
     );
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { language: 'lsdyna' },
+            new LsdynaIncludeCompletionProvider(),
+            '/', '\\'
+        )
     );
 
     const client = startLanguageServer(context);
@@ -1336,4 +1444,5 @@ module.exports._internals = {
     createProjectSnapshotPersistentCache,
     LsdynaFileDecorationProvider,
     normalizePathKey,
+    LsdynaIncludeCompletionProvider,
 };
