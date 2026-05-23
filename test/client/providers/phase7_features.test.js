@@ -70,8 +70,10 @@ describe('Phase 7 Features', () => {
             assert.equal(roots.length, 1);
             assert.equal(roots[0].label, 'PART');
             assert.equal(roots[0].children.length, 2);
-            assert.equal(roots[0].children[0].label, 'a.key  :11');
-            assert.equal(roots[0].children[1].label, 'b.key  :21');
+            assert.equal(roots[0].children[0].label, 'a.key');
+            assert.equal(roots[0].children[0].description, ':line 11');
+            assert.equal(roots[0].children[1].label, 'b.key');
+            assert.equal(roots[0].children[1].description, ':line 21');
         });
 
         it('folds and groups by file when total usages are above KEYWORD_FOLDING_THRESHOLD', () => {
@@ -103,13 +105,15 @@ describe('Phase 7 Features', () => {
             
             // First item should be the aggregated node for a.key
             const aggItem = roots[0].children[0];
-            assert.equal(aggItem.label, 'a.key  (60 usages)');
-            assert.deepEqual(aggItem.iconPath, new vscodeMock.ThemeIcon('file-submodule'));
+            assert.equal(aggItem.label, 'a.key');
+            assert.equal(aggItem.description, '60 usages');
+            assert.equal(aggItem.resourceUri.fsPath, '/project/a.key');
             assert.equal(aggItem.command.arguments[0], '/project/a.key');
             assert.equal(aggItem.command.arguments[1], 0); // first line index
 
             // Next items should be individual b.key items
-            assert.equal(roots[0].children[1].label, 'b.key  :1');
+            assert.equal(roots[0].children[1].label, 'b.key');
+            assert.equal(roots[0].children[1].description, ':line 1');
         });
 
         it('uses blockIndex for local incremental updates on edits', () => {
