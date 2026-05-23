@@ -146,6 +146,10 @@
                 "command": "extension.revealInExplorer",
                 "title": "Reveal in Explorer",
                 "icon": "$(folder-opened)"
+            },
+            {
+                "command": "extension.openManual",
+                "title": "Open LS-DYNA Keyword Manual"
             }
         ],
         "keybindings": [
@@ -176,6 +180,29 @@
                         "color": "#8a5cf5"
                     }
                 ]
+            }
+        },
+        "configuration": {
+            "title": "LS-DYNA",
+            "properties": {
+                "lsdyna.manualsDir": {
+                    "type": "string",
+                    "default": "LS-DYNA Manuals",
+                    "description": "Path to the directory containing LS-DYNA PDF manuals (can be workspace-relative or absolute)."
+                },
+                "lsdyna.manualViewer": {
+                    "type": "string",
+                    "default": "system",
+                    "enum": [
+                        "system",
+                        "vscode"
+                    ],
+                    "enumDescriptions": [
+                        "Open using system default PDF viewer (supports page parameter on Windows)",
+                        "Open using VS Code built-in PDF viewer"
+                    ],
+                    "description": "The PDF viewer to use when opening LS-DYNA manuals."
+                }
             }
         },
         "menus": {
