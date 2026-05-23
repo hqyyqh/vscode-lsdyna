@@ -291,4 +291,231 @@ describe('createIndexClient', () => {
             lastAccessedAt: 2,
         });
     });
+
+    it('persists successful fresh snapshots to the disk cache without affecting the returned snapshot', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const childFile = path.resolve('project', 'child.key');
+        const snapshot = { rootFile, files: [rootFile, childFile], version: 1 };
+        const persistCalls = [];
+        const client = createIndexClient({
+            buildProjectIndex: async () => snapshot,
+            getFileSignature: async (filePath) => (
+                filePath === rootFile
+                    ? { mtimeMs: 10, size: 100 }
+                    : { mtimeMs: 20, size: 200 }
+            ),
+            persistentCache: {
+                async persist(entry) {
+                    persistCalls.push(entry);
+                },
+            },
+        });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshot);
+        assert.equal(persistCalls.length, 1);
+        assert.strictEqual(persistCalls[0].snapshot, snapshot);
+        assert.deepEqual(persistCalls[0].trackedFiles, [
+            { filePath: rootFile, signature: { mtimeMs: 10, size: 100 } },
+            { filePath: childFile, signature: { mtimeMs: 20, size: 200 } },
+        ]);
+    });
+
+    it('does not block fresh snapshot resolution on disk persistence', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const snapshot = { rootFile, files: [rootFile], version: 1 };
+        let persistStarted = false;
+        let releasePersist;
+        const client = createIndexClient({
+            buildProjectIndex: async () => snapshot,
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            persistentCache: {
+                persist() {
+                    persistStarted = true;
+                    return new Promise(resolve => {
+                        releasePersist = resolve;
+                    });
+                },
+            },
+        });
+
+        let resolvedSnapshot = null;
+        const pendingLoad = client.loadProjectSnapshot(rootFile).then(result => {
+            resolvedSnapshot = result;
+            return result;
+        });
+
+        while (!persistStarted) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.strictEqual(resolvedSnapshot, snapshot);
+        releasePersist();
+        assert.strictEqual(await pendingLoad, snapshot);
+    });
+
+    it('ignores disk cache persistence failures and keeps the in-memory snapshot', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const snapshot = { rootFile, files: [rootFile], version: 1 };
+        let buildCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return snapshot;
+            },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            persistentCache: {
+                async persist() {
+                    throw new Error('disk write failed');
+                },
+            },
+        });
+
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshot);
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshot);
+        assert.equal(buildCount, 1);
+    });
+
+    it('restores valid snapshots from the disk cache on L1 miss', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const childFile = path.resolve('project', 'child.key');
+        const snapshot = { rootFile, files: [rootFile, childFile], version: 1 };
+        const trackedFiles = [
+            { filePath: rootFile, signature: { mtimeMs: 10, size: 100 } },
+            { filePath: childFile, signature: { mtimeMs: 20, size: 200 } },
+        ];
+        let buildCount = 0;
+        let restoreCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return snapshot;
+            },
+            getFileSignature: async (filePath) => (
+                filePath === rootFile
+                    ? { mtimeMs: 10, size: 100 }
+                    : { mtimeMs: 20, size: 200 }
+            ),
+            persistentCache: {
+                async restore(filePath) {
+                    restoreCount += 1;
+                    assert.equal(filePath, rootFile);
+                    return { snapshot, trackedFiles };
+                },
+                async persist() {},
+            },
+        });
+
+        const result = await client.loadProjectSnapshot(rootFile);
+        assert.strictEqual(result, snapshot);
+        assert.equal(restoreCount, 1);
+        assert.equal(buildCount, 0);
+
+        // Subsequent call hits L1 cache, no L2 restore or build
+        const l1Result = await client.loadProjectSnapshot(rootFile);
+        assert.strictEqual(l1Result, snapshot);
+        assert.equal(restoreCount, 1);
+        assert.equal(buildCount, 0);
+    });
+
+    it('falls back to buildProjectIndex when disk restore returns null', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const snapshot = { rootFile, files: [rootFile], version: 1 };
+        let buildCount = 0;
+        let restoreCount = 0;
+        let persistCalls = [];
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return snapshot;
+            },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            persistentCache: {
+                async restore() {
+                    restoreCount += 1;
+                    return null;
+                },
+                async persist(entry) {
+                    persistCalls.push(entry);
+                },
+            },
+        });
+
+        const result = await client.loadProjectSnapshot(rootFile);
+        assert.strictEqual(result, snapshot);
+        assert.equal(restoreCount, 1);
+        assert.equal(buildCount, 1);
+        assert.equal(persistCalls.length, 1);
+    });
+
+    it('coalesces concurrent requests on L1 miss so that only one L2 restore is performed', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const snapshot = { rootFile, files: [rootFile], version: 1 };
+        const trackedFiles = [{ filePath: rootFile, signature: { mtimeMs: 10, size: 100 } }];
+        let restoreCount = 0;
+        let restoreDeferred;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                throw new Error('should not build');
+            },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            persistentCache: {
+                async restore() {
+                    restoreCount += 1;
+                    return new Promise(resolve => {
+                        restoreDeferred = () => resolve({ snapshot, trackedFiles });
+                    });
+                },
+                async persist() {},
+            },
+        });
+
+        const load1 = client.loadProjectSnapshot(rootFile);
+        const load2 = client.loadProjectSnapshot(rootFile);
+
+        while (!restoreDeferred) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        restoreDeferred();
+
+        const result1 = await load1;
+        const result2 = await load2;
+
+        assert.strictEqual(result1, snapshot);
+        assert.strictEqual(result2, snapshot);
+        assert.equal(restoreCount, 1);
+    });
+
+    it('handles disk restore failures gracefully by falling back to build', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'main.k');
+        const snapshot = { rootFile, files: [rootFile], version: 1 };
+        let buildCount = 0;
+        let restoreCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return snapshot;
+            },
+            getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
+            persistentCache: {
+                async restore() {
+                    restoreCount += 1;
+                    throw new Error('disk read error');
+                },
+                async persist() {},
+            },
+        });
+
+        const result = await client.loadProjectSnapshot(rootFile);
+        assert.strictEqual(result, snapshot);
+        assert.equal(restoreCount, 1);
+        assert.equal(buildCount, 1);
+    });
 });

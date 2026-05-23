@@ -104,6 +104,7 @@ function createIndexClient({
     estimateSnapshotSize: getSnapshotSize = estimateSnapshotSize,
     maxSnapshotBytes = Number.POSITIVE_INFINITY,
     manifestStore = createCacheManifestStore(),
+    persistentCache = null,
 } = {}) {
     if (typeof buildProjectIndex !== 'function') {
         throw new TypeError('createIndexClient requires a buildProjectIndex function');
@@ -119,6 +120,9 @@ function createIndexClient({
     }
     if (!manifestStore || typeof manifestStore.upsert !== 'function' || typeof manifestStore.remove !== 'function') {
         throw new TypeError('createIndexClient requires manifestStore to support upsert and remove');
+    }
+    if (persistentCache && typeof persistentCache.persist !== 'function') {
+        throw new TypeError('createIndexClient requires persistentCache.persist to be a function');
     }
 
     const snapshots = new Map();
@@ -178,41 +182,69 @@ function createIndexClient({
         }
 
         const generation = getGeneration(rootCacheKey);
-        const promise = Promise.resolve(buildProjectIndex(resolvedRootFile))
-            .then(async snapshot => {
-                let trackedFiles = null;
+        const promise = (async () => {
+            if (persistentCache) {
                 try {
-                    trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);
-                } catch (_error) {
-                    trackedFiles = null;
-                }
-
-                const currentEntry = snapshots.get(rootCacheKey);
-                if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
-                    if (trackedFiles) {
-                        const entry = {
-                            snapshot,
-                            trackedFiles,
-                            byteSize: getSnapshotSize(snapshot),
-                        };
-                        touchSnapshotEntry(entry);
-                        snapshots.set(rootCacheKey, entry);
-                        evictSnapshotsIfNeeded(rootCacheKey);
-                    } else {
-                        manifestStore.remove(resolvedRootFile);
-                        snapshots.delete(rootCacheKey);
+                    const restored = await persistentCache.restore(resolvedRootFile);
+                    if (restored) {
+                        const currentEntry = snapshots.get(rootCacheKey);
+                        if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
+                            const entry = {
+                                snapshot: restored.snapshot,
+                                trackedFiles: restored.trackedFiles,
+                                byteSize: getSnapshotSize(restored.snapshot),
+                            };
+                            touchSnapshotEntry(entry);
+                            snapshots.set(rootCacheKey, entry);
+                            evictSnapshotsIfNeeded(rootCacheKey);
+                        }
+                        return restored.snapshot;
                     }
+                } catch (_error) {
+                    // Best-effort L2 restore: fall back to building the index if recovery fails.
                 }
-                return snapshot;
-            })
-            .catch(error => {
-                const currentEntry = snapshots.get(rootCacheKey);
-                if (currentEntry && currentEntry.promise === promise) {
+            }
+
+            const snapshot = await buildProjectIndex(resolvedRootFile);
+            let trackedFiles = null;
+            try {
+                trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);
+            } catch (_error) {
+                trackedFiles = null;
+            }
+
+            const currentEntry = snapshots.get(rootCacheKey);
+            if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
+                if (trackedFiles) {
+                    const entry = {
+                        snapshot,
+                        trackedFiles,
+                        byteSize: getSnapshotSize(snapshot),
+                    };
+                    touchSnapshotEntry(entry);
+                    snapshots.set(rootCacheKey, entry);
+                    evictSnapshotsIfNeeded(rootCacheKey);
+                    if (persistentCache) {
+                        Promise.resolve()
+                            .then(() => persistentCache.persist({ snapshot, trackedFiles }))
+                            .catch(() => {
+                                // Best-effort persistence: disk cache failures must not break primary indexing.
+                            });
+                    }
+                } else {
                     manifestStore.remove(resolvedRootFile);
                     snapshots.delete(rootCacheKey);
                 }
-                throw error;
-            });
+            }
+            return snapshot;
+        })().catch(error => {
+            const currentEntry = snapshots.get(rootCacheKey);
+            if (currentEntry && currentEntry.promise === promise) {
+                manifestStore.remove(resolvedRootFile);
+                snapshots.delete(rootCacheKey);
+            }
+            throw error;
+        });
 
         snapshots.set(rootCacheKey, { promise });
         return promise;

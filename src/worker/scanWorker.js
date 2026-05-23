@@ -2,17 +2,8 @@
 
 const { parentPort } = require('worker_threads');
 
+const { serializeProjectSnapshot } = require('../core/cache/snapshotSerializer');
 const { buildProjectIndex } = require('../core/project/projectIndexer');
-
-function serializeProjectSnapshot(snapshot) {
-    return {
-        ...snapshot,
-        graph: snapshot.graph.toJSON(),
-        keywordMap: [...snapshot.keywordMap.entries()],
-        missingFiles: [...snapshot.missingFiles],
-        cycles: [...snapshot.cycles],
-    };
-}
 
 function serializeError(error) {
     return {
