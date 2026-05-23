@@ -3,9 +3,23 @@
 // Intercept require('vscode') before any module tries to load it
 const Module = require('module');
 const vscodeMock = require('./vscode-mock');
+const languageClientMock = {
+    LanguageClient: class LanguageClient {
+        constructor() {}
+        start() {
+            return { dispose() {} };
+        }
+        sendRequest() {
+            return Promise.resolve();
+        }
+        sendNotification() {}
+    },
+    TransportKind: { ipc: 1, stdio: 2, pipe: 3, socket: 4 }
+};
 const _load = Module._load;
 Module._load = function (request, parent, isMain) {
     if (request === 'vscode') return vscodeMock;
+    if (request === 'vscode-languageclient/node') return languageClientMock;
     return _load.call(this, request, parent, isMain);
 };
 

@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { createCacheManifestStore } = require('../../core/cache/cacheManifestStore');
+const { hydrateProjectSnapshot } = require('../../core/cache/snapshotSerializer');
+const protocol = require('../../shared/protocol');
 
 function resolveRootFile(rootFile) {
     if (typeof rootFile !== 'string' || rootFile.trim() === '') {
@@ -105,7 +107,37 @@ function createIndexClient({
     maxSnapshotBytes = Number.POSITIVE_INFINITY,
     manifestStore = createCacheManifestStore(),
     persistentCache = null,
+    languageClient = null,
 } = {}) {
+    if (languageClient) {
+        if (typeof languageClient.sendRequest !== 'function' || typeof languageClient.sendNotification !== 'function') {
+            throw new TypeError('createIndexClient requires a languageClient supporting sendRequest and sendNotification');
+        }
+        return {
+            async loadProjectSnapshot(rootFile) {
+                const resolvedRootFile = resolveRootFile(rootFile);
+                const serialized = await languageClient.sendRequest(
+                    protocol.LOAD_PROJECT_SNAPSHOT_REQUEST,
+                    { rootFile: resolvedRootFile }
+                );
+                return hydrateProjectSnapshot(serialized);
+            },
+            invalidate(rootFile) {
+                const resolvedRootFile = resolveRootFile(rootFile);
+                languageClient.sendNotification(
+                    protocol.INVALIDATE_NOTIFICATION,
+                    { rootFile: resolvedRootFile }
+                );
+            },
+            async getManifestEntries() {
+                return await languageClient.sendRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST);
+            },
+            async getCacheStats() {
+                return await languageClient.sendRequest(protocol.GET_CACHE_STATS_REQUEST);
+            },
+        };
+    }
+
     if (typeof buildProjectIndex !== 'function') {
         throw new TypeError('createIndexClient requires a buildProjectIndex function');
     }

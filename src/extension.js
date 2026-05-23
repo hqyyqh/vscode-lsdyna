@@ -10,6 +10,37 @@ const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidatio
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const { createWorkerPool } = require('./worker/workerPool');
+const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
+const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
+
+function startLanguageServer(context) {
+    const serverModule = path.join(__dirname, 'server', 'server.js');
+    const debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
+
+    const serverOptions = {
+        run: { module: serverModule, transport: TransportKind.ipc },
+        debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions },
+    };
+
+    const clientOptions = {
+        documentSelector: [{ scheme: 'file', language: 'lsdyna' }],
+        initializationOptions: {
+            globalStoragePath: context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'project-snapshots') : null,
+            maxCacheBytes: PROJECT_SNAPSHOT_DISK_CACHE_BYTES,
+        },
+    };
+
+    const client = new LanguageClient(
+        'lsdynaLanguageServer',
+        'LS-DYNA Language Server',
+        serverOptions,
+        clientOptions
+    );
+
+    const disposable = client.start();
+    context.subscriptions.push(disposable);
+    return client;
+}
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
@@ -672,18 +703,8 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
 
-    const projectIndexLoader = createProjectIndexLoader();
-    context.subscriptions.push(projectIndexLoader);
-    let persistentCache = null;
-    try {
-        persistentCache = createProjectSnapshotPersistentCache({ storageUri: context.globalStorageUri });
-    } catch (error) {
-        console.warn('[lsdyna] Failed to initialize project snapshot disk cache:', error);
-    }
-    const indexClient = createIndexClient({
-        buildProjectIndex: projectIndexLoader.buildProjectIndex,
-        persistentCache,
-    });
+    const client = startLanguageServer(context);
+    const indexClient = createIndexClient({ languageClient: client });
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
@@ -1034,45 +1055,7 @@ function createProjectSnapshotRefreshQueue({
     };
 }
 
-function createProjectIndexLoader({
-    createPool = createWorkerPool,
-    workerPath = path.join(__dirname, 'worker', 'scanWorker.js'),
-} = {}) {
-    let workerPool = null;
-
-    function isPoolDisposed(pool) {
-        return !pool || (typeof pool.isDisposed === 'function' && pool.isDisposed());
-    }
-
-    function getWorkerPool() {
-        if (isPoolDisposed(workerPool)) {
-            workerPool = null;
-        }
-        if (!workerPool) {
-            workerPool = createPool({ workerPath });
-        }
-        return workerPool;
-    }
-
-    return {
-        async buildProjectIndex(rootFile) {
-            const pool = getWorkerPool();
-            try {
-                return await pool.buildProjectIndex(rootFile);
-            } catch (error) {
-                if (workerPool === pool && isPoolDisposed(pool)) {
-                    workerPool = null;
-                }
-                throw error;
-            }
-        },
-        async dispose() {
-            if (!workerPool) return;
-            await workerPool.dispose();
-            workerPool = null;
-        },
-    };
-}
+// createProjectIndexLoader is now imported from src/worker/projectIndexLoader.js
 
 function createProjectSnapshotPersistentCache({
     storageUri = null,

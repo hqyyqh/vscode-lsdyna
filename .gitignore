@@ -3,3 +3,4 @@ keywords/feeders*
 .vscode/settings.json
 node_modules/
 .worktrees/
+/.antigravity
