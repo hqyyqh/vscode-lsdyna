@@ -194,14 +194,14 @@
                 },
                 "lsdyna.manualViewer": {
                     "type": "string",
-                    "default": "system",
+                    "default": "vscode",
                     "enum": [
-                        "system",
-                        "vscode"
+                        "vscode",
+                        "system"
                     ],
                     "enumDescriptions": [
-                        "Open using system default PDF viewer (supports page parameter on Windows)",
-                        "Open using VS Code built-in PDF viewer"
+                        "Open using VS Code built-in Webview PDF viewer (recycles tab and supports page navigation)",
+                        "Open using system default PDF viewer (supports page parameter on Windows)"
                     ],
                     "description": "The PDF viewer to use when opening LS-DYNA manuals."
                 }

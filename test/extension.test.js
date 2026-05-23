@@ -1782,7 +1782,7 @@ describe('extension.openManual command', () => {
         extensionModule.activate(context);
     });
 
-    it('uses vscode.open when manualViewer config is vscode', async () => {
+    it('creates a webview panel when manualViewer config is vscode and it is not already open', async () => {
         vscodeMock.workspace.getConfiguration = () => ({
             get: (key) => key === 'manualViewer' ? 'vscode' : undefined
         });
@@ -1790,13 +1790,96 @@ describe('extension.openManual command', () => {
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
-        executeCommandCalls = [];
-        await openManual(pdfPath, 12);
+        let createdPanel = null;
+        const originalCreateWebviewPanel = vscodeMock.window.createWebviewPanel;
+        vscodeMock.window.createWebviewPanel = (viewType, title, showOptions, options) => {
+            createdPanel = originalCreateWebviewPanel(viewType, title, showOptions, options);
+            return createdPanel;
+        };
 
-        assert.strictEqual(executeCommandCalls.length, 1);
-        assert.strictEqual(executeCommandCalls[0].cmd, 'vscode.open');
-        assert.strictEqual(executeCommandCalls[0].args[0].fsPath, pdfPath);
+        try {
+            const pdfPath = 'C:\\path\\to\\manual.pdf';
+            await openManual(pdfPath, 12);
+
+            assert.ok(createdPanel);
+            assert.ok(createdPanel.webview.html.includes('pdfjsLib'));
+            assert.ok(createdPanel.webview.html.includes('pageNum = 12'));
+        } finally {
+            extensionModule.deactivate();
+            vscodeMock.window.createWebviewPanel = originalCreateWebviewPanel;
+        }
+    });
+
+    it('reveals existing webview panel and updates page number when manualViewer config is vscode and it is already open', async () => {
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'vscode' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        let revealCalled = false;
+        let postMessageData = null;
+        
+        const originalCreateWebviewPanel = vscodeMock.window.createWebviewPanel;
+        vscodeMock.window.createWebviewPanel = (viewType, title, showOptions, options) => {
+            const panel = originalCreateWebviewPanel(viewType, title, showOptions, options);
+            panel.reveal = () => { revealCalled = true; };
+            panel.webview.postMessage = (msg) => { postMessageData = msg; return Promise.resolve(true); };
+            return panel;
+        };
+
+        try {
+            const pdfPath = 'C:\\path\\to\\manual.pdf';
+            await openManual(pdfPath, 12);
+            
+            revealCalled = false;
+            await openManual(pdfPath, 42);
+
+            assert.strictEqual(revealCalled, true);
+            assert.deepEqual(postMessageData, { command: 'showPage', page: 42 });
+        } finally {
+            extensionModule.deactivate();
+            vscodeMock.window.createWebviewPanel = originalCreateWebviewPanel;
+        }
+    });
+
+    it('launches PDF-XChange directly with page parameter when PDF-XChange is the default viewer on Windows', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualViewer' ? 'system' : undefined
+        });
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        require('child_process').exec = (cmd, cb) => {
+            execCalls.push(cmd);
+            if (cmd.includes('UserChoice')) {
+                cb(null, '    ProgId    REG_SZ    PDFXEdit.PDF\r\n');
+            } else if (cmd.includes('PDFXEdit.PDF')) {
+                cb(null, '    (Default)    REG_SZ    "C:\\Program Files\\Tracker Software\\PDF Editor\\PDFXEdit.exe" "%1"\r\n');
+            } else {
+                cb(null, '');
+            }
+        };
+
+        const originalExistsSync = require('fs').existsSync;
+        require('fs').existsSync = (p) => {
+            if (p.includes('PDFXEdit.exe')) return true;
+            return originalExistsSync(p);
+        };
+
+        try {
+            const pdfPath = 'C:\\path\\to\\manual.pdf';
+            await openManual(pdfPath, 12);
+
+            assert.strictEqual(execCalls.length, 3);
+            assert.strictEqual(execCalls[2], '"C:\\Program Files\\Tracker Software\\PDF Editor\\PDFXEdit.exe" /A "page=12" "C:\\path\\to\\manual.pdf"');
+            assert.strictEqual(openExternalCalls.length, 0);
+        } finally {
+            require('fs').existsSync = originalExistsSync;
+        }
     });
 
     it('uses child_process.exec and falls back to start command when default viewer is not detected on Windows', async () => {
