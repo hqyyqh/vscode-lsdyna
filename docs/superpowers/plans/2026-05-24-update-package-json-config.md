@@ -15,10 +15,10 @@
 **文件：**
 - 修改：`package.json`
 
-- [ ] **步骤 1：使用 replace_file_content 替换配置定义**
-
+- [x] **步骤 1：使用 replace_file_content 替换配置定义**
+ 
   从 `package.json` 中删除 `lsdyna.manualViewer` 部分，添加 `lsdyna.sumatrapdfPath`。
-
+ 
   目标代码（修改前）：
   ```json
                   "lsdyna.manualViewer": {
@@ -35,7 +35,7 @@
                       "description": "The PDF viewer to use when opening LS-DYNA manuals."
                   }
   ```
-
+ 
   替换为（修改后）：
   ```json
                   "lsdyna.sumatrapdfPath": {
@@ -44,13 +44,13 @@
                       "description": "Custom path to SumatraPDF.exe on Windows. If left blank, the extension will use the bundled version or automatically detect it from the system."
                   }
   ```
-
-- [ ] **步骤 2：运行 JSON 校验检查**
-
+ 
+- [x] **步骤 2：运行 JSON 校验检查**
+ 
   运行：`node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"`
   预期：无报错，返回成功。
-
-- [ ] **步骤 3：Commit**
+ 
+- [x] **步骤 3：Commit**
 
   ```bash
   git add package.json
