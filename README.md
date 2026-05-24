@@ -1,6 +1,13 @@
 # VS Code LS-DYNA extension
 [简体中文](README_zh.md)
 
+> [!NOTE]
+> **Customized Version Notice (Modified by hqyyqh)**
+> This extension is a customized version based on the original [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) developed by Ryan O'Sullivan ([osullivryan](https://github.com/osullivryan)).
+> - **Modifier:** hqyyqh (Modified starting May 2026)
+> - **Source Code:** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
+> - **License:** Distributed under the GNU General Public License v3.0 (GPL-3.0). All original licenses and credits are preserved.
+
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
 
@@ -120,7 +127,8 @@ There are a few ways you can go about adding keywords or features:
 
 ### Contributors
 
-- [osullivryan](https://github.com/osullivryan)
+- [osullivryan](https://github.com/osullivryan) (Original Author)
+- [hqyyqh](https://github.com/hqyyqh) (Customized Version Maintainer)
 - [yshl](https://github.com/yshl)
 - [maxiiss](https://github.com/maxiiss)
 
