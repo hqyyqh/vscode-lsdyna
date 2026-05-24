@@ -7,3 +7,5 @@ node_modules/
 
 # Ensure bundled SumatraPDF binary is tracked
 !bin/SumatraPDF.exe
+bin/SumatraPDF-settings.txt
+/bin/sumatrapdfcache
