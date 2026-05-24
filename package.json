@@ -192,18 +192,10 @@
                     "default": "LS-DYNA Manuals",
                     "description": "Path to the directory containing LS-DYNA PDF manuals (can be workspace-relative or absolute)."
                 },
-                "lsdyna.manualViewer": {
+                "lsdyna.sumatrapdfPath": {
                     "type": "string",
-                    "default": "vscode",
-                    "enum": [
-                        "vscode",
-                        "system"
-                    ],
-                    "enumDescriptions": [
-                        "Open using VS Code built-in Webview PDF viewer (recycles tab and supports page navigation)",
-                        "Open using system default PDF viewer (supports page parameter on Windows)"
-                    ],
-                    "description": "The PDF viewer to use when opening LS-DYNA manuals."
+                    "default": "",
+                    "description": "Custom path to SumatraPDF.exe on Windows. If left blank, the extension will use the bundled version or automatically detect it from the system."
                 }
             }
         },
