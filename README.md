@@ -48,7 +48,7 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Bookmark-based PDF manual indexing (`manualIndexer`) and cache for instant search
 - Interactive hover cards: Keyword and field hovers display links to the exact page of the LS-DYNA PDF manual
 - `openManual` command to easily jump to specific manual pages
-- Bundled SumatraPDF support (Windows) featuring tab recycling, single-instance routing, and page-precision navigation
+- SumatraPDF support (Windows) featuring tab recycling, single-instance routing, and page-precision navigation (requires placing `SumatraPDF.exe` in the manuals directory)
 
 **Sidebar Panel**
 - **Include Tree** — recursively scans all `*INCLUDE` files and displays them as a tree; exact `*INCLUDE` blocks may contain multiple file entries. Features:
@@ -87,7 +87,7 @@ The extension respects standard VS Code settings. Some useful ones for LS-DYNA f
 | `editor.inlayHints.enabled` | `on` | Show resolved parameter values inline |
 | `editor.codeLens` | `true` | Show "N references" above parameter definitions |
 | `editor.wordWrap` | `off` | Word wrap (off by default for fixed-width columns) |
-| `lsdyna.sumatrapdfPath` | `""` | Custom SumatraPDF executable path (Windows only) for precise page-level manual navigation. |
+| `lsdyna.manualsDir` | `""` | Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy `SumatraPDF.exe` into this folder for precise page-level manual navigation. |
 
 These can be scoped to LS-DYNA files only by adding them under `"[lsdyna]"` in your `settings.json`:
 
