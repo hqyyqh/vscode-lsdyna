@@ -1682,6 +1682,89 @@ function getDefaultPdfViewerOnWindows() {
     });
 }
 
+async function resolveSumatraPath(context) {
+    const fs = require('fs');
+    const path = require('path');
+    const child_process = require('child_process');
+
+    // 1. User configured path
+    const configPath = vscode.workspace.getConfiguration('lsdyna').get('sumatrapdfPath');
+    if (configPath && typeof configPath === 'string') {
+        const expanded = configPath.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
+        if (fs.existsSync(expanded)) {
+            return expanded;
+        }
+    }
+
+    // 2. Bundled binary path
+    const bundledPath = context.asAbsolutePath(path.join('bin', 'SumatraPDF.exe'));
+    if (fs.existsSync(bundledPath)) {
+        return bundledPath;
+    }
+
+    // Helper to execute reg query asynchronously
+    const queryReg = (key) => {
+        return new Promise((resolve) => {
+            child_process.exec(`reg query "${key}" /ve`, (error, stdout) => {
+                if (error || !stdout) return resolve(null);
+                const lines = stdout.split('\r\n');
+                for (const line of lines) {
+                    if (line.includes('REG_SZ')) {
+                        const idx = line.indexOf('REG_SZ');
+                        let val = line.substring(idx + 6).trim();
+                        if (val.startsWith('"') && val.endsWith('"')) {
+                            val = val.substring(1, val.length - 1);
+                        }
+                        resolve(val);
+                        return;
+                    }
+                }
+                resolve(null);
+            });
+        });
+    };
+
+    // 3. Registry App Paths
+    const regKeys = [
+        'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe',
+        'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe'
+    ];
+    for (const key of regKeys) {
+        const regPath = await queryReg(key);
+        if (regPath && fs.existsSync(regPath)) {
+            return regPath;
+        }
+    }
+
+    // 4. PATH Environment
+    if (process.env.PATH) {
+        const paths = process.env.PATH.split(path.delimiter);
+        for (const p of paths) {
+            const fullPath = path.join(p, 'SumatraPDF.exe');
+            if (fs.existsSync(fullPath)) {
+                return fullPath;
+            }
+        }
+    }
+
+    // 5. Common Heuristic Paths
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const appData = process.env.APPDATA || '';
+    const commonPaths = [
+        'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
+        'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
+        path.join(localAppData, 'SumatraPDF', 'SumatraPDF.exe'),
+        path.join(appData, 'SumatraPDF', 'SumatraPDF.exe')
+    ];
+    for (const cp of commonPaths) {
+        if (cp && fs.existsSync(cp)) {
+            return cp;
+        }
+    }
+
+    return null;
+}
+
 function openManualFallback(pdfPath, pageNum) {
     let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
     if (pageNum) {
