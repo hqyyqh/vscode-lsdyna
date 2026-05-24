@@ -1,6 +1,13 @@
 # VS Code LS-DYNA 扩展
 [English](README.md)
 
+> [!NOTE]
+> **定制版本声明（由 hqyyqh 修改）**
+> 本插件是基于 Ryan O'Sullivan 开发的原版 [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) 插件的定制分支，添加了特定的定制化功能。
+> - **修改者：** hqyyqh（自 2026 年 5 月起进行修改）
+> - **源码仓库：** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
+> - **开源协议：** 遵循 GNU General Public License v3.0 (GPL-3.0) 协议。我们保留并尊重原作者的所有版权与贡献声明。
+
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
 <img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
@@ -119,7 +126,8 @@ python keywords/generate_from_pydyna.py
 
 ### 贡献者
 
-- [osullivryan](https://github.com/osullivryan)
+- [osullivryan](https://github.com/osullivryan) (原作者)
+- [hqyyqh](https://github.com/hqyyqh) (定制版维护者)
 - [yshl](https://github.com/yshl)
 - [maxiiss](https://github.com/maxiiss)
 
