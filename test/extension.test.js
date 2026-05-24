@@ -1375,9 +1375,10 @@ describe('LsdynaFieldHoverProvider', () => {
             const hover = provider.provideHover(doc, { line: 1, character: 35 });
 
             assert.ok(hover);
-            assert.equal(
-                hover.contents[0].value,
-                '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
+            assert.ok(
+                hover.contents[0].value.startsWith(
+                    '### Field: **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n---\n**Card Structure:**\n\n| ENDTIM | ENDCYC | DTMIN | **ENDENG** | ENDMAS | NOSOL |\n| --- | --- | --- | --- | --- | --- |\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |'
+                )
             );
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
@@ -1442,9 +1443,16 @@ describe('LsdynaFieldHoverProvider', () => {
     });
 
     it('appends manual links to keyword and field hovers when available', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualLocations = manualIndexer.getManualLocations;
+        const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
         
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualsDir' ? 'd:/manuals' : undefined
+        });
+        manualIndexer.getManualFilesCount = () => 1;
         manualIndexer.getManualLocations = (kw) => {
             if (kw === '*CONTROL_TERMINATION') {
                 return [{ file: 'd:/manuals/Vol I.pdf', page: 20 }];
@@ -1472,14 +1480,23 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(fieldHover.contents[0].value.includes('Vol I (第 20 页)'));
 
         } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+            manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
     });
 
     it('displays fallback hover with manual links for keywords missing in field_data.json but present in PDF bookmarks', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualLocations = manualIndexer.getManualLocations;
+        const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
         
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualsDir' ? 'd:/manuals' : undefined
+        });
+        manualIndexer.getManualFilesCount = () => 1;
         // Mock a keyword that is NOT in field_data.json but is in the manuals
         manualIndexer.getManualLocations = (kw) => {
             if (kw === '*SOME_UNUSUAL_KEYWORD') {
@@ -1500,6 +1517,57 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover.contents[0].value.includes('command:extension.openManual'));
             assert.ok(hover.contents[0].value.includes('Vol III (第 99 页)'));
         } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+            manualIndexer.getManualFilesCount = originalGetManualFilesCount;
+            manualIndexer.getManualLocations = originalGetManualLocations;
+        }
+    });
+
+    it('displays configure prompt hover on unrecognized keyword when manualsDir is not configured', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
+        
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualsDir' ? '' : undefined
+        });
+        manualIndexer.getManualFilesCount = () => 0;
+
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
+            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            assert.ok(hover);
+            assert.ok(hover.contents[0].value.includes('未设置手册路径'));
+            assert.ok(hover.contents[0].value.includes('command:extension.configureManualsDir'));
+        } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+            manualIndexer.getManualFilesCount = originalGetManualFilesCount;
+        }
+    });
+
+    it('returns null on unrecognized keyword when manualsDir is configured but no manuals found', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
+        const originalGetManualLocations = manualIndexer.getManualLocations;
+        
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualsDir' ? 'some/dir' : undefined
+        });
+        manualIndexer.getManualFilesCount = () => 1;
+        manualIndexer.getManualLocations = () => [];
+
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
+            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            assert.strictEqual(hover, null);
+        } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+            manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
     });

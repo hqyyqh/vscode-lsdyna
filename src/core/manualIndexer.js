@@ -400,9 +400,20 @@ function getManualLocations(kwName) {
     return keywordMap.get(cleanKeyword(kwName)) || [];
 }
 
+function getManualFilesCount() {
+    const files = new Set();
+    for (const locations of keywordMap.values()) {
+        for (const loc of locations) {
+            files.add(loc.file);
+        }
+    }
+    return files.size;
+}
+
 module.exports = {
     initialize,
     getManualLocations,
+    getManualFilesCount,
     // 导出用于测试的方法
     parsePdf,
     parsePdfContent,
