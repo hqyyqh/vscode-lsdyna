@@ -48,7 +48,6 @@ const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
-const activePanels = new Map();
 
 // --- Folding ---
 
@@ -1166,83 +1165,36 @@ function activate(context) {
                 vscode.env.openExternal(vscode.Uri.file(pdfPath));
                 return;
             }
-            const config = vscode.workspace.getConfiguration('lsdyna');
-            const viewer = config.get('manualViewer') || 'vscode';
 
-            if (viewer === 'vscode') {
-                if (activePanels.has(pdfPath)) {
-                    const panel = activePanels.get(pdfPath);
-                    panel.reveal(vscode.ViewColumn.Active);
-                    panel.webview.postMessage({ command: 'showPage', page: pageNum });
-                } else {
-                    const panel = vscode.window.createWebviewPanel(
-                        'pdfViewer',
-                        path.basename(pdfPath),
-                        vscode.ViewColumn.Active,
-                        {
-                            enableScripts: true,
-                            retainContextWhenHidden: true,
-                            localResourceRoots: [vscode.Uri.file(path.dirname(pdfPath))]
+            if (process.platform === 'win32') {
+                try {
+                    const exePath = await resolveSumatraPath(context);
+                    if (exePath) {
+                        const args = ['-reuse-instance'];
+                        if (pageNum) {
+                            args.push('-page', String(pageNum));
                         }
-                    );
-                    activePanels.set(pdfPath, panel);
-                    panel.onDidDispose(() => {
-                        activePanels.delete(pdfPath);
-                    });
-                    const pdfUri = panel.webview.asWebviewUri(vscode.Uri.file(pdfPath));
-                    panel.webview.html = getWebviewContent(pdfUri.toString(), pageNum, panel.webview.cspSource);
-                }
-            } else {
-                if (process.platform === 'win32') {
-                    try {
-                        const defaultViewer = await getDefaultPdfViewerOnWindows();
-                        if (defaultViewer) {
-                            const exeLower = defaultViewer.exePath.toLowerCase();
-                            let cmd = `"${defaultViewer.exePath}"`;
-                            
-                            if (exeLower.includes('msedge.exe') || exeLower.includes('chrome.exe') || exeLower.includes('firefox.exe') || exeLower.includes('iexplore.exe')) {
-                                let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
-                                if (pageNum) {
-                                    fileUrl += `#page=${pageNum}`;
-                                }
-                                cmd += ` "${fileUrl}"`;
-                            } else if (exeLower.includes('acrobat.exe') || exeLower.includes('acrord32.exe') || exeLower.includes('pdfxedit.exe') || exeLower.includes('pdfxcview.exe')) {
-                                if (pageNum) {
-                                    cmd += ` /A "page=${pageNum}"`;
-                                }
-                                cmd += ` "${pdfPath}"`;
-                            } else if (exeLower.includes('foxitreader.exe') || exeLower.includes('foxitpdfreader.exe')) {
-                                cmd += ` "${pdfPath}"`;
-                                if (pageNum) {
-                                    cmd += ` /A page=${pageNum}`;
-                                }
-                            } else if (exeLower.includes('sumatrapdf.exe')) {
-                                cmd += ` "${pdfPath}"`;
-                                if (pageNum) {
-                                    cmd += ` -page ${pageNum}`;
-                                }
-                            } else {
-                                let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
-                                if (pageNum) {
-                                    fileUrl += `#page=${pageNum}`;
-                                }
-                                cmd += ` "${fileUrl}"`;
-                            }
-                            
-                            child_process.exec(cmd, (error) => {
-                                if (error) {
-                                    openManualFallback(pdfPath, pageNum);
-                                }
-                            });
-                        } else {
+                        // Quoting the path manually because of windowsVerbatimArguments: true
+                        args.push(`"${pdfPath}"`);
+
+                        const child = child_process.spawn(exePath, args, {
+                            detached: true,
+                            windowsVerbatimArguments: true,
+                            windowsHide: true,
+                            stdio: 'ignore'
+                        });
+                        child.on('error', () => {
                             openManualFallback(pdfPath, pageNum);
-                        }
-                    } catch (e) {
+                        });
+                        child.unref();
+                    } else {
                         openManualFallback(pdfPath, pageNum);
                     }
-                } else {
-                    vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                } catch (e) {
+                    openManualFallback(pdfPath, pageNum);
                 }
+            } else {
+                vscode.env.openExternal(vscode.Uri.file(pdfPath));
             }
         })
     );
@@ -1414,12 +1366,6 @@ function activate(context) {
 }
 
 function deactivate() {
-    for (const panel of activePanels.values()) {
-        try {
-            panel.dispose();
-        } catch (e) {}
-    }
-    activePanels.clear();
 }
 
 function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = findAffectedProjectRoots } = {}) {
@@ -1619,68 +1565,6 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
     }
 }
 
-function expandEnvVars(str) {
-    return str.replace(/%([^%]+)%/g, (_, name) => process.env[name] || `%${name}%`);
-}
-
-function getDefaultPdfViewerOnWindows() {
-    return new Promise((resolve) => {
-        const progIdCmd = 'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.pdf\\UserChoice" /v ProgId';
-        child_process.exec(progIdCmd, (err, stdout) => {
-            if (err || !stdout) {
-                return resolve(null);
-            }
-            const match = stdout.match(/ProgId\s+REG_SZ\s+(\S+)/);
-            if (!match) {
-                return resolve(null);
-            }
-            const progId = match[1];
-            
-            const cmdQuery = `reg query "HKCR\\${progId}\\shell\\open\\command"`;
-            child_process.exec(cmdQuery, (cmdErr, cmdStdout) => {
-                if (cmdErr || !cmdStdout) {
-                    return resolve(null);
-                }
-                const lines = cmdStdout.split('\n');
-                let commandLine = '';
-                for (const line of lines) {
-                    if (line.includes('REG_SZ') || line.includes('REG_EXPAND_SZ')) {
-                        const idx = line.indexOf('REG_SZ');
-                        if (idx !== -1) {
-                            commandLine = line.substring(idx + 6).trim();
-                        } else {
-                            const expIdx = line.indexOf('REG_EXPAND_SZ');
-                            if (expIdx !== -1) {
-                                commandLine = line.substring(expIdx + 13).trim();
-                            }
-                        }
-                        break;
-                    }
-                }
-                if (!commandLine) {
-                    return resolve(null);
-                }
-                
-                let exePath = '';
-                if (commandLine.startsWith('"')) {
-                    const closeQuoteIdx = commandLine.indexOf('"', 1);
-                    if (closeQuoteIdx !== -1) {
-                        exePath = commandLine.substring(1, closeQuoteIdx);
-                    }
-                } else {
-                    exePath = commandLine.split(' ')[0];
-                }
-                
-                exePath = expandEnvVars(exePath);
-                if (exePath && fs.existsSync(exePath)) {
-                    resolve({ exePath, progId });
-                } else {
-                    resolve(null);
-                }
-            });
-        });
-    });
-}
 
 async function resolveSumatraPath(context) {
     const fs = require('fs');
@@ -1779,233 +1663,6 @@ function openManualFallback(pdfPath, pageNum) {
     } catch (e) {
         vscode.env.openExternal(vscode.Uri.file(pdfPath));
     }
-}
-
-function getWebviewContent(pdfUri, pageNum, cspSource) {
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self' ${cspSource} https://cdnjs.cloudflare.com;">
-    <style>
-        body {
-            background-color: var(--vscode-editor-background);
-            color: var(--vscode-editor-foreground);
-            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-        .toolbar {
-            background-color: var(--vscode-editorWidget-background, #252526);
-            border-bottom: 1px solid var(--vscode-widget-border, #3c3c3c);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            padding: 8px 16px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-            z-index: 10;
-        }
-        .btn {
-            background-color: var(--vscode-button-background, #007acc);
-            color: var(--vscode-button-foreground, #ffffff);
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background-color 0.2s ease, transform 0.1s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .btn:hover {
-            background-color: var(--vscode-button-hoverBackground, #0062a3);
-        }
-        .btn:active {
-            transform: scale(0.95);
-        }
-        .page-info {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-        }
-        .input-page {
-            background-color: var(--vscode-input-background, #3c3c3c);
-            color: var(--vscode-input-foreground, #cccccc);
-            border: 1px solid var(--vscode-input-border, transparent);
-            border-radius: 3px;
-            padding: 4px 8px;
-            width: 50px;
-            text-align: center;
-            font-size: 14px;
-        }
-        .input-page:focus {
-            outline: 1px solid var(--vscode-focusBorder, #007acc);
-        }
-        .canvas-container {
-            flex: 1;
-            overflow: auto;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding: 20px;
-            background-color: var(--vscode-editor-background);
-        }
-        #the-canvas {
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            border-radius: 4px;
-            background-color: white;
-        }
-        .zoom-controls {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-left: 20px;
-        }
-    </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-</head>
-<body>
-    <div class="toolbar">
-        <button id="prev" class="btn">◀ Prev</button>
-        <div class="page-info">
-            <span>Page</span>
-            <input type="text" id="page_num" class="input-page" value="1">
-            <span>of <span id="page_count">-</span></span>
-        </div>
-        <button id="next" class="btn">Next ▶</button>
-        
-        <div class="zoom-controls">
-            <button id="zoom_out" class="btn">Zoom -</button>
-            <button id="zoom_in" class="btn">Zoom +</button>
-            <button id="fit" class="btn">Fit Width</button>
-        </div>
-    </div>
-    
-    <div class="canvas-container" id="canvas-container">
-        <canvas id="the-canvas"></canvas>
-    </div>
-
-    <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-
-        const pdfUrl = "${pdfUri}";
-        let pdfDoc = null;
-        let pageNum = ${pageNum};
-        let pageRendering = false;
-        let pageNumPending = null;
-        let scale = 1.5;
-        const canvas = document.getElementById('the-canvas');
-        const ctx = canvas.getContext('2d');
-
-        function renderPage(num) {
-            pageRendering = true;
-            pdfDoc.getPage(num).then(page => {
-                const viewport = page.getViewport({ scale: scale });
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-
-                const renderContext = {
-                    canvasContext: ctx,
-                    viewport: viewport
-                };
-                const renderTask = page.render(renderContext);
-
-                renderTask.promise.then(() => {
-                    pageRendering = false;
-                    if (pageNumPending !== null) {
-                        renderPage(pageNumPending);
-                        pageNumPending = null;
-                    }
-                });
-            });
-
-            document.getElementById('page_num').value = num;
-        }
-
-        function queueRenderPage(num) {
-            if (num < 1 || num > pdfDoc.numPages) return;
-            pageNum = num;
-            if (pageRendering) {
-                pageNumPending = num;
-            } else {
-                renderPage(num);
-            }
-        }
-
-        function onPrevPage() {
-            if (pageNum <= 1) return;
-            queueRenderPage(pageNum - 1);
-        }
-
-        function onNextPage() {
-            if (pageNum >= pdfDoc.numPages) return;
-            queueRenderPage(pageNum + 1);
-        }
-
-        function fitToWidth() {
-            if (!pdfDoc) return;
-            pdfDoc.getPage(pageNum).then(page => {
-                const container = document.getElementById('canvas-container');
-                const containerWidth = container.clientWidth;
-                const viewport = page.getViewport({ scale: 1.0 });
-                scale = (containerWidth - 40) / viewport.width;
-                queueRenderPage(pageNum);
-            });
-        }
-
-        document.getElementById('prev').addEventListener('click', onPrevPage);
-        document.getElementById('next').addEventListener('click', onNextPage);
-        
-        document.getElementById('zoom_in').addEventListener('click', () => {
-            scale += 0.2;
-            queueRenderPage(pageNum);
-        });
-        
-        document.getElementById('zoom_out').addEventListener('click', () => {
-            if (scale <= 0.4) return;
-            scale -= 0.2;
-            queueRenderPage(pageNum);
-        });
-        
-        document.getElementById('fit').addEventListener('click', fitToWidth);
-
-        document.getElementById('page_num').addEventListener('change', (e) => {
-            const val = parseInt(e.target.value, 10);
-            if (val >= 1 && val <= pdfDoc.numPages) {
-                queueRenderPage(val);
-            } else {
-                e.target.value = pageNum;
-            }
-        });
-
-        window.addEventListener('message', event => {
-            const message = event.data;
-            if (message.command === 'showPage') {
-                queueRenderPage(message.page);
-            }
-        });
-
-        // Load PDF document
-        pdfjsLib.getDocument(pdfUrl).promise.then(pdf => {
-            pdfDoc = pdf;
-            document.getElementById('page_count').textContent = pdf.numPages;
-            
-            // Auto-fit initial scale on first load
-            fitToWidth();
-        }).catch(err => {
-            console.error('Error loading PDF:', err);
-            document.getElementById('canvas-container').innerHTML = '<div style="color: var(--vscode-errorForeground); padding: 20px;">Failed to load PDF document: ' + err.message + '</div>';
-        });
-    </script>
-</body>
-</html>`;
 }
 
 module.exports = { activate, deactivate };
