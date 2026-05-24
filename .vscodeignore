@@ -7,6 +7,11 @@ node_modules
 keywords/**
 !keywords/field_data.json
 **/*.ipynb
-
-# Ensure bundled SumatraPDF binary is packaged in the extension
+.antigravity
+.worktrees
+docs
+LS-DYNA Manuals
+bin/**
 !bin/SumatraPDF.exe
+AGENTS.md
+GEMINI.md
