@@ -565,7 +565,12 @@ class LsdynaFieldHoverProvider {
             if (!entry) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
                 const manuals = manualIndexer.getManualLocations(cleanKw);
-                if (manuals.length > 0) {
+                const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
+                const fileCount = manualIndexer.getManualFilesCount();
+                const hasManuals = manuals.length > 0;
+                const notConfigured = !manualsDir || fileCount === 0;
+                
+                if (hasManuals || notConfigured) {
                     const md = new vscode.MarkdownString(`**\\*${kwName}**`);
                     md.isTrusted = true;
                     md.supportThemeIcons = true;
