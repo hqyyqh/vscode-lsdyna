@@ -1862,10 +1862,9 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\custom\\SumatraPDF.exe');
-        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
-        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(spawnCalls.length, 0);
+        const expectedCmd = 'start "" "C:\\custom\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
@@ -1880,10 +1879,9 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\mock-extension-path\\bin\\SumatraPDF.exe');
-        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
-        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(spawnCalls.length, 0);
+        const expectedCmd = 'start "" "C:\\mock-extension-path\\bin\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
@@ -1904,9 +1902,9 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\RegistryPath\\SumatraPDF.exe');
-        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.strictEqual(spawnCalls.length, 0);
+        const expectedCmd = 'start "" "C:\\RegistryPath\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
         assert.ok(execCalls.includes(hklmQuery));
     });
 
@@ -1931,9 +1929,10 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, path.join('C:\\PathDir', 'SumatraPDF.exe'));
-        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.strictEqual(spawnCalls.length, 0);
+        const resolvedExe = path.join('C:\\PathDir', 'SumatraPDF.exe');
+        const expectedCmd = `start "" "${resolvedExe}" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"`;
+        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
     });
 
     it('uses common heuristic paths when other searches fail', async () => {
@@ -1955,9 +1954,9 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe');
-        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.strictEqual(spawnCalls.length, 0);
+        const expectedCmd = 'start "" "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
     });
 
     it('gracefully falls back to openManualFallback (using start command) on Windows if SumatraPDF cannot be found', async () => {
@@ -1982,11 +1981,14 @@ describe('extension.openManual command', () => {
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('gracefully falls back to openManualFallback (using start command) on Windows if spawn throws error', async () => {
+    it('gracefully falls back to openManualFallback (using start command) on Windows if exec start command fails', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.sumatrapdfPath = 'C:\\custom\\SumatraPDF.exe';
         mockExistsMap['C:\\custom\\SumatraPDF.exe'] = true;
-        mockSpawnError = true;
+
+        // Mock the start command to fail
+        const startCmd = 'start "" "C:\\custom\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        mockRegistryData[startCmd] = { error: 'Start failed' };
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1994,9 +1996,10 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls.length, 0);
+        assert.ok(execCalls.includes(startCmd));
+        // The fallback should also be called
         assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
-        assert.strictEqual(openExternalCalls.length, 0);
     });
 
     it('falls back to vscode.env.openExternal if openManualFallback exec command fails', async () => {
@@ -2040,5 +2043,3 @@ describe('extension.openManual command', () => {
         assert.strictEqual(openExternalCalls[0].fsPath, '/path/to/manual.pdf');
     });
 });
-
-
