@@ -479,13 +479,25 @@ function formatHoverHelpText(helpText) {
 function appendManualLinks(md, kwName) {
     const cleanKw = manualIndexer.cleanKeyword(kwName);
     const manuals = manualIndexer.getManualLocations(cleanKw);
-    if (manuals.length > 0) {
-        md.appendMarkdown('\n\n---');
+    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
+    const fileCount = manualIndexer.getManualFilesCount();
+
+    md.appendMarkdown('\n\n---');
+
+    if (!manualsDir || fileCount === 0) {
+        md.appendMarkdown('\n\n#### 📚 帮助文档 (Manuals)\n\n未设置手册路径。配置后可在悬停时快速阅读 PDF 原文书签页。');
+        md.appendMarkdown('\n\n[⚙️ 设置手册文件夹 (Configure Folder)](command:extension.configureManualsDir)');
+    } else if (manuals.length > 0) {
+        md.appendMarkdown('\n\n#### 📚 帮助文档 (Manuals)');
         for (const man of manuals) {
             const volName = path.basename(man.file, '.pdf');
             const openArgs = encodeURIComponent(JSON.stringify([man.file, man.page]));
-            md.appendMarkdown(`\n\n[$(book) 打开帮助文档 - ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
+            md.appendMarkdown(`\n\n* [$(book) 打开手册 - ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
         }
+        md.appendMarkdown('\n\n---');
+        md.appendMarkdown('\n\n[$(edit) 修改手册路径 (Change Path)](command:extension.configureManualsDir)');
+    } else {
+        md.appendMarkdown('\n\n[$(edit) 修改手册路径 (Change Path)](command:extension.configureManualsDir)');
     }
 }
 
