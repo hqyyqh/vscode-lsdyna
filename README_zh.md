@@ -47,7 +47,7 @@
 - 基于 PDF 书签的手册索引（`manualIndexer`）与本地缓存，实现即时检索
 - 交互式悬停卡片：关键字和字段的 Hover 提示卡片内提供了直达 LS-DYNA PDF 手册对应页码的链接
 - `openManual` 命令：轻松跳转到指定的手册页面
-- 内置 SumatraPDF 支持（Windows）：支持标签页复用、单实例启动路由以及高精度的页码跳转定位
+- SumatraPDF 支持（Windows）：提供标签页复用、单实例启动路由以及高精度的页码跳转定位（需要将 `SumatraPDF.exe` 复制到手册文件夹下）
 
 **侧边栏面板**
 - **包含树 (Include Tree)** — 递归扫描所有 `*INCLUDE` 文件并以树状图展示；单个 `*INCLUDE` 块内可包含多个文件。特性：
@@ -86,7 +86,7 @@
 | `editor.inlayHints.enabled` | `on` | 内联显示解析后的参数值 |
 | `editor.codeLens` | `true` | 在参数定义上方显示“N 个引用” |
 | `editor.wordWrap` | `off` | 自动换行（对齐固定宽度列时默认关闭） |
-| `lsdyna.sumatrapdfPath` | `""` | SumatraPDF 的可执行文件路径（仅限 Windows），用于精确的 PDF 手册页面跳转。 |
+| `lsdyna.manualsDir` | `""` | 包含 LS-DYNA PDF 手册的目录路径（绝对或工作区相对路径）。在 Windows 系统上，请将 `SumatraPDF.exe` 复制到该目录下以启用精确页码跳转。 |
 
 可以通过在 `settings.json` 的 `"[lsdyna]"` 下添加这些设置，来使其仅对 LS-DYNA 文件生效：
 
