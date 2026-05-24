@@ -1716,23 +1716,35 @@ describe('LsdynaIncludeCompletionProvider', () => {
 describe('extension.openManual command', () => {
     let originalPlatform;
     let originalExec;
-    let originalExecuteCommand;
+    let originalSpawn;
+    let originalExistsSync;
     let originalOpenExternal;
     let originalGetConfiguration;
     let originalRegisterCommand;
+    let originalPathEnv;
+    let originalLocalAppdataEnv;
+    let originalAppdataEnv;
 
     let execCalls = [];
-    let executeCommandCalls = [];
+    let spawnCalls = [];
     let openExternalCalls = [];
     let registeredCommands = new Map();
+    let mockExistsMap = {};
+    let mockRegistryData = {};
+    let mockConfig = {};
+    let mockSpawnError = false;
 
     before(() => {
         originalPlatform = process.platform;
         originalExec = require('child_process').exec;
-        originalExecuteCommand = vscodeMock.commands.executeCommand;
+        originalSpawn = require('child_process').spawn;
+        originalExistsSync = require('fs').existsSync;
         originalOpenExternal = vscodeMock.env ? vscodeMock.env.openExternal : undefined;
         originalGetConfiguration = vscodeMock.workspace.getConfiguration;
         originalRegisterCommand = vscodeMock.commands.registerCommand;
+        originalPathEnv = process.env.PATH;
+        originalLocalAppdataEnv = process.env.LOCALAPPDATA;
+        originalAppdataEnv = process.env.APPDATA;
 
         vscodeMock.commands.registerCommand = (id, callback) => {
             registeredCommands.set(id, callback);
@@ -1751,7 +1763,8 @@ describe('extension.openManual command', () => {
     after(() => {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
         require('child_process').exec = originalExec;
-        vscodeMock.commands.executeCommand = originalExecuteCommand;
+        require('child_process').spawn = originalSpawn;
+        require('fs').existsSync = originalExistsSync;
         if (originalOpenExternal) {
             vscodeMock.env.openExternal = originalOpenExternal;
         } else {
@@ -1759,240 +1772,107 @@ describe('extension.openManual command', () => {
         }
         vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         vscodeMock.commands.registerCommand = originalRegisterCommand;
+        process.env.PATH = originalPathEnv;
+        process.env.LOCALAPPDATA = originalLocalAppdataEnv;
+        process.env.APPDATA = originalAppdataEnv;
     });
 
     beforeEach(() => {
         execCalls = [];
-        executeCommandCalls = [];
+        spawnCalls = [];
         openExternalCalls = [];
         registeredCommands.clear();
+        mockExistsMap = {};
+        mockRegistryData = {};
+        mockConfig = {};
+        mockSpawnError = false;
+        process.env.PATH = originalPathEnv;
+        process.env.LOCALAPPDATA = originalLocalAppdataEnv;
+        process.env.APPDATA = originalAppdataEnv;
 
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            cb(null);
+        require('fs').existsSync = (p) => {
+            if (p in mockExistsMap) {
+                return mockExistsMap[p];
+            }
+            if (typeof p === 'string' && p.toLowerCase().includes('sumatrapdf.exe')) {
+                return false;
+            }
+            return originalExistsSync(p);
         };
 
-        vscodeMock.commands.executeCommand = (cmd, ...args) => {
-            executeCommandCalls.push({ cmd, args });
-            return Promise.resolve();
+        require('child_process').exec = (cmd, options, cb) => {
+            if (typeof options === 'function') {
+                cb = options;
+                options = undefined;
+            }
+            execCalls.push(cmd);
+            if (cmd in mockRegistryData) {
+                const res = mockRegistryData[cmd];
+                if (res.error) {
+                    cb(new Error(res.error));
+                } else {
+                    cb(null, res.stdout || '');
+                }
+            } else {
+                cb(null, '');
+            }
+        };
+
+        require('child_process').spawn = (exe, args, options) => {
+            spawnCalls.push({ exe, args, options });
+            const mockChild = {
+                on: (event, cb) => {
+                    if (event === 'error' && mockSpawnError) {
+                        cb(new Error('Spawn error'));
+                    }
+                },
+                unref: () => {}
+            };
+            return mockChild;
+        };
+
+        vscodeMock.workspace.getConfiguration = (section) => {
+            return {
+                get: (key) => {
+                    if (section === 'lsdyna' && key === 'sumatrapdfPath') {
+                        return mockConfig.sumatrapdfPath;
+                    }
+                    return undefined;
+                }
+            };
         };
 
         // Activate extension to trigger registrations
-        const context = { subscriptions: [] };
+        const context = {
+            subscriptions: [],
+            asAbsolutePath: (relPath) => `C:\\mock-extension-path\\${relPath}`
+        };
         extensionModule.activate(context);
     });
 
-    it('creates a webview panel when manualViewer config is vscode and it is not already open', async () => {
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'vscode' : undefined
-        });
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        let createdPanel = null;
-        const originalCreateWebviewPanel = vscodeMock.window.createWebviewPanel;
-        vscodeMock.window.createWebviewPanel = (viewType, title, showOptions, options) => {
-            createdPanel = originalCreateWebviewPanel(viewType, title, showOptions, options);
-            return createdPanel;
-        };
-
-        try {
-            const pdfPath = 'C:\\path\\to\\manual.pdf';
-            await openManual(pdfPath, 12);
-
-            assert.ok(createdPanel);
-            assert.ok(createdPanel.webview.html.includes('pdfjsLib'));
-            assert.ok(createdPanel.webview.html.includes('pageNum = 12'));
-        } finally {
-            extensionModule.deactivate();
-            vscodeMock.window.createWebviewPanel = originalCreateWebviewPanel;
-        }
-    });
-
-    it('reveals existing webview panel and updates page number when manualViewer config is vscode and it is already open', async () => {
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'vscode' : undefined
-        });
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        let revealCalled = false;
-        let postMessageData = null;
-        
-        const originalCreateWebviewPanel = vscodeMock.window.createWebviewPanel;
-        vscodeMock.window.createWebviewPanel = (viewType, title, showOptions, options) => {
-            const panel = originalCreateWebviewPanel(viewType, title, showOptions, options);
-            panel.reveal = () => { revealCalled = true; };
-            panel.webview.postMessage = (msg) => { postMessageData = msg; return Promise.resolve(true); };
-            return panel;
-        };
-
-        try {
-            const pdfPath = 'C:\\path\\to\\manual.pdf';
-            await openManual(pdfPath, 12);
-            
-            revealCalled = false;
-            await openManual(pdfPath, 42);
-
-            assert.strictEqual(revealCalled, true);
-            assert.deepEqual(postMessageData, { command: 'showPage', page: 42 });
-        } finally {
-            extensionModule.deactivate();
-            vscodeMock.window.createWebviewPanel = originalCreateWebviewPanel;
-        }
-    });
-
-    it('launches PDF-XChange directly with page parameter when PDF-XChange is the default viewer on Windows', async () => {
+    it('uses user-configured path when valid and expands environment variables', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
+        process.env.TEST_SUMATRA_DIR = 'C:\\custom';
+        mockConfig.sumatrapdfPath = '%TEST_SUMATRA_DIR%\\SumatraPDF.exe';
+        mockExistsMap['C:\\custom\\SumatraPDF.exe'] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
-
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            if (cmd.includes('UserChoice')) {
-                cb(null, '    ProgId    REG_SZ    PDFXEdit.PDF\r\n');
-            } else if (cmd.includes('PDFXEdit.PDF')) {
-                cb(null, '    (Default)    REG_SZ    "C:\\Program Files\\Tracker Software\\PDF Editor\\PDFXEdit.exe" "%1"\r\n');
-            } else {
-                cb(null, '');
-            }
-        };
-
-        const originalExistsSync = require('fs').existsSync;
-        require('fs').existsSync = (p) => {
-            if (p.includes('PDFXEdit.exe')) return true;
-            return originalExistsSync(p);
-        };
-
-        try {
-            const pdfPath = 'C:\\path\\to\\manual.pdf';
-            await openManual(pdfPath, 12);
-
-            assert.strictEqual(execCalls.length, 3);
-            assert.strictEqual(execCalls[2], '"C:\\Program Files\\Tracker Software\\PDF Editor\\PDFXEdit.exe" /A "page=12" "C:\\path\\to\\manual.pdf"');
-            assert.strictEqual(openExternalCalls.length, 0);
-        } finally {
-            require('fs').existsSync = originalExistsSync;
-        }
-    });
-
-    it('uses child_process.exec and falls back to start command when default viewer is not detected on Windows', async () => {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            cb(null, '');
-        };
 
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(execCalls.length, 2);
-        assert.ok(execCalls[0].includes('reg query'));
-        assert.strictEqual(execCalls[1], 'cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"');
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, 'C:\\custom\\SumatraPDF.exe');
+        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('launches Microsoft Edge directly with page parameter when Edge is the default viewer on Windows', async () => {
+    it('uses bundled SumatraPDF binary when configured path is not set', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            if (cmd.includes('UserChoice')) {
-                cb(null, '    ProgId    REG_SZ    MSEdgePDF\r\n');
-            } else if (cmd.includes('MSEdgePDF')) {
-                cb(null, '    (Default)    REG_SZ    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --single-argument %1\r\n');
-            } else {
-                cb(null, '');
-            }
-        };
-
-        const originalExistsSync = require('fs').existsSync;
-        require('fs').existsSync = (p) => {
-            if (p.includes('msedge.exe')) return true;
-            return originalExistsSync(p);
-        };
-
-        try {
-            const pdfPath = 'C:\\path\\to\\manual.pdf';
-            await openManual(pdfPath, 12);
-
-            assert.strictEqual(execCalls.length, 3);
-            assert.ok(execCalls[0].includes('UserChoice'));
-            assert.ok(execCalls[1].includes('MSEdgePDF'));
-            assert.strictEqual(execCalls[2], '"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" "file:///C:/path/to/manual.pdf#page=12"');
-            assert.strictEqual(openExternalCalls.length, 0);
-        } finally {
-            require('fs').existsSync = originalExistsSync;
-        }
-    });
-
-    it('launches Acrobat Reader with /A page parameter when Acrobat is the default viewer on Windows', async () => {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            if (cmd.includes('UserChoice')) {
-                cb(null, '    ProgId    REG_SZ    Acrobat.Document.DC\r\n');
-            } else if (cmd.includes('Acrobat.Document.DC')) {
-                cb(null, '    (Default)    REG_SZ    "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe" "%1"\r\n');
-            } else {
-                cb(null, '');
-            }
-        };
-
-        const originalExistsSync = require('fs').existsSync;
-        require('fs').existsSync = (p) => {
-            if (p.includes('Acrobat.exe')) return true;
-            return originalExistsSync(p);
-        };
-
-        try {
-            const pdfPath = 'C:\\path\\to\\manual.pdf';
-            await openManual(pdfPath, 12);
-
-            assert.strictEqual(execCalls.length, 3);
-            assert.strictEqual(execCalls[2], '"C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe" /A "page=12" "C:\\path\\to\\manual.pdf"');
-            assert.strictEqual(openExternalCalls.length, 0);
-        } finally {
-            require('fs').existsSync = originalExistsSync;
-        }
-    });
-
-    it('falls back to vscode.env.openExternal on Windows when child_process.exec fails', async () => {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
-
-        require('child_process').exec = (cmd, cb) => {
-            execCalls.push(cmd);
-            cb(new Error('Failed execution'));
-        };
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -2000,16 +1880,153 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(execCalls.length, 2);
-        assert.strictEqual(openExternalCalls.length, 1);
-        assert.strictEqual(openExternalCalls[0].fsPath, pdfPath);
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, 'C:\\mock-extension-path\\bin\\SumatraPDF.exe');
+        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('uses vscode.env.openExternal directly on non-Windows platforms', async () => {
+    it('queries registry App Paths when configured and bundled binary paths do not exist', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
+        
+        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        mockRegistryData[hklmQuery] = {
+            stdout: '    (Default)    REG_SZ    "C:\\RegistryPath\\SumatraPDF.exe"'
+        };
+        mockExistsMap['C:\\RegistryPath\\SumatraPDF.exe'] = true;
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, 'C:\\RegistryPath\\SumatraPDF.exe');
+        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+        assert.ok(execCalls.includes(hklmQuery));
+    });
+
+    it('uses PATH environment variable when configuration, bundled binary, and registry searches fail', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
+        
+        // registry search fails
+        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        mockRegistryData[hklmQuery] = { error: 'Not found' };
+        mockRegistryData[hkcuQuery] = { error: 'Not found' };
+
+        // mock PATH environment
+        process.env.PATH = ['C:\\non-existent', 'C:\\PathDir'].join(path.delimiter);
+        mockExistsMap[path.join('C:\\PathDir', 'SumatraPDF.exe')] = true;
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, path.join('C:\\PathDir', 'SumatraPDF.exe'));
+        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+    });
+
+    it('uses common heuristic paths when other searches fail', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
+        
+        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        mockRegistryData[hklmQuery] = { error: 'Not found' };
+        mockRegistryData[hkcuQuery] = { error: 'Not found' };
+
+        process.env.PATH = '';
+        mockExistsMap['C:\\Program Files\\SumatraPDF\\SumatraPDF.exe'] = true;
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, 'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe');
+        assert.deepEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', '"C:\\path\\to\\manual.pdf"']);
+    });
+
+    it('gracefully falls back to openManualFallback (using start command) on Windows if SumatraPDF cannot be found', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
+        
+        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        mockRegistryData[hklmQuery] = { error: 'Not found' };
+        mockRegistryData[hkcuQuery] = { error: 'Not found' };
+        process.env.PATH = '';
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 0);
+        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
+        assert.strictEqual(openExternalCalls.length, 0);
+    });
+
+    it('gracefully falls back to openManualFallback (using start command) on Windows if spawn throws error', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = 'C:\\custom\\SumatraPDF.exe';
+        mockExistsMap['C:\\custom\\SumatraPDF.exe'] = true;
+        mockSpawnError = true;
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
+        assert.strictEqual(openExternalCalls.length, 0);
+    });
+
+    it('falls back to vscode.env.openExternal if openManualFallback exec command fails', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.sumatrapdfPath = undefined;
+        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
+        
+        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
+        mockRegistryData[hklmQuery] = { error: 'Not found' };
+        mockRegistryData[hkcuQuery] = { error: 'Not found' };
+        process.env.PATH = '';
+
+        // Mock fallback exec command to fail
+        mockRegistryData['cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'] = { error: 'Start failed' };
+
+        const openManual = registeredCommands.get('extension.openManual');
+        assert.ok(openManual);
+
+        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        await openManual(pdfPath, 12);
+
+        assert.strictEqual(spawnCalls.length, 0);
+        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
+        assert.strictEqual(openExternalCalls.length, 1);
+        assert.strictEqual(openExternalCalls[0].fsPath, 'C:\\path\\to\\manual.pdf');
+    });
+
+    it('directly uses vscode.env.openExternal on non-Windows platforms', async () => {
         Object.defineProperty(process, 'platform', { value: 'darwin' });
-        vscodeMock.workspace.getConfiguration = () => ({
-            get: (key) => key === 'manualViewer' ? 'system' : undefined
-        });
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -2017,9 +2034,10 @@ describe('extension.openManual command', () => {
         const pdfPath = '/path/to/manual.pdf';
         await openManual(pdfPath, 12);
 
+        assert.strictEqual(spawnCalls.length, 0);
         assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 1);
-        assert.strictEqual(openExternalCalls[0].fsPath, pdfPath);
+        assert.strictEqual(openExternalCalls[0].fsPath, '/path/to/manual.pdf');
     });
 });
 
