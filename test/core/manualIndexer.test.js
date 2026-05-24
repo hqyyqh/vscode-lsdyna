@@ -11,7 +11,8 @@ const {
     parsePdf,
     parsePdfContent,
     initialize,
-    getManualLocations
+    getManualLocations,
+    getManualFilesCount
 } = require('../../src/core/manualIndexer');
 
 describe('manualIndexer', () => {
@@ -418,6 +419,12 @@ trailer
             } finally {
                 vscode.workspace.getConfiguration = originalGetConfiguration;
             }
+        });
+
+        it('returns correct count of indexed files', () => {
+            const count = getManualFilesCount();
+            assert.strictEqual(typeof count, 'number');
+            assert.ok(count >= 1);
         });
     });
 });
