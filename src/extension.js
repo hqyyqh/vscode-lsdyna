@@ -1174,19 +1174,18 @@ function activate(context) {
                         if (pageNum) {
                             args.push('-page', String(pageNum));
                         }
-                        // Quoting the path manually because of windowsVerbatimArguments: true
                         args.push(`"${pdfPath}"`);
 
-                        const child = child_process.spawn(exePath, args, {
-                            detached: true,
-                            windowsVerbatimArguments: true,
-                            windowsHide: true,
-                            stdio: 'ignore'
+                        // Use cmd.exe 'start' to launch SumatraPDF in a new window context.
+                        // Direct spawn inherits VS Code Extension Host's hidden-window flags,
+                        // which prevents GUI applications from creating visible windows.
+                        const cmdArgs = args.join(' ');
+                        const cmd = `start "" "${exePath}" ${cmdArgs}`;
+                        child_process.exec(cmd, (err) => {
+                            if (err) {
+                                openManualFallback(pdfPath, pageNum);
+                            }
                         });
-                        child.on('error', () => {
-                            openManualFallback(pdfPath, pageNum);
-                        });
-                        child.unref();
                     } else {
                         openManualFallback(pdfPath, pageNum);
                     }
