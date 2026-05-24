@@ -3,7 +3,6 @@
 .claude
 .vscode
 test
-node_modules
 keywords/**
 !keywords/field_data.json
 **/*.ipynb
