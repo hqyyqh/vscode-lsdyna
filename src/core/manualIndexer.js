@@ -7,6 +7,9 @@ const vscode = require('vscode');
 let keywordMap = new Map();
 const CACHE_VERSION = 2;
 let outputChannel;
+let pdfFilesList = [];
+let dirWatchers = [];
+let refreshTimeout = null;
 
 function log(msg) {
     if (!outputChannel && typeof vscode !== 'undefined' && vscode.window) {
@@ -276,6 +279,11 @@ function parsePdf(pdfPath) {
 
 async function initialize(context) {
     keywordMap.clear();
+    pdfFilesList = [];
+    for (const w of dirWatchers) {
+        try { w.close(); } catch (e) {}
+    }
+    dirWatchers = [];
     log("Initializing LS-DYNA Manuals Indexer...");
     try {
         const config = vscode.workspace.getConfiguration('lsdyna');
@@ -315,6 +323,20 @@ async function initialize(context) {
         const pdfFiles = [];
         for (const dir of uniqueDirs) {
             log(`Scanning directory: "${dir}"`);
+            try {
+                const watcher = fs.watch(dir, (eventType, filename) => {
+                    if (filename && filename.toLowerCase().endsWith('.pdf')) {
+                        log(`Manual PDF directory changed (${eventType} on ${filename}). Re-initializing indexer...`);
+                        if (refreshTimeout) clearTimeout(refreshTimeout);
+                        refreshTimeout = setTimeout(() => {
+                            initialize(context).catch(err => log(`Failed to auto-refresh manuals: ${err.message}`));
+                        }, 1000);
+                    }
+                });
+                dirWatchers.push(watcher);
+            } catch (watchErr) {
+                log(`Failed to watch directory "${dir}": ${watchErr.message}`);
+            }
             try {
                 const files = fs.readdirSync(dir);
                 const pdfs = files
@@ -390,6 +412,7 @@ async function initialize(context) {
             await context.workspaceState.update('manuals_bookmark_cache', cache);
             log("Saved updated bookmarks cache to workspaceState.");
         }
+        pdfFilesList = pdfFiles;
     } catch (e) {
         log(`Error during manualIndexer initialization: ${e.message}`);
         console.error('Error during manualIndexer initialization:', e);
@@ -401,13 +424,7 @@ function getManualLocations(kwName) {
 }
 
 function getManualFilesCount() {
-    const files = new Set();
-    for (const locations of keywordMap.values()) {
-        for (const loc of locations) {
-            files.add(loc.file);
-        }
-    }
-    return files.size;
+    return pdfFilesList.length;
 }
 
 module.exports = {
