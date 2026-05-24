@@ -1834,13 +1834,15 @@ describe('extension.openManual command', () => {
         vscodeMock.workspace.getConfiguration = (section) => {
             return {
                 get: (key) => {
-                    if (section === 'lsdyna' && key === 'sumatrapdfPath') {
-                        return mockConfig.sumatrapdfPath;
+                    if (section === 'lsdyna' && key === 'manualsDir') {
+                        return mockConfig.manualsDir;
                     }
                     return undefined;
                 }
             };
         };
+
+        vscodeMock.workspace.workspaceFolders = undefined;
 
         // Activate extension to trigger registrations
         const context = {
@@ -1850,11 +1852,10 @@ describe('extension.openManual command', () => {
         extensionModule.activate(context);
     });
 
-    it('uses user-configured path when valid and expands environment variables', async () => {
+    it('uses absolute manualsDir path to resolve SumatraPDF.exe when present', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        process.env.TEST_SUMATRA_DIR = 'C:\\custom';
-        mockConfig.sumatrapdfPath = '%TEST_SUMATRA_DIR%\\SumatraPDF.exe';
-        mockExistsMap['C:\\custom\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = 'C:\\custom\\manuals';
+        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1863,15 +1864,16 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\custom\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        const expectedCmd = 'start "" "C:\\custom\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
         assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('uses bundled SumatraPDF binary when configured path is not set', async () => {
+    it('uses relative manualsDir path resolved against workspaceFolders when present', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = 'relative/manuals';
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        mockExistsMap['C:\\workspace\\relative\\manuals\\SumatraPDF.exe'] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1880,21 +1882,17 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\mock-extension-path\\bin\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        const expectedCmd = 'start "" "C:\\workspace\\relative\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
         assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('queries registry App Paths when configured and bundled binary paths do not exist', async () => {
+    it('uses relative manualsDir path resolved against process.cwd() when workspaceFolders is not present', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
-        
-        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        mockRegistryData[hklmQuery] = {
-            stdout: '    (Default)    REG_SZ    "C:\\RegistryPath\\SumatraPDF.exe"'
-        };
-        mockExistsMap['C:\\RegistryPath\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = 'relative/manuals';
+        vscodeMock.workspace.workspaceFolders = undefined;
+        const resolvedPath = path.resolve(process.cwd(), 'relative/manuals', 'SumatraPDF.exe');
+        mockExistsMap[resolvedPath] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1903,25 +1901,14 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\RegistryPath\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        const expectedCmd = `start "" "${resolvedPath}" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"`;
         assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
-        assert.ok(execCalls.includes(hklmQuery));
+        assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('uses PATH environment variable when configuration, bundled binary, and registry searches fail', async () => {
+    it('returns null and falls back to fallback command when manualsDir is not configured', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
-        
-        // registry search fails
-        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        mockRegistryData[hklmQuery] = { error: 'Not found' };
-        mockRegistryData[hkcuQuery] = { error: 'Not found' };
-
-        // mock PATH environment
-        process.env.PATH = ['C:\\non-existent', 'C:\\PathDir'].join(path.delimiter);
-        mockExistsMap[path.join('C:\\PathDir', 'SumatraPDF.exe')] = true;
+        mockConfig.manualsDir = undefined;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1930,45 +1917,14 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        const resolvedExe = path.join('C:\\PathDir', 'SumatraPDF.exe');
-        const expectedCmd = `start "" "${resolvedExe}" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"`;
-        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
+        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
+        assert.strictEqual(openExternalCalls.length, 0);
     });
 
-    it('uses common heuristic paths when other searches fail', async () => {
+    it('returns null and falls back when SumatraPDF.exe does not exist in manualsDir', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
-        
-        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        mockRegistryData[hklmQuery] = { error: 'Not found' };
-        mockRegistryData[hkcuQuery] = { error: 'Not found' };
-
-        process.env.PATH = '';
-        mockExistsMap['C:\\Program Files\\SumatraPDF\\SumatraPDF.exe'] = true;
-
-        const openManual = registeredCommands.get('extension.openManual');
-        assert.ok(openManual);
-
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
-        await openManual(pdfPath, 12);
-
-        assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\Program Files\\SumatraPDF\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
-        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
-    });
-
-    it('gracefully falls back to openManualFallback (using start command) on Windows if SumatraPDF cannot be found', async () => {
-        Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
-        
-        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        mockRegistryData[hklmQuery] = { error: 'Not found' };
-        mockRegistryData[hkcuQuery] = { error: 'Not found' };
-        process.env.PATH = '';
+        mockConfig.manualsDir = 'C:\\custom\\manuals';
+        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = false;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -1983,11 +1939,11 @@ describe('extension.openManual command', () => {
 
     it('gracefully falls back to openManualFallback (using start command) on Windows if exec start command fails', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = 'C:\\custom\\SumatraPDF.exe';
-        mockExistsMap['C:\\custom\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = 'C:\\custom\\manuals';
+        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
 
         // Mock the start command to fail
-        const startCmd = 'start "" "C:\\custom\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
+        const startCmd = 'start "" "C:\\custom\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
         mockRegistryData[startCmd] = { error: 'Start failed' };
 
         const openManual = registeredCommands.get('extension.openManual');
@@ -2004,14 +1960,8 @@ describe('extension.openManual command', () => {
 
     it('falls back to vscode.env.openExternal if openManualFallback exec command fails', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.sumatrapdfPath = undefined;
-        mockExistsMap['C:\\mock-extension-path\\bin\\SumatraPDF.exe'] = false;
-        
-        const hklmQuery = 'reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        const hkcuQuery = 'reg query "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe" /ve';
-        mockRegistryData[hklmQuery] = { error: 'Not found' };
-        mockRegistryData[hkcuQuery] = { error: 'Not found' };
-        process.env.PATH = '';
+        mockConfig.manualsDir = 'C:\\custom\\manuals';
+        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = false;
 
         // Mock fallback exec command to fail
         mockRegistryData['cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'] = { error: 'Start failed' };

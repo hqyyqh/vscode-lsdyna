@@ -1198,6 +1198,35 @@ function activate(context) {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.configureManualsDir', async () => {
+            const folders = await vscode.window.showOpenDialog({
+                canSelectFolders: true,
+                canSelectFiles: false,
+                canSelectMany: false,
+                openLabel: '选择手册文件夹 (Select Manuals Folder)'
+            });
+            if (folders && folders[0]) {
+                const selectedPath = folders[0].fsPath;
+                const config = vscode.workspace.getConfiguration('lsdyna');
+                const target = vscode.workspace.workspaceFolders ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+                await config.update('manualsDir', selectedPath, target);
+                
+                vscode.window.showInformationMessage(`LS-DYNA 手册目录已设置为: ${selectedPath}`);
+                
+                if (process.platform === 'win32') {
+                    const fs = require('fs');
+                    const path = require('path');
+                    const sumatraPath = path.join(selectedPath, 'SumatraPDF.exe');
+                    if (!fs.existsSync(sumatraPath)) {
+                        vscode.window.showWarningMessage('未在所选手册文件夹中找到 SumatraPDF.exe。在 Windows 系统上，请将 SumatraPDF.exe 复制到该目录下以启用精确页码跳转。');
+                    }
+                }
+                await manualIndexer.initialize(context);
+            }
+        })
+    );
+
     const diagnostics = vscode.languages.createDiagnosticCollection('lsdyna');
     context.subscriptions.push(diagnostics);
 
@@ -1568,83 +1597,22 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 async function resolveSumatraPath(context) {
     const fs = require('fs');
     const path = require('path');
-    const child_process = require('child_process');
-
-    // 1. User configured path
-    const configPath = vscode.workspace.getConfiguration('lsdyna').get('sumatrapdfPath');
-    if (configPath && typeof configPath === 'string') {
-        const expanded = configPath.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
-        if (fs.existsSync(expanded)) {
-            return expanded;
-        }
-    }
-
-    // 2. Bundled binary path
-    const bundledPath = context.asAbsolutePath(path.join('bin', 'SumatraPDF.exe'));
-    if (fs.existsSync(bundledPath)) {
-        return bundledPath;
-    }
-
-    // Helper to execute reg query asynchronously
-    const queryReg = (key) => {
-        return new Promise((resolve) => {
-            child_process.exec(`reg query "${key}" /ve`, (error, stdout) => {
-                if (error || !stdout) return resolve(null);
-                const lines = stdout.split('\r\n');
-                for (const line of lines) {
-                    if (line.includes('REG_SZ')) {
-                        const idx = line.indexOf('REG_SZ');
-                        let val = line.substring(idx + 6).trim();
-                        if (val.startsWith('"') && val.endsWith('"')) {
-                            val = val.substring(1, val.length - 1);
-                        }
-                        resolve(val);
-                        return;
-                    }
-                }
-                resolve(null);
-            });
-        });
-    };
-
-    // 3. Registry App Paths
-    const regKeys = [
-        'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe',
-        'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\SumatraPDF.exe'
-    ];
-    for (const key of regKeys) {
-        const regPath = await queryReg(key);
-        if (regPath && fs.existsSync(regPath)) {
-            return regPath;
-        }
-    }
-
-    // 4. PATH Environment
-    if (process.env.PATH) {
-        const paths = process.env.PATH.split(path.delimiter);
-        for (const p of paths) {
-            const fullPath = path.join(p, 'SumatraPDF.exe');
-            if (fs.existsSync(fullPath)) {
-                return fullPath;
+    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
+    if (manualsDir && typeof manualsDir === 'string') {
+        let resolvedDir = manualsDir;
+        if (!path.isAbsolute(manualsDir)) {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders.length > 0) {
+                resolvedDir = path.resolve(workspaceFolders[0].uri.fsPath, manualsDir);
+            } else {
+                resolvedDir = path.resolve(process.cwd(), manualsDir);
             }
         }
-    }
-
-    // 5. Common Heuristic Paths
-    const localAppData = process.env.LOCALAPPDATA || '';
-    const appData = process.env.APPDATA || '';
-    const commonPaths = [
-        'C:\\Program Files\\SumatraPDF\\SumatraPDF.exe',
-        'C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe',
-        path.join(localAppData, 'SumatraPDF', 'SumatraPDF.exe'),
-        path.join(appData, 'SumatraPDF', 'SumatraPDF.exe')
-    ];
-    for (const cp of commonPaths) {
-        if (cp && fs.existsSync(cp)) {
-            return cp;
+        const sumatraPath = path.join(resolvedDir, 'SumatraPDF.exe');
+        if (fs.existsSync(sumatraPath)) {
+            return sumatraPath;
         }
     }
-
     return null;
 }
 
