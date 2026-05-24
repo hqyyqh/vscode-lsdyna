@@ -153,6 +153,11 @@
                 "command": "extension.openManual",
                 "title": "Open LS-DYNA Keyword Manual",
                 "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.configureManualsDir",
+                "title": "Configure LS-DYNA Manuals Directory",
+                "category": "LS-DYNA"
             }
         ],
         "keybindings": [
@@ -190,13 +195,8 @@
             "properties": {
                 "lsdyna.manualsDir": {
                     "type": "string",
-                    "default": "LS-DYNA Manuals",
-                    "description": "Path to the directory containing LS-DYNA PDF manuals (can be workspace-relative or absolute)."
-                },
-                "lsdyna.sumatrapdfPath": {
-                    "type": "string",
                     "default": "",
-                    "description": "Custom path to SumatraPDF.exe on Windows. If left blank, the extension will use the bundled version or automatically detect it from the system."
+                    "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
                 }
             }
         },
