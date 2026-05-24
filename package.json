@@ -1,16 +1,17 @@
 {
-    "name": "lsdyna",
-    "displayName": "LS-DYNA",
+    "name": "lsdyna-custom",
+    "displayName": "LS-DYNA (Customized by hqyyqh)",
     "description": "Syntax Highlighting and Snippets for LS-Dyna Deck Creation and Editing",
-    "publisher": "RyanOSullivan",
+    "publisher": "hqyyqh",
+    "author": "hqyyqh",
     "license": "SEE LICENSE IN LICENSE",
     "private": true,
     "repository": {
         "type": "git",
-        "url": "https://github.com/osullivryan/vscode-lsdyna"
+        "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
     "icon": "images/LS_DYNA_geo_metro.png",
-    "version": "2.0.7",
+    "version": "2.0.7-hqyyqh.0",
     "engines": {
         "vscode": "^1.50.0"
     },
