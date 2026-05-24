@@ -7,3 +7,6 @@ node_modules
 keywords/**
 !keywords/field_data.json
 **/*.ipynb
+
+# Ensure bundled SumatraPDF binary is packaged in the extension
+!bin/SumatraPDF.exe
