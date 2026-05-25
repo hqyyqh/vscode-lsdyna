@@ -1,16 +1,76 @@
 'use strict';
 
+/**
+ * @fileoverview Bookmark extraction and location indexing service for LS-DYNA PDF manuals.
+ * @module core/manualIndexer
+ * 
+ * This service parses PDF outlines (bookmarks) using custom low-level binary readers to map
+ * LS-DYNA keywords (e.g. *NODE, *ELEMENT) to their corresponding page numbers in PDF manuals.
+ * It caches the parsed outlines in the extension's workspaceState using mtime/size checks and 
+ * installs directory watch loops to auto-reload if PDF manuals are added or updated.
+ * 
+ * Role in System: Provides targets for keyword and field hovers and powers the openManual command
+ * to jump to precise pages in PDF manuals (including SumatraPDF precision alignment).
+ */
+
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
 
+/**
+ * @typedef {Object} ManualLocation
+ * @property {string} file - Absolute path to the PDF manual file.
+ * @property {number} page - 1-based page number where the keyword definition resides.
+ */
+
+/**
+ * @typedef {Object} BookmarkEntry
+ * @property {string} title - The title text of the PDF outline item.
+ * @property {number|null} page - The 1-based page number reference, or null if unresolved.
+ */
+
+/**
+ * Global map storing associations between cleaned keyword names and their locations in the manuals.
+ * @type {Map<string, ManualLocation[]>}
+ */
 let keywordMap = new Map();
+
+/**
+ * Version number for the bookmark serialization format.
+ * Used to invalidate cached items if parsing rules change.
+ * @type {number}
+ */
 const CACHE_VERSION = 2;
+
+/**
+ * VS Code OutputChannel for indexer log messages.
+ * @type {import('vscode').OutputChannel}
+ */
 let outputChannel;
+
+/**
+ * List of resolved PDF manuals files.
+ * @type {string[]}
+ */
 let pdfFilesList = [];
+
+/**
+ * Watcher instances for manuals directories.
+ * @type {import('fs').FSWatcher[]}
+ */
 let dirWatchers = [];
+
+/**
+ * Debouncing timer for manual file change refreshes.
+ * @type {NodeJS.Timeout|null}
+ */
 let refreshTimeout = null;
 
+/**
+ * Appends a log line to the LS-DYNA Manuals output channel.
+ * 
+ * @param {string} msg - Message to log.
+ */
 function log(msg) {
     if (!outputChannel && typeof vscode !== 'undefined' && vscode.window) {
         outputChannel = vscode.window.createOutputChannel("LS-DYNA Manuals");
@@ -20,6 +80,12 @@ function log(msg) {
     }
 }
 
+/**
+ * Normalizes a keyword string (e.g., trims, capitalizes, strips _TITLE suffix, adds leading '*').
+ * 
+ * @param {string} raw - The raw keyword text.
+ * @returns {string} Normalized keyword.
+ */
 function cleanKeyword(raw) {
     let clean = raw.trim().toUpperCase();
     if (clean.endsWith('_TITLE')) {
@@ -31,6 +97,14 @@ function cleanKeyword(raw) {
     return clean;
 }
 
+/**
+ * Parses a PDF literal string (contained in parentheses) starting at the given offset.
+ * Handles nested parentheses, octal escape codes, and common escapes.
+ * 
+ * @param {string} content - Raw PDF file binary content.
+ * @param {number} start - Index of the opening '(' character.
+ * @returns {{value: string, end: number}|null} Decoded string value and end index, or null if invalid.
+ */
 function parseLiteralString(content, start) {
     let depth = 0;
     let result = [];
@@ -88,6 +162,13 @@ function parseLiteralString(content, start) {
     return { value: result.join(''), end: i };
 }
 
+/**
+ * Parses a PDF hexadecimal string (contained in angular brackets) starting at the given offset.
+ * 
+ * @param {string} content - Raw PDF file binary content.
+ * @param {number} start - Index of the opening '<' character.
+ * @returns {{value: string, end: number}|null} Decoded string value and end index, or null if invalid.
+ */
 function parseHexString(content, start) {
     if (content[start] !== '<') return null;
     let i = start + 1;
@@ -113,6 +194,12 @@ function parseHexString(content, start) {
     return { value, end: i + 1 };
 }
 
+/**
+ * Decodes a PDF string, resolving big-endian UTF-16 markers (BOM: FE FF).
+ * 
+ * @param {string} str - Raw parsed PDF string.
+ * @returns {string} Decoded UTF-8/ASCII string.
+ */
 function decodePdfString(str) {
     if (str.length >= 2 && str.charCodeAt(0) === 0xFE && str.charCodeAt(1) === 0xFF) {
         let decoded = '';
@@ -126,6 +213,12 @@ function decodePdfString(str) {
     return str;
 }
 
+/**
+ * Extracts the title property value from a PDF object definition content string.
+ * 
+ * @param {string} objContent - Text content of the PDF object.
+ * @returns {string|null} Resolved title value, or null if missing.
+ */
 function extractTitle(objContent) {
     const titleRegex = /\/Title\b/g;
     let match;
@@ -149,6 +242,12 @@ function extractTitle(objContent) {
     return null;
 }
 
+/**
+ * Parses raw PDF content, traversing objects to find the Pages catalog tree and Document Outline bookmarks.
+ * 
+ * @param {string} content - Raw binary data of the PDF file.
+ * @returns {BookmarkEntry[]} Extracted outlines/bookmarks.
+ */
 function parsePdfContent(content) {
     const objMap = new Map();
     const regex = /(\d+)\s+0\s+obj/g;
@@ -172,6 +271,10 @@ function parsePdfContent(content) {
     const pageIds = [];
     const visitedPages = new Set();
 
+    /**
+     * Traverses the PDF Page Tree.
+     * @param {number} id - Object ID.
+     */
     function traversePages(id) {
         if (visitedPages.has(id)) return;
         visitedPages.add(id);
@@ -219,6 +322,10 @@ function parsePdfContent(content) {
     const bookmarks = [];
     const visitedOutlines = new Set();
 
+    /**
+     * Traverses PDF outlines/bookmarks hierarchy.
+     * @param {number} id - Outline object ID.
+     */
     function traverseOutlines(id) {
         if (visitedOutlines.has(id)) return;
         visitedOutlines.add(id);
@@ -269,6 +376,12 @@ function parsePdfContent(content) {
     return bookmarks;
 }
 
+/**
+ * Reads a PDF file synchronously and parses its outlines.
+ * 
+ * @param {string} pdfPath - Path to the PDF file.
+ * @returns {BookmarkEntry[]} List of outline bookmarks.
+ */
 function parsePdf(pdfPath) {
     if (!fs.existsSync(pdfPath)) {
         return [];
@@ -277,6 +390,13 @@ function parsePdf(pdfPath) {
     return parsePdfContent(content);
 }
 
+/**
+ * Initializes/scans manuals directories and loads PDF outlines into cache.
+ * Installs watchers on manual folders to trigger automatic index refreshes.
+ * 
+ * @param {import('vscode').ExtensionContext} context - The extension context.
+ * @returns {Promise<void>}
+ */
 async function initialize(context) {
     keywordMap.clear();
     pdfFilesList = [];
@@ -419,10 +539,21 @@ async function initialize(context) {
     }
 }
 
+/**
+ * Returns matching manual locations for a given keyword name.
+ * 
+ * @param {string} kwName - The keyword name (e.g. "*NODE").
+ * @returns {ManualLocation[]} Mapped page numbers and file paths.
+ */
 function getManualLocations(kwName) {
     return keywordMap.get(cleanKeyword(kwName)) || [];
 }
 
+/**
+ * Returns the total number of PDF manual files successfully indexed.
+ * 
+ * @returns {number} Count of files.
+ */
 function getManualFilesCount() {
     return pdfFilesList.length;
 }
@@ -431,7 +562,7 @@ module.exports = {
     initialize,
     getManualLocations,
     getManualFilesCount,
-    // 导出用于测试的方法
+    // Exported for unit tests
     parsePdf,
     parsePdfContent,
     cleanKeyword
