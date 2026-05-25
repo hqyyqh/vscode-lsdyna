@@ -823,14 +823,14 @@ class LsdynaFileDecorationProvider {
             return {
                 badge: '⚠',
                 tooltip: 'Missing Include Reference',
-                color: new vscode.ThemeColor('editorWarning.foreground')
+                color: new vscode.ThemeColor('list.warningForeground')
             };
         }
 
         if (this.includeTreeProvider.resolvedPaths.has(key)) {
             return {
                 tooltip: 'Resolved Include Reference',
-                color: new vscode.ThemeColor('testing.iconPassed')
+                color: new vscode.ThemeColor('gitDecoration.untrackedResourceForeground')
             };
         }
 
