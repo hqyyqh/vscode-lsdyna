@@ -1,5 +1,17 @@
 'use strict';
 
+/**
+ * @fileoverview LSP Client-Server snapshot coordinator and L1 cache client.
+ * @module client/services/indexClient
+ * 
+ * This module creates the IndexClient instance. In client mode (within VS Code host), it delegates
+ * calls to the LSP LanguageClient. In server mode (within Language Server process), it coordinates
+ * background indexing, manages in-memory L1 snapshot cache, verifies tracked file signatures, 
+ * maps cache access histories (LRU), and interacts with the L2 disk persistent snapshot cache.
+ * 
+ * Role in System: Central gateway bridging the UI tree providers to the indexing engine.
+ */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -7,6 +19,13 @@ const { createCacheManifestStore } = require('../../core/cache/cacheManifestStor
 const { hydrateProjectSnapshot } = require('../../core/cache/snapshotSerializer');
 const protocol = require('../../shared/protocol');
 
+/**
+ * Resolves a root file path, performing validation checks.
+ * 
+ * @param {string} rootFile - Root file path.
+ * @returns {string} Absolute path.
+ * @throws {TypeError} If path is not a valid string.
+ */
 function resolveRootFile(rootFile) {
     if (typeof rootFile !== 'string' || rootFile.trim() === '') {
         throw new TypeError('loadProjectSnapshot requires a rootFile path');
@@ -14,6 +33,12 @@ function resolveRootFile(rootFile) {
     return path.resolve(rootFile);
 }
 
+/**
+ * Generates a normalized map key for the root file. Handles Windows casing.
+ * 
+ * @param {string} rootFile - Root file path.
+ * @returns {string} Normalized lookup key.
+ */
 function getRootCacheKey(rootFile) {
     const resolvedRootFile = resolveRootFile(rootFile);
     return process.platform === 'win32'
@@ -21,6 +46,12 @@ function getRootCacheKey(rootFile) {
         : resolvedRootFile;
 }
 
+/**
+ * Resolves the list of files tracked inside a project snapshot.
+ * 
+ * @param {import('../../core/project/projectIndexer').ProjectIndexResult} snapshot - Project index snapshot.
+ * @returns {string[]} File list.
+ */
 function getTrackedSnapshotFiles(snapshot) {
     if (Array.isArray(snapshot.files) && snapshot.files.length > 0) {
         return snapshot.files;
@@ -28,6 +59,13 @@ function getTrackedSnapshotFiles(snapshot) {
     return [snapshot.rootFile];
 }
 
+/**
+ * Compares two file signatures to check if they match.
+ * 
+ * @param {import('../../core/cache/diskSnapshotStore').FileSignature|null|undefined} left - Left.
+ * @param {import('../../core/cache/diskSnapshotStore').FileSignature|null|undefined} right - Right.
+ * @returns {boolean} True if matched.
+ */
 function areFileSignaturesEqual(left, right) {
     return left
         && right
@@ -35,6 +73,12 @@ function areFileSignaturesEqual(left, right) {
         && left.size === right.size;
 }
 
+/**
+ * Reads modification and size details for a file from disk.
+ * 
+ * @param {string} filePath - Absolute path.
+ * @returns {Promise<import('../../core/cache/diskSnapshotStore').FileSignature>} File signature.
+ */
 async function readFileSignature(filePath) {
     const stat = await fs.promises.stat(filePath);
     return {
@@ -43,6 +87,13 @@ async function readFileSignature(filePath) {
     };
 }
 
+/**
+ * Captures file signatures for all files tracked by a project snapshot.
+ * 
+ * @param {import('../../core/project/projectIndexer').ProjectIndexResult} snapshot - Snapshot.
+ * @param {function(string): Promise<import('../../core/cache/diskSnapshotStore').FileSignature>} getFileSignature - Signature function.
+ * @returns {Promise<import('../../core/cache/diskSnapshotStore').TrackedFileEntry[]>} Tracked files with signatures.
+ */
 async function captureTrackedFiles(snapshot, getFileSignature) {
     const trackedFiles = [];
     const seen = new Set();
@@ -61,6 +112,14 @@ async function captureTrackedFiles(snapshot, getFileSignature) {
     return trackedFiles;
 }
 
+/**
+ * Validates whether all tracked files matching a manifest catalog entry remain unmodified on disk.
+ * 
+ * @param {Object} entry - Manifest entry block.
+ * @param {import('../../core/cache/diskSnapshotStore').TrackedFileEntry[]} entry.trackedFiles - Tracked files.
+ * @param {function(string): Promise<import('../../core/cache/diskSnapshotStore').FileSignature>} getFileSignature - Signature reader.
+ * @returns {Promise<boolean>} True if cache entry matches filesystem state.
+ */
 async function isSnapshotValid(entry, getFileSignature) {
     if (!Array.isArray(entry.trackedFiles) || entry.trackedFiles.length === 0) {
         return false;
@@ -80,10 +139,22 @@ async function isSnapshotValid(entry, getFileSignature) {
     return true;
 }
 
+/**
+ * Estimates serialized memory size of a snapshot object.
+ * 
+ * @param {Object} snapshot - Snapshot object.
+ * @returns {number} Byte count.
+ */
 function estimateSnapshotSize(snapshot) {
     return Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
 }
 
+/**
+ * Summarizes caches memory metrics.
+ * 
+ * @param {Map<string, Object>} snapshots - Active cached snapshots.
+ * @returns {{cachedSnapshotCount: number, totalSnapshotBytes: number}} Stats details.
+ */
 function getSnapshotCacheStats(snapshots) {
     let cachedSnapshotCount = 0;
     let totalSnapshotBytes = 0;
@@ -100,6 +171,28 @@ function getSnapshotCacheStats(snapshots) {
     };
 }
 
+/**
+ * @typedef {Object} ClientOptions
+ * @property {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [buildProjectIndex] - Main index builder.
+ * @property {function(string): Promise<import('../../core/cache/diskSnapshotStore').FileSignature>} [getFileSignature] - Signature reader.
+ * @property {function(Object): number} [estimateSnapshotSize] - Size estimator.
+ * @property {number} [maxSnapshotBytes] - Cache limit.
+ * @property {Object} [manifestStore] - Cache catalog store.
+ * @property {import('../../core/cache/diskSnapshotStore').DiskSnapshotStore} [persistentCache] - L2 disk cache.
+ * @property {Object} [languageClient] - VS Code LanguageClient bridge (present only in client mode).
+ */
+
+/**
+ * Factory function to create an Index Client instance.
+ * 
+ * @param {ClientOptions} [options={}] - Config parameters.
+ * @returns {{
+ *   loadProjectSnapshot: function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>,
+ *   invalidate: function(string): void,
+ *   getManifestEntries: function(): Promise<import('../../core/cache/cacheManifestStore').ManifestEntry[]>,
+ *   getCacheStats: function(): Promise<{cachedSnapshotCount: number, totalSnapshotBytes: number}>
+ * }} Client API.
+ */
 function createIndexClient({
     buildProjectIndex,
     getFileSignature = readFileSignature,
@@ -282,6 +375,11 @@ function createIndexClient({
         return promise;
     }
 
+    /**
+     * Invalidates cache entry matching the root file.
+     * 
+     * @param {string} rootFile - Target root path.
+     */
     function invalidate(rootFile) {
         const resolvedRootFile = resolveRootFile(rootFile);
         const rootCacheKey = getRootCacheKey(rootFile);

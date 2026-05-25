@@ -1,5 +1,17 @@
 'use strict';
 
+/**
+ * @fileoverview VS Code TreeDataProvider for scanning and listing the Keyword Index.
+ * @module client/providers/keywordIndexProvider
+ * 
+ * This module aggregates keywords used across the workspace or the current document.
+ * It groups them by keyword name and file origin, handles pagination and folding above limits 
+ * (to prevent UI lag on millions of nodes), resolves hover previews, and listens to incremental 
+ * editor edits to update positions.
+ * 
+ * Role in System: Client-side VS Code Tree View UI provider.
+ */
+
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
@@ -8,10 +20,28 @@ const readline = require('readline');
 const keywordScanner = require('../../core/parser/keywordScanner');
 const { BlockIndex } = require('../../core/incremental/blockIndex');
 
+/**
+ * Folding limit threshold for nesting single-keyword occurrences under folders.
+ * @type {number}
+ */
 const KEYWORD_FOLDING_THRESHOLD = 100;
+
+/**
+ * Folding limit threshold for nesting occurrences inside a single file under that file node.
+ * @type {number}
+ */
 const FILE_FOLDING_THRESHOLD = 50;
 
+/**
+ * Tree node representing a Keyword definition name.
+ * @extends vscode.TreeItem
+ */
 class KeywordItem extends vscode.TreeItem {
+    /**
+     * Creates a KeywordItem.
+     * 
+     * @param {string} keyword - The keyword name.
+     */
     constructor(keyword) {
         super(keyword, vscode.TreeItemCollapsibleState.Collapsed);
         this.children = [];
@@ -19,7 +49,18 @@ class KeywordItem extends vscode.TreeItem {
     }
 }
 
+/**
+ * Tree node representing a single keyword occurrence in a file.
+ * @extends vscode.TreeItem
+ */
 class KeywordUsageItem extends vscode.TreeItem {
+    /**
+     * Creates a KeywordUsageItem.
+     * 
+     * @param {string} filePath - Absolute path to the file containing the keyword.
+     * @param {number} lineIndex - 0-indexed line number of the keyword.
+     * @param {string} rootDir - Parent directory for relative path formatting.
+     */
     constructor(filePath, lineIndex, rootDir) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
@@ -42,7 +83,19 @@ class KeywordUsageItem extends vscode.TreeItem {
     }
 }
 
+/**
+ * Tree node representing aggregated keyword occurrences in a single file above folding threshold.
+ * @extends vscode.TreeItem
+ */
 class AggregatedKeywordUsageItem extends vscode.TreeItem {
+    /**
+     * Creates an AggregatedKeywordUsageItem.
+     * 
+     * @param {string} filePath - Absolute path to the file.
+     * @param {number} count - Total number of occurrences in the file.
+     * @param {number} firstLineIndex - 0-indexed line number of the first occurrence.
+     * @param {string} rootDir - Parent directory for relative path formatting.
+     */
     constructor(filePath, count, firstLineIndex, rootDir) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
@@ -66,6 +119,11 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
     }
 }
 
+/**
+ * Resolves the URI of the currently active editor or tab.
+ * 
+ * @returns {import('vscode').Uri|null} Active file URI.
+ */
 function getActiveUri() {
     const editor = vscode.window.activeTextEditor;
     if (editor) return editor.document.uri;
@@ -80,34 +138,84 @@ function getActiveUri() {
     return null;
 }
 
+/**
+ * Checks if a URI targets an LS-DYNA file type.
+ * 
+ * @param {import('vscode').Uri|null} uri - URI to inspect.
+ * @returns {boolean} True if file matches lsdyna extensions.
+ */
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
     return ext === '.k' || ext === '.key' || ext === '.dyna';
 }
 
+/**
+ * Checks if a VS Code TextDocument corresponds to LS-DYNA.
+ * 
+ * @param {import('vscode').TextDocument|null} document - Document.
+ * @returns {boolean} True if lsdyna.
+ */
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
     return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
+/**
+ * VS Code TreeDataProvider implementation for LS-DYNA Keyword Index side bar.
+ * @implements {vscode.TreeDataProvider<vscode.TreeItem>}
+ */
 class LsdynaKeywordIndexProvider {
+    /**
+     * Creates an instance of LsdynaKeywordIndexProvider.
+     * 
+     * @param {Object} [options={}] - Dependencies.
+     * @param {function(string): Promise<string[]>} [options.collectIncludeFiles] - Includes scanner callback.
+     * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
+     * @param {function(import('vscode').TextDocument): boolean} [options.shouldSkipAutomaticDocumentScan] - Large file guard callback.
+     */
     constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        /**
+         * Root tree items lists.
+         * @type {vscode.TreeItem[]}
+         */
         this.roots = [];
-        this._mode = 'local'; // 'local' | 'recursive'
-        this.documentIndices = new Map(); // uri.toString() -> BlockIndex
+        /**
+         * Active display mode.
+         * @type {'local'|'recursive'}
+         */
+        this._mode = 'local';
+        /**
+         * Map indexing open document block indexes.
+         * @type {Map<string, BlockIndex>}
+         */
+        this.documentIndices = new Map();
     }
 
+    /**
+     * Sets view mode and updates VS Code context state.
+     * 
+     * @private
+     * @param {'local'|'recursive'} mode - Active mode.
+     */
     _setMode(mode) {
         this._mode = mode;
         vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', mode);
     }
 
+    /**
+     * Transforms keyword occurrences map into sorted TreeItem arrays, applying folding.
+     * 
+     * @private
+     * @param {Map<string, Array<{filePath: string, lineIndex: number}>>} keywordMap - Occurrences map.
+     * @param {string} rootDir - Root path folder.
+     * @returns {KeywordItem[]} Transformed tree items.
+     */
     _buildRootsFromKeywordMap(keywordMap, rootDir) {
         return [...keywordMap.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
@@ -147,6 +255,14 @@ class LsdynaKeywordIndexProvider {
             });
     }
 
+    /**
+     * Helper to index file lists and assemble the Keyword Map (non-LSP fallback).
+     * 
+     * @private
+     * @param {string[]} filePaths - Array of absolute paths.
+     * @param {string} rootDir - Root folder.
+     * @returns {Promise<KeywordItem[]>} Assembled roots.
+     */
     async _buildRootsAsync(filePaths, rootDir) {
         const keywordMap = new Map();
         for (const filePath of filePaths) {
@@ -160,10 +276,24 @@ class LsdynaKeywordIndexProvider {
         return this._buildRootsFromKeywordMap(keywordMap, rootDir);
     }
 
+    /**
+     * Resolves TreeItems from project snapshot map.
+     * 
+     * @private
+     * @param {import('../../core/project/projectIndexer').ProjectIndexResult} snapshot - Project index.
+     * @param {string} rootDir - Root folder.
+     * @returns {KeywordItem[]} Assembled roots.
+     */
     _buildRootsFromSnapshot(snapshot, rootDir) {
         return this._buildRootsFromKeywordMap(snapshot.keywordMap, rootDir);
     }
 
+    /**
+     * Listens to change events to incrementally update the active document's block index.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @param {import('vscode').TextDocumentChangeEvent} event - Change event details.
+     */
     updateDocumentIndex(document, event) {
         if (this._mode !== 'local') return;
         if (!document || !isLsdynaFile(document)) return;
@@ -186,10 +316,21 @@ class LsdynaKeywordIndexProvider {
         }
     }
 
+    /**
+     * Triggers active document refresh from editor text.
+     * 
+     * @param {import('vscode').TextDocument} document - Target document.
+     */
     refreshFromDocument(document) {
         return this.refreshFromUriOrDocument(document);
     }
 
+    /**
+     * Bootstraps or refreshes active document block index and updates tree view.
+     * 
+     * @param {import('vscode').Uri|import('vscode').TextDocument} uriOrDoc - Active editor target.
+     * @returns {Promise<void>}
+     */
     async refreshFromUriOrDocument(uriOrDoc) {
         if (this._mode !== 'local') return;
         if (!uriOrDoc) return;
@@ -234,6 +375,11 @@ class LsdynaKeywordIndexProvider {
         this._onDidChangeTreeData.fire(undefined);
     }
 
+    /**
+     * Traverses the project inclusions recursively to build the project keyword index.
+     * 
+     * @returns {Promise<void>}
+     */
     async scan() {
         const uri = getActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
@@ -269,6 +415,9 @@ class LsdynaKeywordIndexProvider {
         );
     }
 
+    /**
+     * Reverts active mode to Local Document view, refreshing values.
+     */
     setLocal() {
         this._setMode('local');
         const uri = getActiveUri();
@@ -280,6 +429,14 @@ class LsdynaKeywordIndexProvider {
         }
     }
 
+    /**
+     * Resolves card previews for keyword usage rows on tree selection.
+     * 
+     * @param {vscode.TreeItem} item - Selected item.
+     * @param {vscode.TreeItem} element - Parent element.
+     * @param {import('vscode').CancellationToken} token - Cancellation token.
+     * @returns {Promise<vscode.TreeItem>} Resolved item.
+     */
     async resolveTreeItem(item, element, token) {
         if (element instanceof KeywordUsageItem) {
             const filePath = item.resourceUri.fsPath;
@@ -305,14 +462,34 @@ class LsdynaKeywordIndexProvider {
         return item;
     }
 
+    /**
+     * Simple identity resolver.
+     * 
+     * @param {vscode.TreeItem} element - Element to fetch.
+     * @returns {vscode.TreeItem} Input element.
+     */
     getTreeItem(element) { return element; }
 
+    /**
+     * Fetches nested child items for a node.
+     * 
+     * @param {vscode.TreeItem} [element] - Target element.
+     * @returns {vscode.TreeItem[]} Nested children list.
+     */
     getChildren(element) {
         if (element) return element.children;
         return this.roots;
     }
 }
 
+/**
+ * Asynchronously reads a snippet (contiguous lines) starting from a specific line index.
+ * 
+ * @param {string} filePath - Absolute path to the file.
+ * @param {number} lineIndex - 0-indexed starting line number.
+ * @param {number} [maxLines=6] - Number of lines to extract.
+ * @returns {Promise<string|null>} Snapped text block, or null if read error/file missing.
+ */
 function readFileSnippet(filePath, lineIndex, maxLines = 6) {
     return new Promise((resolve) => {
         if (!fs.existsSync(filePath)) {
