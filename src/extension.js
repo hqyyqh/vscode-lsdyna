@@ -1,3 +1,15 @@
+/**
+ * @fileoverview Main entry point for the LS-DYNA VS Code extension.
+ * @module extension
+ * 
+ * This file coordinates client-side VS Code features: registering document providers
+ * (definition, reference, rename, hover, codelens, folding, document symbols, completions,
+ * file decorations), launching the LSP background server, watching the workspace for file changes,
+ * managing diagnostics reporting, and providing commands to navigate keywords and open manuals.
+ * 
+ * Role in System: Main extension process controller.
+ */
+
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +27,12 @@ const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
+/**
+ * Launches the background language server as a separate node process via VS Code LanguageClient.
+ * 
+ * @param {import('vscode').ExtensionContext} context - The extension context.
+ * @returns {import('vscode-languageclient/node').LanguageClient} Active LanguageClient instance.
+ */
 function startLanguageServer(context) {
     const serverModule = path.join(__dirname, 'server', 'server.js');
     const debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
@@ -51,7 +69,17 @@ const includeDirectiveCache = new WeakMap();
 
 // --- Folding ---
 
+/**
+ * Folding range provider to collapse individual keyword blocks (*KEYWORD) in LS-DYNA decks.
+ * @implements {vscode.FoldingRangeProvider}
+ */
 class LsDynaFoldingProvider {
+    /**
+     * Resolves folding ranges for *KEYWORD blocks.
+     * 
+     * @param {import('vscode').TextDocument} document - Target document.
+     * @returns {import('vscode').FoldingRange[]} Folding ranges.
+     */
     provideFoldingRanges(document) {
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -77,7 +105,17 @@ class LsDynaFoldingProvider {
 
 // --- Symbol Provider ---
 
+/**
+ * Document symbol provider to list all *KEYWORD blocks in the outline views.
+ * @implements {vscode.DocumentSymbolProvider}
+ */
 class LsdynaKeywordSymbolProvider {
+    /**
+     * Collects *KEYWORD occurrences as DocumentSymbol objects.
+     * 
+     * @param {import('vscode').TextDocument} document - Target document.
+     * @returns {import('vscode').DocumentSymbol[]} Document symbols.
+     */
     provideDocumentSymbols(document) {
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -100,7 +138,17 @@ class LsdynaKeywordSymbolProvider {
 
 // --- Document Link Provider ---
 
+/**
+ * Document link provider for jumping to included files.
+ * @implements {vscode.DocumentLinkProvider}
+ */
 class LsdynaDocumentLinkProvider {
+    /**
+     * Collects DocumentLinks for include files.
+     * 
+     * @param {import('vscode').TextDocument} document - Target document.
+     * @returns {import('vscode').DocumentLink[]} Document links.
+     */
     provideDocumentLinks(document) {
         return collectIncludeDocumentLinks(document);
     }
@@ -108,6 +156,12 @@ class LsdynaDocumentLinkProvider {
 
 // --- Helpers ---
 
+/**
+ * Scans includes in the document, caching the result by document version.
+ * 
+ * @param {import('vscode').TextDocument} document - Target document.
+ * @returns {import('./core/parser/includeScanner').IncludeResult} include directive results.
+ */
 function getIncludeDirectiveData(document) {
     const version = document.version ?? null;
     const cached = includeDirectiveCache.get(document);
@@ -125,10 +179,21 @@ function getIncludeDirectiveData(document) {
     return value;
 }
 
+/**
+ * Guard check to skip automatic parsing/diagnostics for very large files.
+ * 
+ * @param {import('vscode').TextDocument} document - Document to inspect.
+ * @returns {boolean} True if size exceeds line threshold.
+ */
 function shouldSkipAutomaticDocumentScan(document) {
     return Boolean(document) && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
 }
 
+/**
+ * Resolves the URI of the currently active text editor or tab resource.
+ * 
+ * @returns {import('vscode').Uri|null} Active file URI.
+ */
 function getActiveUri() {
     const editor = vscode.window.activeTextEditor;
     if (editor) return editor.document.uri;
@@ -143,17 +208,35 @@ function getActiveUri() {
     return null;
 }
 
+/**
+ * Checks if a file URI represents an LS-DYNA file extension.
+ * 
+ * @param {import('vscode').Uri|null} uri - URI to inspect.
+ * @returns {boolean} True if lsdyna extension.
+ */
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
     return ext === '.k' || ext === '.key' || ext === '.dyna';
 }
 
+/**
+ * Checks if a TextDocument represents an LS-DYNA file.
+ * 
+ * @param {import('vscode').TextDocument|null} document - Document.
+ * @returns {boolean} True if lsdyna file.
+ */
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
     return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
+/**
+ * Scans document to construct clickable DocumentLinks targeting resolved includes.
+ * 
+ * @param {import('vscode').TextDocument} document - Target document.
+ * @returns {import('vscode').DocumentLink[]} Link objects.
+ */
 function collectIncludeDocumentLinks(document) {
     if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -175,6 +258,12 @@ function collectIncludeDocumentLinks(document) {
         });
 }
 
+/**
+ * Scans lines exceeding 80 characters (excluding comments) to flag them as warnings.
+ * 
+ * @param {import('vscode').TextDocument} document - Target document.
+ * @returns {import('vscode').Diagnostic[]} Diagnostics list.
+ */
 function collectLineLengthDiagnostics(document) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -192,6 +281,12 @@ function collectLineLengthDiagnostics(document) {
     return issues;
 }
 
+/**
+ * Constructs decoration ranges (color markers) for resolved versus missing include files.
+ * 
+ * @param {import('vscode').TextDocument} document - Target document.
+ * @returns {{resolved: import('vscode').DecorationOptions[], missing: import('vscode').DecorationOptions[]}} Decoration collections.
+ */
 function collectIncludeDecorationSets(document) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
         return { resolved: [], missing: [] };
@@ -217,6 +312,13 @@ function collectIncludeDecorationSets(document) {
     return { resolved, missing };
 }
 
+/**
+ * Checks if the specified line index falls within any include file card definition.
+ * 
+ * @param {import('vscode').TextDocument} document - Document.
+ * @param {number} currentLine - Line number to check.
+ * @returns {boolean} True if is on include declaration line.
+ */
 function isIncludeLine(document, currentLine) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
         return false;
@@ -226,12 +328,24 @@ function isIncludeLine(document, currentLine) {
         .some(entry => includeScanner.includeEntryContainsLine(entry, currentLine));
 }
 
+/**
+ * Returns raw include scan entries for the document.
+ * 
+ * @param {import('vscode').TextDocument} document - Document.
+ * @returns {import('./core/parser/includeScanner').IncludeEntry[]} include entry lists.
+ */
 function findIncludeFileLines(document) {
     return getIncludeDirectiveData(document).includeEntries;
 }
 
 // --- Parameter helpers ---
 
+/**
+ * Scans parameters (*PARAMETER...) defined in a document, cataloging their details.
+ * 
+ * @param {import('vscode').TextDocument} document - Document to scan.
+ * @returns {Map<string, { lineIndex: number, startChar: number, length: number, name: string, value: string }>} Parameter definitions map.
+ */
 function findParameterDefinitions(document) {
     if (shouldSkipAutomaticDocumentScan(document)) return new Map();
 
@@ -262,6 +376,12 @@ function findParameterDefinitions(document) {
     return defs;
 }
 
+/**
+ * Scans parameters referenced via '&name' or bare names inside expressions.
+ * 
+ * @param {import('vscode').TextDocument} document - Document to scan.
+ * @returns {Array<{ name: string, lineIndex: number, startChar: number, length: number }>} Reference locations list.
+ */
 function findParameterReferences(document) {
     if (shouldSkipAutomaticDocumentScan(document)) return [];
 
@@ -305,6 +425,13 @@ function findParameterReferences(document) {
     return refs;
 }
 
+/**
+ * Finds the parameter name and token range under the cursor position.
+ * 
+ * @param {import('vscode').TextDocument} document - Target document.
+ * @param {import('vscode').Position} position - Editor position.
+ * @returns {{ name: string, range: import('vscode').Range }|null} Active parameter token, or null.
+ */
 function getParameterAtCursor(document, position) {
     if (shouldSkipAutomaticDocumentScan(document)) return null;
 
@@ -353,7 +480,18 @@ function getParameterAtCursor(document, position) {
 
 // --- Parameter providers ---
 
+/**
+ * Provider to support 'Go to Definition' command for parameter names.
+ * @implements {vscode.DefinitionProvider}
+ */
 class LsdynaDefinitionProvider {
+    /**
+     * Resolves parameter definition target location.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @param {import('vscode').Position} position - Position.
+     * @returns {import('vscode').Location|null} definition destination.
+     */
     provideDefinition(document, position) {
         const param = getParameterAtCursor(document, position);
         if (!param) return null;
@@ -363,7 +501,19 @@ class LsdynaDefinitionProvider {
     }
 }
 
+/**
+ * Provider to support 'Find All References' command for parameter names.
+ * @implements {vscode.ReferenceProvider}
+ */
 class LsdynaReferenceProvider {
+    /**
+     * Gathers all parameter usage references.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @param {import('vscode').Position} position - Position.
+     * @param {import('vscode').ReferenceContext} context - Reference options.
+     * @returns {import('vscode').Location[]} References.
+     */
     provideReferences(document, position, context) {
         const param = getParameterAtCursor(document, position);
         if (!param) return [];
@@ -388,13 +538,32 @@ class LsdynaReferenceProvider {
     }
 }
 
+/**
+ * Rename provider enabling parameter renaming (F2) throughout a document.
+ * @implements {vscode.RenameProvider}
+ */
 class LsdynaRenameProvider {
+    /**
+     * Validates if renaming can occur under cursor.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @param {import('vscode').Position} position - Position.
+     * @returns {import('vscode').Range} Renamable token range.
+     */
     prepareRename(document, position) {
         const param = getParameterAtCursor(document, position);
         if (!param) throw new Error('Cannot rename this symbol.');
         return param.range;
     }
 
+    /**
+     * Resolves WorkspaceEdits replacing parameter definitions and references.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @param {import('vscode').Position} position - Position.
+     * @param {string} newName - Target name.
+     * @returns {import('vscode').WorkspaceEdit|null} Renamed workspace edits.
+     */
     provideRenameEdits(document, position, newName) {
         const param = getParameterAtCursor(document, position);
         if (!param) return null;
@@ -426,6 +595,11 @@ class LsdynaRenameProvider {
 
 let _fieldData = null;
 
+/**
+ * Loads keyword card field descriptors dictionary (field_data.json) from folder lazily.
+ * 
+ * @returns {Object} Keyword fields schema data.
+ */
 function getFieldData() {
     if (!_fieldData) {
         const dataPaths = [
@@ -442,6 +616,12 @@ function getFieldData() {
     return _fieldData;
 }
 
+/**
+ * Searches the schema dictionary for a keyword definition, supporting sub-token fallback.
+ * 
+ * @param {string} name - Keyword string.
+ * @returns {Object|null} Schema card descriptor, or null.
+ */
 function lookupKeyword(name) {
     const data = getFieldData();
     if (data[name]) return data[name];
@@ -453,6 +633,13 @@ function lookupKeyword(name) {
     return null;
 }
 
+/**
+ * Assembles Markdown text summarizing card structure for a keyword hover card.
+ * 
+ * @param {string} kwName - Keyword name.
+ * @param {Object} entry - Schema definition entry.
+ * @returns {string} Markdown text.
+ */
 function keywordHoverMarkdown(kwName, entry) {
     const cards = entry.c;
     const lines = [`**\\*${kwName}**`];
@@ -472,10 +659,22 @@ function keywordHoverMarkdown(kwName, entry) {
     return lines.join('\n');
 }
 
+/**
+ * Replaces newlines in help descriptors with markdown hard breaks.
+ * 
+ * @param {string} helpText - Input help string.
+ * @returns {string} Formatted output.
+ */
 function formatHoverHelpText(helpText) {
     return helpText.replace(/\r?\n/g, '  \n');
 }
 
+/**
+ * Resolves local manuals mapping and appends SumatraPDF/PDF links to hover Markdown card.
+ * 
+ * @param {import('vscode').MarkdownString} md - Markdown card.
+ * @param {string} kwName - Cleaned keyword name.
+ */
 function appendManualLinks(md, kwName) {
     const cleanKw = manualIndexer.cleanKeyword(kwName);
     const manuals = manualIndexer.getManualLocations(cleanKw);
@@ -500,7 +699,18 @@ function appendManualLinks(md, kwName) {
     }
 }
 
+/**
+ * Hover provider delivering detailed keyword and card field documentation on mouse hover.
+ * @implements {vscode.HoverProvider}
+ */
 class LsdynaFieldHoverProvider {
+    /**
+     * Generates Hover cards for includes, parameter references, keywords, or card fields.
+     * 
+     * @param {import('vscode').TextDocument} document - Active document.
+     * @param {import('vscode').Position} position - Cursor position.
+     * @returns {import('vscode').Hover|null} Hover card or null.
+     */
     provideHover(document, position) {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
 
@@ -649,7 +859,17 @@ class LsdynaFieldHoverProvider {
     }
 }
 
+/**
+ * CodeLens provider putting parameter usage reference counts above definition cards.
+ * @implements {vscode.CodeLensProvider}
+ */
 class LsdynaParameterCodeLensProvider {
+    /**
+     * Spawns CodeLenses for parameter definitions.
+     * 
+     * @param {import('vscode').TextDocument} document - Document.
+     * @returns {import('vscode').CodeLens[]} CodeLenses.
+     */
     provideCodeLenses(document) {
         const defs = findParameterDefinitions(document);
         const refs = findParameterReferences(document);
@@ -669,10 +889,24 @@ class LsdynaParameterCodeLensProvider {
 }
 
 
+/**
+ * Fetches search path directories resolved for this file.
+ * 
+ * @param {import('vscode').TextDocument} document - Active document.
+ * @returns {string[]} Search paths list.
+ */
 function getSearchPath(document) {
     return getIncludeDirectiveData(document).searchPaths;
 }
 
+/**
+ * Synchronously searches backward to locate the starting line of the enclosing keyword block.
+ * 
+ * @param {number} lineCount - Document lines.
+ * @param {function(number): string} getLine - Line retrieval callback.
+ * @param {number} lineindex - Starting line index.
+ * @returns {number} 0-indexed line index of keyword statement.
+ */
 function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     for (let i = lineindex; i >= 0; i--) {
         if (getLine(i).startsWith('*')) return i;
@@ -680,6 +914,14 @@ function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) 
     throw new Error('Not on any keyword.');
 }
 
+/**
+ * Synchronously searches forward to locate the ending line of the enclosing keyword block.
+ * 
+ * @param {number} lineCount - Document lines.
+ * @param {function(number): string} getLine - Line retrieval callback.
+ * @param {number} lineindex - Starting line index.
+ * @returns {number} 0-indexed line index of keyword block end.
+ */
 function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     for (let i = lineindex + 1; i < lineCount; i++) {
         if (getLine(i).startsWith('*')) return i - 1;
@@ -687,6 +929,15 @@ function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     return lineCount - 1;
 }
 
+/**
+ * Resolves the filename corresponding to an include keyword line.
+ * 
+ * @param {number} lineCount - Total lines.
+ * @param {function(number): string} getLine - Line reader callback.
+ * @param {number} lineindex - Line index inside include block.
+ * @param {string} basePath - Base directory path.
+ * @returns {string} include filename.
+ */
 function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, basePath) {
     const linestart = startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex);
     const keyword = getLine(linestart).trim();
@@ -733,6 +984,13 @@ function getFilenameFromDocument(document, lineindex) {
     );
 }
 
+/**
+ * Iterates folders in path list to find where target file exists on disk.
+ * 
+ * @param {string} filePath - Target file.
+ * @param {string[]} paths - Ordered list of folders.
+ * @returns {string} Absolute path.
+ */
 function searchFileFromPaths(filePath, paths) {
     for (const searchPath of paths) {
         const fullPath = path.resolve(searchPath, filePath);
@@ -741,6 +999,14 @@ function searchFileFromPaths(filePath, paths) {
     throw new Error(`${filePath} not found.`);
 }
 
+/**
+ * Locates the next line starting with '*' (excluding currentLine).
+ * 
+ * @param {number} lineCount - Total lines.
+ * @param {function(number): string} getLine - Line reader.
+ * @param {number} currentLine - Current line.
+ * @returns {number} Next line index.
+ */
 function findNextKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine + 1; i < lineCount; i++) {
         if (getLine(i).startsWith('*')) return i;
@@ -756,6 +1022,14 @@ function findNextKeywordInDocument(document, currentLine) {
     return findNextKeywordFromLineReader(document.lineCount, i => document.lineAt(i).text, currentLine);
 }
 
+/**
+ * Locates the previous line starting with '*' (excluding currentLine).
+ * 
+ * @param {number} lineCount - Total lines.
+ * @param {function(number): string} getLine - Line reader.
+ * @param {number} currentLine - Current line.
+ * @returns {number} Previous line index.
+ */
 function findPreviousKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine - 1; i >= 0; i--) {
         if (getLine(i).startsWith('*')) return i;
@@ -771,6 +1045,16 @@ function findPreviousKeywordInDocument(document, currentLine) {
     return findPreviousKeywordFromLineReader(document.lineCount, i => document.lineAt(i).text, currentLine);
 }
 
+/**
+ * Creates a debounced callback function for updating document views on typing.
+ * 
+ * @param {function(): import('vscode').TextDocument|null} getActiveDocument - Gets current document.
+ * @param {function(any): void} refreshDocument - Callback to trigger update.
+ * @param {number} [delayMs=500] - Timer delay.
+ * @param {function} [schedule=setTimeout] - Scheduling handle.
+ * @param {function} [cancel=clearTimeout] - Cancellation handle.
+ * @returns {function(any): void} Debounced caller.
+ */
 function createActiveDocumentDebouncer(getActiveDocument, refreshDocument, delayMs = 500, schedule = setTimeout, cancel = clearTimeout) {
     let timer;
     return (changedDocument) => {
@@ -785,6 +1069,13 @@ function createActiveDocumentDebouncer(getActiveDocument, refreshDocument, delay
 
 // --- Shared include traversal ---
 
+/**
+ * Recursively scans files in project inclusion tree starting from a root.
+ * 
+ * @param {string} rootPath - Main file path.
+ * @param {function(number): void} [onProgress] - Progress listener callback.
+ * @returns {Promise<string[]>} List of all dependency files found.
+ */
 async function collectIncludeFiles(rootPath, onProgress) {
     const visited = new Set();
     const queue = [rootPath];
@@ -804,6 +1095,10 @@ async function collectIncludeFiles(rootPath, onProgress) {
     return files;
 }
 
+/**
+ * File decorations provider for Include Tree views, overlaying warnings or success icons.
+ * @implements {vscode.FileDecorationProvider}
+ */
 class LsdynaFileDecorationProvider {
     constructor(includeTreeProvider) {
         this.includeTreeProvider = includeTreeProvider;
@@ -838,6 +1133,10 @@ class LsdynaFileDecorationProvider {
     }
 }
 
+/**
+ * Autocomplete provider for relative include filenames based on scan directories.
+ * @implements {vscode.CompletionItemProvider}
+ */
 class LsdynaIncludeCompletionProvider {
     provideCompletionItems(document, position, token, context) {
         if (!document || !document.uri || !document.uri.fsPath) return [];
@@ -960,6 +1259,11 @@ class LsdynaIncludeCompletionProvider {
 
 // --- Activate ---
 
+/**
+ * Standard VS Code extension activation hook. Configures commands, providers, and watchers.
+ * 
+ * @param {import('vscode').ExtensionContext} context - The extension context.
+ */
 function activate(context) {
     manualIndexer.initialize(context).catch(err => {
         console.error('Failed to initialize manual indexer:', err);
@@ -1409,9 +1713,20 @@ function activate(context) {
     );
 }
 
+/**
+ * Standard VS Code extension deactivation hook.
+ */
 function deactivate() {
 }
 
+/**
+ * Creates an invalidation trigger that flushes caches mapping to modified files.
+ * 
+ * @param {Object} params - Options.
+ * @param {Object} params.indexClient - Index client handle.
+ * @param {function} [params.findAffectedRoots] - Roots mapping function.
+ * @returns {function(string|import('vscode').Uri): void} Invalidation callback.
+ */
 function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = findAffectedProjectRoots } = {}) {
     if (!indexClient || typeof indexClient.invalidate !== 'function' || typeof indexClient.getManifestEntries !== 'function') {
         throw new TypeError('createManifestDrivenInvalidator requires indexClient.invalidate and indexClient.getManifestEntries');
@@ -1433,6 +1748,18 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
     };
 }
 
+/**
+ * Creates a debounced invalidation trigger that groups file modifications into batched updates.
+ * 
+ * @param {Object} params - Options.
+ * @param {Object} params.indexClient - Index client.
+ * @param {function} [params.findAffectedRoots] - Affected roots resolver.
+ * @param {function(string[]): void} [params.onInvalidatedRoots] - Batched roots completion callback.
+ * @param {number} [params.delayMs=100] - Debounce delay.
+ * @param {function} [params.schedule=setTimeout] - Scheduler.
+ * @param {function} [params.cancel=clearTimeout] - Canceler.
+ * @returns {function(string|import('vscode').Uri): void} Enqueuing callback.
+ */
 function createBatchedManifestInvalidator({
     indexClient,
     findAffectedRoots = findAffectedProjectRoots,
@@ -1476,6 +1803,15 @@ function createBatchedManifestInvalidator({
     };
 }
 
+/**
+ * Creates a sequential execution queue for rebuilding project snapshots, deduplicating rapid triggers.
+ * 
+ * @param {Object} params - Options.
+ * @param {function(string): Promise<any>} params.loadProjectSnapshot - Loader function.
+ * @param {function(Error, string): void} [params.onError] - Error callback.
+ * @param {function} [params.schedule=setImmediate] - Queue execution handler.
+ * @returns {function(string): void} Enqueue project callback.
+ */
 function createProjectSnapshotRefreshQueue({
     loadProjectSnapshot,
     onError = () => {},
@@ -1537,6 +1873,14 @@ function createProjectSnapshotRefreshQueue({
 
 // createProjectIndexLoader is now imported from src/worker/projectIndexLoader.js
 
+/**
+ * Factory helper to construct the persistent L2 cache in globalStorage.
+ * 
+ * @param {Object} params - Options.
+ * @param {import('vscode').Uri|null} [params.storageUri] - VS Code global storage directory URI.
+ * @param {function(Object): import('./core/cache/diskSnapshotStore').DiskSnapshotStore} [params.createStore] - Store factory.
+ * @returns {import('./core/cache/diskSnapshotStore').DiskSnapshotStore|null} Store instance, or null.
+ */
 function createProjectSnapshotPersistentCache({
     storageUri = null,
     createStore = createDiskSnapshotStore,
@@ -1551,6 +1895,13 @@ function createProjectSnapshotPersistentCache({
     });
 }
 
+/**
+ * Publishes diagnostic warnings and errors (missing files, circular dependencies)
+ * mapped to project snapshot results.
+ * 
+ * @param {import('./core/project/projectIndexer').ProjectIndexResult} snapshot - snapshot to translate.
+ * @param {import('vscode').DiagnosticCollection} diagnosticsCollection - Target collection.
+ */
 function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
     if (!snapshot || !snapshot.files) return;
 
@@ -1610,6 +1961,12 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 }
 
 
+/**
+ * Resolves absolute path to SumatraPDF.exe in manuals directory if available.
+ * 
+ * @param {import('vscode').ExtensionContext} context - Context.
+ * @returns {Promise<string|null>} Resolved path, or null.
+ */
 async function resolveSumatraPath(context) {
     const fs = require('fs');
     const path = require('path');
@@ -1632,6 +1989,12 @@ async function resolveSumatraPath(context) {
     return null;
 }
 
+/**
+ * Fallback open command invoking cmd.exe shell start to recycle SumatraPDF or system browser windows.
+ * 
+ * @param {string} pdfPath - File path.
+ * @param {number} [pageNum] - Page number.
+ */
 function openManualFallback(pdfPath, pageNum) {
     let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
     if (pageNum) {
