@@ -1,10 +1,39 @@
 'use strict';
 
-const fs = require('fs');
-const readline = require('readline');
+/**
+ * @fileoverview High-performance scanner to locate keyword lines (*...) in LS-DYNA input decks.
+ * @module core/parser/keywordScanner
+ * 
+ * This module scans LS-DYNA files to find lines defining a keyword (starting with '*'). 
+ * It runs synchronously on array-backed lines or asynchronously using a stream reader.
+ * 
+ * Role in System: Generates high-level keyword lists used for navigation and sidebar views 
+ * (like the Keyword Index tree).
+ */
 
+const fs = require('fs');
+
+/**
+ * The default batch yield interval for stream scanning to prevent blocking the event loop.
+ * @type {number}
+ */
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 
+/**
+ * @typedef {Object} ScannedKeyword
+ * @property {string} keyword - The keyword name (e.g. "NODE", "CONTROL_TERMINATION") excluding the leading '*'.
+ * @property {string} filePath - Absolute path to the file containing this keyword.
+ * @property {number} lineIndex - 0-indexed line number of the keyword definition.
+ */
+
+/**
+ * Synchronously scans and collects keyword occurrences from an array-backed line reader.
+ * 
+ * @param {number} lineCount - Total number of lines.
+ * @param {function(number): string} getLine - Line retrieval callback.
+ * @param {string} filePath - Absolute path to the source file.
+ * @returns {ScannedKeyword[]} Scanned keywords array.
+ */
 function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
     const keywords = [];
     for (let i = 0; i < lineCount; i++) {
@@ -17,6 +46,13 @@ function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
     return keywords;
 }
 
+/**
+ * Asynchronously scans a file from disk using binary sliding buffer match for fast keyword detection.
+ * Avoids converting non-keyword lines to UTF-8 strings to minimize GC pressure.
+ * 
+ * @param {string} filePath - Absolute path to the file.
+ * @returns {Promise<ScannedKeyword[]>} Scanned keywords array.
+ */
 async function collectKeywordsFromFile(filePath) {
     const stream = fs.createReadStream(filePath);
     const keywords = [];
