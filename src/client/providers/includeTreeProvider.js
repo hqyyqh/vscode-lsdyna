@@ -103,7 +103,7 @@ class IncludeItem extends vscode.TreeItem {
         this.fileSizeVal = undefined;
         
         if (!exists) {
-            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+            this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
             this.description = 'not found';
             this.contextValue = 'file-missing';
         } else {
@@ -245,7 +245,7 @@ class LsdynaIncludeTreeProvider {
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else if (node.missing) {
             item.description = 'missing';
-            item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('editorWarning.foreground'));
+            item.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else {
             item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode, rootPath || node.filePath));
