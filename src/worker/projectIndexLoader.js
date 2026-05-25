@@ -1,18 +1,52 @@
 'use strict';
 
+/**
+ * @fileoverview Lazy pool manager and recoverer for background worker index compilation tasks.
+ * @module worker/projectIndexLoader
+ * 
+ * This module instantiates the background Node.js worker pool (WorkerPool) lazily on the first request, 
+ * routes indexing commands to it, and recovers (re-creates) the pool if worker processes fail.
+ * 
+ * Role in System: Handles coordination and lifecycle of worker threads, preventing memory leaks 
+ * by keeping pool instances clean.
+ */
+
 const path = require('path');
 const { createWorkerPool } = require('./workerPool');
 
+/**
+ * Factory function to create a Project Index Loader coordinator.
+ * 
+ * @param {Object} [options={}] - Custom overrides.
+ * @param {function(Object): import('./workerPool').WorkerPool} [options.createPool] - Custom worker pool factory.
+ * @param {string} [options.workerPath] - Absolute path to the worker entry script.
+ * @returns {{
+ *   buildProjectIndex: function(string): Promise<import('../core/project/projectIndexer').ProjectIndexResult>,
+ *   dispose: function(): Promise<void>
+ * }} The loader API client.
+ */
 function createProjectIndexLoader({
     createPool = createWorkerPool,
     workerPath = path.join(__dirname, 'scanWorker.js'),
 } = {}) {
+    /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
 
+    /**
+     * Checks if the worker pool has been disposed.
+     * 
+     * @param {import('./workerPool').WorkerPool|null} pool - Worker pool to check.
+     * @returns {boolean} True if pool is disposed or null.
+     */
     function isPoolDisposed(pool) {
         return !pool || (typeof pool.isDisposed === 'function' && pool.isDisposed());
     }
 
+    /**
+     * Gets the active worker pool instance, initializing it lazily if it doesn't exist.
+     * 
+     * @returns {import('./workerPool').WorkerPool} Active worker pool.
+     */
     function getWorkerPool() {
         if (isPoolDisposed(workerPool)) {
             workerPool = null;
@@ -24,6 +58,12 @@ function createProjectIndexLoader({
     }
 
     return {
+        /**
+         * Asynchronously delegates project indexing to the worker pool.
+         * 
+         * @param {string} rootFile - Absolute path to the root LS-DYNA file.
+         * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Scanned project snapshot.
+         */
         async buildProjectIndex(rootFile) {
             const pool = getWorkerPool();
             try {
@@ -35,6 +75,12 @@ function createProjectIndexLoader({
                 throw error;
             }
         },
+
+        /**
+         * Disposes the active worker pool and frees up system processes.
+         * 
+         * @returns {Promise<void>}
+         */
         async dispose() {
             if (!workerPool) return;
             await workerPool.dispose();
