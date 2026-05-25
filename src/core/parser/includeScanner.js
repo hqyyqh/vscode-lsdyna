@@ -1,11 +1,76 @@
 'use strict';
 
+/**
+ * @fileoverview High-performance scanner to extract and resolve include directives (*INCLUDE) and search paths (*INCLUDE_PATH) in LS-DYNA input decks.
+ * @module core/parser/includeScanner
+ * 
+ * This module parses LS-DYNA input files to identify included files, supporting continued line 
+ * syntax (trailing ' +'), multiple file cards, path resolution variables (*INCLUDE_PATH and 
+ * *INCLUDE_PATH_RELATIVE), and comments ($). It runs both in-memory and asynchronously via file streams.
+ * 
+ * Role in System: Provides structural dependency mapping so the extension can resolve cross-file
+ * references (parameters, definitions) and build the project-wide Include Tree.
+ */
+
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
+/**
+ * The default batch yield interval for stream scanning to prevent blocking the event loop.
+ * @type {number}
+ */
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 
+/**
+ * @typedef {Object} IncludeSegment
+ * @property {number} lineIndex - 0-indexed line number of this filename segment.
+ * @property {number} startChar - 0-indexed column index of the first character of the filename.
+ * @property {number} endChar - 0-indexed column index of the last character of the filename.
+ */
+
+/**
+ * @typedef {Object} IncludeEntry
+ * @property {number} lineIndex - 0-indexed line number where the include definition begins.
+ * @property {number} startChar - 0-indexed starting character index.
+ * @property {number} endLineIndex - 0-indexed line number where the include definition ends.
+ * @property {number} endChar - 0-indexed ending character index.
+ * @property {string} fileName - Resolved filename string combined from all segments.
+ * @property {IncludeSegment[]} segments - Segment coordinates of each line making up the filename (handling trailing ' +' continuation).
+ */
+
+/**
+ * @typedef {Object} PendingInclude
+ * @property {number} lineIndex - Starting line number.
+ * @property {number} startChar - Starting column.
+ * @property {number} endLineIndex - Current ending line number.
+ * @property {number} endChar - Current ending column.
+ * @property {string[]} parts - Buffer containing parts of the filename.
+ * @property {IncludeSegment[]} segments - Segments coordinates.
+ * @property {boolean} awaitingContinuation - True if the line ends with ' +', indicating more segments follow.
+ */
+
+/**
+ * @typedef {Object} IncludeDirectiveState
+ * @property {string} basePath - Base directory path for resolving relative include paths.
+ * @property {string} keyword - The active keyword context (e.g. '*INCLUDE', '*INCLUDE_PATH').
+ * @property {number} cardCount - Number of data cards processed under the current keyword.
+ * @property {IncludeEntry[]} includeEntries - Scanned include file references.
+ * @property {string[]} searchPaths - Search directories resolved for this file.
+ * @property {PendingInclude|null} pendingInclude - Active include entry being built.
+ */
+
+/**
+ * @typedef {Object} IncludeResult
+ * @property {IncludeEntry[]} includeEntries - List of include entries found in the file.
+ * @property {string[]} searchPaths - Resolved absolute and relative search paths.
+ */
+
+/**
+ * Creates an initial state object for parsing include directives.
+ * 
+ * @param {string} basePath - The base directory path.
+ * @returns {IncludeDirectiveState} Initial state.
+ */
 function createIncludeDirectiveState(basePath) {
     return {
         basePath,
@@ -17,6 +82,12 @@ function createIncludeDirectiveState(basePath) {
     };
 }
 
+/**
+ * Returns parsing rules for a given include-related keyword.
+ * 
+ * @param {string} keyword - The keyword to check.
+ * @returns {{repeatable: boolean, filenameCard: number}|null} Parser rules, or null if not an include keyword.
+ */
 function getIncludeDirectiveRule(keyword) {
     if (keyword === '*INCLUDE') {
         return { repeatable: true, filenameCard: 1 };
@@ -30,6 +101,13 @@ function getIncludeDirectiveRule(keyword) {
     return null;
 }
 
+/**
+ * Creates an include segment representing filename coordinates on a specific line.
+ * 
+ * @param {string} line - Raw line text.
+ * @param {number} lineIndex - Line index.
+ * @returns {IncludeSegment} The created segment.
+ */
 function createIncludeSegment(line, lineIndex) {
     const trimmed = line.trim();
     return {
@@ -39,6 +117,13 @@ function createIncludeSegment(line, lineIndex) {
     };
 }
 
+/**
+ * Initializes a new pending include entry.
+ * 
+ * @param {string} line - The first line of the include file path.
+ * @param {number} lineIndex - 0-indexed line number.
+ * @returns {PendingInclude} A new pending include object.
+ */
 function startIncludeEntry(line, lineIndex) {
     const trimmed = line.trim();
     const segment = createIncludeSegment(line, lineIndex);
@@ -53,6 +138,13 @@ function startIncludeEntry(line, lineIndex) {
     };
 }
 
+/**
+ * Appends a continuation line to an existing pending include entry.
+ * 
+ * @param {PendingInclude} entry - Active pending include.
+ * @param {string} line - The continuation line text.
+ * @param {number} lineIndex - 0-indexed line number.
+ */
 function appendIncludeEntry(entry, line, lineIndex) {
     const trimmed = line.trim();
     const segment = createIncludeSegment(line, lineIndex);
@@ -63,10 +155,23 @@ function appendIncludeEntry(entry, line, lineIndex) {
     entry.awaitingContinuation = trimmed.endsWith(' +');
 }
 
+/**
+ * Determines whether a given line is part of the specified include entry.
+ * 
+ * @param {IncludeEntry} entry - The include entry.
+ * @param {number} lineIndex - 0-indexed line number to check.
+ * @returns {boolean} True if the line index is part of the include entry.
+ */
 function includeEntryContainsLine(entry, lineIndex) {
     return (entry.segments || []).some(segment => segment.lineIndex === lineIndex);
 }
 
+/**
+ * Simplifies segments of an include entry into contiguous line ranges.
+ * 
+ * @param {IncludeEntry|PendingInclude} entry - The include entry.
+ * @returns {Array<{lineIndex: number, startChar: number, endLineIndex: number, endChar: number}>} Contiguous line ranges.
+ */
 function getIncludeEntryRanges(entry) {
     if (!entry.segments || entry.segments.length === 0) {
         return [{
@@ -104,6 +209,11 @@ function getIncludeEntryRanges(entry) {
     return ranges;
 }
 
+/**
+ * Flushes the current pending include entry into the completed include entries list.
+ * 
+ * @param {IncludeDirectiveState} state - Active parser state.
+ */
 function flushIncludeEntry(state) {
     if (!state.pendingInclude) return;
     const fileName = state.pendingInclude.parts.join('').trim();
@@ -114,6 +224,13 @@ function flushIncludeEntry(state) {
     state.pendingInclude = null;
 }
 
+/**
+ * Processes a single line within the include directive parser state machine.
+ * 
+ * @param {IncludeDirectiveState} state - Active parser state.
+ * @param {string} line - Raw text line.
+ * @param {number} lineIndex - 0-indexed line number.
+ */
 function processIncludeDirectiveLine(state, line, lineIndex) {
     const trimmed = line.trim();
 
@@ -156,11 +273,25 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
     }
 }
 
+/**
+ * Finalizes parsing and returns the resolved results.
+ * 
+ * @param {IncludeDirectiveState} state - Active parser state.
+ * @returns {IncludeResult} The finalized results.
+ */
 function finalizeIncludeDirectiveState(state) {
     flushIncludeEntry(state);
     return { includeEntries: state.includeEntries, searchPaths: state.searchPaths };
 }
 
+/**
+ * Synchronously parses include statements and paths using a line-by-line reader.
+ * 
+ * @param {number} lineCount - Total number of lines.
+ * @param {function(number): string} getLine - Line retrieval callback.
+ * @param {string} basePath - Folder path of the host file.
+ * @returns {IncludeResult} The include entries and search paths.
+ */
 function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
     const state = createIncludeDirectiveState(basePath);
     for (let i = 0; i < lineCount; i++) {
@@ -169,6 +300,13 @@ function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
     return finalizeIncludeDirectiveState(state);
 }
 
+/**
+ * Asynchronously parses include statements and paths from a file stream.
+ * Optimized to skip decoding of lines that are not part of an include block context.
+ * 
+ * @param {string} filePath - Absolute path to the file on disk.
+ * @returns {Promise<IncludeResult>} Include entries and search paths.
+ */
 async function collectIncludeDirectivesFromFile(filePath) {
     const state = createIncludeDirectiveState(path.dirname(filePath));
     const stream = fs.createReadStream(filePath);
