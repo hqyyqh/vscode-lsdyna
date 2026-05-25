@@ -1,5 +1,16 @@
 'use strict';
 
+/**
+ * @fileoverview High-performance persistent disk storage for project snapshots with auto-vacuuming LRU eviction.
+ * @module core/cache/diskSnapshotStore
+ * 
+ * This module serializes and writes project snapshots to disk, maintaining an index file and individual payload files.
+ * It validates file modification times and sizes (FileSignature) to invalidate cache entries when files are modified externally.
+ * It runs all operations in a serialized queue (runExclusive) to prevent concurrent write corruption.
+ * 
+ * Role in System: Provides L2 persistent caching, letting VS Code restore the project index instantly on startup without re-scanning.
+ */
+
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -10,6 +21,42 @@ const INDEX_FILE_NAME = 'index.json';
 const PAYLOAD_DIRECTORY_NAME = 'payloads';
 const SNAPSHOT_SCHEMA_VERSION = 1;
 
+/**
+ * @typedef {Object} FileSignature
+ * @property {number} mtimeMs - Modification time of the file in milliseconds.
+ * @property {number} size - Size of the file in bytes.
+ */
+
+/**
+ * @typedef {Object} DiskCacheEntry
+ * @property {string} rootFile - Absolute path of the root LS-DYNA file.
+ * @property {string} payloadFileName - Name of the payload file on disk.
+ * @property {number} byteSize - Size of the payload file on disk.
+ * @property {number} lastAccessedAt - Timestamp (ms) when the entry was last accessed.
+ */
+
+/**
+ * @typedef {Object} TrackedFileEntry
+ * @property {string} filePath - Absolute path to the tracked file.
+ * @property {FileSignature} signature - File modification signature.
+ */
+
+/**
+ * @typedef {Object} DiskStoreOptions
+ * @property {string} cacheDirectory - Absolute path to the directory where snapshots are stored.
+ * @property {function(string): Promise<FileSignature>} [getFileSignature] - Optional custom file signature reader.
+ * @property {function(): number} [now] - Optional timestamp provider.
+ * @property {number} [maxCacheBytes] - Optional maximum size of the cache before eviction occurs.
+ * @property {number} [schemaVersion] - Optional schema version to enforce.
+ */
+
+/**
+ * Resolves a root file path, performing validation checks.
+ * 
+ * @param {string} rootFile - Root file path.
+ * @returns {string} Absolute path.
+ * @throws {TypeError} If the path is not a valid string.
+ */
 function resolveRootFile(rootFile) {
     if (typeof rootFile !== 'string' || rootFile.trim() === '') {
         throw new TypeError('disk snapshot cache entries require a rootFile path');
@@ -17,6 +64,12 @@ function resolveRootFile(rootFile) {
     return path.resolve(rootFile);
 }
 
+/**
+ * Generates a normalized map key for the root file. Handles Windows casing.
+ * 
+ * @param {string} rootFile - Root file path.
+ * @returns {string} Normalized lookup key.
+ */
 function getRootCacheKey(rootFile) {
     const resolvedRootFile = resolveRootFile(rootFile);
     return process.platform === 'win32'
@@ -24,6 +77,13 @@ function getRootCacheKey(rootFile) {
         : resolvedRootFile;
 }
 
+/**
+ * Compares two file signatures to detect modification.
+ * 
+ * @param {FileSignature|null|undefined} left - Left signature.
+ * @param {FileSignature|null|undefined} right - Right signature.
+ * @returns {boolean} True if signatures match exactly.
+ */
 function areFileSignaturesEqual(left, right) {
     return left
         && right
@@ -31,6 +91,12 @@ function areFileSignaturesEqual(left, right) {
         && left.size === right.size;
 }
 
+/**
+ * Default file signature reader using node fs.promises.stat.
+ * 
+ * @param {string} filePath - Absolute path to the target file.
+ * @returns {Promise<FileSignature>} File signature.
+ */
 async function readFileSignature(filePath) {
     const stat = await fs.promises.stat(filePath);
     return {
@@ -39,6 +105,12 @@ async function readFileSignature(filePath) {
     };
 }
 
+/**
+ * Clones a cache entry.
+ * 
+ * @param {DiskCacheEntry|null|undefined} entry - Entry to clone.
+ * @returns {DiskCacheEntry|null} Cloned entry, or null.
+ */
 function cloneEntry(entry) {
     if (!entry) return null;
     return {
@@ -49,10 +121,22 @@ function cloneEntry(entry) {
     };
 }
 
+/**
+ * Computes a unique payload filename based on the rootCacheKey hash.
+ * 
+ * @param {string} rootCacheKey - Normalized root file path key.
+ * @returns {string} Output payload filename.
+ */
 function getPayloadFileName(rootCacheKey) {
     return `${crypto.createHash('sha1').update(rootCacheKey).digest('hex')}.json`;
 }
 
+/**
+ * Normalizes tracked file structures.
+ * 
+ * @param {TrackedFileEntry[]} [trackedFiles=[]] - Raw list.
+ * @returns {TrackedFileEntry[]} Normalized list.
+ */
 function normalizeTrackedFiles(trackedFiles = []) {
     return trackedFiles.map(trackedFile => ({
         filePath: resolveRootFile(trackedFile.filePath),
@@ -63,6 +147,17 @@ function normalizeTrackedFiles(trackedFiles = []) {
     }));
 }
 
+/**
+ * Factory function to create a Disk Snapshot Store.
+ * 
+ * @param {DiskStoreOptions} options - Configuration options.
+ * @returns {{
+ *   persist: function({snapshot: Object, trackedFiles: TrackedFileEntry[]}): Promise<void>,
+ *   restore: function(string): Promise<{snapshot: Object, trackedFiles: TrackedFileEntry[]}|null>,
+ *   getStats: function(): {entryCount: number, totalBytes: number},
+ *   listEntries: function(): DiskCacheEntry[]
+ * }} The disk snapshot store API instance.
+ */
 function createDiskSnapshotStore({
     cacheDirectory,
     getFileSignature = readFileSignature,
@@ -86,20 +181,41 @@ function createDiskSnapshotStore({
     const resolvedCacheDirectory = path.resolve(cacheDirectory);
     const indexFilePath = path.join(resolvedCacheDirectory, INDEX_FILE_NAME);
     const payloadDirectoryPath = path.join(resolvedCacheDirectory, PAYLOAD_DIRECTORY_NAME);
+    
+    /** @type {{entries: Map<string, DiskCacheEntry>}|null} */
     let state = null;
+    /** @type {Promise<{entries: Map<string, DiskCacheEntry>}>|null} */
     let statePromise = null;
+    /** @type {Promise<any>} */
     let mutationChain = Promise.resolve();
 
+    /**
+     * Ensures that storage directory and its subdirectories exist.
+     * @returns {Promise<void>}
+     */
     async function ensureDirectories() {
         await fs.promises.mkdir(payloadDirectoryPath, { recursive: true });
     }
 
+    /**
+     * Writes content to a file atomically via temp-file renaming.
+     * 
+     * @param {string} targetPath - Path to write.
+     * @param {string} content - Data to write.
+     * @returns {Promise<void>}
+     */
     async function writeFileAtomically(targetPath, content) {
         const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         await fs.promises.writeFile(tempPath, content, 'utf8');
         await fs.promises.rename(tempPath, targetPath);
     }
 
+    /**
+     * Removes a file if it exists, eating ENOENT.
+     * 
+     * @param {string} filePath - Path to remove.
+     * @returns {Promise<void>}
+     */
     async function removeFileIfExists(filePath) {
         try {
             await fs.promises.rm(filePath, { force: true });
@@ -108,6 +224,12 @@ function createDiskSnapshotStore({
         }
     }
 
+    /**
+     * Computes totals for cache state.
+     * 
+     * @param {{entries: Map<string, DiskCacheEntry>}} currentState - Current in-memory index state.
+     * @returns {{entryCount: number, totalBytes: number}} Stats.
+     */
     function getStateStats(currentState) {
         let totalBytes = 0;
         for (const entry of currentState.entries.values()) {
@@ -120,6 +242,12 @@ function createDiskSnapshotStore({
         };
     }
 
+    /**
+     * Serializes and writes the catalog index back to disk.
+     * 
+     * @param {{entries: Map<string, DiskCacheEntry>}} currentState - State.
+     * @returns {Promise<void>}
+     */
     async function writeIndex(currentState) {
         await ensureDirectories();
         const serializedIndex = JSON.stringify({
@@ -131,6 +259,11 @@ function createDiskSnapshotStore({
         await writeFileAtomically(indexFilePath, serializedIndex);
     }
 
+    /**
+     * Clears all snapshot cache files and rebuilds structures.
+     * 
+     * @returns {Promise<{entries: Map<string, DiskCacheEntry>}>} Cleared state.
+     */
     async function resetStorage() {
         await fs.promises.rm(payloadDirectoryPath, { recursive: true, force: true });
         await removeFileIfExists(indexFilePath);
@@ -139,6 +272,11 @@ function createDiskSnapshotStore({
         return state;
     }
 
+    /**
+     * Reads index catalog from disk, bootstrapping state.
+     * 
+     * @returns {Promise<{entries: Map<string, DiskCacheEntry>}>} Current index state.
+     */
     async function loadState() {
         if (state) return state;
         if (statePromise) return statePromise;
@@ -183,12 +321,25 @@ function createDiskSnapshotStore({
         return statePromise;
     }
 
+    /**
+     * Deletes a cache entry from index and payload files on disk.
+     * 
+     * @param {{entries: Map<string, DiskCacheEntry>}} currentState - Current state.
+     * @param {DiskCacheEntry} entry - The entry to remove.
+     * @returns {Promise<void>}
+     */
     async function removeEntry(currentState, entry) {
         currentState.entries.delete(getRootCacheKey(entry.rootFile));
         await removeFileIfExists(path.join(payloadDirectoryPath, entry.payloadFileName));
         await writeIndex(currentState);
     }
 
+    /**
+     * Validates modification timestamps and size signatures of tracked files.
+     * 
+     * @param {TrackedFileEntry[]} trackedFiles - List of tracked files to check.
+     * @returns {Promise<boolean>} True if all files are unmodified.
+     */
     async function validateTrackedFiles(trackedFiles) {
         for (const trackedFile of trackedFiles) {
             try {
@@ -203,6 +354,13 @@ function createDiskSnapshotStore({
         return true;
     }
 
+    /**
+     * Performs eviction of least recently used entries if maxCacheBytes limit is breached.
+     * 
+     * @param {{entries: Map<string, DiskCacheEntry>}} currentState - State.
+     * @param {string} protectedRootCacheKey - The rootCacheKey to protect from eviction during this pass.
+     * @returns {Promise<void>}
+     */
     async function evictEntriesIfNeeded(currentState, protectedRootCacheKey) {
         while (getStateStats(currentState).totalBytes > maxCacheBytes) {
             const evictionCandidates = [...currentState.entries.entries()]
@@ -218,6 +376,13 @@ function createDiskSnapshotStore({
         }
     }
 
+    /**
+     * Runs an asynchronous operation inside a promise serialization chain.
+     * 
+     * @template T
+     * @param {function(): Promise<T>} operation - Operation to queue.
+     * @returns {Promise<T>} Output promise.
+     */
     function runExclusive(operation) {
         const promise = mutationChain.then(operation, operation);
         mutationChain = promise.then(() => undefined, () => undefined);
@@ -225,6 +390,14 @@ function createDiskSnapshotStore({
     }
 
     return {
+        /**
+         * Serializes and writes a snapshot to disk, scheduling evictions as needed.
+         * 
+         * @param {Object} params - Arguments.
+         * @param {Object} params.snapshot - The project snapshot object.
+         * @param {TrackedFileEntry[]} params.trackedFiles - Array of tracked dependency files.
+         * @returns {Promise<void>}
+         */
         async persist({ snapshot, trackedFiles }) {
             return runExclusive(async () => {
                 if (!snapshot || typeof snapshot !== 'object') {
@@ -259,6 +432,13 @@ function createDiskSnapshotStore({
                 await writeIndex(currentState);
             });
         },
+
+        /**
+         * Restores a serialized snapshot from disk, invalidating it if dependency signatures mismatch.
+         * 
+         * @param {string} rootFile - Path to the project's root file.
+         * @returns {Promise<{snapshot: Object, trackedFiles: TrackedFileEntry[]}|null>} Resolved snapshot payload, or null if missing or invalid.
+         */
         async restore(rootFile) {
             return runExclusive(async () => {
                 const currentState = await loadState();
@@ -290,9 +470,21 @@ function createDiskSnapshotStore({
                 }
             });
         },
+
+        /**
+         * Returns stats about the cache size and count.
+         * 
+         * @returns {{entryCount: number, totalBytes: number}} Active cache metadata metrics.
+         */
         getStats() {
             return getStateStats(state || { entries: new Map() });
         },
+
+        /**
+         * Returns all catalog entries sorted by last accessed time descending (MRU to LRU).
+         * 
+         * @returns {DiskCacheEntry[]} Array of cache entries.
+         */
         listEntries() {
             return [...(state ? state.entries.values() : [])]
                 .sort((left, right) => right.lastAccessedAt - left.lastAccessedAt)
