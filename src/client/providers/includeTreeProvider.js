@@ -1,11 +1,28 @@
 'use strict';
 
+/**
+ * @fileoverview VS Code TreeDataProvider for scanning and visualizing the project Include Tree.
+ * @module client/providers/includeTreeProvider
+ * 
+ * This module builds the hierarchy of include files (*INCLUDE) to display in the side bar.
+ * It reads from active project snapshots, formats file sizes, tracks circular inclusion paths
+ * and missing file warnings, and adds file decoration tooltip overlays.
+ * 
+ * Role in System: Client-side VS Code Tree View UI provider.
+ */
+
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
 
 const includeScanner = require('../../core/parser/includeScanner');
 
+/**
+ * Formats a size in bytes into a human-readable size string (e.g. "1.2 MB").
+ * 
+ * @param {number} bytes - Byte count.
+ * @returns {string} Formatted size string.
+ */
 function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -18,6 +35,13 @@ function formatBytes(bytes) {
     return `${val.toFixed(1)} ${sizes[i]}`;
 }
 
+/**
+ * Formats a size in bytes into a short size suffix representation (e.g. "1.2M" as "1M" or similar short strings).
+ * Used inside small badges.
+ * 
+ * @param {number} bytes - Byte count.
+ * @returns {string} Formatted short string.
+ */
 function formatShortBytes(bytes) {
     if (bytes <= 0) return '0';
     if (bytes < 1024) {
@@ -44,6 +68,12 @@ function formatShortBytes(bytes) {
     return 'G';
 }
 
+/**
+ * Formats a size in bytes into a detailed description string prefixing a block visual character.
+ * 
+ * @param {number} bytes - Byte count.
+ * @returns {string} Visual description string (e.g. "█ 12.3 MB").
+ */
 function formatVividBytes(bytes) {
     if (bytes === 0) return '▏ 0 B';
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -62,6 +92,12 @@ function formatVividBytes(bytes) {
     return `${block} ${val.toFixed(1)} ${sizes[i]}`;
 }
 
+/**
+ * Modifies a TreeItem description, applying file size visualization badges or status text.
+ * 
+ * @param {IncludeItem} item - Target tree node.
+ * @param {string} relDir - Relative folder directory to record.
+ */
 function applyVividDescription(item, relDir) {
     let statusText = '';
     if (item.description === 'not found') {
@@ -84,19 +120,51 @@ function applyVividDescription(item, relDir) {
     }
 }
 
+/**
+ * Normalizes file paths for map lookups. Handles Windows casing.
+ * 
+ * @param {string} filePath - Input path.
+ * @returns {string} Normalized path.
+ */
 function normalizePathKey(filePath) {
     if (!filePath) return '';
     const resolved = path.resolve(filePath);
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
+/**
+ * Represents a single Include File Node in the Tree View.
+ * @extends vscode.TreeItem
+ */
 class IncludeItem extends vscode.TreeItem {
+    /**
+     * Creates an IncludeItem.
+     * 
+     * @param {string} filePath - Absolute path to the file.
+     * @param {boolean} exists - True if the file exists on disk.
+     */
     constructor(filePath, exists) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.Collapsed);
+        /**
+         * Absolute path to the file.
+         * @type {string}
+         */
         this.filePath = filePath;
+        /**
+         * Child include nodes.
+         * @type {IncludeItem[]}
+         */
         this.children = [];
         this.resourceUri = vscode.Uri.file(filePath);
+        /**
+         * Formatted file size string.
+         * @type {string}
+         */
         this.fileSizeStr = '';
+        /**
+         * Size in bytes.
+         * @type {number|undefined}
+         */
         this.fileSizeVal = undefined;
         
         if (!exists) {
@@ -123,6 +191,11 @@ class IncludeItem extends vscode.TreeItem {
     }
 }
 
+/**
+ * Resolves the URI of the currently active editor or tab.
+ * 
+ * @returns {import('vscode').Uri|null} Active file URI.
+ */
 function getActiveUri() {
     const editor = vscode.window.activeTextEditor;
     if (editor) return editor.document.uri;
@@ -137,28 +210,68 @@ function getActiveUri() {
     return null;
 }
 
+/**
+ * Checks if a URI targets an LS-DYNA file type.
+ * 
+ * @param {import('vscode').Uri|null} uri - URI to inspect.
+ * @returns {boolean} True if file matches lsdyna extensions.
+ */
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
     return ext === '.k' || ext === '.key' || ext === '.dyna';
 }
 
+/**
+ * Checks if a VS Code TextDocument corresponds to LS-DYNA.
+ * 
+ * @param {import('vscode').TextDocument|null} document - Document.
+ * @returns {boolean} True if lsdyna.
+ */
 function isLsdynaFile(document) {
     if (!document || !document.uri) return false;
     return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
+/**
+ * VS Code TreeDataProvider implementation for LS-DYNA Include Tree side bar.
+ * @implements {vscode.TreeDataProvider<IncludeItem>}
+ */
 class LsdynaIncludeTreeProvider {
+    /**
+     * Creates an instance of LsdynaIncludeTreeProvider.
+     * 
+     * @param {Object} [options={}] - Dependencies.
+     * @param {function(string, string[]): string} [options.searchFileFromPaths] - Absolute path resolver helper.
+     * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
+     */
     constructor({ searchFileFromPaths, loadProjectSnapshot } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        /**
+         * Root include tree item.
+         * @type {IncludeItem|null}
+         */
         this.root = null;
+        /**
+         * Map matching resolved file paths to their short sizes.
+         * @type {Map<string, string>}
+         */
         this.resolvedPaths = new Map();
+        /**
+         * Set tracking missing dependency paths.
+         * @type {Set<string>}
+         */
         this.missingPaths = new Set();
     }
 
+    /**
+     * Triggers a workspace scan starting from the active editor document to rebuild the tree.
+     * 
+     * @returns {Promise<void>}
+     */
     async scan() {
         const uri = getActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
@@ -233,6 +346,14 @@ class LsdynaIncludeTreeProvider {
         );
     }
 
+    /**
+     * Converts a ProjectGraph node representation recursively into TreeItem structures.
+     * 
+     * @private
+     * @param {import('../../core/project/projectGraph').GraphTreeNode} node - Graph node.
+     * @param {string} rootPath - Ancestor file path.
+     * @returns {IncludeItem} Assembled tree item.
+     */
     _buildItemFromTreeNode(node, rootPath) {
         const exists = !node.missing && fs.existsSync(node.filePath);
         const item = new IncludeItem(node.filePath, exists);
@@ -273,10 +394,29 @@ class LsdynaIncludeTreeProvider {
         return item;
     }
 
+    /**
+     * Generates include tree from a resolved project snapshot.
+     * 
+     * @private
+     * @param {import('../../core/project/projectIndexer').ProjectIndexResult} snapshot - Project index snapshot.
+     * @param {string} rootFile - Absolute path of the root file.
+     * @returns {IncludeItem} Assembled tree.
+     */
     _buildRootFromSnapshot(snapshot, rootFile) {
         return this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile), rootFile);
     }
 
+    /**
+     * Recursively parses and builds a TreeItem list for files without using global LSP snapshots.
+     * (Deprecated fallback path for non-LSP mode).
+     * 
+     * @private
+     * @param {string} filePath - Absolute path to scan.
+     * @param {Set<string>} visited - Tracks visited paths.
+     * @param {import('vscode').Progress<{message: string}>} progress - Progress dialog handle.
+     * @param {string} rootPath - Ancestor file path.
+     * @returns {Promise<IncludeItem>} Assembled tree item.
+     */
     async _buildItem(filePath, visited, progress, rootPath) {
         const exists = fs.existsSync(filePath);
         const item = new IncludeItem(filePath, exists);
@@ -359,6 +499,15 @@ class LsdynaIncludeTreeProvider {
         return item;
     }
 
+    /**
+     * Resolves metadata details when a user hovers over/selects a tree node.
+     * Generates clickable command links for commands inside tooltips.
+     * 
+     * @param {IncludeItem} item - Target tree item.
+     * @param {IncludeItem} element - Parent element.
+     * @param {import('vscode').CancellationToken} token - Cancellation token.
+     * @returns {Promise<IncludeItem>} Resolved tree item.
+     */
     async resolveTreeItem(item, element, token) {
         if (!item.filePath || !fs.existsSync(item.filePath)) {
             return item;
@@ -392,8 +541,20 @@ class LsdynaIncludeTreeProvider {
         return item;
     }
 
+    /**
+     * Simple node identity resolver.
+     * 
+     * @param {IncludeItem} element - Element to fetch.
+     * @returns {IncludeItem} Input element.
+     */
     getTreeItem(element) { return element; }
 
+    /**
+     * Fetches nested child items for a node.
+     * 
+     * @param {IncludeItem} [element] - Target element.
+     * @returns {IncludeItem[]} Nested children list.
+     */
     getChildren(element) {
         if (!this.root) return [];
         return element ? element.children : [this.root];
