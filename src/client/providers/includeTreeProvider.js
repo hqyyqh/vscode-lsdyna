@@ -76,11 +76,8 @@ function applyVividDescription(item, relDir) {
         statusText = formatVividBytes(item.fileSizeVal);
     }
 
-    if (relDir && statusText) {
-        item.description = `${relDir}  •  ${statusText}`;
-    } else if (relDir) {
-        item.description = relDir;
-    } else if (statusText) {
+    item.relDir = relDir || '';
+    if (statusText) {
         item.description = statusText;
     } else {
         item.description = '';
@@ -369,6 +366,9 @@ class LsdynaIncludeTreeProvider {
         try {
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(item.filePath)}**\n\n`);
+            if (item.relDir) {
+                tooltip.appendMarkdown(`- **Folder**: \`${item.relDir}\`\n`);
+            }
             tooltip.appendMarkdown(`- **Path**: \`${item.filePath}\`\n`);
             if (item.fileSizeStr) {
                 tooltip.appendMarkdown(`- **Size**: \`${item.fileSizeStr}\`\n`);

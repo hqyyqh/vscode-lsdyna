@@ -1623,11 +1623,13 @@ describe('formatBytes', () => {
         // Test applyVividDescription
         const mockItem1 = { contextValue: 'file', description: '', fileSizeVal: 1024 * 5 };
         applyVividDescription(mockItem1, 'sub');
-        assert.strictEqual(mockItem1.description, 'sub  •  ▏ 5.0 KB');
+        assert.strictEqual(mockItem1.description, '▏ 5.0 KB');
+        assert.strictEqual(mockItem1.relDir, 'sub');
 
         const mockItem2 = { contextValue: 'file-missing', description: 'not found' };
         applyVividDescription(mockItem2, 'sub');
-        assert.strictEqual(mockItem2.description, 'sub  •  not found');
+        assert.strictEqual(mockItem2.description, 'not found');
+        assert.strictEqual(mockItem2.relDir, 'sub');
     });
 });
 
