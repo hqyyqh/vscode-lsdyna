@@ -1,19 +1,72 @@
 'use strict';
 
+/**
+ * @fileoverview Class managing the in-memory index of *KEYWORD blocks for an active document.
+ * @module core/incremental/blockIndex
+ * 
+ * This module maintains an array of keyword block coordinate structures (startLine/endLine).
+ * It supports synchronous bootstrapping, asynchronous disk-based loading, and high-performance
+ * incremental updates. When document edits occur, it identifies overlapping blocks, re-parses only 
+ * the affected range, and shifts remaining block offsets in O(N) time.
+ * 
+ * Role in System: Backs the Language Server's active document cache to maintain responsive
+ * and correct keyword positions without running a full document parse on every keystroke.
+ */
+
 const blockScanner = require('../parser/blockScanner');
 
+/**
+ * @typedef {Object} ChangeRange
+ * @property {number} startLine - 0-indexed starting line number of the edit.
+ * @property {number} endLine - 0-indexed ending line number of the edit (before modification).
+ */
+
+/**
+ * Manages the keyword blocks index for a single LS-DYNA file, supporting incremental block updates.
+ */
 class BlockIndex {
+    /**
+     * Creates a BlockIndex instance.
+     * 
+     * @param {string} filePath - Absolute path to the file on disk.
+     */
     constructor(filePath) {
+        /**
+         * Absolute path to the file.
+         * @type {string}
+         */
         this.filePath = filePath;
-        this.blocks = []; // Array of { keyword, startLine, endLine }
+
+        /**
+         * List of scanned keyword blocks in the file.
+         * @type {import('../parser/blockScanner').KeywordBlock[]}
+         */
+        this.blocks = [];
+
+        /**
+         * Total line count of the file.
+         * @type {number}
+         */
         this.lineCount = 0;
     }
 
+    /**
+     * Synchronously builds the keyword block index from an array-backed line reader.
+     * 
+     * @param {number} lineCount - Total lines.
+     * @param {function(number): string} getLine - Line retrieval callback.
+     */
     buildIndex(lineCount, getLine) {
         this.lineCount = lineCount;
         this.blocks = blockScanner.collectBlocksFromLineReader(lineCount, getLine);
     }
 
+    /**
+     * Asynchronously builds the keyword block index directly from the file on disk.
+     * 
+     * @param {string} filePath - Absolute path to the file.
+     * @returns {Promise<void>}
+     */
     async buildIndexFromFile(filePath) {
         this.blocks = await blockScanner.collectBlocksFromFile(filePath);
         if (this.blocks.length > 0) {
@@ -23,6 +76,15 @@ class BlockIndex {
         }
     }
 
+    /**
+     * Incrementally updates the block index after a document change.
+     * Re-scans only the modified lines and shift-translates subsequent block boundaries.
+     * 
+     * @param {ChangeRange} changeRange - The 0-indexed line range that was replaced/modified.
+     * @param {string} newText - The new raw text content of the change (unused but reserved for protocol).
+     * @param {number} lineCountAfterChange - Total lines in the document after the edit.
+     * @param {function(number): string} getLineAfterChange - Line retrieval callback for the new document state.
+     */
     updateIndex(changeRange, newText, lineCountAfterChange, getLineAfterChange) {
         const { startLine: editStartLine, endLine: editEndLine } = changeRange;
         const lineDelta = lineCountAfterChange - this.lineCount;
@@ -80,6 +142,11 @@ class BlockIndex {
         }
     }
 
+    /**
+     * Converts the internal block index into a list of scanned keyword position references.
+     * 
+     * @returns {import('../parser/keywordScanner').ScannedKeyword[]} Scanned keyword coordinates.
+     */
     getKeywords() {
         return this.blocks.map(block => ({
             keyword: block.keyword,
