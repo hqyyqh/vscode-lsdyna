@@ -1,6 +1,6 @@
 # LS-DYNA VS Code 插件 - 包含树与关键字索引主题颜色与可读性优化设计规约
 
-本文档设计了优化 LS-DYNA 侧边栏（`Include Tree` 和 `Keyword Index`）以及编辑器中 `*INCLUDE` 文件引用装饰颜色的方案。目的是在 VS Code 亮色和暗色主题下均提供高可读性、高对比度的用户体验，并解决用户反馈的文件名过小、切换文件易看错的问题。
+本文档设计了优化 LS-DYNA 侧边栏（`Include Tree` 和 `Keyword Index`）以及编辑器中 `*INCLUDE` 文件引用装饰颜色的方案。目的是在 VS Code 亮色和暗色主题下均提供高可读性、高对比度的用户体验，并解决由于单行信息过长导致的可读性差、容易看错的问题。
 
 ---
 
@@ -13,13 +13,12 @@
 2. **编辑器中 include 路径的行内装饰**：
    - 已解析路径后缀 `✓` 采用 `testing.iconPassed`。
    - 缺失路径及后缀 `⚠` 采用 `editorWarning.foreground`，同样在浅色主题下非常模糊。
-3. **侧边栏节点字体太小，切换文件易看错**：
-   - VS Code 的原生 TreeView 不允许自定义字体大小和行高。
-   - 文件树节点文字紧凑，当项目包含几十个 include 文件时，快速点击切换极易看错或选错。
+3. **Include Tree 节点文本过长**：
+   - 树视图节点目前在一行内同时显示了文件名、相对路径以及文件大小（如：`vehicle_body.k    submodels/loading  •  █ 1.2 MB`）。这导致行文本过长，在侧边栏较窄时会被截断，难以阅读。
 
 ---
 
-## 2. 优化方案 (色彩自适应 + Emoji 视觉强化)
+## 2. 优化方案 (色彩自适应 + 描述信息简化 Option A)
 
 我们将通过以下两个方向彻底解决对比度与可读性问题：
 
@@ -31,14 +30,15 @@
 | **已解析 (Resolved)** | `testing.iconPassed` | `gitDecoration.untrackedResourceForeground` | 文件树中未跟踪文件的绿色文本，对比度优秀且随主题自适应。 |
 | **缺失 (Missing)** | `editorWarning.foreground` | `list.warningForeground` | 列表/树中带有警告的文本颜色，浅色下呈深橙褐色，深色下呈亮橙色，高对比度。 |
 
-### B. 大图标与视觉区分（Emoji 前缀）
-在原生 TreeView 无法增大字号的限制下，我们通过在节点文本前引入明亮、具有高度区分性的 Emoji 前缀，让用户能够仅凭视觉轮廓/颜色块即可快速判断节点属性：
+### B. 描述信息简化 (Option A)
+为了提高包含树侧边栏的整洁度和可读性，对树节点的 `description` 和 `tooltip` 字段进行如下调整：
+1.  **侧边栏描述 (`description`)**：移除相对路径信息，**仅显示文件大小或状态**（例如 `█ 1.2 MB`，`not found` 等）。
+2.  **悬浮提示卡片 (`tooltip`)**：将相对路径作为独立的 **Folder** 字段呈现，并且使完整的绝对路径、大小及状态在卡片中清晰可见。
 
-- **普通/已解析的 include 文件**：前缀加 `📄 `（例如：`📄 vehicle_body.k`）
-- **缺失的 include 文件**：前缀加 `⚠️ `（例如：`⚠️ engine_bracket.k`）
-- **循环引用的 include 文件**：前缀加 `🔄 `（例如：`🔄 loop_chassis.k`）
-- **关键字索引类别（Key Category）**：前缀加 `🏷️ `（例如：`🏷️ *PART`）
-- **关键字文件内引用（Key Usages）**：前缀加 `📄 `（例如：`📄 root.key`）
+**树节点渲染效果**：
+- 标签：`vehicle_body.k`
+- 描述：`█ 1.2 MB`
+- 对比原先的 `submodels/loading  •  █ 1.2 MB` 缩短了超过 60% 的字符长度。
 
 ---
 
@@ -47,22 +47,13 @@
 ### A. 侧边栏文件装饰器与编辑器行内装饰
 - 修改 `src/extension.js` 中的 `LsdynaFileDecorationProvider` 的返回颜色以及编辑器装饰类型定义（已于前一步完成）。
 
-### B. Include Tree (包含树) 增加 Emoji 前缀与警告图标颜色
-修改 `src/client/providers/includeTreeProvider.js`：
-1. `IncludeItem` 构造函数中：
-   - 更改 `new vscode.ThemeColor('editorWarning.foreground')` 为 `new vscode.ThemeColor('list.warningForeground')`。
-   - 根据 `exists` 动态为 label 添加前缀：`exists ? '📄 ' : '⚠️ '`。
-2. `_buildItemFromTreeNode` 方法中：
-   - `node.cycle` 时，`item.label = '🔄 ' + basename`。
-   - `node.missing` 时，`item.label = '⚠️ ' + basename`。
-3. `_buildItem` 方法中：
-   - `visited` 循环依赖时，`item.label = '🔄 ' + basename`。
-
-### C. Keyword Index (关键字索引) 增加 Emoji 前缀
-修改 `src/client/providers/keywordIndexProvider.js`：
-1. `KeywordItem` 构造函数中：将 label 格式化为 `🏷️ ${keyword}`。
-2. `KeywordUsageItem` 构造函数中：将 label 格式化为 `📄 ${basename}`。
-3. `AggregatedKeywordUsageItem` 构造函数中：将 label 格式化为 `📄 ${basename}`。
+### B. Include Tree (包含树) 描述信息与悬停卡片修改
+修改 `src/client/providers/includeTreeProvider.js` 中的描述和悬浮提示卡片逻辑：
+1.  **`applyVividDescription(item, relDir)`**：
+    - 不再拼入 `relDir`。`item.description` 直接设置为 `statusText`（即只保留大小或缺失/环状依赖状态）。
+2.  **`resolveTreeItem(item, element, token)`** / 节点 `tooltip` 构造：
+    - 获取当前节点的 `relDir`，以 `- **Folder**: \`submodels/loading\`` 的形式添加到 `tooltip` 的 Markdown 文本中。
+    - 确保 `IncludeItem` 在构造和树遍历时记录其 `relDir`。
 
 ---
 
@@ -73,7 +64,7 @@
 ```bash
 npm test
 ```
-需要更新 `test/extension.test.js` 中的断言以适配包含 `🏷️ ` 前缀的关键字分类名（例如 `['🏷️ MAT_ELASTIC', '🏷️ PART']`）。
+需要确保所有测试（特别是 `applyVividDescription` 的测试用例）均通过。
 
 ### 手动验证
-切换 VS Code 主题（Light Modern / Dark Modern），检查侧边栏的 Include Tree 与 Keyword Index 的 Emoji 前缀及文本可读性。
+切换 VS Code 主题（Light Modern / Dark Modern），检查侧边栏的 Include Tree 中相对路径是否已隐藏，只显示文件名与大小，并确保悬浮提示卡片内完整地展示了 Folder 等信息。
