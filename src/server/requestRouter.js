@@ -1,9 +1,29 @@
 'use strict';
 
+/**
+ * @fileoverview Request and notification dispatcher for custom LS-DYNA LSP messages.
+ * @module server/requestRouter
+ * 
+ * This module routes custom JSON-RPC requests (e.g. loading a project snapshot, listing manifest
+ * items, or getting cache statistics) and notifications (e.g. invalidating a cache path) to
+ * the active LSP server session.
+ * 
+ * Role in System: Intermediary translation layer between the raw protocol connection and 
+ * the session manager's indexing capabilities.
+ */
+
 const { getActiveSession } = require('./sessionManager');
 const { serializeProjectSnapshot } = require('../core/cache/snapshotSerializer');
 const protocol = require('../shared/protocol');
 
+/**
+ * Routes and handles incoming custom LSP JSON-RPC requests.
+ * 
+ * @param {string} method - Protocol request method string.
+ * @param {Object} params - Method parameters payload.
+ * @returns {Promise<any>} Response JSON data.
+ * @throws {Error} If no active session exists or request method is unsupported.
+ */
 async function handleRequest(method, params) {
     const session = getActiveSession();
     if (!session) {
@@ -27,6 +47,12 @@ async function handleRequest(method, params) {
     }
 }
 
+/**
+ * Routes and handles incoming custom LSP JSON-RPC notifications (one-way).
+ * 
+ * @param {string} method - Protocol notification method string.
+ * @param {Object} params - Notification parameters payload.
+ */
 function handleNotification(method, params) {
     const session = getActiveSession();
     if (!session) return;
