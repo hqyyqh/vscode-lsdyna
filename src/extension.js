@@ -1277,16 +1277,16 @@ function activate(context) {
         color: new vscode.ThemeColor('textLink.foreground'),
         after: {
             contentText: ' ✓',
-            color: new vscode.ThemeColor('testing.iconPassed'),
+            color: new vscode.ThemeColor('gitDecoration.untrackedResourceForeground'),
             margin: '0 0 0 5px'
         }
     });
     const missingDecoration = vscode.window.createTextEditorDecorationType({
-        color: new vscode.ThemeColor('editorWarning.foreground'),
+        color: new vscode.ThemeColor('list.warningForeground'),
         fontStyle: 'italic',
         after: {
             contentText: ' ⚠',
-            color: new vscode.ThemeColor('editorWarning.foreground'),
+            color: new vscode.ThemeColor('list.warningForeground'),
             margin: '0 0 0 5px',
             fontStyle: 'normal'
         }
