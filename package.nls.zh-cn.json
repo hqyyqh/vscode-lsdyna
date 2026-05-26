@@ -1,0 +1,12 @@
+{
+    "viewsContainers.lsdyna-includes.title": "LS-DYNA 包含文件树",
+    "views.lsdynaIncludeTree.name": "包含文件树",
+    "views.lsdynaKeywordIndex.name": "关键字索引",
+    "viewsWelcome.lsdynaIncludeTree.contents": "欢迎使用 LS-DYNA 包含文件树！\n[扫描包含文件树](command:extension.scanIncludeTree)\n若要开始，请先打开一个 LS-DYNA 文件（`.k`, `.key`, `.dyna`）然后点击上方或此处的扫描按钮。",
+    "viewsWelcome.lsdynaKeywordIndex.contents": "欢迎使用 LS-DYNA 关键字索引！\n[扫描关键字索引](command:extension.scanKeywordIndex)\n若要开始，请先打开一个 LS-DYNA 文件（`.k`, `.key`, `.dyna`）然后点击上方或此处的扫描按钮。",
+    "commands.scanIncludeTree.title": "扫描包含文件树",
+    "commands.scanKeywordIndex.title": "扫描全树",
+    "commands.keywordIndexSetLocal.title": "查看当前文件",
+    "commands.openToSide.title": "分栏打开",
+    "commands.revealInExplorer.title": "在资源管理器中显示"
+}

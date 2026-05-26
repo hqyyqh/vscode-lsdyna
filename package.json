@@ -35,7 +35,7 @@
             "activitybar": [
                 {
                     "id": "lsdyna-includes",
-                    "title": "LS-DYNA Include Tree",
+                    "title": "%viewsContainers.lsdyna-includes.title%",
                     "icon": "images/ls.svg"
                 }
             ]
@@ -44,22 +44,22 @@
             "lsdyna-includes": [
                 {
                     "id": "lsdynaIncludeTree",
-                    "name": "Include Tree"
+                    "name": "%views.lsdynaIncludeTree.name%"
                 },
                 {
                     "id": "lsdynaKeywordIndex",
-                    "name": "Keyword Index"
+                    "name": "%views.lsdynaKeywordIndex.name%"
                 }
             ]
         },
         "viewsWelcome": [
             {
                 "view": "lsdynaIncludeTree",
-                "contents": "Welcome to LS-DYNA Include Tree!\n[Scan Include Tree](command:extension.scanIncludeTree)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button."
+                "contents": "%viewsWelcome.lsdynaIncludeTree.contents%"
             },
             {
                 "view": "lsdynaKeywordIndex",
-                "contents": "Welcome to LS-DYNA Keyword Index!\n[Scan Keyword Index](command:extension.scanKeywordIndex)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button."
+                "contents": "%viewsWelcome.lsdynaKeywordIndex.contents%"
             }
         ],
         "languages": [
@@ -126,27 +126,27 @@
             },
             {
                 "command": "extension.scanIncludeTree",
-                "title": "Scan Include Tree",
+                "title": "%commands.scanIncludeTree.title%",
                 "icon": "$(refresh)"
             },
             {
                 "command": "extension.scanKeywordIndex",
-                "title": "Scan Full Tree",
+                "title": "%commands.scanKeywordIndex.title%",
                 "icon": "$(list-tree)"
             },
             {
                 "command": "extension.keywordIndexSetLocal",
-                "title": "View Current File",
+                "title": "%commands.keywordIndexSetLocal.title%",
                 "icon": "$(file-text)"
             },
             {
                 "command": "extension.openToSide",
-                "title": "Open to Side",
+                "title": "%commands.openToSide.title%",
                 "icon": "$(split-horizontal)"
             },
             {
                 "command": "extension.revealInExplorer",
-                "title": "Reveal in Explorer",
+                "title": "%commands.revealInExplorer.title%",
                 "icon": "$(folder-opened)"
             },
             {

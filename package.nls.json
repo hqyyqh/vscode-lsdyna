@@ -1,0 +1,12 @@
+{
+    "viewsContainers.lsdyna-includes.title": "LS-DYNA Include Tree",
+    "views.lsdynaIncludeTree.name": "Include Tree",
+    "views.lsdynaKeywordIndex.name": "Keyword Index",
+    "viewsWelcome.lsdynaIncludeTree.contents": "Welcome to LS-DYNA Include Tree!\n[Scan Include Tree](command:extension.scanIncludeTree)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button.",
+    "viewsWelcome.lsdynaKeywordIndex.contents": "Welcome to LS-DYNA Keyword Index!\n[Scan Keyword Index](command:extension.scanKeywordIndex)\nTo get started, open an LS-DYNA file (`.k`, `.key`, `.dyna`) and click the scan button.",
+    "commands.scanIncludeTree.title": "Scan Include Tree",
+    "commands.scanKeywordIndex.title": "Scan Full Tree",
+    "commands.keywordIndexSetLocal.title": "View Current File",
+    "commands.openToSide.title": "Open to Side",
+    "commands.revealInExplorer.title": "Reveal in Explorer"
+}
