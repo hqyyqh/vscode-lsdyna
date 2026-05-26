@@ -1470,6 +1470,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.strictEqual(kwHover.contents[0].supportThemeIcons, true);
             assert.ok(kwHover.contents[0].value.includes('command:extension.openManual'));
             assert.ok(kwHover.contents[0].value.includes('Vol I (第 20 页)'));
+            assert.ok(kwHover.contents[0].value.includes('**\\*CONTROL_TERMINATION**'));
 
             // Hovering over field line ENDENG under *CONTROL_TERMINATION
             const docField = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
@@ -1478,6 +1479,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.strictEqual(fieldHover.contents[0].supportThemeIcons, true);
             assert.ok(fieldHover.contents[0].value.includes('command:extension.openManual'));
             assert.ok(fieldHover.contents[0].value.includes('Vol I (第 20 页)'));
+            assert.ok(fieldHover.contents[0].value.includes('**\\*CONTROL_TERMINATION**'));
 
         } finally {
             workspace.getConfiguration = originalGetConfiguration;

@@ -695,7 +695,9 @@ function appendManualLinks(md, kwName) {
             const openArgs = encodeURIComponent(JSON.stringify([man.file, man.page]));
             links.push(`[$(book) ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
         }
-        md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "修改手册路径") &nbsp;&nbsp; ${links.join(' &nbsp;&nbsp; ')}`);
+        const matchedKw = manuals[0].matchedKeyword || cleanKw;
+        const displayKw = matchedKw.startsWith('*') ? `\\${matchedKw}` : matchedKw;
+        md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "修改手册路径") &nbsp;&nbsp; **${displayKw}** &nbsp;&nbsp; ${links.join(' &nbsp;&nbsp; ')}`);
     }
 }
 

@@ -549,7 +549,7 @@ function getManualLocations(kwName) {
     const cleaned = cleanKeyword(kwName);
     let locs = keywordMap.get(cleaned);
     if (locs && locs.length > 0) {
-        return locs;
+        return locs.map(loc => ({ ...loc, matchedKeyword: cleaned }));
     }
 
     const tokens = cleaned.split('_');
@@ -557,7 +557,7 @@ function getManualLocations(kwName) {
         const candidate = tokens.slice(0, i).join('_');
         locs = keywordMap.get(candidate);
         if (locs && locs.length > 0) {
-            return locs;
+            return locs.map(loc => ({ ...loc, matchedKeyword: candidate }));
         }
     }
     return [];
