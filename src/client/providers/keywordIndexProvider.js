@@ -65,15 +65,15 @@ class KeywordUsageItem extends vscode.TreeItem {
     constructor(filePath, lineIndex, rootDir) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
-        this.description = `:line ${lineIndex + 1}`;
+        this.description = i18n.get('linePrefix', lineIndex + 1);
         this.contextValue = 'file';
         
         const rel = path.relative(rootDir, filePath);
         const tooltip = new vscode.MarkdownString();
-        tooltip.appendMarkdown(`### Keyword Occurrence\n\n`);
-        tooltip.appendMarkdown(`- **File**: \`${rel}\`\n`);
-        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
-        tooltip.appendMarkdown(`- **Line**: ${lineIndex + 1}\n`);
+        tooltip.appendMarkdown(`### ${i18n.get('keywordOccurrence')}\n\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('file')}**: \`${rel}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('line')}**: ${lineIndex + 1}\n`);
         this.tooltip = tooltip;
 
         this.command = {
@@ -100,16 +100,16 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
     constructor(filePath, count, firstLineIndex, rootDir) {
         super(path.basename(filePath), vscode.TreeItemCollapsibleState.None);
         this.resourceUri = vscode.Uri.file(filePath);
-        this.description = `${count} usages`;
+        this.description = count === 1 ? i18n.get('usageSingular') : i18n.get('usagesPlural', count);
         this.contextValue = 'file';
         
         const rel = path.relative(rootDir, filePath);
         const tooltip = new vscode.MarkdownString();
-        tooltip.appendMarkdown(`### Aggregated Usages\n\n`);
-        tooltip.appendMarkdown(`- **File**: \`${rel}\`\n`);
-        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
-        tooltip.appendMarkdown(`- **Total Usages**: ${count}\n`);
-        tooltip.appendMarkdown(`- **First Occurrence**: Line ${firstLineIndex + 1}\n`);
+        tooltip.appendMarkdown(`### ${i18n.get('aggregatedUsages')}\n\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('file')}**: \`${rel}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('totalUsages')}**: ${count}\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('firstOccurrence')}**: ${i18n.get('lineLabel', firstLineIndex + 1)}\n`);
         this.tooltip = tooltip;
 
         this.command = {
@@ -227,11 +227,11 @@ class LsdynaKeywordIndexProvider {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([keyword, usages]) => {
                 const item = new KeywordItem(keyword);
-                item.description = `${usages.length} usage${usages.length === 1 ? '' : 's'}`;
+                item.description = usages.length === 1 ? i18n.get('usageSingular') : i18n.get('usagesPlural', usages.length);
 
                 const tooltip = new vscode.MarkdownString();
-                tooltip.appendMarkdown(`### Keyword: **${keyword}**\n\n`);
-                tooltip.appendMarkdown(`- **Total Occurrences**: ${usages.length}\n`);
+                tooltip.appendMarkdown(`### ${i18n.get('keywordLabel')}: **${keyword}**\n\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('totalUsages')}**: ${usages.length}\n`);
                 item.tooltip = tooltip;
 
                 if (usages.length > KEYWORD_FOLDING_THRESHOLD) {
@@ -450,16 +450,17 @@ class LsdynaKeywordIndexProvider {
             const snippet = await readFileSnippet(filePath, lineIndex, 8);
             if (snippet) {
                 const tooltip = new vscode.MarkdownString();
-                tooltip.appendMarkdown(`### Keyword Occurrence\n\n`);
-                tooltip.appendMarkdown(`- **File**: \`${path.basename(filePath)}\`\n`);
-                tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
-                tooltip.appendMarkdown(`- **Line**: ${lineIndex + 1}\n\n`);
-                tooltip.appendMarkdown(`**Card Data Preview:**\n`);
+                tooltip.appendMarkdown(`### ${i18n.get('keywordOccurrence')}\n\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('file')}**: \`${path.basename(filePath)}\`\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('line')}**: ${lineIndex + 1}\n\n`);
+                tooltip.appendMarkdown(`**${i18n.get('cardDataPreview')}:**\n`);
                 tooltip.appendMarkdown(`\`\`\`lsdyna\n${snippet}\n\`\`\``);
                 
                 tooltip.appendMarkdown(`\n---\n`);
-                tooltip.appendMarkdown(`[Open File](command:vscode.open?${encodeURIComponent(JSON.stringify(item.resourceUri))}) | `);
-                tooltip.appendMarkdown(`[Open to Side](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))})`);
+                tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:vscode.open?${encodeURIComponent(JSON.stringify(item.resourceUri))}) | `);
+                tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))}) | `);
+                tooltip.appendMarkdown(`[${i18n.get('revealInExplorer')}](command:extension.revealInExplorer?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))})`);
                 tooltip.isTrusted = true;
                 
                 item.tooltip = tooltip;
