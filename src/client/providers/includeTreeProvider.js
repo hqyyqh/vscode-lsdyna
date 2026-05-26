@@ -389,7 +389,7 @@ class LsdynaIncludeTreeProvider {
         applyVividDescription(item, dirStr);
 
         const tooltip = new vscode.MarkdownString();
-        tooltip.appendMarkdown(`### Include File: **${path.basename(node.filePath)}**\n\n`);
+        tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(node.filePath)}**\n\n`);
         tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${node.filePath}\`\n`);
         if (node.cycle) {
             tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
@@ -446,7 +446,7 @@ class LsdynaIncludeTreeProvider {
             applyVividDescription(item, dirStr);
 
             const tooltip = new vscode.MarkdownString();
-            tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
             tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
             if (visited.has(filePath)) {
                 tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
@@ -468,7 +468,7 @@ class LsdynaIncludeTreeProvider {
             applyVividDescription(item, dirStr);
 
             const tooltip = new vscode.MarkdownString();
-            tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
             tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
             tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('scanFailedStatus')}\n`);
             tooltip.appendMarkdown(`- **${i18n.get('error')}**: ${error.message}\n`);
@@ -495,7 +495,7 @@ class LsdynaIncludeTreeProvider {
         applyVividDescription(item, dirStr);
 
         const tooltip = new vscode.MarkdownString();
-        tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
+        tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
         tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
         if (item.children.length > 0) {
             tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
@@ -521,7 +521,7 @@ class LsdynaIncludeTreeProvider {
         }
         try {
             const tooltip = new vscode.MarkdownString();
-            tooltip.appendMarkdown(`### Include File: **${path.basename(item.filePath)}**\n\n`);
+            tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(item.filePath)}**\n\n`);
             if (item.relDir) {
                 tooltip.appendMarkdown(`- **${i18n.get('folder')}**: \`${item.relDir}\`\n`);
             }
@@ -537,8 +537,9 @@ class LsdynaIncludeTreeProvider {
             }
             
             tooltip.appendMarkdown(`\n---\n`);
-            tooltip.appendMarkdown(`[${i18n.get('openEditor')}](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
-            tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
+            tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
+            tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))}) | `);
+            tooltip.appendMarkdown(`[${i18n.get('revealInExplorer')}](command:extension.revealInExplorer?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
             tooltip.isTrusted = true;
             
             item.tooltip = tooltip;
