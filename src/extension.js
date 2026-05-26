@@ -681,12 +681,14 @@ function appendManualLinks(md, kwName) {
     const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
     const fileCount = manualIndexer.getManualFilesCount();
 
-    md.appendMarkdown('\n\n---');
+    const notConfigured = !manualsDir || fileCount === 0;
 
-    if (!manualsDir || fileCount === 0) {
+    if (notConfigured) {
+        md.appendMarkdown('\n\n---');
         md.appendMarkdown('\n\n未设置手册路径。配置后可在悬停时快速阅读 PDF 原文书签页。');
         md.appendMarkdown('\n\n[⚙️ 设置手册文件夹 (Configure Folder)](command:extension.configureManualsDir)');
     } else if (manuals.length > 0) {
+        md.appendMarkdown('\n\n---');
         const links = [];
         for (const man of manuals) {
             const volName = path.basename(man.file, '.pdf');
@@ -694,8 +696,6 @@ function appendManualLinks(md, kwName) {
             links.push(`[$(book) ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
         }
         md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "修改手册路径") &nbsp;&nbsp; ${links.join(' &nbsp;&nbsp; ')}`);
-    } else {
-        md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "修改手册路径")`);
     }
 }
 

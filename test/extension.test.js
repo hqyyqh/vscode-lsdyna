@@ -1571,6 +1571,33 @@ describe('LsdynaFieldHoverProvider', () => {
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
     });
+
+    it('hides bottom manual section when manualsDir is configured but no manuals found for recognized keyword', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
+        const manualIndexer = require('../src/core/manualIndexer');
+        const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
+        const originalGetManualLocations = manualIndexer.getManualLocations;
+        
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'manualsDir' ? 'some/dir' : undefined
+        });
+        manualIndexer.getManualFilesCount = () => 1;
+        manualIndexer.getManualLocations = () => [];
+
+        try {
+            const provider = new LsdynaFieldHoverProvider();
+            const doc = fakeDoc('*CONTROL_TERMINATION\n');
+            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            assert.ok(hover);
+            assert.ok(!hover.contents[0].value.includes('command:extension.openManual'));
+            assert.ok(!hover.contents[0].value.includes('command:extension.configureManualsDir'));
+        } finally {
+            workspace.getConfiguration = originalGetConfiguration;
+            manualIndexer.getManualFilesCount = originalGetManualFilesCount;
+            manualIndexer.getManualLocations = originalGetManualLocations;
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------
