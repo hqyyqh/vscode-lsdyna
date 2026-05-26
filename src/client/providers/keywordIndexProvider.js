@@ -78,7 +78,7 @@ class KeywordUsageItem extends vscode.TreeItem {
 
         this.command = {
             command: 'extension.goToKeywordUsage',
-            title: 'Go to keyword',
+            title: i18n.get('goToKeyword'),
             arguments: [filePath, lineIndex],
         };
     }
@@ -114,7 +114,7 @@ class AggregatedKeywordUsageItem extends vscode.TreeItem {
 
         this.command = {
             command: 'extension.goToKeywordUsage',
-            title: 'Go to keyword',
+            title: i18n.get('goToKeyword'),
             arguments: [filePath, firstLineIndex],
         };
     }
