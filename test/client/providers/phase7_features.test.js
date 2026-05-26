@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded, handleTabAlignment } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -293,5 +293,75 @@ describe('Phase 7 Features', () => {
             assert.equal(aligned, '     12323        10');
         });
     });
+
+    describe('handleTabAlignment', () => {
+        it('aligns the line and moves the cursor to the next field', async () => {
+            const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let editVal = '';
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 5), new vscodeMock.Position(1, 5));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => { editVal = v; }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                assert.ok(editCalled);
+                // Width of NID is 8 in mock *NODE
+                assert.equal(editVal.slice(0, 8), '   12323');
+                // The next field start position is column 8
+                assert.equal(selectionVal.active.character, 8);
+                assert.equal(selectionVal.active.line, 1);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('wraps cursor to the next line on the last field if the next line is a card line', async () => {
+            const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            // Cursor placed in the last field (col 65, i.e., field index 5)
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 65), new vscodeMock.Position(1, 65));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                // Cursor should have jumped to line 2, character 0
+                assert.equal(selectionVal.active.line, 2);
+                assert.equal(selectionVal.active.character, 0);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+    });
 });
+
 

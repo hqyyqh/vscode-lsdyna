@@ -1533,6 +1533,80 @@ async function formatLineIfNeeded(document, lineNum) {
     }
 }
 
+async function handleTabAlignment(editor) {
+    if (!editor) return;
+
+    const document = editor.document;
+    const selection = editor.selection;
+    const lineNum = selection.active.line;
+    const col = selection.active.character;
+
+    const line = document.lineAt(lineNum);
+    const text = line.text;
+
+    const card = getCardFieldsForLine(document, lineNum);
+    if (!card || card.length === 0) {
+        await vscode.commands.executeCommand('tab');
+        return;
+    }
+
+    // 1. Determine current field index based on cursor position
+    let currentFieldIndex = 0;
+    for (let i = 0; i < card.length; i++) {
+        const f = card[i];
+        const nextF = card[i + 1];
+        const end = nextF ? nextF.p : (f.p + f.w);
+        if (col >= f.p && col < end) {
+            currentFieldIndex = i;
+            break;
+        }
+    }
+
+    const targetIndex = currentFieldIndex + 1;
+
+    // 2. Align current line
+    const alignedText = alignLineText(text, card);
+
+    // 3. Edit current line
+    await editor.edit(editBuilder => {
+        const range = new vscode.Range(
+            new vscode.Position(lineNum, 0),
+            new vscode.Position(lineNum, text.length)
+        );
+        editBuilder.replace(range, alignedText);
+    }, { undoStopBefore: false, undoStopAfter: false });
+
+    // 4. Handle cursor movement
+    if (targetIndex < card.length) {
+        const targetCol = card[targetIndex].p;
+        const newPos = new vscode.Position(lineNum, targetCol);
+        editor.selection = new vscode.Selection(newPos, newPos);
+    } else {
+        // It's the last field, wrap to the next line
+        const nextLineNum = lineNum + 1;
+        if (nextLineNum < document.lineCount) {
+            const nextLine = document.lineAt(nextLineNum);
+            const trimmedNext = nextLine.text.trimStart();
+            if (trimmedNext.startsWith('*') || trimmedNext.startsWith('$')) {
+                // If next line is a keyword or comment, just move to line end or line start
+                const newPos = new vscode.Position(lineNum, alignedText.length);
+                editor.selection = new vscode.Selection(newPos, newPos);
+            } else {
+                // Jump to start of the next card line
+                const newPos = new vscode.Position(nextLineNum, 0);
+                editor.selection = new vscode.Selection(newPos, newPos);
+            }
+        } else {
+            // At the end of the file, append a new line and move there
+            await editor.edit(editBuilder => {
+                editBuilder.insert(new vscode.Position(lineNum, alignedText.length), '\n');
+            }, { undoStopBefore: false, undoStopAfter: false });
+            const newPos = new vscode.Position(nextLineNum, 0);
+            editor.selection = new vscode.Selection(newPos, newPos);
+        }
+    }
+}
+
 // --- Activate ---
 
 /**
@@ -2417,4 +2491,5 @@ module.exports._internals = {
     getCardFieldsForLine,
     alignLineText,
     formatLineIfNeeded,
+    handleTabAlignment,
 };
