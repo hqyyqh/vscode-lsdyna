@@ -147,7 +147,12 @@ function getActiveUri() {
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    return ext === '.k' || ext === '.key' || ext === '.dyna';
+    const configExtensions = vscode.workspace.getConfiguration('lsdyna').get('additionalExtensions') || ['.k', '.key', '.dyna', '.asc'];
+    const normalizedExtensions = configExtensions.map(e => {
+        const trimmed = e.trim().toLowerCase();
+        return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
+    });
+    return normalizedExtensions.includes(ext);
 }
 
 /**

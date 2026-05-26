@@ -22,6 +22,7 @@ const {
     getSearchPath,
     getParameterAtCursor,
     isIncludeLine,
+    isLsdynaUri,
     LsdynaFieldHoverProvider,
     LsdynaKeywordSymbolProvider,
     LsDynaFoldingProvider,
@@ -1627,6 +1628,39 @@ describe('LsdynaFieldHoverProvider', () => {
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// isLsdynaUri
+// ---------------------------------------------------------------------------
+
+describe('isLsdynaUri', () => {
+    it('checks standard and custom file extensions correctly', () => {
+        const workspace = require('./vscode-mock').workspace;
+        const originalGetConfiguration = workspace.getConfiguration;
+
+        // 1. Mock default extensions
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'additionalExtensions' ? ['.k', '.key', '.dyna', '.asc'] : undefined
+        });
+
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.key' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.dyna' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.asc' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.txt' }), false);
+
+        // 2. Mock custom extensions (some without leading dots)
+        workspace.getConfiguration = () => ({
+            get: (key) => key === 'additionalExtensions' ? ['dat', '.incl'] : undefined
+        });
+
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.dat' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.incl' }), true);
+        assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), false);
+
+        workspace.getConfiguration = originalGetConfiguration;
     });
 });
 

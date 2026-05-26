@@ -197,6 +197,19 @@
                     "type": "string",
                     "default": "",
                     "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
+                },
+                "lsdyna.additionalExtensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        ".k",
+                        ".key",
+                        ".dyna",
+                        ".asc"
+                    ],
+                    "description": "Additional file extensions to associate with the LS-DYNA language."
                 }
             }
         },
