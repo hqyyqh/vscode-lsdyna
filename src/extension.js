@@ -1293,6 +1293,112 @@ class LsdynaIncludeCompletionProvider {
     }
 }
 
+class LsdynaFieldCompletionProvider {
+    provideCompletionItems(document, position, token, context) {
+        if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+
+        const line = document.lineAt(position.line);
+        const text = line.text;
+        const trimmed = text.trimStart();
+
+        // Guard: Skip keywords and comments
+        if (trimmed.startsWith('*') || trimmed.startsWith('$')) return [];
+
+        // Find enclosing keyword
+        let kwLine = null;
+        for (let i = position.line - 1; i >= 0; i--) {
+            const t = document.lineAt(i).text.trimStart();
+            if (t.startsWith('*')) { kwLine = i; break; }
+        }
+        if (kwLine === null) return [];
+
+        const kwText = document.lineAt(kwLine).text.trim();
+        const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
+        const entry = lookupKeyword(kwName);
+        if (!entry) return [];
+
+        // Count which card index this line is
+        let cardIndex = 0;
+        for (let i = kwLine + 1; i < position.line; i++) {
+            const t = document.lineAt(i).text.trimStart();
+            if (!t.startsWith('$') && t.length > 0) cardIndex++;
+        }
+
+        let effectiveCardIndex = cardIndex;
+        if (kwName.endsWith('_TITLE')) {
+            if (cardIndex === 0) return [];
+            effectiveCardIndex = cardIndex - 1;
+        }
+
+        const cards = entry.c;
+        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
+        const card = cards[clampedIndex];
+        if (!card || card.length === 0) return [];
+
+        const items = [];
+
+        // 1. Row Card Template (Only when line is empty or near the beginning)
+        if (text.trim().length === 0 || position.character <= 1) {
+            const templateItem = new vscode.CompletionItem(
+                i18n.get('rowTemplateLabel', clampedIndex + 1),
+                vscode.CompletionItemKind.Snippet
+            );
+            templateItem.detail = i18n.get('rowTemplateDetail');
+            templateItem.documentation = new vscode.MarkdownString('Insert a pre-aligned full data card row.');
+
+            let snippetText = '';
+            let prevEnd = 0;
+            for (let j = 0; j < card.length; j++) {
+                const f = card[j];
+                const gap = f.p - prevEnd;
+                if (gap > 0) snippetText += ' '.repeat(gap);
+
+                const isFloat = f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real') || f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z'));
+                const defVal = isFloat ? '0.0' : '0';
+                const padLen = Math.max(0, f.w - defVal.length);
+                const placeholder = ' '.repeat(padLen) + defVal;
+
+                snippetText += `\${${j + 1}:${placeholder}}`;
+                prevEnd = f.p + f.w;
+            }
+            templateItem.insertText = new vscode.SnippetString(snippetText);
+            // Ensure template is sorted at top
+            templateItem.sortText = '0_' + clampedIndex;
+            items.push(templateItem);
+        }
+
+        // 2. Individual Aligned Fields
+        const col = position.character;
+        for (let j = 0; j < card.length; j++) {
+            const f = card[j];
+            if (col <= f.p) {
+                const padding = f.p - col;
+                const label = i18n.get('fieldCompletionLabel', f.n, f.p + 1, f.p + f.w);
+                const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Field);
+                item.detail = i18n.get('fieldDetail', f.t || 'I', f.n);
+                if (f.h) {
+                    item.documentation = new vscode.MarkdownString(f.h);
+                }
+
+                const isFloat = f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real') || f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z'));
+                const defVal = isFloat ? '0.0' : '0';
+                const padLen = Math.max(0, f.w - defVal.length);
+                const placeholder = ' '.repeat(padLen) + defVal;
+
+                // Insert spaces to align, then insert aligned placeholder
+                const insertText = ' '.repeat(padding) + `\${1:${placeholder}}`;
+                item.insertText = new vscode.SnippetString(insertText);
+                item.range = new vscode.Range(position.line, col, position.line, col);
+                // Sort individual fields in order of column position
+                item.sortText = '1_' + String(f.p).padStart(3, '0');
+                items.push(item);
+            }
+        }
+
+        return items;
+    }
+}
+
 // --- Activate ---
 
 /**
@@ -1353,6 +1459,12 @@ function activate(context) {
             { language: 'lsdyna' },
             new LsdynaIncludeCompletionProvider(),
             '/', '\\'
+        )
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { language: 'lsdyna' },
+            new LsdynaFieldCompletionProvider()
         )
     );
 
@@ -2116,4 +2228,5 @@ module.exports._internals = {
     LsdynaFileDecorationProvider,
     normalizePathKey,
     LsdynaIncludeCompletionProvider,
+    LsdynaFieldCompletionProvider,
 };
