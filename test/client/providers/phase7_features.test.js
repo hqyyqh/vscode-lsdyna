@@ -367,6 +367,41 @@ describe('Phase 7 Features', () => {
             }
         });
 
+        it('does not truncate subsequent content when tabbing on a line that already has subsequent values', async () => {
+            const document = fakeDoc('*NODE\n12323               0               0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let editVal = '';
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 5), new vscodeMock.Position(1, 5));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => { editVal = v; }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                assert.ok(editCalled);
+                // The subsequent fields (X, Y) should not be deleted, so editVal should contain '0'
+                assert.ok(editVal.includes('0'));
+                assert.equal(selectionVal.active.character, 9);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
         it('wraps cursor to the next line on the last field if the next line is a card line', async () => {
             const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
             document.languageId = 'lsdyna';

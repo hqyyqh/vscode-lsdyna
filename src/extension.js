@@ -1573,9 +1573,15 @@ async function handleTabAlignment(editor) {
         const targetCol = card[targetIndex].p;
         const targetColOffset = prevVal.length > 0 ? 1 : 0;
         const targetLen = targetCol + targetColOffset;
-        alignedText = alignedText.slice(0, targetLen);
-        if (alignedText.length < targetLen) {
-            alignedText = alignedText.padEnd(targetLen, ' ');
+        
+        // Truncate only if there is no subsequent non-whitespace content in the rest of the line
+        const rest = alignedText.slice(targetLen);
+        const hasSubsequentContent = /\S/.test(rest);
+        if (!hasSubsequentContent) {
+            alignedText = alignedText.slice(0, targetLen);
+            if (alignedText.length < targetLen) {
+                alignedText = alignedText.padEnd(targetLen, ' ');
+            }
         }
     }
 
