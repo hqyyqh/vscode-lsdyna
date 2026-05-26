@@ -15,7 +15,7 @@ const LOCALES = {
         openFolder: '打开文件所在路径',
         selectFolder: '设置 LS-DYNA 手册目录',
         manualDirSetTo: 'LS-DYNA 手册目录已设置为: {0}',
-        sumatraNotFound: '未在所选手册文件夹中找到 SumatraPDF.exe。在 Windows 系统上，请将 SumatraPDF.exe 复制 to 该目录下以启用精确页码跳转。',
+        sumatraNotFound: '未在所选手册文件夹中找到 SumatraPDF.exe。在 Windows 系统上，请将 SumatraPDF.exe 复制到该目录下以启用精确页码跳转。',
         notFound: '未找到',
         loadingFieldData: '加载 field data 文件...',
         
@@ -23,13 +23,13 @@ const LOCALES = {
         missing: '缺失',
         circular: '循环',
         scanFailed: '扫描失败',
-        scanningIncludes: '正在扫描包含文件…',
+        scanningIncludes: '正在扫描包含文件树…',
         openEditor: '打开编辑器',
         openToSide: '并在侧边打开',
         folder: '文件夹',
         path: '路径',
         size: '大小',
-        subIncludes: '子级包含',
+        subIncludes: '子级 Include',
         status: '状态',
         circularDependency: '⚠️ *循环依赖*',
         scanFailedStatus: '❌ *扫描失败*',
@@ -42,17 +42,18 @@ const LOCALES = {
         revealInExplorer: '在资源管理器中显示',
         includeFile: '包含文件',
         keywordLabel: '关键字',
-        keywordOccurrence: '关键字出现位置',
+        keywordOccurrence: '关键字引用位置',
         file: '文件',
         line: '行',
         linePrefix: ':第 {0} 行',
         lineLabel: '第 {0} 行',
-        aggregatedUsages: '聚合使用',
-        totalUsages: '总使用次数',
-        firstOccurrence: '首次出现位置',
+        aggregatedUsages: '聚合引用',
+        totalUsages: '总引用次数',
+        firstOccurrence: '首次引用位置',
         cardDataPreview: '卡片数据预览',
-        usageSingular: '1 次使用',
-        usagesPlural: '{0} 次使用'
+        usageSingular: '1 次引用',
+        usagesPlural: '{0} 次引用',
+        goToKeyword: '跳转到关键字'
     },
     'en': {
         openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
@@ -103,7 +104,8 @@ const LOCALES = {
         firstOccurrence: 'First Occurrence',
         cardDataPreview: 'Card Data Preview',
         usageSingular: '1 usage',
-        usagesPlural: '{0} usages'
+        usagesPlural: '{0} usages',
+        goToKeyword: 'Go to Keyword'
     }
 };
 
