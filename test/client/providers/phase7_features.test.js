@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -206,6 +206,60 @@ describe('Phase 7 Features', () => {
             assert.equal(childDiags[0].range.start.line, 4);
             assert.equal(childDiags[0].range.start.character, 10);
             assert.equal(childDiags[0].range.end.character, 25);
+        });
+    });
+
+    describe('LsdynaFieldCompletionProvider', () => {
+        it('skips keywords and comment lines', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc('*NODE\n$ This is a comment\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            
+            const pos1 = new vscodeMock.Position(0, 2); // on *NODE
+            const items1 = provider.provideCompletionItems(document, pos1);
+            assert.deepEqual(items1, []);
+
+            const pos2 = new vscodeMock.Position(1, 4); // on comment
+            const items2 = provider.provideCompletionItems(document, pos2);
+            assert.deepEqual(items2, []);
+        });
+
+        it('returns full row template and individual fields on empty line', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc('*NODE\n\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            const pos = new vscodeMock.Position(1, 0); // start of empty line
+            const items = provider.provideCompletionItems(document, pos);
+            
+            assert.ok(items.length > 0);
+            // Should contain row template item at index 0
+            const templateItem = items[0];
+            assert.ok(templateItem.label.includes('卡片') || templateItem.label.includes('Template'));
+            assert.equal(templateItem.insertText.value.length, 102); // 102 chars with snippet wrappers
+
+            // Should contain individual fields starting from index 1
+            const fieldItem1 = items[1];
+            assert.ok(fieldItem1.label.includes('NID'));
+            assert.equal(fieldItem1.insertText.value, '${1:       0}'); // 0 spaces padding + 8 chars placeholder
+        });
+
+        it('calculates smart padding on a non-empty line with existing content', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc('*NODE\n12345\n', '/project/main.k'); // "12345" on line 1
+            document.languageId = 'lsdyna';
+
+            const pos = new vscodeMock.Position(1, 5); // cursor at column 5
+            const items = provider.provideCompletionItems(document, pos);
+
+            // Row template should NOT be returned
+            const templates = items.filter(item => item.label.includes('卡片') || item.label.includes('Template'));
+            assert.equal(templates.length, 0);
+
+            // The next field is X (p=8). Spacing should be 8 - 5 = 3 spaces.
+            const xItem = items.find(item => item.label.includes('X'));
+            assert.ok(xItem);
+            assert.equal(xItem.insertText.value, '   ${1:             0.0}'); // 3 spaces padding + X placeholder
         });
     });
 });

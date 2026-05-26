@@ -53,8 +53,16 @@ class CompletionItem {
 }
 
 const CompletionItemKind = {
-    File: 17
+    File: 17,
+    Snippet: 27,
+    Field: 5
 };
+
+class SnippetString {
+    constructor(value = '') {
+        this.value = value;
+    }
+}
 
 class CompletionList {
     constructor(items, isIncomplete = false) {
@@ -70,6 +78,7 @@ module.exports = {
     Hover,
     CompletionItem,
     CompletionItemKind,
+    SnippetString,
     CompletionList,
     Uri: { file: p => ({ fsPath: p }) },
     FoldingRange: class FoldingRange { constructor(s, e) { this.start = s; this.end = e; } },
