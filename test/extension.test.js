@@ -11,6 +11,7 @@ const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordI
 const { buildProjectIndex } = require('../src/core/project/projectIndexer');
 const {
     collectIncludeDecorationSets,
+    collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
     createActiveDocumentDebouncer,
@@ -1216,6 +1217,33 @@ describe('large document guards', () => {
 
     it('skips automatic line-length diagnostics for very large documents', () => {
         assert.deepEqual(collectLineLengthDiagnostics(createHugeDoc()), []);
+    });
+
+    it('skips automatic keyword decorations for very large documents', () => {
+        assert.deepEqual(collectKeywordDecorationRanges(createHugeDoc()), []);
+    });
+
+    it('collects keyword decoration ranges correctly', () => {
+        const doc = fakeDoc('*NODE\n*ELEMENT_MASS, id=1\n  *MAT_ADD_EROSION\n$ comment line\n', '/project/main.k');
+        doc.languageId = 'lsdyna';
+
+        const ranges = collectKeywordDecorationRanges(doc);
+        assert.equal(ranges.length, 3);
+
+        assert.equal(ranges[0].start.line, 0);
+        assert.equal(ranges[0].start.character, 0);
+        assert.equal(ranges[0].end.line, 0);
+        assert.equal(ranges[0].end.character, 5);
+
+        assert.equal(ranges[1].start.line, 1);
+        assert.equal(ranges[1].start.character, 0);
+        assert.equal(ranges[1].end.line, 1);
+        assert.equal(ranges[1].end.character, 13);
+
+        assert.equal(ranges[2].start.line, 2);
+        assert.equal(ranges[2].start.character, 2);
+        assert.equal(ranges[2].end.line, 2);
+        assert.equal(ranges[2].end.character, 18);
     });
 
     it('skips automatic include decorations for very large documents', () => {

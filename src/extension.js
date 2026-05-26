@@ -313,6 +313,30 @@ function collectIncludeDecorationSets(document) {
 }
 
 /**
+ * Scans the document for keywords and returns decoration ranges.
+ * 
+ * @param {import('vscode').TextDocument} document - Document to scan.
+ * @returns {import('vscode').Range[]} Keyword decoration ranges.
+ */
+function collectKeywordDecorationRanges(document) {
+    if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
+        return [];
+    }
+
+    const ranges = [];
+    for (let i = 0; i < document.lineCount; i++) {
+        const text = document.lineAt(i).text;
+        const match = text.match(/^(\s*)(\*[^\s,$]+)/);
+        if (match) {
+            const startChar = match[1].length;
+            const keywordLength = match[2].length;
+            ranges.push(new vscode.Range(i, startChar, i, startChar + keywordLength));
+        }
+    }
+    return ranges;
+}
+
+/**
  * Checks if the specified line index falls within any include file card definition.
  * 
  * @param {import('vscode').TextDocument} document - Document.
@@ -1597,7 +1621,10 @@ function activate(context) {
             fontStyle: 'normal'
         }
     });
-    context.subscriptions.push(resolvedDecoration, missingDecoration);
+    const keywordDecoration = vscode.window.createTextEditorDecorationType({
+        fontWeight: 'bold'
+    });
+    context.subscriptions.push(resolvedDecoration, missingDecoration, keywordDecoration);
 
     function updateDecorations(editor) {
         if (!editor || !isLsdynaFile(editor.document)) return;
@@ -1605,6 +1632,9 @@ function activate(context) {
 
         editor.setDecorations(resolvedDecoration, resolved);
         editor.setDecorations(missingDecoration, missing);
+
+        const keywordRanges = collectKeywordDecorationRanges(editor.document);
+        editor.setDecorations(keywordDecoration, keywordRanges);
     }
 
     context.subscriptions.push(
@@ -2019,6 +2049,7 @@ module.exports = { activate, deactivate };
 module.exports._internals = {
     publishProjectDiagnostics,
     collectIncludeDecorationSets,
+    collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
     createActiveDocumentDebouncer,
