@@ -1565,7 +1565,19 @@ async function handleTabAlignment(editor) {
     const targetIndex = currentFieldIndex + 1;
 
     // 2. Align current line
-    const alignedText = alignLineText(text, card);
+    let alignedText = alignLineText(text, card);
+
+    if (targetIndex < card.length) {
+        const prevF = card[currentFieldIndex];
+        const prevVal = alignedText.slice(prevF.p, prevF.p + prevF.w).trim();
+        const targetCol = card[targetIndex].p;
+        const targetColOffset = prevVal.length > 0 ? 1 : 0;
+        const targetLen = targetCol + targetColOffset;
+        alignedText = alignedText.slice(0, targetLen);
+        if (alignedText.length < targetLen) {
+            alignedText = alignedText.padEnd(targetLen, ' ');
+        }
+    }
 
     // 3. Edit current line
     await editor.edit(editBuilder => {
