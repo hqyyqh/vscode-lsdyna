@@ -295,7 +295,7 @@ describe('Phase 7 Features', () => {
     });
 
     describe('handleTabAlignment', () => {
-        it('aligns the line and moves the cursor to the next field', async () => {
+        it('aligns the line and moves the cursor to the next field (with +1 offset for separation if prev field is not empty)', async () => {
             const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
@@ -324,7 +324,42 @@ describe('Phase 7 Features', () => {
                 assert.ok(editCalled);
                 // Width of NID is 8 in mock *NODE
                 assert.equal(editVal.slice(0, 8), '   12323');
-                // The next field start position is column 8
+                // The next field start position is column 8. Since prev field is not empty, offset is 1 -> col 9
+                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.active.line, 1);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('moves the cursor to the exact field start if the previous field is empty', async () => {
+            const document = fakeDoc('*NODE\n        \n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let editVal = '';
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 2), new vscodeMock.Position(1, 2));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => { editVal = v; }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                assert.ok(editCalled);
+                // The next field start position is column 8. Since prev field is empty, offset is 0 -> col 8
                 assert.equal(selectionVal.active.character, 8);
                 assert.equal(selectionVal.active.line, 1);
             } finally {

@@ -1578,8 +1578,11 @@ async function handleTabAlignment(editor) {
 
     // 4. Handle cursor movement
     if (targetIndex < card.length) {
+        const prevF = card[currentFieldIndex];
+        const prevVal = alignedText.slice(prevF.p, prevF.p + prevF.w).trim();
         const targetCol = card[targetIndex].p;
-        const newPos = new vscode.Position(lineNum, targetCol);
+        const targetColOffset = prevVal.length > 0 ? 1 : 0;
+        const newPos = new vscode.Position(lineNum, targetCol + targetColOffset);
         editor.selection = new vscode.Selection(newPos, newPos);
     } else {
         // It's the last field, wrap to the next line
