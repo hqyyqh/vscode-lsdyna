@@ -1434,6 +1434,7 @@ function alignCardFields(e) {
     if (e.contentChanges.length !== 1) return;
 
     const change = e.contentChanges[0];
+    if (change.text.includes('\n') || change.text.includes('\r')) return;
     const lineNum = change.range.start.line;
     if (lineNum !== change.range.end.line) return;
 

@@ -382,5 +382,39 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('ignores carriage returns and newlines (pressing Enter)', async () => {
+            const document = fakeDoc('*NODE\n       0       0       0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            let editCalled = false;
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                // Simulate pressing Enter at the end of the line
+                const changeEvent = {
+                    document,
+                    contentChanges: [{
+                        range: new vscodeMock.Range(1, 24, 1, 24),
+                        rangeLength: 0,
+                        text: '\n'
+                    }]
+                };
+
+                await alignCardFields(changeEvent);
+                assert.strictEqual(editCalled, false);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 });
