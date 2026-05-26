@@ -19,6 +19,7 @@ const readline = require('readline');
 
 const keywordScanner = require('../../core/parser/keywordScanner');
 const { BlockIndex } = require('../../core/incremental/blockIndex');
+const i18n = require('../../core/i18n');
 
 /**
  * Folding limit threshold for nesting single-keyword occurrences under folders.
@@ -354,7 +355,7 @@ class LsdynaKeywordIndexProvider {
             if (isLarge) {
                 try {
                     await vscode.window.withProgress(
-                        { location: vscode.ProgressLocation.Window, title: 'Indexing keywords…' },
+                        { location: vscode.ProgressLocation.Window, title: i18n.get('indexingKeywordsProgress') },
                         async () => {
                             await blockIndex.buildIndexFromFile(filePath);
                         }
@@ -397,20 +398,20 @@ class LsdynaKeywordIndexProvider {
                 `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
                 `inputKeys=${activeTab?.input ? JSON.stringify(Object.keys(activeTab.input)) : 'none'}`
             ].join(', ');
-            vscode.window.showWarningMessage(`Open an LS-DYNA file first. (Debug: ${debugInfo})`);
+            vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
             return;
         }
         const rootFile = uri.fsPath;
         const rootDir = path.dirname(rootFile);
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning keywords…', cancellable: false },
+            { location: vscode.ProgressLocation.Notification, title: i18n.get('indexingKeywords'), cancellable: false },
             async (progress) => {
                 if (this.loadProjectSnapshot) {
                     const snapshot = await this.loadProjectSnapshot(rootFile);
                     this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
                 } else {
                     const files = await this.collectIncludeFiles(rootFile, (count) => {
-                        progress.report({ message: `${count} file${count === 1 ? '' : 's'} found` });
+                        progress.report({ message: i18n.get('filesFound', count) });
                     });
                     this.roots = await this._buildRootsAsync(files, rootDir);
                 }

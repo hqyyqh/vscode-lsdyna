@@ -26,6 +26,7 @@ const keywordScanner = require('./core/parser/keywordScanner');
 const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
+const i18n = require('./core/i18n');
 
 /**
  * Launches the background language server as a separate node process via VS Code LanguageClient.
@@ -631,9 +632,13 @@ let _fieldData = null;
  */
 function getFieldData() {
     if (!_fieldData) {
-        const dataPaths = [
-            path.join(__dirname, '..', 'keywords', 'field_data.json'),
-        ];
+        const lang = i18n.getLanguage();
+        const dataPaths = [];
+        if (lang === 'zh-cn') {
+            dataPaths.push(path.join(__dirname, '..', 'keywords', 'field_data_zh.json'));
+        }
+        dataPaths.push(path.join(__dirname, '..', 'keywords', 'field_data.json'));
+
         for (const dataPath of dataPaths) {
             try {
                 _fieldData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
@@ -714,19 +719,19 @@ function appendManualLinks(md, kwName) {
 
     if (notConfigured) {
         md.appendMarkdown('\n\n---');
-        md.appendMarkdown('\n\n未设置手册路径。配置后可在悬停时快速阅读 PDF 原文书签页。');
-        md.appendMarkdown('\n\n[⚙️ 设置手册文件夹 (Configure Folder)](command:extension.configureManualsDir)');
+        md.appendMarkdown(`\n\n${i18n.get('manualDirNotConfigured')}`);
+        md.appendMarkdown(`\n\n[${i18n.get('configureFolder')}](command:extension.configureManualsDir)`);
     } else if (manuals.length > 0) {
         md.appendMarkdown('\n\n---');
         const links = [];
         for (const man of manuals) {
             const volName = path.basename(man.file, '.pdf');
             const openArgs = encodeURIComponent(JSON.stringify([man.file, man.page]));
-            links.push(`[$(book) ${volName} (第 ${man.page} 页)](command:extension.openManual?${openArgs})`);
+            links.push(`[$(book) ${volName} (${i18n.get('page', man.page)})](command:extension.openManual?${openArgs})`);
         }
         const matchedKw = manuals[0].matchedKeyword || cleanKw;
         const displayKw = matchedKw.startsWith('*') ? `\\${matchedKw}` : matchedKw;
-        md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "修改手册路径") &nbsp;&nbsp; **${displayKw}** &nbsp;&nbsp; ${links.join(' &nbsp;&nbsp; ')}`);
+        md.appendMarkdown(`\n\n[$(settings-gear)](command:extension.configureManualsDir "${i18n.get('modifyManualPath')}") &nbsp;&nbsp; **${displayKw}** &nbsp;&nbsp; ${links.join(' &nbsp;&nbsp; ')}`);
     }
 }
 
@@ -763,9 +768,9 @@ class LsdynaFieldHoverProvider {
                     const openFolderArgs = encodeURIComponent(JSON.stringify([fullPath]));
                     
                     const md = new vscode.MarkdownString(
-                        `[$(go-to-file)](command:extension.openIncludeNewTab?${openNewTabArgs} "在新标签打开链接") &nbsp;&nbsp;&nbsp;&nbsp; ` +
-                        `[$(split-horizontal)](command:extension.openIncludeSplit?${openSplitArgs} "分栏打开") &nbsp;&nbsp;&nbsp;&nbsp; ` +
-                        `[$(folder-opened)](command:extension.openIncludeFolder?${openFolderArgs} "打开文件所在路径")`
+                        `[$(go-to-file)](command:extension.openIncludeNewTab?${openNewTabArgs} "${i18n.get('openNewTab')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[$(split-horizontal)](command:extension.openIncludeSplit?${openSplitArgs} "${i18n.get('openSplit')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[$(folder-opened)](command:extension.openIncludeFolder?${openFolderArgs} "${i18n.get('openFolder')}")`
                     );
                     md.isTrusted = true;
                     md.supportThemeIcons = true;
@@ -1296,6 +1301,9 @@ class LsdynaIncludeCompletionProvider {
  * @param {import('vscode').ExtensionContext} context - The extension context.
  */
 function activate(context) {
+    let includeTreeView;
+    let keywordTreeView;
+
     manualIndexer.initialize(context).catch(err => {
         console.error('Failed to initialize manual indexer:', err);
     });
@@ -1306,6 +1314,21 @@ function activate(context) {
         debugChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
     }
     logDebug("Extension activated.");
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('lsdyna.language')) {
+                i18n.updateLanguage();
+                _fieldData = null;
+                if (includeTreeView) {
+                    includeTreeView.title = i18n.get('includeTreeTitle');
+                }
+                if (keywordTreeView) {
+                    keywordTreeView.title = i18n.get('keywordIndexTitle');
+                }
+            }
+        })
+    );
 
     context.subscriptions.push(
         vscode.languages.registerFoldingRangeProvider({ language: 'lsdyna' }, new LsDynaFoldingProvider())
@@ -1364,9 +1387,11 @@ function activate(context) {
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
     });
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('lsdynaIncludeTree', includeTreeProvider)
-    );
+    includeTreeView = vscode.window.createTreeView('lsdynaIncludeTree', {
+        treeDataProvider: includeTreeProvider
+    });
+    includeTreeView.title = i18n.get('includeTreeTitle');
+    context.subscriptions.push(includeTreeView);
 
     const fileDecorationProvider = new LsdynaFileDecorationProvider(includeTreeProvider);
     context.subscriptions.push(
@@ -1385,9 +1410,11 @@ function activate(context) {
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         shouldSkipAutomaticDocumentScan,
     });
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('lsdynaKeywordIndex', keywordIndexProvider)
-    );
+    keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
+        treeDataProvider: keywordIndexProvider
+    });
+    keywordTreeView.title = i18n.get('keywordIndexTitle');
+    context.subscriptions.push(keywordTreeView);
     vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', 'local');
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.scanKeywordIndex', () => keywordIndexProvider.scan())
@@ -1555,7 +1582,7 @@ function activate(context) {
                 canSelectFolders: true,
                 canSelectFiles: false,
                 canSelectMany: false,
-                openLabel: '选择手册文件夹 (Select Manuals Folder)'
+                openLabel: i18n.get('selectFolder')
             });
             if (folders && folders[0]) {
                 const selectedPath = folders[0].fsPath;
@@ -1563,14 +1590,14 @@ function activate(context) {
                 const target = vscode.workspace.workspaceFolders ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
                 await config.update('manualsDir', selectedPath, target);
                 
-                vscode.window.showInformationMessage(`LS-DYNA 手册目录已设置为: ${selectedPath}`);
+                vscode.window.showInformationMessage(i18n.get('manualDirSetTo', selectedPath));
                 
                 if (process.platform === 'win32') {
                     const fs = require('fs');
                     const path = require('path');
                     const sumatraPath = path.join(selectedPath, 'SumatraPDF.exe');
                     if (!fs.existsSync(sumatraPath)) {
-                        vscode.window.showWarningMessage('未在所选手册文件夹中找到 SumatraPDF.exe。在 Windows 系统上，请将 SumatraPDF.exe 复制到该目录下以启用精确页码跳转。');
+                        vscode.window.showWarningMessage(i18n.get('sumatraNotFound'));
                     }
                 }
                 await manualIndexer.initialize(context);

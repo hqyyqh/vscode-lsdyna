@@ -1,0 +1,107 @@
+'use strict';
+
+const vscode = require('vscode');
+
+const LOCALES = {
+    'zh-cn': {
+        openFileFirst: '请先打开一个 LS-DYNA 文件。 (Debug: {0})',
+        indexingKeywords: '正在扫描关键字…',
+        manualDirNotConfigured: '未设置手册路径。配置后可在悬停时快速阅读 PDF 原文书签页。',
+        configureFolder: '⚙️ 设置手册文件夹 (Configure Folder)',
+        modifyManualPath: '修改手册路径',
+        page: '第 {0} 页',
+        openNewTab: '在新标签打开链接',
+        openSplit: '分栏打开',
+        openFolder: '打开文件所在路径',
+        selectFolder: '设置 LS-DYNA 手册目录',
+        manualDirSetTo: 'LS-DYNA 手册目录已设置为: {0}',
+        sumatraNotFound: '未在所选手册文件夹中找到 SumatraPDF.exe。在 Windows 系统上，请将 SumatraPDF.exe 复制 to 该目录下以启用精确页码跳转。',
+        notFound: '未找到',
+        loadingFieldData: '加载 field data 文件...',
+        
+        // Tree Providers Extra
+        missing: '缺失',
+        circular: '循环',
+        scanFailed: '扫描失败',
+        scanningIncludes: '正在扫描包含文件…',
+        openEditor: '打开编辑器',
+        openToSide: '并在侧边打开',
+        folder: '文件夹',
+        path: '路径',
+        size: '大小',
+        subIncludes: '子级包含',
+        status: '状态',
+        circularDependency: '⚠️ *循环依赖*',
+        scanFailedStatus: '❌ *扫描失败*',
+        error: '错误',
+        indexingKeywordsProgress: '正在索引关键字…',
+        filesFound: '已找到 {0} 个文件',
+        includeTreeTitle: '包含文件树',
+        keywordIndexTitle: '关键字索引'
+    },
+    'en': {
+        openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
+        indexingKeywords: 'Scanning keywords…',
+        manualDirNotConfigured: 'Manuals directory is not configured. Configure it to quickly view PDF manual bookmarks on hover.',
+        configureFolder: '⚙️ Configure Manuals Folder',
+        modifyManualPath: 'Modify manuals directory',
+        page: 'Page {0}',
+        openNewTab: 'Open link in new tab',
+        openSplit: 'Open link in split editor',
+        openFolder: 'Open containing folder',
+        selectFolder: 'Configure LS-DYNA Manuals Directory',
+        manualDirSetTo: 'LS-DYNA manuals directory set to: {0}',
+        sumatraNotFound: 'SumatraPDF.exe not found in the selected folder. On Windows, please copy SumatraPDF.exe into this folder for precise page navigation.',
+        notFound: 'not found',
+        loadingFieldData: 'Loading field data file...',
+        
+        // Tree Providers Extra
+        missing: 'missing',
+        circular: 'circular',
+        scanFailed: 'scan failed',
+        scanningIncludes: 'Scanning includes…',
+        openEditor: 'Open Editor',
+        openToSide: 'Open to Side',
+        folder: 'Folder',
+        path: 'Path',
+        size: 'Size',
+        subIncludes: 'Sub-includes',
+        status: 'Status',
+        circularDependency: '⚠️ *Circular dependency*',
+        scanFailedStatus: '❌ *Scan failed*',
+        error: 'Error',
+        indexingKeywordsProgress: 'Indexing keywords…',
+        filesFound: '{0} file(s) found',
+        includeTreeTitle: 'Include Tree',
+        keywordIndexTitle: 'Keyword Index'
+    }
+};
+
+let currentLanguage = 'zh-cn';
+
+function updateLanguage() {
+    if (typeof vscode !== 'undefined' && vscode.workspace) {
+        const config = vscode.workspace.getConfiguration('lsdyna');
+        currentLanguage = config.get('language') || 'zh-cn';
+    }
+}
+
+// 首次加载初始化
+updateLanguage();
+
+function get(key, ...args) {
+    const lang = LOCALES[currentLanguage] || LOCALES['zh-cn'];
+    let text = lang[key] || LOCALES['zh-cn'][key] || key;
+    if (args.length > 0) {
+        args.forEach((val, idx) => {
+            text = text.replace(`{${idx}}`, val);
+        });
+    }
+    return text;
+}
+
+module.exports = {
+    updateLanguage,
+    get,
+    getLanguage: () => currentLanguage
+};

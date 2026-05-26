@@ -5,6 +5,7 @@
 test
 keywords/**
 !keywords/field_data.json
+!keywords/field_data_zh.json
 **/*.ipynb
 .antigravity
 .worktrees

@@ -203,6 +203,19 @@
                     "default": "",
                     "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
                 },
+                "lsdyna.language": {
+                    "type": "string",
+                    "enum": [
+                        "zh-cn",
+                        "en"
+                    ],
+                    "default": "zh-cn",
+                    "enumDescriptions": [
+                        "中文简体 (Simplified Chinese)",
+                        "English (English)"
+                    ],
+                    "description": "选择插件的界面语言和 Hover 提示语言 (Select the UI and Hover language for the extension)."
+                },
                 "lsdyna.additionalExtensions": {
                     "type": "array",
                     "items": {

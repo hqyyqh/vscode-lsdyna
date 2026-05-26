@@ -89,6 +89,10 @@ module.exports = {
         activeTextEditor: null,
         showErrorMessage: () => {},
         showWarningMessage: () => {},
+        createTreeView: (id, options) => ({
+            title: '',
+            dispose() {}
+        }),
         createOutputChannel: () => ({ appendLine: () => {} }),
         registerFileDecorationProvider: () => ({ dispose() {} }),
         registerTreeDataProvider: () => ({ dispose() {} }),
@@ -120,13 +124,16 @@ module.exports = {
         onDidOpenTextDocument: () => ({}),
         onDidChangeTextDocument: () => ({}),
         onDidCloseTextDocument: () => ({}),
+        onDidChangeConfiguration: () => ({ dispose() {} }),
         createFileSystemWatcher: () => ({
             onDidChange: () => ({}),
             onDidCreate: () => ({}),
             onDidDelete: () => ({}),
             dispose() {},
         }),
-        getConfiguration: () => ({ get: () => undefined }),
+        getConfiguration: () => ({
+            get: (key) => key === 'language' ? 'en' : undefined
+        }),
     },
     languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },

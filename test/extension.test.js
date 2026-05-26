@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { fakeDoc, vscodeMock } = require('./helpers');
+const i18n = require('../src/core/i18n');
 const extensionModule = require('../src/extension');
 const { LsdynaIncludeTreeProvider } = require('../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordIndexProvider');
@@ -736,6 +737,7 @@ describe('activate', () => {
         const registrations = new Map();
         const disposable = { dispose() {} };
         const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalCreateTreeView = vscodeMock.window.createTreeView;
         const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
         const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
         const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
@@ -745,6 +747,13 @@ describe('activate', () => {
         vscodeMock.window.registerTreeDataProvider = (viewId, provider) => {
             registrations.set(viewId, provider);
             return disposable;
+        };
+        vscodeMock.window.createTreeView = (viewId, options) => {
+            registrations.set(viewId, options.treeDataProvider);
+            return {
+                title: '',
+                dispose() {}
+            };
         };
         vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
         vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
@@ -764,6 +773,7 @@ describe('activate', () => {
             assert.strictEqual(keywordIndexProvider.loadProjectSnapshot, includeTreeProvider.loadProjectSnapshot);
         } finally {
             vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.createTreeView = originalCreateTreeView;
             vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
             vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
             vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
@@ -1453,9 +1463,9 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover.contents[0].value.includes('extension.openIncludeNewTab'));
             assert.ok(hover.contents[0].value.includes('extension.openIncludeSplit'));
             assert.ok(hover.contents[0].value.includes('extension.openIncludeFolder'));
-            assert.ok(hover.contents[0].value.includes('"在新标签打开链接"'));
-            assert.ok(hover.contents[0].value.includes('"分栏打开"'));
-            assert.ok(hover.contents[0].value.includes('"打开文件所在路径"'));
+            assert.ok(hover.contents[0].value.includes('"' + i18n.get('openNewTab') + '"'));
+            assert.ok(hover.contents[0].value.includes('"' + i18n.get('openSplit') + '"'));
+            assert.ok(hover.contents[0].value.includes('"' + i18n.get('openFolder') + '"'));
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
@@ -1498,7 +1508,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(kwHover);
             assert.strictEqual(kwHover.contents[0].supportThemeIcons, true);
             assert.ok(kwHover.contents[0].value.includes('command:extension.openManual'));
-            assert.ok(kwHover.contents[0].value.includes('Vol I (第 20 页)'));
+            assert.ok(kwHover.contents[0].value.includes('Vol I (' + i18n.get('page', 20) + ')'));
             assert.ok(kwHover.contents[0].value.includes('**\\*CONTROL_TERMINATION**'));
 
             // Hovering over field line ENDENG under *CONTROL_TERMINATION
@@ -1507,7 +1517,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(fieldHover);
             assert.strictEqual(fieldHover.contents[0].supportThemeIcons, true);
             assert.ok(fieldHover.contents[0].value.includes('command:extension.openManual'));
-            assert.ok(fieldHover.contents[0].value.includes('Vol I (第 20 页)'));
+            assert.ok(fieldHover.contents[0].value.includes('Vol I (' + i18n.get('page', 20) + ')'));
             assert.ok(fieldHover.contents[0].value.includes('**\\*CONTROL_TERMINATION**'));
 
         } finally {
@@ -1546,7 +1556,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.strictEqual(hover.contents[0].supportThemeIcons, true);
             assert.ok(hover.contents[0].value.includes('**\\*SOME_UNUSUAL_KEYWORD**'));
             assert.ok(hover.contents[0].value.includes('command:extension.openManual'));
-            assert.ok(hover.contents[0].value.includes('Vol III (第 99 页)'));
+            assert.ok(hover.contents[0].value.includes('Vol III (' + i18n.get('page', 99) + ')'));
         } finally {
             workspace.getConfiguration = originalGetConfiguration;
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
@@ -1570,7 +1580,7 @@ describe('LsdynaFieldHoverProvider', () => {
             const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
             const hover = provider.provideHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
-            assert.ok(hover.contents[0].value.includes('未设置手册路径'));
+            assert.ok(hover.contents[0].value.includes(i18n.get('manualDirNotConfigured')));
             assert.ok(hover.contents[0].value.includes('command:extension.configureManualsDir'));
         } finally {
             workspace.getConfiguration = originalGetConfiguration;

@@ -16,6 +16,7 @@ const path = require('path');
 const vscode = require('vscode');
 
 const includeScanner = require('../../core/parser/includeScanner');
+const i18n = require('../../core/i18n');
 
 /**
  * Formats a size in bytes into a human-readable size string (e.g. "1.2 MB").
@@ -100,14 +101,15 @@ function formatVividBytes(bytes) {
  */
 function applyVividDescription(item, relDir) {
     let statusText = '';
-    if (item.description === 'not found') {
-        statusText = 'not found';
-    } else if (item.description === 'missing') {
-        statusText = 'missing';
-    } else if (item.description === 'circular') {
-        statusText = 'circular';
-    } else if (item.description === 'scan failed') {
-        statusText = 'scan failed';
+    const desc = item.description;
+    if (desc === 'not found' || desc === i18n.get('notFound')) {
+        statusText = i18n.get('notFound');
+    } else if (desc === 'missing' || desc === i18n.get('missing')) {
+        statusText = i18n.get('missing');
+    } else if (desc === 'circular' || desc === i18n.get('circular')) {
+        statusText = i18n.get('circular');
+    } else if (desc === 'scan failed' || desc === i18n.get('scanFailed')) {
+        statusText = i18n.get('scanFailed');
     } else if (item.fileSizeVal !== undefined) {
         statusText = formatVividBytes(item.fileSizeVal);
     }
@@ -289,11 +291,11 @@ class LsdynaIncludeTreeProvider {
                 `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
                 `inputKeys=${activeTab?.input ? JSON.stringify(Object.keys(activeTab.input)) : 'none'}`
             ].join(', ');
-            vscode.window.showWarningMessage(`Open an LS-DYNA file first. (Debug: ${debugInfo})`);
+            vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
             return;
         }
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'Scanning includes…', cancellable: false },
+            { location: vscode.ProgressLocation.Notification, title: i18n.get('scanningIncludes'), cancellable: false },
             async (progress) => {
                 this.resolvedPaths.clear();
                 this.missingPaths.clear();
@@ -388,11 +390,11 @@ class LsdynaIncludeTreeProvider {
 
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### Include File: **${path.basename(node.filePath)}**\n\n`);
-        tooltip.appendMarkdown(`- **Path**: \`${node.filePath}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${node.filePath}\`\n`);
         if (node.cycle) {
-            tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
         } else if (!node.missing && item.children.length > 0) {
-            tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
         }
         item.tooltip = tooltip;
 
@@ -445,9 +447,9 @@ class LsdynaIncludeTreeProvider {
 
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
-            tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
             if (visited.has(filePath)) {
-                tooltip.appendMarkdown(`- **Status**: ⚠️ *Circular dependency*\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
             }
             item.tooltip = tooltip;
 
@@ -467,9 +469,9 @@ class LsdynaIncludeTreeProvider {
 
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
-            tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
-            tooltip.appendMarkdown(`- **Status**: ❌ *Scan failed*\n`);
-            tooltip.appendMarkdown(`- **Error**: ${error.message}\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('scanFailedStatus')}\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('error')}**: ${error.message}\n`);
             item.tooltip = tooltip;
 
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
@@ -494,9 +496,9 @@ class LsdynaIncludeTreeProvider {
 
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### Include File: **${path.basename(filePath)}**\n\n`);
-        tooltip.appendMarkdown(`- **Path**: \`${filePath}\`\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
         if (item.children.length > 0) {
-            tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
         }
         item.tooltip = tooltip;
 
@@ -521,22 +523,22 @@ class LsdynaIncludeTreeProvider {
             const tooltip = new vscode.MarkdownString();
             tooltip.appendMarkdown(`### Include File: **${path.basename(item.filePath)}**\n\n`);
             if (item.relDir) {
-                tooltip.appendMarkdown(`- **Folder**: \`${item.relDir}\`\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('folder')}**: \`${item.relDir}\`\n`);
             }
-            tooltip.appendMarkdown(`- **Path**: \`${item.filePath}\`\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${item.filePath}\`\n`);
             if (item.fileSizeStr) {
-                tooltip.appendMarkdown(`- **Size**: \`${item.fileSizeStr}\`\n`);
+                tooltip.appendMarkdown(`- **${i18n.get('size')}**: \`${item.fileSizeStr}\`\n`);
             }
             
             if (item.contextValue !== 'file-missing') {
                 if (item.children && item.children.length > 0) {
-                    tooltip.appendMarkdown(`- **Sub-includes**: ${item.children.length}\n`);
+                    tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
                 }
             }
             
             tooltip.appendMarkdown(`\n---\n`);
-            tooltip.appendMarkdown(`[Open Editor](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
-            tooltip.appendMarkdown(`[Open to Side](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
+            tooltip.appendMarkdown(`[${i18n.get('openEditor')}](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
+            tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
             tooltip.isTrusted = true;
             
             item.tooltip = tooltip;
