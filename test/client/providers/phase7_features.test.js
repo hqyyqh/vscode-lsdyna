@@ -362,6 +362,47 @@ describe('Phase 7 Features', () => {
             }
         });
     });
+
+    describe('Selection context key setting', () => {
+        it('sets shouldAlignTab context based on current line card applicability', async () => {
+            let lastContextKey = null;
+            let lastContextVal = null;
+            const originalExecuteCommand = vscodeMock.commands.executeCommand;
+            vscodeMock.commands.executeCommand = async (cmd, ...args) => {
+                if (cmd === 'setContext') {
+                    lastContextKey = args[0];
+                    lastContextVal = args[1];
+                }
+                return originalExecuteCommand ? originalExecuteCommand(cmd, ...args) : undefined;
+            };
+
+            try {
+                const document = fakeDoc('*NODE\n12323\n$ Comment\n', '/project/main.k');
+                document.languageId = 'lsdyna';
+                
+                // Simulate editor select line 1 (data line)
+                const editor = {
+                    document,
+                    selection: { active: new vscodeMock.Position(1, 2) }
+                };
+
+                // Invoke internals handler trigger
+                const { handleSelectionChange } = require('../../../src/extension')._internals;
+                
+                handleSelectionChange(editor);
+                assert.equal(lastContextKey, 'lsdyna.shouldAlignTab');
+                assert.equal(lastContextVal, true);
+
+                // Simulate editor select line 2 (comment line)
+                editor.selection.active = new vscodeMock.Position(2, 2);
+                handleSelectionChange(editor);
+                assert.equal(lastContextKey, 'lsdyna.shouldAlignTab');
+                assert.equal(lastContextVal, false);
+            } finally {
+                vscodeMock.commands.executeCommand = originalExecuteCommand;
+            }
+        });
+    });
 });
 
 

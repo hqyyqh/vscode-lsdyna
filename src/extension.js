@@ -1607,6 +1607,36 @@ async function handleTabAlignment(editor) {
     }
 }
 
+let lastActiveLineNum = null;
+let lastActiveDoc = null;
+
+function handleSelectionChange(editor) {
+    if (!editor || !isLsdynaFile(editor.document)) {
+        lastActiveLineNum = null;
+        lastActiveDoc = null;
+        vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', false);
+        return;
+    }
+
+    const currentLineNum = editor.selection.active.line;
+    const currentDoc = editor.document;
+
+    const line = currentDoc.lineAt(currentLineNum);
+    const trimmed = line.text.trimStart();
+    const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
+    const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
+    const hasCard = !!(cardFields && cardFields.length > 0);
+    
+    vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
+
+    if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
+        formatLineIfNeeded(currentDoc, lastActiveLineNum);
+    }
+
+    lastActiveLineNum = currentLineNum;
+    lastActiveDoc = currentDoc;
+}
+
 // --- Activate ---
 
 /**
@@ -1615,26 +1645,6 @@ async function handleTabAlignment(editor) {
  * @param {import('vscode').ExtensionContext} context - The extension context.
  */
 function activate(context) {
-    let lastActiveLineNum = null;
-    let lastActiveDoc = null;
-
-    function handleSelectionChange(editor) {
-        if (!editor || !isLsdynaFile(editor.document)) {
-            lastActiveLineNum = null;
-            lastActiveDoc = null;
-            return;
-        }
-
-        const currentLineNum = editor.selection.active.line;
-        const currentDoc = editor.document;
-
-        if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
-            formatLineIfNeeded(currentDoc, lastActiveLineNum);
-        }
-
-        lastActiveLineNum = currentLineNum;
-        lastActiveDoc = currentDoc;
-    }
 
     let includeTreeView;
     let keywordTreeView;
@@ -2073,6 +2083,12 @@ function activate(context) {
     }
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaTab', () => {
+            return handleTabAlignment(vscode.window.activeTextEditor);
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('extension.openIncludeFile', () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
@@ -2492,4 +2508,5 @@ module.exports._internals = {
     alignLineText,
     formatLineIfNeeded,
     handleTabAlignment,
+    handleSelectionChange,
 };
