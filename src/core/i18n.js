@@ -37,7 +37,22 @@ const LOCALES = {
         indexingKeywordsProgress: '正在索引关键字…',
         filesFound: '已找到 {0} 个文件',
         includeTreeTitle: '包含文件树',
-        keywordIndexTitle: '关键字索引'
+        keywordIndexTitle: '关键字索引',
+        openFile: '打开文件',
+        revealInExplorer: '在资源管理器中显示',
+        includeFile: '包含文件',
+        keywordLabel: '关键字',
+        keywordOccurrence: '关键字出现位置',
+        file: '文件',
+        line: '行',
+        linePrefix: ':第 {0} 行',
+        lineLabel: '第 {0} 行',
+        aggregatedUsages: '聚合使用',
+        totalUsages: '总使用次数',
+        firstOccurrence: '首次出现位置',
+        cardDataPreview: '卡片数据预览',
+        usageSingular: '1 次使用',
+        usagesPlural: '{0} 次使用'
     },
     'en': {
         openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
@@ -73,7 +88,22 @@ const LOCALES = {
         indexingKeywordsProgress: 'Indexing keywords…',
         filesFound: '{0} file(s) found',
         includeTreeTitle: 'Include Tree',
-        keywordIndexTitle: 'Keyword Index'
+        keywordIndexTitle: 'Keyword Index',
+        openFile: 'Open File',
+        revealInExplorer: 'Reveal in Explorer',
+        includeFile: 'Include File',
+        keywordLabel: 'Keyword',
+        keywordOccurrence: 'Keyword Occurrence',
+        file: 'File',
+        line: 'Line',
+        linePrefix: ':line {0}',
+        lineLabel: 'Line {0}',
+        aggregatedUsages: 'Aggregated Usages',
+        totalUsages: 'Total Usages',
+        firstOccurrence: 'First Occurrence',
+        cardDataPreview: 'Card Data Preview',
+        usageSingular: '1 usage',
+        usagesPlural: '{0} usages'
     }
 };
 
