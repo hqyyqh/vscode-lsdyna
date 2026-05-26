@@ -175,6 +175,8 @@
         "configurationDefaults": {
             "[lsdyna]": {
                 "editor.wordWrap": "off",
+                "editor.guides.indentation": false,
+                "editor.renderIndentGuides": false,
                 "editor.rulers": [
                     { "column": 10, "color": "rgba(128, 128, 128, 0.15)" },
                     { "column": 20, "color": "rgba(128, 128, 128, 0.15)" },
