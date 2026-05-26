@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignCardFields } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -263,158 +263,35 @@ describe('Phase 7 Features', () => {
         });
     });
 
-    describe('alignCardFields', () => {
-        it('identifies and right-aligns edited fields dynamically on a card line', async () => {
-            const document = fakeDoc('*NODE\n       0       0       0\n', '/project/main.k');
-            document.languageId = 'lsdyna';
-
-            let editCalled = false;
-            let editRange, editVal, editOptions;
-            let selectionVal;
-
-            const editor = {
-                document,
-                edit: async (callback, options) => {
-                    editCalled = true;
-                    editOptions = options;
-                    const builder = {
-                        replace: (r, v) => {
-                            editRange = r;
-                            editVal = v;
-                        }
-                    };
-                    callback(builder);
-                    return true;
-                },
-                get selection() { return selectionVal; },
-                set selection(v) { selectionVal = v; }
-            };
-
-            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
-            vscodeMock.window.activeTextEditor = editor;
-
-            try {
-                // Simulate user typing '12' replacing the default placeholder '       0' (columns 0-8)
-                const changeEvent = {
-                    document,
-                    contentChanges: [{
-                        range: new vscodeMock.Range(1, 0, 1, 8),
-                        rangeLength: 8,
-                        text: '12'
-                    }]
-                };
-
-                // The document text has already been updated to contain the change.
-                // In our fakeDoc, we can just replace '       0' with '12' to simulate the state of the document after the change.
-                const originalLineAt = document.lineAt;
-                document.lineAt = (index) => {
-                    if (index === 1) return { text: '12       0       0' };
-                    return originalLineAt(index);
-                };
-
-                await alignCardFields(changeEvent);
-
-                assert.ok(editCalled);
-                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
-                assert.deepEqual(editRange.end, new vscodeMock.Position(1, 2));
-                assert.equal(editVal, '      12'); // '12' padded to width 8
-                assert.deepEqual(editOptions, { undoStopBefore: false, undoStopAfter: false });
-                assert.deepEqual(selectionVal.active, new vscodeMock.Position(1, 8)); // Cursor placed at the end of the field (col 8)
-            } finally {
-                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
-            }
+    describe('alignLineText', () => {
+        it('formats empty line and returns a space-filled line matching card length', () => {
+            const cardFields = [
+                { n: 'NID', p: 0, w: 8 },
+                { n: 'X', p: 8, w: 16 }
+            ];
+            const aligned = alignLineText('', cardFields);
+            assert.equal(aligned, '                        '); // 8 + 16 = 24 spaces
         });
 
-        it('retains column alignment when character is inserted in the middle of field text', async () => {
-            const document = fakeDoc('*NODE\n      12       0       0\n', '/project/main.k');
-            document.languageId = 'lsdyna';
-
-            let editCalled = false;
-            let editRange, editVal;
-            let selectionVal;
-
-            const editor = {
-                document,
-                edit: async (callback) => {
-                    editCalled = true;
-                    const builder = {
-                        replace: (r, v) => {
-                            editRange = r;
-                            editVal = v;
-                        }
-                    };
-                    callback(builder);
-                    return true;
-                },
-                get selection() { return selectionVal; },
-                set selection(v) { selectionVal = v; }
-            };
-
-            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
-            vscodeMock.window.activeTextEditor = editor;
-
-            try {
-                // User inserts '3' at position (1, 7) - between '1' and '2' in '      12'
-                const changeEvent = {
-                    document,
-                    contentChanges: [{
-                        range: new vscodeMock.Range(1, 7, 1, 7),
-                        rangeLength: 0,
-                        text: '3'
-                    }]
-                };
-
-                const originalLineAt = document.lineAt;
-                document.lineAt = (index) => {
-                    if (index === 1) return { text: '      132       0       0' };
-                    return originalLineAt(index);
-                };
-
-                await alignCardFields(changeEvent);
-
-                assert.ok(editCalled);
-                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
-                assert.deepEqual(editRange.end, new vscodeMock.Position(1, 9));
-                assert.equal(editVal, '     132'); // '132' padded to width 8
-                // Characters after cursor: '2' (length 1). New cursor position: 0 + 8 - 1 = 7
-                assert.deepEqual(selectionVal.active, new vscodeMock.Position(1, 7));
-            } finally {
-                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
-            }
+        it('preserves the physical columns and avoids shifting values leftward', () => {
+            const cardFields = [
+                { n: 'NID', p: 0, w: 10 },
+                { n: 'X', p: 10, w: 10 }
+            ];
+            const rawText = '          123'; // 10 spaces followed by '123'
+            const aligned = alignLineText(rawText, cardFields);
+            assert.equal(aligned, '                 123'); // 10 spaces + 7 spaces + '123'
         });
 
-        it('ignores carriage returns and newlines (pressing Enter)', async () => {
-            const document = fakeDoc('*NODE\n       0       0       0\n', '/project/main.k');
-            document.languageId = 'lsdyna';
-
-            let editCalled = false;
-            const editor = {
-                document,
-                edit: async () => {
-                    editCalled = true;
-                    return true;
-                }
-            };
-
-            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
-            vscodeMock.window.activeTextEditor = editor;
-
-            try {
-                // Simulate pressing Enter at the end of the line
-                const changeEvent = {
-                    document,
-                    contentChanges: [{
-                        range: new vscodeMock.Range(1, 24, 1, 24),
-                        rangeLength: 0,
-                        text: '\n'
-                    }]
-                };
-
-                await alignCardFields(changeEvent);
-                assert.strictEqual(editCalled, false);
-            } finally {
-                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
-            }
+        it('falls back to whitespace-splitting for unaligned lists', () => {
+            const cardFields = [
+                { n: 'NID', p: 0, w: 10 },
+                { n: 'X', p: 10, w: 10 }
+            ];
+            const rawText = '12323 10'; // Space separated but not in column 10
+            const aligned = alignLineText(rawText, cardFields);
+            assert.equal(aligned, '     12323        10');
         });
     });
 });
+

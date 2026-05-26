@@ -1423,68 +1423,114 @@ class LsdynaFieldCompletionProvider {
     }
 }
 
-let isAligning = false;
+function alignLineText(text, card) {
+    if (!card || card.length === 0) return text;
 
-function alignCardFields(e) {
-    if (isAligning) return;
-    if (!isLsdynaFile(e.document)) return;
+    const trimmed = text.trim();
+    if (trimmed.length === 0) {
+        let emptyLine = '';
+        let prevEnd = 0;
+        for (const f of card) {
+            const gap = f.p - prevEnd;
+            if (gap > 0) emptyLine += ' '.repeat(gap);
+            emptyLine += ' '.repeat(f.w);
+            prevEnd = f.p + f.w;
+        }
+        return emptyLine;
+    }
 
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document !== e.document) return;
-    if (e.contentChanges.length !== 1) return;
+    const tokens = trimmed.split(/\s+/).filter(t => t.length > 0);
 
-    const change = e.contentChanges[0];
-    if (change.text.includes('\n') || change.text.includes('\r')) return;
-    const lineNum = change.range.start.line;
-    if (lineNum !== change.range.end.line) return;
+    // Attempt physical column extraction
+    const physVals = [];
+    let hasInternalSpace = false;
+    for (let i = 0; i < card.length; i++) {
+        const f = card[i];
+        if (f.p >= text.length) {
+            physVals.push('');
+            continue;
+        }
+        const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
+        const val = rawVal.trim();
+        physVals.push(val);
 
-    const line = e.document.lineAt(lineNum);
+        if (val.length > 0 && /\s/.test(val)) {
+            hasInternalSpace = true;
+        }
+    }
+
+    const nonEvPhysVals = physVals.filter(v => v.length > 0);
+    const useTokens = hasInternalSpace || (nonEvPhysVals.length !== tokens.length);
+
+    let alignedText = '';
+    let prevEnd = 0;
+
+    for (let i = 0; i < card.length; i++) {
+        const f = card[i];
+        const gap = f.p - prevEnd;
+        if (gap > 0) alignedText += ' '.repeat(gap);
+
+        let val = '';
+        if (useTokens) {
+            if (i < tokens.length) {
+                val = tokens[i];
+            }
+        } else {
+            val = physVals[i];
+        }
+
+        const paddedVal = val.padStart(f.w);
+        alignedText += paddedVal;
+        prevEnd = f.p + f.w;
+    }
+
+    return alignedText;
+}
+
+let isFormattingLine = false;
+
+async function formatLineIfNeeded(document, lineNum) {
+    if (isFormattingLine) return;
+    if (lineNum >= document.lineCount) return;
+
+    const line = document.lineAt(lineNum);
     const text = line.text;
     const trimmed = text.trimStart();
+    
+    // Skip keywords and comments
     if (trimmed.startsWith('*') || trimmed.startsWith('$')) return;
 
-    const cardFields = getCardFieldsForLine(e.document, lineNum);
+    const cardFields = getCardFieldsForLine(document, lineNum);
     if (!cardFields || cardFields.length === 0) return;
 
-    const startCol = change.range.start.character;
-    const endCol = change.range.end.character;
+    const alignedText = alignLineText(text, cardFields);
+    if (text === alignedText) return;
 
-    const fieldIndex = cardFields.findIndex(f => startCol >= f.p && endCol <= f.p + f.w);
-    if (fieldIndex === -1) return;
-
-    const f = cardFields[fieldIndex];
-
-    const originalFieldEnd = f.p + f.w;
-    const shift = change.text.length - (endCol - startCol);
-    const newFieldEndCol = Math.min(text.length, Math.max(f.p, originalFieldEnd + shift));
-    if (newFieldEndCol < f.p) return;
-
-    const currentFieldText = text.slice(f.p, newFieldEndCol);
-    const trimmedVal = currentFieldText.trim();
-    const alignedFieldText = trimmedVal.padStart(f.w);
-
-    if (currentFieldText === alignedFieldText) return;
-
-    isAligning = true;
-    const rangeToReplace = new vscode.Range(
-        new vscode.Position(lineNum, f.p),
-        new vscode.Position(lineNum, newFieldEndCol)
-    );
-
-    const charsAfterCursor = Math.max(0, newFieldEndCol - (startCol + change.text.length));
-    const newCursorCol = f.p + f.w - charsAfterCursor;
-
-    editor.edit(editBuilder => {
-        editBuilder.replace(rangeToReplace, alignedFieldText);
-    }, { undoStopBefore: false, undoStopAfter: false }).then(success => {
-        if (success) {
-            const newPosition = new vscode.Position(lineNum, newCursorCol);
-            editor.selection = new vscode.Selection(newPosition, newPosition);
+    isFormattingLine = true;
+    try {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document === document) {
+            const range = new vscode.Range(
+                new vscode.Position(lineNum, 0),
+                new vscode.Position(lineNum, text.length)
+            );
+            await editor.edit(editBuilder => {
+                editBuilder.replace(range, alignedText);
+            }, { undoStopBefore: false, undoStopAfter: false });
+        } else {
+            const edit = new vscode.WorkspaceEdit();
+            const range = new vscode.Range(
+                new vscode.Position(lineNum, 0),
+                new vscode.Position(lineNum, text.length)
+            );
+            edit.replace(document.uri, range, alignedText);
+            await vscode.workspace.applyEdit(edit);
         }
-        isAligning = false;
-    }, () => {
-        isAligning = false;
-    });
+    } catch (err) {
+        console.error('Error formatting line:', err);
+    } finally {
+        isFormattingLine = false;
+    }
 }
 
 // --- Activate ---
@@ -1495,6 +1541,27 @@ function alignCardFields(e) {
  * @param {import('vscode').ExtensionContext} context - The extension context.
  */
 function activate(context) {
+    let lastActiveLineNum = null;
+    let lastActiveDoc = null;
+
+    function handleSelectionChange(editor) {
+        if (!editor || !isLsdynaFile(editor.document)) {
+            lastActiveLineNum = null;
+            lastActiveDoc = null;
+            return;
+        }
+
+        const currentLineNum = editor.selection.active.line;
+        const currentDoc = editor.document;
+
+        if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
+            formatLineIfNeeded(currentDoc, lastActiveLineNum);
+        }
+
+        lastActiveLineNum = currentLineNum;
+        lastActiveDoc = currentDoc;
+    }
+
     let includeTreeView;
     let keywordTreeView;
 
@@ -1875,7 +1942,20 @@ function activate(context) {
     }
 
     context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(editor => updateDecorations(editor))
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            if (lastActiveDoc && lastActiveLineNum !== null) {
+                formatLineIfNeeded(lastActiveDoc, lastActiveLineNum);
+            }
+            if (editor) {
+                lastActiveLineNum = editor.selection.active.line;
+                lastActiveDoc = editor.document;
+            } else {
+                lastActiveLineNum = null;
+                lastActiveDoc = null;
+            }
+            updateDecorations(editor);
+            updateIncludeLineContext(editor);
+        })
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(event => {
@@ -1898,13 +1978,25 @@ function activate(context) {
     }
 
     context.subscriptions.push(
-        vscode.window.onDidChangeTextEditorSelection(e => updateIncludeLineContext(e.textEditor))
+        vscode.window.onDidChangeTextEditorSelection(e => {
+            handleSelectionChange(e.textEditor);
+            updateIncludeLineContext(e.textEditor);
+        })
     );
+
     context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(editor => updateIncludeLineContext(editor))
+        vscode.workspace.onDidSaveTextDocument(doc => {
+            if (lastActiveDoc === doc && lastActiveLineNum !== null) {
+                formatLineIfNeeded(doc, lastActiveLineNum);
+            }
+        })
     );
 
     updateIncludeLineContext(vscode.window.activeTextEditor);
+    if (vscode.window.activeTextEditor) {
+        lastActiveLineNum = vscode.window.activeTextEditor.selection.active.line;
+        lastActiveDoc = vscode.window.activeTextEditor.document;
+    }
 
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.openIncludeFile', () => {
@@ -2323,5 +2415,6 @@ module.exports._internals = {
     LsdynaIncludeCompletionProvider,
     LsdynaFieldCompletionProvider,
     getCardFieldsForLine,
-    alignCardFields,
+    alignLineText,
+    formatLineIfNeeded,
 };

@@ -142,6 +142,7 @@ module.exports = {
         onDidOpenTextDocument: () => ({}),
         onDidChangeTextDocument: () => ({}),
         onDidCloseTextDocument: () => ({}),
+        onDidSaveTextDocument: () => ({ dispose() {} }),
         onDidChangeConfiguration: () => ({ dispose() {} }),
         createFileSystemWatcher: () => ({
             onDidChange: () => ({}),
