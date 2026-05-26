@@ -53,7 +53,11 @@ const LOCALES = {
         cardDataPreview: '卡片数据预览',
         usageSingular: '1 次引用',
         usagesPlural: '{0} 次引用',
-        goToKeyword: '跳转到关键字'
+        goToKeyword: '跳转到关键字',
+        fieldCompletionLabel: '{0} (第 {1}-{2} 列)',
+        rowTemplateLabel: '✨ 生成整行卡片模板 (Card {0})',
+        fieldDetail: '卡片字段 ({0}) - {1}',
+        rowTemplateDetail: 'LS-DYNA 字段对齐模板'
     },
     'en': {
         openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
@@ -105,7 +109,11 @@ const LOCALES = {
         cardDataPreview: 'Card Data Preview',
         usageSingular: '1 usage',
         usagesPlural: '{0} usages',
-        goToKeyword: 'Go to Keyword'
+        goToKeyword: 'Go to Keyword',
+        fieldCompletionLabel: '{0} (Col {1}-{2})',
+        rowTemplateLabel: '✨ Generate Row Card Template (Card {0})',
+        fieldDetail: 'Card Field ({0}) - {1}',
+        rowTemplateDetail: 'LS-DYNA Column-Aligned Template'
     }
 };
 
