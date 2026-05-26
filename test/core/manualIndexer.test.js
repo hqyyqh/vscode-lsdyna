@@ -328,6 +328,11 @@ trailer
 
                 assert.deepEqual(invalidLocs, []);
 
+                // Check backtrack matching
+                const backtrackedLocs = getManualLocations('*NODE_SUB_KW');
+                assert.deepEqual(backtrackedLocs, nodeLocs);
+                assert.ok(backtrackedLocs.length > 0);
+
                 // Verify cache is updated in workspaceState
                 const cache = mockState.get('manuals_bookmark_cache');
                 assert.ok(cache);

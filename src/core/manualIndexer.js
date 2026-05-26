@@ -546,7 +546,21 @@ async function initialize(context) {
  * @returns {ManualLocation[]} Mapped page numbers and file paths.
  */
 function getManualLocations(kwName) {
-    return keywordMap.get(cleanKeyword(kwName)) || [];
+    const cleaned = cleanKeyword(kwName);
+    let locs = keywordMap.get(cleaned);
+    if (locs && locs.length > 0) {
+        return locs;
+    }
+
+    const tokens = cleaned.split('_');
+    for (let i = tokens.length - 1; i >= 1; i--) {
+        const candidate = tokens.slice(0, i).join('_');
+        locs = keywordMap.get(candidate);
+        if (locs && locs.length > 0) {
+            return locs;
+        }
+    }
+    return [];
 }
 
 /**
