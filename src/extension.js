@@ -1293,6 +1293,36 @@ class LsdynaIncludeCompletionProvider {
     }
 }
 
+function getCardFieldsForLine(document, lineNum) {
+    let kwLine = null;
+    for (let i = lineNum - 1; i >= 0; i--) {
+        const t = document.lineAt(i).text.trimStart();
+        if (t.startsWith('*')) { kwLine = i; break; }
+    }
+    if (kwLine === null) return null;
+
+    const kwText = document.lineAt(kwLine).text.trim();
+    const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
+    const entry = lookupKeyword(kwName);
+    if (!entry) return null;
+
+    let cardIndex = 0;
+    for (let i = kwLine + 1; i < lineNum; i++) {
+        const t = document.lineAt(i).text.trimStart();
+        if (!t.startsWith('$') && t.length > 0) cardIndex++;
+    }
+
+    let effectiveCardIndex = cardIndex;
+    if (kwName.endsWith('_TITLE')) {
+        if (cardIndex === 0) return null;
+        effectiveCardIndex = cardIndex - 1;
+    }
+
+    const cards = entry.c;
+    const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
+    return cards[clampedIndex] || null;
+}
+
 class LsdynaFieldCompletionProvider {
     provideCompletionItems(document, position, token, context) {
         if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
@@ -1304,20 +1334,19 @@ class LsdynaFieldCompletionProvider {
         // Guard: Skip keywords and comments
         if (trimmed.startsWith('*') || trimmed.startsWith('$')) return [];
 
-        // Find enclosing keyword
+        const card = getCardFieldsForLine(document, position.line);
+        if (!card || card.length === 0) return [];
+
+        // Count which card index this line is for template label
         let kwLine = null;
         for (let i = position.line - 1; i >= 0; i--) {
             const t = document.lineAt(i).text.trimStart();
             if (t.startsWith('*')) { kwLine = i; break; }
         }
-        if (kwLine === null) return [];
-
         const kwText = document.lineAt(kwLine).text.trim();
         const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
         const entry = lookupKeyword(kwName);
-        if (!entry) return [];
 
-        // Count which card index this line is
         let cardIndex = 0;
         for (let i = kwLine + 1; i < position.line; i++) {
             const t = document.lineAt(i).text.trimStart();
@@ -1326,14 +1355,9 @@ class LsdynaFieldCompletionProvider {
 
         let effectiveCardIndex = cardIndex;
         if (kwName.endsWith('_TITLE')) {
-            if (cardIndex === 0) return [];
             effectiveCardIndex = cardIndex - 1;
         }
-
-        const cards = entry.c;
-        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
-        const card = cards[clampedIndex];
-        if (!card || card.length === 0) return [];
+        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, entry.c.length - 1) : effectiveCardIndex;
 
         const items = [];
 
@@ -1397,6 +1421,69 @@ class LsdynaFieldCompletionProvider {
 
         return items;
     }
+}
+
+let isAligning = false;
+
+function alignCardFields(e) {
+    if (isAligning) return;
+    if (!isLsdynaFile(e.document)) return;
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document !== e.document) return;
+    if (e.contentChanges.length !== 1) return;
+
+    const change = e.contentChanges[0];
+    const lineNum = change.range.start.line;
+    if (lineNum !== change.range.end.line) return;
+
+    const line = e.document.lineAt(lineNum);
+    const text = line.text;
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('*') || trimmed.startsWith('$')) return;
+
+    const cardFields = getCardFieldsForLine(e.document, lineNum);
+    if (!cardFields || cardFields.length === 0) return;
+
+    const startCol = change.range.start.character;
+    const endCol = change.range.end.character;
+
+    const fieldIndex = cardFields.findIndex(f => startCol >= f.p && endCol <= f.p + f.w);
+    if (fieldIndex === -1) return;
+
+    const f = cardFields[fieldIndex];
+
+    const originalFieldEnd = f.p + f.w;
+    const shift = change.text.length - (endCol - startCol);
+    const newFieldEndCol = Math.min(text.length, Math.max(f.p, originalFieldEnd + shift));
+    if (newFieldEndCol < f.p) return;
+
+    const currentFieldText = text.slice(f.p, newFieldEndCol);
+    const trimmedVal = currentFieldText.trim();
+    const alignedFieldText = trimmedVal.padStart(f.w);
+
+    if (currentFieldText === alignedFieldText) return;
+
+    isAligning = true;
+    const rangeToReplace = new vscode.Range(
+        new vscode.Position(lineNum, f.p),
+        new vscode.Position(lineNum, newFieldEndCol)
+    );
+
+    const charsAfterCursor = Math.max(0, newFieldEndCol - (startCol + change.text.length));
+    const newCursorCol = f.p + f.w - charsAfterCursor;
+
+    editor.edit(editBuilder => {
+        editBuilder.replace(rangeToReplace, alignedFieldText);
+    }, { undoStopBefore: false, undoStopAfter: false }).then(success => {
+        if (success) {
+            const newPosition = new vscode.Position(lineNum, newCursorCol);
+            editor.selection = new vscode.Selection(newPosition, newPosition);
+        }
+        isAligning = false;
+    }, () => {
+        isAligning = false;
+    });
 }
 
 // --- Activate ---
@@ -1466,6 +1553,11 @@ function activate(context) {
             { language: 'lsdyna' },
             new LsdynaFieldCompletionProvider()
         )
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(e => {
+            alignCardFields(e);
+        })
     );
 
     const client = startLanguageServer(context);
@@ -2229,4 +2321,6 @@ module.exports._internals = {
     normalizePathKey,
     LsdynaIncludeCompletionProvider,
     LsdynaFieldCompletionProvider,
+    getCardFieldsForLine,
+    alignCardFields,
 };

@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignCardFields } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -260,6 +260,127 @@ describe('Phase 7 Features', () => {
             const xItem = items.find(item => item.label.includes('X'));
             assert.ok(xItem);
             assert.equal(xItem.insertText.value, '   ${1:             0.0}'); // 3 spaces padding + X placeholder
+        });
+    });
+
+    describe('alignCardFields', () => {
+        it('identifies and right-aligns edited fields dynamically on a card line', async () => {
+            const document = fakeDoc('*NODE\n       0       0       0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            let editCalled = false;
+            let editRange, editVal, editOptions;
+            let selectionVal;
+
+            const editor = {
+                document,
+                edit: async (callback, options) => {
+                    editCalled = true;
+                    editOptions = options;
+                    const builder = {
+                        replace: (r, v) => {
+                            editRange = r;
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                // Simulate user typing '12' replacing the default placeholder '       0' (columns 0-8)
+                const changeEvent = {
+                    document,
+                    contentChanges: [{
+                        range: new vscodeMock.Range(1, 0, 1, 8),
+                        rangeLength: 8,
+                        text: '12'
+                    }]
+                };
+
+                // The document text has already been updated to contain the change.
+                // In our fakeDoc, we can just replace '       0' with '12' to simulate the state of the document after the change.
+                const originalLineAt = document.lineAt;
+                document.lineAt = (index) => {
+                    if (index === 1) return { text: '12       0       0' };
+                    return originalLineAt(index);
+                };
+
+                await alignCardFields(changeEvent);
+
+                assert.ok(editCalled);
+                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
+                assert.deepEqual(editRange.end, new vscodeMock.Position(1, 2));
+                assert.equal(editVal, '      12'); // '12' padded to width 8
+                assert.deepEqual(editOptions, { undoStopBefore: false, undoStopAfter: false });
+                assert.deepEqual(selectionVal.active, new vscodeMock.Position(1, 8)); // Cursor placed at the end of the field (col 8)
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('retains column alignment when character is inserted in the middle of field text', async () => {
+            const document = fakeDoc('*NODE\n      12       0       0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            let editCalled = false;
+            let editRange, editVal;
+            let selectionVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editRange = r;
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                // User inserts '3' at position (1, 7) - between '1' and '2' in '      12'
+                const changeEvent = {
+                    document,
+                    contentChanges: [{
+                        range: new vscodeMock.Range(1, 7, 1, 7),
+                        rangeLength: 0,
+                        text: '3'
+                    }]
+                };
+
+                const originalLineAt = document.lineAt;
+                document.lineAt = (index) => {
+                    if (index === 1) return { text: '      132       0       0' };
+                    return originalLineAt(index);
+                };
+
+                await alignCardFields(changeEvent);
+
+                assert.ok(editCalled);
+                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
+                assert.deepEqual(editRange.end, new vscodeMock.Position(1, 9));
+                assert.equal(editVal, '     132'); // '132' padded to width 8
+                // Characters after cursor: '2' (length 1). New cursor position: 0 + 8 - 1 = 7
+                assert.deepEqual(selectionVal.active, new vscodeMock.Position(1, 7));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
         });
     });
 });

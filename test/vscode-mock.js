@@ -22,6 +22,14 @@ class Range {
     }
 }
 
+class Selection extends Range {
+    constructor(anchor, active) {
+        super(anchor, active);
+        this.anchor = anchor;
+        this.active = active;
+    }
+}
+
 class MarkdownString {
     constructor(value = '') {
         this.value = value;
@@ -74,6 +82,7 @@ class CompletionList {
 module.exports = {
     Position,
     Range,
+    Selection,
     MarkdownString,
     Hover,
     CompletionItem,
