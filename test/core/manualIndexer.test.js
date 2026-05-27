@@ -426,6 +426,56 @@ trailer
             }
         });
 
+        it('registers slash-separated keywords with prefixes correctly from cache', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            vscode.workspace.getConfiguration = (section) => {
+                if (section === 'lsdyna') {
+                    return {
+                        get: (key) => {
+                            if (key === 'manualsDir') return tempDir;
+                            return undefined;
+                        }
+                    };
+                }
+                return originalGetConfiguration(section);
+            };
+
+            try {
+                const stats = fs.statSync(mockPdfPath);
+                const mockCache = {};
+                mockCache[path.resolve(mockPdfPath)] = {
+                    version: 2,
+                    mtimeMs: stats.mtimeMs,
+                    bookmarks: [
+                        { title: '14. *MAT_026/*MAT_HONEYCOMB', page: 40 },
+                        { title: 'CONTROL_TERMINATION/CONTROL_TIMESTEP', page: 50 }
+                    ]
+                };
+                mockState.set('manuals_bookmark_cache', mockCache);
+
+                await initialize(mockContext);
+
+                const mat26Locs = getManualLocations('*MAT_026');
+                const honeycombLocs = getManualLocations('*MAT_HONEYCOMB');
+                const terminationLocs = getManualLocations('*CONTROL_TERMINATION');
+                const timestepLocs = getManualLocations('*CONTROL_TIMESTEP');
+
+                assert.strictEqual(mat26Locs.length, 1);
+                assert.strictEqual(mat26Locs[0].page, 40);
+
+                assert.strictEqual(honeycombLocs.length, 1);
+                assert.strictEqual(honeycombLocs[0].page, 40);
+
+                assert.strictEqual(terminationLocs.length, 1);
+                assert.strictEqual(terminationLocs[0].page, 50);
+
+                assert.strictEqual(timestepLocs.length, 1);
+                assert.strictEqual(timestepLocs[0].page, 50);
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+            }
+        });
+
         it('returns correct count of indexed files', () => {
             const count = getManualFilesCount();
             assert.strictEqual(typeof count, 'number');

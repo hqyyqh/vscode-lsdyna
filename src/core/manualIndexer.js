@@ -503,9 +503,23 @@ async function initialize(context) {
                 for (const bookmark of bookmarks) {
                     if (bookmark.page === null) continue;
 
-                    const rawParts = bookmark.title.split('/');
-                    for (const part of rawParts) {
-                        const cleaned = cleanKeyword(part);
+                    const titleUpper = bookmark.title.toUpperCase();
+                    const matches = titleUpper.match(/\*[A-Z0-9_]+/g);
+                    
+                    const kwsToRegister = [];
+                    if (matches && matches.length > 0) {
+                        for (const m of matches) {
+                            kwsToRegister.push(m);
+                        }
+                    } else {
+                        const rawParts = bookmark.title.split('/');
+                        for (const part of rawParts) {
+                            kwsToRegister.push(part);
+                        }
+                    }
+
+                    for (const rawKw of kwsToRegister) {
+                        const cleaned = cleanKeyword(rawKw);
                         if (cleaned.startsWith('*')) {
                             const existing = keywordMap.get(cleaned) || [];
                             const isDuplicate = existing.some(
