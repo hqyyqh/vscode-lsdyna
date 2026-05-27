@@ -52,7 +52,7 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
 /**
  * @typedef {Object} PendingPath
  * @property {string[]} parts - Buffer containing parts of the path.
- * @property {boolean} awaitingContinuation - True if the line ends with ' +', indicating more segments follow.
+ * @property {boolean} isRelative - True if this is an *INCLUDE_PATH_RELATIVE entry.
  */
 
 /**
@@ -292,7 +292,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 
     if (state.keyword === '*INCLUDE_PATH') {
         if (trimmed.endsWith(' +')) {
-            state.pendingPath = { parts: [trimmed.slice(0, -2)], awaitingContinuation: true, isRelative: false };
+            state.pendingPath = { parts: [trimmed.slice(0, -2)], isRelative: false };
         } else {
             state.searchPaths.push(trimmed);
         }
@@ -300,7 +300,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
     }
     if (state.keyword === '*INCLUDE_PATH_RELATIVE') {
         if (trimmed.endsWith(' +')) {
-            state.pendingPath = { parts: [trimmed.slice(0, -2)], awaitingContinuation: true, isRelative: true };
+            state.pendingPath = { parts: [trimmed.slice(0, -2)], isRelative: true };
         } else {
             state.searchPaths.push(path.resolve(state.basePath, trimmed));
         }
