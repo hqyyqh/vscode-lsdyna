@@ -278,7 +278,7 @@ describe('Phase 7 Features', () => {
 
         it('should return $# completion item with documentation when typing $ under a keyword block', () => {
             const provider = new LsdynaFieldCompletionProvider();
-            const document = fakeDoc('*SECTION_SHELL\n$\n', '/project/main.k');
+            const document = fakeDoc('*SECTION_SHELL\n$ some extra trailing space and text\n', '/project/main.k');
             document.languageId = 'lsdyna';
 
             const pos = new vscodeMock.Position(1, 1); // cursor after '$'
@@ -290,6 +290,12 @@ describe('Phase 7 Features', () => {
             assert.strictEqual(item.detail, '(LS-DYNA) 插入字段注释行');
             assert.ok(item.insertText.includes('$#   SECID'));
             assert.ok(item.documentation.value.includes('$#   SECID'));
+            
+            // The range should cover the entire line to wipe out trailing spaces and text
+            assert.strictEqual(item.range.start.line, 1);
+            assert.strictEqual(item.range.start.character, 0);
+            assert.strictEqual(item.range.end.line, 1);
+            assert.strictEqual(item.range.end.character, 36);
         });
     });
 
