@@ -690,6 +690,64 @@ describe('Phase 7 Features', () => {
             }
         });
     });
+
+    describe('Dynamic language association', () => {
+        it('should change document language to lsdyna if extension matches custom extensions list', async () => {
+            const originalTextDocuments = vscodeMock.workspace.textDocuments;
+            const originalOnDidOpenTextDocument = vscodeMock.workspace.onDidOpenTextDocument;
+            const originalGet = vscodeMock.workspace.getConfiguration;
+            
+            const callbacks = [];
+            vscodeMock.workspace.onDidOpenTextDocument = (callback) => {
+                callbacks.push(callback);
+                return { dispose() {} };
+            };
+            
+            // Mock document matching .asc
+            const doc = {
+                uri: { fsPath: '/test/file.asc' },
+                languageId: 'plaintext'
+            };
+            
+            vscodeMock.workspace.textDocuments = [doc];
+            
+            // Setup configuration mock return for lsdyna.additionalExtensions
+            vscodeMock.workspace.getConfiguration = (section) => {
+                return {
+                    get: (key) => {
+                        if (section === 'lsdyna' && key === 'additionalExtensions') {
+                            return ['.k', '.key', '.dyna', '.asc'];
+                        }
+                        if (key === 'language') {
+                            return 'en';
+                        }
+                        return undefined;
+                    }
+                };
+            };
+
+            const extension = require('../../../src/extension');
+            const context = { subscriptions: [] };
+            extension.activate(context);
+            
+            // Verify doc languageId is set to lsdyna
+            assert.equal(doc.languageId, 'lsdyna');
+            
+            // Mock opening a new document with configured suffix
+            const newDoc = {
+                uri: { fsPath: '/test/newfile.asc' },
+                languageId: 'plaintext'
+            };
+            
+            callbacks.forEach(cb => cb(newDoc));
+            assert.equal(newDoc.languageId, 'lsdyna');
+
+            // Restore mock
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+            vscodeMock.workspace.onDidOpenTextDocument = originalOnDidOpenTextDocument;
+            vscodeMock.workspace.getConfiguration = originalGet;
+        });
+    });
 });
 
 
