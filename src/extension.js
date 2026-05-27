@@ -1916,7 +1916,8 @@ function activate(context) {
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
             { language: 'lsdyna' },
-            new LsdynaFieldCompletionProvider()
+            new LsdynaFieldCompletionProvider(),
+            '$', '#'
         )
     );
 
