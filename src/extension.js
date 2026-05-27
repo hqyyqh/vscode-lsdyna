@@ -1337,6 +1337,9 @@ class LsdynaFieldCompletionProvider {
         const card = getCardFieldsForLine(document, position.line);
         if (!card || card.length === 0) return [];
 
+        // Skip completions for title/filename fields (single wide field)
+        if (card.length === 1 && card[0].w >= 40) return [];
+
         // Count which card index this line is for template label
         let kwLine = null;
         for (let i = position.line - 1; i >= 0; i--) {
@@ -1426,6 +1429,10 @@ class LsdynaFieldCompletionProvider {
 function alignLineText(text, card) {
     if (!card || card.length === 0) return text;
 
+    // Skip alignment for title/filename fields (single wide field, e.g. 80-char path/title)
+    const isWideField = card.length === 1 && card[0].w >= 40;
+    if (isWideField) return text;
+
     const trimmed = text.trim();
     if (trimmed.length === 0) {
         let emptyLine = '';
@@ -1503,6 +1510,9 @@ async function formatLineIfNeeded(document, lineNum) {
     const cardFields = getCardFieldsForLine(document, lineNum);
     if (!cardFields || cardFields.length === 0) return;
 
+    // Skip formatting for title/filename fields (single wide field)
+    if (cardFields.length === 1 && cardFields[0].w >= 40) return;
+
     const alignedText = alignLineText(text, cardFields);
     if (text === alignedText) return;
 
@@ -1546,6 +1556,12 @@ async function handleTabAlignment(editor) {
 
     const card = getCardFieldsForLine(document, lineNum);
     if (!card || card.length === 0) {
+        await vscode.commands.executeCommand('tab');
+        return;
+    }
+
+    // Skip alignment for title/filename fields (single wide field)
+    if (card.length === 1 && card[0].w >= 40) {
         await vscode.commands.executeCommand('tab');
         return;
     }
@@ -1646,7 +1662,8 @@ function handleSelectionChange(editor) {
     const trimmed = line.text.trimStart();
     const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
     const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
-    const hasCard = !!(cardFields && cardFields.length > 0);
+    const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
+    const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
     
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
 
