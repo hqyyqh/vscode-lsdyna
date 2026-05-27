@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -260,6 +260,20 @@ describe('Phase 7 Features', () => {
             const xItem = items.find(item => item.label.includes('X'));
             assert.ok(xItem);
             assert.equal(xItem.insertText.value, '   ${1:             0.0}'); // 3 spaces padding + X placeholder
+        });
+
+        describe('generateCommentLine', () => {
+            it('should align field names based on field offsets and width', () => {
+                const { generateCommentLine } = require('../../../src/extension')._internals;
+                const card = [
+                    { n: 'SECID', p: 0, w: 10 },
+                    { n: 'MID', p: 10, w: 10 },
+                    { n: 'ELFORM', p: 20, w: 10 }
+                ];
+                const result = generateCommentLine(card);
+                const expected = '$#  SECID       MID    ELFORM';
+                assert.strictEqual(result, expected);
+            });
         });
     });
 

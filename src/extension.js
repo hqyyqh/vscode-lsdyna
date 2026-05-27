@@ -1436,6 +1436,39 @@ class LsdynaFieldCompletionProvider {
     }
 }
 
+function generateCommentLine(card) {
+    if (!card || card.length === 0) return '';
+    const lastField = card[card.length - 1];
+    const totalLen = lastField.p + lastField.w;
+    const chars = Array(totalLen).fill(' ');
+    chars[0] = '$';
+    chars[1] = '#';
+    for (let i = 0; i < card.length; i++) {
+        const f = card[i];
+        const name = f.n || '';
+        let startIdx = f.p;
+        if (startIdx < 2) {
+            startIdx = 2;
+        }
+        let maxEnd = f.p + f.w;
+        if (i < card.length - 1) {
+            maxEnd = Math.min(maxEnd, card[i + 1].p);
+        }
+        const maxLen = maxEnd - startIdx;
+        if (maxLen <= 0) continue;
+        let alignedName = name;
+        if (name.length < maxLen) {
+            alignedName = name.padStart(maxLen - 1) + ' ';
+        } else {
+            alignedName = name.slice(0, maxLen);
+        }
+        for (let k = 0; k < alignedName.length; k++) {
+            chars[startIdx + k] = alignedName[k];
+        }
+    }
+    return chars.join('').trimEnd();
+}
+
 function alignLineText(text, card) {
     if (!card || card.length === 0) return text;
 
@@ -2665,6 +2698,7 @@ module.exports._internals = {
     LsdynaIncludeCompletionProvider,
     LsdynaFieldCompletionProvider,
     getCardFieldsForLine,
+    generateCommentLine,
     alignLineText,
     formatLineIfNeeded,
     handleTabAlignment,
