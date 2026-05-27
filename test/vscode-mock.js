@@ -154,7 +154,7 @@ module.exports = {
             get: (key) => key === 'language' ? 'en' : undefined
         }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }) },
+    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); } },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
 };
