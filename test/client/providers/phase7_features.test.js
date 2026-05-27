@@ -748,6 +748,105 @@ describe('Phase 7 Features', () => {
             vscodeMock.workspace.getConfiguration = originalGet;
         });
     });
+
+    describe('extension.configureManualsDir command', () => {
+        it('should update manualsDir config globally and show success info', async () => {
+            const originalShowOpenDialog = vscodeMock.window.showOpenDialog;
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalShowInformationMessage = vscodeMock.window.showInformationMessage;
+            
+            let updateCalled = false;
+            let updateKey, updateVal, updateTarget;
+            
+            vscodeMock.window.showOpenDialog = async () => [{ fsPath: '/path/to/manuals' }];
+            vscodeMock.workspace.getConfiguration = () => ({
+                update: async (key, val, target) => {
+                    updateCalled = true;
+                    updateKey = key;
+                    updateVal = val;
+                    updateTarget = target;
+                }
+            });
+            
+            let infoMsg = '';
+            vscodeMock.window.showInformationMessage = (msg) => {
+                infoMsg = msg;
+            };
+
+            const extension = require('../../../src/extension');
+            
+            let registeredCallback;
+            const originalRegisterCommand = vscodeMock.commands.registerCommand;
+            vscodeMock.commands.registerCommand = (cmd, cb) => {
+                if (cmd === 'extension.configureManualsDir') {
+                    registeredCallback = cb;
+                }
+                return { dispose() {} };
+            };
+
+            const context = { subscriptions: [] };
+            extension.activate(context);
+
+            if (registeredCallback) {
+                await registeredCallback();
+            }
+
+            assert.ok(updateCalled);
+            assert.equal(updateKey, 'manualsDir');
+            assert.equal(updateVal, '/path/to/manuals');
+            assert.equal(updateTarget, vscodeMock.ConfigurationTarget.Global);
+            assert.ok(infoMsg.includes('/path/to/manuals'));
+
+            // Restore mocks
+            vscodeMock.window.showOpenDialog = originalShowOpenDialog;
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            vscodeMock.window.showInformationMessage = originalShowInformationMessage;
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+        });
+
+        it('should show error message if global config update fails', async () => {
+            const originalShowOpenDialog = vscodeMock.window.showOpenDialog;
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalShowErrorMessage = vscodeMock.window.showErrorMessage;
+            
+            vscodeMock.window.showOpenDialog = async () => [{ fsPath: '/path/to/manuals' }];
+            vscodeMock.workspace.getConfiguration = () => ({
+                update: async () => {
+                    throw new Error('Permission Denied');
+                }
+            });
+            
+            let errorMsg = '';
+            vscodeMock.window.showErrorMessage = (msg) => {
+                errorMsg = msg;
+            };
+
+            const extension = require('../../../src/extension');
+            
+            let registeredCallback;
+            const originalRegisterCommand = vscodeMock.commands.registerCommand;
+            vscodeMock.commands.registerCommand = (cmd, cb) => {
+                if (cmd === 'extension.configureManualsDir') {
+                    registeredCallback = cb;
+                }
+                return { dispose() {} };
+            };
+
+            const context = { subscriptions: [] };
+            extension.activate(context);
+
+            if (registeredCallback) {
+                await registeredCallback();
+            }
+
+            assert.ok(errorMsg.includes('Permission Denied'));
+
+            vscodeMock.window.showOpenDialog = originalShowOpenDialog;
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            vscodeMock.window.showErrorMessage = originalShowErrorMessage;
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+        });
+    });
 });
 
 
