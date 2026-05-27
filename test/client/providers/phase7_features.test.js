@@ -275,6 +275,22 @@ describe('Phase 7 Features', () => {
                 assert.strictEqual(result, expected);
             });
         });
+
+        it('should return $# completion item with documentation when typing $ under a keyword block', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc('*SECTION_SHELL\n$\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            const pos = new vscodeMock.Position(1, 1); // cursor after '$'
+            const items = provider.provideCompletionItems(document, pos);
+
+            assert.strictEqual(items.length, 1);
+            const item = items[0];
+            assert.strictEqual(item.label, '$#');
+            assert.strictEqual(item.detail, '(LS-DYNA) 插入字段注释行');
+            assert.ok(item.insertText.includes('$#  SECID'));
+            assert.ok(item.documentation.value.includes('$#  SECID'));
+        });
     });
 
     describe('alignLineText', () => {

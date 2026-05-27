@@ -1341,8 +1341,26 @@ class LsdynaFieldCompletionProvider {
         const text = line.text;
         const trimmed = text.trimStart();
 
-        // Guard: Skip keywords and comments
-        if (trimmed.startsWith('*') || trimmed.startsWith('$')) return [];
+        // Guard: Skip keywords and non-trigger comments
+        if (trimmed.startsWith('*') || (trimmed.startsWith('$') && !trimmed.startsWith('$#') && trimmed !== '$')) return [];
+
+        const isCommentTrigger = trimmed === '$' || trimmed.startsWith('$#');
+        if (isCommentTrigger) {
+            const nextLineNum = position.line + 1;
+            const card = nextLineNum <= document.lineCount ? getCardFieldsForLine(document, nextLineNum) : null;
+            if (!card || card.length === 0) return [];
+
+            const commentText = generateCommentLine(card);
+            if (!commentText) return [];
+
+            const item = new vscode.CompletionItem('$#', vscode.CompletionItemKind.Snippet);
+            item.detail = '(LS-DYNA) 插入字段注释行';
+            item.documentation = new vscode.MarkdownString(`**插入字段注释行**\n\n按下 Tab 将插入：\n\`\`\`lsdyna\n${commentText}\n\`\`\``);
+            item.insertText = commentText;
+            item.range = new vscode.Range(position.line, 0, position.line, position.character);
+
+            return [item];
+        }
 
         const card = getCardFieldsForLine(document, position.line);
         if (!card || card.length === 0) return [];
