@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded, handleTabAlignment } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -470,6 +470,152 @@ describe('Phase 7 Features', () => {
                 assert.equal(lastContextVal, false);
             } finally {
                 vscodeMock.commands.executeCommand = originalExecuteCommand;
+            }
+        });
+    });
+
+    describe('getPathEntryRange', () => {
+        it('identifies the correct range for single and multi-line paths under *INCLUDE_PATH', () => {
+            const document = fakeDoc(
+                '*INCLUDE_PATH\n' +
+                '/short/path\n' +
+                '/long/path/part1/ +\n' +
+                'part2/part3/ +\n' +
+                'part4\n' +
+                '/another/path\n',
+                '/project/main.k'
+            );
+
+            // /short/path is at index 1
+            const r1 = getPathEntryRange(document, 1, 0);
+            assert.deepEqual(r1, { start: 1, end: 1 });
+
+            // /long/path/... starts at 2, ends at 4
+            const r2 = getPathEntryRange(document, 2, 0);
+            assert.deepEqual(r2, { start: 2, end: 4 });
+
+            const r3 = getPathEntryRange(document, 3, 0);
+            assert.deepEqual(r3, { start: 2, end: 4 });
+
+            const r4 = getPathEntryRange(document, 4, 0);
+            assert.deepEqual(r4, { start: 2, end: 4 });
+
+            // /another/path is at index 5
+            const r5 = getPathEntryRange(document, 5, 0);
+            assert.deepEqual(r5, { start: 5, end: 5 });
+        });
+    });
+
+    describe('formatPathEntryIfNeeded', () => {
+        it('wraps paths longer than 80 characters into segments of 78 characters with " +"', async () => {
+            const longPath = 'a'.repeat(78) + 'b'.repeat(10); // length 88
+            const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, '/project/main.k');
+            
+            let editCalled = false;
+            let editRange, editVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editRange = r;
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await formatPathEntryIfNeeded(document, 1, 0);
+                assert.ok(editCalled);
+                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
+                assert.deepEqual(editRange.end, new vscodeMock.Position(1, 88));
+                
+                // Segments should be:
+                // Line 1: 78 chars of 'a' + ' +' (length 80)
+                // Line 2: 10 chars of 'b'
+                const expectedText = 'a'.repeat(78) + ' +\n' + 'b'.repeat(10);
+                assert.equal(editVal, expectedText);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('merges multi-line paths that are shortened to <= 80 characters', async () => {
+            const document = fakeDoc('*INCLUDE_PATH\n/short/path/part1 +\npart2\n', '/project/main.k');
+            
+            let editCalled = false;
+            let editRange, editVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editRange = r;
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await formatPathEntryIfNeeded(document, 1, 0);
+                assert.ok(editCalled);
+                assert.deepEqual(editRange.start, new vscodeMock.Position(1, 0));
+                // /short/path/part1 + ends on line 1, part2 is on line 2 (5 chars)
+                assert.deepEqual(editRange.end, new vscodeMock.Position(2, 5));
+                assert.equal(editVal, '/short/path/part1part2');
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+    });
+
+    describe('formatLineIfNeeded integration', () => {
+        it('automatically triggers path wrapping for *INCLUDE_PATH when formatLineIfNeeded is called', async () => {
+            const longPath = 'a'.repeat(85);
+            const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, '/project/main.k');
+            
+            let editCalled = false;
+            let editVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await formatLineIfNeeded(document, 1);
+                assert.ok(editCalled);
+                assert.equal(editVal, 'a'.repeat(78) + ' +\n' + 'a'.repeat(7));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
     });

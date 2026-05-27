@@ -1494,6 +1494,101 @@ function alignLineText(text, card) {
     return alignedText;
 }
 
+function getPathEntryRange(document, lineNum, kwLine) {
+    let start = lineNum;
+    while (start > kwLine + 1) {
+        const prevText = document.lineAt(start - 1).text.trim();
+        if (prevText.startsWith('*') || prevText.startsWith('$')) {
+            break;
+        }
+        if (prevText.endsWith(' +')) {
+            start--;
+        } else {
+            break;
+        }
+    }
+
+    let end = lineNum;
+    while (end < document.lineCount - 1) {
+        const curText = document.lineAt(end).text.trim();
+        if (curText.endsWith(' +')) {
+            const nextText = document.lineAt(end + 1).text.trim();
+            if (nextText.startsWith('*') || nextText.startsWith('$')) {
+                break;
+            }
+            end++;
+        } else {
+            break;
+        }
+    }
+
+    return { start, end };
+}
+
+async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
+    const range = getPathEntryRange(document, lineNum, kwLine);
+    const lines = [];
+    for (let i = range.start; i <= range.end; i++) {
+        lines.push(document.lineAt(i).text);
+    }
+
+    const parts = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.endsWith(' +')) {
+            parts.push(trimmed.slice(0, -2));
+        } else {
+            parts.push(trimmed);
+        }
+    }
+
+    const fullPath = parts.join('');
+    
+    let newLines = [];
+    if (fullPath.length > 80) {
+        const maxSegmentLength = 78;
+        for (let i = 0; i < fullPath.length; i += maxSegmentLength) {
+            const segment = fullPath.slice(i, i + maxSegmentLength);
+            if (i + maxSegmentLength < fullPath.length) {
+                newLines.push(segment + ' +');
+            } else {
+                newLines.push(segment);
+            }
+        }
+    } else {
+        newLines.push(fullPath);
+    }
+
+    const newText = newLines.join('\n');
+    const oldText = lines.join('\n');
+
+    if (newText === oldText) return;
+
+    isFormattingLine = true;
+    try {
+        const endLineText = document.lineAt(range.end).text;
+        const replaceRange = new vscode.Range(
+            new vscode.Position(range.start, 0),
+            new vscode.Position(range.end, endLineText.length)
+        );
+
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document === document) {
+            await editor.edit(editBuilder => {
+                editBuilder.replace(replaceRange, newText);
+            }, { undoStopBefore: false, undoStopAfter: false });
+        } else {
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, replaceRange, newText);
+            await vscode.workspace.applyEdit(edit);
+        }
+    } catch (err) {
+        console.error('Error formatting path entry:', err);
+    } finally {
+        isFormattingLine = false;
+    }
+}
+
 let isFormattingLine = false;
 
 async function formatLineIfNeeded(document, lineNum) {
@@ -1506,6 +1601,21 @@ async function formatLineIfNeeded(document, lineNum) {
     
     // Skip keywords and comments
     if (trimmed.startsWith('*') || trimmed.startsWith('$')) return;
+
+    // Find the enclosing keyword line
+    let kwLine = null;
+    for (let i = lineNum - 1; i >= 0; i--) {
+        const t = document.lineAt(i).text.trimStart();
+        if (t.startsWith('*')) { kwLine = i; break; }
+    }
+    
+    if (kwLine !== null) {
+        const kwText = document.lineAt(kwLine).text.trim().toUpperCase();
+        if (kwText === '*INCLUDE_PATH' || kwText === '*INCLUDE_PATH_RELATIVE') {
+            await formatPathEntryIfNeeded(document, lineNum, kwLine);
+            return;
+        }
+    }
 
     const cardFields = getCardFieldsForLine(document, lineNum);
     if (!cardFields || cardFields.length === 0) return;
@@ -1744,11 +1854,7 @@ function activate(context) {
             new LsdynaFieldCompletionProvider()
         )
     );
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeTextDocument(e => {
-            alignCardFields(e);
-        })
-    );
+
 
     const client = startLanguageServer(context);
     const indexClient = createIndexClient({ languageClient: client });
@@ -2547,4 +2653,6 @@ module.exports._internals = {
     formatLineIfNeeded,
     handleTabAlignment,
     handleSelectionChange,
+    getPathEntryRange,
+    formatPathEntryIfNeeded,
 };
