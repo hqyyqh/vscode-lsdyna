@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -296,6 +296,52 @@ describe('Phase 7 Features', () => {
             assert.strictEqual(item.range.start.character, 0);
             assert.strictEqual(item.range.end.line, 1);
             assert.strictEqual(item.range.end.character, 36);
+        });
+    });
+
+    describe('handleEnterIndentationRemoval', () => {
+        it('should delete auto-copied spaces on enter key press', async () => {
+            const document = fakeDoc('        line 1\n        ', '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            let deleteCalled = false;
+            let deletedRange = null;
+
+            const activeEditor = {
+                document,
+                edit: async (callback) => {
+                    const editBuilder = {
+                        delete: (range) => {
+                            deleteCalled = true;
+                            deletedRange = range;
+                        }
+                    };
+                    callback(editBuilder);
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = activeEditor;
+
+            const event = {
+                document,
+                contentChanges: [{
+                    range: new vscodeMock.Range(0, 14, 0, 14),
+                    rangeLength: 0,
+                    text: '\n        '
+                }]
+            };
+
+            await handleEnterIndentationRemoval(event);
+
+            assert.ok(deleteCalled);
+            assert.strictEqual(deletedRange.start.line, 1);
+            assert.strictEqual(deletedRange.start.character, 0);
+            assert.strictEqual(deletedRange.end.line, 1);
+            assert.strictEqual(deletedRange.end.character, 8);
+
+            // Restore
+            vscodeMock.window.activeTextEditor = originalActiveTextEditor;
         });
     });
 

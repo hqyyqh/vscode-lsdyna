@@ -1488,6 +1488,36 @@ function generateCommentLine(card) {
     return chars.join('').trimEnd();
 }
 
+async function handleEnterIndentationRemoval(event) {
+    if (event.document.languageId !== 'lsdyna') return;
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document !== event.document) return;
+
+    const change = event.contentChanges[0];
+    if (!change) return;
+
+    if (change.rangeLength === 0 && (change.text.startsWith('\n') || change.text.startsWith('\r\n'))) {
+        const textAfterNewline = change.text.replace(/^\r?\n/, '');
+        if (textAfterNewline.length > 0 && /^\s+$/.test(textAfterNewline)) {
+            try {
+                const nextLineNum = change.range.start.line + 1;
+                const nextLineText = event.document.lineAt(nextLineNum).text;
+                if (nextLineText === textAfterNewline) {
+                    await editor.edit(editBuilder => {
+                        const replaceRange = new vscode.Range(
+                            nextLineNum, 0,
+                            nextLineNum, textAfterNewline.length
+                        );
+                        editBuilder.delete(replaceRange);
+                    }, { undoStopBefore: false, undoStopAfter: false });
+                }
+            } catch (err) {
+                console.error('[lsdyna] Failed to clear auto indent spaces:', err);
+            }
+        }
+    }
+}
+
 function alignLineText(text, card) {
     if (!card || card.length === 0) return text;
 
@@ -1887,6 +1917,10 @@ function activate(context) {
                 associateLsdynaLanguages();
             }
         })
+    );
+
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(handleEnterIndentationRemoval)
     );
 
     context.subscriptions.push(
@@ -2719,6 +2753,7 @@ module.exports._internals = {
     LsdynaFieldCompletionProvider,
     getCardFieldsForLine,
     generateCommentLine,
+    handleEnterIndentationRemoval,
     alignLineText,
     formatLineIfNeeded,
     handleTabAlignment,
