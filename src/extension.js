@@ -885,18 +885,18 @@ class LsdynaFieldHoverProvider {
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
 
-        // Build a visual card structure grid showing neighboring fields and column offsets
-        const headers = card.map(f => f.n === field.n ? `**${f.n}**` : f.n);
+        // Build transposed grid table header and highlight active field name as bold inline code
+        const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
         const separators = card.map(() => '---');
-        const columns = card.map(f => `${f.p + 1}-${f.p + f.w}`);
+        const fieldNamesBody = card.map(f => f.n === field.n ? `**\`${f.n}\`**` : f.n);
 
         const gridTable = [
-            `| ${headers.join(' | ')} |`,
+            `| ${columnsHeader.join(' | ')} |`,
             `| ${separators.join(' | ')} |`,
-            `| ${columns.join(' | ')} |`
+            `| ${fieldNamesBody.join(' | ')} |`
         ].join('\n');
 
-        const md = new vscode.MarkdownString(`### Field: **${field.n}**${typeLabel}${helpText}\n\n---\n**Card Structure:**\n\n${gridTable}`);
+        const md = new vscode.MarkdownString(`### **${field.n}**${typeLabel}${helpText}\n\n**Card Columns:**\n${gridTable}`);
         md.isTrusted = true;
         md.supportThemeIcons = true;
         appendManualLinks(md, kwName);
