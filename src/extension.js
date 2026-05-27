@@ -885,16 +885,15 @@ class LsdynaFieldHoverProvider {
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
 
-        // Build transposed grid table header and highlight active field name as bold inline code with color
-        const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
-        const separators = card.map(() => '---');
-        const fieldNamesBody = card.map(f => f.n === field.n ? `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>` : f.n);
-
-        const gridTable = [
-            `| ${columnsHeader.join(' | ')} |`,
-            `| ${separators.join(' | ')} |`,
-            `| ${fieldNamesBody.join(' | ')} |`
-        ].join('\n');
+        // Build HTML table with borders to separate columns clearly
+        const headerCols = card.map(f => `<th style="border: 1px solid var(--vscode-panel-border); text-align: center;">${f.p + 1}-${f.p + f.w}</th>`).join('');
+        const bodyCols = card.map(f => {
+            const content = f.n === field.n
+                ? `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>`
+                : f.n;
+            return `<td style="border: 1px solid var(--vscode-panel-border); text-align: center;">${content}</td>`;
+        }).join('');
+        const gridTable = `<table style="border: 1px solid var(--vscode-panel-border); text-align: center;"><tr>${headerCols}</tr><tr>${bodyCols}</tr></table>`;
 
         const md = new vscode.MarkdownString(`### <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n**Card Columns:**\n${gridTable}`);
         md.isTrusted = true;
