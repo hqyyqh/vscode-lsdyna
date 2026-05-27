@@ -237,6 +237,16 @@ function isLsdynaFile(document) {
     return isLsdynaUri(document.uri) || document.languageId === 'lsdyna';
 }
 
+function associateLsdynaLanguages() {
+    vscode.workspace.textDocuments.forEach(doc => {
+        if (isLsdynaUri(doc.uri) && doc.languageId !== 'lsdyna') {
+            vscode.languages.setTextDocumentLanguage(doc, 'lsdyna').then(undefined, err => {
+                console.error('[lsdyna] Failed to set text document language:', err);
+            });
+        }
+    });
+}
+
 /**
  * Scans document to construct clickable DocumentLinks targeting resolved includes.
  * 
@@ -1797,6 +1807,18 @@ function activate(context) {
     }
     logDebug("Extension activated.");
 
+    associateLsdynaLanguages();
+
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(doc => {
+            if (isLsdynaUri(doc.uri) && doc.languageId !== 'lsdyna') {
+                vscode.languages.setTextDocumentLanguage(doc, 'lsdyna').then(undefined, err => {
+                    console.error('[lsdyna] Failed to set text document language:', err);
+                });
+            }
+        })
+    );
+
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('lsdyna.language')) {
@@ -1808,6 +1830,9 @@ function activate(context) {
                 if (keywordTreeView) {
                     keywordTreeView.title = i18n.get('keywordIndexTitle');
                 }
+            }
+            if (e.affectsConfiguration('lsdyna.additionalExtensions')) {
+                associateLsdynaLanguages();
             }
         })
     );
