@@ -2101,10 +2101,12 @@ function activate(context) {
             if (folders && folders[0]) {
                 const selectedPath = folders[0].fsPath;
                 const config = vscode.workspace.getConfiguration('lsdyna');
-                const target = vscode.workspace.workspaceFolders ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-                await config.update('manualsDir', selectedPath, target);
-                
-                vscode.window.showInformationMessage(i18n.get('manualDirSetTo', selectedPath));
+                try {
+                    await config.update('manualsDir', selectedPath, vscode.ConfigurationTarget.Global);
+                    vscode.window.showInformationMessage(i18n.get('manualDirSetTo', selectedPath));
+                } catch (err) {
+                    vscode.window.showErrorMessage(i18n.get('failedToSaveGlobalConfig', err.message));
+                }
                 
                 if (process.platform === 'win32') {
                     const fs = require('fs');
