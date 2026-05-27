@@ -1677,7 +1677,7 @@ async function handleTabAlignment(editor) {
     }
 
     // 1. Determine current field index based on cursor position
-    let currentFieldIndex = 0;
+    let currentFieldIndex = -1;
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
         const nextF = card[i + 1];
@@ -1685,6 +1685,13 @@ async function handleTabAlignment(editor) {
         if (col >= f.p && col < end) {
             currentFieldIndex = i;
             break;
+        }
+    }
+    if (currentFieldIndex === -1) {
+        if (col >= card[card.length - 1].p) {
+            currentFieldIndex = card.length - 1;
+        } else {
+            currentFieldIndex = 0;
         }
     }
 

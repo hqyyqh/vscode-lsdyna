@@ -431,6 +431,36 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('wraps cursor to the next line when cursor is at the end of the last field', async () => {
+            const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            // The card has 8 fields of width 8. The end of the last field (field index 7) is column 80.
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 80), new vscodeMock.Position(1, 80));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                // Cursor should have jumped to line 2, character 0
+                assert.equal(selectionVal.active.line, 2);
+                assert.equal(selectionVal.active.character, 0);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('Selection context key setting', () => {
