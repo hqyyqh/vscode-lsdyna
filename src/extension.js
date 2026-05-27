@@ -888,7 +888,7 @@ class LsdynaFieldHoverProvider {
         // Build transposed grid table header and highlight active field name as bold inline code with color
         const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
         const separators = card.map(() => '---');
-        const fieldNamesBody = card.map(f => f.n === field.n ? `<span style="color:var(--vscode-textLink-foreground);">**\`${f.n}\`**</span>` : f.n);
+        const fieldNamesBody = card.map(f => f.n === field.n ? `<span style="color:var(--vscode-textLink-foreground);background-color:var(--vscode-editor-wordHighlightBackground);">**\`${f.n}\`**</span>` : f.n);
 
         const gridTable = [
             `| ${columnsHeader.join(' | ')} |`,
