@@ -885,10 +885,10 @@ class LsdynaFieldHoverProvider {
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
 
-        // Build transposed grid table header and highlight active field name as bold inline code
+        // Build transposed grid table header and highlight active field name as bold inline code with color
         const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
         const separators = card.map(() => '---');
-        const fieldNamesBody = card.map(f => f.n === field.n ? `**\`${f.n}\`**` : f.n);
+        const fieldNamesBody = card.map(f => f.n === field.n ? `<span style="color:var(--vscode-textLink-foreground);">**\`${f.n}\`**</span>` : f.n);
 
         const gridTable = [
             `| ${columnsHeader.join(' | ')} |`,
@@ -896,8 +896,9 @@ class LsdynaFieldHoverProvider {
             `| ${fieldNamesBody.join(' | ')} |`
         ].join('\n');
 
-        const md = new vscode.MarkdownString(`### **${field.n}**${typeLabel}${helpText}\n\n**Card Columns:**\n${gridTable}`);
+        const md = new vscode.MarkdownString(`### <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n**Card Columns:**\n${gridTable}`);
         md.isTrusted = true;
+        md.supportHtml = true;
         md.supportThemeIcons = true;
         appendManualLinks(md, kwName);
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);

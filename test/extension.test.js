@@ -1416,7 +1416,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover);
             assert.ok(
                 hover.contents[0].value.startsWith(
-                    '### **ENDENG** *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n**Card Columns:**\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |\n| --- | --- | --- | --- | --- | --- |\n| ENDTIM | ENDCYC | DTMIN | **`ENDENG`** | ENDMAS | NOSOL |'
+                    '### <span style="color:var(--vscode-textLink-foreground);">**ENDENG**</span> *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n**Card Columns:**\n| 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 |\n| --- | --- | --- | --- | --- | --- |\n| ENDTIM | ENDCYC | DTMIN | <span style="color:var(--vscode-textLink-foreground);">**`ENDENG`**</span> | ENDMAS | NOSOL |'
                 )
             );
         } finally {
@@ -1439,7 +1439,7 @@ describe('LsdynaFieldHoverProvider', () => {
         // Hovering on data line (line 3) for character 5 (MID field, width 10)
         const dataHover = provider.provideHover(doc, { line: 3, character: 5 });
         assert.ok(dataHover);
-        assert.ok(dataHover.contents[0].value.includes('**`MID`**'));
+        assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-textLink-foreground);">**`MID`**</span>'));
     });
 
     it('returns custom hover actions for existing include files', () => {
@@ -1478,7 +1478,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         const hover = provider.provideHover(doc, { line: 1, character: 3 });
         assert.ok(hover);
-        assert.ok(hover.contents[0].value.includes('**`FILENAME`**'));
+        assert.ok(hover.contents[0].value.includes('<span style="color:var(--vscode-textLink-foreground);">**`FILENAME`**</span>'));
     });
 
     it('appends manual links to keyword and field hovers when available', () => {
