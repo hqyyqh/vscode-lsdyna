@@ -50,6 +50,12 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  */
 
 /**
+ * @typedef {Object} PendingPath
+ * @property {string[]} parts - Buffer containing parts of the path.
+ * @property {boolean} awaitingContinuation - True if the line ends with ' +', indicating more segments follow.
+ */
+
+/**
  * @typedef {Object} IncludeDirectiveState
  * @property {string} basePath - Base directory path for resolving relative include paths.
  * @property {string} keyword - The active keyword context (e.g. '*INCLUDE', '*INCLUDE_PATH').
@@ -57,6 +63,7 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  * @property {IncludeEntry[]} includeEntries - Scanned include file references.
  * @property {string[]} searchPaths - Search directories resolved for this file.
  * @property {PendingInclude|null} pendingInclude - Active include entry being built.
+ * @property {PendingPath|null} pendingPath - Active path entry being built (for *INCLUDE_PATH continuation).
  */
 
 /**
@@ -79,6 +86,7 @@ function createIncludeDirectiveState(basePath) {
         includeEntries: [],
         searchPaths: [basePath],
         pendingInclude: null,
+        pendingPath: null,
     };
 }
 
@@ -225,6 +233,24 @@ function flushIncludeEntry(state) {
 }
 
 /**
+ * Flushes the current pending path entry into the search paths list.
+ * 
+ * @param {IncludeDirectiveState} state - Active parser state.
+ */
+function flushPathEntry(state) {
+    if (!state.pendingPath) return;
+    const pathStr = state.pendingPath.parts.join('').trim();
+    if (pathStr) {
+        if (state.pendingPath.isRelative) {
+            state.searchPaths.push(path.resolve(state.basePath, pathStr));
+        } else {
+            state.searchPaths.push(pathStr);
+        }
+    }
+    state.pendingPath = null;
+}
+
+/**
  * Processes a single line within the include directive parser state machine.
  * 
  * @param {IncludeDirectiveState} state - Active parser state.
@@ -236,6 +262,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 
     if (line.startsWith('*')) {
         flushIncludeEntry(state);
+        flushPathEntry(state);
         state.keyword = trimmed;
         state.cardCount = 0;
         return;
@@ -250,14 +277,33 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
         return;
     }
 
+    if (state.pendingPath) {
+        if (!trimmed || trimmed.startsWith('$')) return;
+        if (trimmed.endsWith(' +')) {
+            state.pendingPath.parts.push(trimmed.slice(0, -2));
+        } else {
+            state.pendingPath.parts.push(trimmed);
+            flushPathEntry(state);
+        }
+        return;
+    }
+
     if (!trimmed || trimmed.startsWith('$')) return;
 
     if (state.keyword === '*INCLUDE_PATH') {
-        state.searchPaths.push(trimmed);
+        if (trimmed.endsWith(' +')) {
+            state.pendingPath = { parts: [trimmed.slice(0, -2)], awaitingContinuation: true, isRelative: false };
+        } else {
+            state.searchPaths.push(trimmed);
+        }
         return;
     }
     if (state.keyword === '*INCLUDE_PATH_RELATIVE') {
-        state.searchPaths.push(path.resolve(state.basePath, trimmed));
+        if (trimmed.endsWith(' +')) {
+            state.pendingPath = { parts: [trimmed.slice(0, -2)], awaitingContinuation: true, isRelative: true };
+        } else {
+            state.searchPaths.push(path.resolve(state.basePath, trimmed));
+        }
         return;
     }
 
@@ -281,6 +327,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
  */
 function finalizeIncludeDirectiveState(state) {
     flushIncludeEntry(state);
+    flushPathEntry(state);
     return { includeEntries: state.includeEntries, searchPaths: state.searchPaths };
 }
 
