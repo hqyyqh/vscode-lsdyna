@@ -1738,26 +1738,26 @@ async function handleTabAlignment(editor) {
     } else {
         // It's the last field, wrap to the next line
         const nextLineNum = lineNum + 1;
-        if (nextLineNum < document.lineCount) {
+        let shouldInsertNewLine = false;
+
+        if (nextLineNum >= document.lineCount) {
+            shouldInsertNewLine = true;
+        } else {
             const nextLine = document.lineAt(nextLineNum);
             const trimmedNext = nextLine.text.trimStart();
             if (trimmedNext.startsWith('*') || trimmedNext.startsWith('$')) {
-                // If next line is a keyword or comment, just move to line end or line start
-                const newPos = new vscode.Position(lineNum, alignedText.length);
-                editor.selection = new vscode.Selection(newPos, newPos);
-            } else {
-                // Jump to start of the next card line
-                const newPos = new vscode.Position(nextLineNum, 0);
-                editor.selection = new vscode.Selection(newPos, newPos);
+                shouldInsertNewLine = true;
             }
-        } else {
-            // At the end of the file, append a new line and move there
+        }
+
+        if (shouldInsertNewLine) {
             await editor.edit(editBuilder => {
                 editBuilder.insert(new vscode.Position(lineNum, alignedText.length), '\n');
             }, { undoStopBefore: false, undoStopAfter: false });
-            const newPos = new vscode.Position(nextLineNum, 0);
-            editor.selection = new vscode.Selection(newPos, newPos);
         }
+
+        const newPos = new vscode.Position(nextLineNum, 0);
+        editor.selection = new vscode.Selection(newPos, newPos);
     }
 }
 

@@ -461,6 +461,47 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('inserts a newline and wraps cursor to it when tabbing at the last field and the next line is a keyword', async () => {
+            const document = fakeDoc('*NODE\n   12323               0               0\n*ELEMENT\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let editVal = '';
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 80), new vscodeMock.Position(1, 80));
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {},
+                        insert: (pos, text) => {
+                            if (text === '\n') {
+                                editVal += '\n';
+                            }
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                assert.ok(editCalled);
+                assert.equal(editVal, '\n');
+                // Cursor should have jumped to line 2, character 0 (the new line)
+                assert.equal(selectionVal.active.line, 2);
+                assert.equal(selectionVal.active.character, 0);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('Selection context key setting', () => {
