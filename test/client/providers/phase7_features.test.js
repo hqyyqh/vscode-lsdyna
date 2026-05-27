@@ -402,7 +402,7 @@ describe('Phase 7 Features', () => {
             }
         });
 
-        it('wraps cursor to the next line on the last field if the next line is a card line', async () => {
+        it('loops cursor back to the first field of the current line on the last field', async () => {
             const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
@@ -424,15 +424,15 @@ describe('Phase 7 Features', () => {
 
             try {
                 await handleTabAlignment(editor);
-                // Cursor should have jumped to line 2, character 0
-                assert.equal(selectionVal.active.line, 2);
+                // Cursor should have looped back to line 1, character 0 (first field start)
+                assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
 
-        it('wraps cursor to the next line when cursor is at the end of the last field', async () => {
+        it('loops cursor back to the first field of the current line when cursor is at the end of the last field', async () => {
             const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
@@ -454,15 +454,15 @@ describe('Phase 7 Features', () => {
 
             try {
                 await handleTabAlignment(editor);
-                // Cursor should have jumped to line 2, character 0
-                assert.equal(selectionVal.active.line, 2);
+                // Cursor should have looped back to line 1, character 0
+                assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
 
-        it('inserts a newline and wraps cursor to it when tabbing at the last field and the next line is a keyword', async () => {
+        it('does not insert a newline and loops cursor back to the first field of the current line when tabbing at the last field and the next line is a keyword', async () => {
             const document = fakeDoc('*NODE\n   12323               0               0\n*ELEMENT\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
@@ -494,9 +494,9 @@ describe('Phase 7 Features', () => {
             try {
                 await handleTabAlignment(editor);
                 assert.ok(editCalled);
-                assert.equal(editVal, '\n');
-                // Cursor should have jumped to line 2, character 0 (the new line)
-                assert.equal(selectionVal.active.line, 2);
+                assert.equal(editVal, ''); // should not insert a newline
+                // Cursor should have looped back to line 1, character 0
+                assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;

@@ -1736,27 +1736,9 @@ async function handleTabAlignment(editor) {
         const newPos = new vscode.Position(lineNum, targetCol + targetColOffset);
         editor.selection = new vscode.Selection(newPos, newPos);
     } else {
-        // It's the last field, wrap to the next line
-        const nextLineNum = lineNum + 1;
-        let shouldInsertNewLine = false;
-
-        if (nextLineNum >= document.lineCount) {
-            shouldInsertNewLine = true;
-        } else {
-            const nextLine = document.lineAt(nextLineNum);
-            const trimmedNext = nextLine.text.trimStart();
-            if (trimmedNext.startsWith('*') || trimmedNext.startsWith('$')) {
-                shouldInsertNewLine = true;
-            }
-        }
-
-        if (shouldInsertNewLine) {
-            await editor.edit(editBuilder => {
-                editBuilder.insert(new vscode.Position(lineNum, alignedText.length), '\n');
-            }, { undoStopBefore: false, undoStopAfter: false });
-        }
-
-        const newPos = new vscode.Position(nextLineNum, 0);
+        // Loop back to the first field on the current line
+        const targetCol = card[0].p;
+        const newPos = new vscode.Position(lineNum, targetCol);
         editor.selection = new vscode.Selection(newPos, newPos);
     }
 }
