@@ -271,7 +271,7 @@ describe('Phase 7 Features', () => {
                     { n: 'ELFORM', p: 20, w: 10 }
                 ];
                 const result = generateCommentLine(card);
-                const expected = '$#  SECID       MID    ELFORM';
+                const expected = '$#   SECID       MID    ELFORM';
                 assert.strictEqual(result, expected);
             });
         });
@@ -288,8 +288,8 @@ describe('Phase 7 Features', () => {
             const item = items[0];
             assert.strictEqual(item.label, '$#');
             assert.strictEqual(item.detail, '(LS-DYNA) 插入字段注释行');
-            assert.ok(item.insertText.includes('$#  SECID'));
-            assert.ok(item.documentation.value.includes('$#  SECID'));
+            assert.ok(item.insertText.includes('$#   SECID'));
+            assert.ok(item.documentation.value.includes('$#   SECID'));
         });
     });
 

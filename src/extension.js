@@ -1476,7 +1476,7 @@ function generateCommentLine(card) {
         if (maxLen <= 0) continue;
         let alignedName = name;
         if (name.length < maxLen) {
-            alignedName = name.padStart(maxLen - 1) + ' ';
+            alignedName = name.padStart(maxLen);
         } else {
             alignedName = name.slice(0, maxLen);
         }
