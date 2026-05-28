@@ -1320,6 +1320,8 @@ function getCardFieldsForLine(document, lineNum) {
 
     const kwText = document.lineAt(kwLine).text.trim();
     const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
+    if (kwName.startsWith('PARAMETER')) return null;
+
     const entry = lookupKeyword(kwName);
     if (!entry) return null;
 
@@ -2107,7 +2109,11 @@ function activate(context) {
         vscode.commands.registerCommand('extension.revealInExplorer', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                vscode.commands.executeCommand('revealFileInOS', uri);
+                if (process.platform === 'win32') {
+                    child_process.exec(`explorer.exe /select,"${uri.fsPath}"`);
+                } else {
+                    vscode.commands.executeCommand('revealFileInOS', uri);
+                }
             }
         })
     );
@@ -2136,7 +2142,11 @@ function activate(context) {
         vscode.commands.registerCommand('extension.openIncludeFolder', (filePath) => {
             try {
                 const uri = vscode.Uri.file(filePath);
-                vscode.commands.executeCommand('revealFileInOS', uri);
+                if (process.platform === 'win32') {
+                    child_process.exec(`explorer.exe /select,"${uri.fsPath}"`);
+                } else {
+                    vscode.commands.executeCommand('revealFileInOS', uri);
+                }
             } catch (err) {
                 vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
             }
