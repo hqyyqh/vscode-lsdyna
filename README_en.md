@@ -1,85 +1,96 @@
 # VS Code LS-DYNA extension
 [简体中文](README.md)
 
-> [!NOTE]
-> **Customized Version Notice (Modified by hqyyqh)**
-> This extension is a customized version based on the original [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) developed by Ryan O'Sullivan ([osullivryan](https://github.com/osullivryan)).
-> - **Modifier:** hqyyqh (Modified starting May 2026)
-> - **Source Code:** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
-> - **License:** Distributed under the GNU General Public License v3.0 (GPL-3.0). All original licenses and credits are preserved.
-
 ![Version](https://img.shields.io/badge/version-2.0.7--hqyyqh.0-blue)
-
 <img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
 
-## Integrates [LS-DYNA](https://www.lstc.com/) into VS Code.
+This extension integrates LS-DYNA formatting, keyword snippets, and language tooling into VS Code, bringing you a modernized and intelligent editing experience.
 
-This extension integrates LS-DYNA formatting, keyword snippets, and language tooling into VS Code.
-
-### Installation
+### Installation Guide
 
 Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdyna/releases) to download the latest `.vsix` extension package, and install it in VS Code via "Install from VSIX". For specific dependency configurations and FAQs, please refer to the installation guide on that page.
 
-### Features
+---
 
-**Syntax & Navigation**
-- Syntax highlighting for `.k`, `.key`, and `.dyna` files
-- Keyword folding — each `*KEYWORD` block collapses independently
-- Jump to next/previous keyword: `Ctrl+Alt+Down` / `Ctrl+Alt+Up`
-- Select the current keyword block via the right-click context menu
-- Support mapping custom file extensions to the LS-DYNA language mode via settings
+### Core Features Experience
 
-![Plugin Settings](images/设置.png)
+<details open>
+<summary><b>📖 Manual Integration & Interactive Query</b> (Click to expand/collapse)</summary>
+<br>
 
-**Include Files (*INCLUDE)**
-- `*INCLUDE` filenames are highlighted blue (resolved) or orange (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
-- Resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` style relative paths
-- Autocomplete for same-directory include paths (triggered by slash `/` or backspace, automatically filtering out remote/invalid paths)
-  ![Include File Completion](images/include文件补全.gif)
-- Hover actions on include files to jump or inspect target file details
-![Include File Actions](images/打开include文件.png)
+- **Interactive Hover Cards**: Keyword and field hovers display links directly to the exact page of the LS-DYNA PDF manual. Click to jump instantly!
+- **Instant Search**: Bookmark-based PDF manual indexing for instant search.
+- **Field-level Hints**: Hover cards contain detailed descriptions of every specific field of the keyword.
 
-**Parameters (*PARAMETER)**
-- Rename parameter across the file (F2)
-- Inlay hints show the resolved value of each `&parameter` reference inline
-- "N references" CodeLens above each parameter definition — click to open the References panel
+![Hover Hints](images/悬浮提示.gif)
+
+</details>
+
+<details open>
+<summary><b>⚡ Smart Autocomplete & Formatting</b> (Click to expand/collapse)</summary>
+<br>
+
+- **Fast Keyword Completion**: Tab-completable snippets for common LS-DYNA keywords.
+- **Smart Path Completion**: Type `/` to instantly autocomplete same-directory include files, automatically filtering invalid paths.
+- **Auto Comment Generation**: Trigger field comment generation using `$` or `#`, perfectly right-aligned without trailing spaces.
+- **Smart Tab Navigation**: Press `Tab` to align fields to their physical columns, loop through fields on the current line, and automatically wrap to the next line smoothly.
+- **Auto Format Data Lines**: Keeps your code strictly grid-aligned, clean, and standardized.
+
+> **Feature Demonstrations:**
+> 
+> | 🔑 Keyword Completion | 🛤️ Path Completion |
+> | :---: | :---: |
+> | ![Keyword Completion](images/关键字补全.gif) | ![Include File Completion](images/include文件补全.gif) |
+> | **📝 Quick Comment** | **📐 Smart Tab Navigation** |
+> | ![Comment Completion](images/注释补全.gif) | ![Tab Navigation](images/tab跳转和编辑.gif) |
+> | **✨ Auto Formatting** | |
+> | ![Auto Formatting](images/自动格式化.gif) | |
+
+</details>
+
+<details>
+<summary><b>📂 Include Files Management & Sidebar Tree</b> (Click to expand/collapse)</summary>
+<br>
+
+- **Status Highlighting**: `*INCLUDE` filenames are highlighted green (resolved) or orange (missing), including continued filenames and multiple files.
+- **Relative Path Resolution**: Flawlessly resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` styles.
+- **Include Tree Sidebar Panel**: Recursively scans all include files and displays the current file's inclusion hierarchy and all used keywords in an intuitive tree view.
+- **Quick Preview**: Hover actions on include file paths to quickly jump or inspect target file details.
+
+| Include Tree Panel | Hover Quick Actions |
+| :---: | :---: |
+| ![Include Tree](images/引用树.gif) | ![Include File Actions](images/打开include文件.png) |
+
+</details>
+
+<details>
+<summary><b>🛠️ Parameters (*PARAMETER) & Syntax Navigation</b> (Click to expand/collapse)</summary>
+<br>
+
+- **Inlay Hints**: Inline display of the final resolved value for each `&parameter` reference in real-time.
+- **Reference Tracking (CodeLens)**: "N references" CodeLens above each parameter definition — click to open the References panel.
+- **Global Rename**: Safely rename parameters across the entire document via the F2 key.
+- **Syntax Navigation**: Syntax highlighting for `.k`, `.key`, `.dyna`, and `.cfile` files; supports jumping to next/previous keyword; each `*KEYWORD` block can be collapsed independently.
 
 ![Parameter Hints](images/参数提示.png)
 
-**LS-DYNA Manual Integration**
-- Bookmark-based PDF manual indexing and cache for instant search
-- Interactive hover cards: Keyword and field hovers display links to the exact page of the LS-DYNA PDF manual
-- Hover cards contain detailed descriptions of each field of the keyword
-  ![Hover Hints](images/悬浮提示.gif)
+</details>
 
-**Sidebar Panel**
-- Recursively scans all `*INCLUDE` files and displays them as a tree
-- Shows all keywords used in the current file.
-![Include Tree](images/引用树.gif)
+---
 
-**Smart Autocomplete & Formatting**
-- Tab-completable snippets for common LS-DYNA keywords
-  ![Keyword Completion](images/关键字补全.gif)
-- **Smart Tab Navigation**: Press `Tab` to align fields to their physical columns, loop through fields on the current line, and automatically wrap to the next line smoothly
-  ![Tab Navigation](images/tab跳转和编辑.gif)
-- **Comment Completion**: Trigger field comment generation using `$` or `#`, perfectly right-aligned without trailing spaces
-  ![Comment Completion](images/注释补全.gif)
-- Automatically format data lines
-  ![Auto Formatting](images/自动格式化.gif)
-
-**LS-PrePost**
-- Syntax highlighting for `.cfile` command files
-
-### Settings
+### Extension Settings
 
 In addition to standard VS Code settings, this extension provides several dedicated configuration options.
+*(You can search for `lsdyna` in the settings UI to adjust these)*
+
+![Plugin Settings](images/设置.png)
 
 **LS-DYNA Dedicated Settings:**
 
 | Setting | Default | Description |
 |---|---|---|
 | `lsdyna.language` | `"zh-cn"` | Select the UI and Hover language for the extension (supports `zh-cn` and `en`) |
-| `lsdyna.manualsDir` | `""` | Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy `SumatraPDF.exe` into this folder for precise page navigation. |
+| `lsdyna.manualsDir` | `""` | Path to the directory containing LS-DYNA PDF manuals. On Windows, copy `SumatraPDF.exe` into this folder for precise page navigation. |
 | `lsdyna.additionalExtensions` | `[".k", ".key", ".dyna", ".asc"]` | Additional file extensions to associate with the LS-DYNA language |
 
 **Recommended VS Code Settings:**
@@ -100,6 +111,8 @@ These can be scoped to LS-DYNA files only by adding them under `"[lsdyna]"` in y
 }
 ```
 
+---
+
 ### Keyword Data
 
 Snippets and hover documentation are generated from the [pydyna](https://github.com/ansys/pydyna) keyword database (`kwd.json`), which is maintained by Ansys and covers 3168 LS-DYNA keywords with full field definitions, types, defaults, and help text. This data is used at build time only — it is not bundled in the extension.
@@ -107,14 +120,9 @@ Snippets and hover documentation are generated from the [pydyna](https://github.
 To regenerate after updating pydyna:
 
 ```bash
-# Clone pydyna as a sibling of this repo (one-time setup)
 git clone https://github.com/ansys/pydyna ../pydyna
-
-# Regenerate snippets and hover field data
 python keywords/generate_from_pydyna.py
 ```
-
-This overwrites `snippets/lsdyna.json` and `keywords/field_data.json`.
 
 ### Contributing new Keywords
 
@@ -138,3 +146,12 @@ There are a few ways you can go about adding keywords or features:
 
 [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna)  
 [DCHartlen's vscode extension](https://github.com/DCHartlen/LSDynaForVSCode)
+
+---
+
+> [!NOTE]
+> **Customized Version Notice (Modified by hqyyqh)**
+> This extension is a customized version based on the original [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) developed by Ryan O'Sullivan ([osullivryan](https://github.com/osullivryan)).
+> - **Modifier:** hqyyqh (Modified starting May 2026)
+> - **Source Code:** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
+> - **License:** Distributed under the GNU General Public License v3.0 (GPL-3.0). All original licenses and credits are preserved.
