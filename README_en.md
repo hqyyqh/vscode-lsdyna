@@ -32,7 +32,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 ![Plugin Settings](images/设置.png)
 
 **Include Files (*INCLUDE)**
-- `*INCLUDE` filenames are highlighted green (resolved) or orange (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
+- `*INCLUDE` filenames are highlighted blue (resolved) or orange (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
 - Resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` style relative paths
 - Autocomplete for same-directory include paths (triggered by slash `/` or backspace, automatically filtering out remote/invalid paths)
   ![Include File Completion](images/include文件补全.gif)
