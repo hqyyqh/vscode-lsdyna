@@ -32,8 +32,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 ![Plugin Settings](images/设置.png)
 
 **Include Files (*INCLUDE)**
-- `*INCLUDE` filenames are highlighted green (resolved) or red (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
-- Right-click an include filename → **Open *INCLUDE File**, or Ctrl/Cmd+Click
+- `*INCLUDE` filenames are highlighted green (resolved) or orange (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
 - Resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` style relative paths
 - Autocomplete for same-directory include paths (triggered by slash `/` or backspace, automatically filtering out remote/invalid paths)
   ![Include File Completion](images/include文件补全.gif)
@@ -44,24 +43,19 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 - Rename parameter across the file (F2)
 - Inlay hints show the resolved value of each `&parameter` reference inline
 - "N references" CodeLens above each parameter definition — click to open the References panel
-- Bare variable names in `*PARAMETER_EXPRESSION` values are highlighted the same color as `&param` references
 
 ![Parameter Hints](images/参数提示.png)
 
 **LS-DYNA Manual Integration**
 - Bookmark-based PDF manual indexing and cache for instant search
 - Interactive hover cards: Keyword and field hovers display links to the exact page of the LS-DYNA PDF manual
-  ![Hover Hints](images/悬浮提示.gif)
 - Hover cards contain detailed descriptions of each field of the keyword
+  ![Hover Hints](images/悬浮提示.gif)
 
 **Sidebar Panel**
 - Recursively scans all `*INCLUDE` files and displays them as a tree
 - Shows all keywords used in the current file.
 ![Include Tree](images/引用树.gif)
-
-**Diagnostics**
-- Lines exceeding 80 characters (excluding comments) are flagged as warnings.
-- Missing include files are flagged as warnings directly on their inclusion lines.
 
 **Smart Autocomplete & Formatting**
 - Tab-completable snippets for common LS-DYNA keywords
