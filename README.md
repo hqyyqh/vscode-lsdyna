@@ -29,6 +29,8 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Select the current keyword block via the right-click context menu
 - Word wrap off by default for fixed-width column alignment
 - Default editor rulers (field markers) for LS-DYNA to visualize columns, with an optimized, non-intrusive color palette
+- Keyword names are dynamically rendered in **bold** inside the text editor for better visibility
+- Support mapping custom file extensions to the LS-DYNA language mode via settings
 
 **Include Files**
 - `*INCLUDE` filenames are highlighted green (resolved) or red (missing), including continued filenames and multiple files listed under one exact `*INCLUDE` block
@@ -36,6 +38,7 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - Resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` style relative paths
 - Autocomplete for same-directory include paths (triggered by slash `/` or backspace, automatically filtering out remote/invalid paths)
 - Hover actions on include files to jump or inspect target file details
+- Automatically wraps long paths across continuation lines for `*INCLUDE_PATH` and `*INCLUDE_PATH_RELATIVE`
 
 **Parameters**
 - Go to Definition and Find All References for `&parameter` names (Ctrl/Cmd+Click)
@@ -46,8 +49,10 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 
 **LS-DYNA Manual Integration**
 - Bookmark-based PDF manual indexing (`manualIndexer`) and cache for instant search
+- Advanced keyword backtrack matching for PDF manuals (fully supports `/` separated items in bookmarks)
 - Interactive hover cards: Keyword and field hovers display links to the exact page of the LS-DYNA PDF manual
-- `openManual` command to easily jump to specific manual pages
+- Transposed HTML grid table layout in hovers with solid theme borders, column dividers, and dynamic badge highlighting for the active field
+- `openManual` command to easily jump to specific manual pages; the bottom manual bar auto-hides if no matches are found
 - SumatraPDF support (Windows) featuring tab recycling, single-instance routing, and page-precision navigation (requires placing `SumatraPDF.exe` in the manuals directory)
 
 **Sidebar Panel**
@@ -55,6 +60,7 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
   - Global file decorations (`FileDecorationProvider`) tracking resolved and missing files
   - Modernized visual indicators replacing emoji with block bars (`▏`, `▌`, `█`)
   - Formatted file sizes shown directly in description labels and right-hand badges
+- Multi-language UI localization (Chinese & English) for sidebar titles, tooltips, and commands
 - **Keyword Index** — shows all keywords used in the current file (local mode) or the full include tree (recursive mode). Large indices (e.g., millions of `*NODE` coordinates) are automatically grouped by file and folded above a certain threshold, ensuring clean lists and fluid UI response. Toggle between modes with the toolbar buttons.
 ![sidebar.png](./images/sidebar.png)
 
@@ -71,8 +77,11 @@ This extension integrates LS-DYNA formatting, keyword snippets, and language too
 - **High-Performance Binary Scanners** — Core scanners are optimized using binary buffer sliding scans (`keywordScanner`), binary buffer column-1 matching (`blockScanner`), and selective line decoding inside include blocks (`includeScanner`).
 - **Large File Optimization** — Lifted keyword and include tree thresholds for large files with fallback language detection, and used `vscode.open` instead of `openTextDocument` to prevent UI freezing.
 
-**Snippets**
+**Smart Autocomplete & Formatting**
 - Tab-completable snippets for common LS-DYNA keywords
+- **Smart Tab Navigation**: Press `Tab` to align fields to their physical columns, loop through fields on the current line, and automatically wrap to the next line smoothly
+- **Comment Completion**: Trigger field comment generation using `$` or `#`, perfectly right-aligned without trailing spaces
+- Prevents auto-indentation and cleans auto-copied trailing spaces on enter key press to maintain strict data alignment
 
 **LS-PrePost**
 - Syntax highlighting for `.cfile` command files
