@@ -18,9 +18,3 @@ GEMINI.md
 DEVELOPMENT.md
 images/*.gif
 **/*.vsix
-src/server/**
-src/worker/**
-src/core/cache/**
-src/core/incremental/**
-src/core/project/**
-src/client/services/**
