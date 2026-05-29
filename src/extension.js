@@ -1343,7 +1343,80 @@ function getCardFieldsForLine(document, lineNum) {
 }
 
 /**
+ * Builds a full snippet template string for a keyword entry (comment lines + field placeholders).
+ * Similar to the format used in snippets/lsdyna.json.
+ *
+ * @param {string} kwName - Keyword name (without leading '*').
+ * @param {Object} entry - Schema card descriptor from field_data.json.
+ * @returns {string} Snippet body string with tab stops.
+ */
+function buildKeywordSnippet(kwName, entry) {
+    const lines = ['*' + kwName];
+    if (!entry || !entry.c) return lines.join('\n');
+
+    let tabIndex = 1;
+    for (let ci = 0; ci < entry.c.length; ci++) {
+        const card = entry.c[ci];
+        if (!card || card.length === 0) continue;
+
+        // Generate comment line ($# header)
+        const commentLine = generateCommentLine(card);
+        if (commentLine) {
+            lines.push(commentLine);
+        }
+
+        // Generate data line with tab-stop placeholders
+        let snippetLine = '';
+        let prevEnd = 0;
+        for (let j = 0; j < card.length; j++) {
+            const f = card[j];
+            const gap = f.p - prevEnd;
+            if (gap > 0) snippetLine += ' '.repeat(gap);
+
+            const isFloat = (f.t && f.t.toUpperCase() === 'R') ||
+                (f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real'))) ||
+                (f.n && (f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z')));
+            const defVal = isFloat ? '0.0' : '0';
+            const name = (f.n || defVal).toUpperCase();
+            const padLen = Math.max(0, f.w - name.length);
+            const placeholder = ' '.repeat(padLen) + name;
+
+            snippetLine += `\${${tabIndex}:${placeholder}}`;
+            tabIndex++;
+            prevEnd = f.p + f.w;
+        }
+        lines.push(snippetLine);
+    }
+    lines.push('$0');
+    return lines.join('\n');
+}
+
+/**
+ * Counts how many lines belong to the current keyword block below the keyword line.
+ * Stops at the next keyword (*) line or end of document.
+ *
+ * @param {import('vscode').TextDocument} document - The document.
+ * @param {number} keywordLine - The line number of the keyword.
+ * @returns {number} Number of field lines (comments + data) below the keyword.
+ */
+function countExistingFieldLines(document, keywordLine) {
+    let count = 0;
+    for (let i = keywordLine + 1; i < document.lineCount; i++) {
+        const text = document.lineAt(i).text;
+        const trimmed = text.trimStart();
+        if (trimmed.startsWith('*')) break;
+        // Count non-empty lines and comment lines as part of the block
+        if (trimmed.length > 0) {
+            count = i - keywordLine;
+        }
+    }
+    return count;
+}
+
+/**
  * Autocomplete provider for LS-DYNA keyword names triggered by '*'.
+ * When a keyword is selected, inserts a full snippet template including
+ * comment lines and field placeholders (similar to snippets/lsdyna.json).
  * @implements {vscode.CompletionItemProvider}
  */
 class LsdynaKeywordCompletionProvider {
@@ -1362,16 +1435,31 @@ class LsdynaKeywordCompletionProvider {
         const keywordNames = Object.keys(data);
         const items = [];
 
+        // Determine range to replace: keyword line + existing field lines below
+        const existingFieldLines = countExistingFieldLines(document, position.line);
+        const replaceEndLine = position.line + existingFieldLines;
+        const replaceEndChar = replaceEndLine > position.line
+            ? document.lineAt(replaceEndLine).text.length
+            : lineText.length;
+
         for (const kwName of keywordNames) {
             if (prefix && !kwName.toUpperCase().startsWith(prefix)) continue;
 
-            const item = new vscode.CompletionItem('*' + kwName, vscode.CompletionItemKind.Keyword);
+            const item = new vscode.CompletionItem('*' + kwName, vscode.CompletionItemKind.Snippet);
             item.detail = '(LS-DYNA) Keyword';
             item.filterText = '*' + kwName;
-            item.insertText = '*' + kwName;
-            item.range = new vscode.Range(position.line, 0, position.line, position.character);
 
             const entry = data[kwName];
+            // Build full snippet template
+            const snippetBody = buildKeywordSnippet(kwName, entry);
+            item.insertText = new vscode.SnippetString(snippetBody);
+
+            // Replace from start of keyword line through end of existing field lines
+            item.range = new vscode.Range(
+                position.line, 0,
+                replaceEndLine, replaceEndChar
+            );
+
             if (entry && entry.c) {
                 item.documentation = new vscode.MarkdownString(keywordHoverMarkdown(kwName, entry));
             }
@@ -1971,6 +2059,20 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(handleEnterIndentationRemoval)
+    );
+
+    // Auto-trigger keyword completion when editing on *-lines (Issue 1)
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(e => {
+            if (e.document.languageId !== 'lsdyna') return;
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document !== e.document) return;
+            const line = editor.selection.active.line;
+            const lineText = e.document.lineAt(line).text;
+            if (lineText.trimStart().startsWith('*')) {
+                vscode.commands.executeCommand('editor.action.triggerSuggest');
+            }
+        })
     );
 
     context.subscriptions.push(

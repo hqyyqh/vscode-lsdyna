@@ -265,6 +265,26 @@ class LsdynaIncludeTreeProvider {
          */
         this.root = null;
         /**
+         * Whether a scan is currently in progress.
+         * @type {boolean}
+         */
+        this._scanning = false;
+        /**
+         * Set of expanded node file paths (tracked for real-time subtree updates).
+         * @type {Set<string>}
+         */
+        this._expandedNodes = new Set();
+        /**
+         * Timestamp of last tree refresh (for throttling at 500ms).
+         * @type {number}
+         */
+        this._lastRefreshTime = 0;
+        /**
+         * Pending refresh timer handle.
+         * @type {ReturnType<typeof setTimeout>|null}
+         */
+        this._pendingRefreshTimer = null;
+        /**
          * Map matching resolved file paths to their short sizes.
          * @type {Map<string, string>}
          */
@@ -277,7 +297,29 @@ class LsdynaIncludeTreeProvider {
     }
 
     /**
+     * Throttled tree refresh — fires at most once every 500ms.
+     * If an element is specified, only that subtree is refreshed.
+     *
+     * @param {IncludeItem|undefined} [element] - Optional element to refresh.
+     */
+    _throttledRefresh(element) {
+        const now = Date.now();
+        const elapsed = now - this._lastRefreshTime;
+        if (elapsed >= 500) {
+            this._lastRefreshTime = now;
+            this._onDidChangeTreeData.fire(element);
+        } else if (!this._pendingRefreshTimer) {
+            this._pendingRefreshTimer = setTimeout(() => {
+                this._pendingRefreshTimer = null;
+                this._lastRefreshTime = Date.now();
+                this._onDidChangeTreeData.fire(element);
+            }, 500 - elapsed);
+        }
+    }
+
+    /**
      * Triggers a workspace scan starting from the active editor document to rebuild the tree.
+     * Shows a "scanning" intermediate state with loading icons and incrementally updates the tree.
      * 
      * @returns {Promise<void>}
      */
@@ -296,17 +338,42 @@ class LsdynaIncludeTreeProvider {
             vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
             return;
         }
+
+        // Show initial scanning state immediately
+        this._scanning = true;
+        this.resolvedPaths.clear();
+        this.missingPaths.clear();
+
+        // Create a scanning placeholder root
+        const scanningRoot = new IncludeItem(uri.fsPath, fs.existsSync(uri.fsPath));
+        scanningRoot.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+        scanningRoot.description = i18n.get('scanning') || 'scanning...';
+        // Add a loading placeholder child
+        const loadingItem = new vscode.TreeItem(i18n.get('scanningIncludes') || 'Scanning...', vscode.TreeItemCollapsibleState.None);
+        loadingItem.iconPath = new vscode.ThemeIcon('loading~spin');
+        loadingItem.description = '';
+        scanningRoot.children = [loadingItem];
+        this.root = scanningRoot;
+        this._onDidChangeTreeData.fire(undefined);
+
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: i18n.get('scanningIncludes'), cancellable: false },
             async (progress) => {
-                this.resolvedPaths.clear();
-                this.missingPaths.clear();
                 if (this.loadProjectSnapshot) {
                     let progressDisposable = null;
                     if (this.scanProgressEvent) {
                         progressDisposable = this.scanProgressEvent((info) => {
                             const fileName = path.basename(info.currentFile || '');
                             progress.report({ message: i18n.get('filesFound', info.scannedFileCount) + (fileName ? ` - ${fileName}` : '') });
+
+                            // Update the scanning root description with progress
+                            if (this.root && this._scanning) {
+                                const loadingChild = this.root.children && this.root.children[0];
+                                if (loadingChild && loadingChild.iconPath && loadingChild.iconPath.id === 'loading~spin') {
+                                    loadingChild.label = i18n.get('filesFound', info.scannedFileCount) + (fileName ? ` - ${fileName}` : '');
+                                }
+                                this._throttledRefresh(undefined);
+                            }
                         });
                     }
                     let snapshot;
@@ -339,7 +406,7 @@ class LsdynaIncludeTreeProvider {
                         collectPaths(snapshot.graph.toTree(uri.fsPath));
                     }
                 } else {
-                    this.root = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
+                    this.root = await this._buildItemIncremental(uri.fsPath, new Set(), progress, uri.fsPath);
                     
                     const collectTreePaths = (item) => {
                         const key = normalizePathKey(item.filePath);
@@ -361,10 +428,130 @@ class LsdynaIncludeTreeProvider {
                     };
                     collectTreePaths(this.root);
                 }
+                this._scanning = false;
                 this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                 this._onDidChangeTreeData.fire(undefined);
             }
         );
+    }
+
+    /**
+     * Incrementally builds a tree item, firing throttled tree updates as children are discovered.
+     * Shows loading placeholders for unscanned children and replaces them with real items.
+     * 
+     * @private
+     * @param {string} filePath - Absolute path to scan.
+     * @param {Set<string>} visited - Tracks visited paths.
+     * @param {import('vscode').Progress<{message: string}>} progress - Progress dialog handle.
+     * @param {string} rootPath - Ancestor file path.
+     * @returns {Promise<IncludeItem>} Assembled tree item.
+     */
+    async _buildItemIncremental(filePath, visited, progress, rootPath) {
+        const exists = fs.existsSync(filePath);
+        const item = new IncludeItem(filePath, exists);
+        const actualRootPath = rootPath || filePath;
+
+        let dirStr = '';
+        if (actualRootPath !== filePath) {
+            const dir = path.dirname(actualRootPath);
+            const rel = path.relative(dir, filePath);
+            const relDir = path.dirname(rel);
+            dirStr = relDir === '.' ? '' : relDir;
+        }
+
+        if (!exists || visited.has(filePath)) {
+            if (visited.has(filePath)) {
+                item.description = 'circular';
+                item.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
+            }
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            applyVividDescription(item, dirStr);
+
+            const tooltip = new vscode.MarkdownString();
+            tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+            if (visited.has(filePath)) {
+                tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
+            }
+            item.tooltip = tooltip;
+
+            return item;
+        }
+
+        visited.add(filePath);
+        progress.report({ message: path.basename(filePath) });
+
+        let includeEntries;
+        let searchPaths;
+        try {
+            ({ includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath));
+        } catch (error) {
+            item.description = 'scan failed';
+            applyVividDescription(item, dirStr);
+
+            const tooltip = new vscode.MarkdownString();
+            tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('scanFailedStatus')}\n`);
+            tooltip.appendMarkdown(`- **${i18n.get('error')}**: ${error.message}\n`);
+            item.tooltip = tooltip;
+
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            return item;
+        }
+
+        if (includeEntries.length > 0) {
+            // Show loading placeholders for unscanned children
+            item.children = includeEntries.map(({ fileName }) => {
+                const placeholder = new vscode.TreeItem(path.basename(fileName), vscode.TreeItemCollapsibleState.None);
+                placeholder.iconPath = new vscode.ThemeIcon('loading~spin');
+                placeholder.description = i18n.get('scanning') || 'scanning...';
+                return placeholder;
+            });
+            item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+
+            // If this is the root or an expanded node, fire a throttled refresh
+            const isExpanded = actualRootPath === filePath || this._expandedNodes.has(filePath);
+            if (isExpanded) {
+                this._throttledRefresh(undefined);
+            }
+        }
+
+        // Now scan children one by one, replacing placeholders with real items
+        for (let idx = 0; idx < includeEntries.length; idx++) {
+            const { fileName } = includeEntries[idx];
+            let childPath;
+            try {
+                childPath = this.searchFileFromPaths(fileName, searchPaths);
+            } catch (e) {
+                childPath = path.resolve(path.dirname(filePath), fileName);
+            }
+            const childItem = await this._buildItemIncremental(childPath, new Set(visited), progress, actualRootPath);
+            item.children[idx] = childItem;
+
+            // Fire throttled refresh for expanded subtrees
+            const isExpanded = actualRootPath === filePath || this._expandedNodes.has(filePath);
+            if (isExpanded) {
+                this._throttledRefresh(undefined);
+            }
+        }
+
+        item.collapsibleState = item.children.length > 0
+            ? vscode.TreeItemCollapsibleState.Collapsed
+            : vscode.TreeItemCollapsibleState.None;
+
+        applyVividDescription(item, dirStr);
+
+        const tooltip = new vscode.MarkdownString();
+        tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(filePath)}**\n\n`);
+        tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${filePath}\`\n`);
+        if (item.children.length > 0) {
+            tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
+        }
+        item.tooltip = tooltip;
+
+        await new Promise(r => setImmediate(r));
+        return item;
     }
 
     /**
@@ -573,13 +760,21 @@ class LsdynaIncludeTreeProvider {
 
     /**
      * Fetches nested child items for a node.
+     * Tracks expanded nodes so that during scanning, subtrees update in real-time.
      * 
      * @param {IncludeItem} [element] - Target element.
      * @returns {IncludeItem[]} Nested children list.
      */
     getChildren(element) {
         if (!this.root) return [];
-        return element ? element.children : [this.root];
+        if (element) {
+            // Track that this node was expanded (for incremental refresh during scanning)
+            if (element.filePath) {
+                this._expandedNodes.add(element.filePath);
+            }
+            return element.children || [];
+        }
+        return [this.root];
     }
 }
 
