@@ -312,7 +312,6 @@
             "@semantic-release/github"
         ]
     },
-    "dependencies": {},
     "optionalDependencies": {
         "vscode-languageclient": "^7.0.0",
         "vscode-languageserver": "^7.0.0"

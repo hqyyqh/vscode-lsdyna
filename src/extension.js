@@ -2100,9 +2100,17 @@ function activate(context) {
     );
 
     if (!_lspAvailable) {
-        // Standalone mode: still watch for file changes to trigger tree refreshes
+        // Standalone mode: watch for file changes to trigger keyword index refreshes
         const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
         context.subscriptions.push(workspaceWatcher);
+        context.subscriptions.push(workspaceWatcher.onDidChange(() => {
+            const uri = getActiveUri();
+            if (uri) keywordIndexProvider.refreshFromUriOrDocument(uri);
+        }));
+        context.subscriptions.push(workspaceWatcher.onDidCreate(() => {
+            const uri = getActiveUri();
+            if (uri) keywordIndexProvider.refreshFromUriOrDocument(uri);
+        }));
     }
 
     const initialUri = getActiveUri();
