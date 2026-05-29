@@ -1,8 +1,7 @@
 # VS Code LS-DYNA extension
 [简体中文](README.md)
 
-![Version](https://img.shields.io/badge/version-2.0.7--hqyyqh.0-blue)
-<img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
+![Version](images/version-badge.png)
 
 This extension integrates LS-DYNA formatting, keyword snippets, and language tooling into VS Code, bringing you a modernized and intelligent editing experience.
 

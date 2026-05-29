@@ -1,8 +1,7 @@
 # VS Code LS-DYNA 扩展
 [English](README_en.md)
 
-![Version](https://img.shields.io/badge/version-2.0.7--hqyyqh.0-blue)
-<img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
+![Version](images/version-badge.png)
 
 此扩展将 LS-DYNA 格式化、关键字代码片段以及语言工具集成到了 VS Code 中，为您带来现代化、智能化的编写体验。
 
