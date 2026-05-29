@@ -62,11 +62,6 @@
                 "contents": "%viewsWelcome.lsdynaKeywordIndex.contents%"
             }
         ],
-        "configurationDefaults": {
-            "[lsdyna]": {
-                "editor.autoIndent": "none"
-            }
-        },
         "languages": [
             {
                 "id": "lsdyna",
@@ -189,6 +184,7 @@
         "configurationDefaults": {
             "[lsdyna]": {
                 "editor.wordWrap": "off",
+                "editor.autoIndent": "none",
                 "editor.guides.indentation": false,
                 "editor.renderIndentGuides": false,
                 "editor.renderWhitespace": "all",
