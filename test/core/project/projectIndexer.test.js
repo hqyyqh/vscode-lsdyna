@@ -277,4 +277,43 @@ describe('projectIndexer', () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
+
+    it('calls onProgress callback for each file scanned', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-progress-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+
+        fs.writeFileSync(rootFile, '*INCLUDE\na.key\n', 'utf8');
+        fs.writeFileSync(aFile, '*PART\npart line\n', 'utf8');
+
+        try {
+            const progressCalls = [];
+            const snapshot = await buildProjectIndex(rootFile, {
+                onProgress: (info) => progressCalls.push(info),
+            });
+
+            assert.ok(progressCalls.length >= 2, 'Should call onProgress at least for each file');
+            assert.ok(progressCalls.every(p => typeof p.scannedFileCount === 'number'));
+            assert.ok(progressCalls.every(p => typeof p.currentFile === 'string'));
+            assert.ok(progressCalls.some(p => p.currentFile === path.resolve(rootFile)));
+            assert.ok(progressCalls.some(p => p.currentFile === path.resolve(aFile)));
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('works without onProgress callback (backward compatible)', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-noprog-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+
+        fs.writeFileSync(rootFile, '*PART\npart line\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+            assert.ok(snapshot);
+            assert.ok(snapshot.keywordMap.has('PART'));
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
 });

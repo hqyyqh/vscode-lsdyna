@@ -30,12 +30,33 @@ function serializeError(error) {
     };
 }
 
+/**
+ * Minimum interval (ms) between progress messages to avoid flooding the parent thread.
+ * @type {number}
+ */
+const PROGRESS_THROTTLE_MS = 300;
+
 // Bind message listener on parent port to process requests.
 parentPort.on('message', async (message) => {
     if (!message || message.type !== 'buildProjectIndex') return;
 
     try {
-        const snapshot = await buildProjectIndex(message.rootFile);
+        let lastProgressTime = 0;
+
+        const onProgress = (info) => {
+            const now = Date.now();
+            if (now - lastProgressTime < PROGRESS_THROTTLE_MS) return;
+            lastProgressTime = now;
+
+            parentPort.postMessage({
+                requestId: message.requestId,
+                type: 'progress',
+                scannedFileCount: info.scannedFileCount,
+                currentFile: info.currentFile,
+            });
+        };
+
+        const snapshot = await buildProjectIndex(message.rootFile, { onProgress });
         parentPort.postMessage({
             requestId: message.requestId,
             snapshot: serializeProjectSnapshot(snapshot),

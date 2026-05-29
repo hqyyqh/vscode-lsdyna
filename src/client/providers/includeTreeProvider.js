@@ -251,10 +251,12 @@ class LsdynaIncludeTreeProvider {
      * @param {Object} [options={}] - Dependencies.
      * @param {function(string, string[]): string} [options.searchFileFromPaths] - Absolute path resolver helper.
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
+     * @param {import('vscode').Event} [options.scanProgressEvent] - Event fired with scan progress updates.
      */
-    constructor({ searchFileFromPaths, loadProjectSnapshot } = {}) {
+    constructor({ searchFileFromPaths, loadProjectSnapshot, scanProgressEvent } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
         this.loadProjectSnapshot = loadProjectSnapshot;
+        this.scanProgressEvent = scanProgressEvent || null;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         /**
@@ -300,8 +302,20 @@ class LsdynaIncludeTreeProvider {
                 this.resolvedPaths.clear();
                 this.missingPaths.clear();
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(uri.fsPath);
-                    this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
+                    let progressDisposable = null;
+                    if (this.scanProgressEvent) {
+                        progressDisposable = this.scanProgressEvent((info) => {
+                            const fileName = path.basename(info.currentFile || '');
+                            progress.report({ message: i18n.get('filesFound', info.scannedFileCount) + (fileName ? ` - ${fileName}` : '') });
+                        });
+                    }
+                    let snapshot;
+                    try {
+                        snapshot = await this.loadProjectSnapshot(uri.fsPath);
+                        this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
+                    } finally {
+                        if (progressDisposable) progressDisposable.dispose();
+                    }
                     
                     const collectPaths = (node) => {
                         const key = normalizePathKey(node.filePath);

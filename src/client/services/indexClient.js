@@ -287,7 +287,8 @@ function createIndexClient({
         }
     }
 
-    async function loadProjectSnapshot(rootFile) {
+    async function loadProjectSnapshot(rootFile, options = {}) {
+        const { onProgress } = options;
         const resolvedRootFile = resolveRootFile(rootFile);
         const rootCacheKey = getRootCacheKey(rootFile);
 
@@ -330,7 +331,7 @@ function createIndexClient({
                 }
             }
 
-            const snapshot = await buildProjectIndex(resolvedRootFile);
+            const snapshot = await buildProjectIndex(resolvedRootFile, { onProgress });
             let trackedFiles = null;
             try {
                 trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);

@@ -179,11 +179,13 @@ class LsdynaKeywordIndexProvider {
      * @param {function(string): Promise<string[]>} [options.collectIncludeFiles] - Includes scanner callback.
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
      * @param {function(import('vscode').TextDocument): boolean} [options.shouldSkipAutomaticDocumentScan] - Large file guard callback.
+     * @param {import('vscode').Event} [options.scanProgressEvent] - Event fired with scan progress updates.
      */
-    constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
+    constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan, scanProgressEvent } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
+        this.scanProgressEvent = scanProgressEvent || null;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         /**
@@ -407,8 +409,19 @@ class LsdynaKeywordIndexProvider {
             { location: vscode.ProgressLocation.Notification, title: i18n.get('indexingKeywords'), cancellable: false },
             async (progress) => {
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(rootFile);
-                    this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
+                    let progressDisposable = null;
+                    if (this.scanProgressEvent) {
+                        progressDisposable = this.scanProgressEvent((info) => {
+                            const fileName = path.basename(info.currentFile || '');
+                            progress.report({ message: i18n.get('filesFound', info.scannedFileCount) + (fileName ? ` - ${fileName}` : '') });
+                        });
+                    }
+                    try {
+                        const snapshot = await this.loadProjectSnapshot(rootFile);
+                        this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
+                    } finally {
+                        if (progressDisposable) progressDisposable.dispose();
+                    }
                 } else {
                     const files = await this.collectIncludeFiles(rootFile, (count) => {
                         progress.report({ message: i18n.get('filesFound', count) });

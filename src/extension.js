@@ -1342,6 +1342,47 @@ function getCardFieldsForLine(document, lineNum) {
     return cards[clampedIndex] || null;
 }
 
+/**
+ * Autocomplete provider for LS-DYNA keyword names triggered by '*'.
+ * @implements {vscode.CompletionItemProvider}
+ */
+class LsdynaKeywordCompletionProvider {
+    provideCompletionItems(document, position, _token, _context) {
+        if (!document) return [];
+
+        const lineText = document.lineAt(position.line).text;
+        const textBeforeCursor = lineText.slice(0, position.character);
+
+        // Only trigger when '*' is at column 0 (LS-DYNA keywords must start at first column)
+        const starIndex = textBeforeCursor.indexOf('*');
+        if (starIndex !== 0) return [];
+
+        const prefix = textBeforeCursor.slice(1).toUpperCase();
+        const data = getFieldData();
+        const keywordNames = Object.keys(data);
+        const items = [];
+
+        for (const kwName of keywordNames) {
+            if (prefix && !kwName.toUpperCase().startsWith(prefix)) continue;
+
+            const item = new vscode.CompletionItem('*' + kwName, vscode.CompletionItemKind.Keyword);
+            item.detail = '(LS-DYNA) Keyword';
+            item.filterText = '*' + kwName;
+            item.insertText = '*' + kwName;
+            item.range = new vscode.Range(position.line, 0, position.line, position.character);
+
+            const entry = data[kwName];
+            if (entry && entry.c) {
+                item.documentation = new vscode.MarkdownString(keywordHoverMarkdown(kwName, entry));
+            }
+
+            items.push(item);
+        }
+
+        return items;
+    }
+}
+
 class LsdynaFieldCompletionProvider {
     provideCompletionItems(document, position, token, context) {
         if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
@@ -1964,10 +2005,31 @@ function activate(context) {
             '$', '#'
         )
     );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { language: 'lsdyna' },
+            new LsdynaKeywordCompletionProvider(),
+            '*'
+        )
+    );
 
 
     const client = startLanguageServer(context);
     const indexClient = createIndexClient({ languageClient: client });
+
+    // Set up scan progress event emitter for tree providers
+    const scanProgressEmitter = new vscode.EventEmitter();
+    if (typeof client.onReady === 'function') {
+        client.onReady().then(() => {
+            client.onNotification('lsdyna/scanProgress', (params) => {
+                scanProgressEmitter.fire(params);
+            });
+        }).catch(() => {});
+    } else if (typeof client.onNotification === 'function') {
+        client.onNotification('lsdyna/scanProgress', (params) => {
+            scanProgressEmitter.fire(params);
+        });
+    }
 
     const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
     context.subscriptions.push(projectDiagnostics);
@@ -1996,6 +2058,7 @@ function activate(context) {
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        scanProgressEvent: scanProgressEmitter.event,
     });
     includeTreeView = vscode.window.createTreeView('lsdynaIncludeTree', {
         treeDataProvider: includeTreeProvider
@@ -2019,6 +2082,7 @@ function activate(context) {
         collectIncludeFiles,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         shouldSkipAutomaticDocumentScan,
+        scanProgressEvent: scanProgressEmitter.event,
     });
     keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
         treeDataProvider: keywordIndexProvider
@@ -2767,6 +2831,7 @@ module.exports._internals = {
     LsdynaFileDecorationProvider,
     normalizePathKey,
     LsdynaIncludeCompletionProvider,
+    LsdynaKeywordCompletionProvider,
     LsdynaFieldCompletionProvider,
     getCardFieldsForLine,
     generateCommentLine,

@@ -21,10 +21,12 @@ const protocol = require('../shared/protocol');
  * 
  * @param {string} method - Protocol request method string.
  * @param {Object} params - Method parameters payload.
+ * @param {Object} [context={}] - Optional context with server capabilities.
+ * @param {function(string, Object): void} [context.sendNotification] - Send notification to client.
  * @returns {Promise<any>} Response JSON data.
  * @throws {Error} If no active session exists or request method is unsupported.
  */
-async function handleRequest(method, params) {
+async function handleRequest(method, params, context = {}) {
     const session = getActiveSession();
     if (!session) {
         throw new Error('No active server session initialized');
@@ -33,7 +35,16 @@ async function handleRequest(method, params) {
     switch (method) {
         case protocol.LOAD_PROJECT_SNAPSHOT_REQUEST: {
             const { rootFile } = params;
-            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile);
+            const onProgress = context.sendNotification
+                ? (info) => {
+                    context.sendNotification(protocol.SCAN_PROGRESS_NOTIFICATION, {
+                        rootFile,
+                        scannedFileCount: info.scannedFileCount,
+                        currentFile: info.currentFile,
+                    });
+                }
+                : undefined;
+            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, { onProgress });
             return serializeProjectSnapshot(snapshot);
         }
         case protocol.GET_MANIFEST_ENTRIES_REQUEST: {

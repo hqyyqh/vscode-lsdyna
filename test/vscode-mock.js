@@ -63,7 +63,8 @@ class CompletionItem {
 const CompletionItemKind = {
     File: 17,
     Snippet: 27,
-    Field: 5
+    Field: 5,
+    Keyword: 14
 };
 
 class SnippetString {

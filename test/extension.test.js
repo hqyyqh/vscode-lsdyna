@@ -1884,6 +1884,65 @@ describe('LsdynaIncludeCompletionProvider', () => {
     });
 });
 
+// ---------------------------------------------------------------------------
+// LsdynaKeywordCompletionProvider
+// ---------------------------------------------------------------------------
+
+describe('LsdynaKeywordCompletionProvider', () => {
+    it('returns keyword completions when * is at column 0', () => {
+        const { LsdynaKeywordCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaKeywordCompletionProvider();
+
+        const doc = fakeDoc('*ELE\n');
+        const position = { line: 0, character: 4 };
+        const items = provider.provideCompletionItems(doc, position);
+
+        assert.ok(Array.isArray(items));
+        assert.ok(items.length > 0);
+        // Should include ELEMENT keywords
+        const labels = items.map(item => item.label);
+        assert.ok(labels.some(l => l.startsWith('*ELEMENT')), 'Should contain *ELEMENT keywords');
+    });
+
+    it('returns empty when * is not at column 0', () => {
+        const { LsdynaKeywordCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaKeywordCompletionProvider();
+
+        const doc = fakeDoc('  *ELE\n');
+        const position = { line: 0, character: 6 };
+        const items = provider.provideCompletionItems(doc, position);
+
+        assert.ok(Array.isArray(items));
+        assert.strictEqual(items.length, 0);
+    });
+
+    it('returns all keywords when only * is typed', () => {
+        const { LsdynaKeywordCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaKeywordCompletionProvider();
+
+        const doc = fakeDoc('*\n');
+        const position = { line: 0, character: 1 };
+        const items = provider.provideCompletionItems(doc, position);
+
+        assert.ok(Array.isArray(items));
+        assert.ok(items.length > 100, 'Should return many keywords');
+    });
+
+    it('filters keywords case-insensitively', () => {
+        const { LsdynaKeywordCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaKeywordCompletionProvider();
+
+        const doc = fakeDoc('*node\n');
+        const position = { line: 0, character: 5 };
+        const items = provider.provideCompletionItems(doc, position);
+
+        assert.ok(Array.isArray(items));
+        assert.ok(items.length > 0);
+        const labels = items.map(item => item.label);
+        assert.ok(labels.some(l => l.startsWith('*NODE')), 'Should contain *NODE keywords');
+    });
+});
+
 describe('extension.openManual command', () => {
     let originalPlatform;
     let originalExec;

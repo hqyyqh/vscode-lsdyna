@@ -27,7 +27,7 @@ const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
  * 
  * @param {WorkerPoolOptions} options - Configuration options.
  * @returns {{
- *   buildProjectIndex: function(string): Promise<import('../core/project/projectIndexer').ProjectIndexResult>,
+ *   buildProjectIndex: function(string, Object=): Promise<import('../core/project/projectIndexer').ProjectIndexResult>,
  *   dispose: function(): Promise<void>,
  *   isDisposed: function(): boolean
  * }} The worker pool control interface.
@@ -45,7 +45,7 @@ function createWorkerPool({
 
     /** @type {Worker} */
     const worker = workerFactory(workerPath);
-    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void}>} */
+    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void, onProgress?: function(Object): void}>} */
     const pendingRequests = new Map();
     let nextRequestId = 1;
     let disposed = false;
@@ -66,6 +66,17 @@ function createWorkerPool({
     worker.on('message', (message) => {
         const pendingRequest = pendingRequests.get(message.requestId);
         if (!pendingRequest) return;
+
+        if (message.type === 'progress') {
+            if (typeof pendingRequest.onProgress === 'function') {
+                pendingRequest.onProgress({
+                    scannedFileCount: message.scannedFileCount,
+                    currentFile: message.currentFile,
+                });
+            }
+            return;
+        }
+
         pendingRequests.delete(message.requestId);
 
         if (message.type === 'error') {
@@ -98,16 +109,18 @@ function createWorkerPool({
          * Asynchronously enqueues a project indexing request and sends it to the worker thread.
          * 
          * @param {string} rootFile - Absolute path to the project's root input file.
+         * @param {Object} [options={}] - Optional parameters.
+         * @param {function({scannedFileCount: number, currentFile: string}): void} [options.onProgress] - Progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Resolved project index.
          */
-        buildProjectIndex(rootFile) {
+        buildProjectIndex(rootFile, options = {}) {
             if (disposed) {
                 return Promise.reject(new Error('scan worker pool has been disposed'));
             }
 
             const requestId = nextRequestId++;
             return new Promise((resolve, reject) => {
-                pendingRequests.set(requestId, { reject, resolve });
+                pendingRequests.set(requestId, { reject, resolve, onProgress: options.onProgress });
                 worker.postMessage({
                     requestId,
                     rootFile,
