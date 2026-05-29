@@ -2062,15 +2062,24 @@ function activate(context) {
     );
 
     // Auto-trigger keyword completion when editing on *-lines (Issue 1)
+    // Debounced to avoid excessive completion requests on rapid typing
+    let _keywordTriggerTimer = null;
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.languageId !== 'lsdyna') return;
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.document !== e.document) return;
+            // Only trigger on character insertions, not deletions or other changes
+            const change = e.contentChanges[0];
+            if (!change || change.text.length === 0) return;
             const line = editor.selection.active.line;
             const lineText = e.document.lineAt(line).text;
             if (lineText.trimStart().startsWith('*')) {
-                vscode.commands.executeCommand('editor.action.triggerSuggest');
+                if (_keywordTriggerTimer) clearTimeout(_keywordTriggerTimer);
+                _keywordTriggerTimer = setTimeout(() => {
+                    _keywordTriggerTimer = null;
+                    vscode.commands.executeCommand('editor.action.triggerSuggest');
+                }, 100);
             }
         })
     );
