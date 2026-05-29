@@ -18,23 +18,35 @@ const child_process = require('child_process');
 const manualIndexer = require('./core/manualIndexer');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
-const { createIndexClient } = require('./client/services/indexClient');
-const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
-const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
-const { createWorkerPool } = require('./worker/workerPool');
-const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
-const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 const i18n = require('./core/i18n');
+
+// Optional LSP dependencies - gracefully degrade if not available (e.g. node_modules not bundled)
+let LanguageClient, TransportKind, createIndexClient, createDiskSnapshotStore, findAffectedProjectRoots, createWorkerPool, createProjectIndexLoader;
+let _lspAvailable = false;
+try {
+    ({ LanguageClient, TransportKind } = require('vscode-languageclient/node'));
+    ({ createIndexClient } = require('./client/services/indexClient'));
+    ({ createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore'));
+    ({ findAffectedProjectRoots } = require('./core/incremental/fileInvalidation'));
+    ({ createWorkerPool } = require('./worker/workerPool'));
+    ({ createProjectIndexLoader } = require('./worker/projectIndexLoader'));
+    _lspAvailable = true;
+} catch (e) {
+    console.warn('[lsdyna] Language server dependencies not available, running in standalone mode:', e.message);
+}
 
 /**
  * Launches the background language server as a separate node process via VS Code LanguageClient.
  * 
  * @param {import('vscode').ExtensionContext} context - The extension context.
- * @returns {import('vscode-languageclient/node').LanguageClient} Active LanguageClient instance.
+ * @returns {import('vscode-languageclient/node').LanguageClient|null} Active LanguageClient instance or null if LSP unavailable.
  */
 function startLanguageServer(context) {
+    if (!_lspAvailable) {
+        return null;
+    }
     const serverModule = path.join(__dirname, 'server', 'server.js');
     const debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
 
@@ -1967,35 +1979,47 @@ function activate(context) {
 
 
     const client = startLanguageServer(context);
-    const indexClient = createIndexClient({ languageClient: client });
+    let indexClient = null;
+    let loadProjectSnapshotFn = null;
 
-    const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
-    context.subscriptions.push(projectDiagnostics);
+    if (client && _lspAvailable) {
+        indexClient = createIndexClient({ languageClient: client });
 
-    const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
-    indexClient.loadProjectSnapshot = async (rootFile) => {
-        const snapshot = await originalLoadProjectSnapshot(rootFile);
-        publishProjectDiagnostics(snapshot, projectDiagnostics);
-        return snapshot;
-    };
+        const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
+        context.subscriptions.push(projectDiagnostics);
 
-    const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
-        loadProjectSnapshot: indexClient.loadProjectSnapshot,
-        onError(error, rootFile) {
-            console.error(`[lsdyna] Failed to refresh project snapshot for ${rootFile}:`, error);
-        },
-    });
-    const invalidateChangedProjectRoots = createBatchedManifestInvalidator({
-        indexClient,
-        onInvalidatedRoots(roots) {
-            for (const rootFile of roots) {
-                enqueueProjectSnapshotRefresh(rootFile);
-            }
-        },
-    });
+        const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
+        indexClient.loadProjectSnapshot = async (rootFile) => {
+            const snapshot = await originalLoadProjectSnapshot(rootFile);
+            publishProjectDiagnostics(snapshot, projectDiagnostics);
+            return snapshot;
+        };
+        loadProjectSnapshotFn = indexClient.loadProjectSnapshot;
+
+        const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
+            loadProjectSnapshot: indexClient.loadProjectSnapshot,
+            onError(error, rootFile) {
+                console.error(`[lsdyna] Failed to refresh project snapshot for ${rootFile}:`, error);
+            },
+        });
+        const invalidateChangedProjectRoots = createBatchedManifestInvalidator({
+            indexClient,
+            onInvalidatedRoots(roots) {
+                for (const rootFile of roots) {
+                    enqueueProjectSnapshotRefresh(rootFile);
+                }
+            },
+        });
+        const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
+        context.subscriptions.push(workspaceWatcher);
+        context.subscriptions.push(workspaceWatcher.onDidChange(uri => invalidateChangedProjectRoots(uri)));
+        context.subscriptions.push(workspaceWatcher.onDidCreate(uri => invalidateChangedProjectRoots(uri)));
+        context.subscriptions.push(workspaceWatcher.onDidDelete(uri => invalidateChangedProjectRoots(uri)));
+    }
+
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
-        loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        loadProjectSnapshot: loadProjectSnapshotFn,
     });
     includeTreeView = vscode.window.createTreeView('lsdynaIncludeTree', {
         treeDataProvider: includeTreeProvider
@@ -2017,7 +2041,7 @@ function activate(context) {
 
     const keywordIndexProvider = new LsdynaKeywordIndexProvider({
         collectIncludeFiles,
-        loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        loadProjectSnapshot: loadProjectSnapshotFn,
         shouldSkipAutomaticDocumentScan,
     });
     keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
@@ -2074,11 +2098,12 @@ function activate(context) {
             }
         })
     );
-    const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
-    context.subscriptions.push(workspaceWatcher);
-    context.subscriptions.push(workspaceWatcher.onDidChange(uri => invalidateChangedProjectRoots(uri)));
-    context.subscriptions.push(workspaceWatcher.onDidCreate(uri => invalidateChangedProjectRoots(uri)));
-    context.subscriptions.push(workspaceWatcher.onDidDelete(uri => invalidateChangedProjectRoots(uri)));
+
+    if (!_lspAvailable) {
+        // Standalone mode: still watch for file changes to trigger tree refreshes
+        const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
+        context.subscriptions.push(workspaceWatcher);
+    }
 
     const initialUri = getActiveUri();
     logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);

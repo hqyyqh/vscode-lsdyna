@@ -4,6 +4,7 @@ keywords/feeders*
 node_modules/
 .worktrees/
 /.antigravity
+*.vsix
 
 # Ensure bundled SumatraPDF binary is tracked
 !bin/SumatraPDF.exe

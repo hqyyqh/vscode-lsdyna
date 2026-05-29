@@ -25,7 +25,7 @@
         "Programming Languages"
     ],
     "scripts": {
-        "test": "mocha test/**/*.test.js"
+        "test": "mocha --require test/helpers.js 'test/**/*.test.js'"
     },
     "devDependencies": {
         "mocha": "^10.0.0"
@@ -312,7 +312,8 @@
             "@semantic-release/github"
         ]
     },
-    "dependencies": {
+    "dependencies": {},
+    "optionalDependencies": {
         "vscode-languageclient": "^7.0.0",
         "vscode-languageserver": "^7.0.0"
     }

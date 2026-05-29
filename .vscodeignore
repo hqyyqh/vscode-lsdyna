@@ -3,6 +3,7 @@
 .claude
 .vscode
 test
+node_modules
 keywords/**
 !keywords/field_data.json
 !keywords/field_data_zh.json
@@ -14,3 +15,12 @@ LS-DYNA Manuals
 bin
 AGENTS.md
 GEMINI.md
+DEVELOPMENT.md
+images/*.gif
+**/*.vsix
+src/server/**
+src/worker/**
+src/core/cache/**
+src/core/incremental/**
+src/core/project/**
+src/client/services/**
