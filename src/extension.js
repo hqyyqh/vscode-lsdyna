@@ -1556,7 +1556,31 @@ function alignLineText(text, card) {
         return emptyLine;
     }
 
-    const tokens = trimmed.split(/\s+/).filter(t => t.length > 0);
+    const rawTokens = trimmed.split(/\s+/).filter(t => t.length > 0);
+    const tokens = [];
+    const numPattern = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/i;
+    for (const t of rawTokens) {
+        if (numPattern.test(t)) {
+            tokens.push(t);
+            continue;
+        }
+        const matchStrNum = t.match(/^([A-Za-z_]+)([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
+        if (matchStrNum) {
+            tokens.push(matchStrNum[1], matchStrNum[2]);
+            continue;
+        }
+        const matchAlphaSignedNum = t.match(/^([A-Za-z0-9_]+)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
+        if (matchAlphaSignedNum) {
+            tokens.push(matchAlphaSignedNum[1], matchAlphaSignedNum[2]);
+            continue;
+        }
+        const matchNumNum = t.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
+        if (matchNumNum) {
+            tokens.push(matchNumNum[1], matchNumNum[2]);
+            continue;
+        }
+        tokens.push(t);
+    }
 
     // Attempt physical column extraction
     const physVals = [];
@@ -1577,7 +1601,8 @@ function alignLineText(text, card) {
     }
 
     const nonEvPhysVals = physVals.filter(v => v.length > 0);
-    const useTokens = hasInternalSpace || (nonEvPhysVals.length !== tokens.length);
+    const physMatchesTokens = (nonEvPhysVals.length === tokens.length) && nonEvPhysVals.every((v, i) => v === tokens[i]);
+    const useTokens = hasInternalSpace || !physMatchesTokens;
 
     let alignedText = '';
     let prevEnd = 0;
