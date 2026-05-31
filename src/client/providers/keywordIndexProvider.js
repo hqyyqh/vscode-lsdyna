@@ -178,11 +178,13 @@ class LsdynaKeywordIndexProvider {
      * @param {Object} [options={}] - Dependencies.
      * @param {function(string): Promise<string[]>} [options.collectIncludeFiles] - Includes scanner callback.
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
+     * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Cache invalidator.
      * @param {function(import('vscode').TextDocument): boolean} [options.shouldSkipAutomaticDocumentScan] - Large file guard callback.
      */
-    constructor({ collectIncludeFiles, loadProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
+    constructor({ collectIncludeFiles, loadProjectSnapshot, invalidateProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
         this.loadProjectSnapshot = loadProjectSnapshot;
+        this.invalidateProjectSnapshot = invalidateProjectSnapshot;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -406,6 +408,9 @@ class LsdynaKeywordIndexProvider {
         await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: i18n.get('indexingKeywords'), cancellable: false },
             async (progress) => {
+                if (this.invalidateProjectSnapshot) {
+                    await this.invalidateProjectSnapshot(uri.fsPath);
+                }
                 if (this.loadProjectSnapshot) {
                     const snapshot = await this.loadProjectSnapshot(rootFile, (partialSnapshot) => {
                         this.roots = this._buildRootsFromSnapshot(partialSnapshot, rootDir);

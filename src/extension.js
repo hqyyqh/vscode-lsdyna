@@ -2004,6 +2004,7 @@ function activate(context) {
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        invalidateProjectSnapshot: indexClient.invalidate,
     });
     includeTreeView = vscode.window.createTreeView('lsdynaIncludeTree', {
         treeDataProvider: includeTreeProvider
@@ -2024,9 +2025,10 @@ function activate(context) {
     );
 
     const keywordIndexProvider = new LsdynaKeywordIndexProvider({
-        collectIncludeFiles,
-        loadProjectSnapshot: indexClient.loadProjectSnapshot,
         shouldSkipAutomaticDocumentScan,
+        searchFileFromPaths,
+        loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        invalidateProjectSnapshot: indexClient.invalidate,
     });
     keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
         treeDataProvider: keywordIndexProvider

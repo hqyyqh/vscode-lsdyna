@@ -341,13 +341,18 @@ function createDiskSnapshotStore({
      * @returns {Promise<boolean>} True if all files are unmodified.
      */
     async function validateTrackedFiles(trackedFiles) {
-        for (const trackedFile of trackedFiles) {
-            try {
-                const currentSignature = await getFileSignature(trackedFile.filePath);
-                if (!areFileSignaturesEqual(currentSignature, trackedFile.signature)) {
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < trackedFiles.length; i += CHUNK_SIZE) {
+            const chunk = trackedFiles.slice(i, i + CHUNK_SIZE);
+            const results = await Promise.all(chunk.map(async trackedFile => {
+                try {
+                    const currentSignature = await getFileSignature(trackedFile.filePath);
+                    return areFileSignaturesEqual(currentSignature, trackedFile.signature);
+                } catch (_error) {
                     return false;
                 }
-            } catch (_error) {
+            }));
+            if (results.includes(false)) {
                 return false;
             }
         }

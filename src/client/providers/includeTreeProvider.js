@@ -251,10 +251,12 @@ class LsdynaIncludeTreeProvider {
      * @param {Object} [options={}] - Dependencies.
      * @param {function(string, string[]): string} [options.searchFileFromPaths] - Absolute path resolver helper.
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
+     * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Invalidate cache.
      */
-    constructor({ searchFileFromPaths, loadProjectSnapshot } = {}) {
+    constructor({ searchFileFromPaths, loadProjectSnapshot, invalidateProjectSnapshot } = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
         this.loadProjectSnapshot = loadProjectSnapshot;
+        this.invalidateProjectSnapshot = invalidateProjectSnapshot;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         /**
@@ -299,6 +301,9 @@ class LsdynaIncludeTreeProvider {
             async (progress) => {
                 this.resolvedPaths.clear();
                 this.missingPaths.clear();
+                if (this.invalidateProjectSnapshot) {
+                    await this.invalidateProjectSnapshot(uri.fsPath);
+                }
                 if (this.loadProjectSnapshot) {
                     const snapshot = await this.loadProjectSnapshot(uri.fsPath, (partialSnapshot) => {
                         this.root = this._buildRootFromSnapshot(partialSnapshot, uri.fsPath);
