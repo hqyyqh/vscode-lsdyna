@@ -1596,7 +1596,12 @@ function alignLineText(text, card) {
             val = physVals[i];
         }
 
-        const paddedVal = val.padStart(f.w);
+        let paddedVal;
+        if (f.t === 'string') {
+            paddedVal = val.padEnd(f.w);
+        } else {
+            paddedVal = val.padStart(f.w);
+        }
         alignedText += paddedVal;
         prevEnd = f.p + f.w;
     }
