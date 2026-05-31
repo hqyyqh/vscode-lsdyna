@@ -206,14 +206,25 @@ function createIndexClient({
         if (typeof languageClient.sendRequest !== 'function' || typeof languageClient.sendNotification !== 'function') {
             throw new TypeError('createIndexClient requires a languageClient supporting sendRequest and sendNotification');
         }
+        let progressCallback = null;
+        languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
+            if (progressCallback) {
+                progressCallback(hydrateProjectSnapshot(params));
+            }
+        });
         return {
-            async loadProjectSnapshot(rootFile) {
+            async loadProjectSnapshot(rootFile, onProgress = null) {
+                progressCallback = onProgress;
                 const resolvedRootFile = resolveRootFile(rootFile);
-                const serialized = await languageClient.sendRequest(
-                    protocol.LOAD_PROJECT_SNAPSHOT_REQUEST,
-                    { rootFile: resolvedRootFile }
-                );
-                return hydrateProjectSnapshot(serialized);
+                try {
+                    const serialized = await languageClient.sendRequest(
+                        protocol.LOAD_PROJECT_SNAPSHOT_REQUEST,
+                        { rootFile: resolvedRootFile }
+                    );
+                    return hydrateProjectSnapshot(serialized);
+                } finally {
+                    progressCallback = null;
+                }
             },
             invalidate(rootFile) {
                 const resolvedRootFile = resolveRootFile(rootFile);
@@ -287,7 +298,7 @@ function createIndexClient({
         }
     }
 
-    async function loadProjectSnapshot(rootFile) {
+    async function loadProjectSnapshot(rootFile, onProgress = null) {
         const resolvedRootFile = resolveRootFile(rootFile);
         const rootCacheKey = getRootCacheKey(rootFile);
 
@@ -330,7 +341,7 @@ function createIndexClient({
                 }
             }
 
-            const snapshot = await buildProjectIndex(resolvedRootFile);
+            const snapshot = await buildProjectIndex(resolvedRootFile, onProgress);
             let trackedFiles = null;
             try {
                 trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);

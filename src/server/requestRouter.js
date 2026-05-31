@@ -21,10 +21,11 @@ const protocol = require('../shared/protocol');
  * 
  * @param {string} method - Protocol request method string.
  * @param {Object} params - Method parameters payload.
+ * @param {import('vscode-languageserver').Connection} [connection] - Language server connection.
  * @returns {Promise<any>} Response JSON data.
  * @throws {Error} If no active session exists or request method is unsupported.
  */
-async function handleRequest(method, params) {
+async function handleRequest(method, params, connection) {
     const session = getActiveSession();
     if (!session) {
         throw new Error('No active server session initialized');
@@ -33,7 +34,14 @@ async function handleRequest(method, params) {
     switch (method) {
         case protocol.LOAD_PROJECT_SNAPSHOT_REQUEST: {
             const { rootFile } = params;
-            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile);
+            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, (partialSnapshot) => {
+                if (connection) {
+                    connection.sendNotification(
+                        protocol.SCAN_PROGRESS_NOTIFICATION, 
+                        serializeProjectSnapshot(partialSnapshot)
+                    );
+                }
+            });
             return serializeProjectSnapshot(snapshot);
         }
         case protocol.GET_MANIFEST_ENTRIES_REQUEST: {

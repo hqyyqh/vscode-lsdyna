@@ -62,12 +62,13 @@ function createProjectIndexLoader({
          * Asynchronously delegates project indexing to the worker pool.
          * 
          * @param {string} rootFile - Absolute path to the root LS-DYNA file.
+         * @param {function(Object): void} [onProgress] - Optional progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Scanned project snapshot.
          */
-        async buildProjectIndex(rootFile) {
+        async buildProjectIndex(rootFile, onProgress = null) {
             const pool = getWorkerPool();
             try {
-                return await pool.buildProjectIndex(rootFile);
+                return await pool.buildProjectIndex(rootFile, onProgress);
             } catch (error) {
                 if (workerPool === pool && isPoolDisposed(pool)) {
                     workerPool = null;

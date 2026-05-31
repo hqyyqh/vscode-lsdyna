@@ -407,7 +407,16 @@ class LsdynaKeywordIndexProvider {
             { location: vscode.ProgressLocation.Notification, title: i18n.get('indexingKeywords'), cancellable: false },
             async (progress) => {
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(rootFile);
+                    const snapshot = await this.loadProjectSnapshot(rootFile, (partialSnapshot) => {
+                        this.roots = this._buildRootsFromSnapshot(partialSnapshot, rootDir);
+                        
+                        let scannedCount = 0;
+                        if (partialSnapshot && partialSnapshot.files) {
+                            scannedCount = partialSnapshot.files.length;
+                        }
+                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) || `Scanned ${scannedCount} files...` });
+                        this._onDidChangeTreeData.fire(undefined);
+                    });
                     this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);
                 } else {
                     const files = await this.collectIncludeFiles(rootFile, (count) => {

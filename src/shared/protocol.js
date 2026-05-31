@@ -34,9 +34,16 @@ const GET_MANIFEST_ENTRIES_REQUEST = 'lsdyna/getManifestEntries';
  */
 const GET_CACHE_STATS_REQUEST = 'lsdyna/getCacheStats';
 
+/**
+ * Notification informing the client about partial scan progress during project loading.
+ * @type {string}
+ */
+const SCAN_PROGRESS_NOTIFICATION = 'lsdyna/scanProgress';
+
 module.exports = {
     LOAD_PROJECT_SNAPSHOT_REQUEST,
     INVALIDATE_NOTIFICATION,
     GET_MANIFEST_ENTRIES_REQUEST,
     GET_CACHE_STATS_REQUEST,
+    SCAN_PROGRESS_NOTIFICATION,
 };

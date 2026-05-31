@@ -300,7 +300,17 @@ class LsdynaIncludeTreeProvider {
                 this.resolvedPaths.clear();
                 this.missingPaths.clear();
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(uri.fsPath);
+                    const snapshot = await this.loadProjectSnapshot(uri.fsPath, (partialSnapshot) => {
+                        this.root = this._buildRootFromSnapshot(partialSnapshot, uri.fsPath);
+                        this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+                        
+                        let scannedCount = 0;
+                        if (partialSnapshot && partialSnapshot.files) {
+                            scannedCount = partialSnapshot.files.length;
+                        }
+                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) || `Scanned ${scannedCount} files...` });
+                        this._onDidChangeTreeData.fire(undefined);
+                    });
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
                     
                     const collectPaths = (node) => {

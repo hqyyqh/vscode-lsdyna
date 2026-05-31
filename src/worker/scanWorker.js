@@ -35,7 +35,13 @@ parentPort.on('message', async (message) => {
     if (!message || message.type !== 'buildProjectIndex') return;
 
     try {
-        const snapshot = await buildProjectIndex(message.rootFile);
+        const snapshot = await buildProjectIndex(message.rootFile, (partialSnapshot) => {
+            parentPort.postMessage({
+                requestId: message.requestId,
+                snapshot: serializeProjectSnapshot(partialSnapshot),
+                type: 'progress',
+            });
+        });
         parentPort.postMessage({
             requestId: message.requestId,
             snapshot: serializeProjectSnapshot(snapshot),

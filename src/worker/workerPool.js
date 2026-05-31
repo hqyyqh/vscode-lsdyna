@@ -45,7 +45,7 @@ function createWorkerPool({
 
     /** @type {Worker} */
     const worker = workerFactory(workerPath);
-    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void}>} */
+    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void, onProgress: function(any): void}>} */
     const pendingRequests = new Map();
     let nextRequestId = 1;
     let disposed = false;
@@ -66,6 +66,14 @@ function createWorkerPool({
     worker.on('message', (message) => {
         const pendingRequest = pendingRequests.get(message.requestId);
         if (!pendingRequest) return;
+
+        if (message.type === 'progress') {
+            if (pendingRequest.onProgress) {
+                pendingRequest.onProgress(hydrateProjectSnapshot(message.snapshot));
+            }
+            return;
+        }
+
         pendingRequests.delete(message.requestId);
 
         if (message.type === 'error') {
@@ -98,16 +106,17 @@ function createWorkerPool({
          * Asynchronously enqueues a project indexing request and sends it to the worker thread.
          * 
          * @param {string} rootFile - Absolute path to the project's root input file.
+         * @param {function(Object): void} [onProgress] - Optional progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Resolved project index.
          */
-        buildProjectIndex(rootFile) {
+        buildProjectIndex(rootFile, onProgress = null) {
             if (disposed) {
                 return Promise.reject(new Error('scan worker pool has been disposed'));
             }
 
             const requestId = nextRequestId++;
             return new Promise((resolve, reject) => {
-                pendingRequests.set(requestId, { reject, resolve });
+                pendingRequests.set(requestId, { reject, resolve, onProgress });
                 worker.postMessage({
                     requestId,
                     rootFile,

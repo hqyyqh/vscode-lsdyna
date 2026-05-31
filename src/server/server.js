@@ -45,7 +45,7 @@ connection.onShutdown(async () => {
 
 // Bind custom request handler for loading project snapshots.
 connection.onRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, async (params) => {
-    return handleRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, params);
+    return handleRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, params, connection);
 });
 
 // Bind custom request handler for retrieving cache manifests.

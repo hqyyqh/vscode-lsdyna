@@ -179,9 +179,10 @@ function createProjectIndexer({
      * Rebuilds the project index starting from the given root file by recursively scanning inclusions.
      * 
      * @param {string} rootFile - Absolute path to the main LS-DYNA input deck.
+     * @param {function(Object): void} [onProgress] - Optional callback for periodic snapshot progress.
      * @returns {Promise<ProjectIndexResult>} The assembled project index snapshot.
      */
-    async function buildProjectIndex(rootFile) {
+    async function buildProjectIndex(rootFile, onProgress = null) {
         const resolvedRootFile = resolveProjectFile(rootFile);
         const files = [];
         const keywordMap = new Map();
@@ -191,6 +192,7 @@ function createProjectIndexer({
             scannedFileCount: 0,
             reusedFileCount: 0,
         };
+        let lastProgressTime = Date.now();
 
         /**
          * Depth-First Search traversal to visit and parse files recursively.
@@ -207,6 +209,19 @@ function createProjectIndexer({
 
             const scanResult = await loadFileScan(resolvedFilePath, stats);
             addKeywordUsages(keywordMap, scanResult.keywords);
+
+            if (onProgress && Date.now() - lastProgressTime >= 500) {
+                lastProgressTime = Date.now();
+                onProgress({
+                    rootFile: resolvedRootFile,
+                    files: [...files],
+                    graph,
+                    keywordMap,
+                    missingFiles: graph.missingFiles,
+                    cycles: graph.cycles,
+                    stats: { ...stats },
+                });
+            }
 
             for (const entry of scanResult.includeEntries) {
                 const { fileName, lineIndex, startChar, endChar } = entry;
