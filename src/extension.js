@@ -1830,8 +1830,8 @@ async function handleTabAlignment(editor) {
 
     const document = editor.document;
     const selection = editor.selection;
-    const lineNum = selection.active.line;
-    const col = selection.active.character;
+    const lineNum = selection.start.line;
+    const col = selection.start.character;
 
     const line = document.lineAt(lineNum);
     const text = line.text;
