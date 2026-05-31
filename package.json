@@ -242,6 +242,17 @@
                         ".asc"
                     ],
                     "description": "Additional file extensions to associate with the LS-DYNA language."
+                },
+                "lsdyna.ignoreFormattingKeywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "*PARAMETER",
+                        "*INCLUDE"
+                    ],
+                    "description": "Keywords or prefixes that should ignore automatic formatting, smart tab alignment, and comment auto-completion."
                 }
             }
         },

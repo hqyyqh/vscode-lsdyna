@@ -1320,7 +1320,15 @@ function getCardFieldsForLine(document, lineNum) {
 
     const kwText = document.lineAt(kwLine).text.trim();
     const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
-    if (kwName.startsWith('PARAMETER')) return null;
+    
+    const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
+    const ignoreKeywords = config.get('ignoreFormattingKeywords') || ['*PARAMETER', '*INCLUDE'];
+    const kwTextUpper = kwText.toUpperCase();
+    for (const prefix of ignoreKeywords) {
+        if (kwTextUpper.startsWith(prefix.toUpperCase())) {
+            return null;
+        }
+    }
 
     const entry = lookupKeyword(kwName);
     if (!entry) return null;
