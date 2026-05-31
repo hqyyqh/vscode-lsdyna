@@ -1536,26 +1536,9 @@ async function handleEnterIndentationRemoval(event) {
     }
 }
 
-function alignLineText(text, card) {
-    if (!card || card.length === 0) return text;
 
-    // Skip alignment for title/filename fields (single wide field, e.g. 80-char path/title)
-    const isWideField = card.length === 1 && card[0].w >= 40;
-    if (isWideField) return text;
-
-    const trimmed = text.trim();
-    if (trimmed.length === 0) {
-        let emptyLine = '';
-        let prevEnd = 0;
-        for (const f of card) {
-            const gap = f.p - prevEnd;
-            if (gap > 0) emptyLine += ' '.repeat(gap);
-            emptyLine += ' '.repeat(f.w);
-            prevEnd = f.p + f.w;
-        }
-        return emptyLine;
-    }
-
+function extractSmartTokens(text) {
+    const trimmed = text.trimStart();
     const rawTokens = trimmed.split(/\s+/).filter(t => t.length > 0);
     const tokens = [];
     const numPattern = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/i;
@@ -1581,6 +1564,29 @@ function alignLineText(text, card) {
         }
         tokens.push(t);
     }
+    return tokens;
+}
+
+function alignLineText(text, card) {
+    if (!card || card.length === 0) return text;
+
+    // Skip alignment for title/filename fields (single wide field, e.g. 80-char path/title)
+    const isWideField = card.length === 1 && card[0].w >= 40;
+    if (isWideField) return text;
+
+    if (!text.trim()) {
+        let emptyLine = '';
+        let prevEnd = 0;
+        for (const f of card) {
+            const gap = f.p - prevEnd;
+            if (gap > 0) emptyLine += ' '.repeat(gap);
+            emptyLine += ' '.repeat(f.w);
+            prevEnd = f.p + f.w;
+        }
+        return emptyLine;
+    }
+
+    const tokens = extractSmartTokens(text);
 
     // Attempt physical column extraction
     const physVals = [];
@@ -1850,20 +1856,51 @@ async function handleTabAlignment(editor) {
 
     // 1. Determine current field index based on cursor position
     let currentFieldIndex = -1;
+    
+    let hasBoundaryCut = false;
+    let hasInvalidInternalSpace = false;
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
-        const nextF = card[i + 1];
-        const end = nextF ? nextF.p : (f.p + f.w);
-        if (col >= f.p && col < end) {
-            currentFieldIndex = i;
-            break;
+        if (f.p >= text.length) continue;
+        if (f.p > 0 && f.p < text.length) {
+            if (!/\s/.test(text[f.p - 1]) && !/\s/.test(text[f.p])) {
+                hasBoundaryCut = true;
+            }
+        }
+        const val = text.slice(f.p, Math.min(text.length, f.p + f.w)).trim();
+        if (val.length > 0 && /\s/.test(val)) {
+            if (f.t !== 'string' && f.t !== 'character') {
+                hasInvalidInternalSpace = true;
+            }
         }
     }
-    if (currentFieldIndex === -1) {
-        if (col >= card[card.length - 1].p) {
-            currentFieldIndex = card.length - 1;
-        } else {
+    const useTokens = hasBoundaryCut || hasInvalidInternalSpace;
+
+    if (useTokens) {
+        const textUpToCursor = text.slice(0, col);
+        const tokensUpToCursor = extractSmartTokens(textUpToCursor);
+        if (tokensUpToCursor.length === 0) {
             currentFieldIndex = 0;
+        } else {
+            currentFieldIndex = tokensUpToCursor.length - 1;
+        }
+        currentFieldIndex = Math.min(currentFieldIndex, card.length - 1);
+    } else {
+        for (let i = 0; i < card.length; i++) {
+            const f = card[i];
+            const nextF = card[i + 1];
+            const end = nextF ? nextF.p : (f.p + f.w);
+            if (col >= f.p && col <= end) {
+                currentFieldIndex = i;
+                break;
+            }
+        }
+        if (currentFieldIndex === -1) {
+            if (col >= card[card.length - 1].p) {
+                currentFieldIndex = card.length - 1;
+            } else {
+                currentFieldIndex = 0;
+            }
         }
     }
 
