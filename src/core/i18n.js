@@ -58,7 +58,12 @@ const LOCALES = {
         fieldCompletionLabel: '{0} (第 {1}-{2} 列)',
         rowTemplateLabel: '✨ 生成整行卡片模板 (Card {0})',
         fieldDetail: '卡片字段 ({0}) - {1}',
-        rowTemplateDetail: 'LS-DYNA 字段对齐模板'
+        rowTemplateDetail: 'LS-DYNA 字段对齐模板',
+        
+        // Keyword Validation
+        invalidKeywordFormat: '无效的关键字格式：LS-DYNA 关键字只能以单个 \'*\' 开头。',
+        keywordLowercase: '关键字 \'*{0}\' 包含小写字母。LS-DYNA 关键字应为大写。',
+        unknownKeyword: '未知或无效的关键字：*{0}'
     },
     'en': {
         openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
@@ -115,7 +120,12 @@ const LOCALES = {
         fieldCompletionLabel: '{0} (Col {1}-{2})',
         rowTemplateLabel: '✨ Generate Row Card Template (Card {0})',
         fieldDetail: 'Card Field ({0}) - {1}',
-        rowTemplateDetail: 'LS-DYNA Column-Aligned Template'
+        rowTemplateDetail: 'LS-DYNA Column-Aligned Template',
+        
+        // Keyword Validation
+        invalidKeywordFormat: 'Invalid keyword format: LS-DYNA keywords should start with a single \'*\'.',
+        keywordLowercase: 'Keyword \'*{0}\' contains lowercase letters. LS-DYNA keywords should be uppercase.',
+        unknownKeyword: 'Unknown or invalid keyword: *{0}'
     }
 };
 

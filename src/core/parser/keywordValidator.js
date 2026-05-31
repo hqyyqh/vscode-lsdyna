@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const i18n = require('../i18n');
 
 let validKeywords = new Set();
 let isInitialized = false;
@@ -28,7 +29,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         if (text.startsWith('**')) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
-                `Invalid keyword format: LS-DYNA keywords should start with a single '*'`,
+                i18n.get('invalidKeywordFormat'),
                 vscode.DiagnosticSeverity.Error
             );
             diagnostic.source = 'lsdyna';
@@ -46,7 +47,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         if (/[a-z]/.test(rawKeyword)) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
-                `Keyword '*${rawKeyword}' contains lowercase letters. LS-DYNA keywords should be uppercase.`,
+                i18n.get('keywordLowercase', rawKeyword),
                 vscode.DiagnosticSeverity.Warning
             );
             diagnostic.source = 'lsdyna';
@@ -63,7 +64,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         if (!validKeywords.has(checkKeyword)) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
-                `Unknown or invalid keyword: *${checkKeyword}`,
+                i18n.get('unknownKeyword', checkKeyword),
                 vscode.DiagnosticSeverity.Warning
             );
             diagnostic.source = 'lsdyna';
