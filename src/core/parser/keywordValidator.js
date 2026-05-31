@@ -65,7 +65,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
                 i18n.get('unknownKeyword', checkKeyword),
-                vscode.DiagnosticSeverity.Warning
+                vscode.DiagnosticSeverity.Error
             );
             diagnostic.source = 'lsdyna';
             diagnostics.push(diagnostic);
