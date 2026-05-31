@@ -14,3 +14,7 @@ LS-DYNA Manuals
 bin
 AGENTS.md
 GEMINI.md
+images/
+!images/LS_DYNA_geo_metro.png
+!images/lsdyna.png
+!images/ls.svg
