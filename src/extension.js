@@ -1323,7 +1323,7 @@ function getCardFieldsForLine(document, lineNum) {
     const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
     
     const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
-    const ignoreKeywords = config.get('ignoreFormattingKeywords') || ['*PARAMETER', '*INCLUDE'];
+    const ignoreKeywords = config.get('ignoreFormattingKeywords') || [];
     const kwTextUpper = kwText.toUpperCase();
     for (const prefix of ignoreKeywords) {
         if (kwTextUpper.startsWith(prefix.toUpperCase())) {
@@ -1615,7 +1615,11 @@ function alignLineText(text, card) {
         let val = '';
         if (useTokens) {
             if (i < tokens.length) {
-                val = tokens[i];
+                if (i === card.length - 1 && tokens.length > card.length) {
+                    val = tokens.slice(i).join(' ');
+                } else {
+                    val = tokens[i];
+                }
             }
         } else {
             val = physVals[i];
