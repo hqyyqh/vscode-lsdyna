@@ -23,6 +23,7 @@ const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
+const keywordValidator = require('./core/parser/keywordValidator');
 const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
@@ -1906,6 +1907,25 @@ function activate(context) {
     }
     logDebug("Extension activated.");
 
+    const snippetsPath = path.join(context.extensionPath, 'snippets', 'lsdyna.json');
+    fs.readFile(snippetsPath, 'utf8', (err, data) => {
+        if (!err) {
+            try {
+                const json = JSON.parse(data);
+                const validSet = new Set();
+                for (const key of Object.keys(json)) {
+                    if (key.startsWith('*')) {
+                        validSet.add(key.slice(1).toUpperCase());
+                    }
+                }
+                keywordValidator.init(validSet);
+                vscode.workspace.textDocuments.forEach(updateDiagnostics);
+            } catch (e) {
+                console.error("Failed to parse lsdyna.json for keyword validation", e);
+            }
+        }
+    });
+
     associateLsdynaLanguages();
 
     context.subscriptions.push(
@@ -2240,7 +2260,11 @@ function activate(context) {
 
     function updateDiagnostics(document) {
         if (!isLsdynaFile(document)) return;
-        diagnostics.set(document.uri, collectLineLengthDiagnostics(document));
+        
+        const lineLengthDiagnostics = collectLineLengthDiagnostics(document);
+        const keywordValidationDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocumentScan);
+        
+        diagnostics.set(document.uri, [...lineLengthDiagnostics, ...keywordValidationDiagnostics]);
     }
 
     context.subscriptions.push(
