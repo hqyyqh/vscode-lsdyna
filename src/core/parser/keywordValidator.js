@@ -60,8 +60,29 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
             checkKeyword = checkKeyword.substring(0, checkKeyword.length - 6);
         }
         
-        // Check validity
-        if (!validKeywords.has(checkKeyword)) {
+        // Check validity against built-in and custom valid keywords
+        const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
+        const customValidKeywordsConfig = config.get('customValidKeywords') || ['*END'];
+        const customValidKeywords = new Set(customValidKeywordsConfig.map(k => {
+            let kw = k.toUpperCase().trim();
+            if (kw.startsWith('*')) kw = kw.substring(1);
+            return kw;
+        }));
+        
+        let isValid = validKeywords.has(checkKeyword) || customValidKeywords.has(checkKeyword);
+        if (!isValid) {
+            for (const ckw of customValidKeywords) {
+                if (ckw.endsWith('*')) {
+                    const prefix = ckw.substring(0, ckw.length - 1);
+                    if (checkKeyword.startsWith(prefix)) {
+                        isValid = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!isValid) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
                 i18n.get('unknownKeyword', checkKeyword),

@@ -250,6 +250,16 @@
                     },
                     "default": [],
                     "description": "Keywords or prefixes that should ignore automatic formatting, smart tab alignment, and comment auto-completion."
+                },
+                "lsdyna.customValidKeywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "*END"
+                    ],
+                    "description": "Custom valid keywords that should not be marked as errors. Keywords can include the leading asterisk (e.g., '*END'). You can also use a wildcard at the end (e.g., '*MAT_*') to match any keyword starting with that prefix."
                 }
             }
         },
