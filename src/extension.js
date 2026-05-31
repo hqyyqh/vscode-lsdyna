@@ -1873,11 +1873,8 @@ async function handleTabAlignment(editor) {
     let alignedText = alignLineText(text, card);
 
     if (targetIndex < card.length) {
-        const prevF = card[currentFieldIndex];
-        const prevVal = alignedText.slice(prevF.p, prevF.p + prevF.w).trim();
         const targetCol = card[targetIndex].p;
-        const targetColOffset = prevVal.length > 0 ? 1 : 0;
-        const targetLen = targetCol + targetColOffset;
+        const targetLen = targetCol;
         
         // Truncate only if there is no subsequent non-whitespace content in the rest of the line
         const rest = alignedText.slice(targetLen);
@@ -1900,19 +1897,31 @@ async function handleTabAlignment(editor) {
     }, { undoStopBefore: false, undoStopAfter: false });
 
     // 4. Handle cursor movement
+    let targetF;
     if (targetIndex < card.length) {
-        const prevF = card[currentFieldIndex];
-        const prevVal = alignedText.slice(prevF.p, prevF.p + prevF.w).trim();
-        const targetCol = card[targetIndex].p;
-        const targetColOffset = prevVal.length > 0 ? 1 : 0;
-        const newPos = new vscode.Position(lineNum, targetCol + targetColOffset);
-        editor.selection = new vscode.Selection(newPos, newPos);
+        targetF = card[targetIndex];
     } else {
         // Loop back to the first field on the current line
-        const targetCol = card[0].p;
-        const newPos = new vscode.Position(lineNum, targetCol);
-        editor.selection = new vscode.Selection(newPos, newPos);
+        targetF = card[0];
     }
+    
+    const targetCol = targetF.p;
+    const targetW = targetF.w;
+    const targetText = alignedText.slice(targetCol, targetCol + targetW);
+    const match = targetText.match(/^(\s*)(\S.*\S|\S)(\s*)$/);
+    
+    let selStart, selEnd;
+    if (match) {
+        const startOffset = targetCol + match[1].length;
+        const endOffset = targetCol + targetText.length - match[3].length;
+        selStart = new vscode.Position(lineNum, startOffset);
+        selEnd = new vscode.Position(lineNum, endOffset);
+    } else {
+        // Empty field
+        selStart = new vscode.Position(lineNum, targetCol);
+        selEnd = new vscode.Position(lineNum, targetCol);
+    }
+    editor.selection = new vscode.Selection(selStart, selEnd);
 }
 
 let lastActiveLineNum = null;
