@@ -207,13 +207,31 @@ function createIndexClient({
             throw new TypeError('createIndexClient requires a languageClient supporting sendRequest and sendNotification');
         }
         let progressCallback = null;
-        languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
-            if (progressCallback) {
-                progressCallback(hydrateProjectSnapshot(params));
+        
+        // Delay binding the notification until the client is fully initialized
+        const bindNotification = async () => {
+            try {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                } else if (languageClient.state !== 2) { // 2 = State.Running
+                    // Give it some time to start if onReady is missing
+                    await new Promise(r => setTimeout(r, 500));
+                }
+                languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
+                    if (progressCallback) {
+                        progressCallback(hydrateProjectSnapshot(params));
+                    }
+                });
+            } catch (e) {
+                // Ignore if client fails to start
             }
-        });
+        };
+        bindNotification();
         return {
             async loadProjectSnapshot(rootFile, onProgress = null) {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                }
                 progressCallback = onProgress;
                 const resolvedRootFile = resolveRootFile(rootFile);
                 try {
@@ -226,7 +244,10 @@ function createIndexClient({
                     progressCallback = null;
                 }
             },
-            invalidate(rootFile) {
+            async invalidate(rootFile) {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                }
                 const resolvedRootFile = resolveRootFile(rootFile);
                 languageClient.sendNotification(
                     protocol.INVALIDATE_NOTIFICATION,
@@ -234,9 +255,15 @@ function createIndexClient({
                 );
             },
             async getManifestEntries() {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                }
                 return await languageClient.sendRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST);
             },
             async getCacheStats() {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                }
                 return await languageClient.sendRequest(protocol.GET_CACHE_STATS_REQUEST);
             },
         };
