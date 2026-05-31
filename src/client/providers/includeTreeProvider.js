@@ -308,6 +308,7 @@ class LsdynaIncludeTreeProvider {
                         if (partialSnapshot && partialSnapshot.files) {
                             scannedCount = partialSnapshot.files.length;
                         }
+                        console.log(`[lsdyna progress] Scanned ${scannedCount} files...`);
                         progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) || `Scanned ${scannedCount} files...` });
                         this._onDidChangeTreeData.fire(undefined);
                     });

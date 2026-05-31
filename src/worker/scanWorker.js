@@ -36,6 +36,8 @@ parentPort.on('message', async (message) => {
 
     try {
         const snapshot = await buildProjectIndex(message.rootFile, (partialSnapshot) => {
+            const count = partialSnapshot.files ? partialSnapshot.files.length : 0;
+            console.log(`[scanWorker] emitting progress: ${count} files`);
             parentPort.postMessage({
                 requestId: message.requestId,
                 snapshot: serializeProjectSnapshot(partialSnapshot),

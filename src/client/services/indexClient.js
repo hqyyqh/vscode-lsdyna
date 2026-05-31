@@ -210,20 +210,22 @@ function createIndexClient({
         
         // Delay binding the notification until the client is fully initialized
         const bindNotification = async () => {
-            try {
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
-                } else if (languageClient.state !== 2) { // 2 = State.Running
-                    // Give it some time to start if onReady is missing
-                    await new Promise(r => setTimeout(r, 500));
-                }
-                languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
-                    if (progressCallback) {
-                        progressCallback(hydrateProjectSnapshot(params));
+            while (true) {
+                try {
+                    languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
+                        if (progressCallback) {
+                            progressCallback(hydrateProjectSnapshot(params));
+                        }
+                    });
+                    break; // Successfully bound
+                } catch (e) {
+                    if (e && e.message && e.message.includes('not ready yet')) {
+                        await new Promise(r => setTimeout(r, 100)); // Retry after 100ms
+                    } else {
+                        console.error('[lsdyna] Failed to bind progress notification:', e);
+                        break;
                     }
-                });
-            } catch (e) {
-                // Ignore if client fails to start
+                }
             }
         };
         bindNotification();
