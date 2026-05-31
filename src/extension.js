@@ -1626,7 +1626,24 @@ function alignLineText(text, card) {
         }
 
         let paddedVal;
-        if (f.t === 'string') {
+        if (f.n && f.n.startsWith('PRMR')) {
+            let match = val.match(/^([a-zA-Z])\s*(.*)$/);
+            if (match) {
+                const prefix = match[1];
+                const name = match[2];
+                if (name.length > 0) {
+                    if (1 + 1 + name.length <= f.w) {
+                        paddedVal = (prefix + ' ' + name).padEnd(f.w);
+                    } else {
+                        paddedVal = (prefix + name).substring(0, f.w).padEnd(f.w);
+                    }
+                } else {
+                    paddedVal = prefix.padEnd(f.w);
+                }
+            } else {
+                paddedVal = val.padEnd(f.w);
+            }
+        } else if (f.t === 'string') {
             paddedVal = val.padEnd(f.w);
         } else {
             paddedVal = val.padStart(f.w);
