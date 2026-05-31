@@ -9,3 +9,4 @@ node_modules/
 !bin/SumatraPDF.exe
 bin/SumatraPDF-settings.txt
 /bin/sumatrapdfcache
+*.vsix
