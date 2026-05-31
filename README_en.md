@@ -22,7 +22,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 - **Instant Search**: Bookmark-based PDF manual indexing for instant search.
 - **Field-level Hints**: Hover cards contain detailed descriptions of every specific field of the keyword.
 
-![Hover Hints](images/悬浮提示.gif)
+![Hover Hints](./images/hover_hints.gif)
 
 </details>
 
@@ -40,11 +40,11 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 > 
 > | 🔑 Keyword Completion | 🛤️ Path Completion |
 > | :---: | :---: |
-> | ![Keyword Completion](images/关键字补全.gif) | ![Include File Completion](images/include文件补全.gif) |
+> | ![Keyword Completion](./images/completion_keyword.gif) | ![Include File Completion](./images/completion_include.gif) |
 > | **📝 Quick Comment** | **📐 Smart Tab Navigation** |
-> | ![Comment Completion](images/注释补全.gif) | ![Tab Navigation](images/tab跳转和编辑.gif) |
+> | ![Comment Completion](./images/completion_comment.gif) | ![Tab Navigation](./images/tab_navigation.gif) |
 > | **✨ Auto Formatting** | |
-> | ![Auto Formatting](images/自动格式化.gif) | |
+> | ![Auto Formatting](./images/auto_format.gif) | |
 
 </details>
 
@@ -59,7 +59,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 
 | Include Tree Panel | Hover Quick Actions |
 | :---: | :---: |
-| ![Include Tree](images/引用树.gif) | ![Include File Actions](images/打开include文件.png) |
+| ![Include Tree](./images/include_tree.gif) | ![Include File Actions](./images/open_include.png) |
 
 </details>
 
@@ -72,7 +72,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 - **Global Rename**: Safely rename parameters across the entire document via the F2 key.
 - **Syntax Navigation**: Syntax highlighting for `.k`, `.key`, `.dyna`, and `.cfile` files; supports jumping to next/previous keyword; each `*KEYWORD` block can be collapsed independently.
 
-![Parameter Hints](images/参数提示.png)
+![Parameter Hints](./images/parameter_hints.png)
 
 </details>
 
@@ -83,7 +83,7 @@ Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdy
 In addition to standard VS Code settings, this extension provides several dedicated configuration options.
 *(You can search for `lsdyna` in the settings UI to adjust these)*
 
-![Plugin Settings](images/设置.png)
+![Plugin Settings](./images/settings.png)
 
 **LS-DYNA Dedicated Settings:**
 

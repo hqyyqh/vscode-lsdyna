@@ -22,7 +22,7 @@
 - **即时检索**：基于 PDF 书签实现瞬间检索。
 - **字段级提示**：悬停卡片内包含当前关键字每一个特定字段的具体说明。
 
-![悬浮提示](images/悬浮提示.gif)
+![悬浮提示](./images/hover_hints.gif)
 
 </details>
 
@@ -40,11 +40,11 @@
 > 
 > | 🔑 关键字补全 | 🛤️ 路径补全 |
 > | :---: | :---: |
-> | ![关键字补全](images/关键字补全.gif) | ![Include文件补全](images/include文件补全.gif) |
+> | ![关键字补全](./images/completion_keyword.gif) | ![Include文件补全](./images/completion_include.gif) |
 > | **📝 快速注释** | **📐 智能 Tab 跳转与编辑** |
-> | ![注释补全](images/注释补全.gif) | ![Tab跳转和编辑](images/tab跳转和编辑.gif) |
+> | ![注释补全](./images/completion_comment.gif) | ![Tab跳转和编辑](./images/tab_navigation.gif) |
 > | **✨ 自动格式化** | |
-> | ![自动格式化](images/自动格式化.gif) | |
+> | ![自动格式化](./images/auto_format.gif) | |
 
 </details>
 
@@ -59,7 +59,7 @@
 
 | 引用树面板 | 悬停快速操作 |
 | :---: | :---: |
-| ![引用树](images/引用树.gif) | ![包含文件操作](images/打开include文件.png) |
+| ![引用树](./images/include_tree.gif) | ![包含文件操作](./images/open_include.png) |
 
 </details>
 
@@ -72,7 +72,7 @@
 - **全局重命名**：支持在整篇文档中通过 F2 键对参数进行安全重命名。
 - **语法导航**：支持针对 `.k`、`.key`、`.dyna` 和 `.cfile` 等文件的语法高亮；支持跳转到上/下一个关键字；每个 `*KEYWORD` 块均可独立代码折叠。
 
-![参数提示](images/参数提示.png)
+![参数提示](./images/parameter_hints.png)
 
 </details>
 
@@ -83,7 +83,7 @@
 该扩展除了遵循标准的 VS Code 设置外，还提供了一些专属的配置选项。
 *(可以在设置界面搜索 `lsdyna` 进行相关调整)*
 
-![插件设置](images/设置.png)
+![插件设置](./images/settings.png)
 
 **LS-DYNA 专属设置：**
 
