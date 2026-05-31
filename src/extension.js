@@ -1584,25 +1584,36 @@ function alignLineText(text, card) {
 
     // Attempt physical column extraction
     const physVals = [];
-    let hasInternalSpace = false;
+    let hasBoundaryCut = false;
+    let hasInvalidInternalSpace = false;
+    
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
         if (f.p >= text.length) {
             physVals.push('');
             continue;
         }
+        
+        // Check boundary cut: if the boundary cuts exactly inside a word
+        if (f.p > 0 && f.p < text.length) {
+            if (!/\s/.test(text[f.p - 1]) && !/\s/.test(text[f.p])) {
+                hasBoundaryCut = true;
+            }
+        }
+        
         const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
         const val = rawVal.trim();
         physVals.push(val);
 
         if (val.length > 0 && /\s/.test(val)) {
-            hasInternalSpace = true;
+            if (f.t !== 'string' && f.t !== 'character') {
+                hasInvalidInternalSpace = true;
+            }
         }
     }
 
     const nonEvPhysVals = physVals.filter(v => v.length > 0);
-    const physMatchesTokens = (nonEvPhysVals.length === tokens.length) && nonEvPhysVals.every((v, i) => v === tokens[i]);
-    const useTokens = hasInternalSpace || !physMatchesTokens;
+    const useTokens = hasBoundaryCut || hasInvalidInternalSpace;
 
     let alignedText = '';
     let prevEnd = 0;
