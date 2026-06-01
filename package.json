@@ -182,15 +182,7 @@
                 "title": "%commands.lsdynaTab.title%"
             }
         ],
-        "menus": {
-            "editor/context": [
-                {
-                    "command": "extension.lsdynaFormatSelection",
-                    "when": "editorLangId == lsdyna",
-                    "group": "1_modification"
-                }
-            ]
-        },
+
         "keybindings": [
             {
                 "command": "extension.jumpToNextKeyword",
@@ -338,6 +330,11 @@
                 }
             ],
             "editor/context": [
+                {
+                    "command": "extension.lsdynaFormatSelection",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "1_modification"
+                },
                 {
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
