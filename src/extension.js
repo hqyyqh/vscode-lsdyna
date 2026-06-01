@@ -1941,17 +1941,15 @@ async function handleTabAlignment(editor) {
     let alignedText = alignLineText(text, card);
 
     if (targetIndex < card.length) {
-        const targetCol = card[targetIndex].p;
-        const targetLen = targetCol;
-        
-        // Truncate only if there is no subsequent non-whitespace content in the rest of the line
-        const rest = alignedText.slice(targetLen);
-        const hasSubsequentContent = /\S/.test(rest);
-        if (!hasSubsequentContent) {
-            alignedText = alignedText.slice(0, targetLen);
-            if (alignedText.length < targetLen) {
-                alignedText = alignedText.padEnd(targetLen, ' ');
-            }
+        const targetEnd = card[targetIndex].p + card[targetIndex].w;
+        if (alignedText.length < targetEnd) {
+            alignedText = alignedText.padEnd(targetEnd, ' ');
+        }
+    } else {
+        // If looping back to 0, ensure we have at least the first cell
+        const targetEnd = card[0].p + card[0].w;
+        if (alignedText.length < targetEnd) {
+            alignedText = alignedText.padEnd(targetEnd, ' ');
         }
     }
 
@@ -1966,29 +1964,29 @@ async function handleTabAlignment(editor) {
 
     // 4. Handle cursor movement
     let targetF;
+    let isFirstField = false;
     if (targetIndex < card.length) {
         targetF = card[targetIndex];
+        isFirstField = targetIndex === 0;
     } else {
         // Loop back to the first field on the current line
         targetF = card[0];
+        isFirstField = true;
     }
     
     const targetCol = targetF.p;
     const targetW = targetF.w;
-    const targetText = alignedText.slice(targetCol, targetCol + targetW);
-    const match = targetText.match(/^(\s*)(\S.*\S|\S)(\s*)$/);
     
     let selStart, selEnd;
-    if (match) {
-        const startOffset = targetCol + match[1].length;
-        const endOffset = targetCol + targetText.length - match[3].length;
-        selStart = new vscode.Position(lineNum, startOffset);
-        selEnd = new vscode.Position(lineNum, endOffset);
-    } else {
-        // Empty field
+    if (isFirstField) {
         selStart = new vscode.Position(lineNum, targetCol);
-        selEnd = new vscode.Position(lineNum, targetCol);
+        selEnd = new vscode.Position(lineNum, targetCol + targetW);
+    } else {
+        // Preserve the first character as a space for field separation
+        selStart = new vscode.Position(lineNum, targetCol + 1);
+        selEnd = new vscode.Position(lineNum, targetCol + targetW);
     }
+    
     editor.selection = new vscode.Selection(selStart, selEnd);
 }
 
