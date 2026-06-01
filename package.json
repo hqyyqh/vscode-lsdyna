@@ -220,6 +220,7 @@
         ],
         "configurationDefaults": {
             "[lsdyna]": {
+                "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",<>/?",
                 "editor.wordWrap": "off",
                 "editor.guides.indentation": false,
                 "editor.renderIndentGuides": false,
