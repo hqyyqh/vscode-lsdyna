@@ -418,6 +418,13 @@ async function collectIncludeDirectivesFromFile(filePath) {
         return collectIncludeDirectivesFromBuffer(buffer, basePath);
     }
 
+    // Large file early termination: stream-scan for *INCLUDE presence first.
+    // For files 100-500MB+, skip full parsing if no *INCLUDE keyword exists anywhere.
+    const hasInclude = await streamContainsIncludeKeyword(filePath);
+    if (!hasInclude) {
+        return { includeEntries: [], searchPaths: [basePath] };
+    }
+
     // Large file path: use streaming with selective decoding
     const state = createIncludeDirectiveState(basePath);
     const stream = fs.createReadStream(filePath);
@@ -469,6 +476,46 @@ async function collectIncludeDirectivesFromFile(filePath) {
     }
 
     return finalizeIncludeDirectiveState(state);
+}
+
+/**
+ * Fast stream-based check for whether a file contains the '*INCLUDE' pattern.
+ * Scans the raw bytes without full parsing - only checks lines starting with '*' (0x2A).
+ * For large files (100-500MB), this is much faster than a full parse when no includes exist.
+ * 
+ * @param {string} filePath - Absolute path to the file.
+ * @returns {Promise<boolean>} True if the file likely contains an *INCLUDE directive.
+ */
+async function streamContainsIncludeKeyword(filePath) {
+    const INCLUDE_BYTES = Buffer.from('*INCLUDE');
+    const stream = fs.createReadStream(filePath);
+    let remainder = Buffer.alloc(0);
+
+    try {
+        for await (const chunk of stream) {
+            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
+            
+            // Search for *INCLUDE pattern in raw bytes
+            if (combined.indexOf(INCLUDE_BYTES) !== -1) {
+                return true;
+            }
+
+            // Keep the last few bytes as remainder to handle pattern spanning chunks
+            const keepBytes = INCLUDE_BYTES.length - 1;
+            remainder = combined.length > keepBytes 
+                ? combined.subarray(combined.length - keepBytes)
+                : combined;
+        }
+
+        // Check remainder
+        if (remainder.length > 0 && remainder.indexOf(INCLUDE_BYTES) !== -1) {
+            return true;
+        }
+    } finally {
+        stream.destroy();
+    }
+
+    return false;
 }
 
 module.exports = {

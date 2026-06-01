@@ -190,6 +190,7 @@ function createConcurrencyLimiter(concurrency) {
  * @param {function(string): Promise<import('../parser/keywordScanner').ScannedKeyword[]>} [options.collectKeywordsFromFile] - Custom keyword parser.
  * @param {function(string): Promise<import('../cache/diskSnapshotStore').FileSignature>} [options.getFileSignature] - Custom file signature reader.
  * @param {number} [options.concurrency] - Maximum number of parallel file scans.
+ * @param {Object} [options.persistentFileScanCache] - Optional persistent per-file scan cache store.
  * @returns {{
  *   buildProjectIndex: function(string): Promise<ProjectIndexResult>
  * }} A project indexer instance.
@@ -199,6 +200,7 @@ function createProjectIndexer({
     collectKeywordsFromFile = keywordScanner.collectKeywordsFromFile,
     getFileSignature = readFileSignature,
     concurrency = DEFAULT_CONCURRENCY,
+    persistentFileScanCache = null,
 } = {}) {
     if (typeof collectIncludeDirectivesFromFile !== 'function') {
         throw new TypeError('createProjectIndexer requires collectIncludeDirectivesFromFile to be a function');
@@ -214,7 +216,8 @@ function createProjectIndexer({
     const fileScanCache = new Map();
 
     /**
-     * Performs a file-level scan (keywords, includes, paths), utilizing the L1 signature cache.
+     * Performs a file-level scan (keywords, includes, paths), utilizing L1 in-memory cache
+     * and optional L1.5 persistent per-file disk cache.
      * 
      * @param {string} filePath - Target file path.
      * @param {{scannedFileCount: number, reusedFileCount: number}} stats - Indexing session statistics.
@@ -231,6 +234,20 @@ function createProjectIndexer({
             return cachedEntry.scanResult;
         }
 
+        // Try L1.5 persistent per-file cache
+        if (persistentFileScanCache) {
+            try {
+                const persistedResult = await persistentFileScanCache.get(resolvedFilePath, signature);
+                if (persistedResult) {
+                    fileScanCache.set(fileCacheKey, { signature, scanResult: persistedResult });
+                    stats.reusedFileCount += 1;
+                    return persistedResult;
+                }
+            } catch (_error) {
+                // Best-effort: fall through to full scan
+            }
+        }
+
         const keywords = await collectKeywordsFromFile(resolvedFilePath);
         const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(resolvedFilePath);
         const scanResult = {
@@ -245,6 +262,14 @@ function createProjectIndexer({
             scanResult,
         });
         stats.scannedFileCount += 1;
+
+        // Persist to L1.5 cache (fire-and-forget)
+        if (persistentFileScanCache) {
+            persistentFileScanCache.set(resolvedFilePath, signature, scanResult).catch(() => {
+                // Best-effort persistence
+            });
+        }
+
         return scanResult;
     }
 
