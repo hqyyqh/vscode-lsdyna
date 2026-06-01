@@ -114,11 +114,11 @@
         "commands": [
             {
                 "command": "extension.openIncludeFile",
-                "title": "Open *INCLUDE File"
+                "title": "%commands.openIncludeFile.title%"
             },
             {
                 "command": "extension.selectKeyword",
-                "title": "Select Current Keyword"
+                "title": "%commands.selectKeyword.title%"
             },
             {
                 "command": "extension.lsdynaShiftTab",
@@ -134,12 +134,12 @@
             },
             {
                 "command": "extension.jumpToNextKeyword",
-                "title": "Jump to Next Keyword",
+                "title": "%commands.jumpToNextKeyword.title%",
                 "icon": "$(arrow-down)"
             },
             {
                 "command": "extension.jumpToPreviousKeyword",
-                "title": "Jump to Previous Keyword",
+                "title": "%commands.jumpToPreviousKeyword.title%",
                 "icon": "$(arrow-up)"
             },
             {
@@ -169,12 +169,12 @@
             },
             {
                 "command": "extension.openManual",
-                "title": "Open LS-DYNA Keyword Manual",
+                "title": "%commands.openManual.title%",
                 "category": "LS-DYNA"
             },
             {
                 "command": "extension.configureManualsDir",
-                "title": "Configure LS-DYNA Manuals Directory",
+                "title": "%commands.configureManualsDir.title%",
                 "category": "LS-DYNA"
             },
             {
@@ -248,7 +248,7 @@
                 "lsdyna.manualsDir": {
                     "type": "string",
                     "default": "lsdyna_manual_pack",
-                    "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or relative to VS Code installation dir). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
+                    "description": "%config.manualsDir.description%"
                 },
                 "lsdyna.enableTabNavigation": {
                     "type": "boolean",
@@ -276,10 +276,10 @@
                     ],
                     "default": "zh-cn",
                     "enumDescriptions": [
-                        "中文简体 (Simplified Chinese)",
-                        "English (English)"
+                        "%config.language.enumDescriptions.zh-cn%",
+                        "%config.language.enumDescriptions.en%"
                     ],
-                    "description": "选择插件的界面语言和 Hover 提示语言 (Select the UI and Hover language for the extension)."
+                    "description": "%config.language.description%"
                 },
                 "lsdyna.additionalExtensions": {
                     "type": "array",
@@ -292,12 +292,12 @@
                         ".dyna",
                         ".asc"
                     ],
-                    "description": "Additional file extensions to associate with the LS-DYNA language."
+                    "description": "%config.additionalExtensions.description%"
                 },
                 "lsdyna.scanner.fullScanLargeFiles": {
                     "type": "boolean",
                     "default": false,
-                    "markdownDescription": "Whether to perform a full scan on all files for Include Tree and Keyword indexing. When disabled, files larger than 500KB will only have their first and last 1000 lines scanned for massive performance improvements. \n\n> **WARNING:** Enabling this will cause very long wait times when loading projects with giant mesh files!"
+                    "markdownDescription": "%config.scanner.fullScanLargeFiles.markdownDescription%"
                 },
                 "lsdyna.ignoreFormattingKeywords": {
                     "type": "array",
@@ -305,7 +305,7 @@
                         "type": "string"
                     },
                     "default": [],
-                    "description": "Keywords or prefixes that should ignore automatic formatting, smart tab alignment, and comment auto-completion."
+                    "description": "%config.ignoreFormattingKeywords.description%"
                 },
                 "lsdyna.customValidKeywords": {
                     "type": "array",
@@ -315,7 +315,7 @@
                     "default": [
                         "*END"
                     ],
-                    "description": "Custom valid keywords that should not be marked as errors. Keywords can include the leading asterisk (e.g., '*END'). You can also use a wildcard at the end (e.g., '*MAT_*') to match any keyword starting with that prefix."
+                    "description": "%config.customValidKeywords.description%"
                 }
             }
         },
