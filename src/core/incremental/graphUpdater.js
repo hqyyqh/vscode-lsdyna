@@ -140,10 +140,12 @@ function createGraphUpdater({
             }
         }
         // Add new keywords
-        for (const kw of newKeywords) {
+        if (newKeywords.length > 0) {
             keywordsChanged = true;
-            if (!keywordMap.has(kw.keyword)) keywordMap.set(kw.keyword, []);
-            keywordMap.get(kw.keyword).push(kw);
+            for (const kw of newKeywords) {
+                if (!keywordMap.has(kw.keyword)) keywordMap.set(kw.keyword, []);
+                keywordMap.get(kw.keyword).push(kw);
+            }
         }
 
         // --- Update includes ---

@@ -363,7 +363,8 @@ const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1 MB
  */
 function collectIncludeDirectivesFromBuffer(buffer, basePath) {
     // Quick scan: if the buffer doesn't contain '*INCLUDE' at all, skip parsing entirely
-    if (buffer.indexOf('*INCLUDE') === -1) {
+    const INCLUDE_MARKER = Buffer.from('*INCLUDE');
+    if (buffer.indexOf(INCLUDE_MARKER) === -1) {
         return { includeEntries: [], searchPaths: [basePath] };
     }
 

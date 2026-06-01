@@ -158,12 +158,14 @@ function createFileScanCacheStore({
 
     /**
      * Serializes write operations to prevent corruption.
+     * Previous errors in the chain are swallowed so the next operation can proceed.
      * @param {function(): Promise<void>} fn
      * @returns {Promise<void>}
      */
     function enqueueWrite(fn) {
-        writeChain = writeChain.then(fn, fn);
-        return writeChain;
+        const next = writeChain.then(fn, () => fn());
+        writeChain = next.catch(() => undefined);
+        return next;
     }
 
     return {
