@@ -8,5 +8,13 @@
     "commands.scanKeywordIndex.title": "扫描全树",
     "commands.keywordIndexSetLocal.title": "查看当前文件",
     "commands.openToSide.title": "分栏打开",
-    "commands.revealInExplorer.title": "在资源管理器中显示"
+    "commands.revealInExplorer.title": "在资源管理器中显示",
+    "commands.lsdynaFormatSelection.title": "格式化当前行或选中的 LS-DYNA 卡片",
+    "commands.lsdynaTab.title": "对齐卡片字段并跳转到下一个",
+    "commands.lsdynaShiftTab.title": "对齐卡片字段并跳转到上一个",
+    "commands.lsdynaSelectCell.title": "选中当前 LS-DYNA 卡片字段",
+    "config.enableTabNavigation.description": "启用 LS-DYNA 卡片中的智能 Tab 键跳转和字段覆盖选中功能。禁用时，Tab 键只插入普通空格/制表符。",
+    "config.autoFormat.description": "控制 LS-DYNA 卡片行的自动格式化时机。",
+    "config.autoFormat.enumDescriptions.onBlur": "当光标离开当前行时自动对齐格式化",
+    "config.autoFormat.enumDescriptions.disabled": "彻底关闭自动格式化"
 }

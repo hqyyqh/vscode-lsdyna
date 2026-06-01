@@ -122,15 +122,15 @@
             },
             {
                 "command": "extension.lsdynaShiftTab",
-                "title": "Align Card Field and Tab Previous"
+                "title": "%commands.lsdynaShiftTab.title%"
             },
             {
                 "command": "extension.lsdynaSelectCell",
-                "title": "Select Current LS-DYNA Card Field"
+                "title": "%commands.lsdynaSelectCell.title%"
             },
             {
                 "command": "extension.lsdynaFormatSelection",
-                "title": "Format LS-DYNA Card Selection"
+                "title": "%commands.lsdynaFormatSelection.title%"
             },
             {
                 "command": "extension.jumpToNextKeyword",
@@ -179,14 +179,14 @@
             },
             {
                 "command": "extension.lsdynaTab",
-                "title": "Align Card Field and Tab Next"
+                "title": "%commands.lsdynaTab.title%"
             }
         ],
         "menus": {
             "editor/context": [
                 {
                     "command": "extension.lsdynaFormatSelection",
-                    "when": "editorLangId == 'lsdyna' && editorHasSelection",
+                    "when": "editorLangId == lsdyna",
                     "group": "1_modification"
                 }
             ]
@@ -252,7 +252,7 @@
                 "lsdyna.enableTabNavigation": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable smart Tab navigation and overwriting cell selection in LS-DYNA cards. When disabled, Tab inserts spaces/tabs normally."
+                    "description": "%config.enableTabNavigation.description%"
                 },
                 "lsdyna.autoFormat": {
                     "type": "string",
@@ -262,10 +262,10 @@
                     ],
                     "default": "onBlur",
                     "enumDescriptions": [
-                        "Format current line automatically when cursor leaves it",
-                        "Disable automatic formatting entirely"
+                        "%config.autoFormat.enumDescriptions.onBlur%",
+                        "%config.autoFormat.enumDescriptions.disabled%"
                     ],
-                    "description": "Control when auto-formatting of LS-DYNA card lines occurs."
+                    "description": "%config.autoFormat.description%"
                 },
                 "lsdyna.language": {
                     "type": "string",

@@ -8,5 +8,13 @@
     "commands.scanKeywordIndex.title": "Scan Full Tree",
     "commands.keywordIndexSetLocal.title": "View Current File",
     "commands.openToSide.title": "Open to Side",
-    "commands.revealInExplorer.title": "Reveal in Explorer"
+    "commands.revealInExplorer.title": "Reveal in Explorer",
+    "commands.lsdynaFormatSelection.title": "Format LS-DYNA Card(s)",
+    "commands.lsdynaTab.title": "Align Card Field and Tab Next",
+    "commands.lsdynaShiftTab.title": "Align Card Field and Tab Previous",
+    "commands.lsdynaSelectCell.title": "Select Current LS-DYNA Card Field",
+    "config.enableTabNavigation.description": "Enable smart Tab navigation and overwriting cell selection in LS-DYNA cards. When disabled, Tab inserts spaces/tabs normally.",
+    "config.autoFormat.description": "Control when auto-formatting of LS-DYNA card lines occurs.",
+    "config.autoFormat.enumDescriptions.onBlur": "Format current line automatically when cursor leaves it",
+    "config.autoFormat.enumDescriptions.disabled": "Disable automatic formatting entirely"
 }
