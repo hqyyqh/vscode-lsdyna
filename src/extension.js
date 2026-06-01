@@ -723,10 +723,10 @@ function formatHoverHelpText(helpText) {
 function appendManualLinks(md, kwName) {
     const cleanKw = manualIndexer.cleanKeyword(kwName);
     const manuals = manualIndexer.getManualLocations(cleanKw);
-    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
+    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir') || 'lsdyna_manual_pack';
     const fileCount = manualIndexer.getManualFilesCount();
 
-    const notConfigured = !manualsDir || fileCount === 0;
+    const notConfigured = fileCount === 0;
 
     if (notConfigured) {
         md.appendMarkdown('\n\n---');
@@ -821,10 +821,9 @@ class LsdynaFieldHoverProvider {
             if (!entry) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
                 const manuals = manualIndexer.getManualLocations(cleanKw);
-                const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
                 const fileCount = manualIndexer.getManualFilesCount();
                 const hasManuals = manuals.length > 0;
-                const notConfigured = !manualsDir || fileCount === 0;
+                const notConfigured = fileCount === 0;
                 
                 if (hasManuals || notConfigured) {
                     const md = new vscode.MarkdownString(`**\\*${kwName}**`);
@@ -1552,6 +1551,11 @@ function extractSmartTokens(text) {
             tokens.push(matchStrNum[1], matchStrNum[2]);
             continue;
         }
+        const matchNumStr = t.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([A-Za-z_]+)$/i);
+        if (matchNumStr) {
+            tokens.push(matchNumStr[1], matchNumStr[2]);
+            continue;
+        }
         const matchAlphaSignedNum = t.match(/^([A-Za-z0-9_]+)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
         if (matchAlphaSignedNum) {
             tokens.push(matchAlphaSignedNum[1], matchAlphaSignedNum[2]);
@@ -1586,40 +1590,49 @@ function alignLineText(text, card) {
         return emptyLine;
     }
 
-    const tokens = extractSmartTokens(text);
+    const hasComma = text.includes(',');
+    let useTokens = false;
+    let tokens = [];
 
-    // Attempt physical column extraction
+    if (hasComma) {
+        tokens = text.split(',').map(t => t.trim());
+        useTokens = true;
+    } else {
+        tokens = extractSmartTokens(text);
+        
+        let hasInvalidInternalSpace = false;
+        const totalCardWidth = card[card.length - 1].p + card[card.length - 1].w;
+        const isOverflowing = text.trimEnd().length > totalCardWidth;
+
+        for (let i = 0; i < card.length; i++) {
+            const f = card[i];
+            if (f.p >= text.length) break;
+            const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
+            const val = rawVal.trim();
+            if (val.length > 0 && /\s/.test(val)) {
+                if (f.t !== 'string' && f.t !== 'character') {
+                    hasInvalidInternalSpace = true;
+                }
+            }
+        }
+        
+        const validPhysValsCount = card.map(f => text.slice(f.p, f.p + f.w).trim()).filter(v => v.length > 0).length;
+
+        if ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount) {
+            useTokens = true;
+        }
+    }
+
     const physVals = [];
-    let hasBoundaryCut = false;
-    let hasInvalidInternalSpace = false;
-    
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
         if (f.p >= text.length) {
             physVals.push('');
             continue;
         }
-        
-        // Check boundary cut: if the boundary cuts exactly inside a word
-        if (f.p > 0 && f.p < text.length) {
-            if (!/\s/.test(text[f.p - 1]) && !/\s/.test(text[f.p])) {
-                hasBoundaryCut = true;
-            }
-        }
-        
         const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
-        const val = rawVal.trim();
-        physVals.push(val);
-
-        if (val.length > 0 && /\s/.test(val)) {
-            if (f.t !== 'string' && f.t !== 'character') {
-                hasInvalidInternalSpace = true;
-            }
-        }
+        physVals.push(rawVal.trim());
     }
-
-    const nonEvPhysVals = physVals.filter(v => v.length > 0);
-    const useTokens = hasBoundaryCut || hasInvalidInternalSpace;
 
     let alignedText = '';
     let prevEnd = 0;
@@ -1633,7 +1646,7 @@ function alignLineText(text, card) {
         if (useTokens) {
             if (i < tokens.length) {
                 if (i === card.length - 1 && tokens.length > card.length) {
-                    val = tokens.slice(i).join(' ');
+                    val = tokens.slice(i).join(hasComma ? ',' : ' ');
                 } else {
                     val = tokens[i];
                 }
@@ -1660,11 +1673,12 @@ function alignLineText(text, card) {
             } else {
                 paddedVal = val.padEnd(f.w);
             }
-        } else if (f.t === 'string') {
-            paddedVal = val.padEnd(f.w);
+        } else if (i === 0 && (f.t === 'string' || f.t === 'character')) {
+            paddedVal = val.padEnd(f.w, ' ');
         } else {
-            paddedVal = val.padStart(f.w);
+            paddedVal = val.padStart(f.w, ' ');
         }
+        
         alignedText += paddedVal;
         prevEnd = f.p + f.w;
     }
@@ -1857,34 +1871,51 @@ async function handleTabAlignment(editor) {
     // 1. Determine current field index based on cursor position
     let currentFieldIndex = -1;
     
-    let hasBoundaryCut = false;
-    let hasInvalidInternalSpace = false;
-    for (let i = 0; i < card.length; i++) {
-        const f = card[i];
-        if (f.p >= text.length) continue;
-        if (f.p > 0 && f.p < text.length) {
-            if (!/\s/.test(text[f.p - 1]) && !/\s/.test(text[f.p])) {
-                hasBoundaryCut = true;
+    const hasComma = text.includes(',');
+    let useTokens = false;
+    let tokens = [];
+
+    if (hasComma) {
+        useTokens = true;
+    } else {
+        tokens = extractSmartTokens(text);
+        
+        let hasInvalidInternalSpace = false;
+        const totalCardWidth = card[card.length - 1].p + card[card.length - 1].w;
+        const isOverflowing = text.trimEnd().length > totalCardWidth;
+
+        for (let i = 0; i < card.length; i++) {
+            const f = card[i];
+            if (f.p >= text.length) break;
+            const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
+            const val = rawVal.trim();
+            if (val.length > 0 && /\s/.test(val)) {
+                if (f.t !== 'string' && f.t !== 'character') {
+                    hasInvalidInternalSpace = true;
+                }
             }
         }
-        const val = text.slice(f.p, Math.min(text.length, f.p + f.w)).trim();
-        if (val.length > 0 && /\s/.test(val)) {
-            if (f.t !== 'string' && f.t !== 'character') {
-                hasInvalidInternalSpace = true;
-            }
+        
+        const validPhysValsCount = card.map(f => text.slice(f.p, f.p + f.w).trim()).filter(v => v.length > 0).length;
+
+        if ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount) {
+            useTokens = true;
         }
     }
-    const useTokens = hasBoundaryCut || hasInvalidInternalSpace;
 
     if (useTokens) {
         const textUpToCursor = text.slice(0, col);
-        const tokensUpToCursor = extractSmartTokens(textUpToCursor);
-        if (tokensUpToCursor.length === 0) {
-            currentFieldIndex = 0;
+        if (hasComma) {
+            currentFieldIndex = textUpToCursor.split(',').length - 1;
         } else {
-            currentFieldIndex = tokensUpToCursor.length - 1;
+            const tokensUpToCursor = extractSmartTokens(textUpToCursor);
+            if (tokensUpToCursor.length === 0) {
+                currentFieldIndex = 0;
+            } else {
+                currentFieldIndex = tokensUpToCursor.length - 1;
+            }
         }
-        currentFieldIndex = Math.min(currentFieldIndex, card.length - 1);
+        currentFieldIndex = Math.max(0, Math.min(currentFieldIndex, card.length - 1));
     } else {
         for (let i = 0; i < card.length; i++) {
             const f = card[i];
@@ -2823,20 +2854,26 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 async function resolveSumatraPath(context) {
     const fs = require('fs');
     const path = require('path');
-    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir');
+    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir') || 'lsdyna_manual_pack';
     if (manualsDir && typeof manualsDir === 'string') {
-        let resolvedDir = manualsDir;
-        if (!path.isAbsolute(manualsDir)) {
+        const dirsToCheck = [];
+        if (path.isAbsolute(manualsDir)) {
+            dirsToCheck.push(manualsDir);
+        } else {
+            dirsToCheck.push(path.resolve(vscode.env.appRoot, manualsDir));
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (workspaceFolders && workspaceFolders.length > 0) {
-                resolvedDir = path.resolve(workspaceFolders[0].uri.fsPath, manualsDir);
-            } else {
-                resolvedDir = path.resolve(process.cwd(), manualsDir);
+                dirsToCheck.push(path.resolve(workspaceFolders[0].uri.fsPath, manualsDir));
             }
+            dirsToCheck.push(path.resolve(process.cwd(), manualsDir));
+            dirsToCheck.push(path.resolve(context.extensionPath, manualsDir));
         }
-        const sumatraPath = path.join(resolvedDir, 'SumatraPDF.exe');
-        if (fs.existsSync(sumatraPath)) {
-            return sumatraPath;
+
+        for (const dir of dirsToCheck) {
+            const sumatraPath = path.join(dir, 'SumatraPDF.exe');
+            if (fs.existsSync(sumatraPath)) {
+                return sumatraPath;
+            }
         }
     }
     return null;

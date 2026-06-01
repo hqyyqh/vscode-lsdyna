@@ -215,8 +215,8 @@
             "properties": {
                 "lsdyna.manualsDir": {
                     "type": "string",
-                    "default": "",
-                    "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or workspace-relative). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
+                    "default": "lsdyna_manual_pack",
+                    "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or relative to VS Code installation dir). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
                 },
                 "lsdyna.language": {
                     "type": "string",
@@ -243,6 +243,11 @@
                         ".asc"
                     ],
                     "description": "Additional file extensions to associate with the LS-DYNA language."
+                },
+                "lsdyna.scanner.fullScanLargeFiles": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Whether to perform a full scan on all files for Include Tree and Keyword indexing. When disabled, files larger than 500KB will only have their first and last 1000 lines scanned for massive performance improvements. \n\n> **WARNING:** Enabling this will cause very long wait times when loading projects with giant mesh files!"
                 },
                 "lsdyna.ignoreFormattingKeywords": {
                     "type": "array",
