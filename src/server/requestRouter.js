@@ -33,8 +33,8 @@ async function handleRequest(method, params, connection) {
 
     switch (method) {
         case protocol.LOAD_PROJECT_SNAPSHOT_REQUEST: {
-            const { rootFile } = params;
-            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, (partialSnapshot) => {
+            const { rootFile, options } = params;
+            const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, options || {}, (partialSnapshot) => {
                 if (connection) {
                     connection.sendNotification(
                         protocol.SCAN_PROGRESS_NOTIFICATION, 

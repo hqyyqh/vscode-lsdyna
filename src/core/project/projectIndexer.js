@@ -220,10 +220,11 @@ function createProjectIndexer({
      * and optional L1.5 persistent per-file disk cache.
      * 
      * @param {string} filePath - Target file path.
+     * @param {Object} options - Indexing options.
      * @param {{scannedFileCount: number, reusedFileCount: number}} stats - Indexing session statistics.
      * @returns {Promise<Object>} The cached or newly scanned file result.
      */
-    async function loadFileScan(filePath, stats) {
+    async function loadFileScan(filePath, options, stats) {
         const resolvedFilePath = resolveProjectFile(filePath);
         const fileCacheKey = getProjectFileCacheKey(resolvedFilePath);
         const signature = await getFileSignature(resolvedFilePath);
@@ -248,8 +249,8 @@ function createProjectIndexer({
             }
         }
 
-        const keywords = await collectKeywordsFromFile(resolvedFilePath);
-        const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(resolvedFilePath);
+        const keywords = await collectKeywordsFromFile(resolvedFilePath, options);
+        const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(resolvedFilePath, options);
         const scanResult = {
             filePath: resolvedFilePath,
             keywords,
@@ -280,10 +281,11 @@ function createProjectIndexer({
      * I/O throughput. Cycle detection and ancestry tracking are maintained per-path via the queue.
      * 
      * @param {string} rootFile - Absolute path to the main LS-DYNA input deck.
+     * @param {Object} [options] - Indexing options.
      * @param {function(Object): void} [onProgress] - Optional callback for periodic snapshot progress.
      * @returns {Promise<ProjectIndexResult>} The assembled project index snapshot.
      */
-    async function buildProjectIndex(rootFile, onProgress = null) {
+    async function buildProjectIndex(rootFile, options = {}, onProgress = null) {
         const resolvedRootFile = resolveProjectFile(rootFile);
         const files = [];
         const keywordMap = new Map();
@@ -323,7 +325,7 @@ function createProjectIndexer({
 
             // Scan all files in this level in parallel (with concurrency limit)
             const scanResults = await Promise.all(
-                toScan.map(item => limit(() => loadFileScan(item.filePath, stats)))
+                toScan.map(item => limit(() => loadFileScan(item.filePath, options, stats)))
             );
 
             /** @type {BFSQueueItem[]} */

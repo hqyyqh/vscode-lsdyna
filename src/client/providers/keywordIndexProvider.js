@@ -412,7 +412,9 @@ class LsdynaKeywordIndexProvider {
                     await this.invalidateProjectSnapshot(uri.fsPath);
                 }
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(rootFile, (partialSnapshot) => {
+                    const config = vscode.workspace.getConfiguration('lsdyna');
+                    const options = { fullScanLargeFiles: config.get('scanner.fullScanLargeFiles', false) };
+                    const snapshot = await this.loadProjectSnapshot(rootFile, options, (partialSnapshot) => {
                         this.roots = this._buildRootsFromSnapshot(partialSnapshot, rootDir);
                         
                         let scannedCount = 0;

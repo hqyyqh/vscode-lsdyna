@@ -112,10 +112,11 @@ function createWorkerPool({
          * Asynchronously enqueues a project indexing request and sends it to the worker thread.
          * 
          * @param {string} rootFile - Absolute path to the project's root input file.
+         * @param {Object} [options] - Optional indexing options (e.g. fullScanLargeFiles).
          * @param {function(Object): void} [onProgress] - Optional progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Resolved project index.
          */
-        buildProjectIndex(rootFile, onProgress = null) {
+        buildProjectIndex(rootFile, options = {}, onProgress = null) {
             if (disposed) {
                 return Promise.reject(new Error('scan worker pool has been disposed'));
             }
@@ -126,6 +127,7 @@ function createWorkerPool({
                 worker.postMessage({
                     requestId,
                     rootFile,
+                    options,
                     type: 'buildProjectIndex',
                 });
             });

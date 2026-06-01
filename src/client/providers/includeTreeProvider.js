@@ -304,7 +304,9 @@ class LsdynaIncludeTreeProvider {
                     await this.invalidateProjectSnapshot(uri.fsPath);
                 }
                 if (this.loadProjectSnapshot) {
-                    const snapshot = await this.loadProjectSnapshot(uri.fsPath, (partialSnapshot) => {
+                    const config = vscode.workspace.getConfiguration('lsdyna');
+                    const options = { fullScanLargeFiles: config.get('scanner.fullScanLargeFiles', false) };
+                    const snapshot = await this.loadProjectSnapshot(uri.fsPath, options, (partialSnapshot) => {
                         this.root = this._buildRootFromSnapshot(partialSnapshot, uri.fsPath);
                         this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
                         
@@ -317,7 +319,6 @@ class LsdynaIncludeTreeProvider {
                         this._onDidChangeTreeData.fire(undefined);
                     });
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
-                    
                     const collectPaths = (node) => {
                         const key = normalizePathKey(node.filePath);
                         if (node.missing) {

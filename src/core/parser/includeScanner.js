@@ -402,10 +402,10 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
  * @param {string} filePath - Absolute path to the file on disk.
  * @returns {Promise<IncludeResult>} Include entries and search paths.
  */
-async function collectIncludeDirectivesFromFile(filePath) {
+async function collectIncludeDirectivesFromFile(filePath, options = {}) {
+    const fullScan = options.fullScanLargeFiles === true;
     const basePath = path.dirname(filePath);
 
-    // Check file size first for the small file optimization
     let fileStat;
     try {
         fileStat = await fs.promises.stat(filePath);
@@ -413,67 +413,92 @@ async function collectIncludeDirectivesFromFile(filePath) {
         return { includeEntries: [], searchPaths: [basePath] };
     }
 
-    // Small file fast path: read the entire file into memory
     if (fileStat.size <= SMALL_FILE_THRESHOLD) {
         const buffer = await fs.promises.readFile(filePath);
         return collectIncludeDirectivesFromBuffer(buffer, basePath);
     }
 
-    // Large file early termination: stream-scan for *INCLUDE presence first.
-    // For files 100-500MB+, skip full parsing if no *INCLUDE keyword exists anywhere.
-    const hasInclude = await streamContainsIncludeKeyword(filePath);
-    if (!hasInclude) {
-        return { includeEntries: [], searchPaths: [basePath] };
+    const LARGE_FILE_THRESHOLD = 500 * 1024;
+    const doChunkedScan = !fullScan && fileStat.size > LARGE_FILE_THRESHOLD;
+
+    if (!doChunkedScan) {
+        const hasInclude = await streamContainsIncludeKeyword(filePath);
+        if (!hasInclude) {
+            return { includeEntries: [], searchPaths: [basePath] };
+        }
     }
 
-    // Large file path: use streaming with selective decoding
     const state = createIncludeDirectiveState(basePath);
-    const stream = fs.createReadStream(filePath);
-    let remainder = Buffer.alloc(0);
-    let lineIndex = 0;
 
-    try {
-        for await (const chunk of stream) {
-            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
-            let offset = 0;
-            let nextNewLine = -1;
+    async function scanStream(stream, startLineIndex, maxLines = -1) {
+        let remainder = Buffer.alloc(0);
+        let lineIndex = startLineIndex;
+        let linesProcessed = 0;
 
-            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
-                const lineStart = offset;
-                const lineEnd = nextNewLine;
+        try {
+            for await (const chunk of stream) {
+                const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
+                let offset = 0;
+                let nextNewLine = -1;
 
-                // Decode line only if it starts with '*' or we are inside an include context
-                const isKeywordLine = combined[lineStart] === 0x2A;
+                while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
+                    const lineStart = offset;
+                    const lineEnd = nextNewLine;
+
+                    const isKeywordLine = combined[lineStart] === 0x2A;
+                    const inIncludeContext = !!state.pendingInclude ||
+                        (state.keyword && state.keyword.startsWith('*INCLUDE'));
+
+                    if (isKeywordLine || inIncludeContext) {
+                        const lineStr = combined.toString('utf8', lineStart, lineEnd);
+                        processIncludeDirectiveLine(state, lineStr, lineIndex);
+                    }
+
+                    offset = nextNewLine + 1;
+                    lineIndex++;
+                    linesProcessed++;
+
+                    if (linesProcessed % STREAM_SCAN_YIELD_INTERVAL === 0) {
+                        await new Promise(r => setImmediate(r));
+                    }
+
+                    if (maxLines > 0 && linesProcessed >= maxLines) {
+                        return;
+                    }
+                }
+                remainder = combined.subarray(offset);
+            }
+
+            if (remainder.length > 0 && (maxLines <= 0 || linesProcessed < maxLines)) {
+                const isKeywordLine = remainder[0] === 0x2A;
                 const inIncludeContext = !!state.pendingInclude ||
                     (state.keyword && state.keyword.startsWith('*INCLUDE'));
 
                 if (isKeywordLine || inIncludeContext) {
-                    const lineStr = combined.toString('utf8', lineStart, lineEnd);
+                    const lineStr = remainder.toString('utf8');
                     processIncludeDirectiveLine(state, lineStr, lineIndex);
                 }
-
-                offset = nextNewLine + 1;
-                lineIndex++;
-
-                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) {
-                    await new Promise(r => setImmediate(r));
-                }
             }
-            remainder = combined.subarray(offset);
+        } finally {
+            stream.destroy();
         }
+    }
 
-        if (remainder.length > 0) {
-            const isKeywordLine = remainder[0] === 0x2A;
-            const inIncludeContext = !!state.pendingInclude ||
-                (state.keyword && state.keyword.startsWith('*INCLUDE'));
+    if (!doChunkedScan) {
+        const stream = fs.createReadStream(filePath);
+        await scanStream(stream, 0, -1);
+    } else {
+        const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
+        await scanStream(streamStart, 0, 1000);
 
-            if (isKeywordLine || inIncludeContext) {
-                const lineStr = remainder.toString('utf8');
-                processIncludeDirectiveLine(state, lineStr, lineIndex);
-            }
-        }
-    } finally {
-        stream.destroy();
+        state.pendingInclude = null;
+        state.keyword = null;
+
+        const tailBytes = 200 * 1024;
+        const startOffset = Math.max(0, fileStat.size - tailBytes);
+        const streamEnd = fs.createReadStream(filePath, { start: startOffset });
+        
+        await scanStream(streamEnd, 9999999, -1);
     }
 
     return finalizeIncludeDirectiveState(state);

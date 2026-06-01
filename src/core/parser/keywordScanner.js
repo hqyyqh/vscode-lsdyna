@@ -53,71 +53,106 @@ function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
  * @param {string} filePath - Absolute path to the file.
  * @returns {Promise<ScannedKeyword[]>} Scanned keywords array.
  */
-async function collectKeywordsFromFile(filePath) {
-    const stream = fs.createReadStream(filePath);
-    const keywords = [];
-    let remainder = Buffer.alloc(0);
-    let lineIndex = 0;
-
+async function collectKeywordsFromFile(filePath, options = {}) {
+    const fullScan = options.fullScanLargeFiles === true;
+    let fileStat;
     try {
-        for await (const chunk of stream) {
-            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
-            let offset = 0;
-            let nextNewLine = -1;
+        fileStat = await fs.promises.stat(filePath);
+    } catch (_e) {
+        return [];
+    }
 
-            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
-                const lineStart = offset;
-                const lineEnd = nextNewLine;
+    const LARGE_FILE_THRESHOLD = 500 * 1024; // 500KB
+    const doChunkedScan = !fullScan && fileStat.size > LARGE_FILE_THRESHOLD;
 
-                // Find first non-whitespace character in [lineStart, lineEnd]
-                let firstNonSpaceIdx = lineStart;
-                while (firstNonSpaceIdx < lineEnd) {
-                    const byte = combined[firstNonSpaceIdx];
-                    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) { // space, tab, CR
+    const keywords = [];
+
+    async function scanStream(stream, startLineIndex, maxLines = -1) {
+        let remainder = Buffer.alloc(0);
+        let lineIndex = startLineIndex;
+        let linesProcessed = 0;
+
+        try {
+            for await (const chunk of stream) {
+                const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
+                let offset = 0;
+                let nextNewLine = -1;
+
+                while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
+                    const lineStart = offset;
+                    const lineEnd = nextNewLine;
+
+                    let firstNonSpaceIdx = lineStart;
+                    while (firstNonSpaceIdx < lineEnd) {
+                        const byte = combined[firstNonSpaceIdx];
+                        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) { // space, tab, CR
+                            break;
+                        }
+                        firstNonSpaceIdx++;
+                    }
+
+                    if (firstNonSpaceIdx < lineEnd && combined[firstNonSpaceIdx] === 0x2A) {
+                        const lineStr = combined.toString('utf8', lineStart, lineEnd);
+                        const trimmed = lineStr.trim();
+                        const keyword = trimmed.slice(1);
+                        if (keyword) {
+                            keywords.push({ keyword, filePath, lineIndex });
+                        }
+                    }
+
+                    offset = nextNewLine + 1;
+                    lineIndex++;
+                    linesProcessed++;
+
+                    if (linesProcessed % STREAM_SCAN_YIELD_INTERVAL === 0) {
+                        await new Promise(r => setImmediate(r));
+                    }
+
+                    if (maxLines > 0 && linesProcessed >= maxLines) {
+                        return;
+                    }
+                }
+                remainder = combined.subarray(offset);
+            }
+
+            if (remainder.length > 0 && (maxLines <= 0 || linesProcessed < maxLines)) {
+                let firstNonSpaceIdx = 0;
+                while (firstNonSpaceIdx < remainder.length) {
+                    const byte = remainder[firstNonSpaceIdx];
+                    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) {
                         break;
                     }
                     firstNonSpaceIdx++;
                 }
-
-                // If first non-whitespace character is '*', it's a keyword
-                if (firstNonSpaceIdx < lineEnd && combined[firstNonSpaceIdx] === 0x2A) {
-                    const lineStr = combined.toString('utf8', lineStart, lineEnd);
-                    const trimmed = lineStr.trim();
-                    const keyword = trimmed.slice(1);
+                if (firstNonSpaceIdx < remainder.length && remainder[firstNonSpaceIdx] === 0x2A) {
+                    const lineStr = remainder.toString('utf8').trim();
+                    const keyword = lineStr.slice(1);
                     if (keyword) {
                         keywords.push({ keyword, filePath, lineIndex });
                     }
                 }
-
-                offset = nextNewLine + 1;
-                lineIndex++;
-
-                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) {
-                    await new Promise(r => setImmediate(r));
-                }
             }
-            remainder = combined.subarray(offset);
+        } finally {
+            stream.destroy();
         }
+    }
 
-        if (remainder.length > 0) {
-            let firstNonSpaceIdx = 0;
-            while (firstNonSpaceIdx < remainder.length) {
-                const byte = remainder[firstNonSpaceIdx];
-                if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) {
-                    break;
-                }
-                firstNonSpaceIdx++;
-            }
-            if (firstNonSpaceIdx < remainder.length && remainder[firstNonSpaceIdx] === 0x2A) {
-                const lineStr = remainder.toString('utf8').trim();
-                const keyword = lineStr.slice(1);
-                if (keyword) {
-                    keywords.push({ keyword, filePath, lineIndex });
-                }
-            }
-        }
-    } finally {
-        stream.destroy();
+    if (!doChunkedScan) {
+        const stream = fs.createReadStream(filePath);
+        await scanStream(stream, 0, -1);
+    } else {
+        // Phase 1: First 1000 lines (reading up to 1MB)
+        const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
+        await scanStream(streamStart, 0, 1000);
+
+        // Phase 2: Last 1000 lines equivalent (reading the last 200KB)
+        const tailBytes = 200 * 1024;
+        const startOffset = Math.max(0, fileStat.size - tailBytes);
+        const streamEnd = fs.createReadStream(filePath, { start: startOffset });
+        
+        // We assign a pseudo line index that will force VS Code to jump to the EOF.
+        // We use Number.MAX_SAFE_INTEGER / 2 to avoid any overflow issues in UI.
+        await scanStream(streamEnd, 9999999, -1);
     }
 
     await new Promise(r => setImmediate(r));
