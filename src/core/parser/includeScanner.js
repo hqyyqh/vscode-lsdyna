@@ -348,14 +348,78 @@ function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
 }
 
 /**
- * Asynchronously parses include statements and paths from a file stream.
- * Optimized to skip decoding of lines that are not part of an include block context.
+ * Size threshold below which files are read entirely into memory for faster parsing.
+ * Files larger than this are processed via streaming to limit memory usage.
+ * @type {number}
+ */
+const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1 MB
+
+/**
+ * Parses include statements from a buffer (used for small files read in one shot).
+ * 
+ * @param {Buffer} buffer - File content as a Buffer.
+ * @param {string} basePath - Base directory path.
+ * @returns {IncludeResult} Include entries and search paths.
+ */
+function collectIncludeDirectivesFromBuffer(buffer, basePath) {
+    // Quick scan: if the buffer doesn't contain '*INCLUDE' at all, skip parsing entirely
+    if (buffer.indexOf('*INCLUDE') === -1) {
+        return { includeEntries: [], searchPaths: [basePath] };
+    }
+
+    const state = createIncludeDirectiveState(basePath);
+    let offset = 0;
+    let lineIndex = 0;
+
+    while (offset < buffer.length) {
+        const nextNewLine = buffer.indexOf(0x0A, offset);
+        const lineEnd = nextNewLine === -1 ? buffer.length : nextNewLine;
+
+        const isKeywordLine = buffer[offset] === 0x2A;
+        const inIncludeContext = !!state.pendingInclude ||
+            (state.keyword && state.keyword.startsWith('*INCLUDE'));
+
+        if (isKeywordLine || inIncludeContext) {
+            const lineStr = buffer.toString('utf8', offset, lineEnd);
+            processIncludeDirectiveLine(state, lineStr, lineIndex);
+        }
+
+        offset = lineEnd + 1;
+        lineIndex++;
+    }
+
+    return finalizeIncludeDirectiveState(state);
+}
+
+/**
+ * Asynchronously parses include statements and paths from a file.
+ * Optimized with:
+ * - Small file fast path: files under 1MB are read into memory at once
+ * - Early termination: files not containing '*INCLUDE' are skipped entirely
+ * - Selective line decoding: only keyword lines and include context lines are decoded
  * 
  * @param {string} filePath - Absolute path to the file on disk.
  * @returns {Promise<IncludeResult>} Include entries and search paths.
  */
 async function collectIncludeDirectivesFromFile(filePath) {
-    const state = createIncludeDirectiveState(path.dirname(filePath));
+    const basePath = path.dirname(filePath);
+
+    // Check file size first for the small file optimization
+    let fileStat;
+    try {
+        fileStat = await fs.promises.stat(filePath);
+    } catch (_error) {
+        return { includeEntries: [], searchPaths: [basePath] };
+    }
+
+    // Small file fast path: read the entire file into memory
+    if (fileStat.size <= SMALL_FILE_THRESHOLD) {
+        const buffer = await fs.promises.readFile(filePath);
+        return collectIncludeDirectivesFromBuffer(buffer, basePath);
+    }
+
+    // Large file path: use streaming with selective decoding
+    const state = createIncludeDirectiveState(basePath);
     const stream = fs.createReadStream(filePath);
     let remainder = Buffer.alloc(0);
     let lineIndex = 0;
@@ -408,6 +472,7 @@ async function collectIncludeDirectivesFromFile(filePath) {
 }
 
 module.exports = {
+    collectIncludeDirectivesFromBuffer,
     collectIncludeDirectivesFromFile,
     collectIncludeDirectivesFromLineReader,
     getIncludeEntryRanges,

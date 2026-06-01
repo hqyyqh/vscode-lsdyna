@@ -111,4 +111,53 @@ describe('includeScanner', () => {
         assert.equal(result.includeEntries.length, 1);
         assert.equal(result.includeEntries[0].fileName, 'file.k');
     });
+
+    it('returns empty results quickly for files without *INCLUDE (early termination)', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-early-'));
+        const filePath = path.join(tempDir, 'noinclude.k');
+
+        // Write a file with keywords but no *INCLUDE
+        fs.writeFileSync(filePath, '*PART\npart data\n*MAT_ELASTIC\nmat data\n*NODE\n1,0,0,0\n', 'utf8');
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+
+        assert.deepEqual(result.includeEntries, []);
+        assert.deepEqual(result.searchPaths, [tempDir]);
+    });
+
+    it('handles small files with buffer-based parsing (under 1MB)', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-buffer-'));
+        const filePath = path.join(tempDir, 'small.k');
+
+        fs.writeFileSync(filePath, '*INCLUDE\nchild.k\n*INCLUDE_PATH\n/extra/path\n', 'utf8');
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+
+        assert.equal(result.includeEntries.length, 1);
+        assert.equal(result.includeEntries[0].fileName, 'child.k');
+        assert.ok(result.searchPaths.includes('/extra/path'));
+    });
+
+    it('handles collectIncludeDirectivesFromBuffer directly', () => {
+        const { collectIncludeDirectivesFromBuffer } = require('../../../src/core/parser/includeScanner');
+        const buffer = Buffer.from('*INCLUDE\nmy_file.k\n*PART\ndata\n');
+        const basePath = '/test/dir';
+
+        const result = collectIncludeDirectivesFromBuffer(buffer, basePath);
+
+        assert.equal(result.includeEntries.length, 1);
+        assert.equal(result.includeEntries[0].fileName, 'my_file.k');
+        assert.deepEqual(result.searchPaths, [basePath]);
+    });
+
+    it('collectIncludeDirectivesFromBuffer returns empty for files without *INCLUDE', () => {
+        const { collectIncludeDirectivesFromBuffer } = require('../../../src/core/parser/includeScanner');
+        const buffer = Buffer.from('*PART\npart data\n*NODE\n1,0,0,0\n');
+        const basePath = '/test/dir';
+
+        const result = collectIncludeDirectivesFromBuffer(buffer, basePath);
+
+        assert.deepEqual(result.includeEntries, []);
+        assert.deepEqual(result.searchPaths, [basePath]);
+    });
 });

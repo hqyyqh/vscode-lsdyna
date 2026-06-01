@@ -9,6 +9,11 @@
  * tracks missing files, and uses an in-memory L1 cache (fileScanCache) based on file signatures 
  * to speed up incremental indexing.
  * 
+ * Performance optimizations:
+ * - BFS traversal with parallel file scanning (configurable concurrency)
+ * - Async file resolution with search path resolution cache
+ * - L1 signature-based file scan cache
+ * 
  * Role in System: Main orchestration service for full project indexing. Orchestrated by the worker 
  * pool or language server to maintain the global project snapshots.
  */
@@ -19,6 +24,12 @@ const path = require('path');
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
 const { ProjectGraph } = require('./projectGraph');
+
+/**
+ * Default concurrency limit for parallel file scanning.
+ * @type {number}
+ */
+const DEFAULT_CONCURRENCY = 16;
 
 /**
  * @typedef {Object} ProjectIndexResult
@@ -83,7 +94,7 @@ async function readFileSignature(filePath) {
 }
 
 /**
- * Resolves a filename against a list of active include search paths.
+ * Resolves a filename against a list of active include search paths (synchronous, legacy).
  * Returns the first path where the file actually exists on the filesystem.
  * 
  * @param {string} fileName - Filename to search for.
@@ -95,6 +106,36 @@ function resolveIncludeFromSearchPaths(fileName, searchPaths) {
         const fullPath = path.resolve(searchPath, fileName);
         if (fs.existsSync(fullPath)) return fullPath;
     }
+    return null;
+}
+
+/**
+ * Asynchronously resolves a filename against a list of active include search paths.
+ * Uses a resolution cache to avoid redundant filesystem queries for repeated lookups.
+ * 
+ * @param {string} fileName - Filename to search for.
+ * @param {string[]} searchPaths - Ordered array of folder search paths.
+ * @param {Map<string, string|null>} resolutionCache - Cache mapping (fileName + searchPaths hash) → resolved path.
+ * @returns {Promise<string|null>} Resolved absolute file path, or null if not found.
+ */
+async function resolveIncludeFromSearchPathsAsync(fileName, searchPaths, resolutionCache) {
+    const cacheKey = fileName + '\0' + searchPaths.join('\0');
+    if (resolutionCache.has(cacheKey)) {
+        return resolutionCache.get(cacheKey);
+    }
+
+    for (const searchPath of searchPaths) {
+        const fullPath = path.resolve(searchPath, fileName);
+        try {
+            await fs.promises.access(fullPath, fs.constants.F_OK);
+            resolutionCache.set(cacheKey, fullPath);
+            return fullPath;
+        } catch (_error) {
+            // File not found at this path, continue searching.
+        }
+    }
+
+    resolutionCache.set(cacheKey, null);
     return null;
 }
 
@@ -112,12 +153,43 @@ function addKeywordUsages(keywordMap, keywords) {
 }
 
 /**
+ * Creates a concurrency limiter that restricts the number of parallel async operations.
+ * 
+ * @param {number} concurrency - Maximum number of concurrent tasks.
+ * @returns {function(function(): Promise<T>): Promise<T>} A function wrapping async operations with concurrency control.
+ * @template T
+ */
+function createConcurrencyLimiter(concurrency) {
+    let activeCount = 0;
+    const queue = [];
+
+    function run() {
+        while (activeCount < concurrency && queue.length > 0) {
+            const { fn, resolve, reject } = queue.shift();
+            activeCount++;
+            fn().then(
+                (result) => { activeCount--; resolve(result); run(); },
+                (error) => { activeCount--; reject(error); run(); }
+            );
+        }
+    }
+
+    return function limit(fn) {
+        return new Promise((resolve, reject) => {
+            queue.push({ fn, resolve, reject });
+            run();
+        });
+    };
+}
+
+/**
  * Factory function to create a Project Indexer.
  * 
  * @param {Object} [options={}] - Custom scan overrides.
  * @param {function(string): Promise<import('../parser/includeScanner').IncludeResult>} [options.collectIncludeDirectivesFromFile] - Custom include parser.
  * @param {function(string): Promise<import('../parser/keywordScanner').ScannedKeyword[]>} [options.collectKeywordsFromFile] - Custom keyword parser.
  * @param {function(string): Promise<import('../cache/diskSnapshotStore').FileSignature>} [options.getFileSignature] - Custom file signature reader.
+ * @param {number} [options.concurrency] - Maximum number of parallel file scans.
  * @returns {{
  *   buildProjectIndex: function(string): Promise<ProjectIndexResult>
  * }} A project indexer instance.
@@ -126,6 +198,7 @@ function createProjectIndexer({
     collectIncludeDirectivesFromFile = includeScanner.collectIncludeDirectivesFromFile,
     collectKeywordsFromFile = keywordScanner.collectKeywordsFromFile,
     getFileSignature = readFileSignature,
+    concurrency = DEFAULT_CONCURRENCY,
 } = {}) {
     if (typeof collectIncludeDirectivesFromFile !== 'function') {
         throw new TypeError('createProjectIndexer requires collectIncludeDirectivesFromFile to be a function');
@@ -176,7 +249,10 @@ function createProjectIndexer({
     }
 
     /**
-     * Rebuilds the project index starting from the given root file by recursively scanning inclusions.
+     * Rebuilds the project index starting from the given root file using BFS with parallel scanning.
+     * 
+     * Files at each BFS level are scanned concurrently (up to the concurrency limit) to maximize
+     * I/O throughput. Cycle detection and ancestry tracking are maintained per-path via the queue.
      * 
      * @param {string} rootFile - Absolute path to the main LS-DYNA input deck.
      * @param {function(Object): void} [onProgress] - Optional callback for periodic snapshot progress.
@@ -194,22 +270,94 @@ function createProjectIndexer({
         };
         let lastProgressTime = Date.now();
 
+        const limit = createConcurrencyLimiter(concurrency);
+        const resolutionCache = new Map();
+
         /**
-         * Depth-First Search traversal to visit and parse files recursively.
-         * 
-         * @param {string} filePath - File path being visited.
-         * @param {string[]} [ancestry=[]] - Traversal ancestry chain.
+         * @typedef {Object} BFSQueueItem
+         * @property {string} filePath - Resolved file path to visit.
+         * @property {string[]} ancestry - Traversal ancestry chain.
          */
-        async function visit(filePath, ancestry = []) {
-            const resolvedFilePath = resolveProjectFile(filePath);
-            if (visited.has(resolvedFilePath)) return;
-            visited.add(resolvedFilePath);
-            files.push(resolvedFilePath);
-            graph.addFile(resolvedFilePath);
 
-            const scanResult = await loadFileScan(resolvedFilePath, stats);
-            addKeywordUsages(keywordMap, scanResult.keywords);
+        /** @type {BFSQueueItem[]} */
+        let currentLevel = [{ filePath: resolvedRootFile, ancestry: [] }];
 
+        while (currentLevel.length > 0) {
+            // Filter out already-visited files before scanning
+            const toScan = [];
+            for (const item of currentLevel) {
+                if (!visited.has(item.filePath)) {
+                    visited.add(item.filePath);
+                    files.push(item.filePath);
+                    graph.addFile(item.filePath);
+                    toScan.push(item);
+                }
+            }
+
+            if (toScan.length === 0) break;
+
+            // Scan all files in this level in parallel (with concurrency limit)
+            const scanResults = await Promise.all(
+                toScan.map(item => limit(() => loadFileScan(item.filePath, stats)))
+            );
+
+            /** @type {BFSQueueItem[]} */
+            const nextLevel = [];
+
+            for (let i = 0; i < toScan.length; i++) {
+                const { filePath: resolvedFilePath, ancestry } = toScan[i];
+                const scanResult = scanResults[i];
+
+                addKeywordUsages(keywordMap, scanResult.keywords);
+
+                // Resolve all includes for this file in parallel
+                const includeResolutions = await Promise.all(
+                    scanResult.includeEntries.map(entry =>
+                        resolveIncludeFromSearchPathsAsync(entry.fileName, scanResult.searchPaths, resolutionCache)
+                    )
+                );
+
+                for (let j = 0; j < scanResult.includeEntries.length; j++) {
+                    const entry = scanResult.includeEntries[j];
+                    const { fileName, lineIndex, startChar, endChar } = entry;
+                    const resolvedPath = includeResolutions[j];
+
+                    if (!resolvedPath) {
+                        graph.addMissingFile({
+                            fromFile: resolvedFilePath,
+                            fileName,
+                            lineIndex,
+                            startChar,
+                            endChar,
+                            filePath: path.resolve(scanResult.searchPaths[0] || path.dirname(resolvedFilePath), fileName),
+                        });
+                        continue;
+                    }
+
+                    if (ancestry.includes(resolvedPath) || resolvedPath === resolvedFilePath) {
+                        graph.addCycle({
+                            fromFile: resolvedFilePath,
+                            toFile: resolvedPath,
+                            lineIndex,
+                            startChar,
+                            endChar,
+                            path: [...ancestry, resolvedFilePath, resolvedPath],
+                        });
+                        continue;
+                    }
+
+                    graph.addIncludeEdge(resolvedFilePath, resolvedPath);
+
+                    if (!visited.has(resolvedPath)) {
+                        nextLevel.push({
+                            filePath: resolvedPath,
+                            ancestry: [...ancestry, resolvedFilePath],
+                        });
+                    }
+                }
+            }
+
+            // Report progress between BFS levels
             if (onProgress && Date.now() - lastProgressTime >= 500) {
                 lastProgressTime = Date.now();
                 onProgress({
@@ -223,39 +371,8 @@ function createProjectIndexer({
                 });
             }
 
-            for (const entry of scanResult.includeEntries) {
-                const { fileName, lineIndex, startChar, endChar } = entry;
-                const resolvedPath = resolveIncludeFromSearchPaths(fileName, scanResult.searchPaths);
-                if (!resolvedPath) {
-                    graph.addMissingFile({
-                        fromFile: resolvedFilePath,
-                        fileName,
-                        lineIndex,
-                        startChar,
-                        endChar,
-                        filePath: path.resolve(scanResult.searchPaths[0] || path.dirname(resolvedFilePath), fileName),
-                    });
-                    continue;
-                }
-
-                if (ancestry.includes(resolvedPath) || resolvedPath === resolvedFilePath) {
-                    graph.addCycle({
-                        fromFile: resolvedFilePath,
-                        toFile: resolvedPath,
-                        lineIndex,
-                        startChar,
-                        endChar,
-                        path: [...ancestry, resolvedFilePath, resolvedPath],
-                    });
-                    continue;
-                }
-
-                graph.addIncludeEdge(resolvedFilePath, resolvedPath);
-                await visit(resolvedPath, [...ancestry, resolvedFilePath]);
-            }
+            currentLevel = nextLevel;
         }
-
-        await visit(resolvedRootFile);
 
         return {
             rootFile: resolvedRootFile,
@@ -278,4 +395,7 @@ const defaultProjectIndexer = createProjectIndexer();
 module.exports = {
     buildProjectIndex: defaultProjectIndexer.buildProjectIndex,
     createProjectIndexer,
+    resolveIncludeFromSearchPaths,
+    resolveIncludeFromSearchPathsAsync,
+    createConcurrencyLimiter,
 };

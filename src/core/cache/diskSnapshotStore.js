@@ -341,8 +341,22 @@ function createDiskSnapshotStore({
      * @returns {Promise<boolean>} True if all files are unmodified.
      */
     async function validateTrackedFiles(trackedFiles) {
+        if (!trackedFiles || trackedFiles.length === 0) return true;
+
+        // Fast path: validate the root file (first entry) first.
+        // If it has changed, short-circuit immediately without checking all other files.
+        try {
+            const rootSignature = await getFileSignature(trackedFiles[0].filePath);
+            if (!areFileSignaturesEqual(rootSignature, trackedFiles[0].signature)) {
+                return false;
+            }
+        } catch (_error) {
+            return false;
+        }
+
+        // Validate remaining files in parallel chunks
         const CHUNK_SIZE = 50;
-        for (let i = 0; i < trackedFiles.length; i += CHUNK_SIZE) {
+        for (let i = 1; i < trackedFiles.length; i += CHUNK_SIZE) {
             const chunk = trackedFiles.slice(i, i + CHUNK_SIZE);
             const results = await Promise.all(chunk.map(async trackedFile => {
                 try {

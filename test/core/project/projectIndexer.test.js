@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { buildProjectIndex, createProjectIndexer } = require('../../../src/core/project/projectIndexer');
+const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAsync, createConcurrencyLimiter } = require('../../../src/core/project/projectIndexer');
 
 describe('projectIndexer', () => {
     it('recursively aggregates included files and keyword usages into one project snapshot', async () => {
@@ -276,5 +276,142 @@ describe('projectIndexer', () => {
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
+    });
+
+    it('scans files in parallel using BFS traversal with concurrency control', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+        const bFile = path.join(tempRoot, 'b.key');
+        const cFile = path.join(tempRoot, 'c.key');
+
+        // root includes a and b, a includes c
+        fs.writeFileSync(rootFile, '*INCLUDE\na.key\nb.key\n', 'utf8');
+        fs.writeFileSync(aFile, '*INCLUDE\nc.key\n', 'utf8');
+        fs.writeFileSync(bFile, '*PART\npart data\n', 'utf8');
+        fs.writeFileSync(cFile, '*MAT_ELASTIC\nmat data\n', 'utf8');
+
+        try {
+            const indexer = createProjectIndexer({ concurrency: 2 });
+            const snapshot = await indexer.buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.files.sort(), [rootFile, aFile, bFile, cFile].sort());
+            assert.deepEqual(snapshot.graph.getChildren(rootFile).sort(), [aFile, bFile].sort());
+            assert.deepEqual(snapshot.graph.getChildren(aFile), [cFile]);
+            assert.equal(snapshot.stats.scannedFileCount, 4);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('detects cycles correctly with BFS parallel traversal', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const aFile = path.join(tempRoot, 'a.key');
+
+        // root includes a, a includes root (cycle)
+        fs.writeFileSync(rootFile, '*INCLUDE\na.key\n', 'utf8');
+        fs.writeFileSync(aFile, '*INCLUDE\nmain.k\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.files.sort(), [rootFile, aFile].sort());
+            assert.equal(snapshot.cycles.length, 1);
+            assert.equal(snapshot.cycles[0].fromFile, aFile);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('uses async resolution cache to avoid redundant filesystem lookups', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const sharedFile = path.join(tempRoot, 'shared.key');
+
+        // root includes shared.key multiple times via different include blocks
+        fs.writeFileSync(rootFile, '*INCLUDE\nshared.key\n*SECTION_SHELL\ndata\n*INCLUDE\nshared.key\n', 'utf8');
+        fs.writeFileSync(sharedFile, '*PART\npart data\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            // shared.key should appear once in files (deduplication)
+            assert.deepEqual(snapshot.files.sort(), [rootFile, sharedFile].sort());
+            assert.equal(snapshot.stats.scannedFileCount, 2);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('resolveIncludeFromSearchPathsAsync', () => {
+    it('resolves file from search paths asynchronously', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-resolve-'));
+        const file = path.join(tempRoot, 'target.k');
+        fs.writeFileSync(file, 'data', 'utf8');
+
+        try {
+            const cache = new Map();
+            const result = await resolveIncludeFromSearchPathsAsync('target.k', [tempRoot], cache);
+            assert.equal(result, file);
+
+            // Second call should use cache
+            const result2 = await resolveIncludeFromSearchPathsAsync('target.k', [tempRoot], cache);
+            assert.equal(result2, file);
+            assert.equal(cache.size, 1);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('returns null and caches miss for non-existing files', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-resolve-'));
+
+        try {
+            const cache = new Map();
+            const result = await resolveIncludeFromSearchPathsAsync('nofile.k', [tempRoot], cache);
+            assert.equal(result, null);
+            assert.equal(cache.size, 1);
+            assert.equal(cache.get('nofile.k\0' + tempRoot), null);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('createConcurrencyLimiter', () => {
+    it('limits concurrent execution', async () => {
+        let active = 0;
+        let maxActive = 0;
+        const limit = createConcurrencyLimiter(2);
+
+        const task = () => limit(async () => {
+            active++;
+            maxActive = Math.max(maxActive, active);
+            await new Promise(r => setTimeout(r, 10));
+            active--;
+        });
+
+        await Promise.all([task(), task(), task(), task(), task()]);
+        assert.equal(maxActive, 2);
+    });
+
+    it('returns results from tasks', async () => {
+        const limit = createConcurrencyLimiter(3);
+        const results = await Promise.all([
+            limit(async () => 'a'),
+            limit(async () => 'b'),
+            limit(async () => 'c'),
+        ]);
+        assert.deepEqual(results, ['a', 'b', 'c']);
+    });
+
+    it('propagates errors correctly', async () => {
+        const limit = createConcurrencyLimiter(2);
+        await assert.rejects(
+            () => limit(async () => { throw new Error('test'); }),
+            /test/
+        );
     });
 });
