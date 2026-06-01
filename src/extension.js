@@ -2027,33 +2027,37 @@ function handleSelectionChange(e) {
     if (hasCard && e.kind === 2 && e.selections.length === 1) { // 2 = Mouse
         const sel = e.selections[0];
         if (!sel.isEmpty && sel.start.line === sel.end.line) {
-            const wordRange = currentDoc.getWordRangeAtPosition(sel.active);
-            let isWordSelection = false;
-            
-            if (wordRange && wordRange.isEqual(sel)) {
-                isWordSelection = true;
-            } else if (!wordRange) {
-                // If double clicking empty space, VS Code natively selects the contiguous spaces.
-                const selectedText = currentDoc.getText(sel);
-                if (selectedText.trim() === '') {
-                    isWordSelection = true;
+            const col = sel.active.character;
+            let currentF = null;
+            let isFirstField = false;
+            for (let i = 0; i < cardFields.length; i++) {
+                const f = cardFields[i];
+                if (col >= f.p && col <= f.p + f.w) {
+                    currentF = f;
+                    isFirstField = (i === 0);
+                    break;
                 }
             }
             
-            if (isWordSelection) {
-                const col = sel.active.character;
-                let currentF = null;
-                let isFirstField = false;
-                for (let i = 0; i < cardFields.length; i++) {
-                    const f = cardFields[i];
-                    if (col >= f.p && col <= f.p + f.w) {
-                        currentF = f;
-                        isFirstField = (i === 0);
-                        break;
-                    }
+            if (currentF) {
+                const wordRange = currentDoc.getWordRangeAtPosition(sel.active);
+                const selectedText = currentDoc.getText(sel);
+                const cellTextRaw = text.slice(currentF.p, Math.min(text.length, currentF.p + currentF.w));
+                const cellTextTrimmed = cellTextRaw.trim();
+                
+                let isDoubleClickOrValidSelect = false;
+                
+                if (wordRange && wordRange.isEqual(sel)) {
+                    isDoubleClickOrValidSelect = true;
+                } else if (selectedText.length > 0 && selectedText.trim() === '') {
+                    // Double clicked empty space contiguous block
+                    isDoubleClickOrValidSelect = true;
+                } else if (selectedText === cellTextTrimmed && selectedText.length > 0) {
+                    // Selected exactly the trimmed data of the cell
+                    isDoubleClickOrValidSelect = true;
                 }
                 
-                if (currentF) {
+                if (isDoubleClickOrValidSelect) {
                     const targetCol = currentF.p;
                     const targetW = currentF.w;
                     let newStart, newEnd;
@@ -2065,12 +2069,10 @@ function handleSelectionChange(e) {
                         newEnd = new vscode.Position(currentLineNum, Math.min(text.length, targetCol + targetW));
                     }
                     
-                    // Delay slightly to override VS Code's native double click selection safely
-                    setTimeout(() => {
-                        if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === currentDoc) {
-                            vscode.window.activeTextEditor.selection = new vscode.Selection(newStart, newEnd);
-                        }
-                    }, 10);
+                    // Apply selection synchronously to prevent VS Code native override from winning
+                    if (!sel.start.isEqual(newStart) || !sel.end.isEqual(newEnd)) {
+                        editor.selection = new vscode.Selection(newStart, newEnd);
+                    }
                 }
             }
         }
