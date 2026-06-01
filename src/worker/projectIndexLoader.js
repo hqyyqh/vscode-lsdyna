@@ -20,6 +20,7 @@ const { createWorkerPool } = require('./workerPool');
  * @param {Object} [options={}] - Custom overrides.
  * @param {function(Object): import('./workerPool').WorkerPool} [options.createPool] - Custom worker pool factory.
  * @param {string} [options.workerPath] - Absolute path to the worker entry script.
+ * @param {string} [options.fileScanCacheDirectory] - Optional path for persistent per-file scan cache.
  * @returns {{
  *   buildProjectIndex: function(string): Promise<import('../core/project/projectIndexer').ProjectIndexResult>,
  *   dispose: function(): Promise<void>
@@ -28,6 +29,7 @@ const { createWorkerPool } = require('./workerPool');
 function createProjectIndexLoader({
     createPool = createWorkerPool,
     workerPath = path.join(__dirname, 'scanWorker.js'),
+    fileScanCacheDirectory = null,
 } = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
@@ -52,7 +54,7 @@ function createProjectIndexLoader({
             workerPool = null;
         }
         if (!workerPool) {
-            workerPool = createPool({ workerPath });
+            workerPool = createPool({ workerPath, fileScanCacheDirectory });
         }
         return workerPool;
     }

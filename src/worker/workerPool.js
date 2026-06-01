@@ -19,7 +19,8 @@ const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
 /**
  * @typedef {Object} WorkerPoolOptions
  * @property {string} workerPath - Absolute file path to the worker entry script.
- * @property {function(string): Worker} [workerFactory] - Optional factory function to instantiate a worker.
+ * @property {function(string, Object): Worker} [workerFactory] - Optional factory function to instantiate a worker.
+ * @property {string} [fileScanCacheDirectory] - Optional path for persistent per-file scan cache.
  */
 
 /**
@@ -34,7 +35,8 @@ const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
  */
 function createWorkerPool({
     workerPath,
-    workerFactory = (nextWorkerPath) => new Worker(nextWorkerPath),
+    workerFactory = (nextWorkerPath, workerOpts) => new Worker(nextWorkerPath, workerOpts),
+    fileScanCacheDirectory = null,
 } = {}) {
     if (typeof workerPath !== 'string' || workerPath.trim() === '') {
         throw new TypeError('createWorkerPool requires a workerPath');
@@ -44,7 +46,11 @@ function createWorkerPool({
     }
 
     /** @type {Worker} */
-    const worker = workerFactory(workerPath);
+    const workerOpts = {};
+    if (fileScanCacheDirectory) {
+        workerOpts.workerData = { fileScanCacheDirectory };
+    }
+    const worker = workerFactory(workerPath, workerOpts);
     /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void, onProgress: function(any): void}>} */
     const pendingRequests = new Map();
     let nextRequestId = 1;

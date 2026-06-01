@@ -8,13 +8,16 @@
  * from the parent thread, runs `buildProjectIndex` recursively, serializes the resulting 
  * snapshot, and posts it back to the parent port.
  * 
+ * Supports optional persistent per-file scan cache for cross-session acceleration.
+ * 
  * Role in System: Executes processor-intensive parsing logic asynchronously away from the main server loop.
  */
 
-const { parentPort } = require('worker_threads');
+const { parentPort, workerData } = require('worker_threads');
 
 const { serializeProjectSnapshot } = require('../core/cache/snapshotSerializer');
-const { buildProjectIndex } = require('../core/project/projectIndexer');
+const { createFileScanCacheStore } = require('../core/cache/fileScanCacheStore');
+const { createProjectIndexer } = require('../core/project/projectIndexer');
 
 /**
  * Converts a standard Error object into a plain serializable JSON object.
@@ -29,6 +32,24 @@ function serializeError(error) {
         name: error.name,
     };
 }
+
+// Initialize per-file persistent cache if a cache directory is provided
+let persistentFileScanCache = null;
+if (workerData && workerData.fileScanCacheDirectory) {
+    try {
+        persistentFileScanCache = createFileScanCacheStore({
+            cacheDirectory: workerData.fileScanCacheDirectory,
+        });
+    } catch (_error) {
+        // Best-effort: run without persistent cache
+    }
+}
+
+// Create indexer with persistent cache support
+const indexer = createProjectIndexer({
+    persistentFileScanCache,
+});
+const { buildProjectIndex } = indexer;
 
 // Bind message listener on parent port to process requests.
 parentPort.on('message', async (message) => {
