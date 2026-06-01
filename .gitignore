@@ -10,4 +10,3 @@ node_modules/
 bin/SumatraPDF-settings.txt
 /bin/sumatrapdfcache
 *.vsix
-!lsdyna-custom-*.vsix
