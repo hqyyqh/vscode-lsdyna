@@ -407,13 +407,23 @@ async function initialize(context) {
     log("Initializing LS-DYNA Manuals Indexer...");
     try {
         const config = vscode.workspace.getConfiguration('lsdyna');
-        const manualsDir = config.get('manualsDir') || 'LS-DYNA Manuals';
+        const manualsDir = config.get('manualsDir') || 'lsdyna_manual_pack';
         log(`Configured manualsDir: "${manualsDir}"`);
 
         let dirsToScan = [];
         if (path.isAbsolute(manualsDir)) {
             dirsToScan.push(manualsDir);
         } else {
+            // Highest priority: Relative to VS Code installation folder (where code.exe is)
+            const codeExeDir = path.dirname(process.execPath);
+            dirsToScan.push(path.resolve(codeExeDir, manualsDir));
+            
+            // appRoot is usually resources/app, so code.exe is two levels up
+            if (vscode.env && vscode.env.appRoot) {
+                dirsToScan.push(path.resolve(vscode.env.appRoot, '../../', manualsDir));
+                dirsToScan.push(path.resolve(vscode.env.appRoot, manualsDir));
+            }
+
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (workspaceFolders && workspaceFolders.length > 0) {
                 for (const folder of workspaceFolders) {
