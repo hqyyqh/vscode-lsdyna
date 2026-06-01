@@ -1845,7 +1845,7 @@ async function formatLineIfNeeded(document, lineNum) {
     }
 }
 
-async function handleTabAlignment(editor) {
+async function handleTabAlignment(editor, direction = 1) {
     if (!editor) return;
 
     const document = editor.document;
@@ -1858,13 +1858,13 @@ async function handleTabAlignment(editor) {
 
     const card = getCardFieldsForLine(document, lineNum);
     if (!card || card.length === 0) {
-        await vscode.commands.executeCommand('tab');
+        if (direction === 1) await vscode.commands.executeCommand('tab');
         return;
     }
 
     // Skip alignment for title/filename fields (single wide field)
     if (card.length === 1 && card[0].w >= 40) {
-        await vscode.commands.executeCommand('tab');
+        if (direction === 1) await vscode.commands.executeCommand('tab');
         return;
     }
 
@@ -1935,22 +1935,30 @@ async function handleTabAlignment(editor) {
         }
     }
 
-    const targetIndex = currentFieldIndex + 1;
+    let targetIndex;
+    if (direction === 1) {
+        targetIndex = currentFieldIndex + 1;
+    } else if (direction === -1) {
+        targetIndex = currentFieldIndex - 1;
+    } else {
+        targetIndex = currentFieldIndex;
+    }
 
     // 2. Align current line
     let alignedText = alignLineText(text, card);
 
-    if (targetIndex < card.length) {
-        const targetEnd = card[targetIndex].p + card[targetIndex].w;
-        if (alignedText.length < targetEnd) {
-            alignedText = alignedText.padEnd(targetEnd, ' ');
-        }
+    // Ensure alignedText is padded to encompass the target field
+    let targetF_pad;
+    if (targetIndex >= card.length) {
+        targetF_pad = card[0];
+    } else if (targetIndex < 0) {
+        targetF_pad = card[card.length - 1];
     } else {
-        // If looping back to 0, ensure we have at least the first cell
-        const targetEnd = card[0].p + card[0].w;
-        if (alignedText.length < targetEnd) {
-            alignedText = alignedText.padEnd(targetEnd, ' ');
-        }
+        targetF_pad = card[targetIndex];
+    }
+    const targetEnd = targetF_pad.p + targetF_pad.w;
+    if (alignedText.length < targetEnd) {
+        alignedText = alignedText.padEnd(targetEnd, ' ');
     }
 
     // 3. Edit current line
@@ -1965,13 +1973,15 @@ async function handleTabAlignment(editor) {
     // 4. Handle cursor movement
     let targetF;
     let isFirstField = false;
-    if (targetIndex < card.length) {
-        targetF = card[targetIndex];
-        isFirstField = targetIndex === 0;
-    } else {
-        // Loop back to the first field on the current line
+    if (targetIndex >= card.length) {
         targetF = card[0];
         isFirstField = true;
+    } else if (targetIndex < 0) {
+        targetF = card[card.length - 1];
+        isFirstField = false;
+    } else {
+        targetF = card[targetIndex];
+        isFirstField = targetIndex === 0;
     }
     
     const targetCol = targetF.p;
@@ -1993,7 +2003,8 @@ async function handleTabAlignment(editor) {
 let lastActiveLineNum = null;
 let lastActiveDoc = null;
 
-function handleSelectionChange(editor) {
+function handleSelectionChange(e) {
+    const editor = e.textEditor;
     if (!editor || !isLsdynaFile(editor.document)) {
         lastActiveLineNum = null;
         lastActiveDoc = null;
@@ -2005,16 +2016,73 @@ function handleSelectionChange(editor) {
     const currentDoc = editor.document;
 
     const line = currentDoc.lineAt(currentLineNum);
-    const trimmed = line.text.trimStart();
+    const text = line.text;
+    const trimmed = text.trimStart();
     const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
     const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
     const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
     const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
     
+    // Intercept double-click to select the entire cell (preserving first space)
+    if (hasCard && e.kind === 2 && e.selections.length === 1) { // 2 = Mouse
+        const sel = e.selections[0];
+        if (!sel.isEmpty && sel.start.line === sel.end.line) {
+            const wordRange = currentDoc.getWordRangeAtPosition(sel.active);
+            let isWordSelection = false;
+            
+            if (wordRange && wordRange.isEqual(sel)) {
+                isWordSelection = true;
+            } else if (!wordRange) {
+                // If double clicking empty space, VS Code natively selects the contiguous spaces.
+                const selectedText = currentDoc.getText(sel);
+                if (selectedText.trim() === '') {
+                    isWordSelection = true;
+                }
+            }
+            
+            if (isWordSelection) {
+                const col = sel.active.character;
+                let currentF = null;
+                let isFirstField = false;
+                for (let i = 0; i < cardFields.length; i++) {
+                    const f = cardFields[i];
+                    if (col >= f.p && col <= f.p + f.w) {
+                        currentF = f;
+                        isFirstField = (i === 0);
+                        break;
+                    }
+                }
+                
+                if (currentF) {
+                    const targetCol = currentF.p;
+                    const targetW = currentF.w;
+                    let newStart, newEnd;
+                    if (isFirstField) {
+                        newStart = new vscode.Position(currentLineNum, targetCol);
+                        newEnd = new vscode.Position(currentLineNum, Math.min(text.length, targetCol + targetW));
+                    } else {
+                        newStart = new vscode.Position(currentLineNum, targetCol + 1);
+                        newEnd = new vscode.Position(currentLineNum, Math.min(text.length, targetCol + targetW));
+                    }
+                    
+                    // Delay slightly to override VS Code's native double click selection safely
+                    setTimeout(() => {
+                        if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === currentDoc) {
+                            vscode.window.activeTextEditor.selection = new vscode.Selection(newStart, newEnd);
+                        }
+                    }, 10);
+                }
+            }
+        }
+    }
+    
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
 
-    if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
-        formatLineIfNeeded(currentDoc, lastActiveLineNum);
+    const config = vscode.workspace.getConfiguration('lsdyna');
+    if (config.get('autoFormat') !== 'disabled') {
+        if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
+            formatLineIfNeeded(currentDoc, lastActiveLineNum);
+        }
     }
 
     lastActiveLineNum = currentLineNum;
@@ -2494,7 +2562,7 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection(e => {
-            handleSelectionChange(e.textEditor);
+            handleSelectionChange(e);
             updateIncludeLineContext(e.textEditor);
         })
     );
@@ -2515,7 +2583,52 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.lsdynaTab', () => {
-            return handleTabAlignment(vscode.window.activeTextEditor);
+            return handleTabAlignment(vscode.window.activeTextEditor, 1);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaShiftTab', () => {
+            return handleTabAlignment(vscode.window.activeTextEditor, -1);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaSelectCell', () => {
+            return handleTabAlignment(vscode.window.activeTextEditor, 0);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaFormatSelection', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) return;
+            const document = editor.document;
+            const selections = editor.selections;
+            
+            await editor.edit(editBuilder => {
+                for (const sel of selections) {
+                    for (let lineNum = sel.start.line; lineNum <= sel.end.line; lineNum++) {
+                        const line = document.lineAt(lineNum);
+                        const text = line.text;
+                        const trimmed = text.trimStart();
+                        const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
+                        if (isCardLine) {
+                            const card = getCardFieldsForLine(document, lineNum);
+                            if (card && card.length > 0 && !(card.length === 1 && card[0].w >= 40)) {
+                                const alignedText = alignLineText(text, card);
+                                if (alignedText !== text) {
+                                    const range = new vscode.Range(
+                                        new vscode.Position(lineNum, 0),
+                                        new vscode.Position(lineNum, text.length)
+                                    );
+                                    editBuilder.replace(range, alignedText);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         })
     );
 

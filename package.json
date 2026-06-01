@@ -121,6 +121,18 @@
                 "title": "Select Current Keyword"
             },
             {
+                "command": "extension.lsdynaShiftTab",
+                "title": "Align Card Field and Tab Previous"
+            },
+            {
+                "command": "extension.lsdynaSelectCell",
+                "title": "Select Current LS-DYNA Card Field"
+            },
+            {
+                "command": "extension.lsdynaFormatSelection",
+                "title": "Format LS-DYNA Card Selection"
+            },
+            {
                 "command": "extension.jumpToNextKeyword",
                 "title": "Jump to Next Keyword",
                 "icon": "$(arrow-down)"
@@ -170,6 +182,15 @@
                 "title": "Align Card Field and Tab Next"
             }
         ],
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "extension.lsdynaFormatSelection",
+                    "when": "editorLangId == 'lsdyna' && editorHasSelection",
+                    "group": "1_modification"
+                }
+            ]
+        },
         "keybindings": [
             {
                 "command": "extension.jumpToNextKeyword",
@@ -184,7 +205,17 @@
             {
                 "command": "extension.lsdynaTab",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+            },
+            {
+                "command": "extension.lsdynaShiftTab",
+                "key": "shift+tab",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+            },
+            {
+                "command": "extension.lsdynaSelectCell",
+                "key": "shift+alt+right",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             }
         ],
         "configurationDefaults": {
@@ -217,6 +248,24 @@
                     "type": "string",
                     "default": "lsdyna_manual_pack",
                     "description": "Path to the directory containing LS-DYNA PDF manuals (absolute or relative to VS Code installation dir). On Windows, copy SumatraPDF.exe into this folder for precise page navigation."
+                },
+                "lsdyna.enableTabNavigation": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable smart Tab navigation and overwriting cell selection in LS-DYNA cards. When disabled, Tab inserts spaces/tabs normally."
+                },
+                "lsdyna.autoFormat": {
+                    "type": "string",
+                    "enum": [
+                        "onBlur",
+                        "disabled"
+                    ],
+                    "default": "onBlur",
+                    "enumDescriptions": [
+                        "Format current line automatically when cursor leaves it",
+                        "Disable automatic formatting entirely"
+                    ],
+                    "description": "Control when auto-formatting of LS-DYNA card lines occurs."
                 },
                 "lsdyna.language": {
                     "type": "string",
