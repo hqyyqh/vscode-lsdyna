@@ -105,12 +105,7 @@
                 "path": "./syntaxes/lspp-cfile.tmLanguage.json"
             }
         ],
-        "snippets": [
-            {
-                "language": "lsdyna",
-                "path": "./snippets/lsdyna.json"
-            }
-        ],
+
         "commands": [
             {
                 "command": "extension.openIncludeFile",

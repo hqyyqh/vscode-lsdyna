@@ -1472,6 +1472,50 @@ class LsdynaFieldCompletionProvider {
     }
 }
 
+const snippetFile = path.join(__dirname, '..', 'snippets', 'lsdyna.json');
+let keywordSnippets = null;
+
+class LsdynaKeywordCompletionProvider {
+    provideCompletionItems(document, position, token, context) {
+        if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+
+        const line = document.lineAt(position.line);
+        const textBeforeCursor = line.text.slice(0, position.character);
+
+        // Only trigger keyword completion if we are exactly at the beginning of the line.
+        // It strictly requires that there are no leading spaces before the `*`.
+        if (!textBeforeCursor.startsWith('*')) {
+            return [];
+        }
+
+        if (!keywordSnippets) {
+            try {
+                const fs = require('fs');
+                const data = fs.readFileSync(snippetFile, 'utf8');
+                const parsed = JSON.parse(data);
+                keywordSnippets = [];
+                for (const key in parsed) {
+                    const snippet = parsed[key];
+                    if (!snippet.prefix || snippet.prefix.length === 0) continue;
+                    const item = new vscode.CompletionItem(snippet.prefix[0], vscode.CompletionItemKind.Snippet);
+                    item.insertText = new vscode.SnippetString(snippet.body.join('\n'));
+                    if (snippet.description) {
+                        item.documentation = new vscode.MarkdownString(snippet.description);
+                        item.detail = snippet.description;
+                    }
+                    keywordSnippets.push(item);
+                }
+            } catch (e) {
+                logDebug('Failed to load LS-DYNA snippets: ' + e.message);
+                keywordSnippets = [];
+            }
+        }
+
+        return keywordSnippets;
+    }
+}
+
+
 function generateCommentLine(card) {
     if (!card || card.length === 0) return '';
     const lastField = card[card.length - 1];
@@ -2197,6 +2241,13 @@ function activate(context) {
             { language: 'lsdyna' },
             new LsdynaFieldCompletionProvider(),
             '$', '#'
+        )
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { language: 'lsdyna' },
+            new LsdynaKeywordCompletionProvider(),
+            '*'
         )
     );
 
@@ -3065,4 +3116,5 @@ module.exports._internals = {
     handleSelectionChange,
     getPathEntryRange,
     formatPathEntryIfNeeded,
+    LsdynaKeywordCompletionProvider,
 };
