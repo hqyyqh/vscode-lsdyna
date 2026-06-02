@@ -1503,6 +1503,17 @@ class LsdynaKeywordCompletionProvider {
                     if (bodyStr.startsWith('*')) {
                         bodyStr = bodyStr.substring(1);
                     }
+                    
+                    // Replace non-numeric placeholders with spaces
+                    bodyStr = bodyStr.replace(/\$\{\d+:([^}]+)\}/g, (match, p1) => {
+                        const trimmed = p1.trim();
+                        const isNum = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/i.test(trimmed);
+                        if (!isNum && trimmed.length > 0) {
+                            return match.replace(p1, ' '.repeat(p1.length));
+                        }
+                        return match;
+                    });
+
                     item.insertText = new vscode.SnippetString(bodyStr);
                     if (snippet.description) {
                         item.documentation = new vscode.MarkdownString(snippet.description);
@@ -1593,16 +1604,6 @@ function extractSmartTokens(text) {
     for (const t of rawTokens) {
         if (numPattern.test(t)) {
             tokens.push(t);
-            continue;
-        }
-        const matchStrNum = t.match(/^([A-Za-z_]+)([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
-        if (matchStrNum) {
-            tokens.push(matchStrNum[1], matchStrNum[2]);
-            continue;
-        }
-        const matchNumStr = t.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([A-Za-z_]+)$/i);
-        if (matchNumStr) {
-            tokens.push(matchNumStr[1], matchNumStr[2]);
             continue;
         }
         const matchAlphaSignedNum = t.match(/^([A-Za-z0-9_]+)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
