@@ -1499,6 +1499,9 @@ class LsdynaKeywordCompletionProvider {
                     if (!snippet.prefix || snippet.prefix.length === 0) continue;
                     const item = new vscode.CompletionItem(snippet.prefix[0], vscode.CompletionItemKind.Snippet);
                     let bodyStr = snippet.body.join('\n');
+                    // Remove the extra newline before $0 at the end of the snippet
+                    bodyStr = bodyStr.replace(/\n\$0$/, '$0');
+                    
                     // Remove leading '*' from the snippet body to prevent double '**'
                     if (bodyStr.startsWith('*')) {
                         bodyStr = bodyStr.substring(1);
