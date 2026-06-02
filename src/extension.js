@@ -1498,7 +1498,12 @@ class LsdynaKeywordCompletionProvider {
                     const snippet = parsed[key];
                     if (!snippet.prefix || snippet.prefix.length === 0) continue;
                     const item = new vscode.CompletionItem(snippet.prefix[0], vscode.CompletionItemKind.Snippet);
-                    item.insertText = new vscode.SnippetString(snippet.body.join('\n'));
+                    let bodyStr = snippet.body.join('\n');
+                    // Remove leading '*' from the snippet body to prevent double '**'
+                    if (bodyStr.startsWith('*')) {
+                        bodyStr = bodyStr.substring(1);
+                    }
+                    item.insertText = new vscode.SnippetString(bodyStr);
                     if (snippet.description) {
                         item.documentation = new vscode.MarkdownString(snippet.description);
                         item.detail = snippet.description;
