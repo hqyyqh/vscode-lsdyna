@@ -334,17 +334,17 @@
                 {
                     "command": "extension.lsdynaFormatSelection",
                     "when": "editorLangId == 'lsdyna'",
-                    "group": "1_modification"
+                    "group": "1_modification@1"
+                },
+                {
+                    "command": "extension.selectKeyword",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "1_modification@2"
                 },
                 {
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
                     "group": "navigation"
-                },
-                {
-                    "command": "extension.selectKeyword",
-                    "when": "editorLangId == 'lsdyna'",
-                    "group": "9_cutcopypaste"
                 }
             ],
             "editor/title": [
