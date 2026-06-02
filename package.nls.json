@@ -30,5 +30,6 @@
     "config.enableTabNavigation.description": "Enable smart Tab navigation and overwriting cell selection in LS-DYNA cards. When disabled, Tab inserts spaces/tabs normally.",
     "config.autoFormat.description": "Control when auto-formatting of LS-DYNA card lines occurs.",
     "config.autoFormat.enumDescriptions.onBlur": "Format current line automatically when cursor leaves it",
-    "config.autoFormat.enumDescriptions.disabled": "Disable automatic formatting entirely"
+    "config.autoFormat.enumDescriptions.disabled": "Disable automatic formatting entirely",
+    "config.largeFile.enableRendering.description": "Enable syntax rendering, hover, formatting, and auto-completion for extremely large files (no line limit). When enabled, massive files are handled just like small files. Disable to save memory on 100k+ line files."
 }

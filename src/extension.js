@@ -188,7 +188,12 @@ function getIncludeDirectiveData(document) {
  * @returns {boolean} True if size exceeds line threshold.
  */
 function shouldSkipAutomaticDocumentScan(document) {
-    return Boolean(document) && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
+    if (!document) return false;
+    const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
+    if (config.get('largeFile.enableRendering', true)) {
+        return false;
+    }
+    return document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
 }
 
 /**

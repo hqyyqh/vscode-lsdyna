@@ -243,6 +243,11 @@
                     "default": true,
                     "description": "%config.enableTabNavigation.description%"
                 },
+                "lsdyna.largeFile.enableRendering": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.largeFile.enableRendering.description%"
+                },
                 "lsdyna.autoFormat": {
                     "type": "string",
                     "enum": [
