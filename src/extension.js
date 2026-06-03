@@ -675,11 +675,24 @@ function getFieldData() {
  */
 function lookupKeyword(name) {
     const data = getFieldData();
-    if (data[name]) return data[name];
-    const tokens = name.split('_');
-    for (let i = tokens.length - 1; i >= 1; i--) {
-        const candidate = tokens.slice(0, i).join('_');
-        if (data[candidate]) return data[candidate];
+    const { getAliases } = require('./core/keywordUtils');
+    const candidatesToCheck = [name, ...getAliases(name)];
+    
+    for (const cand of candidatesToCheck) {
+        if (data[cand]) return data[cand];
+    }
+    
+    for (const cand of candidatesToCheck) {
+        const tokens = cand.split('_');
+        for (let i = tokens.length - 1; i >= 1; i--) {
+            const candidate = tokens.slice(0, i).join('_');
+            if (data[candidate]) return data[candidate];
+            
+            const subAliases = getAliases(candidate);
+            for (const sa of subAliases) {
+                if (data[sa]) return data[sa];
+            }
+        }
     }
     return null;
 }

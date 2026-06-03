@@ -67,17 +67,44 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
             return kw;
         }));
         
-        let isValid = validKeywords.has(checkKeyword) || customValidKeywords.has(checkKeyword);
-        if (!isValid) {
+        let isValid = false;
+        const { getAliases } = require('../keywordUtils');
+        const candidatesToCheck = [checkKeyword, ...getAliases(checkKeyword)];
+        for (const cand of candidatesToCheck) {
+            if (validKeywords.has(cand) || customValidKeywords.has(cand)) {
+                isValid = true;
+                break;
+            }
+            // Prefix matching for custom valid keywords ending with *
             for (const ckw of customValidKeywords) {
                 if (ckw.endsWith('*')) {
                     const prefix = ckw.substring(0, ckw.length - 1);
-                    if (checkKeyword.startsWith(prefix)) {
+                    if (cand.startsWith(prefix)) {
                         isValid = true;
                         break;
                     }
                 }
             }
+            if (isValid) break;
+            
+            // Try sub-tokens for cand
+            const parts = cand.split('_');
+            for (let j = parts.length - 1; j >= 1; j--) {
+                const subCand = parts.slice(0, j).join('_');
+                if (validKeywords.has(subCand)) {
+                    isValid = true;
+                    break;
+                }
+                const subAliases = getAliases(subCand);
+                for (const sa of subAliases) {
+                    if (validKeywords.has(sa)) {
+                        isValid = true;
+                        break;
+                    }
+                }
+                if (isValid) break;
+            }
+            if (isValid) break;
         }
         
         if (!isValid) {

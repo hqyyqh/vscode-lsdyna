@@ -571,17 +571,29 @@ async function initialize(context) {
  */
 function getManualLocations(kwName) {
     const cleaned = cleanKeyword(kwName);
-    let locs = keywordMap.get(cleaned);
-    if (locs && locs.length > 0) {
-        return locs.map(loc => ({ ...loc, matchedKeyword: cleaned }));
-    }
+    const { getAliases } = require('./keywordUtils');
+    const candidatesToCheck = [cleaned, ...getAliases(cleaned)];
 
-    const tokens = cleaned.split('_');
-    for (let i = tokens.length - 1; i >= 1; i--) {
-        const candidate = tokens.slice(0, i).join('_');
-        locs = keywordMap.get(candidate);
+    for (const cand of candidatesToCheck) {
+        let locs = keywordMap.get(cand);
         if (locs && locs.length > 0) {
-            return locs.map(loc => ({ ...loc, matchedKeyword: candidate }));
+            return locs.map(loc => ({ ...loc, matchedKeyword: cand }));
+        }
+
+        const tokens = cand.split('_');
+        for (let i = tokens.length - 1; i >= 1; i--) {
+            const candidate = tokens.slice(0, i).join('_');
+            locs = keywordMap.get(candidate);
+            if (locs && locs.length > 0) {
+                return locs.map(loc => ({ ...loc, matchedKeyword: candidate }));
+            }
+            const subAliases = getAliases(candidate);
+            for (const sa of subAliases) {
+                locs = keywordMap.get(sa);
+                if (locs && locs.length > 0) {
+                    return locs.map(loc => ({ ...loc, matchedKeyword: sa }));
+                }
+            }
         }
     }
     return [];
