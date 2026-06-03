@@ -207,6 +207,12 @@
         ],
         "configurationDefaults": {
             "[lsdyna]": {
+                "editor.quickSuggestions": {
+                    "other": false,
+                    "comments": false,
+                    "strings": false
+                },
+                "editor.suggest.showWords": false,
                 "editor.wordBasedSuggestions": "off",
                 "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",<>/?",
                 "editor.wordWrap": "off",
