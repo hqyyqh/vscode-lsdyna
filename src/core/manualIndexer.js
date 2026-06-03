@@ -80,17 +80,17 @@ function log(msg) {
     }
 }
 
+const { stripTitleSuffix } = require('./keywordUtils');
+
 /**
- * Normalizes a keyword string (e.g., trims, capitalizes, strips _TITLE suffix, adds leading '*').
+ * Normalizes a keyword string (e.g., trims, capitalizes, strips title suffixes, adds leading '*').
  * 
  * @param {string} raw - The raw keyword text.
  * @returns {string} Normalized keyword.
  */
 function cleanKeyword(raw) {
     let clean = raw.trim().toUpperCase();
-    if (clean.endsWith('_TITLE')) {
-        clean = clean.slice(0, -6);
-    }
+    clean = stripTitleSuffix(clean);
     if (clean && !clean.startsWith('*')) {
         clean = '*' + clean;
     }

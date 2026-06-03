@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const i18n = require('../i18n');
+const { stripTitleSuffix } = require('../keywordUtils');
 
 let validKeywords = new Set();
 let isInitialized = false;
@@ -54,11 +55,8 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
             diagnostics.push(diagnostic);
         }
         
-        // Strip _TITLE
-        let checkKeyword = rawKeyword.toUpperCase();
-        if (checkKeyword.endsWith('_TITLE')) {
-            checkKeyword = checkKeyword.substring(0, checkKeyword.length - 6);
-        }
+        // Strip _TITLE and similar suffixes
+        let checkKeyword = stripTitleSuffix(rawKeyword.toUpperCase());
         
         // Check validity against built-in and custom valid keywords
         const config = vscode.workspace.getConfiguration('lsdyna', document.uri);

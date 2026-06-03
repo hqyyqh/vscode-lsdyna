@@ -91,13 +91,17 @@ trailer
             assert.strictEqual(cleanKeyword('  *node  '), '*NODE');
         });
 
-        it('removes _TITLE suffix (case-insensitive)', () => {
+        it('removes title suffixes (case-insensitive)', () => {
             assert.strictEqual(cleanKeyword('*NODE_TITLE'), '*NODE');
             assert.strictEqual(cleanKeyword('*node_title'), '*NODE');
             assert.strictEqual(cleanKeyword('  *control_termination_title  '), '*CONTROL_TERMINATION');
+            assert.strictEqual(cleanKeyword('*PART_ID'), '*PART');
+            assert.strictEqual(cleanKeyword('*SECTION_SOLID_HEADING'), '*SECTION_SOLID');
+            assert.strictEqual(cleanKeyword('*MAT_ELASTIC_ID_TITLE'), '*MAT_ELASTIC');
+            assert.strictEqual(cleanKeyword('*NODE_BLANK'), '*NODE');
         });
 
-        it('does not remove _TITLE if it is not a suffix', () => {
+        it('does not remove title suffixes if it is not a suffix', () => {
             assert.strictEqual(cleanKeyword('*TITLE_SUFFIX'), '*TITLE_SUFFIX');
         });
     });

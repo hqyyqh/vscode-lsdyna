@@ -16,6 +16,7 @@ const fs = require('fs');
 const readline = require('readline');
 const child_process = require('child_process');
 const manualIndexer = require('./core/manualIndexer');
+const { hasTitleSuffix } = require('./core/keywordUtils');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
@@ -870,7 +871,7 @@ class LsdynaFieldHoverProvider {
         }
 
         let effectiveCardIndex = cardIndex;
-        if (kwName.endsWith('_TITLE')) {
+        if (hasTitleSuffix(kwName)) {
             if (cardIndex === 0) {
                 return null; // Title line has no card structure fields
             }
@@ -1345,7 +1346,7 @@ function getCardFieldsForLine(document, lineNum) {
     }
 
     let effectiveCardIndex = cardIndex;
-    if (kwName.endsWith('_TITLE')) {
+    if (hasTitleSuffix(kwName)) {
         if (cardIndex === 0) return null;
         effectiveCardIndex = cardIndex - 1;
     }
@@ -1408,7 +1409,7 @@ class LsdynaFieldCompletionProvider {
         }
 
         let effectiveCardIndex = cardIndex;
-        if (kwName.endsWith('_TITLE')) {
+        if (hasTitleSuffix(kwName)) {
             effectiveCardIndex = cardIndex - 1;
         }
         const clampedIndex = entry.r ? Math.min(effectiveCardIndex, entry.c.length - 1) : effectiveCardIndex;
