@@ -70,7 +70,7 @@ const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
 
-function getLsdynaConfigurationValue(key, defaultValue, resource) {
+function getLsdynaConfigurationValue(key, defaultValue, resource = undefined) {
     const config = vscode.workspace.getConfiguration('lsdyna', resource);
     if (!config || typeof config.get !== 'function') {
         return defaultValue;
@@ -86,6 +86,10 @@ function getExtensionPath(context) {
         return path.resolve(context.asAbsolutePath('.'));
     }
     return __dirname;
+}
+
+function logDebug(message) {
+    console.log(`[lsdyna] ${message}`);
 }
 
 // --- Folding ---
@@ -1189,6 +1193,10 @@ async function collectIncludeFiles(rootPath, onProgress) {
  * @implements {vscode.FileDecorationProvider}
  */
 class LsdynaFileDecorationProvider {
+    includeTreeProvider: any;
+    _onDidChangeFileDecorations: any;
+    onDidChangeFileDecorations: any;
+
     constructor(includeTreeProvider) {
         this.includeTreeProvider = includeTreeProvider;
         this._onDidChangeFileDecorations = new vscode.EventEmitter();
@@ -1272,7 +1280,7 @@ class LsdynaIncludeCompletionProvider {
             }
         }
 
-        const suggestions = new Set();
+        const suggestions = new Set<string>();
         const maxFiles = 300;
         const maxDepth = 3;
 
@@ -2823,7 +2831,12 @@ function deactivate() {
  * @param {function} [params.findAffectedRoots] - Roots mapping function.
  * @returns {function(string|import('vscode').Uri): void} Invalidation callback.
  */
-function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = findAffectedProjectRoots } = {}) {
+type ManifestDrivenInvalidatorOptions = {
+    indexClient?: any;
+    findAffectedRoots?: (changedFilePath: string, manifestEntries: any[]) => string[];
+};
+
+function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = findAffectedProjectRoots }: ManifestDrivenInvalidatorOptions = {}) {
     if (!indexClient || typeof indexClient.invalidate !== 'function' || typeof indexClient.getManifestEntries !== 'function') {
         throw new TypeError('createManifestDrivenInvalidator requires indexClient.invalidate and indexClient.getManifestEntries');
     }
@@ -2863,6 +2876,13 @@ function createBatchedManifestInvalidator({
     delayMs = 100,
     schedule = setTimeout,
     cancel = clearTimeout,
+}: {
+    indexClient?: any;
+    findAffectedRoots?: (changedFilePath: string, manifestEntries: any[]) => string[];
+    onInvalidatedRoots?: (roots: string[]) => void;
+    delayMs?: number;
+    schedule?: (callback: () => void, delayMs: number) => any;
+    cancel?: (timer: any) => void;
 } = {}) {
     if (typeof onInvalidatedRoots !== 'function') {
         throw new TypeError('createBatchedManifestInvalidator requires onInvalidatedRoots to be a function');
@@ -2912,6 +2932,10 @@ function createProjectSnapshotRefreshQueue({
     loadProjectSnapshot,
     onError = () => {},
     schedule = setImmediate,
+}: {
+    loadProjectSnapshot?: (rootFile: string) => Promise<any>;
+    onError?: (error: any, rootFile: string | null) => void;
+    schedule?: (callback: () => void) => any;
 } = {}) {
     if (typeof loadProjectSnapshot !== 'function') {
         throw new TypeError('createProjectSnapshotRefreshQueue requires a loadProjectSnapshot function');
@@ -2980,6 +3004,9 @@ function createProjectSnapshotRefreshQueue({
 function createProjectSnapshotPersistentCache({
     storageUri = null,
     createStore = createDiskSnapshotStore,
+}: {
+    storageUri?: any;
+    createStore?: (options: { cacheDirectory: string; maxCacheBytes: number }) => any;
 } = {}) {
     if (!storageUri || typeof storageUri.fsPath !== 'string' || storageUri.fsPath.trim() === '') {
         return null;
