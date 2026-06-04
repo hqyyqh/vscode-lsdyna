@@ -15,11 +15,19 @@ const { createIndexClient } = require('../client/services/indexClient');
 const { createProjectIndexLoader } = require('../worker/projectIndexLoader');
 const { createDiskSnapshotStore } = require('../core/cache/diskSnapshotStore');
 
+type ServerSessionOptions = {
+    globalStoragePath?: string;
+    maxCacheBytes?: number;
+};
+
 /**
  * Represents an active LS-DYNA Language Server Session.
  * Manages the background worker thread pool and persistent caching stores.
  */
 class LsdynaServerSession {
+    projectIndexLoader: any;
+    indexClient: any;
+
     /**
      * Creates an LsdynaServerSession instance.
      * 
@@ -27,7 +35,7 @@ class LsdynaServerSession {
      * @param {string} [options.globalStoragePath] - Absolute folder path to store disk caches.
      * @param {number} [options.maxCacheBytes] - Max size of disk caches before eviction (defaults to 256MB).
      */
-    constructor({ globalStoragePath, maxCacheBytes } = {}) {
+    constructor({ globalStoragePath, maxCacheBytes }: ServerSessionOptions = {}) {
         /**
          * Pool coordinator for spawning background node worker processes.
          * @type {import('../worker/projectIndexLoader').ProjectIndexLoader}
@@ -81,7 +89,7 @@ let activeSession = null;
  * @returns {LsdynaServerSession} The newly created active session.
  * @throws {Error} If a session has already been initialized.
  */
-function initializeSession(options) {
+function initializeSession(options: ServerSessionOptions) {
     if (activeSession) {
         throw new Error('Server session is already initialized');
     }
@@ -115,3 +123,5 @@ module.exports = {
     getActiveSession,
     shutdownSession,
 };
+
+export {};

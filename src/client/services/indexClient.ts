@@ -19,6 +19,16 @@ const { createCacheManifestStore } = require('../../core/cache/cacheManifestStor
 const { hydrateProjectSnapshot } = require('../../core/cache/snapshotSerializer');
 const protocol = require('../../shared/protocol');
 
+type IndexClientOptions = {
+    buildProjectIndex?: (rootFile: string, options?: object, onProgress?: ((snapshot: any) => void) | null) => Promise<any>;
+    getFileSignature?: (filePath: string) => Promise<any>;
+    estimateSnapshotSize?: (snapshot: any) => number;
+    maxSnapshotBytes?: number;
+    manifestStore?: any;
+    persistentCache?: any;
+    languageClient?: any;
+};
+
 /**
  * Resolves a root file path, performing validation checks.
  * 
@@ -201,7 +211,7 @@ function createIndexClient({
     manifestStore = createCacheManifestStore(),
     persistentCache = null,
     languageClient = null,
-} = {}) {
+}: IndexClientOptions = {}) {
     if (languageClient) {
         if (typeof languageClient.sendRequest !== 'function' || typeof languageClient.sendNotification !== 'function') {
             throw new TypeError('createIndexClient requires a languageClient supporting sendRequest and sendNotification');
@@ -445,3 +455,5 @@ function createIndexClient({
 module.exports = {
     createIndexClient,
 };
+
+export {};

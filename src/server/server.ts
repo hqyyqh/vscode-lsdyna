@@ -65,3 +65,5 @@ connection.onNotification(protocol.INVALIDATE_NOTIFICATION, (params) => {
 
 // Start listening on JSON-RPC.
 connection.listen();
+
+export {};

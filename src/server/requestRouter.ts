@@ -25,7 +25,7 @@ const protocol = require('../shared/protocol');
  * @returns {Promise<any>} Response JSON data.
  * @throws {Error} If no active session exists or request method is unsupported.
  */
-async function handleRequest(method, params, connection) {
+async function handleRequest(method, params, connection = null) {
     const session = getActiveSession();
     if (!session) {
         throw new Error('No active server session initialized');
@@ -81,3 +81,5 @@ module.exports = {
     handleRequest,
     handleNotification,
 };
+
+export {};
