@@ -81,3 +81,5 @@ module.exports = {
     stripTitleSuffix,
     getAliases
 };
+
+export {};

@@ -70,6 +70,24 @@ const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
 
+function getLsdynaConfigurationValue(key, defaultValue, resource) {
+    const config = vscode.workspace.getConfiguration('lsdyna', resource);
+    if (!config || typeof config.get !== 'function') {
+        return defaultValue;
+    }
+    return config.get(key, defaultValue);
+}
+
+function getExtensionPath(context) {
+    if (!context) return __dirname;
+    if (context.extensionPath) return context.extensionPath;
+    if (context.extensionUri && context.extensionUri.fsPath) return context.extensionUri.fsPath;
+    if (typeof context.asAbsolutePath === 'function') {
+        return path.resolve(context.asAbsolutePath('.'));
+    }
+    return __dirname;
+}
+
 // --- Folding ---
 
 /**
@@ -190,8 +208,7 @@ function getIncludeDirectiveData(document) {
  */
 function shouldSkipAutomaticDocumentScan(document) {
     if (!document) return false;
-    const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
-    if (config.get('largeFile.enableRendering', true)) {
+    if (getLsdynaConfigurationValue('largeFile.enableRendering', true, document.uri)) {
         return false;
     }
     return document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
@@ -225,7 +242,7 @@ function getActiveUri() {
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    const configExtensions = vscode.workspace.getConfiguration('lsdyna').get('additionalExtensions') || ['.k', '.key', '.dyna', '.asc'];
+    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc']) || ['.k', '.key', '.dyna', '.asc'];
     const normalizedExtensions = configExtensions.map(e => {
         const trimmed = e.trim().toLowerCase();
         return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
@@ -742,7 +759,7 @@ function formatHoverHelpText(helpText) {
 function appendManualLinks(md, kwName) {
     const cleanKw = manualIndexer.cleanKeyword(kwName);
     const manuals = manualIndexer.getManualLocations(cleanKw);
-    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir') || 'lsdyna_manual_pack';
+    const manualsDir = getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack';
     const fileCount = manualIndexer.getManualFilesCount();
 
     const notConfigured = fileCount === 0;
@@ -1340,8 +1357,7 @@ function getCardFieldsForLine(document, lineNum) {
     const kwText = document.lineAt(kwLine).text.trim();
     const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
     
-    const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
-    const ignoreKeywords = config.get('ignoreFormattingKeywords') || [];
+    const ignoreKeywords = getLsdynaConfigurationValue('ignoreFormattingKeywords', [], document.uri) || [];
     const kwTextUpper = kwText.toUpperCase();
     for (const prefix of ignoreKeywords) {
         if (kwTextUpper.startsWith(prefix.toUpperCase())) {
@@ -2058,6 +2074,9 @@ async function handleTabAlignment(editor, direction = 1) {
     
     const targetCol = targetF.p;
     const targetW = targetF.w;
+    const previousF = targetIndex > 0 && targetIndex < card.length ? card[targetIndex - 1] : null;
+    const previousValue = previousF ? alignedText.slice(previousF.p, previousF.p + previousF.w).trim() : '';
+    const shouldPreserveSeparator = !isFirstField && previousValue.length > 0;
     
     let selStart, selEnd;
     if (isFirstField) {
@@ -2065,18 +2084,18 @@ async function handleTabAlignment(editor, direction = 1) {
         selEnd = new vscode.Position(lineNum, targetCol + targetW);
     } else {
         // Preserve the first character as a space for field separation
-        selStart = new vscode.Position(lineNum, targetCol + 1);
+        selStart = new vscode.Position(lineNum, targetCol + (shouldPreserveSeparator ? 1 : 0));
         selEnd = new vscode.Position(lineNum, targetCol + targetW);
     }
     
-    editor.selection = new vscode.Selection(selStart, selEnd);
+    editor.selection = new vscode.Selection(selEnd, selStart);
 }
 
 let lastActiveLineNum = null;
 let lastActiveDoc = null;
 
 function handleSelectionChange(e) {
-    const editor = e.textEditor;
+    const editor = e && e.textEditor ? e.textEditor : e;
     if (!editor || !isLsdynaFile(editor.document)) {
         lastActiveLineNum = null;
         lastActiveDoc = null;
@@ -2152,8 +2171,7 @@ function handleSelectionChange(e) {
     
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
 
-    const config = vscode.workspace.getConfiguration('lsdyna');
-    if (config.get('autoFormat') !== 'disabled') {
+    if (getLsdynaConfigurationValue('autoFormat', undefined) !== 'disabled') {
         if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
             formatLineIfNeeded(currentDoc, lastActiveLineNum);
         }
@@ -2186,7 +2204,9 @@ function activate(context) {
     }
     logDebug("Extension activated.");
 
-    const snippetsPath = path.join(context.extensionPath, 'snippets', 'lsdyna.json');
+    const snippetsPath = typeof context.asAbsolutePath === 'function'
+        ? context.asAbsolutePath(path.join('snippets', 'lsdyna.json'))
+        : path.join(getExtensionPath(context), 'snippets', 'lsdyna.json');
     fs.readFile(snippetsPath, 'utf8', (err, data) => {
         if (!err) {
             try {
@@ -3046,19 +3066,21 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 async function resolveSumatraPath(context) {
     const fs = require('fs');
     const path = require('path');
-    const manualsDir = vscode.workspace.getConfiguration('lsdyna').get('manualsDir') || 'lsdyna_manual_pack';
+    const manualsDir = getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack';
     if (manualsDir && typeof manualsDir === 'string') {
         const dirsToCheck = [];
         if (path.isAbsolute(manualsDir)) {
             dirsToCheck.push(manualsDir);
         } else {
-            dirsToCheck.push(path.resolve(vscode.env.appRoot, manualsDir));
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (workspaceFolders && workspaceFolders.length > 0) {
                 dirsToCheck.push(path.resolve(workspaceFolders[0].uri.fsPath, manualsDir));
             }
             dirsToCheck.push(path.resolve(process.cwd(), manualsDir));
-            dirsToCheck.push(path.resolve(context.extensionPath, manualsDir));
+            if (vscode.env && vscode.env.appRoot) {
+                dirsToCheck.push(path.resolve(vscode.env.appRoot, manualsDir));
+            }
+            dirsToCheck.push(path.resolve(getExtensionPath(context), manualsDir));
         }
 
         for (const dir of dirsToCheck) {

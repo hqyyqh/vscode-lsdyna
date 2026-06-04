@@ -18,6 +18,14 @@ const vscode = require('vscode');
 const includeScanner = require('../../core/parser/includeScanner');
 const i18n = require('../../core/i18n');
 
+function getLsdynaConfigurationValue(key, defaultValue) {
+    const config = vscode.workspace.getConfiguration('lsdyna');
+    if (!config || typeof config.get !== 'function') {
+        return defaultValue;
+    }
+    return config.get(key, defaultValue);
+}
+
 /**
  * Formats a size in bytes into a human-readable size string (e.g. "1.2 MB").
  * 
@@ -220,7 +228,7 @@ function getActiveUri() {
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    const configExtensions = vscode.workspace.getConfiguration('lsdyna').get('additionalExtensions') || ['.k', '.key', '.dyna', '.asc'];
+    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc']) || ['.k', '.key', '.dyna', '.asc'];
     const normalizedExtensions = configExtensions.map(e => {
         const trimmed = e.trim().toLowerCase();
         return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
@@ -304,8 +312,7 @@ class LsdynaIncludeTreeProvider {
                     await this.invalidateProjectSnapshot(uri.fsPath);
                 }
                 if (this.loadProjectSnapshot) {
-                    const config = vscode.workspace.getConfiguration('lsdyna');
-                    const options = { fullScanLargeFiles: config.get('scanner.fullScanLargeFiles', false) };
+                    const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
                     const snapshot = await this.loadProjectSnapshot(uri.fsPath, options, (partialSnapshot) => {
                         this.root = this._buildRootFromSnapshot(partialSnapshot, uri.fsPath);
                         this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
@@ -386,6 +393,7 @@ class LsdynaIncludeTreeProvider {
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else if (node.missing) {
             item.description = 'missing';
+            item.iconPath = new vscode.ThemeIcon('warning');
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else {
             item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode, rootPath || node.filePath));

@@ -13,6 +13,10 @@
 
 const fs = require('fs');
 
+type LargeFileScanOptions = {
+    fullScanLargeFiles?: boolean;
+};
+
 /**
  * The default batch yield interval for stream scanning to prevent blocking the event loop.
  * @type {number}
@@ -53,7 +57,7 @@ function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
  * @param {string} filePath - Absolute path to the file.
  * @returns {Promise<ScannedKeyword[]>} Scanned keywords array.
  */
-async function collectKeywordsFromFile(filePath, options = {}) {
+async function collectKeywordsFromFile(filePath, options: LargeFileScanOptions = {}) {
     const fullScan = options.fullScanLargeFiles === true;
     let fileStat;
     try {
@@ -144,6 +148,7 @@ async function collectKeywordsFromFile(filePath, options = {}) {
         // Phase 1: First 1000 lines (reading up to 1MB)
         const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
         await scanStream(streamStart, 0, 1000);
+        await new Promise(r => setImmediate(r));
 
         // Phase 2: Last 1000 lines equivalent (reading the last 200KB)
         const tailBytes = 200 * 1024;
@@ -163,3 +168,5 @@ module.exports = {
     collectKeywordsFromFile,
     collectKeywordsFromLineReader,
 };
+
+export {};

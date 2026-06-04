@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "target": "ES2019",
+        "module": "commonjs",
+        "rootDir": "src",
+        "outDir": "out",
+        "allowJs": true,
+        "checkJs": false,
+        "sourceMap": true,
+        "strict": false,
+        "noImplicitAny": false,
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "types": [
+            "node",
+            "vscode"
+        ]
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "out",
+        "test"
+    ]
+}

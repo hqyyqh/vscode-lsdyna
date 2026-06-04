@@ -21,6 +21,14 @@ const keywordScanner = require('../../core/parser/keywordScanner');
 const { BlockIndex } = require('../../core/incremental/blockIndex');
 const i18n = require('../../core/i18n');
 
+function getLsdynaConfigurationValue(key, defaultValue) {
+    const config = vscode.workspace.getConfiguration('lsdyna');
+    if (!config || typeof config.get !== 'function') {
+        return defaultValue;
+    }
+    return config.get(key, defaultValue);
+}
+
 /**
  * Folding limit threshold for nesting single-keyword occurrences under folders.
  * @type {number}
@@ -148,7 +156,7 @@ function getActiveUri() {
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    const configExtensions = vscode.workspace.getConfiguration('lsdyna').get('additionalExtensions') || ['.k', '.key', '.dyna', '.asc'];
+    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc']) || ['.k', '.key', '.dyna', '.asc'];
     const normalizedExtensions = configExtensions.map(e => {
         const trimmed = e.trim().toLowerCase();
         return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
@@ -412,8 +420,7 @@ class LsdynaKeywordIndexProvider {
                     await this.invalidateProjectSnapshot(uri.fsPath);
                 }
                 if (this.loadProjectSnapshot) {
-                    const config = vscode.workspace.getConfiguration('lsdyna');
-                    const options = { fullScanLargeFiles: config.get('scanner.fullScanLargeFiles', false) };
+                    const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
                     const snapshot = await this.loadProjectSnapshot(rootFile, options, (partialSnapshot) => {
                         this.roots = this._buildRootsFromSnapshot(partialSnapshot, rootDir);
                         

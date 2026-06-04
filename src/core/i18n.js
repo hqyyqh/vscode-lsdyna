@@ -134,7 +134,9 @@ let currentLanguage = 'zh-cn';
 function updateLanguage() {
     if (typeof vscode !== 'undefined' && vscode.workspace) {
         const config = vscode.workspace.getConfiguration('lsdyna');
-        currentLanguage = config.get('language') || 'zh-cn';
+        currentLanguage = config && typeof config.get === 'function'
+            ? config.get('language') || 'zh-cn'
+            : 'zh-cn';
     }
 }
 

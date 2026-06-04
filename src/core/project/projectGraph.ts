@@ -53,10 +53,42 @@
  * @property {number} endChar - 0-indexed ending character column.
  */
 
+interface IncludeEntryNode {
+    filePath: string;
+    fileName?: string;
+    missing?: boolean;
+    lineIndex?: number;
+    startChar?: number;
+    endChar?: number;
+}
+
+interface MissingFileRecord {
+    fromFile: string;
+    filePath: string;
+    fileName: string;
+    lineIndex: number;
+    startChar: number;
+    endChar: number;
+}
+
+interface CycleRecord {
+    fromFile: string;
+    path: string[];
+    lineIndex: number;
+    startChar: number;
+    endChar: number;
+}
+
 /**
  * Represeents the complete inclusion directed dependency graph of a workspace project.
  */
 class ProjectGraph {
+    children: Map<string, string[]>;
+    includeEntries: Map<string, IncludeEntryNode[]>;
+    parents: Map<string, string[]>;
+    missingFiles: MissingFileRecord[];
+    cycles: CycleRecord[];
+
     /**
      * Creates an empty ProjectGraph instance.
      */
@@ -247,10 +279,10 @@ class ProjectGraph {
     /**
      * De-serializes a JSON representation back into a ProjectGraph instance.
      * 
-     * @param {Object} [data={}] - Plain data object.
+     * @param {{children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[]}} [data={}] - Plain data object.
      * @returns {ProjectGraph} A new ProjectGraph instance populated with data.
      */
-    static fromJSON(data = {}) {
+    static fromJSON(data: { children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[] } = {}) {
         const graph = new ProjectGraph();
         graph.children = new Map(data.children || []);
         graph.includeEntries = new Map(data.includeEntries || []);
@@ -264,3 +296,5 @@ class ProjectGraph {
 module.exports = {
     ProjectGraph,
 };
+
+export {};

@@ -79,6 +79,16 @@ class CompletionList {
     }
 }
 
+class WorkspaceEdit {
+    constructor() {
+        this.edits = [];
+    }
+
+    replace(uri, range, text) {
+        this.edits.push({ uri, range, text });
+    }
+}
+
 module.exports = {
     Position,
     Range,
@@ -89,7 +99,11 @@ module.exports = {
     CompletionItemKind,
     SnippetString,
     CompletionList,
-    Uri: { file: p => ({ fsPath: p }) },
+    WorkspaceEdit,
+    Uri: {
+        file: p => ({ fsPath: p }),
+        parse: value => ({ fsPath: value, scheme: String(value).split(':')[0], toString: () => value })
+    },
     FoldingRange: class FoldingRange { constructor(s, e) { this.start = s; this.end = e; } },
     DocumentSymbol: class DocumentSymbol {},
     DocumentLink: class DocumentLink { constructor(r, t) { this.range = r; this.target = t; } },
@@ -144,6 +158,7 @@ module.exports = {
         onDidCloseTextDocument: () => ({}),
         onDidSaveTextDocument: () => ({ dispose() {} }),
         onDidChangeConfiguration: () => ({ dispose() {} }),
+        applyEdit: () => Promise.resolve(true),
         createFileSystemWatcher: () => ({
             onDidChange: () => ({}),
             onDidCreate: () => ({}),

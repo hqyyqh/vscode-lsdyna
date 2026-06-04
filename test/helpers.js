@@ -13,6 +13,9 @@ const languageClientMock = {
             return Promise.resolve();
         }
         sendNotification() {}
+        onNotification() {
+            return { dispose() {} };
+        }
     },
     TransportKind: { ipc: 1, stdio: 2, pipe: 3, socket: 4 }
 };

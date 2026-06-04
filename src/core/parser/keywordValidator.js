@@ -60,7 +60,9 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         
         // Check validity against built-in and custom valid keywords
         const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
-        const customValidKeywordsConfig = config.get('customValidKeywords') || ['*END'];
+        const customValidKeywordsConfig = config && typeof config.get === 'function'
+            ? config.get('customValidKeywords') || ['*END']
+            : ['*END'];
         const customValidKeywords = new Set(customValidKeywordsConfig.map(k => {
             let kw = k.toUpperCase().trim();
             if (kw.startsWith('*')) kw = kw.substring(1);

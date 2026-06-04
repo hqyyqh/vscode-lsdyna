@@ -15,6 +15,10 @@
 const fs = require('fs');
 const path = require('path');
 
+type LargeFileScanOptions = {
+    fullScanLargeFiles?: boolean;
+};
+
 /**
  * The default batch yield interval for stream scanning to prevent blocking the event loop.
  * @type {number}
@@ -402,7 +406,7 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
  * @param {string} filePath - Absolute path to the file on disk.
  * @returns {Promise<IncludeResult>} Include entries and search paths.
  */
-async function collectIncludeDirectivesFromFile(filePath, options = {}) {
+async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScanOptions = {}) {
     const fullScan = options.fullScanLargeFiles === true;
     const basePath = path.dirname(filePath);
 
@@ -551,3 +555,5 @@ module.exports = {
     getIncludeEntryRanges,
     includeEntryContainsLine,
 };
+
+export {};

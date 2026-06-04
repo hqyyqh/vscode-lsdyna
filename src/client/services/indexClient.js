@@ -228,7 +228,9 @@ function createIndexClient({
                 }
             }
         };
-        bindNotification();
+        if (typeof languageClient.onNotification === 'function') {
+            bindNotification();
+        }
         return {
             async loadProjectSnapshot(rootFile, onProgress = null) {
                 if (typeof languageClient.onReady === 'function') {

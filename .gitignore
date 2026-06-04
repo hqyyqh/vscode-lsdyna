@@ -2,6 +2,7 @@ keywords/feeders*
 .vscode
 .vscode/settings.json
 node_modules/
+out/
 .worktrees/
 /.antigravity
 

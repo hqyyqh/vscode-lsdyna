@@ -407,7 +407,9 @@ async function initialize(context) {
     log("Initializing LS-DYNA Manuals Indexer...");
     try {
         const config = vscode.workspace.getConfiguration('lsdyna');
-        const manualsDir = config.get('manualsDir') || 'lsdyna_manual_pack';
+        const manualsDir = config && typeof config.get === 'function'
+            ? config.get('manualsDir') || 'lsdyna_manual_pack'
+            : 'lsdyna_manual_pack';
         log(`Configured manualsDir: "${manualsDir}"`);
 
         let dirsToScan = [];

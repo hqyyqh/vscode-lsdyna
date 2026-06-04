@@ -145,3 +145,5 @@ module.exports = {
     collectBlocksFromLineReader,
     collectBlocksFromFile,
 };
+
+export {};

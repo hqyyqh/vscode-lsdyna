@@ -20,16 +20,24 @@
         "onLanguage:lsprepost-command-file",
         "onCommand:extension.openManual"
     ],
-    "main": "./src/extension.js",
+    "main": "./out/extension.js",
     "categories": [
         "Programming Languages"
     ],
     "scripts": {
-        "test": "mocha test/**/*.test.js",
-        "package": "vsce package"
+        "compile": "tsc -p .",
+        "watch": "tsc -watch -p .",
+        "test": "npm run compile && mocha --require test/register-out.js test/**/*.test.js",
+        "package": "npm run compile && vsce package",
+        "vscode:prepublish": "npm run compile"
     },
     "devDependencies": {
-        "mocha": "^10.0.0"
+        "@types/mocha": "^10.0.10",
+        "@types/node": "^25.9.1",
+        "@types/vscode": "^1.50.0",
+        "@vscode/vsce": "^3.9.2",
+        "mocha": "^10.0.0",
+        "typescript": "^6.0.3"
     },
     "contributes": {
         "viewsContainers": {
@@ -65,7 +73,54 @@
         ],
         "configurationDefaults": {
             "[lsdyna]": {
-                "editor.autoIndent": "none"
+                "editor.quickSuggestions": {
+                    "other": false,
+                    "comments": false,
+                    "strings": false
+                },
+                "editor.suggest.showWords": false,
+                "editor.wordBasedSuggestions": "off",
+                "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",<>/?",
+                "editor.wordWrap": "off",
+                "editor.guides.indentation": false,
+                "editor.renderIndentGuides": false,
+                "editor.renderWhitespace": "all",
+                "editor.insertSpaces": true,
+                "editor.detectIndentation": false,
+                "editor.rulers": [
+                    {
+                        "column": 10,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 20,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 30,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 40,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 50,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 60,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 70,
+                        "color": "rgba(128, 128, 128, 0.15)"
+                    },
+                    {
+                        "column": 80,
+                        "color": "#8a5cf5"
+                    }
+                ]
             }
         },
         "languages": [
@@ -105,7 +160,6 @@
                 "path": "./syntaxes/lspp-cfile.tmLanguage.json"
             }
         ],
-
         "commands": [
             {
                 "command": "extension.openIncludeFile",
@@ -177,7 +231,6 @@
                 "title": "%commands.lsdynaTab.title%"
             }
         ],
-
         "keybindings": [
             {
                 "command": "extension.jumpToNextKeyword",
@@ -205,37 +258,6 @@
                 "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             }
         ],
-        "configurationDefaults": {
-            "[lsdyna]": {
-                "editor.quickSuggestions": {
-                    "other": false,
-                    "comments": false,
-                    "strings": false
-                },
-                "editor.suggest.showWords": false,
-                "editor.wordBasedSuggestions": "off",
-                "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",<>/?",
-                "editor.wordWrap": "off",
-                "editor.guides.indentation": false,
-                "editor.renderIndentGuides": false,
-                "editor.renderWhitespace": "all",
-                "editor.insertSpaces": true,
-                "editor.detectIndentation": false,
-                "editor.rulers": [
-                    { "column": 10, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 20, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 30, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 40, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 50, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 60, "color": "rgba(128, 128, 128, 0.15)" },
-                    { "column": 70, "color": "rgba(128, 128, 128, 0.15)" },
-                    {
-                        "column": 80,
-                        "color": "#8a5cf5"
-                    }
-                ]
-            }
-        },
         "configuration": {
             "title": "LS-DYNA",
             "properties": {
