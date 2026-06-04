@@ -25,6 +25,23 @@ const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
 const { ProjectGraph } = require('./projectGraph');
 
+type FileSignature = {
+    mtimeMs: number;
+    size: number;
+};
+
+type FileScanResult = {
+    filePath: string;
+    keywords: Array<{ keyword: string; filePath: string; lineIndex: number }>;
+    includeEntries: Array<{
+        fileName: string;
+        lineIndex: number;
+        startChar: number;
+        endChar: number;
+    }>;
+    searchPaths: string[];
+};
+
 /**
  * Default concurrency limit for parallel file scanning.
  * @type {number}
@@ -224,7 +241,7 @@ function createProjectIndexer({
      * @param {{scannedFileCount: number, reusedFileCount: number}} stats - Indexing session statistics.
      * @returns {Promise<Object>} The cached or newly scanned file result.
      */
-    async function loadFileScan(filePath, options, stats) {
+    async function loadFileScan(filePath, options, stats): Promise<FileScanResult> {
         const resolvedFilePath = resolveProjectFile(filePath);
         const fileCacheKey = getProjectFileCacheKey(resolvedFilePath);
         const signature = await getFileSignature(resolvedFilePath);
@@ -251,7 +268,7 @@ function createProjectIndexer({
 
         const keywords = await collectKeywordsFromFile(resolvedFilePath, options);
         const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(resolvedFilePath, options);
-        const scanResult = {
+        const scanResult: FileScanResult = {
             filePath: resolvedFilePath,
             keywords,
             includeEntries,
@@ -326,7 +343,7 @@ function createProjectIndexer({
             // Scan all files in this level in parallel (with concurrency limit)
             const scanResults = await Promise.all(
                 toScan.map(item => limit(() => loadFileScan(item.filePath, options, stats)))
-            );
+            ) as FileScanResult[];
 
             /** @type {BFSQueueItem[]} */
             const nextLevel = [];
@@ -426,3 +443,5 @@ module.exports = {
     resolveIncludeFromSearchPathsAsync,
     createConcurrencyLimiter,
 };
+
+export {};

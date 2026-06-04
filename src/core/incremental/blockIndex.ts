@@ -15,6 +15,12 @@
 
 const blockScanner = require('../parser/blockScanner');
 
+type KeywordBlock = {
+    keyword: string;
+    startLine: number;
+    endLine: number;
+};
+
 /**
  * @typedef {Object} ChangeRange
  * @property {number} startLine - 0-indexed starting line number of the edit.
@@ -25,6 +31,10 @@ const blockScanner = require('../parser/blockScanner');
  * Manages the keyword blocks index for a single LS-DYNA file, supporting incremental block updates.
  */
 class BlockIndex {
+    filePath: string;
+    blocks: KeywordBlock[];
+    lineCount: number;
+
     /**
      * Creates a BlockIndex instance.
      * 
@@ -159,3 +169,5 @@ class BlockIndex {
 module.exports = {
     BlockIndex,
 };
+
+export {};

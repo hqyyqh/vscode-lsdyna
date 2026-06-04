@@ -376,3 +376,5 @@ function collectOrphans(startFile, graph, rootFile) {
 module.exports = {
     createGraphUpdater,
 };
+
+export {};

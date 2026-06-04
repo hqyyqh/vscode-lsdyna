@@ -72,3 +72,5 @@ function findAffectedProjectRoots(changedFilePath, manifestEntries = []) {
 module.exports = {
     findAffectedProjectRoots,
 };
+
+export {};
