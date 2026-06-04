@@ -206,3 +206,5 @@ function createCacheManifestStore() {
 module.exports = {
     createCacheManifestStore,
 };
+
+export {};

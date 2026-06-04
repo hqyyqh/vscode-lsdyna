@@ -19,6 +19,16 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+type FileSignature = {
+    mtimeMs: number;
+    size: number;
+};
+
+type FileScanCacheStoreOptions = {
+    cacheDirectory?: string;
+    schemaVersion?: number;
+};
+
 /**
  * @typedef {Object} FileSignature
  * @property {number} mtimeMs - Modification time of the file in milliseconds.
@@ -91,7 +101,7 @@ function areSignaturesEqual(left, right) {
 function createFileScanCacheStore({
     cacheDirectory,
     schemaVersion = SCHEMA_VERSION,
-} = {}) {
+}: FileScanCacheStoreOptions = {}) {
     if (typeof cacheDirectory !== 'string' || cacheDirectory.trim() === '') {
         throw new TypeError('createFileScanCacheStore requires a cacheDirectory path');
     }
@@ -273,3 +283,5 @@ function createFileScanCacheStore({
 module.exports = {
     createFileScanCacheStore,
 };
+
+export {};

@@ -21,6 +21,31 @@ const INDEX_FILE_NAME = 'index.json';
 const PAYLOAD_DIRECTORY_NAME = 'payloads';
 const SNAPSHOT_SCHEMA_VERSION = 1;
 
+type FileSignature = {
+    mtimeMs: number;
+    size: number;
+};
+
+type DiskCacheEntry = {
+    rootFile: string;
+    payloadFileName: string;
+    byteSize: number;
+    lastAccessedAt: number;
+};
+
+type TrackedFileEntry = {
+    filePath: string;
+    signature: FileSignature;
+};
+
+type DiskStoreOptions = {
+    cacheDirectory?: string;
+    getFileSignature?: (filePath: string) => Promise<FileSignature>;
+    now?: () => number;
+    maxCacheBytes?: number;
+    schemaVersion?: number;
+};
+
 /**
  * @typedef {Object} FileSignature
  * @property {number} mtimeMs - Modification time of the file in milliseconds.
@@ -164,7 +189,7 @@ function createDiskSnapshotStore({
     now = Date.now,
     maxCacheBytes = Number.POSITIVE_INFINITY,
     schemaVersion = SNAPSHOT_SCHEMA_VERSION,
-} = {}) {
+}: DiskStoreOptions = {}) {
     if (typeof cacheDirectory !== 'string' || cacheDirectory.trim() === '') {
         throw new TypeError('createDiskSnapshotStore requires a cacheDirectory path');
     }
@@ -516,3 +541,5 @@ module.exports = {
     createDiskSnapshotStore,
     SNAPSHOT_SCHEMA_VERSION,
 };
+
+export {};
