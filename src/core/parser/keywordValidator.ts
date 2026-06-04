@@ -60,7 +60,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         
         // Check validity against built-in and custom valid keywords
         const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
-        const customValidKeywordsConfig = config && typeof config.get === 'function'
+        const customValidKeywordsConfig: string[] = config && typeof config.get === 'function'
             ? config.get('customValidKeywords') || ['*END']
             : ['*END'];
         const customValidKeywords = new Set(customValidKeywordsConfig.map(k => {
@@ -127,3 +127,5 @@ module.exports = {
     init,
     collectKeywordValidationDiagnostics
 };
+
+export {};

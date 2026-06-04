@@ -159,3 +159,5 @@ module.exports = {
     get,
     getLanguage: () => currentLanguage
 };
+
+export {};
