@@ -334,7 +334,9 @@
                         "type": "string"
                     },
                     "default": [
-                        "*END"
+                        "*END",
+                        "*CASE_BEGIN",
+                        "*CASE_END"
                     ],
                     "description": "%config.customValidKeywords.description%"
                 }

@@ -4,6 +4,7 @@ const { stripTitleSuffix } = require('../keywordUtils');
 
 let validKeywords = new Set();
 let isInitialized = false;
+const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*CASE_BEGIN', '*CASE_END'];
 
 function init(validKeywordsSet) {
     validKeywords = validKeywordsSet;
@@ -61,8 +62,8 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         // Check validity against built-in and custom valid keywords
         const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
         const customValidKeywordsConfig: string[] = config && typeof config.get === 'function'
-            ? config.get('customValidKeywords') || ['*END']
-            : ['*END'];
+            ? config.get('customValidKeywords') || DEFAULT_CUSTOM_VALID_KEYWORDS
+            : DEFAULT_CUSTOM_VALID_KEYWORDS;
         const customValidKeywords = new Set(customValidKeywordsConfig.map(k => {
             let kw = k.toUpperCase().trim();
             if (kw.startsWith('*')) kw = kw.substring(1);
