@@ -18,6 +18,12 @@ const vscode = require('vscode');
 const includeScanner = require('../../core/parser/includeScanner');
 const i18n = require('../../core/i18n');
 
+type IncludeTreeProviderOptions = {
+    searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
+};
+
 function getLsdynaConfigurationValue(key, defaultValue) {
     const config = vscode.workspace.getConfiguration('lsdyna');
     if (!config || typeof config.get !== 'function') {
@@ -252,6 +258,15 @@ function isLsdynaFile(document) {
  * @implements {vscode.TreeDataProvider<IncludeItem>}
  */
 class LsdynaIncludeTreeProvider {
+    searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
+    _onDidChangeTreeData: any;
+    onDidChangeTreeData: any;
+    root: IncludeItem | null;
+    resolvedPaths: Map<string, string>;
+    missingPaths: Set<string>;
+
     /**
      * Creates an instance of LsdynaIncludeTreeProvider.
      * 
@@ -260,7 +275,7 @@ class LsdynaIncludeTreeProvider {
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
      * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Invalidate cache.
      */
-    constructor({ searchFileFromPaths, loadProjectSnapshot, invalidateProjectSnapshot } = {}) {
+    constructor({ searchFileFromPaths, loadProjectSnapshot, invalidateProjectSnapshot }: IncludeTreeProviderOptions = {}) {
         this.searchFileFromPaths = searchFileFromPaths;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.invalidateProjectSnapshot = invalidateProjectSnapshot;
@@ -600,3 +615,5 @@ module.exports = {
     applyVividDescription,
     normalizePathKey,
 };
+
+export {};

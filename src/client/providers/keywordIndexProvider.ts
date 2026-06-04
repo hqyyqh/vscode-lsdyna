@@ -21,6 +21,18 @@ const keywordScanner = require('../../core/parser/keywordScanner');
 const { BlockIndex } = require('../../core/incremental/blockIndex');
 const i18n = require('../../core/i18n');
 
+type KeywordUsage = {
+    filePath: string;
+    lineIndex: number;
+};
+
+type KeywordIndexProviderOptions = {
+    collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
+    shouldSkipAutomaticDocumentScan?: (document: any) => boolean;
+};
+
 function getLsdynaConfigurationValue(key, defaultValue) {
     const config = vscode.workspace.getConfiguration('lsdyna');
     if (!config || typeof config.get !== 'function') {
@@ -180,6 +192,16 @@ function isLsdynaFile(document) {
  * @implements {vscode.TreeDataProvider<vscode.TreeItem>}
  */
 class LsdynaKeywordIndexProvider {
+    collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
+    shouldSkipAutomaticDocumentScan?: (document: any) => boolean;
+    _onDidChangeTreeData: any;
+    onDidChangeTreeData: any;
+    roots: any[];
+    _mode: 'local' | 'recursive';
+    documentIndices: Map<string, any>;
+
     /**
      * Creates an instance of LsdynaKeywordIndexProvider.
      * 
@@ -189,7 +211,7 @@ class LsdynaKeywordIndexProvider {
      * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Cache invalidator.
      * @param {function(import('vscode').TextDocument): boolean} [options.shouldSkipAutomaticDocumentScan] - Large file guard callback.
      */
-    constructor({ collectIncludeFiles, loadProjectSnapshot, invalidateProjectSnapshot, shouldSkipAutomaticDocumentScan } = {}) {
+    constructor({ collectIncludeFiles, loadProjectSnapshot, invalidateProjectSnapshot, shouldSkipAutomaticDocumentScan }: KeywordIndexProviderOptions = {}) {
         this.collectIncludeFiles = collectIncludeFiles;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.invalidateProjectSnapshot = invalidateProjectSnapshot;
@@ -557,3 +579,5 @@ module.exports = {
     LsdynaKeywordIndexProvider,
     readFileSnippet,
 };
+
+export {};
