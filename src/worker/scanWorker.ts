@@ -79,3 +79,5 @@ parentPort.on('message', async (message) => {
         });
     }
 });
+
+export {};

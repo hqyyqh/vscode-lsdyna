@@ -16,6 +16,18 @@ const { Worker } = require('worker_threads');
 
 const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
 
+type WorkerLike = {
+    on(eventName: string, handler: (...args: any[]) => void): void;
+    postMessage(message: any): void;
+    terminate(): Promise<any>;
+};
+
+type WorkerPoolOptions = {
+    workerPath?: string;
+    workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: { fileScanCacheDirectory: string } }) => WorkerLike;
+    fileScanCacheDirectory?: string | null;
+};
+
 /**
  * @typedef {Object} WorkerPoolOptions
  * @property {string} workerPath - Absolute file path to the worker entry script.
@@ -37,7 +49,7 @@ function createWorkerPool({
     workerPath,
     workerFactory = (nextWorkerPath, workerOpts) => new Worker(nextWorkerPath, workerOpts),
     fileScanCacheDirectory = null,
-} = {}) {
+}: WorkerPoolOptions = {}) {
     if (typeof workerPath !== 'string' || workerPath.trim() === '') {
         throw new TypeError('createWorkerPool requires a workerPath');
     }
@@ -46,7 +58,7 @@ function createWorkerPool({
     }
 
     /** @type {Worker} */
-    const workerOpts = {};
+    const workerOpts: { workerData?: { fileScanCacheDirectory: string } } = {};
     if (fileScanCacheDirectory) {
         workerOpts.workerData = { fileScanCacheDirectory };
     }
@@ -159,3 +171,5 @@ function createWorkerPool({
 module.exports = {
     createWorkerPool,
 };
+
+export {};

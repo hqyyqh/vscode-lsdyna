@@ -14,6 +14,18 @@
 const path = require('path');
 const { createWorkerPool } = require('./workerPool');
 
+type ProjectIndexLoader = {
+    buildProjectIndex(rootFile: string, options?: object, onProgress?: ((snapshot: object) => void) | null): Promise<object>;
+    dispose(): Promise<void>;
+    isDisposed?: () => boolean;
+};
+
+type ProjectIndexLoaderOptions = {
+    createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null }) => ProjectIndexLoader;
+    workerPath?: string;
+    fileScanCacheDirectory?: string | null;
+};
+
 /**
  * Factory function to create a Project Index Loader coordinator.
  * 
@@ -30,7 +42,7 @@ function createProjectIndexLoader({
     createPool = createWorkerPool,
     workerPath = path.join(__dirname, 'scanWorker.js'),
     fileScanCacheDirectory = null,
-} = {}) {
+}: ProjectIndexLoaderOptions = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
 
@@ -96,3 +108,5 @@ function createProjectIndexLoader({
 module.exports = {
     createProjectIndexLoader,
 };
+
+export {};
