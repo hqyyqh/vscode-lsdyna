@@ -45,4 +45,11 @@ describe('keyword aliases and default valid keywords', () => {
         assert.ok(defaults.includes('*CASE_BEGIN'));
         assert.ok(defaults.includes('*CASE_END'));
     });
+
+    it('disables cursor-leave auto formatting by default', () => {
+        const packageJson = require(path.join('..', '..', 'package.json'));
+        const autoFormat = packageJson.contributes.configuration.properties['lsdyna.autoFormat'];
+
+        assert.equal(autoFormat.default, 'disabled');
+    });
 });

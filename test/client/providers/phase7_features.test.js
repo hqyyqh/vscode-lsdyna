@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -584,6 +584,46 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('advances from a field whose start touches the previous empty field boundary', async () => {
+            const dataLine = '       1.0       1.0                           1.0       1.0       1.0       1.0';
+            const document = fakeDoc(
+                '*CONTACT_AUTOMATIC_SINGLE_SURFACE\n' +
+                '$#   surfa     surfb  surfatyp  surfbtyp   saboxid   sbboxid      sapr      sbpr\n' +
+                '                             0         0                             0         0\n' +
+                '$#      fs        fd        dc        vc       vdc    penchk        bt        dt\n' +
+                '       0.0       0.0       0.0       0.0       0.0                 0.0   1.0E+20\n' +
+                '$#    sfsa      sfsb      sast      sbst     sfsat     sfsbt       fsf       vsf\n' +
+                dataLine + '\n',
+                '/project/main.k'
+            );
+            document.languageId = 'lsdyna';
+
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(6, 30),
+                new vscodeMock.Position(6, 40)
+            );
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    callback({ replace() {} });
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await handleTabAlignment(editor);
+                assert.equal(selectionVal.active.line, 6);
+                assert.equal(selectionVal.active.character, 40);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('Selection context key setting', () => {
@@ -623,6 +663,85 @@ describe('Phase 7 Features', () => {
                 assert.equal(lastContextVal, false);
             } finally {
                 vscodeMock.commands.executeCommand = originalExecuteCommand;
+            }
+        });
+
+        it('preserves ordinary mouse drag selections that happen to match a field value', () => {
+            const dataLine = '       1.0       1.0                           1.0       1.0       1.0       1.0';
+            const document = fakeDoc(
+                '*AIRBAG_ADIABATIC_GAS_MODEL\n' +
+                '         0\n' +
+                dataLine + '\n',
+                '/project/main.k'
+            );
+            const makePosition = (line, character) => {
+                const position = new vscodeMock.Position(line, character);
+                position.isEqual = other => other && position.line === other.line && position.character === other.character;
+                return position;
+            };
+            const valueStart = dataLine.lastIndexOf('1.0');
+            document.languageId = 'lsdyna';
+            document.getWordRangeAtPosition = () => ({
+                start: makePosition(2, valueStart),
+                end: makePosition(2, dataLine.length),
+                isEqual: range => range && range.start.character === valueStart && range.end.character === dataLine.length,
+            });
+
+            const dragSelection = {
+                start: makePosition(2, valueStart),
+                end: makePosition(2, dataLine.length),
+                anchor: makePosition(2, dataLine.length),
+                active: makePosition(2, valueStart),
+                isEmpty: false,
+            };
+            let selectionValue = dragSelection;
+            const editor = {
+                document,
+                get selection() { return selectionValue; },
+                set selection(value) { selectionValue = value; },
+            };
+
+            handleSelectionChange({ textEditor: editor, kind: 2, selections: [dragSelection] });
+
+            assert.strictEqual(selectionValue, dragSelection);
+        });
+
+        it('does not auto-format when autoFormat is unset', () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            let applyEditCount = 0;
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: () => undefined,
+            });
+            vscodeMock.workspace.applyEdit = () => {
+                applyEditCount += 1;
+                return Promise.resolve(true);
+            };
+
+            try {
+                const resetDoc = fakeDoc('$ reset\n', '/project/reset.txt');
+                resetDoc.languageId = 'plaintext';
+                handleSelectionChange({
+                    document: resetDoc,
+                    selection: { active: new vscodeMock.Position(0, 0) }
+                });
+
+                const document = fakeDoc('*NODE\n1 2 3\n$ Comment\n', '/project/main.k');
+                document.languageId = 'lsdyna';
+                const editor = {
+                    document,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                };
+
+                handleSelectionChange(editor);
+                editor.selection.active = new vscodeMock.Position(2, 0);
+                handleSelectionChange(editor);
+
+                assert.equal(applyEditCount, 0);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
             }
         });
     });

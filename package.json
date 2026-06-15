@@ -282,7 +282,7 @@
                         "onBlur",
                         "disabled"
                     ],
-                    "default": "onBlur",
+                    "default": "disabled",
                     "enumDescriptions": [
                         "%config.autoFormat.enumDescriptions.onBlur%",
                         "%config.autoFormat.enumDescriptions.disabled%"

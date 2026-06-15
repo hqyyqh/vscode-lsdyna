@@ -2017,7 +2017,7 @@ async function handleTabAlignment(editor, direction = 1) {
             const f = card[i];
             const nextF = card[i + 1];
             const end = nextF ? nextF.p : (f.p + f.w);
-            if (col >= f.p && col <= end) {
+            if (col >= f.p && col < end) {
                 currentFieldIndex = i;
                 break;
             }
@@ -2122,64 +2122,9 @@ function handleSelectionChange(e) {
     const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
     const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
     
-    // Intercept double-click to select the entire cell (preserving first space)
-    if (hasCard && e.kind === 2 && e.selections.length === 1) { // 2 = Mouse
-        const sel = e.selections[0];
-        if (!sel.isEmpty && sel.start.line === sel.end.line) {
-            const col = sel.active.character;
-            let currentF = null;
-            let isFirstField = false;
-            for (let i = 0; i < cardFields.length; i++) {
-                const f = cardFields[i];
-                if (col >= f.p && col <= f.p + f.w) {
-                    currentF = f;
-                    isFirstField = (i === 0);
-                    break;
-                }
-            }
-            
-            if (currentF) {
-                const wordRange = currentDoc.getWordRangeAtPosition(sel.active);
-                const selectedText = currentDoc.getText(sel);
-                const cellTextRaw = text.slice(currentF.p, Math.min(text.length, currentF.p + currentF.w));
-                const cellTextTrimmed = cellTextRaw.trim();
-                
-                let isDoubleClickOrValidSelect = false;
-                
-                if (wordRange && wordRange.isEqual(sel)) {
-                    isDoubleClickOrValidSelect = true;
-                } else if (selectedText.length > 0 && selectedText.trim() === '') {
-                    // Double clicked empty space contiguous block
-                    isDoubleClickOrValidSelect = true;
-                } else if (selectedText === cellTextTrimmed && selectedText.length > 0) {
-                    // Selected exactly the trimmed data of the cell
-                    isDoubleClickOrValidSelect = true;
-                }
-                
-                if (isDoubleClickOrValidSelect) {
-                    const targetCol = currentF.p;
-                    const targetW = currentF.w;
-                    let newStart, newEnd;
-                    if (isFirstField) {
-                        newStart = new vscode.Position(currentLineNum, targetCol);
-                        newEnd = new vscode.Position(currentLineNum, Math.min(text.length, targetCol + targetW));
-                    } else {
-                        newStart = new vscode.Position(currentLineNum, targetCol + 1);
-                        newEnd = new vscode.Position(currentLineNum, Math.min(text.length, targetCol + targetW));
-                    }
-                    
-                    // Apply selection synchronously to prevent VS Code native override from winning
-                    if (!sel.start.isEqual(newStart) || !sel.end.isEqual(newEnd)) {
-                        editor.selection = new vscode.Selection(newStart, newEnd);
-                    }
-                }
-            }
-        }
-    }
-    
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
 
-    if (getLsdynaConfigurationValue('autoFormat', undefined) !== 'disabled') {
+    if (getLsdynaConfigurationValue('autoFormat', 'disabled') === 'onBlur') {
         if (lastActiveDoc === currentDoc && lastActiveLineNum !== null && lastActiveLineNum !== currentLineNum) {
             formatLineIfNeeded(currentDoc, lastActiveLineNum);
         }
