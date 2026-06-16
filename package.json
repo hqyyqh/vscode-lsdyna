@@ -372,22 +372,22 @@
                 {
                     "command": "extension.lsdynaFormatSelection",
                     "when": "editorLangId == 'lsdyna'",
-                    "group": "1_modification@1"
+                    "group": "lsdyna@1"
                 },
                 {
                     "command": "extension.selectKeyword",
                     "when": "editorLangId == 'lsdyna'",
-                    "group": "1_modification@2"
+                    "group": "lsdyna@2"
                 },
                 {
                     "command": "extension.lsdynaChooseKeywordOptions",
                     "when": "editorLangId == 'lsdyna'",
-                    "group": "1_modification@3"
+                    "group": "lsdyna@3"
                 },
                 {
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
-                    "group": "navigation"
+                    "group": "lsdyna@4"
                 }
             ],
             "editor/title": [
