@@ -419,6 +419,17 @@
 - **删除 option card 的破坏性：** 自动删除只作用于空行或扩展生成的空模板；非空用户数据必须保留或由用户显式确认。
 - **旧 `field_data_zh.json` 失配：** 加结构校验和英文 fallback，避免中文版本落后导致 hover 崩溃。
 
+## 后缀清理评估
+
+完成基于 pydyna `TITLE`、`HEADING`、`ID`、`ID_TITLE` 等 title-order option 的真实关键字变体生成后，编辑器运行时不应再依赖“先去掉 `_TITLE` 之类后缀再回退到 base keyword”的特判逻辑。原因是这些后缀现在已经是 schema 可理解的结构语义：
+
+- **关键字拼写检测：** 不需要 stripping。validator 应直接检查生成后的 schema key、alias key 和自定义白名单；`*MAT_001_TITLE` 这类真实变体应被精确接受，而 `*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F` 这类仅用于 snippet 选择的伪后缀不应因为剥离成 base keyword 而误判合法。
+- **关键字 hover：** 不需要 stripping。keyword hover 应调用 `lookupKeywordSchema()`，由 schema resolver 返回 canonical keyword 和 active options，再渲染当前变体的 card sequence。找不到 schema 时，只能进入 manual-link fallback，不应把未知后缀静默解释成 base keyword。
+- **field 区域检测、补全、格式化和 Tab 对齐：** 不需要 stripping。`getCardForDocumentLine()` 应根据 keyword 行、active title options 和已观察到的数据行数生成实际 card sequence；TITLE 行、ID/HEADING 行以及 CONTACT optional cards 都是普通 card，不再是需要跳过或手动偏移的特殊行。
+- **手册书签匹配：** 仍可保留 stripping。PDF bookmark 往往只索引 base keyword 或旧式 `_TITLE` bookmark，`manualIndexer.cleanKeyword()` 中的 `stripTitleSuffix()` 属于外部手册索引归一化，不参与 schema/field/validation 判定。若以后要移除它，需要先用 schema canonicalization 替代，并保留 manual bookmark fallback 测试。
+
+因此当前推荐状态是：`hasTitleSuffix()` 可视为历史遗留的候选删除项；`stripTitleSuffix()` 暂时保留给 manual indexer 使用，但不要重新引入到 keyword validation、hover schema lookup 或 field card resolver 中。
+
 ## 推荐执行顺序
 
 1. 先完成任务 1 和任务 2，只改变生成产物和生成测试。
