@@ -1326,15 +1326,13 @@ class LsdynaFieldHoverProvider {
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpText = field.h ? `\n\n${formatHoverHelpText(field.h)}` : '';
 
-        // Build transposed grid table header and highlight active field name using Badge style.
-        // Use Unicode vertical box-drawing character (│) at the start of non-first columns to act as vertical separator lines.
-        const columnsHeader = card.map((f, idx) => idx === 0 ? `${f.p + 1}-${f.p + f.w}` : `│ ${f.p + 1}-${f.p + f.w}`);
+        const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
         const separators = card.map(() => ':---:'); // Center align all columns
-        const fieldNamesBody = card.map((f, idx) => {
-            const inner = f.n === field.n
-                ? `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>`
-                : `\`${f.n}\``; // Use inline code for inactive fields to look like input cells
-            return idx === 0 ? inner : `│ ${inner}`;
+        const fieldNamesBody = card.map((f) => {
+            if (f.n === field.n) {
+                return `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>`;
+            }
+            return `\`${f.n}\``; // Use inline code for inactive fields to look like input cells
         });
 
         const gridTable = [
