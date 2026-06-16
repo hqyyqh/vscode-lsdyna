@@ -1773,6 +1773,7 @@ describe('LS-DYNA keyword option interactions', () => {
         vscodeMock.window.showQuickPick = originalShowQuickPick;
         vscodeMock.window.showInformationMessage = originalShowInformationMessage;
         vscodeMock.window.showWarningMessage = originalShowWarningMessage;
+        i18n.updateLanguage();
     });
 
     it('shows CodeLens entries for keywords with selectable options', () => {
@@ -1799,7 +1800,7 @@ describe('LS-DYNA keyword option interactions', () => {
         assert.ok(message.includes('No LS-DYNA keyword options'));
     });
 
-    it('adds TITLE to MAT_001 and inserts a title skeleton line', async () => {
+    it('adds TITLE to MAT_001 and inserts a managed title comment with skeleton line', async () => {
         const editor = makeEditableEditor(['*MAT_001', '        1'], 0);
         vscodeMock.window.showQuickPick = async (items, options) => {
             if (options && options.canPickMany) {
@@ -1810,7 +1811,73 @@ describe('LS-DYNA keyword option interactions', () => {
 
         await chooseKeywordOptionsForEditor(editor);
 
-        assert.deepEqual(editor.lines, ['*MAT_001_TITLE', '', '        1']);
+        assert.deepEqual(editor.lines, [
+            '*MAT_001_TITLE',
+            '$#                                                                         title',
+            '',
+            '        1'
+        ]);
+    });
+
+    it('removes a strict managed TITLE comment with its empty skeleton line', async () => {
+        const editor = makeEditableEditor([
+            '*MAT_001_TITLE',
+            '$#                                                                         title',
+            '',
+            '        1'
+        ], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return undefined;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.deepEqual(editor.lines, ['*MAT_001', '        1']);
+    });
+
+    it('removes orphan strict option comments that are not selected', async () => {
+        const editor = makeEditableEditor([
+            '*MAT_024',
+            '$#                                                                         title',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '                                                                 1e+21          '
+        ], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return undefined;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.deepEqual(editor.lines, [
+            '*MAT_024',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '                                                                 1e+21          '
+        ]);
+    });
+
+    it('removes orphan strict option comments with adjacent empty skeleton lines', async () => {
+        const editor = makeEditableEditor([
+            '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
+            '$#  ignore      bckt    lcbckt    ns2trk   inititr    parmax    unused    cparm8',
+            '$#     cid                                                               heading',
+            '',
+            '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
+            ''
+        ], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return items.find(item => item.label === 'None');
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.deepEqual(editor.lines, [
+            '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
+            '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
+            ''
+        ]);
     });
 
     it('does not remove a non-empty TITLE line without confirmation', async () => {
@@ -1845,9 +1912,51 @@ describe('LS-DYNA keyword option interactions', () => {
 
         await chooseKeywordOptionsForEditor(editor);
 
-        assert.equal(editor.lines.length, 10);
+        assert.equal(editor.lines.length, 16);
         assert.equal(editor.lines[0], '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE');
-        assert.equal(editor.lines[9].trim(), '');
+        assert.equal(editor.lines[4], '$#    soft    sofscl    lcidab    maxpar     sbopt     depth     bsort    frcfrq');
+        assert.equal(editor.lines[14], '$#  pstiff   ignroff               fstol    2dbinr    ssftyp     swtpr    tetfac');
+        assert.equal(editor.lines[15].trim(), '');
+    });
+
+    it('removes strict CONTACT optional card comments when shrinking options', async () => {
+        const editor = makeEditableEditor([
+            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            'base 1',
+            'base 2',
+            'base 3',
+            '$#    soft    sofscl    lcidab    maxpar     sbopt     depth     bsort    frcfrq',
+            '',
+            '$#  penmax    thkopt    shlthk     snlog      isym     i2d3d    sldthk    sldstf',
+            '',
+            '$#    igap    ignore    dprfac    dtstif     edgek              flangl   cid_rcf',
+            '',
+            '$#   q2tri    dtpchk     sfnbr    fnlscl    dnlscl      tcso    tiedid    shledg',
+            '',
+            '$#  sharec    cparm8    ipback     srnde    fricsf      icor     ftorq    region',
+            '',
+            '$#  pstiff   ignroff               fstol    2dbinr    ssftyp     swtpr    tetfac',
+            ''
+        ], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return items.find(item => item.label === 'A-C');
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.deepEqual(editor.lines, [
+            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            'base 1',
+            'base 2',
+            'base 3',
+            '$#    soft    sofscl    lcidab    maxpar     sbopt     depth     bsort    frcfrq',
+            '',
+            '$#  penmax    thkopt    shlthk     snlog      isym     i2d3d    sldthk    sldstf',
+            '',
+            '$#    igap    ignore    dprfac    dtstif     edgek              flangl   cid_rcf',
+            ''
+        ]);
     });
 
     it('does not shrink CONTACT F to C when removed option cards contain user data', async () => {
@@ -1878,6 +1987,62 @@ describe('LS-DYNA keyword option interactions', () => {
         assert.ok(warning.includes('non-empty'));
         assert.equal(editor.lines.length, 10);
         assert.equal(editor.lines[7], 'user data in optional D');
+    });
+
+    it('localizes keyword option CodeLens and picker messages', async () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'language' ? 'zh-cn' : undefined
+        });
+        i18n.updateLanguage();
+
+        try {
+            const provider = new LsdynaKeywordOptionsCodeLensProvider();
+            const lenses = provider.provideCodeLenses(fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n'));
+            assert.ok(lenses[0].command.title.includes('LS-DYNA 选项'));
+
+            const editor = makeEditableEditor(['*NODE'], 0);
+            let message = '';
+            vscodeMock.window.showInformationMessage = (value) => {
+                message = value;
+            };
+            await chooseKeywordOptionsForEditor(editor);
+
+            assert.ok(message.includes('没有可用的 LS-DYNA 关键字选项'));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('supports auto language mode by following VS Code language', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        const originalEnv = vscodeMock.env;
+        vscodeMock.env = { ...(vscodeMock.env || {}), language: 'en' };
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'language' ? 'auto' : undefined
+        });
+
+        try {
+            i18n.updateLanguage();
+            assert.equal(i18n.getLanguage(), 'en');
+
+            vscodeMock.env.language = 'zh-cn';
+            i18n.updateLanguage();
+            assert.equal(i18n.getLanguage(), 'zh-cn');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            vscodeMock.env = originalEnv;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('declares auto as the default extension language option', () => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+        const languageConfig = pkg.contributes.configuration.properties['lsdyna.language'];
+
+        assert.equal(languageConfig.default, 'auto');
+        assert.deepEqual(languageConfig.enum, ['auto', 'zh-cn', 'en']);
     });
 });
 

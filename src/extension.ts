@@ -726,7 +726,7 @@ function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
 
 function appendKeywordOptionCommand(md, entry) {
     if (!entry || !entry.o || entry.o.length === 0) return;
-    md.appendMarkdown('\n\n[$(list-selection) Choose keyword options](command:extension.lsdynaChooseKeywordOptions)');
+    md.appendMarkdown(`\n\n[$(list-selection) ${i18n.get('chooseKeywordOptions')}](command:extension.lsdynaChooseKeywordOptions)`);
 }
 
 function normalizeOptionName(name) {
@@ -766,18 +766,43 @@ function keywordOptionCardSkeleton(card) {
     return ' '.repeat(Math.max(0, width));
 }
 
-function keywordOptionSkeletonLines(options) {
-    const lines = [];
+function keywordOptionCards(options) {
+    const cards = [];
     for (const option of options) {
         for (const card of option.c || []) {
-            lines.push(keywordOptionCardSkeleton(card));
+            cards.push(card);
         }
+    }
+    return cards;
+}
+
+function managedCommentLineForCard(card) {
+    return generateCommentLine(card).toLowerCase();
+}
+
+function strictCommentKey(text) {
+    return String(text || '').trimEnd().toLowerCase();
+}
+
+function strictCommentTextForCard(card) {
+    return strictCommentKey(managedCommentLineForCard(card));
+}
+
+function isStrictManagedCommentForCard(text, card) {
+    return strictCommentKey(text) === strictCommentTextForCard(card);
+}
+
+function keywordOptionManagedLines(options, startCardIndex = 0) {
+    const lines = [];
+    for (const card of keywordOptionCards(options).slice(startCardIndex)) {
+        lines.push(managedCommentLineForCard(card));
+        lines.push(keywordOptionCardSkeleton(card));
     }
     return lines;
 }
 
 function keywordOptionRangeLabel(options, count) {
-    if (count <= 0) return 'None';
+    if (count <= 0) return i18n.get('keywordOptionNone');
     const names = options.slice(0, count).map(option => normalizeOptionName(option.n));
     const singleLetters = names.every(name => /^[A-Z]$/.test(name));
     if (singleLetters && names.length > 1) {
@@ -852,21 +877,95 @@ function removeLineRange(editBuilder, document, startLine, count) {
     const endLine = Math.min(document.lineCount, startLine + count);
     if (endLine < document.lineCount) {
         editBuilder.replace(new vscode.Range(startLine, 0, endLine, 0), '');
+    } else if (startLine > 0) {
+        const previousText = document.lineAt(startLine - 1).text;
+        const lastText = document.lineAt(endLine - 1).text;
+        editBuilder.replace(new vscode.Range(startLine - 1, previousText.length, endLine - 1, lastText.length), '');
     } else {
         const lastLine = document.lineAt(endLine - 1).text;
         editBuilder.replace(new vscode.Range(startLine, 0, endLine - 1, lastLine.length), '');
     }
 }
 
+function addLineDeletionRange(ranges, startLine, count) {
+    if (count <= 0) return;
+    ranges.push({
+        startLine,
+        endLine: startLine + count,
+    });
+}
+
+function mergeLineDeletionRanges(ranges) {
+    if (!ranges.length) return [];
+    const sorted = ranges
+        .map(range => ({ startLine: range.startLine, endLine: range.endLine }))
+        .sort((a, b) => a.startLine - b.startLine || a.endLine - b.endLine);
+    const merged = [sorted[0]];
+    for (const range of sorted.slice(1)) {
+        const last = merged[merged.length - 1];
+        if (range.startLine <= last.endLine) {
+            last.endLine = Math.max(last.endLine, range.endLine);
+        } else {
+            merged.push(range);
+        }
+    }
+    return merged;
+}
+
+function removeLineDeletionRanges(editBuilder, document, ranges) {
+    for (const range of mergeLineDeletionRanges(ranges)) {
+        removeLineRange(editBuilder, document, range.startLine, range.endLine - range.startLine);
+    }
+}
+
+function addManagedDataLineDeletionRange(ranges, document, keywordLine, dataLine, card) {
+    if (!dataLine) return;
+    let startLine = dataLine.line;
+    if (card && startLine - 1 > keywordLine && isStrictManagedCommentForCard(document.lineAt(startLine - 1).text, card)) {
+        startLine -= 1;
+    }
+    addLineDeletionRange(ranges, startLine, dataLine.line - startLine + 1);
+}
+
+function addOrphanManagedCommentDeletionRanges(ranges, document, keywordLine, blockEnd, allOptionCards, selectedOptionCards) {
+    const selectedComments = new Set(selectedOptionCards.map(strictCommentTextForCard));
+    const allComments = new Set(allOptionCards.map(strictCommentTextForCard));
+
+    for (let lineNum = keywordLine + 1; lineNum < blockEnd; lineNum++) {
+        const text = document.lineAt(lineNum).text;
+        const comment = strictCommentKey(text);
+        if (!text.trimStart().startsWith('$#')) continue;
+        if (allComments.has(comment) && !selectedComments.has(comment)) {
+            const nextLine = lineNum + 1;
+            const nextText = nextLine < blockEnd ? document.lineAt(nextLine).text : '';
+            const hasEmptySkeleton = nextLine < blockEnd
+                && !nextText.trimStart().startsWith('$')
+                && !nextText.trimStart().startsWith('*')
+                && nextText.trim().length === 0;
+            addLineDeletionRange(ranges, lineNum, hasEmptySkeleton ? 2 : 1);
+        }
+    }
+}
+
+function insertionLineForDataIndex(document, keywordLine, dataLines, dataIndex, fallbackLine) {
+    const dataLine = dataLines[dataIndex];
+    if (!dataLine) return fallbackLine;
+    const previousLine = dataLine.line - 1;
+    if (previousLine > keywordLine && document.lineAt(previousLine).text.trimStart().startsWith('$#')) {
+        return previousLine;
+    }
+    return dataLine.line;
+}
+
 async function confirmRemoveNonEmptyOptionLines(lines) {
     const hasNonEmpty = lines.some(line => String(line.text || '').trim().length > 0);
     if (!hasNonEmpty) return true;
     const choice = await vscode.window.showWarningMessage(
-        'Changing LS-DYNA keyword options would remove non-empty option card lines.',
+        i18n.get('removeNonEmptyOptionLinesWarning'),
         { modal: true },
-        'Remove lines'
+        i18n.get('removeLines')
     );
-    return choice === 'Remove lines';
+    return choice === i18n.get('removeLines');
 }
 
 function inferCurrentPostOptionCount(entry, activeTitleNames, dataLineCount) {
@@ -892,14 +991,14 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
         : (editor.selection && editor.selection.active ? editor.selection.active.line : 0);
     const keywordLine = findKeywordLineForLine(document, activeLine);
     if (keywordLine === null) {
-        vscode.window.showInformationMessage('No LS-DYNA keyword found at the current cursor.');
+        vscode.window.showInformationMessage(i18n.get('noKeywordAtCursor'));
         return;
     }
 
     const keywordText = document.lineAt(keywordLine).text;
     const lookup = lookupKeywordInfo(keywordLineNameFromText(keywordText));
     if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) {
-        vscode.window.showInformationMessage('No LS-DYNA keyword options are available for this keyword.');
+        vscode.window.showInformationMessage(i18n.get('noKeywordOptionsAvailable'));
         return;
     }
 
@@ -922,7 +1021,7 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
         });
         const picked = await vscode.window.showQuickPick(titleItems, {
             canPickMany: true,
-            placeHolder: 'Choose keyword title options',
+            placeHolder: i18n.get('chooseKeywordTitleOptions'),
         });
         if (!picked) return;
         selectedTitleNames = picked.map(item => item.optionName || normalizeOptionName(item.label));
@@ -933,7 +1032,7 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
     const currentPostCount = inferCurrentPostOptionCount(entry, currentTitleNames, dataLines.length);
     let selectedPostCount = currentPostCount;
     if (postOptions.length) {
-        const postItems = [{ label: 'None', postCount: 0, picked: currentPostCount === 0 }];
+        const postItems = [{ label: keywordOptionRangeLabel(postOptions, 0), postCount: 0, picked: currentPostCount === 0 }];
         for (let index = 0; index < postOptions.length; index++) {
             postItems.push({
                 label: keywordOptionRangeLabel(postOptions, index + 1),
@@ -942,7 +1041,7 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
             });
         }
         const picked = await vscode.window.showQuickPick(postItems, {
-            placeHolder: 'Choose consecutive optional cards',
+            placeHolder: i18n.get('chooseConsecutiveOptionalCards'),
         });
         if (!picked) return;
         selectedPostCount = picked.postCount || 0;
@@ -954,6 +1053,8 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
     const selectedPreLineCount = keywordOptionCardCount(selectedTitleOptions);
     const currentPostLineCount = keywordOptionCardCount(postOptions.slice(0, currentPostCount));
     const selectedPostLineCount = keywordOptionCardCount(postOptions.slice(0, selectedPostCount));
+    const currentPreCards = keywordOptionCards(currentTitleOptions);
+    const currentPostCards = keywordOptionCards(postOptions.slice(0, currentPostCount));
 
     const removedLines = [];
     if (selectedPreLineCount < currentPreLineCount) {
@@ -968,27 +1069,44 @@ async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEd
         .map(option => normalizeOptionName(option.n))
         .filter(name => selectedTitleNames.includes(name));
     const nextKeywordLine = buildKeywordLineWithTitleOptions(keywordText, lookup.canonicalName, selectedTitleNamesInOrder);
-    const preLinesToInsert = keywordOptionSkeletonLines(selectedTitleOptions).slice(currentPreLineCount);
-    const postLinesToInsert = keywordOptionSkeletonLines(postOptions.slice(0, selectedPostCount)).slice(currentPostLineCount);
+    const preLinesToInsert = keywordOptionManagedLines(selectedTitleOptions, currentPreLineCount);
+    const postLinesToInsert = keywordOptionManagedLines(postOptions.slice(0, selectedPostCount), currentPostLineCount);
+    const deletionRanges = [];
+
+    if (selectedPreLineCount < currentPreLineCount) {
+        const removedDataLines = dataLines.slice(selectedPreLineCount, currentPreLineCount);
+        const removedCards = currentPreCards.slice(selectedPreLineCount, currentPreLineCount);
+        removedDataLines.forEach((line, index) => {
+            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
+        });
+    }
+    if (selectedPostLineCount < currentPostLineCount) {
+        const count = currentPostLineCount - selectedPostLineCount;
+        const removedDataLines = dataLines.slice(dataLines.length - count);
+        const removedCards = currentPostCards.slice(selectedPostLineCount);
+        removedDataLines.forEach((line, index) => {
+            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
+        });
+    }
+    addOrphanManagedCommentDeletionRanges(
+        deletionRanges,
+        document,
+        keywordLine,
+        blockEnd,
+        keywordOptionCards([...titleOptions, ...postOptions]),
+        keywordOptionCards([...selectedTitleOptions, ...postOptions.slice(0, selectedPostCount)])
+    );
 
     await editor.edit(editBuilder => {
         if (nextKeywordLine !== keywordText) {
             editBuilder.replace(lineWholeRange(document, keywordLine), nextKeywordLine);
         }
-        if (selectedPostLineCount < currentPostLineCount) {
-            const count = currentPostLineCount - selectedPostLineCount;
-            const first = dataLines[dataLines.length - count];
-            if (first) removeLineRange(editBuilder, document, first.line, count);
-        }
-        if (selectedPreLineCount < currentPreLineCount) {
-            const first = dataLines[selectedPreLineCount];
-            if (first) removeLineRange(editBuilder, document, first.line, currentPreLineCount - selectedPreLineCount);
-        }
+        removeLineDeletionRanges(editBuilder, document, deletionRanges);
         if (postLinesToInsert.length) {
             insertLinesAt(editBuilder, document, blockEnd, postLinesToInsert);
         }
         if (preLinesToInsert.length) {
-            const insertAt = dataLines[currentPreLineCount] ? dataLines[currentPreLineCount].line : keywordLine + 1;
+            const insertAt = insertionLineForDataIndex(document, keywordLine, dataLines, currentPreLineCount, keywordLine + 1);
             insertLinesAt(editBuilder, document, insertAt, preLinesToInsert);
         }
     });
@@ -1006,7 +1124,7 @@ class LsdynaKeywordOptionsCodeLensProvider {
             const summary = keywordOptionSummary(lookup.entry);
             const range = new vscode.Range(lineNum, 0, lineNum, 0);
             lenses.push(new vscode.CodeLens(range, {
-                title: summary ? `LS-DYNA options: ${summary}` : 'LS-DYNA options',
+                title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
                 command: 'extension.lsdynaChooseKeywordOptions',
                 arguments: [lineNum],
             }));

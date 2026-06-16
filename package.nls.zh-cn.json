@@ -22,6 +22,7 @@
     "commands.configureManualsDir.title": "配置 LS-DYNA 手册目录",
     "config.manualsDir.description": "包含 LS-DYNA PDF 手册的文件夹路径 (支持绝对路径或相对于 VS Code 安装目录的相对路径)。在 Windows 系统中，可以将 SumatraPDF.exe 复制到此文件夹内以实现精准的书签页跳转。",
     "config.language.description": "选择插件的界面语言和悬停提示 (Hover) 语言。",
+    "config.language.enumDescriptions.auto": "自动（跟随 VS Code 显示语言）",
     "config.language.enumDescriptions.zh-cn": "中文简体",
     "config.language.enumDescriptions.en": "英文",
     "config.additionalExtensions.description": "关联到 LS-DYNA 语言环境的额外文件后缀名。",

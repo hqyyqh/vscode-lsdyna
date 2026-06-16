@@ -22,6 +22,7 @@
     "commands.configureManualsDir.title": "Configure LS-DYNA Manuals Directory",
     "config.manualsDir.description": "Path to the directory containing LS-DYNA PDF manuals (absolute or relative to VS Code installation dir). On Windows, copy SumatraPDF.exe into this folder for precise page navigation.",
     "config.language.description": "Select the UI and Hover language for the extension.",
+    "config.language.enumDescriptions.auto": "Auto (follow VS Code display language)",
     "config.language.enumDescriptions.zh-cn": "Simplified Chinese",
     "config.language.enumDescriptions.en": "English",
     "config.additionalExtensions.description": "Additional file extensions to associate with the LS-DYNA language.",

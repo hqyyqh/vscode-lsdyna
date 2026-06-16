@@ -59,6 +59,16 @@ const LOCALES = {
         rowTemplateLabel: '✨ 生成整行卡片模板 (Card {0})',
         fieldDetail: '卡片字段 ({0}) - {1}',
         rowTemplateDetail: 'LS-DYNA 字段对齐模板',
+        chooseKeywordOptions: '选择关键字选项',
+        keywordOptionsCodeLens: 'LS-DYNA 选项',
+        keywordOptionsCodeLensWithSummary: 'LS-DYNA 选项：{0}',
+        noKeywordAtCursor: '当前光标位置没有 LS-DYNA 关键字。',
+        noKeywordOptionsAvailable: '此关键字没有可用的 LS-DYNA 关键字选项。',
+        chooseKeywordTitleOptions: '选择关键字标题选项',
+        chooseConsecutiveOptionalCards: '选择连续 optional cards',
+        keywordOptionNone: '无',
+        removeNonEmptyOptionLinesWarning: '更改 LS-DYNA 关键字选项将删除非空 option 卡片行。',
+        removeLines: '删除行',
         
         // Keyword Validation
         invalidKeywordFormat: '无效的关键字格式：LS-DYNA 关键字只能以单个 \'*\' 开头。',
@@ -121,6 +131,16 @@ const LOCALES = {
         rowTemplateLabel: '✨ Generate Row Card Template (Card {0})',
         fieldDetail: 'Card Field ({0}) - {1}',
         rowTemplateDetail: 'LS-DYNA Column-Aligned Template',
+        chooseKeywordOptions: 'Choose keyword options',
+        keywordOptionsCodeLens: 'LS-DYNA options',
+        keywordOptionsCodeLensWithSummary: 'LS-DYNA options: {0}',
+        noKeywordAtCursor: 'No LS-DYNA keyword found at the current cursor.',
+        noKeywordOptionsAvailable: 'No LS-DYNA keyword options are available for this keyword.',
+        chooseKeywordTitleOptions: 'Choose keyword title options',
+        chooseConsecutiveOptionalCards: 'Choose consecutive optional cards',
+        keywordOptionNone: 'None',
+        removeNonEmptyOptionLinesWarning: 'Changing LS-DYNA keyword options would remove non-empty option card lines.',
+        removeLines: 'Remove lines',
         
         // Keyword Validation
         invalidKeywordFormat: 'Invalid keyword format: LS-DYNA keywords should start with a single \'*\'.',
@@ -131,12 +151,22 @@ const LOCALES = {
 
 let currentLanguage = 'zh-cn';
 
+function resolveAutoLanguage() {
+    const vscodeLanguage = typeof vscode !== 'undefined' && vscode.env && vscode.env.language
+        ? String(vscode.env.language).toLowerCase()
+        : '';
+    return vscodeLanguage.startsWith('zh') ? 'zh-cn' : 'en';
+}
+
 function updateLanguage() {
     if (typeof vscode !== 'undefined' && vscode.workspace) {
         const config = vscode.workspace.getConfiguration('lsdyna');
-        currentLanguage = config && typeof config.get === 'function'
-            ? config.get('language') || 'zh-cn'
-            : 'zh-cn';
+        const configuredLanguage = config && typeof config.get === 'function'
+            ? config.get('language') || 'auto'
+            : 'auto';
+        currentLanguage = configuredLanguage === 'auto'
+            ? resolveAutoLanguage()
+            : configuredLanguage;
     }
 }
 

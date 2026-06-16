@@ -298,11 +298,13 @@
                 "lsdyna.language": {
                     "type": "string",
                     "enum": [
+                        "auto",
                         "zh-cn",
                         "en"
                     ],
-                    "default": "zh-cn",
+                    "default": "auto",
                     "enumDescriptions": [
+                        "%config.language.enumDescriptions.auto%",
                         "%config.language.enumDescriptions.zh-cn%",
                         "%config.language.enumDescriptions.en%"
                     ],
