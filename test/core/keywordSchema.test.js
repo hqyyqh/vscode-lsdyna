@@ -70,4 +70,30 @@ describe('keywordSchema resolver', () => {
         assert.equal(cards[0][0].n, 'A');
         assert.equal(cards[3][0].n, 'B');
     });
+
+    it('caches loaded schema JSON per language', () => {
+        const fs = require('fs');
+        const keywordSchema = require('../../src/core/keywordSchema');
+        const originalReadFileSync = fs.readFileSync;
+        let fieldDataReads = 0;
+
+        keywordSchema.resetKeywordSchemaCache();
+        fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+            if (String(filePath).endsWith('field_data.json')) {
+                fieldDataReads++;
+            }
+            return originalReadFileSync.call(this, filePath, ...args);
+        };
+
+        try {
+            const first = keywordSchema.loadKeywordSchema(() => 'en');
+            const second = keywordSchema.loadKeywordSchema(() => 'en');
+
+            assert.strictEqual(first, second);
+            assert.equal(fieldDataReads, 1);
+        } finally {
+            fs.readFileSync = originalReadFileSync;
+            keywordSchema.resetKeywordSchemaCache();
+        }
+    });
 });

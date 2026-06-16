@@ -1419,6 +1419,11 @@ describe('large document guards', () => {
         assert.deepEqual(provider.provideDocumentSymbols(createHugeDoc()), []);
     });
 
+    it('skips keyword option CodeLens for very large documents', () => {
+        const provider = new LsdynaKeywordOptionsCodeLensProvider();
+        assert.deepEqual(provider.provideCodeLenses(createHugeDoc()), []);
+    });
+
     it('skips hover work for very large documents', () => {
         const provider = new LsdynaFieldHoverProvider();
         assert.equal(provider.provideHover(createHugeDoc(), { line: 0, character: 0 }), null);

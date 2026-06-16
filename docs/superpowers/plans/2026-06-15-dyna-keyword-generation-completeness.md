@@ -373,7 +373,7 @@
 - 修改：`test/client/providers/phase7_features.test.js`
 - 修改：`DEVELOPMENT.md` 或 `keywords/schema_model.md`
 
-- [ ] **步骤 1：记录生成规模**
+- [x] **步骤 1：记录生成规模**
 
   生成脚本输出：
 
@@ -385,11 +385,11 @@
   - snippets count。
   - field_data size。
 
-- [ ] **步骤 2：大文件保护回归**
+- [x] **步骤 2：大文件保护回归**
 
   现有 `shouldSkipAutomaticDocumentScan()` 大文件跳过行为必须保持。resolver 不应在 hover/selection 高频路径重复 parse JSON。
 
-- [ ] **步骤 3：完整验证命令**
+- [x] **步骤 3：完整验证命令**
 
   ```bash
   python keywords/generate_from_pydyna.py pydyna/codegen/kwd.json

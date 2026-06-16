@@ -42,3 +42,27 @@ For manual lookups and exact page jumps to function correctly:
    - On Windows, copy `SumatraPDF.exe` directly into the manuals directory configured above.
    - The extension will read PDF manual structures, build bookmark caches, and monitor changes in this directory.
    - If `SumatraPDF.exe` is missing from the manuals directory, the extension will gracefully fall back to the system default PDF reader (without page navigation).
+
+## 5. LS-DYNA Keyword Schema Generation
+
+The snippet and hover schema are generated from the pydyna codegen metadata:
+
+```bash
+python keywords/generate_from_pydyna.py pydyna/codegen/kwd.json
+python keywords/validate_field_data_translation.py
+npm test
+```
+
+Current generation scale:
+
+- raw kwd keywords: 3168
+- manifest/codegen items: 3173
+- skipped items: 23
+- aliases: 21
+- option-enabled keywords: 1328
+- title variants: 1560
+- field data entries: 4712
+- snippets: 5510
+- field_data.json size: about 19753 KB
+
+`generate_from_pydyna.py` writes `snippets/lsdyna.json` and `keywords/field_data.json`, then synchronizes `keywords/field_data_zh.json` with English structural fallback while preserving existing localized help text where possible.
