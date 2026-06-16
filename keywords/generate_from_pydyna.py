@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from pydyna_schema_adapter import build_schema
+from validate_field_data_translation import sync_translation_file
 
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -23,6 +24,7 @@ CODEGEN_DIR = REPO_ROOT / "pydyna" / "codegen"
 DEFAULT_KWD = CODEGEN_DIR / "kwd.json"
 OUTPUT_SNIPPETS = REPO_ROOT / "snippets" / "lsdyna.json"
 OUTPUT_FIELDS = REPO_ROOT / "keywords" / "field_data.json"
+OUTPUT_FIELDS_ZH = REPO_ROOT / "keywords" / "field_data_zh.json"
 
 
 def _resolve_kwd_path() -> Path:
@@ -54,6 +56,12 @@ def main() -> None:
         json.dump(generated.field_data, f, separators=(",", ":"))
     size_kb = OUTPUT_FIELDS.stat().st_size // 1024
     print(f"Written {len(generated.field_data)} keyword definitions to {OUTPUT_FIELDS} ({size_kb} KB)")
+
+    if OUTPUT_FIELDS_ZH.exists():
+        errors = sync_translation_file(OUTPUT_FIELDS, OUTPUT_FIELDS_ZH)
+        if errors:
+            raise RuntimeError("field_data_zh.json synchronization produced structural errors")
+        print(f"Synchronized localized fallback data to {OUTPUT_FIELDS_ZH}")
 
     print("Generation stats:")
     for key, value in generated.stats.items():

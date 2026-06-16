@@ -353,16 +353,16 @@
 - 创建：`keywords/validate_field_data_translation.py`
 - 测试：`keywords/tests/test_field_data_translation.py`
 
-- [ ] **步骤 1：定义同步规则**
+- [x] **步骤 1：定义同步规则**
 
   `field_data_zh.json` 必须和 `field_data.json` 拥有完全相同的 key、card 数、option 数、field `n/p/w/t/d/e`。只允许 `h`、keyword/option 描述类文本不同。
 
-- [ ] **步骤 2：增加结构校验脚本**
+- [x] **步骤 2：增加结构校验脚本**
 
   运行：`python keywords/validate_field_data_translation.py`
   预期：结构一致时 PASS；缺 key、缺 option、field 数不同时报错。
 
-- [ ] **步骤 3：生成 fallback**
+- [x] **步骤 3：生成 fallback**
 
   当新增英文 help 尚未翻译时，`field_data_zh.json` 先复制英文 `h`，保证 hover 不缺字段。翻译可以增量覆盖，不阻塞完整覆盖。
 
