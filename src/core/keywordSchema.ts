@@ -368,12 +368,6 @@ function countDataLinesThrough(document: any, keywordLine: number, lineNum: numb
         if (text.startsWith('$')) {
             continue;
         }
-        if (text.trim().length === 0) {
-            if (index === lineNum) {
-                count++;
-            }
-            continue;
-        }
         count++;
     }
     return count;

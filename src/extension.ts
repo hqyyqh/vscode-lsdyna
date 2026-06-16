@@ -1785,12 +1785,7 @@ function getDataCardDisplayIndexForLine(document, lineNum) {
     let dataIndex = 0;
     for (let i = kwLine + 1; i <= lineNum && i < document.lineCount; i++) {
         const t = document.lineAt(i).text.trimStart();
-        if (!t.startsWith('$') && t.length > 0) dataIndex++;
-    }
-
-    const current = document.lineAt(lineNum).text.trimStart();
-    if (current.length === 0) {
-        dataIndex++;
+        if (!t.startsWith('$')) dataIndex++;
     }
 
     return Math.max(0, dataIndex - 1);
