@@ -61,6 +61,37 @@ describe('keywordSchema resolver', () => {
         assert.equal(titleCard[0].n, 'TITLE');
     });
 
+    it('uses field comment headers before line-count fallback for CONTACT option variants', () => {
+        const { getCardForDocumentLine } = require('../../src/core/keywordSchema');
+        const doc = fakeDoc([
+            '*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP',
+            '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
+            '',
+            '$#      fs        fd        dc        vc       vdc    penchk        bt        dt',
+            '       0.0       0.0       0.0       0.0       0.0         0       0.0       0.0',
+            '$#    soft    sofscl    lcidab    maxpar     sbopt     depth     bsort    frcfrq',
+            '                 0.1         0     1.025         2         2                   1',
+            '$#  pstiff   ignroff               fstol    2dbinr    ssftyp     swtpr    tetfac',
+            '         0         0                 2.0         0         0         0       0.0'
+        ].join('\n'));
+
+        const ssid = getCardForDocumentLine(doc, 2);
+        assert.ok(ssid);
+        assert.equal(ssid[0].n, 'SSID');
+
+        const fs = getCardForDocumentLine(doc, 4);
+        assert.ok(fs);
+        assert.equal(fs[0].n, 'FS');
+
+        const soft = getCardForDocumentLine(doc, 6);
+        assert.ok(soft);
+        assert.equal(soft[0].n, 'SOFT');
+
+        const pstiff = getCardForDocumentLine(doc, 8);
+        assert.ok(pstiff);
+        assert.equal(pstiff[0].n, 'PSTIFF');
+    });
+
     it('keeps old compact entries usable when option metadata is absent', () => {
         const { getRenderedCards } = require('../../src/core/keywordSchema');
         const entry = { c: [[{ n: 'A', p: 0, w: 10 }], [{ n: 'B', p: 0, w: 10 }]], r: 1 };
