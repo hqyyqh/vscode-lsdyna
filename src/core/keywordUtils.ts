@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
 const TITLE_SUFFIXES = [
     '_ID_HEADING',
     '_ID_TITLE',
@@ -59,6 +62,40 @@ for (const k of Object.keys(ALIAS_MAP)) {
     if (!BIDIRECTIONAL_ALIASES[v].includes(k)) BIDIRECTIONAL_ALIASES[v].push(k);
 }
 
+let GENERATED_ALIASES = null;
+
+function addAliasPair(map, left, right) {
+    if (!left || !right || left === right) return;
+    if (!map[left]) map[left] = [];
+    if (!map[right]) map[right] = [];
+    if (!map[left].includes(right)) map[left].push(right);
+    if (!map[right].includes(left)) map[right].push(left);
+}
+
+function loadGeneratedAliases() {
+    if (GENERATED_ALIASES) return GENERATED_ALIASES;
+    GENERATED_ALIASES = {};
+    try {
+        const schemaPath = path.join(__dirname, '..', '..', 'keywords', 'field_data.json');
+        const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+        for (const [keyword, entry] of Object.entries(schema)) {
+            const item = entry as any;
+            const canonical = (item && item.x) ? String(item.x).toUpperCase() : String(keyword).toUpperCase();
+            if (item && Array.isArray(item.a)) {
+                for (const alias of item.a) {
+                    addAliasPair(GENERATED_ALIASES, canonical, String(alias).toUpperCase());
+                }
+            }
+            if (item && item.x) {
+                addAliasPair(GENERATED_ALIASES, canonical, String(keyword).toUpperCase());
+            }
+        }
+    } catch {
+        GENERATED_ALIASES = {};
+    }
+    return GENERATED_ALIASES;
+}
+
 /**
  * Returns an array of equivalent keywords (aliases) for a given keyword name.
  * Handles both with and without '*' prefix.
@@ -72,8 +109,11 @@ function getAliases(kwName) {
         prefix = '*';
         name = name.slice(1);
     }
-    const aliases = BIDIRECTIONAL_ALIASES[name] || [];
-    return aliases.map(a => prefix + a);
+    const aliases = [
+        ...(BIDIRECTIONAL_ALIASES[name] || []),
+        ...(loadGeneratedAliases()[name] || [])
+    ];
+    return [...new Set(aliases)].map(a => prefix + a);
 }
 
 module.exports = {

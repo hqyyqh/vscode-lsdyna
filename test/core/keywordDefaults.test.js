@@ -15,6 +15,13 @@ describe('keyword aliases and default valid keywords', () => {
         assert.ok(getAliases('*SET_PART_LIST').includes('*SET_PART'));
     });
 
+    it('reads generated aliases from field_data metadata', () => {
+        const { getAliases } = require('../../src/core/keywordUtils');
+
+        assert.ok(getAliases('ALE_STRUCTURED_MULTI-MATERIAL_GROUP').includes('ALE_STRUCTURED_MULTI_MATERIAL_GROUP'));
+        assert.ok(getAliases('ALE_STRUCTURED_MULTI_MATERIAL_GROUP').includes('ALE_STRUCTURED_MULTI-MATERIAL_GROUP'));
+    });
+
     it('allows CASE_BEGIN and CASE_END from fallback custom valid keywords', () => {
         const keywordValidator = require('../../src/core/parser/keywordValidator');
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
