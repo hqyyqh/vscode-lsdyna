@@ -257,7 +257,7 @@
 - 修改：`src/core/keywordUtils.ts`
 - 测试：`test/extension.test.js`、`test/client/providers/phase7_features.test.js`、`test/core/keywordDefaults.test.js`
 
-- [ ] **步骤 1：hover 改用 rendered card sequence**
+- [x] **步骤 1：hover 改用 rendered card sequence**
 
   删除 hover 中 `_TITLE` 手动跳过逻辑。行为变更：
 
@@ -265,15 +265,15 @@
   - `*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE` 第 base+F 行 hover 显示 Optional Card F 字段 help。
   - keyword line hover 列出 base cards 和可用 options，并保留 manual links。
 
-- [ ] **步骤 2：字段补全和 `$#` 注释生成改用 resolver**
+- [x] **步骤 2：字段补全和 `$#` 注释生成改用 resolver**
 
   `LsdynaFieldCompletionProvider`、`generateCommentLine()` 调用点继续接收 card fields，但 card 由 resolver 提供。CONTACT optional line 上输入 `$` 应补对应 Optional Card A-F 的字段注释。
 
-- [ ] **步骤 3：format/tab 对齐改用 resolver**
+- [x] **步骤 3：format/tab 对齐改用 resolver**
 
   `formatLineIfNeeded()`、`handleTabAlignment()`、`handleSelectionChange()` 不再直接依赖旧 `getCardFieldsForLine()` 的 title suffix 特判。
 
-- [ ] **步骤 4：关键字校验改用 schema keyword set**
+- [x] **步骤 4：关键字校验改用 schema keyword set**
 
   `keywordValidator.init()` 接收：
 

@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const i18n = require('../i18n');
-const { stripTitleSuffix } = require('../keywordUtils');
+const { getAliases } = require('../keywordUtils');
+const keywordSchema = require('../keywordSchema');
 
 let validKeywords = new Set();
 let isInitialized = false;
@@ -9,6 +10,39 @@ const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*CASE_BEGIN', '*CASE_END'];
 function init(validKeywordsSet) {
     validKeywords = validKeywordsSet;
     isInitialized = true;
+}
+
+function normalizeKeyword(keyword) {
+    let normalized = keyword.toUpperCase().trim();
+    if (normalized.startsWith('*')) normalized = normalized.substring(1);
+    return normalized;
+}
+
+function getValidationSchema() {
+    try {
+        return keywordSchema.loadKeywordSchema(() => 'en') || {};
+    } catch (err) {
+        return {};
+    }
+}
+
+function customKeywordMatches(keyword, customValidKeywords) {
+    if (customValidKeywords.has(keyword)) return true;
+    for (const customKeyword of customValidKeywords) {
+        if (customKeyword.endsWith('*')) {
+            const prefix = customKeyword.substring(0, customKeyword.length - 1);
+            if (keyword.startsWith(prefix)) return true;
+        }
+    }
+    return false;
+}
+
+function builtInKeywordMatches(keyword, schema) {
+    if (validKeywords.has(keyword) || schema[keyword]) return true;
+    for (const alias of getAliases(keyword)) {
+        if (validKeywords.has(alias) || schema[alias]) return true;
+    }
+    return false;
 }
 
 /**
@@ -56,59 +90,18 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
             diagnostics.push(diagnostic);
         }
         
-        // Strip _TITLE and similar suffixes
-        let checkKeyword = stripTitleSuffix(rawKeyword.toUpperCase());
+        const checkKeyword = normalizeKeyword(rawKeyword);
         
         // Check validity against built-in and custom valid keywords
         const config = vscode.workspace.getConfiguration('lsdyna', document.uri);
         const customValidKeywordsConfig: string[] = config && typeof config.get === 'function'
             ? config.get('customValidKeywords') || DEFAULT_CUSTOM_VALID_KEYWORDS
             : DEFAULT_CUSTOM_VALID_KEYWORDS;
-        const customValidKeywords = new Set(customValidKeywordsConfig.map(k => {
-            let kw = k.toUpperCase().trim();
-            if (kw.startsWith('*')) kw = kw.substring(1);
-            return kw;
-        }));
+        const customValidKeywords = new Set(customValidKeywordsConfig.map(normalizeKeyword));
         
-        let isValid = false;
-        const { getAliases } = require('../keywordUtils');
-        const candidatesToCheck = [checkKeyword, ...getAliases(checkKeyword)];
-        for (const cand of candidatesToCheck) {
-            if (validKeywords.has(cand) || customValidKeywords.has(cand)) {
-                isValid = true;
-                break;
-            }
-            // Prefix matching for custom valid keywords ending with *
-            for (const ckw of customValidKeywords) {
-                if (ckw.endsWith('*')) {
-                    const prefix = ckw.substring(0, ckw.length - 1);
-                    if (cand.startsWith(prefix)) {
-                        isValid = true;
-                        break;
-                    }
-                }
-            }
-            if (isValid) break;
-            
-            // Try sub-tokens for cand
-            const parts = cand.split('_');
-            for (let j = parts.length - 1; j >= 1; j--) {
-                const subCand = parts.slice(0, j).join('_');
-                if (validKeywords.has(subCand)) {
-                    isValid = true;
-                    break;
-                }
-                const subAliases = getAliases(subCand);
-                for (const sa of subAliases) {
-                    if (validKeywords.has(sa)) {
-                        isValid = true;
-                        break;
-                    }
-                }
-                if (isValid) break;
-            }
-            if (isValid) break;
-        }
+        const schema = getValidationSchema();
+        const isValid = customKeywordMatches(checkKeyword, customValidKeywords)
+            || builtInKeywordMatches(checkKeyword, schema);
         
         if (!isValid) {
             const diagnostic = new vscode.Diagnostic(

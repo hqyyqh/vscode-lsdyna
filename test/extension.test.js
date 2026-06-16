@@ -1424,13 +1424,14 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('correctly handles _TITLE suffix by skipping the title line and alignment shift', () => {
+    it('resolves _TITLE suffix title and data lines through keyword schema', () => {
         const provider = new LsdynaFieldHoverProvider();
-        const doc = fakeDoc('*MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE\nAl7046\n$      MID|       RO|\n    100000    2.7E-9\n');
+        const doc = fakeDoc('*MAT_001_TITLE\nSteel\n$      MID|       RO|\n    100000    2.7E-9\n');
 
-        // Hovering on title line (line 1) should return null
         const titleHover = provider.provideHover(doc, { line: 1, character: 2 });
-        assert.strictEqual(titleHover, null);
+        assert.ok(titleHover);
+        assert.ok(titleHover.contents[0].value.includes('**TITLE**'));
+        assert.ok(titleHover.contents[0].value.includes('Additional title line'));
 
         // Hovering on comment line (line 2) should return null
         const commentHover = provider.provideHover(doc, { line: 2, character: 2 });
@@ -1440,6 +1441,27 @@ describe('LsdynaFieldHoverProvider', () => {
         const dataHover = provider.provideHover(doc, { line: 3, character: 5 });
         assert.ok(dataHover);
         assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;MID&nbsp;**</span>'));
+    });
+
+    it('resolves CONTACT optional card fields by data line count', () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc([
+            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            'base card 1',
+            'base card 2',
+            'base card 3',
+            'optional card A',
+            'optional card B',
+            'optional card C',
+            'optional card D',
+            'optional card E',
+            'optional card F',
+            ''
+        ].join('\n'));
+
+        const hover = provider.provideHover(doc, { line: 9, character: 2 });
+        assert.ok(hover);
+        assert.ok(hover.contents[0].value.includes('**PSTIFF**'));
     });
 
     it('returns custom hover actions for existing include files', () => {

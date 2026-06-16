@@ -16,7 +16,7 @@ const fs = require('fs');
 const readline = require('readline');
 const child_process = require('child_process');
 const manualIndexer = require('./core/manualIndexer');
-const { hasTitleSuffix } = require('./core/keywordUtils');
+const keywordSchema = require('./core/keywordSchema');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
@@ -670,52 +670,25 @@ let _fieldData = null;
  */
 function getFieldData() {
     if (!_fieldData) {
-        const lang = i18n.getLanguage();
-        const dataPaths = [];
-        if (lang === 'zh-cn') {
-            dataPaths.push(path.join(__dirname, '..', 'keywords', 'field_data_zh.json'));
-        }
-        dataPaths.push(path.join(__dirname, '..', 'keywords', 'field_data.json'));
-
-        for (const dataPath of dataPaths) {
-            try {
-                _fieldData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-                break;
-            } catch {}
-        }
+        _fieldData = keywordSchema.loadKeywordSchema(() => i18n.getLanguage());
         if (!_fieldData) _fieldData = {};
     }
     return _fieldData;
 }
 
 /**
- * Searches the schema dictionary for a keyword definition, supporting sub-token fallback.
+ * Searches the schema dictionary for a keyword definition, supporting aliases and variants.
  * 
  * @param {string} name - Keyword string.
- * @returns {Object|null} Schema card descriptor, or null.
+ * @returns {Object|null} Schema lookup descriptor, or null.
  */
+function lookupKeywordInfo(name) {
+    return keywordSchema.lookupKeywordSchema(name, getFieldData());
+}
+
 function lookupKeyword(name) {
-    const data = getFieldData();
-    const { getAliases } = require('./core/keywordUtils');
-    const candidatesToCheck = [name, ...getAliases(name)];
-    
-    for (const cand of candidatesToCheck) {
-        if (data[cand]) return data[cand];
-    }
-    
-    for (const cand of candidatesToCheck) {
-        const tokens = cand.split('_');
-        for (let i = tokens.length - 1; i >= 1; i--) {
-            const candidate = tokens.slice(0, i).join('_');
-            if (data[candidate]) return data[candidate];
-            
-            const subAliases = getAliases(candidate);
-            for (const sa of subAliases) {
-                if (data[sa]) return data[sa];
-            }
-        }
-    }
-    return null;
+    const lookup = lookupKeywordInfo(name);
+    return lookup ? lookup.entry : null;
 }
 
 /**
@@ -725,8 +698,8 @@ function lookupKeyword(name) {
  * @param {Object} entry - Schema definition entry.
  * @returns {string} Markdown text.
  */
-function keywordHoverMarkdown(kwName, entry) {
-    const cards = entry.c;
+function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
+    const cards = keywordSchema.getRenderedCards(entry, activeOptions);
     const lines = [`**\\*${kwName}**`];
     let cardNum = 1;
     for (const card of cards) {
@@ -741,6 +714,13 @@ function keywordHoverMarkdown(kwName, entry) {
         cardNum++;
     }
     if (entry.r) lines.push('\n*Last card repeats for each data row.*');
+    if (entry.o && entry.o.length) {
+        const options = entry.o.map(option => {
+            const order = option.to ? `title/${option.to}` : option.co;
+            return `${option.n} (${order})`;
+        });
+        lines.push(`\n*Options:* ${options.join(', ')}`);
+    }
     return lines.join('\n');
 }
 
@@ -857,8 +837,8 @@ class LsdynaFieldHoverProvider {
         if (trimmed.startsWith('*')) {
             const kwName = trimmed.slice(1).toUpperCase().split(/[\s,$]/)[0];
             if (!kwName) return null;
-            const entry = lookupKeyword(kwName);
-            if (!entry) {
+            const lookup = lookupKeywordInfo(kwName);
+            if (!lookup) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
                 const manuals = manualIndexer.getManualLocations(cleanKw);
                 const fileCount = manualIndexer.getManualFilesCount();
@@ -874,7 +854,7 @@ class LsdynaFieldHoverProvider {
                 }
                 return null;
             }
-            const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, entry));
+            const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, lookup.entry, lookup.activeOptions));
             md.isTrusted = true;
             md.supportThemeIcons = true;
             appendManualLinks(md, kwName);
@@ -894,28 +874,7 @@ class LsdynaFieldHoverProvider {
 
         const kwText = document.lineAt(kwLine).text.trim();
         const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
-        const entry = lookupKeyword(kwName);
-        if (!entry) return null;
-
-        // Count which card index this line is (skip comments between keyword and here)
-        let cardIndex = 0;
-        for (let i = kwLine + 1; i < position.line; i++) {
-            const t = document.lineAt(i).text.trimStart();
-            if (!t.startsWith('$') && t.length > 0) cardIndex++;
-        }
-
-        let effectiveCardIndex = cardIndex;
-        if (hasTitleSuffix(kwName)) {
-            if (cardIndex === 0) {
-                return null; // Title line has no card structure fields
-            }
-            effectiveCardIndex = cardIndex - 1;
-        }
-
-        const cards = entry.c;
-        // For repeating keywords, clamp to last card
-        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
-        const card = cards[clampedIndex];
+        const card = keywordSchema.getCardForDocumentLine(document, position.line, getFieldData());
         if (!card || card.length === 0) return null;
 
         const col = position.character;
@@ -1363,7 +1322,6 @@ function getCardFieldsForLine(document, lineNum) {
     if (kwLine === null) return null;
 
     const kwText = document.lineAt(kwLine).text.trim();
-    const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
     
     const ignoreKeywords = getLsdynaConfigurationValue('ignoreFormattingKeywords', [], document.uri) || [];
     const kwTextUpper = kwText.toUpperCase();
@@ -1373,24 +1331,29 @@ function getCardFieldsForLine(document, lineNum) {
         }
     }
 
-    const entry = lookupKeyword(kwName);
-    if (!entry) return null;
+    return keywordSchema.getCardForDocumentLine(document, lineNum, getFieldData());
+}
 
-    let cardIndex = 0;
-    for (let i = kwLine + 1; i < lineNum; i++) {
+function getDataCardDisplayIndexForLine(document, lineNum) {
+    let kwLine = null;
+    for (let i = lineNum - 1; i >= 0; i--) {
         const t = document.lineAt(i).text.trimStart();
-        if (!t.startsWith('$') && t.length > 0) cardIndex++;
+        if (t.startsWith('*')) { kwLine = i; break; }
+    }
+    if (kwLine === null) return 0;
+
+    let dataIndex = 0;
+    for (let i = kwLine + 1; i <= lineNum && i < document.lineCount; i++) {
+        const t = document.lineAt(i).text.trimStart();
+        if (!t.startsWith('$') && t.length > 0) dataIndex++;
     }
 
-    let effectiveCardIndex = cardIndex;
-    if (hasTitleSuffix(kwName)) {
-        if (cardIndex === 0) return null;
-        effectiveCardIndex = cardIndex - 1;
+    const current = document.lineAt(lineNum).text.trimStart();
+    if (current.length === 0) {
+        dataIndex++;
     }
 
-    const cards = entry.c;
-    const clampedIndex = entry.r ? Math.min(effectiveCardIndex, cards.length - 1) : effectiveCardIndex;
-    return cards[clampedIndex] || null;
+    return Math.max(0, dataIndex - 1);
 }
 
 class LsdynaFieldCompletionProvider {
@@ -1429,34 +1392,14 @@ class LsdynaFieldCompletionProvider {
         // Skip completions for title/filename fields (single wide field)
         if (card.length === 1 && card[0].w >= 40) return [];
 
-        // Count which card index this line is for template label
-        let kwLine = null;
-        for (let i = position.line - 1; i >= 0; i--) {
-            const t = document.lineAt(i).text.trimStart();
-            if (t.startsWith('*')) { kwLine = i; break; }
-        }
-        const kwText = document.lineAt(kwLine).text.trim();
-        const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
-        const entry = lookupKeyword(kwName);
-
-        let cardIndex = 0;
-        for (let i = kwLine + 1; i < position.line; i++) {
-            const t = document.lineAt(i).text.trimStart();
-            if (!t.startsWith('$') && t.length > 0) cardIndex++;
-        }
-
-        let effectiveCardIndex = cardIndex;
-        if (hasTitleSuffix(kwName)) {
-            effectiveCardIndex = cardIndex - 1;
-        }
-        const clampedIndex = entry.r ? Math.min(effectiveCardIndex, entry.c.length - 1) : effectiveCardIndex;
+        const displayIndex = getDataCardDisplayIndexForLine(document, position.line);
 
         const items = [];
 
         // 1. Row Card Template (Only when line is empty or near the beginning)
         if (text.trim().length === 0 || position.character <= 1) {
             const templateItem = new vscode.CompletionItem(
-                i18n.get('rowTemplateLabel', clampedIndex + 1),
+                i18n.get('rowTemplateLabel', displayIndex + 1),
                 vscode.CompletionItemKind.Snippet
             );
             templateItem.detail = i18n.get('rowTemplateDetail');
@@ -1479,7 +1422,7 @@ class LsdynaFieldCompletionProvider {
             }
             templateItem.insertText = new vscode.SnippetString(snippetText);
             // Ensure template is sorted at top
-            templateItem.sortText = '0_' + clampedIndex;
+            templateItem.sortText = '0_' + displayIndex;
             items.push(templateItem);
         }
 

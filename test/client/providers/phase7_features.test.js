@@ -297,6 +297,32 @@ describe('Phase 7 Features', () => {
             assert.strictEqual(item.range.end.line, 1);
             assert.strictEqual(item.range.end.character, 36);
         });
+
+        it('should return CONTACT optional card comment completion based on data line count', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc([
+                '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+                'base card 1',
+                'base card 2',
+                'base card 3',
+                'optional card A',
+                'optional card B',
+                'optional card C',
+                'optional card D',
+                'optional card E',
+                '$',
+                ''
+            ].join('\n'), '/project/main.k');
+            document.languageId = 'lsdyna';
+
+            const pos = new vscodeMock.Position(9, 1);
+            const items = provider.provideCompletionItems(document, pos);
+
+            assert.strictEqual(items.length, 1);
+            assert.strictEqual(items[0].label, '$#');
+            assert.ok(items[0].insertText.includes('PSTIFF'));
+            assert.ok(items[0].documentation.value.includes('PSTIFF'));
+        });
     });
 
     describe('handleEnterIndentationRemoval', () => {

@@ -44,6 +44,36 @@ describe('keyword aliases and default valid keywords', () => {
         }
     });
 
+    it('validates generated title variants and aliases without accepting CONTACT option prefixes', () => {
+        const keywordValidator = require('../../src/core/parser/keywordValidator');
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: () => undefined,
+        });
+
+        try {
+            keywordValidator.init(new Set([
+                'MAT_001',
+                'SET_NODE_LIST',
+                'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE'
+            ]));
+            const doc = fakeDoc([
+                '*MAT_001_TITLE',
+                '*SET_NODE',
+                '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F'
+            ].join('\n'));
+            const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
+
+            assert.deepEqual(
+                diagnostics.map(diagnostic => diagnostic.message),
+                ['Unknown or invalid keyword: *CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F']
+            );
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
     it('declares CASE_BEGIN and CASE_END in package custom valid keyword defaults', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
         const defaults = packageJson.contributes.configuration.properties['lsdyna.customValidKeywords'].default;
