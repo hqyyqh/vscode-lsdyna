@@ -22,6 +22,13 @@ describe('keyword aliases and default valid keywords', () => {
         assert.ok(getAliases('ALE_STRUCTURED_MULTI_MATERIAL_GROUP').includes('ALE_STRUCTURED_MULTI-MATERIAL_GROUP'));
     });
 
+    it('keeps title suffix stripping scoped to manual keyword normalization', () => {
+        const keywordUtils = require('../../src/core/keywordUtils');
+
+        assert.equal(typeof keywordUtils.stripTitleSuffix, 'function');
+        assert.equal(Object.prototype.hasOwnProperty.call(keywordUtils, 'hasTitleSuffix'), false);
+    });
+
     it('allows CASE_BEGIN and CASE_END from fallback custom valid keywords', () => {
         const keywordValidator = require('../../src/core/parser/keywordValidator');
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;

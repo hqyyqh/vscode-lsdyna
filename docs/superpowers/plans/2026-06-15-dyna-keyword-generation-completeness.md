@@ -428,7 +428,7 @@
 - **field 区域检测、补全、格式化和 Tab 对齐：** 不需要 stripping。`getCardForDocumentLine()` 应根据 keyword 行、active title options 和已观察到的数据行数生成实际 card sequence；TITLE 行、ID/HEADING 行以及 CONTACT optional cards 都是普通 card，不再是需要跳过或手动偏移的特殊行。
 - **手册书签匹配：** 仍可保留 stripping。PDF bookmark 往往只索引 base keyword 或旧式 `_TITLE` bookmark，`manualIndexer.cleanKeyword()` 中的 `stripTitleSuffix()` 属于外部手册索引归一化，不参与 schema/field/validation 判定。若以后要移除它，需要先用 schema canonicalization 替代，并保留 manual bookmark fallback 测试。
 
-因此当前推荐状态是：`hasTitleSuffix()` 可视为历史遗留的候选删除项；`stripTitleSuffix()` 暂时保留给 manual indexer 使用，但不要重新引入到 keyword validation、hover schema lookup 或 field card resolver 中。
+因此当前状态是：`hasTitleSuffix()` 已从 `keywordUtils` 公共导出中删除；`stripTitleSuffix()` 暂时保留给 manual indexer 使用，但不要重新引入到 keyword validation、hover schema lookup 或 field card resolver 中。
 
 ## 推荐执行顺序
 

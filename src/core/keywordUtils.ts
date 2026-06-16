@@ -13,16 +13,9 @@ const TITLE_SUFFIXES = [
 ];
 
 /**
- * Checks if the keyword name ends with any of the title-related suffixes.
- * @param {string} kwName The keyword name (uppercase recommended).
- * @returns {boolean} True if it has a title suffix.
- */
-function hasTitleSuffix(kwName) {
-    return TITLE_SUFFIXES.some(s => kwName.endsWith(s));
-}
-
-/**
  * Strips the title-related suffix from the keyword name if present.
+ * This is kept for manual bookmark normalization only; editor schema lookup
+ * should resolve generated variants directly.
  * @param {string} kwName The keyword name.
  * @returns {string} The stripped keyword name.
  */
@@ -117,8 +110,6 @@ function getAliases(kwName) {
 }
 
 module.exports = {
-    TITLE_SUFFIXES,
-    hasTitleSuffix,
     stripTitleSuffix,
     getAliases
 };
