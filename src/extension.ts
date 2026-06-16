@@ -1857,7 +1857,7 @@ class LsdynaFieldCompletionProvider {
                 const isFloat = f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real') || f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z'));
                 const defVal = isFloat ? '0.0' : '0';
                 const padLen = Math.max(0, f.w - defVal.length);
-                const placeholder = ' '.repeat(padLen) + defVal;
+                const placeholder = f.w >= 40 ? defVal + ' '.repeat(padLen) : ' '.repeat(padLen) + defVal;
 
                 snippetText += `\${${j + 1}:${placeholder}}`;
                 prevEnd = f.p + f.w;
@@ -1965,35 +1965,28 @@ class LsdynaKeywordCompletionProvider {
 
 function generateCommentLine(card) {
     if (!card || card.length === 0) return '';
-    const lastField = card[card.length - 1];
-    const totalLen = lastField.p + lastField.w;
-    const chars = Array(totalLen).fill(' ');
-    chars[0] = '$';
-    chars[1] = '#';
+    let line = '$#';
+    let written = 2;
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
-        const name = f.n || '';
-        let startIdx = f.p;
-        if (startIdx < 2) {
-            startIdx = 2;
-        }
-        let maxEnd = f.p + f.w;
-        if (i < card.length - 1) {
-            maxEnd = Math.min(maxEnd, card[i + 1].p);
-        }
-        const maxLen = maxEnd - startIdx;
-        if (maxLen <= 0) continue;
-        let alignedName = name;
-        if (name.length < maxLen) {
-            alignedName = name.padStart(maxLen);
+        const available = f.p + f.w - written;
+        if (available <= 0) continue;
+        
+        const name = (f.n || '').toLowerCase().substring(0, available);
+        
+        if (f.w >= 40) {
+            if (i === 0) {
+                line = ('$# ' + name).padEnd(f.p + f.w, ' ');
+            } else {
+                line += name.padEnd(available, ' ');
+            }
         } else {
-            alignedName = name.slice(0, maxLen);
+            line += name.padStart(available, ' ');
         }
-        for (let k = 0; k < alignedName.length; k++) {
-            chars[startIdx + k] = alignedName[k];
-        }
+        
+        written = f.p + f.w;
     }
-    return chars.join('').trimEnd();
+    return line;
 }
 
 async function handleEnterIndentationRemoval(event) {
@@ -2052,14 +2045,25 @@ function extractSmartTokens(text) {
     return tokens;
 }
 
-function alignLineText(text, card) {
+function alignLineText(text, card, isCommentLine = false) {
     if (!card || card.length === 0) return text;
 
-    // Skip alignment for title/filename fields (single wide field, e.g. 80-char path/title)
-    const isWideField = card.length === 1 && card[0].w >= 40;
-    if (isWideField) return text;
+    let processText = text;
+    let commentPrefix = '';
 
-    if (!text.trim()) {
+    if (isCommentLine) {
+        processText = text.trimStart();
+        const match = processText.match(/^(\$#?)\s*/);
+        if (match) {
+            commentPrefix = match[1];
+            processText = processText.substring(commentPrefix.length).trimStart();
+        } else if (processText.startsWith('$')) {
+            commentPrefix = '$';
+            processText = processText.substring(1).trimStart();
+        }
+    }
+
+    if (!processText.trim()) {
         let emptyLine = '';
         let prevEnd = 0;
         for (const f of card) {
@@ -2068,27 +2072,33 @@ function alignLineText(text, card) {
             emptyLine += ' '.repeat(f.w);
             prevEnd = f.p + f.w;
         }
+        if (isCommentLine && commentPrefix) {
+            if (emptyLine.startsWith(' '.repeat(commentPrefix.length))) {
+                return commentPrefix + emptyLine.substring(commentPrefix.length);
+            }
+            return commentPrefix + emptyLine.substring(1);
+        }
         return emptyLine;
     }
 
-    const hasComma = text.includes(',');
+    const hasComma = processText.includes(',');
     let useTokens = false;
     let tokens = [];
 
     if (hasComma) {
-        tokens = text.split(',').map(t => t.trim());
+        tokens = processText.split(',').map(t => t.trim());
         useTokens = true;
     } else {
-        tokens = extractSmartTokens(text);
+        tokens = extractSmartTokens(processText);
         
         let hasInvalidInternalSpace = false;
         const totalCardWidth = card[card.length - 1].p + card[card.length - 1].w;
-        const isOverflowing = text.trimEnd().length > totalCardWidth;
+        const isOverflowing = processText.trimEnd().length > totalCardWidth;
 
         for (let i = 0; i < card.length; i++) {
             const f = card[i];
-            if (f.p >= text.length) break;
-            const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
+            if (f.p >= processText.length) break;
+            const rawVal = processText.slice(f.p, Math.min(processText.length, f.p + f.w));
             const val = rawVal.trim();
             if (val.length > 0 && /\s/.test(val)) {
                 if (f.t !== 'string' && f.t !== 'character') {
@@ -2097,9 +2107,9 @@ function alignLineText(text, card) {
             }
         }
         
-        const validPhysValsCount = card.map(f => text.slice(f.p, f.p + f.w).trim()).filter(v => v.length > 0).length;
+        const validPhysValsCount = card.map(f => processText.slice(f.p, f.p + f.w).trim()).filter(v => v.length > 0).length;
 
-        if ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount) {
+        if (isCommentLine || ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount)) {
             useTokens = true;
         }
     }
@@ -2107,11 +2117,11 @@ function alignLineText(text, card) {
     const physVals = [];
     for (let i = 0; i < card.length; i++) {
         const f = card[i];
-        if (f.p >= text.length) {
+        if (f.p >= processText.length) {
             physVals.push('');
             continue;
         }
-        const rawVal = text.slice(f.p, Math.min(text.length, f.p + f.w));
+        const rawVal = processText.slice(f.p, Math.min(processText.length, f.p + f.w));
         physVals.push(rawVal.trim());
     }
 
@@ -2154,10 +2164,20 @@ function alignLineText(text, card) {
             } else {
                 paddedVal = val.padEnd(f.w);
             }
-        } else if (i === 0 && (f.t === 'string' || f.t === 'character')) {
+        } else if (f.w >= 40) {
             paddedVal = val.padEnd(f.w, ' ');
         } else {
             paddedVal = val.padStart(f.w, ' ');
+        }
+        
+        if (isCommentLine && i === 0 && commentPrefix) {
+            if (f.w >= 40) {
+                paddedVal = (commentPrefix + ' ' + val).substring(0, f.w).padEnd(f.w, ' ');
+            } else {
+                let trimmedVal = paddedVal.trimStart();
+                let spacesLeft = Math.max(0, f.w - commentPrefix.length - trimmedVal.length);
+                paddedVal = commentPrefix + ' '.repeat(spacesLeft) + trimmedVal;
+            }
         }
         
         alignedText += paddedVal;
@@ -2272,8 +2292,8 @@ async function formatLineIfNeeded(document, lineNum) {
     const text = line.text;
     const trimmed = text.trimStart();
     
-    // Skip keywords and comments
-    if (trimmed.startsWith('*') || trimmed.startsWith('$')) return;
+    // Skip keywords
+    if (trimmed.startsWith('*')) return;
 
     // Find the enclosing keyword line
     let kwLine = null;
@@ -2284,19 +2304,33 @@ async function formatLineIfNeeded(document, lineNum) {
     
     if (kwLine !== null) {
         const kwText = document.lineAt(kwLine).text.trim().toUpperCase();
+        if (kwText.startsWith('*PARAMETER')) return;
         if (kwText === '*INCLUDE_PATH' || kwText === '*INCLUDE_PATH_RELATIVE') {
             await formatPathEntryIfNeeded(document, lineNum, kwLine);
             return;
         }
     }
 
-    const cardFields = getCardFieldsForLine(document, lineNum);
+    const isCommentLine = trimmed.startsWith('$');
+    let targetLineNum = lineNum;
+
+    if (isCommentLine) {
+        for (let i = lineNum + 1; i < document.lineCount; i++) {
+            const t = document.lineAt(i).text.trimStart();
+            if (t.startsWith('*')) return; // No data card after comment
+            if (!t.startsWith('$')) {
+                targetLineNum = i;
+                break;
+            }
+        }
+    }
+
+    if (targetLineNum === lineNum && isCommentLine) return; // Could not find target data line
+
+    const cardFields = getCardFieldsForLine(document, targetLineNum);
     if (!cardFields || cardFields.length === 0) return;
 
-    // Skip formatting for title/filename fields (single wide field)
-    if (cardFields.length === 1 && cardFields[0].w >= 40) return;
-
-    const alignedText = alignLineText(text, cardFields);
+    const alignedText = alignLineText(text, cardFields, isCommentLine);
     if (text === alignedText) return;
 
     isFormattingLine = true;
@@ -3081,11 +3115,35 @@ function activate(context) {
                         const line = document.lineAt(lineNum);
                         const text = line.text;
                         const trimmed = text.trimStart();
+                        let currentKwText = null;
+                        for (let i = lineNum; i >= 0; i--) {
+                            const t = document.lineAt(i).text.trimStart();
+                            if (t.startsWith('*')) {
+                                currentKwText = t.toUpperCase();
+                                break;
+                            }
+                        }
+                        if (currentKwText && currentKwText.startsWith('*PARAMETER')) continue;
+
                         const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
-                        if (isCardLine) {
-                            const card = getCardFieldsForLine(document, lineNum);
-                            if (card && card.length > 0 && !(card.length === 1 && card[0].w >= 40)) {
-                                const alignedText = alignLineText(text, card);
+                        const isCommentLine = trimmed.startsWith('$');
+                        
+                        let targetLineNum = lineNum;
+                        if (isCommentLine) {
+                            for (let i = lineNum + 1; i < document.lineCount; i++) {
+                                const t = document.lineAt(i).text.trimStart();
+                                if (t.startsWith('*')) break;
+                                if (!t.startsWith('$')) {
+                                    targetLineNum = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetLineNum !== lineNum || isCardLine) {
+                            const card = getCardFieldsForLine(document, targetLineNum);
+                            if (card && card.length > 0) {
+                                const alignedText = alignLineText(text, card, isCommentLine);
                                 if (alignedText !== text) {
                                     const range = new vscode.Range(
                                         new vscode.Position(lineNum, 0),

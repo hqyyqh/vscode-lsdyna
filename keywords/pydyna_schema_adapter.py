@@ -342,14 +342,22 @@ def _is_repeating(keyword_data: Any, generation_options: dict[str, Any]) -> bool
 def _comment_header(fields: list[dict[str, Any]]) -> str:
     line = "$#"
     written = 2
-    for field in fields:
+    for i, field in enumerate(fields):
         pos = field.get("p", 0)
         width = field.get("w", 10)
         available = (pos + width) - written
         if available <= 0:
             continue
         name = str(field["n"]).lower()[:available]
-        line += name.rjust(available)
+        
+        if width >= 40:
+            if i == 0:
+                line = ("$# " + name).ljust(pos + width)
+            else:
+                line += name.ljust(available)
+        else:
+            line += name.rjust(available)
+            
         written = pos + width
     return line
 
@@ -366,7 +374,10 @@ def _data_line(fields: list[dict[str, Any]], tab_start: int) -> tuple[str, int]:
             line += " " * (pos - cursor)
 
         placeholder_value = str(default if default is not None else field["n"])[:width]
-        placeholder = placeholder_value.rjust(width)
+        if width >= 40:
+            placeholder = placeholder_value.ljust(width)
+        else:
+            placeholder = placeholder_value.rjust(width)
         line += f"${{{tab}:{placeholder}}}"
         tab += 1
         cursor = pos + width
