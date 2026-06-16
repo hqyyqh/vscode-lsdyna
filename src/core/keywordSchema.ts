@@ -232,6 +232,61 @@ function postOptions(entry: KeywordEntry, selectedNames: Set<string>): KeywordOp
         .sort((a, b) => parseCardOrder(a.co).index - parseCardOrder(b.co).index);
 }
 
+function normalizeFieldLabel(value: string): string {
+    return normalizeKeywordName(value).replace(/^_/, '');
+}
+
+function cardHeaderScore(card: KeywordCard, labels: string[]): number {
+    if (labels.length === 0 || card.length === 0) {
+        return 0;
+    }
+
+    const fieldNames = new Set(card.map(field => normalizeFieldLabel(field.n)));
+    let score = 0;
+    for (const label of labels) {
+        if (fieldNames.has(label)) {
+            score++;
+        }
+    }
+
+    if (score === 0) {
+        return 0;
+    }
+
+    const firstField = normalizeFieldLabel(card[0].n);
+    if (labels[0] === firstField) {
+        score += 1;
+    }
+    return score;
+}
+
+function renderHeaderCandidateCards(entry: KeywordEntry, activeOptions: string[]): KeywordCard[] {
+    const selectedNames = new Set(activeOptions.map(normalizeKeywordName));
+    for (const option of postOptions(entry, selectedNames)) {
+        selectedNames.add(optionName(option));
+    }
+
+    const selectedOptions = (entry.o || []).filter(option => selectedNames.has(optionName(option)));
+    return renderSelectedOptions(entry.c || [], selectedOptions);
+}
+
+function findCardByCommentHeader(entry: KeywordEntry, activeOptions: string[], labels: string[]): KeywordCard | null {
+    const candidates = renderHeaderCandidateCards(entry, activeOptions);
+    let bestCard: KeywordCard | null = null;
+    let bestScore = 0;
+
+    for (const card of candidates) {
+        const score = cardHeaderScore(card, labels);
+        if (score > bestScore) {
+            bestScore = score;
+            bestCard = card;
+        }
+    }
+
+    const minimumScore = Math.max(2, Math.ceil(labels.length * 0.6));
+    return bestScore >= minimumScore ? bestCard : null;
+}
+
 function expandRepeatingCards(cards: KeywordCard[], observedDataLineCount?: number): KeywordCard[] {
     if (!observedDataLineCount || cards.length === 0 || cards.length >= observedDataLineCount) {
         return cards;
@@ -275,6 +330,35 @@ export function getRenderedCards(
 function keywordLineName(lineText: string): string {
     const trimmed = lineText.trim();
     return normalizeKeywordName(trimmed.startsWith('*') ? trimmed.slice(1) : trimmed);
+}
+
+function parseCommentHeaderLabels(lineText: string): string[] {
+    const trimmed = lineText.trimStart();
+    if (!trimmed.startsWith('$#')) {
+        return [];
+    }
+
+    return trimmed
+        .slice(2)
+        .trim()
+        .split(/\s+/)
+        .map(normalizeFieldLabel)
+        .filter(Boolean);
+}
+
+function previousCommentHeaderLabels(document: any, keywordLine: number, lineNum: number): string[] {
+    for (let index = lineNum - 1; index > keywordLine; index--) {
+        const text = document.lineAt(index).text;
+        const trimmed = text.trimStart();
+        if (trimmed.trim().length === 0) {
+            continue;
+        }
+        if (trimmed.startsWith('$#')) {
+            return parseCommentHeaderLabels(text);
+        }
+        return [];
+    }
+    return [];
 }
 
 function countDataLinesThrough(document: any, keywordLine: number, lineNum: number): number {
@@ -324,6 +408,12 @@ export function getCardForDocumentLine(
     const lookup = lookupKeywordSchema(keywordLineName(document.lineAt(keywordLine).text), schema);
     if (!lookup) {
         return null;
+    }
+
+    const headerLabels = previousCommentHeaderLabels(document, keywordLine, lineNum);
+    const headerCard = findCardByCommentHeader(lookup.entry, lookup.activeOptions, headerLabels);
+    if (headerCard) {
+        return headerCard;
     }
 
     const observedDataLineCount = countDataLinesThrough(document, keywordLine, lineNum);
