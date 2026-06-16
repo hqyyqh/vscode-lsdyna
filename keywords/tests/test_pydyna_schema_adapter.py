@@ -34,6 +34,14 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         self.assertIn("title", snippet["body"][1].lower())
         self.assertIn("additional title line", title["c"][0][0]["h"].lower())
 
+    def test_wide_single_field_snippet_keeps_comment_header(self):
+        snippet = self.snippets["*MAT_024_TITLE"]
+
+        self.assertEqual("*MAT_024_TITLE", snippet["body"][0])
+        self.assertTrue(snippet["body"][1].startswith("$#"))
+        self.assertIn("title", snippet["body"][1].lower())
+        self.assertEqual("${1:TITLE}", snippet["body"][2])
+
     def test_contact_options_and_selection_snippet(self):
         contact = self.field_data["CONTACT_AUTOMATIC_SURFACE_TO_SURFACE"]
         options = {option["n"]: option for option in contact["o"]}
@@ -50,6 +58,22 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         self.assertEqual("*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE", snippet["body"][0])
         self.assertIn("*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F", snippet["prefix"])
         self.assertIn("Optional Cards A-F", snippet["description"])
+
+    def test_contact_title_variant_post_option_snippet_combines_cards(self):
+        snippet = self.snippets["*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP_OPTION_F"]
+        body_text = "\n".join(snippet["body"]).lower()
+
+        self.assertEqual("*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP", snippet["body"][0])
+        self.assertIn("*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP_F", snippet["prefix"])
+        self.assertIn("CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP + Optional Cards A-F", snippet["description"])
+
+        for field_name in ["ignore", "mpp2", "cid", "ssid", "soft", "pstiff"]:
+            self.assertIn(field_name, body_text)
+
+        self.assertLess(body_text.index("ignore"), body_text.index("cid"))
+        self.assertLess(body_text.index("cid"), body_text.index("ssid"))
+        self.assertLess(body_text.index("ssid"), body_text.index("soft"))
+        self.assertLess(body_text.index("soft"), body_text.index("pstiff"))
 
     def test_manifest_alias_entries_point_to_same_schema(self):
         base = self.field_data["SET_NODE_LIST"]
