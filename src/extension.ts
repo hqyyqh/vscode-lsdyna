@@ -700,33 +700,55 @@ function lookupKeyword(name) {
  */
 function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
     const cards = keywordSchema.getRenderedCards(entry, activeOptions);
-    const lines = [`**\\*${kwName}**`];
+    const lines = [`### $(symbol-keyword) **\\*${kwName}**\n\n---\n`];
     let cardNum = 1;
+    
+    const tableHeader = `| Card | 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 | 61-70 | 71-80 |`;
+    const tableSeparator = `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |`;
+    const tableRows = [];
+
     for (const card of cards) {
         if (!card.length) continue;
         const isWide = card.length === 1 && card[0].w >= 40;
         if (isWide) {
-            lines.push(`\n*Card ${cardNum} (title):* ${card[0].n}`);
+            tableRows.push(`| **${cardNum}** | \`${card[0].n}\` | *(Title)* | | | | | | |`);
         } else {
-            const names = card.map(f => f.n).join(', ');
-            lines.push(`\n*Card ${cardNum}:* ${names}`);
+            const rowCells = Array(8).fill('');
+            for (const f of card) {
+                const bin = Math.floor(f.p / 10);
+                if (bin >= 0 && bin < 8) {
+                    rowCells[bin] = `\`${f.n}\``;
+                    if (f.w > 10) {
+                        const spanBins = Math.round(f.w / 10);
+                        for (let i = 1; i < spanBins; i++) {
+                            if (bin + i < 8) rowCells[bin + i] = `→`;
+                        }
+                    }
+                }
+            }
+            tableRows.push(`| **${cardNum}** | ${rowCells.join(' | ')} |`);
         }
         cardNum++;
     }
-    if (entry.r) lines.push('\n*Last card repeats for each data row.*');
+
+    if (tableRows.length > 0) {
+        lines.push(tableHeader);
+        lines.push(tableSeparator);
+        lines.push(...tableRows);
+        lines.push('');
+    }
+
+    if (entry.r) lines.push('*(✨ Last card repeats for each data row)*\n');
     if (entry.o && entry.o.length) {
-        const options = entry.o.map(option => {
-            const order = option.to ? `title/${option.to}` : option.co;
-            return `${option.n} (${order})`;
-        });
-        lines.push(`\n*Options:* ${options.join(', ')}`);
+        const options = entry.o.map(option => `\`${option.n}\``);
+        lines.push(`**$(gear) Available Options:**\n${options.join(' • ')}`);
     }
     return lines.join('\n');
 }
 
 function appendKeywordOptionCommand(md, entry) {
     if (!entry || !entry.o || entry.o.length === 0) return;
-    md.appendMarkdown(`\n\n[$(list-selection) ${i18n.get('chooseKeywordOptions')}](command:extension.lsdynaChooseKeywordOptions)`);
+    md.appendMarkdown(`\n\n---\n\n[$(list-selection) ${i18n.get('chooseKeywordOptions')}](command:extension.lsdynaChooseKeywordOptions)`);
 }
 
 function normalizeOptionName(name) {
@@ -1128,6 +1150,16 @@ class LsdynaKeywordOptionsCodeLensProvider {
                 command: 'extension.lsdynaChooseKeywordOptions',
                 arguments: [lineNum],
             }));
+            lenses.push(new vscode.CodeLens(range, {
+                title: i18n.get('selectKeywordCodeLens'),
+                command: 'extension.selectKeyword',
+                arguments: [lineNum],
+            }));
+            lenses.push(new vscode.CodeLens(range, {
+                title: i18n.get('formatKeywordCodeLens'),
+                command: 'extension.lsdynaFormatSelection',
+                arguments: [lineNum],
+            }));
         }
         return lenses;
     }
@@ -1297,12 +1329,12 @@ class LsdynaFieldHoverProvider {
         // Build transposed grid table header and highlight active field name using Badge style.
         // Use Unicode vertical box-drawing character (│) at the start of non-first columns to act as vertical separator lines.
         const columnsHeader = card.map((f, idx) => idx === 0 ? `${f.p + 1}-${f.p + f.w}` : `│ ${f.p + 1}-${f.p + f.w}`);
-        const separators = card.map(() => '---');
+        const separators = card.map(() => ':---:'); // Center align all columns
         const fieldNamesBody = card.map((f, idx) => {
-            const nameStr = f.n === field.n
+            const inner = f.n === field.n
                 ? `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>`
-                : f.n;
-            return idx === 0 ? nameStr : `│ ${nameStr}`;
+                : `\`${f.n}\``; // Use inline code for inactive fields to look like input cells
+            return idx === 0 ? inner : `│ ${inner}`;
         });
 
         const gridTable = [
@@ -1311,7 +1343,7 @@ class LsdynaFieldHoverProvider {
             `| ${fieldNamesBody.join(' | ')} |`
         ].join('\n');
 
-        const md = new vscode.MarkdownString(`### <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n**Card Columns:**\n${gridTable}`);
+        const md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
         md.isTrusted = true;
         md.supportHtml = true;
         md.supportThemeIcons = true;
@@ -3016,11 +3048,32 @@ function activate(context) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.lsdynaFormatSelection', async () => {
+        vscode.commands.registerCommand('extension.lsdynaFormatSelection', async (lineNumArg) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
             const document = editor.document;
-            const selections = editor.selections;
+            let selections = editor.selections;
+            
+            if (typeof lineNumArg === 'number') {
+                try {
+                    const startLine = startLineOfCurrentKeywordFromLineReader(
+                        document.lineCount,
+                        i => document.lineAt(i).text,
+                        lineNumArg
+                    );
+                    const endLine = endLineOfCurrentKeywordFromLineReader(
+                        document.lineCount,
+                        i => document.lineAt(i).text,
+                        lineNumArg
+                    );
+                    selections = [new vscode.Selection(
+                        new vscode.Position(startLine, 0),
+                        new vscode.Position(endLine, 0)
+                    )];
+                } catch (e) {
+                    // Fallback
+                }
+            }
             
             await editor.edit(editBuilder => {
                 for (const sel of selections) {
@@ -3068,10 +3121,10 @@ function activate(context) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.selectKeyword', () => {
+        vscode.commands.registerCommand('extension.selectKeyword', (lineNumArg) => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
-            const currentLine = editor.selection.active.line;
+            const currentLine = typeof lineNumArg === 'number' ? lineNumArg : editor.selection.active.line;
             try {
                 const startLine = startLineOfCurrentKeywordFromLineReader(
                     editor.document.lineCount,
