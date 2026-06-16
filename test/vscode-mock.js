@@ -53,6 +53,13 @@ class Hover {
     }
 }
 
+class CodeLens {
+    constructor(range, command) {
+        this.range = range;
+        this.command = command;
+    }
+}
+
 class CompletionItem {
     constructor(label, kind) {
         this.label = label;
@@ -95,6 +102,7 @@ module.exports = {
     Selection,
     MarkdownString,
     Hover,
+    CodeLens,
     CompletionItem,
     CompletionItemKind,
     SnippetString,
@@ -119,6 +127,8 @@ module.exports = {
     EventEmitter: class EventEmitter { constructor() { this.event = null; } fire() {} },
     window: {
         activeTextEditor: null,
+        showQuickPick: () => Promise.resolve(undefined),
+        showInformationMessage: () => {},
         showErrorMessage: () => {},
         showWarningMessage: () => {},
         createTreeView: (id, options) => ({

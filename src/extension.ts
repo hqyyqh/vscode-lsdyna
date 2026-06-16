@@ -724,6 +724,297 @@ function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
     return lines.join('\n');
 }
 
+function appendKeywordOptionCommand(md, entry) {
+    if (!entry || !entry.o || entry.o.length === 0) return;
+    md.appendMarkdown('\n\n[$(list-selection) Choose keyword options](command:extension.lsdynaChooseKeywordOptions)');
+}
+
+function normalizeOptionName(name) {
+    return String(name || '').trim().toUpperCase();
+}
+
+function parseKeywordOptionOrder(option) {
+    const [position, rawIndex] = String(option && option.co || '').split('/');
+    const index = Number.parseInt(rawIndex, 10);
+    return {
+        position,
+        index: Number.isFinite(index) ? index : 0,
+    };
+}
+
+function titleKeywordOptions(entry) {
+    return (entry.o || [])
+        .filter(option => (option.to || 0) > 0)
+        .sort((a, b) => (a.to || 0) - (b.to || 0));
+}
+
+function postKeywordOptions(entry) {
+    return (entry.o || [])
+        .filter(option => parseKeywordOptionOrder(option).position === 'post')
+        .sort((a, b) => parseKeywordOptionOrder(a).index - parseKeywordOptionOrder(b).index);
+}
+
+function keywordOptionCardCount(options) {
+    return options.reduce((count, option) => count + (option.c || []).length, 0);
+}
+
+function keywordOptionCardSkeleton(card) {
+    if (!card || card.length === 0) return '';
+    const lastField = card[card.length - 1];
+    const width = (lastField.p || 0) + (lastField.w || 0);
+    if (card.length === 1 && width >= 40) return '';
+    return ' '.repeat(Math.max(0, width));
+}
+
+function keywordOptionSkeletonLines(options) {
+    const lines = [];
+    for (const option of options) {
+        for (const card of option.c || []) {
+            lines.push(keywordOptionCardSkeleton(card));
+        }
+    }
+    return lines;
+}
+
+function keywordOptionRangeLabel(options, count) {
+    if (count <= 0) return 'None';
+    const names = options.slice(0, count).map(option => normalizeOptionName(option.n));
+    const singleLetters = names.every(name => /^[A-Z]$/.test(name));
+    if (singleLetters && names.length > 1) {
+        return `${names[0]}-${names[names.length - 1]}`;
+    }
+    return names.join(', ');
+}
+
+function keywordOptionSummary(entry) {
+    const titleNames = titleKeywordOptions(entry).map(option => normalizeOptionName(option.n));
+    const postOptions = postKeywordOptions(entry);
+    const parts = [];
+    if (titleNames.length) parts.push(titleNames.join(', '));
+    if (postOptions.length) parts.push(keywordOptionRangeLabel(postOptions, postOptions.length));
+    return parts.join(', ');
+}
+
+function keywordLineNameFromText(text) {
+    return String(text || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
+}
+
+function findKeywordLineForLine(document, lineNum) {
+    for (let index = Math.min(lineNum, document.lineCount - 1); index >= 0; index--) {
+        const text = document.lineAt(index).text.trimStart();
+        if (text.startsWith('*')) return index;
+    }
+    return null;
+}
+
+function findKeywordBlockEnd(document, keywordLine) {
+    for (let index = keywordLine + 1; index < document.lineCount; index++) {
+        if (document.lineAt(index).text.trimStart().startsWith('*')) return index;
+    }
+    return document.lineCount;
+}
+
+function collectKeywordDataLines(document, keywordLine, blockEnd) {
+    const lines = [];
+    for (let index = keywordLine + 1; index < blockEnd; index++) {
+        const text = document.lineAt(index).text;
+        if (text.trimStart().startsWith('$')) continue;
+        lines.push({ line: index, text });
+    }
+    return lines;
+}
+
+function buildKeywordLineWithTitleOptions(originalLine, canonicalName, selectedTitleNames) {
+    const match = String(originalLine || '').match(/^(\s*)\*([A-Za-z0-9_+\-]+)(.*)$/);
+    const suffix = selectedTitleNames.length ? `_${selectedTitleNames.join('_')}` : '';
+    if (!match) return `*${canonicalName}${suffix}`;
+    return `${match[1]}*${canonicalName}${suffix}${match[3] || ''}`;
+}
+
+function lineWholeRange(document, lineNum) {
+    const lineText = document.lineAt(lineNum).text;
+    return new vscode.Range(lineNum, 0, lineNum, lineText.length);
+}
+
+function insertLinesAt(editBuilder, document, lineNum, lines) {
+    if (!lines || lines.length === 0) return;
+    if (lineNum >= document.lineCount) {
+        const lastLine = Math.max(0, document.lineCount - 1);
+        const lastText = document.lineAt(lastLine).text;
+        editBuilder.insert(new vscode.Position(lastLine, lastText.length), '\n' + lines.join('\n'));
+        return;
+    }
+    editBuilder.insert(new vscode.Position(lineNum, 0), lines.join('\n') + '\n');
+}
+
+function removeLineRange(editBuilder, document, startLine, count) {
+    if (count <= 0) return;
+    const endLine = Math.min(document.lineCount, startLine + count);
+    if (endLine < document.lineCount) {
+        editBuilder.replace(new vscode.Range(startLine, 0, endLine, 0), '');
+    } else {
+        const lastLine = document.lineAt(endLine - 1).text;
+        editBuilder.replace(new vscode.Range(startLine, 0, endLine - 1, lastLine.length), '');
+    }
+}
+
+async function confirmRemoveNonEmptyOptionLines(lines) {
+    const hasNonEmpty = lines.some(line => String(line.text || '').trim().length > 0);
+    if (!hasNonEmpty) return true;
+    const choice = await vscode.window.showWarningMessage(
+        'Changing LS-DYNA keyword options would remove non-empty option card lines.',
+        { modal: true },
+        'Remove lines'
+    );
+    return choice === 'Remove lines';
+}
+
+function inferCurrentPostOptionCount(entry, activeTitleNames, dataLineCount) {
+    const activeTitleOptions = titleKeywordOptions(entry)
+        .filter(option => activeTitleNames.includes(normalizeOptionName(option.n)));
+    const requiredLineCount = keywordOptionCardCount(activeTitleOptions) + (entry.c || []).length;
+    let remaining = Math.max(0, dataLineCount - requiredLineCount);
+    let count = 0;
+    for (const option of postKeywordOptions(entry)) {
+        const optionLineCount = (option.c || []).length;
+        if (remaining < optionLineCount) break;
+        remaining -= optionLineCount;
+        count++;
+    }
+    return count;
+}
+
+async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEditor, requestedLine = null) {
+    if (!editor || !editor.document) return;
+    const document = editor.document;
+    const activeLine = Number.isInteger(requestedLine)
+        ? requestedLine
+        : (editor.selection && editor.selection.active ? editor.selection.active.line : 0);
+    const keywordLine = findKeywordLineForLine(document, activeLine);
+    if (keywordLine === null) {
+        vscode.window.showInformationMessage('No LS-DYNA keyword found at the current cursor.');
+        return;
+    }
+
+    const keywordText = document.lineAt(keywordLine).text;
+    const lookup = lookupKeywordInfo(keywordLineNameFromText(keywordText));
+    if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) {
+        vscode.window.showInformationMessage('No LS-DYNA keyword options are available for this keyword.');
+        return;
+    }
+
+    const entry = lookup.entry;
+    const titleOptions = titleKeywordOptions(entry);
+    const postOptions = postKeywordOptions(entry);
+    const currentTitleNames = lookup.activeOptions
+        .filter(name => titleOptions.some(option => normalizeOptionName(option.n) === name));
+
+    let selectedTitleNames = currentTitleNames;
+    if (titleOptions.length) {
+        const currentSet = new Set(currentTitleNames);
+        const titleItems = titleOptions.map(option => {
+            const name = normalizeOptionName(option.n);
+            return {
+                label: name,
+                picked: currentSet.has(name),
+                optionName: name,
+            };
+        });
+        const picked = await vscode.window.showQuickPick(titleItems, {
+            canPickMany: true,
+            placeHolder: 'Choose keyword title options',
+        });
+        if (!picked) return;
+        selectedTitleNames = picked.map(item => item.optionName || normalizeOptionName(item.label));
+    }
+
+    const blockEnd = findKeywordBlockEnd(document, keywordLine);
+    const dataLines = collectKeywordDataLines(document, keywordLine, blockEnd);
+    const currentPostCount = inferCurrentPostOptionCount(entry, currentTitleNames, dataLines.length);
+    let selectedPostCount = currentPostCount;
+    if (postOptions.length) {
+        const postItems = [{ label: 'None', postCount: 0, picked: currentPostCount === 0 }];
+        for (let index = 0; index < postOptions.length; index++) {
+            postItems.push({
+                label: keywordOptionRangeLabel(postOptions, index + 1),
+                postCount: index + 1,
+                picked: currentPostCount === index + 1,
+            });
+        }
+        const picked = await vscode.window.showQuickPick(postItems, {
+            placeHolder: 'Choose consecutive optional cards',
+        });
+        if (!picked) return;
+        selectedPostCount = picked.postCount || 0;
+    }
+
+    const currentTitleOptions = titleOptions.filter(option => currentTitleNames.includes(normalizeOptionName(option.n)));
+    const selectedTitleOptions = titleOptions.filter(option => selectedTitleNames.includes(normalizeOptionName(option.n)));
+    const currentPreLineCount = keywordOptionCardCount(currentTitleOptions);
+    const selectedPreLineCount = keywordOptionCardCount(selectedTitleOptions);
+    const currentPostLineCount = keywordOptionCardCount(postOptions.slice(0, currentPostCount));
+    const selectedPostLineCount = keywordOptionCardCount(postOptions.slice(0, selectedPostCount));
+
+    const removedLines = [];
+    if (selectedPreLineCount < currentPreLineCount) {
+        removedLines.push(...dataLines.slice(selectedPreLineCount, currentPreLineCount));
+    }
+    if (selectedPostLineCount < currentPostLineCount) {
+        removedLines.push(...dataLines.slice(dataLines.length - (currentPostLineCount - selectedPostLineCount)));
+    }
+    if (!(await confirmRemoveNonEmptyOptionLines(removedLines))) return;
+
+    const selectedTitleNamesInOrder = titleOptions
+        .map(option => normalizeOptionName(option.n))
+        .filter(name => selectedTitleNames.includes(name));
+    const nextKeywordLine = buildKeywordLineWithTitleOptions(keywordText, lookup.canonicalName, selectedTitleNamesInOrder);
+    const preLinesToInsert = keywordOptionSkeletonLines(selectedTitleOptions).slice(currentPreLineCount);
+    const postLinesToInsert = keywordOptionSkeletonLines(postOptions.slice(0, selectedPostCount)).slice(currentPostLineCount);
+
+    await editor.edit(editBuilder => {
+        if (nextKeywordLine !== keywordText) {
+            editBuilder.replace(lineWholeRange(document, keywordLine), nextKeywordLine);
+        }
+        if (selectedPostLineCount < currentPostLineCount) {
+            const count = currentPostLineCount - selectedPostLineCount;
+            const first = dataLines[dataLines.length - count];
+            if (first) removeLineRange(editBuilder, document, first.line, count);
+        }
+        if (selectedPreLineCount < currentPreLineCount) {
+            const first = dataLines[selectedPreLineCount];
+            if (first) removeLineRange(editBuilder, document, first.line, currentPreLineCount - selectedPreLineCount);
+        }
+        if (postLinesToInsert.length) {
+            insertLinesAt(editBuilder, document, blockEnd, postLinesToInsert);
+        }
+        if (preLinesToInsert.length) {
+            const insertAt = dataLines[currentPreLineCount] ? dataLines[currentPreLineCount].line : keywordLine + 1;
+            insertLinesAt(editBuilder, document, insertAt, preLinesToInsert);
+        }
+    });
+}
+
+class LsdynaKeywordOptionsCodeLensProvider {
+    provideCodeLenses(document) {
+        if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+        const lenses = [];
+        for (let lineNum = 0; lineNum < document.lineCount; lineNum++) {
+            const text = document.lineAt(lineNum).text.trimStart();
+            if (!text.startsWith('*') || text.startsWith('**')) continue;
+            const lookup = lookupKeywordInfo(keywordLineNameFromText(text));
+            if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) continue;
+            const summary = keywordOptionSummary(lookup.entry);
+            const range = new vscode.Range(lineNum, 0, lineNum, 0);
+            lenses.push(new vscode.CodeLens(range, {
+                title: summary ? `LS-DYNA options: ${summary}` : 'LS-DYNA options',
+                command: 'extension.lsdynaChooseKeywordOptions',
+                arguments: [lineNum],
+            }));
+        }
+        return lenses;
+    }
+}
+
 /**
  * Replaces newlines in help descriptors with markdown hard breaks.
  * 
@@ -857,6 +1148,7 @@ class LsdynaFieldHoverProvider {
             const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, lookup.entry, lookup.activeOptions));
             md.isTrusted = true;
             md.supportThemeIcons = true;
+            appendKeywordOptionCommand(md, lookup.entry);
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);
         }
@@ -2174,6 +2466,9 @@ function activate(context) {
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
     context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaKeywordOptionsCodeLensProvider())
+    );
+    context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
             { language: 'lsdyna' },
             new LsdynaIncludeCompletionProvider(),
@@ -2454,6 +2749,12 @@ function activate(context) {
                 }
                 await manualIndexer.initialize(context);
             }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaChooseKeywordOptions', async (lineNum) => {
+            return chooseKeywordOptionsForEditor(vscode.window.activeTextEditor, lineNum);
         })
     );
 
@@ -3046,6 +3347,7 @@ module.exports._internals = {
     findIncludeFileLines,
     LsdynaIncludeTreeProvider,
     LsdynaFieldHoverProvider,
+    LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordIndexProvider,
     LsdynaKeywordSymbolProvider,
     LsDynaFoldingProvider,
@@ -3068,6 +3370,7 @@ module.exports._internals = {
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
     createProjectSnapshotPersistentCache,
+    chooseKeywordOptionsForEditor,
     LsdynaFileDecorationProvider,
     normalizePathKey,
     LsdynaIncludeCompletionProvider,

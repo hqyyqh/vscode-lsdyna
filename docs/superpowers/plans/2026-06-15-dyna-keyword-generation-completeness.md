@@ -300,7 +300,7 @@
 - 修改：`package.nls.zh-cn.json`
 - 测试：`test/extension.test.js`
 
-- [ ] **步骤 1：新增命令**
+- [x] **步骤 1：新增命令**
 
   命令：`extension.lsdynaChooseKeywordOptions`
 
@@ -311,7 +311,7 @@
   - 对连续 post options 显示 range choices：`None`、`A`、`A-B`、`A-C` ... `A-G`。
   - Apply 后更新 keyword 行 suffix，并插入或调整 option card skeleton。
 
-- [ ] **步骤 2：hover 中加入命令链接**
+- [x] **步骤 2：hover 中加入命令链接**
 
   keyword hover 底部加入：
 
@@ -321,7 +321,7 @@
 
   manual links 仍保留在同一个 hover Markdown 中。字段 hover 不默认插入 option 操作，避免遮挡字段文档；只在 keyword hover 提供入口。
 
-- [ ] **步骤 3：CodeLens 或 gutter 提示**
+- [x] **步骤 3：CodeLens 或 gutter 提示**
 
   推荐先做 CodeLens：
 
@@ -333,11 +333,11 @@
   - 对有 options 的 keyword line 放轻量 icon。
   - decoration 只作提示，不依赖点击事件。
 
-- [ ] **步骤 4：右键菜单**
+- [x] **步骤 4：右键菜单**
 
   `package.json` 的 `menus.editor/context` 添加命令，条件为 `editorLangId == 'lsdyna'`。命令内部自行判断当前行是否在 keyword block 下，避免复杂 context key 同步。
 
-- [ ] **步骤 5：保守编辑策略测试**
+- [x] **步骤 5：保守编辑策略测试**
 
   覆盖：
 

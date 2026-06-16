@@ -18,7 +18,8 @@
     "activationEvents": [
         "onLanguage:lsdyna",
         "onLanguage:lsprepost-command-file",
-        "onCommand:extension.openManual"
+        "onCommand:extension.openManual",
+        "onCommand:extension.lsdynaChooseKeywordOptions"
     ],
     "main": "./out/extension.js",
     "categories": [
@@ -222,6 +223,11 @@
                 "category": "LS-DYNA"
             },
             {
+                "command": "extension.lsdynaChooseKeywordOptions",
+                "title": "%commands.lsdynaChooseKeywordOptions.title%",
+                "category": "LS-DYNA"
+            },
+            {
                 "command": "extension.configureManualsDir",
                 "title": "%commands.configureManualsDir.title%",
                 "category": "LS-DYNA"
@@ -370,6 +376,11 @@
                     "command": "extension.selectKeyword",
                     "when": "editorLangId == 'lsdyna'",
                     "group": "1_modification@2"
+                },
+                {
+                    "command": "extension.lsdynaChooseKeywordOptions",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "1_modification@3"
                 },
                 {
                     "command": "extension.openIncludeFile",

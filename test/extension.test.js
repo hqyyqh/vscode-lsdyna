@@ -25,6 +25,7 @@ const {
     isIncludeLine,
     isLsdynaUri,
     LsdynaFieldHoverProvider,
+    LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordSymbolProvider,
     LsDynaFoldingProvider,
     findNextKeywordInDocument,
@@ -42,9 +43,83 @@ const {
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
     createProjectSnapshotPersistentCache,
+    chooseKeywordOptionsForEditor,
 } = extensionModule._internals;
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
+
+function makeEditableEditor(lines, activeLine = 0) {
+    const editableLines = lines.slice();
+    const document = {
+        get lineCount() {
+            return editableLines.length;
+        },
+        uri: { fsPath: '/project/main.k' },
+        languageId: 'lsdyna',
+        lineAt(index) {
+            const text = editableLines[index] || '';
+            return { text, range: new vscodeMock.Range(index, 0, index, text.length) };
+        },
+        getText(range) {
+            if (!range) return editableLines.join('\n');
+            if (range.start.line === range.end.line) {
+                return editableLines[range.start.line].slice(range.start.character, range.end.character);
+            }
+            return editableLines.slice(range.start.line, range.end.line + 1)
+                .map((line, index, all) => {
+                    if (index === 0) return line.slice(range.start.character);
+                    if (index === all.length - 1) return line.slice(0, range.end.character);
+                    return line;
+                })
+                .join('\n');
+        },
+    };
+
+    function applyReplace(range, text) {
+        const before = editableLines.slice(0, range.start.line);
+        const after = editableLines.slice(range.end.line);
+        if (range.end.line < editableLines.length) {
+            after[0] = editableLines[range.end.line].slice(range.end.character);
+        }
+        const firstPrefix = editableLines[range.start.line].slice(0, range.start.character);
+        const lastSuffix = range.end.line < editableLines.length
+            ? editableLines[range.end.line].slice(range.end.character)
+            : '';
+        const replacement = (firstPrefix + text + lastSuffix).split('\n');
+        editableLines.splice(0, editableLines.length, ...before, ...replacement, ...after.slice(1));
+    }
+
+    let selection = new vscodeMock.Selection(
+        new vscodeMock.Position(activeLine, 0),
+        new vscodeMock.Position(activeLine, 0)
+    );
+
+    return {
+        document,
+        lines: editableLines,
+        get selection() { return selection; },
+        set selection(value) { selection = value; },
+        async edit(callback) {
+            const edits = [];
+            callback({
+                replace(range, text) {
+                    edits.push({ range, text });
+                },
+                insert(position, text) {
+                    edits.push({ range: new vscodeMock.Range(position, position), text });
+                },
+            });
+            edits.sort((a, b) => {
+                if (a.range.start.line !== b.range.start.line) return b.range.start.line - a.range.start.line;
+                return b.range.start.character - a.range.start.character;
+            });
+            for (const edit of edits) {
+                applyReplace(edit.range, edit.text);
+            }
+            return true;
+        },
+    };
+}
 
 // ---------------------------------------------------------------------------
 // findParameterDefinitions
@@ -1464,6 +1539,17 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(hover.contents[0].value.includes('**PSTIFF**'));
     });
 
+    it('adds a keyword option command link on keyword hovers with options', () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n');
+
+        const hover = provider.provideHover(doc, { line: 0, character: 3 });
+
+        assert.ok(hover);
+        assert.ok(hover.contents[0].value.includes('command:extension.lsdynaChooseKeywordOptions'));
+        assert.ok(hover.contents[0].value.includes('Choose keyword options'));
+    });
+
     it('returns custom hover actions for existing include files', () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-test-'));
         const includeFile = path.join(tempRoot, 'sub.key');
@@ -1660,6 +1746,133 @@ describe('LsdynaFieldHoverProvider', () => {
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Keyword option interactions
+// ---------------------------------------------------------------------------
+
+describe('LS-DYNA keyword option interactions', () => {
+    let originalShowQuickPick;
+    let originalShowInformationMessage;
+    let originalShowWarningMessage;
+
+    beforeEach(() => {
+        originalShowQuickPick = vscodeMock.window.showQuickPick;
+        originalShowInformationMessage = vscodeMock.window.showInformationMessage;
+        originalShowWarningMessage = vscodeMock.window.showWarningMessage;
+    });
+
+    afterEach(() => {
+        vscodeMock.window.showQuickPick = originalShowQuickPick;
+        vscodeMock.window.showInformationMessage = originalShowInformationMessage;
+        vscodeMock.window.showWarningMessage = originalShowWarningMessage;
+    });
+
+    it('shows CodeLens entries for keywords with selectable options', () => {
+        const provider = new LsdynaKeywordOptionsCodeLensProvider();
+        const doc = fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n');
+
+        const lenses = provider.provideCodeLenses(doc);
+
+        assert.equal(lenses.length, 1);
+        assert.equal(lenses[0].command.command, 'extension.lsdynaChooseKeywordOptions');
+        assert.ok(lenses[0].command.title.includes('LS-DYNA options'));
+        assert.ok(lenses[0].command.title.includes('ID, MPP, A-G'));
+    });
+
+    it('shows an information message when the current keyword has no options', async () => {
+        const editor = makeEditableEditor(['*NODE'], 0);
+        let message = '';
+        vscodeMock.window.showInformationMessage = (value) => {
+            message = value;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.ok(message.includes('No LS-DYNA keyword options'));
+    });
+
+    it('adds TITLE to MAT_001 and inserts a title skeleton line', async () => {
+        const editor = makeEditableEditor(['*MAT_001', '        1'], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) {
+                return items.filter(item => item.label === 'TITLE');
+            }
+            return undefined;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.deepEqual(editor.lines, ['*MAT_001_TITLE', '', '        1']);
+    });
+
+    it('does not remove a non-empty TITLE line without confirmation', async () => {
+        const editor = makeEditableEditor(['*MAT_001_TITLE', 'Steel', '        1'], 0);
+        let warning = '';
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return undefined;
+        };
+        vscodeMock.window.showWarningMessage = async (value) => {
+            warning = value;
+            return undefined;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.ok(warning.includes('non-empty'));
+        assert.deepEqual(editor.lines, ['*MAT_001_TITLE', 'Steel', '        1']);
+    });
+
+    it('adds CONTACT optional cards A-F from the range picker', async () => {
+        const editor = makeEditableEditor([
+            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            'base 1',
+            'base 2',
+            'base 3',
+        ], 0);
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return items.find(item => item.label === 'A-F');
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.equal(editor.lines.length, 10);
+        assert.equal(editor.lines[0], '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE');
+        assert.equal(editor.lines[9].trim(), '');
+    });
+
+    it('does not shrink CONTACT F to C when removed option cards contain user data', async () => {
+        const editor = makeEditableEditor([
+            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            'base 1',
+            'base 2',
+            'base 3',
+            '',
+            '',
+            '',
+            'user data in optional D',
+            '',
+            '',
+        ], 0);
+        let warning = '';
+        vscodeMock.window.showQuickPick = async (items, options) => {
+            if (options && options.canPickMany) return [];
+            return items.find(item => item.label === 'A-C');
+        };
+        vscodeMock.window.showWarningMessage = async (value) => {
+            warning = value;
+            return undefined;
+        };
+
+        await chooseKeywordOptionsForEditor(editor);
+
+        assert.ok(warning.includes('non-empty'));
+        assert.equal(editor.lines.length, 10);
+        assert.equal(editor.lines[7], 'user data in optional D');
     });
 });
 
