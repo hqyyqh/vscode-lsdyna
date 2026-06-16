@@ -383,6 +383,7 @@ def _build_snippet(name: str, cards: list[list[dict[str, Any]]], description: st
         if not card:
             continue
         if len(card) == 1 and card[0].get("w", 0) >= WIDE_FIELD_THRESHOLD:
+            body.append(_comment_header(card))
             body.append(f'${{{tab}:{card[0]["n"]}}}')
             tab += 1
             continue
@@ -488,14 +489,14 @@ def _post_option_index(option: dict[str, Any]) -> int | None:
     return index
 
 
-def _add_post_option_snippets(name: str, entry: dict[str, Any], snippets: dict[str, dict[str, Any]]) -> None:
+def _post_option_chain(entry: dict[str, Any]) -> list[dict[str, Any]]:
     post_options = [
         option
         for option in entry.get("o", [])
         if _post_option_index(option) is not None and len(option["n"]) == 1 and "A" <= option["n"] <= "Z"
     ]
     if not post_options:
-        return
+        return []
 
     post_options = sorted(post_options, key=lambda option: _post_option_index(option) or 0)
     expected = ord("A")
@@ -505,14 +506,51 @@ def _add_post_option_snippets(name: str, entry: dict[str, Any], snippets: dict[s
             break
         chain.append(option)
         expected += 1
+    return chain
+
+
+def _add_post_option_snippets(name: str, entry: dict[str, Any], snippets: dict[str, dict[str, Any]]) -> None:
+    chain = _post_option_chain(entry)
+    if not chain:
+        return
 
     for option in chain:
-        active = [candidate for candidate in chain if candidate["n"] <= option["n"]]
-        rendered_cards = _render_cards(entry["c"], active)
+        active_post = [candidate for candidate in chain if candidate["n"] <= option["n"]]
+        rendered_cards = _render_cards(entry["c"], active_post)
         snippet_key = f"*{name}_OPTION_{option['n']}"
         snippet = _build_snippet(name, rendered_cards, description=f"{name} + Optional Cards A-{option['n']}")
         snippet["prefix"] = [f"*{name}_{option['n']}", f"{name}_{option['n']}", snippet["prefix"][0], name]
         snippets[snippet_key] = snippet
+
+    title_options = _title_variant_options(entry.get("o", []))
+    if not title_options:
+        return
+
+    combination_count = (2 ** len(title_options)) - 1
+    if combination_count > TITLE_VARIANT_LIMIT:
+        return
+
+    for size in range(1, len(title_options) + 1):
+        for selected in itertools.combinations(title_options, size):
+            selected_options = list(selected)
+            active_title = [option["n"] for option in sorted(selected_options, key=lambda option: option["to"])]
+            variant_name = f"{name}_{'_'.join(active_title)}"
+            for option in chain:
+                active_post = [candidate for candidate in chain if candidate["n"] <= option["n"]]
+                rendered_cards = _render_cards(entry["c"], selected_options + active_post)
+                snippet_key = f"*{variant_name}_OPTION_{option['n']}"
+                snippet = _build_snippet(
+                    variant_name,
+                    rendered_cards,
+                    description=f"{variant_name} + Optional Cards A-{option['n']}",
+                )
+                snippet["prefix"] = [
+                    f"*{variant_name}_{option['n']}",
+                    f"{variant_name}_{option['n']}",
+                    f"*{variant_name}",
+                    variant_name,
+                ]
+                snippets[snippet_key] = snippet
 
 
 def _entry_from_keyword_data(keyword_data: Any, generation_options: dict[str, Any]) -> dict[str, Any]:
