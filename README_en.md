@@ -1,10 +1,10 @@
-# VS Code LS-DYNA extension
+# DynaSense (for LS-DYNA)
 [简体中文](README.md)
 
-![Version](https://img.shields.io/badge/version-2.0.7--hqyyqh.0-blue)
+![Version](https://img.shields.io/badge/version-3.0.0-blue)
 <img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
 
-This extension integrates LS-DYNA formatting, keyword snippets, and language tooling into VS Code, bringing you a modernized and intelligent editing experience.
+**DynaSense** is a modern and smart editor extension for LS-DYNA. It integrates LS-DYNA formatting, keyword snippets, powerful IntelliSense, and language tooling into VS Code, bringing you the ultimate authoring and project management experience.
 
 ### Installation Guide
 

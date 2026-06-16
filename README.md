@@ -1,10 +1,10 @@
-# VS Code LS-DYNA 扩展
+# DynaSense (for LS-DYNA)
 [English](README_en.md)
 
-![Version](https://img.shields.io/badge/version-2.0.7--hqyyqh.0-blue)
+![Version](https://img.shields.io/badge/version-3.0.0-blue)
 <img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
 
-此扩展将 LS-DYNA 格式化、关键字代码片段以及语言工具集成到了 VS Code 中，为您带来现代化、智能化的编写体验。
+**DynaSense** 是一款针对 LS-DYNA 的现代智能编辑器扩展。它将 LS-DYNA 格式化、关键字代码片段、强大的 IntelliSense 以及语言工具深度集成到了 VS Code 中，为您带来极致的编写与大纲管理体验。
 
 ### 安装指南
 
