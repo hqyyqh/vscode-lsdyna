@@ -130,14 +130,20 @@ python keywords/generate_from_pydyna.py
 1. 向我发送电子邮件或在 GitHub 上发消息说明所需的关键字（并附带示例）。
 2. 发起 Pull Request 将你的代码合并到分支。
 
-**贡献者：**
-- [osullivryan](https://github.com/osullivryan) (原作者)
-- [hqyyqh](https://github.com/hqyyqh) (定制版维护者)
-- [yshl](https://github.com/yshl)
-- [maxiiss](https://github.com/maxiiss)
+## 鸣谢与贡献者 (Credits & Contributors)
 
-**参考链接：**
-[pydyna (LS-DYNA 关键字数据库的主要来源)](https://github.com/ansys/pydyna) | [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) | [DCHartlen 的 vscode 扩展](https://github.com/DCHartlen/LSDynaForVSCode)
+本项目是由 [hqyyqh](https://github.com/hqyyqh) 维护的深度定制重构版本。
+特别鸣谢以下极其重要的上游开源项目及原作者，没有他们的杰出工作就没有本项目的诞生：
+
+- **上游原项目：** 本项目 Fork 自 [osullivryan/vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna)。向原作者及其代码库的核心贡献者致敬：
+  - [osullivryan](https://github.com/osullivryan) (原项目发起人与核心作者)
+  - [DCHartlen](https://github.com/DCHartlen) (核心贡献者)
+  - [maxiiss](https://github.com/maxiiss) (核心贡献者)
+  - [yshl](https://github.com/yshl) (贡献者)
+- **数据库来源：** 插件强大的关键字与字段智能补全数据，大量参考并提取自官方开源项目 [ansys/pydyna](https://github.com/ansys/pydyna)。
+- **其他参考：** [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) 等生态优秀作品。
+
+感谢所有对 LS-DYNA 编辑器生态做出贡献的开发者！
 
 ---
 
