@@ -35,5 +35,6 @@
     "config.autoFormat.enumDescriptions.onBlur": "Experimental: format the current line automatically when the cursor leaves it. This can rewrite card spacing unexpectedly.",
     "config.autoFormat.enumDescriptions.disabled": "Disable automatic formatting entirely",
     "config.largeFile.enableRendering.description": "Enable syntax rendering, hover, formatting, and auto-completion for extremely large files (no line limit). When enabled, massive files are handled just like small files. Disable to save memory on 100k+ line files.",
-    "config.codeLens.showOnAllKeywords.description": "Show 'Select' and 'Format' CodeLens above all LS-DYNA keywords. If false, CodeLens will only show above keywords that have optional cards."
+    "config.codeLens.showOnAllKeywords.description": "Show 'Select' and 'Format' CodeLens above all LS-DYNA keywords. If false, CodeLens will only show above keywords that have optional cards.",
+    "config.hover.previewMaxLines.description": "Maximum number of lines to display in the *INCLUDE file hover preview."
 }

@@ -36,5 +36,6 @@
     "config.autoFormat.enumDescriptions.onBlur": "实验性：当光标离开当前行时自动对齐格式化，可能意外改写卡片间距。",
     "config.autoFormat.enumDescriptions.disabled": "彻底关闭自动格式化",
     "config.largeFile.enableRendering.description": "无条件启用超大文件的语法高亮、悬停提示 (Hover)、格式化对齐和自动补全功能。开启后，几百 MB 的巨型文件将和小文件拥有一致的体验。如果您的电脑内存在处理 10 万行以上文件时吃紧，可以关闭此项来节省内存。",
-    "config.codeLens.showOnAllKeywords.description": "在所有 LS-DYNA 关键字上方显示 '选中' 和 '格式化' CodeLens 提示。如果关闭，只会在带有可选卡片的关键字上方显示选项相关 CodeLens。"
+    "config.codeLens.showOnAllKeywords.description": "在所有 LS-DYNA 关键字上方显示 '选中' 和 '格式化' CodeLens 提示。如果关闭，只会在带有可选卡片的关键字上方显示选项相关 CodeLens。",
+    "config.hover.previewMaxLines.description": "*INCLUDE 文件悬停预览中显示的最大行数。"
 }

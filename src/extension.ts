@@ -1252,7 +1252,10 @@ function appendManualLinks(md, kwName) {
  * @param {number} maxLines 
  * @returns {Promise<string>}
  */
-async function getIncludeFilePreview(filePath, maxBytes = 4096, maxLines = 20) {
+async function getIncludeFilePreview(filePath) {
+    const maxLines = getLsdynaConfigurationValue('hover.previewMaxLines', 20);
+    const maxBytes = Math.max(4096, maxLines * 120);
+
     return new Promise((resolve) => {
         fs.open(filePath, 'r', (err, fd) => {
             if (err) return resolve('');

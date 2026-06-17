@@ -287,6 +287,13 @@
                     "default": false,
                     "description": "%config.codeLens.showOnAllKeywords.description%"
                 },
+                "lsdyna.hover.previewMaxLines": {
+                    "type": "number",
+                    "default": 20,
+                    "minimum": 0,
+                    "maximum": 500,
+                    "description": "%config.hover.previewMaxLines.description%"
+                },
                 "lsdyna.autoFormat": {
                     "type": "string",
                     "enum": [
