@@ -1,7 +1,7 @@
 # DynaSense (LS-DYNA Studio)
 
 <div align="center">
-  <img src="images/ls.svg" width="120" height="120" alt="LS-DYNA Icon">
+  <img src="images/LS_DYNA_geo_metro.png" width="120" height="120" alt="LS-DYNA Icon">
   <h3>A Feature-Rich LS-DYNA Editor for VS Code</h3>
   <p>Built for CAE engineers: intelligent autocomplete, large file preview, and auto-alignment.</p>
 
