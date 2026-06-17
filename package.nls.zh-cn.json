@@ -30,8 +30,8 @@
     "config.ignoreFormattingKeywords.description": "列出不需要自动格式化对齐、Tab 智能跳转和注释自动补全的关键字或其前缀。",
     "config.customValidKeywords.description": "自定义不会被标记为语法错误的有效关键字。关键字可包含前导星号 (例如 '*END')。也可在末尾使用通配符 (例如 '*MAT_*') 来匹配以该前缀开头的所有关键字。",
     "config.enableTabNavigation.description": "启用 LS-DYNA 卡片中的智能 Tab 键跳转和字段覆盖选中功能。禁用时，Tab 键只插入普通空格/制表符。",
-    "config.autoFormat.description": "控制 LS-DYNA 卡片行的自动格式化时机。",
-    "config.autoFormat.enumDescriptions.onBlur": "当光标离开当前行时自动对齐格式化",
+    "config.autoFormat.description": "实验性：控制 LS-DYNA 卡片行自动格式化的触发时机。建议保持关闭，除非你接受 onBlur 自动改写。",
+    "config.autoFormat.enumDescriptions.onBlur": "实验性：当光标离开当前行时自动对齐格式化，可能意外改写卡片间距。",
     "config.autoFormat.enumDescriptions.disabled": "彻底关闭自动格式化",
     "config.largeFile.enableRendering.description": "无条件启用超大文件的语法高亮、悬停提示 (Hover)、格式化对齐和自动补全功能。开启后，几百 MB 的巨型文件将和小文件拥有一致的体验。如果您的电脑内存在处理 10 万行以上文件时吃紧，可以关闭此项来节省内存。"
 }

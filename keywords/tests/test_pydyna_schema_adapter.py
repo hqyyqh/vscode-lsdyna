@@ -78,12 +78,32 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
     def test_manifest_alias_entries_point_to_same_schema(self):
         base = self.field_data["SET_NODE_LIST"]
         alias = self.field_data["SET_NODE"]
+        title_alias = self.field_data["SET_NODE_TITLE"]
 
         self.assertIn("SET_NODE", base["a"])
         self.assertEqual("SET_NODE_LIST", alias["x"])
         self.assertEqual(base["c"], alias["c"])
         self.assertIn("*SET_NODE", self.snippets)
         self.assertEqual("*SET_NODE", self.snippets["*SET_NODE"]["body"][0])
+        self.assertEqual("SET_NODE_LIST_TITLE", title_alias["x"])
+        self.assertEqual(["TITLE"], title_alias["active"])
+        self.assertIn("*SET_NODE_TITLE", self.snippets)
+        self.assertEqual("*SET_NODE_TITLE", self.snippets["*SET_NODE_TITLE"]["body"][0])
+
+    def test_local_set_part_alias_points_to_set_part_list_schema(self):
+        base = self.field_data["SET_PART_LIST"]
+        alias = self.field_data["SET_PART"]
+        title_alias = self.field_data["SET_PART_TITLE"]
+
+        self.assertIn("SET_PART", base["a"])
+        self.assertEqual("SET_PART_LIST", alias["x"])
+        self.assertEqual(base["c"], alias["c"])
+        self.assertIn("*SET_PART", self.snippets)
+        self.assertEqual("*SET_PART", self.snippets["*SET_PART"]["body"][0])
+        self.assertEqual("SET_PART_LIST_TITLE", title_alias["x"])
+        self.assertEqual(["TITLE"], title_alias["active"])
+        self.assertIn("*SET_PART_TITLE", self.snippets)
+        self.assertEqual("*SET_PART_TITLE", self.snippets["*SET_PART_TITLE"]["body"][0])
 
     def test_control_timestep_alias_and_cascading_metadata(self):
         control = self.field_data["CONTROL_TIMESTEP"]

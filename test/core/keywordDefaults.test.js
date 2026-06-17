@@ -29,7 +29,7 @@ describe('keyword aliases and default valid keywords', () => {
         assert.equal(Object.prototype.hasOwnProperty.call(keywordUtils, 'hasTitleSuffix'), false);
     });
 
-    it('allows CASE_BEGIN and CASE_END from fallback custom valid keywords', () => {
+    it('allows TITLE, CASE_BEGIN, and CASE_END from fallback custom valid keywords', () => {
         const keywordValidator = require('../../src/core/parser/keywordValidator');
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
 
@@ -39,7 +39,7 @@ describe('keyword aliases and default valid keywords', () => {
 
         try {
             keywordValidator.init(new Set(['KEYWORD']));
-            const doc = fakeDoc('*CASE_BEGIN\n*CASE_END\n*UNKNOWN_CASE_TOKEN\n');
+            const doc = fakeDoc('*TITLE\n*CASE_BEGIN\n*CASE_END\n*UNKNOWN_CASE_TOKEN\n');
             const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
 
             assert.deepEqual(
@@ -63,11 +63,15 @@ describe('keyword aliases and default valid keywords', () => {
             keywordValidator.init(new Set([
                 'MAT_001',
                 'SET_NODE_LIST',
+                'SET_PART_LIST',
                 'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE'
             ]));
             const doc = fakeDoc([
                 '*MAT_001_TITLE',
                 '*SET_NODE',
+                '*SET_NODE_TITLE',
+                '*SET_PART',
+                '*SET_PART_TITLE',
                 '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F'
             ].join('\n'));
             const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
@@ -81,19 +85,30 @@ describe('keyword aliases and default valid keywords', () => {
         }
     });
 
-    it('declares CASE_BEGIN and CASE_END in package custom valid keyword defaults', () => {
+    it('declares TITLE, CASE_BEGIN, and CASE_END in package custom valid keyword defaults', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
         const defaults = packageJson.contributes.configuration.properties['lsdyna.customValidKeywords'].default;
 
         assert.ok(defaults.includes('*END'));
+        assert.ok(defaults.includes('*TITLE'));
         assert.ok(defaults.includes('*CASE_BEGIN'));
         assert.ok(defaults.includes('*CASE_END'));
     });
 
-    it('disables cursor-leave auto formatting by default', () => {
+    it('disables cursor-leave auto formatting by default and marks it experimental', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
         const autoFormat = packageJson.contributes.configuration.properties['lsdyna.autoFormat'];
 
         assert.equal(autoFormat.default, 'disabled');
+        assert.deepEqual(autoFormat.tags, ['experimental']);
+    });
+
+    it('generates SET aliases and title snippets that keep the alias keyword line', () => {
+        const snippets = require(path.join('..', '..', 'snippets', 'lsdyna.json'));
+
+        for (const keyword of ['*SET_NODE_TITLE', '*SET_PART', '*SET_PART_TITLE']) {
+            assert.ok(snippets[keyword], `${keyword} snippet should exist`);
+            assert.equal(snippets[keyword].body[0], keyword);
+        }
     });
 });

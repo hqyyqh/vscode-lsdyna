@@ -30,8 +30,8 @@
     "config.ignoreFormattingKeywords.description": "Keywords or prefixes that should ignore automatic formatting, smart tab alignment, and comment auto-completion.",
     "config.customValidKeywords.description": "Custom valid keywords that should not be marked as errors. Keywords can include the leading asterisk (e.g., '*END'). You can also use a wildcard at the end (e.g., '*MAT_*') to match any keyword starting with that prefix.",
     "config.enableTabNavigation.description": "Enable smart Tab navigation and overwriting cell selection in LS-DYNA cards. When disabled, Tab inserts spaces/tabs normally.",
-    "config.autoFormat.description": "Control when auto-formatting of LS-DYNA card lines occurs.",
-    "config.autoFormat.enumDescriptions.onBlur": "Format current line automatically when cursor leaves it",
+    "config.autoFormat.description": "Experimental: Control when automatic LS-DYNA card line formatting runs. Keep disabled unless you are comfortable with onBlur edits.",
+    "config.autoFormat.enumDescriptions.onBlur": "Experimental: format the current line automatically when the cursor leaves it. This can rewrite card spacing unexpectedly.",
     "config.autoFormat.enumDescriptions.disabled": "Disable automatic formatting entirely",
     "config.largeFile.enableRendering.description": "Enable syntax rendering, hover, formatting, and auto-completion for extremely large files (no line limit). When enabled, massive files are handled just like small files. Disable to save memory on 100k+ line files."
 }

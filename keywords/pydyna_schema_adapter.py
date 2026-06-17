@@ -14,6 +14,9 @@ from typing import Any
 
 WIDE_FIELD_THRESHOLD = 40
 TITLE_VARIANT_LIMIT = 32
+LOCAL_ALIASES = {
+    "SET_PART_LIST": "SET_PART",
+}
 
 
 @dataclass
@@ -125,6 +128,13 @@ def _register_aliases(config: Any, data_model: Any, kwd_list: list[str]) -> None
         alias = options.get("alias")
         if alias:
             data_model.add_alias(keyword, alias)
+
+    for canonical, alias in LOCAL_ALIASES.items():
+        if canonical not in kwd_set:
+            continue
+        if data_model.is_aliased(alias):
+            continue
+        data_model.add_alias(canonical, alias)
 
     for keyword in kwd_list:
         if "-" not in keyword:
@@ -564,6 +574,33 @@ def _add_post_option_snippets(name: str, entry: dict[str, Any], snippets: dict[s
                 snippets[snippet_key] = snippet
 
 
+def _add_alias_title_variants(
+    canonical_name: str,
+    alias_name: str,
+    field_data: dict[str, dict[str, Any]],
+    snippets: dict[str, dict[str, Any]],
+) -> None:
+    canonical_entry = field_data.get(canonical_name)
+    if not canonical_entry:
+        return
+
+    title_options = canonical_entry.get("o", [])
+    for canonical_variant_name, variant in (canonical_entry.get("v") or {}).items():
+        active = variant.get("active")
+        if not active or canonical_variant_name not in field_data:
+            continue
+
+        alias_variant_name = f"{alias_name}_{'_'.join(active)}"
+        alias_variant_entry = copy.deepcopy(field_data[canonical_variant_name])
+        alias_variant_entry["x"] = canonical_variant_name
+        alias_variant_entry["active"] = list(active)
+        field_data[alias_variant_name] = alias_variant_entry
+
+        selected_options = [option for option in title_options if option["n"] in active]
+        rendered_cards = _render_cards(canonical_entry["c"], selected_options)
+        snippets[f"*{alias_variant_name}"] = _build_snippet(alias_variant_name, rendered_cards)
+
+
 def _entry_from_keyword_data(keyword_data: Any, generation_options: dict[str, Any]) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "c": _serialize_cards(_base_cards(keyword_data)),
@@ -629,6 +666,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
         alias_entry["x"] = canonical_name
         field_data[alias_name] = alias_entry
         snippets[f"*{alias_name}"] = _build_snippet(alias_name, alias_entry["c"])
+        _add_alias_title_variants(canonical_name, alias_name, field_data, snippets)
 
     option_enabled = sum(1 for entry in field_data.values() if entry.get("o"))
     variant_count = sum(len(entry.get("v", {})) for entry in field_data.values())

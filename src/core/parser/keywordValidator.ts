@@ -5,7 +5,7 @@ const keywordSchema = require('../keywordSchema');
 
 let validKeywords = new Set();
 let isInitialized = false;
-const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*CASE_BEGIN', '*CASE_END'];
+const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*TITLE', '*CASE_BEGIN', '*CASE_END'];
 
 function init(validKeywordsSet) {
     validKeywords = validKeywordsSet;

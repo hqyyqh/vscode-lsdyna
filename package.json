@@ -293,6 +293,9 @@
                         "%config.autoFormat.enumDescriptions.onBlur%",
                         "%config.autoFormat.enumDescriptions.disabled%"
                     ],
+                    "tags": [
+                        "experimental"
+                    ],
                     "description": "%config.autoFormat.description%"
                 },
                 "lsdyna.language": {
@@ -343,6 +346,7 @@
                     },
                     "default": [
                         "*END",
+                        "*TITLE",
                         "*CASE_BEGIN",
                         "*CASE_END"
                     ],

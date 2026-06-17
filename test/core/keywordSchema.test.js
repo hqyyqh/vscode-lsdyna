@@ -27,6 +27,36 @@ describe('keywordSchema resolver', () => {
         assert.equal(lookup.entry.c[0][0].n, 'SID');
     });
 
+    it('resolves SET_PART aliases to the SET_PART_LIST card schema', () => {
+        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+
+        for (const keyword of ['SET_PART', '*SET_PART']) {
+            const lookup = lookupKeywordSchema(keyword);
+
+            assert.ok(lookup, `${keyword} should resolve`);
+            assert.equal(lookup.canonicalName, 'SET_PART_LIST');
+            assert.equal(lookup.entry.c[0][0].n, 'SID');
+        }
+    });
+
+    it('resolves SET_NODE_TITLE and SET_PART_TITLE aliases to LIST title variants', () => {
+        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+
+        for (const [keyword, canonical] of [
+            ['SET_NODE_TITLE', 'SET_NODE_LIST_TITLE'],
+            ['*SET_NODE_TITLE', 'SET_NODE_LIST_TITLE'],
+            ['SET_PART_TITLE', 'SET_PART_LIST_TITLE'],
+            ['*SET_PART_TITLE', 'SET_PART_LIST_TITLE'],
+        ]) {
+            const lookup = lookupKeywordSchema(keyword);
+
+            assert.ok(lookup, `${keyword} should resolve`);
+            assert.equal(lookup.canonicalName, canonical);
+            assert.deepEqual(lookup.activeOptions, ['TITLE']);
+            assert.equal(lookup.entry.c[0][0].n, 'SID');
+        }
+    });
+
     it('matches CONTACT optional cards by observed data line count', () => {
         const { getCardForDocumentLine } = require('../../src/core/keywordSchema');
         const doc = fakeDoc([
