@@ -121,4 +121,16 @@ describe('keyword aliases and default valid keywords', () => {
             assert.ok(snippets[keyword].body[1].length <= 80);
         }
     });
+
+    it('allows LS-DYNA tab alignment while keyword snippets are active', () => {
+        const packageJson = require(path.join('..', '..', 'package.json'));
+        const keybindings = packageJson.contributes.keybindings;
+
+        for (const command of ['extension.lsdynaTab', 'extension.lsdynaShiftTab']) {
+            const binding = keybindings.find(item => item.command === command);
+            assert.ok(binding, `${command} keybinding should exist`);
+            assert.ok(!binding.when.includes('!inSnippetMode'));
+            assert.ok(binding.when.includes('lsdyna.shouldAlignTab'));
+        }
+    });
 });

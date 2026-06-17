@@ -251,12 +251,12 @@
             {
                 "command": "extension.lsdynaTab",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaShiftTab",
                 "key": "shift+tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaSelectCell",
