@@ -135,18 +135,20 @@ There are a few ways you can go about adding keywords or features:
     3. Run `python keywords/generate_from_pydyna.py` from the repo root to regenerate `snippets/lsdyna.json` from the full pydyna keyword database (3168 keywords).
     4. Create a new pull request to merge your branch into master.
 
-### Contributors
+## Credits & Contributors
 
-- [osullivryan](https://github.com/osullivryan) (Original Author)
-- [hqyyqh](https://github.com/hqyyqh) (Customized Version Maintainer)
-- [yshl](https://github.com/yshl)
-- [maxiiss](https://github.com/maxiiss)
+This project is a deeply customized and refactored version maintained by [hqyyqh](https://github.com/hqyyqh).
+Special thanks to the following upstream open-source projects and original authors, without whose outstanding work this project would not exist:
 
-### Some References
+- **Upstream Project:** This project is forked from [osullivryan/vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna). Huge thanks to the original author and core contributors:
+  - [osullivryan](https://github.com/osullivryan) (Original Author & Founder)
+  - [DCHartlen](https://github.com/DCHartlen) (Core Contributor)
+  - [maxiiss](https://github.com/maxiiss) (Core Contributor)
+  - [yshl](https://github.com/yshl) (Contributor)
+- **Database Source:** The powerful keyword and field intelligent autocomplete data heavily references and extracts from the official open-source project [ansys/pydyna](https://github.com/ansys/pydyna).
+- **Other References:** Excellent ecosystem works like [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna).
 
-[pydyna (Primary source for LS-DYNA keyword database)](https://github.com/ansys/pydyna)  
-[vim-lsdyna](https://github.com/gradzikb/vim-lsdyna)  
-[DCHartlen's vscode extension](https://github.com/DCHartlen/LSDynaForVSCode)
+Thank you to all developers who have contributed to the LS-DYNA editor ecosystem!
 
 ---
 
