@@ -144,6 +144,7 @@ There are a few ways you can go about adding keywords or features:
 
 ### Some References
 
+[pydyna (Primary source for LS-DYNA keyword database)](https://github.com/ansys/pydyna)  
 [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna)  
 [DCHartlen's vscode extension](https://github.com/DCHartlen/LSDynaForVSCode)
 

@@ -282,6 +282,11 @@
                     "default": true,
                     "description": "%config.largeFile.enableRendering.description%"
                 },
+                "lsdyna.codeLens.showOnAllKeywords": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.codeLens.showOnAllKeywords.description%"
+                },
                 "lsdyna.autoFormat": {
                     "type": "string",
                     "enum": [

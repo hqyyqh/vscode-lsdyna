@@ -350,11 +350,11 @@ function previousCommentHeaderLabels(document: any, keywordLine: number, lineNum
     for (let index = lineNum - 1; index > keywordLine; index--) {
         const text = document.lineAt(index).text;
         const trimmed = text.trimStart();
-        if (trimmed.trim().length === 0) {
-            continue;
-        }
         if (trimmed.startsWith('$#')) {
             return parseCommentHeaderLabels(text);
+        }
+        if (trimmed.startsWith('$')) {
+            continue;
         }
         return [];
     }

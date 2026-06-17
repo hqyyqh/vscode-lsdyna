@@ -1168,14 +1168,24 @@ class LsdynaKeywordOptionsCodeLensProvider {
             const text = document.lineAt(lineNum).text.trimStart();
             if (!text.startsWith('*') || text.startsWith('**')) continue;
             const lookup = lookupKeywordInfo(keywordLineNameFromText(text));
-            if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) continue;
-            const summary = keywordOptionSummary(lookup.entry);
+            if (!lookup) continue;
+            
+            const hasOptions = lookup.entry.o && lookup.entry.o.length > 0;
+            const showOnAll = getLsdynaConfigurationValue('codeLens.showOnAllKeywords', false, document.uri);
+            
+            if (!hasOptions && !showOnAll) continue;
+
             const range = new vscode.Range(lineNum, 0, lineNum, 0);
-            lenses.push(new vscode.CodeLens(range, {
-                title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
-                command: 'extension.lsdynaChooseKeywordOptions',
-                arguments: [lineNum],
-            }));
+
+            if (hasOptions) {
+                const summary = keywordOptionSummary(lookup.entry);
+                lenses.push(new vscode.CodeLens(range, {
+                    title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
+                    command: 'extension.lsdynaChooseKeywordOptions',
+                    arguments: [lineNum],
+                }));
+            }
+
             lenses.push(new vscode.CodeLens(range, {
                 title: i18n.get('selectKeywordCodeLens'),
                 command: 'extension.selectKeyword',

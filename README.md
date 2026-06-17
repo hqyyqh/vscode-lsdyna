@@ -137,7 +137,7 @@ python keywords/generate_from_pydyna.py
 - [maxiiss](https://github.com/maxiiss)
 
 **参考链接：**
-[vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) | [DCHartlen 的 vscode 扩展](https://github.com/DCHartlen/LSDynaForVSCode)
+[pydyna (LS-DYNA 关键字数据库的主要来源)](https://github.com/ansys/pydyna) | [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) | [DCHartlen 的 vscode 扩展](https://github.com/DCHartlen/LSDynaForVSCode)
 
 ---
 
