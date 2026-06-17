@@ -2227,7 +2227,7 @@ function alignLineText(text, card, isCommentLine = false) {
         prevEnd = f.p + f.w;
     }
 
-    return alignedText;
+    return alignedText.trimEnd();
 }
 
 function getPathEntryRange(document, lineNum, kwLine) {
@@ -2615,6 +2615,61 @@ function handleSelectionChange(e) {
     lastActiveDoc = currentDoc;
 }
 
+class LsdynaDocumentFormattingEditProvider {
+    provideDocumentFormattingEdits(document, options, token) {
+        return this.provideDocumentRangeFormattingEdits(document, new vscode.Range(0, 0, document.lineCount, 0), options, token);
+    }
+
+    provideDocumentRangeFormattingEdits(document, range, options, token) {
+        if (shouldSkipAutomaticDocumentScan(document)) return [];
+        const edits = [];
+        for (let lineNum = range.start.line; lineNum <= range.end.line; lineNum++) {
+            if (lineNum >= document.lineCount) break;
+            const line = document.lineAt(lineNum);
+            const text = line.text;
+            const trimmed = text.trimStart();
+            
+            if (trimmed.startsWith('*')) continue;
+
+            let currentKwText = null;
+            for (let i = lineNum; i >= 0; i--) {
+                const t = document.lineAt(i).text.trimStart();
+                if (t.startsWith('*')) {
+                    currentKwText = t.toUpperCase();
+                    break;
+                }
+            }
+            if (!currentKwText || currentKwText.startsWith('*PARAMETER')) continue;
+
+            const isCommentLine = trimmed.startsWith('$');
+            let targetLineNum = lineNum;
+
+            if (isCommentLine) {
+                for (let i = lineNum + 1; i < document.lineCount; i++) {
+                    const t = document.lineAt(i).text.trimStart();
+                    if (t.startsWith('*')) break; // No data card after comment
+                    if (!t.startsWith('$')) {
+                        targetLineNum = i;
+                        break;
+                    }
+                }
+            }
+
+            if (targetLineNum === lineNum && isCommentLine) continue;
+
+            const cardFields = getCardFieldsForLine(document, targetLineNum);
+            if (!cardFields || cardFields.length === 0) continue;
+
+            const alignedText = alignLineText(text, cardFields, isCommentLine);
+            if (text !== alignedText) {
+                const replaceRange = new vscode.Range(lineNum, 0, lineNum, text.length);
+                edits.push(vscode.TextEdit.replace(replaceRange, alignedText));
+            }
+        }
+        return edits;
+    }
+}
+
 // --- Activate ---
 
 /**
@@ -2707,6 +2762,10 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider({ language: 'lsdyna' }, new LsdynaFieldHoverProvider())
+    );
+    context.subscriptions.push(
+        vscode.languages.registerDocumentFormattingEditProvider({ language: 'lsdyna' }, new LsdynaDocumentFormattingEditProvider()),
+        vscode.languages.registerDocumentRangeFormattingEditProvider({ language: 'lsdyna' }, new LsdynaDocumentFormattingEditProvider())
     );
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
@@ -3111,13 +3170,7 @@ function activate(context) {
         })
     );
 
-    context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument(doc => {
-            if (lastActiveDoc === doc && lastActiveLineNum !== null) {
-                formatLineIfNeeded(doc, lastActiveLineNum);
-            }
-        })
-    );
+    // Automatically format on save explicitly removed in favor of VS Code native formatOnSave.
 
     updateIncludeLineContext(vscode.window.activeTextEditor);
     if (vscode.window.activeTextEditor) {
