@@ -314,12 +314,14 @@ function collectIncludeDocumentLinks(document) {
                     encodeURIComponent(JSON.stringify([{ resourceUri: vscode.Uri.file(targetPath) }]))
                 );
                 return includeScanner.getIncludeEntryRanges(entry)
-                    .map(({ lineIndex, startChar, endLineIndex, endChar }) =>
-                        new vscode.DocumentLink(
+                    .map(({ lineIndex, startChar, endLineIndex, endChar }) => {
+                        const link = new vscode.DocumentLink(
                             new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
                             targetUri
-                        )
-                    );
+                        );
+                        link.tooltip = i18n.get('revealInExplorer');
+                        return link;
+                    });
             } catch (e) {
                 return [];
             }
