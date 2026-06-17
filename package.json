@@ -134,8 +134,13 @@
                 "extensions": [
                     ".k",
                     ".key",
-                    ".dyna"
+                    ".dyna",
+                    ".asc"
                 ],
+                "icon": {
+                    "light": "./images/ls.svg",
+                    "dark": "./images/ls.svg"
+                },
                 "configuration": "./language-configuration.json"
             },
             {
