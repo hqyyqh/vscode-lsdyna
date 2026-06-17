@@ -61,3 +61,5 @@ jobs:
           name: Release v${{ steps.check.outputs.version }}
           files: "*.vsix"
           generate_release_notes: true
+          append_body: true
+          body_path: .github/release-appendix.md
