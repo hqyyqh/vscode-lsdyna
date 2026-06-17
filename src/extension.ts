@@ -1244,6 +1244,46 @@ function appendManualLinks(md, kwName) {
 }
 
 /**
+ * Safely reads the first chunk of a file to generate a preview.
+ * Returns empty string if the file doesn't exist or an error occurs.
+ * 
+ * @param {string} filePath 
+ * @param {number} maxBytes 
+ * @param {number} maxLines 
+ * @returns {Promise<string>}
+ */
+async function getIncludeFilePreview(filePath, maxBytes = 4096, maxLines = 20) {
+    return new Promise((resolve) => {
+        fs.open(filePath, 'r', (err, fd) => {
+            if (err) return resolve('');
+            const buffer = Buffer.alloc(maxBytes);
+            fs.read(fd, buffer, 0, maxBytes, 0, (err, bytesRead) => {
+                fs.close(fd, () => {
+                    if (err || bytesRead === 0) return resolve('');
+                    let text = buffer.toString('utf8', 0, bytesRead);
+                    let lines = text.split(/\r?\n/);
+                    let isTruncated = false;
+                    
+                    if (lines.length > maxLines) {
+                        lines = lines.slice(0, maxLines);
+                        isTruncated = true;
+                    } else if (bytesRead === maxBytes) {
+                        lines.pop(); // Drop the last incomplete line
+                        isTruncated = true;
+                    }
+                    
+                    let preview = lines.join('\n');
+                    if (isTruncated) {
+                        preview += '\n... (File is truncated for preview)';
+                    }
+                    resolve(preview);
+                });
+            });
+        });
+    });
+}
+
+/**
  * Hover provider delivering detailed keyword and card field documentation on mouse hover.
  * @implements {vscode.HoverProvider}
  */
@@ -1255,7 +1295,7 @@ class LsdynaFieldHoverProvider {
      * @param {import('vscode').Position} position - Cursor position.
      * @returns {import('vscode').Hover|null} Hover card or null.
      */
-    provideHover(document, position) {
+    async provideHover(document, position) {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
 
         // Hover on include file paths
@@ -1282,6 +1322,13 @@ class LsdynaFieldHoverProvider {
                     );
                     md.isTrusted = true;
                     md.supportThemeIcons = true;
+                    
+                    const previewText = await getIncludeFilePreview(fullPath);
+                    if (previewText) {
+                        md.appendMarkdown('\n\n---\n\n');
+                        md.appendCodeblock(previewText, 'lsdyna');
+                    }
+
                     return new vscode.Hover(md, hoverRange);
                 } catch (e) {
                     // File does not exist, fall through to default keyword/field hover
