@@ -285,7 +285,7 @@ function collectIncludeDocumentLinks(document) {
     if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
 
     const searchPaths = getSearchPath(document);
-    return findIncludeFileLines(document)
+    const includeFileLinks = findIncludeFileLines(document)
         .flatMap((entry) => {
             try {
                 const fullPath = searchFileFromPaths(entry.fileName, searchPaths);
@@ -300,6 +300,28 @@ function collectIncludeDocumentLinks(document) {
                 return [];
             }
         });
+
+    const includePathLinks = (getIncludeDirectiveData(document).pathEntries || [])
+        .flatMap((entry) => {
+            let targetPath = entry.searchPath || entry.pathName;
+            if (!path.isAbsolute(targetPath)) {
+                targetPath = path.resolve(path.dirname(document.uri.fsPath), targetPath);
+            }
+            try {
+                if (!fs.existsSync(targetPath)) return [];
+                return includeScanner.getIncludeEntryRanges(entry)
+                    .map(({ lineIndex, startChar, endLineIndex, endChar }) =>
+                        new vscode.DocumentLink(
+                            new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
+                            vscode.Uri.file(targetPath)
+                        )
+                    );
+            } catch (e) {
+                return [];
+            }
+        });
+
+    return [...includeFileLinks, ...includePathLinks];
 }
 
 /**
@@ -1975,6 +1997,11 @@ function generateCommentLine(card) {
         if (available <= 0) continue;
         
         const name = (f.n || '').toLowerCase().substring(0, available);
+        if (card.length === 1 && f.w > 80) {
+            line = '$# ' + name;
+            written = line.length;
+            continue;
+        }
         
         if (f.w >= 40) {
             if (i === 0) {

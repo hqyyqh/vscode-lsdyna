@@ -55,8 +55,26 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
 
 /**
  * @typedef {Object} PendingPath
+ * @property {number} lineIndex - Starting line number.
+ * @property {number} startChar - Starting column.
+ * @property {number} endLineIndex - Current ending line number.
+ * @property {number} endChar - Current ending column.
  * @property {string[]} parts - Buffer containing parts of the path.
+ * @property {IncludeSegment[]} segments - Segments coordinates.
  * @property {boolean} isRelative - True if this is an *INCLUDE_PATH_RELATIVE entry.
+ * @property {boolean} awaitingContinuation - True if the line ends with ' +'.
+ */
+
+/**
+ * @typedef {Object} PathEntry
+ * @property {number} lineIndex - 0-indexed line number where the path begins.
+ * @property {number} startChar - 0-indexed starting character index.
+ * @property {number} endLineIndex - 0-indexed line number where the path ends.
+ * @property {number} endChar - 0-indexed ending character index.
+ * @property {string} pathName - Raw path string combined from all segments.
+ * @property {string} searchPath - Resolved search path used by include lookups.
+ * @property {boolean} isRelative - True if this came from *INCLUDE_PATH_RELATIVE.
+ * @property {IncludeSegment[]} segments - Segment coordinates of each line making up the path.
  */
 
 /**
@@ -66,6 +84,7 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  * @property {number} cardCount - Number of data cards processed under the current keyword.
  * @property {IncludeEntry[]} includeEntries - Scanned include file references.
  * @property {string[]} searchPaths - Search directories resolved for this file.
+ * @property {PathEntry[]} pathEntries - Scanned include search path references.
  * @property {PendingInclude|null} pendingInclude - Active include entry being built.
  * @property {PendingPath|null} pendingPath - Active path entry being built (for *INCLUDE_PATH continuation).
  */
@@ -74,6 +93,7 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  * @typedef {Object} IncludeResult
  * @property {IncludeEntry[]} includeEntries - List of include entries found in the file.
  * @property {string[]} searchPaths - Resolved absolute and relative search paths.
+ * @property {PathEntry[]} pathEntries - Include search path entries with source ranges.
  */
 
 /**
@@ -89,6 +109,7 @@ function createIncludeDirectiveState(basePath) {
         cardCount: 0,
         includeEntries: [],
         searchPaths: [basePath],
+        pathEntries: [],
         pendingInclude: null,
         pendingPath: null,
     };
@@ -158,6 +179,46 @@ function startIncludeEntry(line, lineIndex) {
  * @param {number} lineIndex - 0-indexed line number.
  */
 function appendIncludeEntry(entry, line, lineIndex) {
+    const trimmed = line.trim();
+    const segment = createIncludeSegment(line, lineIndex);
+    entry.parts.push(trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed);
+    entry.segments.push(segment);
+    entry.endLineIndex = segment.lineIndex;
+    entry.endChar = segment.endChar;
+    entry.awaitingContinuation = trimmed.endsWith(' +');
+}
+
+/**
+ * Initializes a new pending path entry.
+ *
+ * @param {string} line - The first line of the include search path.
+ * @param {number} lineIndex - 0-indexed line number.
+ * @param {boolean} isRelative - True for *INCLUDE_PATH_RELATIVE.
+ * @returns {PendingPath} A new pending path object.
+ */
+function startPathEntry(line, lineIndex, isRelative) {
+    const trimmed = line.trim();
+    const segment = createIncludeSegment(line, lineIndex);
+    return {
+        lineIndex: segment.lineIndex,
+        startChar: segment.startChar,
+        endLineIndex: segment.lineIndex,
+        endChar: segment.endChar,
+        parts: [trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed],
+        segments: [segment],
+        isRelative,
+        awaitingContinuation: trimmed.endsWith(' +'),
+    };
+}
+
+/**
+ * Appends a continuation line to an existing pending path entry.
+ *
+ * @param {PendingPath} entry - Active pending path.
+ * @param {string} line - The continuation line text.
+ * @param {number} lineIndex - 0-indexed line number.
+ */
+function appendPathEntry(entry, line, lineIndex) {
     const trimmed = line.trim();
     const segment = createIncludeSegment(line, lineIndex);
     entry.parts.push(trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed);
@@ -245,11 +306,12 @@ function flushPathEntry(state) {
     if (!state.pendingPath) return;
     const pathStr = state.pendingPath.parts.join('').trim();
     if (pathStr) {
-        if (state.pendingPath.isRelative) {
-            state.searchPaths.push(path.resolve(state.basePath, pathStr));
-        } else {
-            state.searchPaths.push(pathStr);
-        }
+        const searchPath = state.pendingPath.isRelative
+            ? path.resolve(state.basePath, pathStr)
+            : pathStr;
+        state.searchPaths.push(searchPath);
+        const { lineIndex, startChar, endLineIndex, endChar, segments, isRelative } = state.pendingPath;
+        state.pathEntries.push({ lineIndex, startChar, endLineIndex, endChar, pathName: pathStr, searchPath, isRelative, segments });
     }
     state.pendingPath = null;
 }
@@ -283,10 +345,8 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 
     if (state.pendingPath) {
         if (!trimmed || trimmed.startsWith('$')) return;
-        if (trimmed.endsWith(' +')) {
-            state.pendingPath.parts.push(trimmed.slice(0, -2));
-        } else {
-            state.pendingPath.parts.push(trimmed);
+        appendPathEntry(state.pendingPath, line, lineIndex);
+        if (!state.pendingPath.awaitingContinuation) {
             flushPathEntry(state);
         }
         return;
@@ -295,18 +355,16 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
     if (!trimmed || trimmed.startsWith('$')) return;
 
     if (state.keyword === '*INCLUDE_PATH') {
-        if (trimmed.endsWith(' +')) {
-            state.pendingPath = { parts: [trimmed.slice(0, -2)], isRelative: false };
-        } else {
-            state.searchPaths.push(trimmed);
+        state.pendingPath = startPathEntry(line, lineIndex, false);
+        if (!state.pendingPath.awaitingContinuation) {
+            flushPathEntry(state);
         }
         return;
     }
     if (state.keyword === '*INCLUDE_PATH_RELATIVE') {
-        if (trimmed.endsWith(' +')) {
-            state.pendingPath = { parts: [trimmed.slice(0, -2)], isRelative: true };
-        } else {
-            state.searchPaths.push(path.resolve(state.basePath, trimmed));
+        state.pendingPath = startPathEntry(line, lineIndex, true);
+        if (!state.pendingPath.awaitingContinuation) {
+            flushPathEntry(state);
         }
         return;
     }
@@ -332,7 +390,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 function finalizeIncludeDirectiveState(state) {
     flushIncludeEntry(state);
     flushPathEntry(state);
-    return { includeEntries: state.includeEntries, searchPaths: state.searchPaths };
+    return { includeEntries: state.includeEntries, searchPaths: state.searchPaths, pathEntries: state.pathEntries };
 }
 
 /**
@@ -369,7 +427,7 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
     // Quick scan: if the buffer doesn't contain '*INCLUDE' at all, skip parsing entirely
     const INCLUDE_MARKER = Buffer.from('*INCLUDE');
     if (buffer.indexOf(INCLUDE_MARKER) === -1) {
-        return { includeEntries: [], searchPaths: [basePath] };
+        return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
     }
 
     const state = createIncludeDirectiveState(basePath);
@@ -414,7 +472,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
     try {
         fileStat = await fs.promises.stat(filePath);
     } catch (_error) {
-        return { includeEntries: [], searchPaths: [basePath] };
+        return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
     }
 
     if (fileStat.size <= SMALL_FILE_THRESHOLD) {
@@ -428,7 +486,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
     if (!doChunkedScan) {
         const hasInclude = await streamContainsIncludeKeyword(filePath);
         if (!hasInclude) {
-            return { includeEntries: [], searchPaths: [basePath] };
+            return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
         }
     }
 

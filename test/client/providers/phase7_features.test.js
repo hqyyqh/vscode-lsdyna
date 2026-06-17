@@ -274,6 +274,14 @@ describe('Phase 7 Features', () => {
                 const expected = '$#   SECID       MID    ELFORM';
                 assert.strictEqual(result, expected);
             });
+
+            it('should not pad single wide path comment fields beyond 80 characters', () => {
+                const { generateCommentLine } = require('../../../src/extension')._internals;
+                const result = generateCommentLine([{ n: 'PATH', p: 0, w: 512 }]);
+
+                assert.strictEqual(result, '$# path');
+                assert.ok(result.length <= 80);
+            });
         });
 
         it('should return $# completion item with documentation when typing $ under a keyword block', () => {

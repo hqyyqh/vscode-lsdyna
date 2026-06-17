@@ -1426,6 +1426,53 @@ describe('large document guards', () => {
         }
     });
 
+    it('creates document links for valid *INCLUDE_PATH directories', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-link-'));
+        const includeDir = path.join(tempRoot, 'includes');
+        const mainFile = path.join(tempRoot, 'main.k');
+        fs.mkdirSync(includeDir);
+        const mainFileContent = `*INCLUDE_PATH\n${includeDir}\n`;
+        fs.writeFileSync(mainFile, mainFileContent);
+
+        try {
+            const doc = fakeDoc(mainFileContent, mainFile);
+            const links = collectIncludeDocumentLinks(doc);
+
+            assert.equal(links.length, 1);
+            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeDir));
+            assert.equal(links[0].range.start.line, 1);
+            assert.equal(links[0].range.start.character, 0);
+            assert.equal(links[0].range.end.line, 1);
+            assert.equal(links[0].range.end.character, includeDir.length);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('creates document links for continued *INCLUDE_PATH directories', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-continued-path-link-'));
+        const includeDir = path.join(tempRoot, 'long-' + 'a'.repeat(50), 'includes');
+        const mainFile = path.join(tempRoot, 'main.k');
+        fs.mkdirSync(includeDir, { recursive: true });
+
+        const part1 = includeDir.slice(0, 78);
+        const part2 = includeDir.slice(78);
+        const mainFileContent = `*INCLUDE_PATH\n${part1} +\n${part2}\n`;
+        fs.writeFileSync(mainFile, mainFileContent);
+
+        try {
+            const doc = fakeDoc(mainFileContent, mainFile);
+            const links = collectIncludeDocumentLinks(doc);
+
+            assert.equal(links.length, 1);
+            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeDir));
+            assert.equal(links[0].range.start.line, 1);
+            assert.equal(links[0].range.end.line, 2);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('resolves include document links through continued *INCLUDE_PATH directories', () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-links-'));
         const includeDir = path.join(tempRoot, 'shared', 'includes');
@@ -1442,11 +1489,11 @@ describe('large document guards', () => {
         try {
             const doc = fakeDoc(mainFileContent, mainFile);
             const links = collectIncludeDocumentLinks(doc);
+            const includeLink = links.find(link => path.normalize(link.target.fsPath) === path.normalize(includeFile));
 
-            assert.equal(links.length, 1);
-            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeFile));
-            assert.equal(links[0].range.start.line, 4);
-            assert.equal(links[0].range.end.line, 4);
+            assert.ok(includeLink);
+            assert.equal(includeLink.range.start.line, 4);
+            assert.equal(includeLink.range.end.line, 4);
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
