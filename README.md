@@ -1,134 +1,68 @@
-# DynaSense (for LS-DYNA)
-[English](README_en.md)
+﻿# DynaSense (LS-DYNA Studio)
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue)
-<img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
+<div align="center">
+  <img src="images/ls.svg" width="120" height="120" alt="LS-DYNA Icon">
+  <h3>VS Code 平台最强大的 LS-DYNA 工程模型编辑器</h3>
+  <p>为真正的 CAE 工程师打造：海量智能补全、大文件极速预览、拯救强迫症的自动对齐。</p>
 
-**DynaSense** 是一款针对 LS-DYNA 的现代智能编辑器扩展。它将 LS-DYNA 格式化、关键字代码片段、强大的 IntelliSense 以及语言工具深度集成到了 VS Code 中，为您带来极致的编写与大纲管理体验。
+[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/hqyyqh.dynasense?label=VS%20Code%20Marketplace&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=hqyyqh.dynasense)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
-### 安装指南
+</div>
 
-请访问项目的 [Releases 页面](https://github.com/hqyyqh/vscode-lsdyna/releases) 下载最新的 `.vsix` 插件安装包，并在 VS Code 中选择“从 VSIX 安装”。具体的依赖配置与常见问题，请参考该页面的安装指南。
-
----
-
-### 核心功能体验
-
-<details open>
-<summary><b>📖 LS-DYNA 手册集成与交互式查询</b> (点击展开/折叠)</summary>
-<br>
-
-- **交互式悬停卡片**：关键字和字段的 Hover 提示卡片内提供了直达 LS-DYNA PDF 手册对应页码的链接，点击即达！
-- **即时检索**：基于 PDF 书签实现瞬间检索。
-- **字段级提示**：悬停卡片内包含当前关键字每一个特定字段的具体说明。
-
-![悬浮提示](./images/hover_hints.gif)
-
-</details>
-
-<details open>
-<summary><b>⚡ 智能补全与自动化排版</b> (点击展开/折叠)</summary>
-<br>
-
-- **关键字快速补全**：针对常用 LS-DYNA 关键字提供支持 Tab 键补全的代码片段。
-- **智能路径补全**：输入 `/` 即刻补全同目录包含文件，自动过滤无效路径。
-- **注释自动生成**：使用 `$` 或 `#` 触发字段注释的自动生成，完美右对齐且无尾随空格。
-- **智能 Tab 导航**：按下 `Tab` 键即可将字段对齐至其实际物理列宽、在当前行的各字段间循环，并平滑地自动换行。
-- **自动格式化数据行**：代码时刻保持严格的网格对齐，整洁规范。
-
-> **部分功能演示：**
-> 
-> | 🔑 关键字补全 | 🛤️ 路径补全 |
-> | :---: | :---: |
-> | ![关键字补全](./images/completion_keyword.gif) | ![Include文件补全](./images/completion_include.gif) |
-> | **📝 快速注释** | **📐 智能 Tab 跳转与编辑** |
-> | ![注释补全](./images/completion_comment.gif) | ![Tab跳转和编辑](./images/tab_navigation.gif) |
-> | **✨ 自动格式化** | |
-> | ![自动格式化](./images/auto_format.gif) | |
-
-</details>
-
-<details>
-<summary><b>📂 包含文件管理与可视化侧边栏</b> (点击展开/折叠)</summary>
-<br>
-
-- **状态高亮**：`*INCLUDE` 文件名高亮显示为蓝色（已解析）或橙色（缺失），支持续行文件名以及多文件。
-- **相对路径解析**：完美支持解析 `*INCLUDE_PATH`、`*INCLUDE_PATH_RELATIVE` 以及 `../` 等格式。
-- **引用树侧边栏面板**：递归扫描所有包含文件，以直观的树状图展示当前文件的引用层级关系和已使用的所有关键字。
-- **快速预览**：在包含文件路径上支持悬停操作，可快速跳转或查看目标文件详情。
-
-| 引用树面板 | 悬停快速操作 |
-| :---: | :---: |
-| ![引用树](./images/include_tree.gif) | ![包含文件操作](./images/open_include.png) |
-
-</details>
-
-<details>
-<summary><b>🛠️ 参数解析 (*PARAMETER) 与语法导航</b> (点击展开/折叠)</summary>
-<br>
-
-- **内联提示 (Inlay hints)**：实时内联显示每个 `&parameter` 引用的最终解析值。
-- **引用追踪 (CodeLens)**：在每个参数定义上方显示“N 个引用”的 CodeLens，点击即可打开引用面板。
-- **全局重命名**：支持在整篇文档中通过 F2 键对参数进行安全重命名。
-- **语法导航**：支持针对 `.k`、`.key`、`.dyna` 和 `.cfile` 等文件的语法高亮；支持跳转到上/下一个关键字；每个 `*KEYWORD` 块均可独立代码折叠。
-
-![参数提示](./images/parameter_hints.png)
-
-</details>
+[English Version](README_en.md) | [中文说明](README.md)
 
 ---
 
-### 插件设置
+## 🌟 核心特性 (Core Features)
 
-该扩展除了遵循标准的 VS Code 设置外，还提供了一些专属的配置选项。
-*(可以在设置界面搜索 `lsdyna` 进行相关调整)*
+### 1. 🧠 极致的智能感知与补全 (Intelligent Autocomplete)
+* **全量关键字覆盖**：数据深度提取自官方 [ansys/pydyna](https://github.com/ansys/pydyna) 数据库，支持超过 **3100+** 个 LS-DYNA 关键字的语法树解析。
+* **智能字段补全**：不仅能补全关键字，还能在输入时智能弹出带有详尽注释（长度、类型、默认值）的字段 Snippets 模板。
 
-![插件设置](./images/settings.png)
+### 2. ⚡️ 大文件极速透视 (O(1) Hover Preview)
+* 告别打开几百兆 `.k` 文件时的卡顿！
+* 将鼠标悬停在 `*INCLUDE` 或 `*INCLUDE_PATH` 后的文件路径上，即可**瞬间预览**包含文件的头部内容。
+* 内部采用 O(1) 异步文件块流式读取技术，无论被包含的文件有几 GB，都能在毫秒级弹出预览。
+* *可在设置中自定义预览行数。*
 
-**LS-DYNA 专属设置：**
+### 3. 🎨 强迫症福音：自动排版对齐 (Code Formatting)
+* 一键将错乱的字段数据格式化为极其工整的 **10 列 / 8 列** 经典 LS-DYNA 标准对齐格式。
+* 支持快捷键触发（`Ctrl+Shift+F` 或右键格式化），更支持 **保存时自动格式化光标所在行**。
+* `*INCLUDE` 路径支持自动扩展至 512 列以防路径截断。
+
+### 4. 💡 智能交互代码透镜 (CodeLens)
+* 在代码上方动态渲染可点击的动作按钮（CodeLens）。
+* 一键快速切换关键字的可选卡片（例如：一键为 `*PART` 附加 `_TITLE` 后缀）。
+* 一键精准格式化当前所属的整个关键字块（Block）。
+
+### 5. 🗺️ 全局项目导航图 (Project Outline)
+* **包含树解析 (Include Tree)**：在侧边栏清晰呈现主模型与所有子 Include 文件的嵌套层级树。
+* **关键字大纲 (Keyword Index)**：提供当前文件中所有关键字的概览，点击即可极速跳转。
+
+### 6. 🚀 沉浸式快捷编辑
+* **智能 Tab 跳转**：在按标准的 10 字符宽度分布的字段（Cell）间，使用 `Tab` 和 `Shift+Tab` 进行完美跳跃编辑。
+* **关键字穿梭**：使用 `Ctrl+Alt+Up` / `Ctrl+Alt+Down` 在成百上千行的文本中直接跳转到上一个/下一个关键字开头。
+
+---
+
+## ⚙️ 扩展配置 (Extension Settings)
+
+在 VS Code 的 `settings.json` 中，你可以自定义以下独占配置：
 
 | 设置项 | 默认值 | 描述 |
-|---|---|---|
-| `lsdyna.language` | `"zh-cn"` | 选择插件的界面语言和悬浮提示语言（支持 `zh-cn` 和 `en`） |
-| `lsdyna.manualsDir` | `""` | 包含 LS-DYNA PDF 手册的目录路径。在 Windows 系统上，请将 `SumatraPDF.exe` 复制到该目录下以启用精确页码跳转。 |
-| `lsdyna.additionalExtensions` | `[".k", ".key", ".dyna", ".asc"]` | 需要额外关联到 LS-DYNA 语言模式的文件后缀名 |
+| :--- | :--- | :--- |
+| `lsdyna.additionalExtensions` | `[".txt"]` | 动态添加你想让插件接管并高亮的自定义文件后缀名。 |
+| `lsdyna.hover.previewMaxLines` | `20` | 控制鼠标悬停在包含文件上时，预览窗口所显示的行数。 |
+| `lsdyna.format.enableOnSave` | `true` | 是否开启保存 (Ctrl+S) 时自动格式化当前光标所在行的数据格式。 |
+| `lsdyna.index.enableIncludeTree` | `true` | 是否在侧边栏启用 `*INCLUDE` 嵌套层级树视图。 |
 
-**VS Code 常用建议设置：**
-
-| 设置项 | 默认值 | 描述 |
-|---|---|---|
-| `editor.hover.enabled` | `true` | 显示关键字及字段悬停提示卡片 |
-| `editor.inlayHints.enabled` | `on` | 内联显示解析后的参数值 |
-| `editor.codeLens` | `true` | 在参数定义上方显示“N 个引用” |
-| `editor.wordWrap` | `off` | 自动换行（对齐固定宽度列时默认关闭） |
-
-可以通过在 `settings.json` 的 `"[lsdyna]"` 下添加这些设置，来使其仅对 LS-DYNA 文件生效：
-
-```json
-"[lsdyna]": {
-    "editor.hover.enabled": false,
-    "editor.inlayHints.enabled": "off"
-}
-```
+> [!TIP]
+> **文件关联与图标**
+> 本插件默认接管 `.k`, `.key`, `.dyna`, `.asc` 等文件。如果你希望你的自定义文件不仅能被高亮，还能在文件管理器中**显示 LS-DYNA 的专属蓝色工程图标**，请在全局设置中使用：
+> `"files.associations": { "*.my_ext": "lsdyna" }`
 
 ---
-
-### 关键字数据
-
-代码片段和悬停文档基于 [pydyna](https://github.com/ansys/pydyna) 关键字数据库（`kwd.json`）生成，该数据库由 Ansys 维护，涵盖了 3168 个 LS-DYNA 关键字，包含完整的字段定义、类型、默认值和帮助文本。此数据仅在构建时使用，不打包在扩展中。
-
-若要在更新 pydyna 后重新生成：
-
-```bash
-git clone https://github.com/ansys/pydyna ../pydyna
-python keywords/generate_from_pydyna.py
-```
-
-### 贡献与支持
-
-你可以通过以下几种方式来添加关键字或功能：
-1. 向我发送电子邮件或在 GitHub 上发消息说明所需的关键字（并附带示例）。
-2. 发起 Pull Request 将你的代码合并到分支。
 
 ## 鸣谢与贡献者 (Credits & Contributors)
 
@@ -145,11 +79,3 @@ python keywords/generate_from_pydyna.py
 
 感谢所有对 LS-DYNA 编辑器生态做出贡献的开发者！
 
----
-
-> [!NOTE]
-> **定制版本声明（由 hqyyqh 修改）**
-> 本插件是基于 Ryan O'Sullivan 开发的原版 [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) 插件的定制分支，添加了特定的定制化功能。
-> - **修改者：** hqyyqh（自 2026 年 5 月起进行修改）
-> - **源码仓库：** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
-> - **开源协议：** 遵循 GNU General Public License v3.0 (GPL-3.0) 协议。我们保留并尊重原作者的所有版权与贡献声明。

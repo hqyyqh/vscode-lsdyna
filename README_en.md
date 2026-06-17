@@ -1,139 +1,68 @@
-# DynaSense (for LS-DYNA)
-[简体中文](README.md)
+﻿# DynaSense (LS-DYNA Studio)
 
-![Version](https://img.shields.io/badge/version-3.0.0-blue)
-<img alt="GitHub Actions" src="https://img.shields.io/github/actions/workflow/status/osullivryan/vscode-lsdyna/master_ci.yaml?branch=master&style=for-the-badge&label=CI">
+<div align="center">
+  <img src="images/ls.svg" width="120" height="120" alt="LS-DYNA Icon">
+  <h3>The Ultimate LS-DYNA Engineering Editor for VS Code</h3>
+  <p>Built for real CAE engineers: massive intelligent autocomplete, ultra-fast large file preview, and OCD-saving auto-alignment.</p>
 
-**DynaSense** is a modern and smart editor extension for LS-DYNA. It integrates LS-DYNA formatting, keyword snippets, powerful IntelliSense, and language tooling into VS Code, bringing you the ultimate authoring and project management experience.
+[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/hqyyqh.dynasense?label=VS%20Code%20Marketplace&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=hqyyqh.dynasense)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://opensource.org/licenses/GPL-3.0)
 
-### Installation Guide
+</div>
 
-Please visit the project's [Releases page](https://github.com/hqyyqh/vscode-lsdyna/releases) to download the latest `.vsix` extension package, and install it in VS Code via "Install from VSIX". For specific dependency configurations and FAQs, please refer to the installation guide on that page.
-
----
-
-### Core Features Experience
-
-<details open>
-<summary><b>📖 Manual Integration & Interactive Query</b> (Click to expand/collapse)</summary>
-<br>
-
-- **Interactive Hover Cards**: Keyword and field hovers display links directly to the exact page of the LS-DYNA PDF manual. Click to jump instantly!
-- **Instant Search**: Bookmark-based PDF manual indexing for instant search.
-- **Field-level Hints**: Hover cards contain detailed descriptions of every specific field of the keyword.
-
-![Hover Hints](./images/hover_hints.gif)
-
-</details>
-
-<details open>
-<summary><b>⚡ Smart Autocomplete & Formatting</b> (Click to expand/collapse)</summary>
-<br>
-
-- **Fast Keyword Completion**: Tab-completable snippets for common LS-DYNA keywords.
-- **Smart Path Completion**: Type `/` to instantly autocomplete same-directory include files, automatically filtering invalid paths.
-- **Auto Comment Generation**: Trigger field comment generation using `$` or `#`, perfectly right-aligned without trailing spaces.
-- **Smart Tab Navigation**: Press `Tab` to align fields to their physical columns, loop through fields on the current line, and automatically wrap to the next line smoothly.
-- **Auto Format Data Lines**: Keeps your code strictly grid-aligned, clean, and standardized.
-
-> **Feature Demonstrations:**
-> 
-> | 🔑 Keyword Completion | 🛤️ Path Completion |
-> | :---: | :---: |
-> | ![Keyword Completion](./images/completion_keyword.gif) | ![Include File Completion](./images/completion_include.gif) |
-> | **📝 Quick Comment** | **📐 Smart Tab Navigation** |
-> | ![Comment Completion](./images/completion_comment.gif) | ![Tab Navigation](./images/tab_navigation.gif) |
-> | **✨ Auto Formatting** | |
-> | ![Auto Formatting](./images/auto_format.gif) | |
-
-</details>
-
-<details>
-<summary><b>📂 Include Files Management & Sidebar Tree</b> (Click to expand/collapse)</summary>
-<br>
-
-- **Status Highlighting**: `*INCLUDE` filenames are highlighted green (resolved) or orange (missing), including continued filenames and multiple files.
-- **Relative Path Resolution**: Flawlessly resolves `*INCLUDE_PATH`, `*INCLUDE_PATH_RELATIVE`, and `../` styles.
-- **Include Tree Sidebar Panel**: Recursively scans all include files and displays the current file's inclusion hierarchy and all used keywords in an intuitive tree view.
-- **Quick Preview**: Hover actions on include file paths to quickly jump or inspect target file details.
-
-| Include Tree Panel | Hover Quick Actions |
-| :---: | :---: |
-| ![Include Tree](./images/include_tree.gif) | ![Include File Actions](./images/open_include.png) |
-
-</details>
-
-<details>
-<summary><b>🛠️ Parameters (*PARAMETER) & Syntax Navigation</b> (Click to expand/collapse)</summary>
-<br>
-
-- **Inlay Hints**: Inline display of the final resolved value for each `&parameter` reference in real-time.
-- **Reference Tracking (CodeLens)**: "N references" CodeLens above each parameter definition — click to open the References panel.
-- **Global Rename**: Safely rename parameters across the entire document via the F2 key.
-- **Syntax Navigation**: Syntax highlighting for `.k`, `.key`, `.dyna`, and `.cfile` files; supports jumping to next/previous keyword; each `*KEYWORD` block can be collapsed independently.
-
-![Parameter Hints](./images/parameter_hints.png)
-
-</details>
+[English Version](README_en.md) | [中文说明](README.md)
 
 ---
 
-### Extension Settings
+## 🌟 Core Features
 
-In addition to standard VS Code settings, this extension provides several dedicated configuration options.
-*(You can search for `lsdyna` in the settings UI to adjust these)*
+### 1. 🧠 Intelligent Autocomplete & IntelliSense
+* **Full Keyword Coverage:** Data is deeply extracted from the official [ansys/pydyna](https://github.com/ansys/pydyna) database, supporting syntax tree parsing for over **3100+** LS-DYNA keywords.
+* **Smart Field Snippets:** Not only does it autocomplete keywords, but it intelligently pops up snippet templates with detailed annotations (length, type, default values) as you type.
 
-![Plugin Settings](./images/settings.png)
+### 2. ⚡️ Ultra-Fast O(1) Hover Preview
+* Say goodbye to UI freezing when opening huge `.k` files!
+* Hover over the file path after `*INCLUDE` or `*INCLUDE_PATH` to **instantly preview** the header content of the included file.
+* Utilizing an internal O(1) asynchronous block stream reader, previews pop up in milliseconds regardless of whether the included file is a few megabytes or several gigabytes.
+* *Preview length is customizable in settings.*
 
-**LS-DYNA Dedicated Settings:**
+### 3. 🎨 OCD-Saving Code Formatting
+* One-click formatting to align messy field data into the perfectly neat **10-column / 8-column** classic LS-DYNA standard format.
+* Supports shortcut trigger (`Ctrl+Shift+F`) and **auto-formatting the current line on save**.
+* `*INCLUDE` paths are automatically padded to 512 columns to prevent truncation.
+
+### 4. 💡 Smart Interactive CodeLens
+* Dynamically renders clickable action buttons (CodeLens) right above your keywords.
+* **One-click Option Swapping:** Easily append options like `_TITLE` to keywords (e.g., `*PART`).
+* **Precision Formatting:** Quickly format the specific keyword block you are currently working on.
+
+### 5. 🗺️ Project Navigation Outline
+* **Include Tree:** Clearly presents the nested hierarchy tree of the main model and all sub-included files in the sidebar.
+* **Keyword Index:** Provides an overview of all keywords in the current file with blazing-fast jump-to-definition.
+
+### 6. 🚀 Immersive Editing Shortcuts
+* **Smart Tab Jumping:** Flawlessly jump between standard 10-character width fields (Cells) using `Tab` and `Shift+Tab`.
+* **Keyword Shuttle:** Use `Ctrl+Alt+Up` / `Ctrl+Alt+Down` to warp directly to the start of the previous/next keyword across thousands of lines of text.
+
+---
+
+## ⚙️ Extension Settings
+
+In VS Code's `settings.json`, you can customize the following exclusive configurations:
 
 | Setting | Default | Description |
-|---|---|---|
-| `lsdyna.language` | `"zh-cn"` | Select the UI and Hover language for the extension (supports `zh-cn` and `en`) |
-| `lsdyna.manualsDir` | `""` | Path to the directory containing LS-DYNA PDF manuals. On Windows, copy `SumatraPDF.exe` into this folder for precise page navigation. |
-| `lsdyna.additionalExtensions` | `[".k", ".key", ".dyna", ".asc"]` | Additional file extensions to associate with the LS-DYNA language |
+| :--- | :--- | :--- |
+| `lsdyna.additionalExtensions` | `[".txt"]` | Dynamically add custom file extensions you want the extension to highlight. |
+| `lsdyna.hover.previewMaxLines` | `20` | Controls the maximum number of lines displayed when hovering over an included file. |
+| `lsdyna.format.enableOnSave` | `true` | Enables auto-formatting of data fields on the line where the cursor is located when saving (Ctrl+S). |
+| `lsdyna.index.enableIncludeTree` | `true` | Enables the `*INCLUDE` nested hierarchy tree view in the sidebar. |
 
-**Recommended VS Code Settings:**
-
-| Setting | Default | Description |
-|---|---|---|
-| `editor.hover.enabled` | `true` | Show keyword and field hover tooltips |
-| `editor.inlayHints.enabled` | `on` | Show resolved parameter values inline |
-| `editor.codeLens` | `true` | Show "N references" above parameter definitions |
-| `editor.wordWrap` | `off` | Word wrap (recommended off for fixed-width columns) |
-
-These can be scoped to LS-DYNA files only by adding them under `"[lsdyna]"` in your `settings.json`:
-
-```json
-"[lsdyna]": {
-    "editor.hover.enabled": false,
-    "editor.inlayHints.enabled": "off"
-}
-```
+> [!TIP]
+> **File Associations & Icons**
+> By default, this extension targets `.k`, `.key`, `.dyna`, `.asc` files. If you want your custom files to not only be highlighted but also display the **exclusive blue engineering icon** in the file explorer, use the global setting:
+> `"files.associations": { "*.my_ext": "lsdyna" }`
 
 ---
-
-### Keyword Data
-
-Snippets and hover documentation are generated from the [pydyna](https://github.com/ansys/pydyna) keyword database (`kwd.json`), which is maintained by Ansys and covers 3168 LS-DYNA keywords with full field definitions, types, defaults, and help text. This data is used at build time only — it is not bundled in the extension.
-
-To regenerate after updating pydyna:
-
-```bash
-git clone https://github.com/ansys/pydyna ../pydyna
-python keywords/generate_from_pydyna.py
-```
-
-### Contributing new Keywords
-
-There are a few ways you can go about adding keywords or features:
-
-1. Send me an email or message on Github with the desired keyword (and an example).
-2. Make a pull request:
-    1. Create a fork of the master.
-    2. Clone [pydyna](https://github.com/ansys/pydyna) as a sibling directory (`../pydyna`).
-    3. Run `python keywords/generate_from_pydyna.py` from the repo root to regenerate `snippets/lsdyna.json` from the full pydyna keyword database (3168 keywords).
-    4. Create a new pull request to merge your branch into master.
 
 ## Credits & Contributors
 
@@ -150,11 +79,3 @@ Special thanks to the following upstream open-source projects and original autho
 
 Thank you to all developers who have contributed to the LS-DYNA editor ecosystem!
 
----
-
-> [!NOTE]
-> **Customized Version Notice (Modified by hqyyqh)**
-> This extension is a customized version based on the original [vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) developed by Ryan O'Sullivan ([osullivryan](https://github.com/osullivryan)).
-> - **Modifier:** hqyyqh (Modified starting May 2026)
-> - **Source Code:** [hqyyqh/vscode-lsdyna](https://github.com/hqyyqh/vscode-lsdyna)
-> - **License:** Distributed under the GNU General Public License v3.0 (GPL-3.0). All original licenses and credits are preserved.
