@@ -42,6 +42,14 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         self.assertIn("title", snippet["body"][1].lower())
         self.assertEqual("${1:TITLE}", snippet["body"][2])
 
+    def test_include_path_snippet_comment_header_stays_short(self):
+        for keyword in ["*INCLUDE_PATH", "*INCLUDE_PATH_RELATIVE"]:
+            snippet = self.snippets[keyword]
+
+            self.assertEqual(keyword, snippet["body"][0])
+            self.assertEqual("$# path", snippet["body"][1])
+            self.assertLessEqual(len(snippet["body"][1]), 80)
+
     def test_contact_options_and_selection_snippet(self):
         contact = self.field_data["CONTACT_AUTOMATIC_SURFACE_TO_SURFACE"]
         options = {option["n"]: option for option in contact["o"]}

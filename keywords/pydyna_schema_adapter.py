@@ -359,7 +359,12 @@ def _comment_header(fields: list[dict[str, Any]]) -> str:
         if available <= 0:
             continue
         name = str(field["n"]).lower()[:available]
-        
+
+        if len(fields) == 1 and width > 80:
+            line = "$# " + name
+            written = len(line)
+            continue
+
         if width >= 40:
             if i == 0:
                 line = ("$# " + name).ljust(pos + width)
@@ -367,7 +372,7 @@ def _comment_header(fields: list[dict[str, Any]]) -> str:
                 line += name.ljust(available)
         else:
             line += name.rjust(available)
-            
+
         written = pos + width
     return line
 

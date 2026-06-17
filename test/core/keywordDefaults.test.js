@@ -111,4 +111,14 @@ describe('keyword aliases and default valid keywords', () => {
             assert.equal(snippets[keyword].body[0], keyword);
         }
     });
+
+    it('keeps INCLUDE_PATH snippet comment headers within 80 columns', () => {
+        const snippets = require(path.join('..', '..', 'snippets', 'lsdyna.json'));
+
+        for (const keyword of ['*INCLUDE_PATH', '*INCLUDE_PATH_RELATIVE']) {
+            assert.ok(snippets[keyword], `${keyword} snippet should exist`);
+            assert.equal(snippets[keyword].body[1], '$# path');
+            assert.ok(snippets[keyword].body[1].length <= 80);
+        }
+    });
 });

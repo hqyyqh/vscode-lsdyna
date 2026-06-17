@@ -48,6 +48,12 @@ const {
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
 
+function decodeCommandUriArgs(uri) {
+    const text = uri.toString ? uri.toString() : uri.fsPath;
+    const query = text.slice(text.indexOf('?') + 1);
+    return JSON.parse(decodeURIComponent(query));
+}
+
 function makeEditableEditor(lines, activeLine = 0) {
     const editableLines = lines.slice();
     const document = {
@@ -1439,7 +1445,9 @@ describe('large document guards', () => {
             const links = collectIncludeDocumentLinks(doc);
 
             assert.equal(links.length, 1);
-            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeDir));
+            const targetText = links[0].target.toString();
+            assert.ok(targetText.startsWith('command:extension.revealInExplorer?'));
+            assert.equal(path.normalize(decodeCommandUriArgs(links[0].target)[0].resourceUri.fsPath), path.normalize(includeDir));
             assert.equal(links[0].range.start.line, 1);
             assert.equal(links[0].range.start.character, 0);
             assert.equal(links[0].range.end.line, 1);
@@ -1465,7 +1473,9 @@ describe('large document guards', () => {
             const links = collectIncludeDocumentLinks(doc);
 
             assert.equal(links.length, 1);
-            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeDir));
+            const targetText = links[0].target.toString();
+            assert.ok(targetText.startsWith('command:extension.revealInExplorer?'));
+            assert.equal(path.normalize(decodeCommandUriArgs(links[0].target)[0].resourceUri.fsPath), path.normalize(includeDir));
             assert.equal(links[0].range.start.line, 1);
             assert.equal(links[0].range.end.line, 2);
         } finally {
@@ -1492,6 +1502,7 @@ describe('large document guards', () => {
             const includeLink = links.find(link => path.normalize(link.target.fsPath) === path.normalize(includeFile));
 
             assert.ok(includeLink);
+            assert.equal(path.normalize(includeLink.target.fsPath), path.normalize(includeFile));
             assert.equal(includeLink.range.start.line, 4);
             assert.equal(includeLink.range.end.line, 4);
         } finally {

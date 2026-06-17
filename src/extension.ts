@@ -309,11 +309,15 @@ function collectIncludeDocumentLinks(document) {
             }
             try {
                 if (!fs.existsSync(targetPath)) return [];
+                const targetUri = vscode.Uri.parse(
+                    'command:extension.revealInExplorer?' +
+                    encodeURIComponent(JSON.stringify([{ resourceUri: vscode.Uri.file(targetPath) }]))
+                );
                 return includeScanner.getIncludeEntryRanges(entry)
                     .map(({ lineIndex, startChar, endLineIndex, endChar }) =>
                         new vscode.DocumentLink(
                             new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
-                            vscode.Uri.file(targetPath)
+                            targetUri
                         )
                     );
             } catch (e) {
