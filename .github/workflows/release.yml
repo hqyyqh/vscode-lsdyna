@@ -1,34 +1,63 @@
-name: Release Extension
+name: Auto Release on Version Bump
 
 on:
   push:
-    tags:
-      - "v*" # 触发条件：当推送以 v 开头的 tag 时 (例如 v3.0.1)
+    branches:
+      - master
+      - dev
+    paths:
+      - "package.json"
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 必须赋予写权限，以便创建 release 和上传附件
+      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          CURRENT_VERSION=$(jq -r .version package.json)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            PREV_VERSION=$(git show HEAD~1:package.json | jq -r .version 2>/dev/null || echo "null")
+          else
+            PREV_VERSION="null"
+          fi
+          if [ "$CURRENT_VERSION" != "$PREV_VERSION" ] && [ "$CURRENT_VERSION" != "null" ]; then
+            echo "Version bumped from $PREV_VERSION to $CURRENT_VERSION. Triggering release..."
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "Version not changed. Skipping release."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Setup Node.js
+        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
       - name: Install dependencies
+        if: steps.check.outputs.changed == 'true'
         run: npm ci
 
       - name: Package Extension
+        if: steps.check.outputs.changed == 'true'
         run: npm run package
 
-      - name: Upload Release Asset
+      - name: Create Release
+        if: steps.check.outputs.changed == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.check.outputs.version }}
+          name: Release v${{ steps.check.outputs.version }}
           files: "*.vsix"
           generate_release_notes: true
