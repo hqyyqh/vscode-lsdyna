@@ -2220,6 +2220,32 @@ function getPathEntryRange(document, lineNum, kwLine) {
     return { start, end };
 }
 
+function splitIncludePathEntry(fullPath) {
+    if (fullPath.length <= 80) return [fullPath];
+    if (fullPath.length <= 156) {
+        return [
+            fullPath.slice(0, 78) + ' +',
+            fullPath.slice(78)
+        ];
+    }
+    return [
+        fullPath.slice(0, 78) + ' +',
+        fullPath.slice(78, 156) + ' +',
+        fullPath.slice(156)
+    ];
+}
+
+function isIncludeFileKeyword(kwText) {
+    const upper = String(kwText || '').trim().toUpperCase();
+    return upper.startsWith('*INCLUDE') && !upper.startsWith('*INCLUDE_PATH');
+}
+
+function isSingleEightyColumnCard(cardFields) {
+    return Array.isArray(cardFields) &&
+        cardFields.length === 1 &&
+        Number(cardFields[0]?.w) === 80;
+}
+
 async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
     const range = getPathEntryRange(document, lineNum, kwLine);
     const lines = [];
@@ -2238,21 +2264,7 @@ async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
     }
 
     const fullPath = parts.join('');
-    
-    let newLines = [];
-    if (fullPath.length > 80) {
-        const maxSegmentLength = 78;
-        for (let i = 0; i < fullPath.length; i += maxSegmentLength) {
-            const segment = fullPath.slice(i, i + maxSegmentLength);
-            if (i + maxSegmentLength < fullPath.length) {
-                newLines.push(segment + ' +');
-            } else {
-                newLines.push(segment);
-            }
-        }
-    } else {
-        newLines.push(fullPath);
-    }
+    const newLines = splitIncludePathEntry(fullPath);
 
     const newText = newLines.join('\n');
     const oldText = lines.join('\n');
@@ -2310,6 +2322,13 @@ async function formatLineIfNeeded(document, lineNum) {
         if (kwText === '*INCLUDE_PATH' || kwText === '*INCLUDE_PATH_RELATIVE') {
             await formatPathEntryIfNeeded(document, lineNum, kwLine);
             return;
+        }
+        if (!trimmed.startsWith('$') && isIncludeFileKeyword(kwText)) {
+            const cardFields = getCardFieldsForLine(document, lineNum);
+            if (isSingleEightyColumnCard(cardFields)) {
+                await formatPathEntryIfNeeded(document, lineNum, kwLine);
+                return;
+            }
         }
     }
 
@@ -2641,9 +2660,9 @@ function activate(context) {
         vscode.languages.registerDocumentSymbolProvider({ language: 'lsdyna' }, new LsdynaKeywordSymbolProvider())
     );
 
-    // context.subscriptions.push(
-    //     vscode.languages.registerDocumentLinkProvider({ language: 'lsdyna' }, new LsdynaDocumentLinkProvider())
-    // );
+    context.subscriptions.push(
+        vscode.languages.registerDocumentLinkProvider({ language: 'lsdyna' }, new LsdynaDocumentLinkProvider())
+    );
 
     context.subscriptions.push(
         vscode.languages.registerHoverProvider({ language: 'lsdyna' }, new LsdynaFieldHoverProvider())

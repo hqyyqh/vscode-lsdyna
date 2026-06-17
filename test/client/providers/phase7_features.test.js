@@ -846,6 +846,44 @@ describe('Phase 7 Features', () => {
             }
         });
 
+        it('wraps the maximum LS-DYNA include pathname length into three physical lines', async () => {
+            const longPath = 'a'.repeat(78) + 'b'.repeat(78) + 'c'.repeat(80); // length 236
+            const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, '/project/main.k');
+
+            let editCalled = false;
+            let editVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await formatPathEntryIfNeeded(document, 1, 0);
+                assert.ok(editCalled);
+                assert.equal(
+                    editVal,
+                    'a'.repeat(78) + ' +\n' +
+                    'b'.repeat(78) + ' +\n' +
+                    'c'.repeat(80)
+                );
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
         it('merges multi-line paths that are shortened to <= 80 characters', async () => {
             const document = fakeDoc('*INCLUDE_PATH\n/short/path/part1 +\npart2\n', '/project/main.k');
             
@@ -912,6 +950,39 @@ describe('Phase 7 Features', () => {
                 await formatLineIfNeeded(document, 1);
                 assert.ok(editCalled);
                 assert.equal(editVal, 'a'.repeat(78) + ' +\n' + 'a'.repeat(7));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('automatically wraps single 80-column *INCLUDE filename cards', async () => {
+            const longPath = 'a'.repeat(78) + 'b'.repeat(12);
+            const document = fakeDoc(`*INCLUDE\n${longPath}\n`, '/project/main.k');
+
+            let editCalled = false;
+            let editVal;
+
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    editCalled = true;
+                    const builder = {
+                        replace: (r, v) => {
+                            editVal = v;
+                        }
+                    };
+                    callback(builder);
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                await formatLineIfNeeded(document, 1);
+                assert.ok(editCalled);
+                assert.equal(editVal, 'a'.repeat(78) + ' +\n' + 'b'.repeat(12));
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }

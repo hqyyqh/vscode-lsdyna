@@ -807,6 +807,45 @@ describe('LsdynaKeywordIndexProvider', () => {
 });
 
 describe('activate', () => {
+    it('registers document links for clickable include paths', () => {
+        const context = { subscriptions: [] };
+        const disposable = { dispose() {} };
+        let registration;
+        const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
+        const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
+        const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
+        const originalRegisterHoverProvider = vscodeMock.languages.registerHoverProvider;
+        const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
+        const originalRegisterDocumentLinkProvider = vscodeMock.languages.registerDocumentLinkProvider;
+
+        vscodeMock.window.registerTreeDataProvider = () => disposable;
+        vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
+        vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
+        vscodeMock.window.createTextEditorDecorationType = () => disposable;
+        vscodeMock.languages.registerHoverProvider = () => disposable;
+        vscodeMock.languages.registerCodeLensProvider = () => disposable;
+        vscodeMock.languages.registerDocumentLinkProvider = (selector, provider) => {
+            registration = { selector, provider };
+            return disposable;
+        };
+
+        try {
+            extensionModule.activate(context);
+
+            assert.deepEqual(registration.selector, { language: 'lsdyna' });
+            assert.equal(typeof registration.provider.provideDocumentLinks, 'function');
+        } finally {
+            vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
+            vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
+            vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
+            vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
+            vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
+            vscodeMock.languages.registerDocumentLinkProvider = originalRegisterDocumentLinkProvider;
+        }
+    });
+
     it('injects a shared project snapshot loader into both tree providers', () => {
         const context = { subscriptions: [] };
         const registrations = new Map();
@@ -1382,6 +1421,32 @@ describe('large document guards', () => {
                 links.map(link => [link.range.start.line, link.range.end.line]),
                 [[1, 1], [3, 3]]
             );
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('resolves include document links through continued *INCLUDE_PATH directories', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-links-'));
+        const includeDir = path.join(tempRoot, 'shared', 'includes');
+        const includeFile = path.join(includeDir, 'continued.k');
+        const mainFile = path.join(tempRoot, 'main.k');
+        fs.mkdirSync(includeDir, { recursive: true });
+        fs.writeFileSync(includeFile, '*KEYWORD\n');
+
+        const part1 = includeDir.slice(0, 78);
+        const part2 = includeDir.slice(78);
+        const mainFileContent = `*INCLUDE_PATH\n${part1} +\n${part2}\n*INCLUDE\ncontinued.k\n`;
+        fs.writeFileSync(mainFile, mainFileContent);
+
+        try {
+            const doc = fakeDoc(mainFileContent, mainFile);
+            const links = collectIncludeDocumentLinks(doc);
+
+            assert.equal(links.length, 1);
+            assert.equal(path.normalize(links[0].target.fsPath), path.normalize(includeFile));
+            assert.equal(links[0].range.start.line, 4);
+            assert.equal(links[0].range.end.line, 4);
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
@@ -2285,6 +2350,32 @@ describe('LsdynaIncludeCompletionProvider', () => {
             try { fs.rmdirSync(subDir); } catch (e) {}
             try { fs.unlinkSync(mainFile); } catch (e) {}
             try { fs.rmdirSync(tempDir); } catch (e) {}
+        }
+    });
+
+    it('provides completion items from continued *INCLUDE_PATH directories', () => {
+        const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
+        const provider = new LsdynaIncludeCompletionProvider();
+
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-continued-'));
+        const includeDir = path.join(tempDir, 'shared', 'includes');
+        const mainFile = path.join(tempDir, 'main.k');
+        fs.mkdirSync(includeDir, { recursive: true });
+        fs.writeFileSync(path.join(includeDir, 'continued.k'), '');
+
+        const part1 = includeDir.slice(0, 78);
+        const part2 = includeDir.slice(78);
+        const mainFileContent = `*INCLUDE_PATH\n${part1} +\n${part2}\n*INCLUDE\n`;
+        fs.writeFileSync(mainFile, mainFileContent);
+        const doc = fakeDoc(mainFileContent, mainFile);
+
+        try {
+            const list = provider.provideCompletionItems(doc, { line: 4, character: 0 });
+            assert.ok(list);
+            const labels = list.items.map(item => item.label);
+            assert.ok(labels.includes('continued.k'));
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 });
