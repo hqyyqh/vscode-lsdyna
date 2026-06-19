@@ -10,7 +10,7 @@
         "type": "git",
         "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
-    "icon": "images/LS_DYNA_geo_metro.png",
+    "icon": "images/extension-icon.png",
     "version": "3.0.5",
     "engines": {
         "vscode": "^1.50.0"
@@ -46,7 +46,7 @@
                 {
                     "id": "lsdyna-includes",
                     "title": "%viewsContainers.lsdyna-includes.title%",
-                    "icon": "images/lsdyna.png"
+                    "icon": "images/activitybar-icon.svg"
                 }
             ]
         },

@@ -1,7 +1,7 @@
 # DynaSense (LS-DYNA Studio)
 
 <div align="center">
-  <img src="images/LS_DYNA_geo_metro.png" width="120" height="120" alt="LS-DYNA Icon">
+  <img src="images/extension-icon.png" width="120" height="120" alt="DynaSense 图标">
   <h3>VS Code 平台功能丰富的 LS-DYNA 工程模型编辑器</h3>
   <p>为 CAE 工程师打造：包含智能补全、大文件预览、以及代码自动对齐等功能。</p>
 
