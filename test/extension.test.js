@@ -1334,6 +1334,19 @@ describe('createActiveDocumentDebouncer', () => {
 // ---------------------------------------------------------------------------
 
 describe('large document guards', () => {
+    let originalGetConfiguration;
+
+    before(() => {
+        originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'largeFile.enableRendering' ? false : defaultValue
+        });
+    });
+
+    after(() => {
+        vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+    });
+
     function createHugeDoc() {
         return {
             languageId: 'lsdyna',
@@ -1547,9 +1560,10 @@ describe('large document guards', () => {
         assert.deepEqual(provider.provideCodeLenses(createHugeDoc()), []);
     });
 
-    it('skips hover work for very large documents', () => {
+    it('skips hover work for very large documents', async () => {
         const provider = new LsdynaFieldHoverProvider();
-        assert.equal(provider.provideHover(createHugeDoc(), { line: 0, character: 0 }), null);
+        const hover = await provider.provideHover(createHugeDoc(), { line: 0, character: 0 });
+        assert.equal(hover, null);
     });
 
     it('skips parameter definitions for very large documents', () => {
@@ -1605,7 +1619,7 @@ describe('getParameterAtCursor', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaFieldHoverProvider', () => {
-    it('preserves embedded help newlines as markdown hard breaks', () => {
+    it('preserves embedded help newlines as markdown hard breaks', async () => {
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualLocations = manualIndexer.getManualLocations;
         manualIndexer.getManualLocations = () => [];
@@ -1614,39 +1628,39 @@ describe('LsdynaFieldHoverProvider', () => {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
 
-            const hover = provider.provideHover(doc, { line: 1, character: 35 });
+            const hover = await provider.provideHover(doc, { line: 1, character: 45 });
 
             assert.ok(hover);
-            assert.ok(
-                hover.contents[0].value.startsWith(
-                    '### <span style="color:var(--vscode-textLink-foreground);">**ENDENG**</span> *(real)*\n\nPercent change in energy ratio for termination of calculation. If undefined, this option is inactive.\n\n**Card Columns:**\n| 1-10 | │ 11-20 | │ 21-30 | │ 31-40 | │ 41-50 | │ 51-60 |\n| --- | --- | --- | --- | --- | --- |\n| ENDTIM | │ ENDCYC | │ DTMIN | │ <span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;ENDENG&nbsp;**</span> | │ ENDMAS | │ NOSOL |'
-                )
-            );
+            const value = hover.contents[0].value;
+            assert.ok(value.startsWith('### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**ENDMAS**</span> *(real)*'));
+            assert.ok(value.includes('DT2MS.  \nLT.0.0:'));
+            assert.ok(value.includes('**$(table) Card Columns:**'));
+            assert.ok(value.includes('**&nbsp;ENDMAS&nbsp;**'));
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
     });
 
-    it('resolves _TITLE suffix title and data lines through keyword schema', () => {
+    it('resolves _TITLE suffix title and data lines through keyword schema', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*MAT_001_TITLE\nSteel\n$      MID|       RO|\n    100000    2.7E-9\n');
 
-        const titleHover = provider.provideHover(doc, { line: 1, character: 2 });
+        const titleHover = await provider.provideHover(doc, { line: 1, character: 2 });
         assert.ok(titleHover);
         assert.ok(titleHover.contents[0].value.includes('**TITLE**'));
         assert.ok(titleHover.contents[0].value.includes('Additional title line'));
 
         // Hovering on comment line (line 2) should return null
-        const commentHover = provider.provideHover(doc, { line: 2, character: 2 });
+        const commentHover = await provider.provideHover(doc, { line: 2, character: 2 });
         assert.strictEqual(commentHover, null);
 
         // Hovering on data line (line 3) for character 5 (MID field, width 10)
-        const dataHover = provider.provideHover(doc, { line: 3, character: 5 });
+        const dataHover = await provider.provideHover(doc, { line: 3, character: 5 });
         assert.ok(dataHover);
         assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;MID&nbsp;**</span>'));
     });
 
-    it('resolves CONTACT optional card fields by data line count', () => {
+    it('resolves CONTACT optional card fields by data line count', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc([
             '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
@@ -1662,23 +1676,23 @@ describe('LsdynaFieldHoverProvider', () => {
             ''
         ].join('\n'));
 
-        const hover = provider.provideHover(doc, { line: 9, character: 2 });
+        const hover = await provider.provideHover(doc, { line: 9, character: 2 });
         assert.ok(hover);
         assert.ok(hover.contents[0].value.includes('**PSTIFF**'));
     });
 
-    it('adds a keyword option command link on keyword hovers with options', () => {
+    it('adds a keyword option command link on keyword hovers with options', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n');
 
-        const hover = provider.provideHover(doc, { line: 0, character: 3 });
+        const hover = await provider.provideHover(doc, { line: 0, character: 3 });
 
         assert.ok(hover);
         assert.ok(hover.contents[0].value.includes('command:extension.lsdynaChooseKeywordOptions'));
         assert.ok(hover.contents[0].value.includes('Choose keyword options'));
     });
 
-    it('returns custom hover actions for existing include files', () => {
+    it('returns custom hover actions for existing include files', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-test-'));
         const includeFile = path.join(tempRoot, 'sub.key');
         const mainFile = path.join(tempRoot, 'main.k');
@@ -1692,7 +1706,7 @@ describe('LsdynaFieldHoverProvider', () => {
             const provider = new LsdynaFieldHoverProvider();
 
             // Hovering over 'sub.key' on line 1, character 3
-            const hover = provider.provideHover(doc, { line: 1, character: 3 });
+            const hover = await provider.provideHover(doc, { line: 1, character: 3 });
 
             assert.ok(hover);
             assert.strictEqual(hover.contents[0].supportThemeIcons, true);
@@ -1707,17 +1721,17 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('falls back to default field hover for non-existent include files', () => {
+    it('falls back to default field hover for non-existent include files', async () => {
         const doc = fakeDoc('*INCLUDE\nmissing_file.key\n', '/project/main.k');
         doc.languageId = 'lsdyna';
         const provider = new LsdynaFieldHoverProvider();
 
-        const hover = provider.provideHover(doc, { line: 1, character: 3 });
+        const hover = await provider.provideHover(doc, { line: 1, character: 3 });
         assert.ok(hover);
         assert.ok(hover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;FILENAME&nbsp;**</span>'));
     });
 
-    it('appends manual links to keyword and field hovers when available', () => {
+    it('appends manual links to keyword and field hovers when available', async () => {
         const workspace = require('./vscode-mock').workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
@@ -1740,7 +1754,7 @@ describe('LsdynaFieldHoverProvider', () => {
             
             // Hovering over keyword line *CONTROL_TERMINATION
             const doc = fakeDoc('*CONTROL_TERMINATION\n');
-            const kwHover = provider.provideHover(doc, { line: 0, character: 3 });
+            const kwHover = await provider.provideHover(doc, { line: 0, character: 3 });
             assert.ok(kwHover);
             assert.strictEqual(kwHover.contents[0].supportThemeIcons, true);
             assert.ok(kwHover.contents[0].value.includes('command:extension.openManual'));
@@ -1749,7 +1763,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
             // Hovering over field line ENDENG under *CONTROL_TERMINATION
             const docField = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
-            const fieldHover = provider.provideHover(docField, { line: 1, character: 35 });
+            const fieldHover = await provider.provideHover(docField, { line: 1, character: 35 });
             assert.ok(fieldHover);
             assert.strictEqual(fieldHover.contents[0].supportThemeIcons, true);
             assert.ok(fieldHover.contents[0].value.includes('command:extension.openManual'));
@@ -1763,7 +1777,7 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('displays fallback hover with manual links for keywords missing in field_data.json but present in PDF bookmarks', () => {
+    it('displays fallback hover with manual links for keywords missing in field_data.json but present in PDF bookmarks', async () => {
         const workspace = require('./vscode-mock').workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
@@ -1787,7 +1801,7 @@ describe('LsdynaFieldHoverProvider', () => {
             
             // Hovering over keyword line *SOME_UNUSUAL_KEYWORD
             const doc = fakeDoc('*SOME_UNUSUAL_KEYWORD\n');
-            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             assert.strictEqual(hover.contents[0].supportThemeIcons, true);
             assert.ok(hover.contents[0].value.includes('**\\*SOME_UNUSUAL_KEYWORD**'));
@@ -1800,7 +1814,7 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('displays configure prompt hover on unrecognized keyword when manualsDir is not configured', () => {
+    it('displays configure prompt hover on unrecognized keyword when manualsDir is not configured', async () => {
         const workspace = require('./vscode-mock').workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
@@ -1814,7 +1828,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
-            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             assert.ok(hover.contents[0].value.includes(i18n.get('manualDirNotConfigured')));
             assert.ok(hover.contents[0].value.includes('command:extension.configureManualsDir'));
@@ -1824,7 +1838,7 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('returns null on unrecognized keyword when manualsDir is configured but no manuals found', () => {
+    it('returns null on unrecognized keyword when manualsDir is configured but no manuals found', async () => {
         const workspace = require('./vscode-mock').workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
@@ -1840,7 +1854,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
-            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
             assert.strictEqual(hover, null);
         } finally {
             workspace.getConfiguration = originalGetConfiguration;
@@ -1849,7 +1863,7 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('hides bottom manual section when manualsDir is configured but no manuals found for recognized keyword', () => {
+    it('hides bottom manual section when manualsDir is configured but no manuals found for recognized keyword', async () => {
         const workspace = require('./vscode-mock').workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
@@ -1865,7 +1879,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n');
-            const hover = provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             assert.ok(!hover.contents[0].value.includes('command:extension.openManual'));
             assert.ok(!hover.contents[0].value.includes('command:extension.configureManualsDir'));
@@ -1905,10 +1919,13 @@ describe('LS-DYNA keyword option interactions', () => {
 
         const lenses = provider.provideCodeLenses(doc);
 
-        assert.equal(lenses.length, 1);
-        assert.equal(lenses[0].command.command, 'extension.lsdynaChooseKeywordOptions');
-        assert.ok(lenses[0].command.title.includes('LS-DYNA options'));
-        assert.ok(lenses[0].command.title.includes('ID, MPP, A-G'));
+        assert.equal(lenses.length, 3);
+        const optionsLens = lenses.find(lens => lens.command.command === 'extension.lsdynaChooseKeywordOptions');
+        assert.ok(optionsLens);
+        assert.ok(optionsLens.command.title.includes('Options'));
+        assert.ok(optionsLens.command.title.includes('ID, MPP, A-G'));
+        assert.ok(lenses.some(lens => lens.command.command === 'extension.selectKeyword'));
+        assert.ok(lenses.some(lens => lens.command.command === 'extension.lsdynaFormatSelection'));
     });
 
     it('shows an information message when the current keyword has no options', async () => {
@@ -1936,7 +1953,7 @@ describe('LS-DYNA keyword option interactions', () => {
 
         assert.deepEqual(editor.lines, [
             '*MAT_001_TITLE',
-            '$#                                                                         title',
+            '$# title                                                                        ',
             '',
             '        1'
         ]);
@@ -1945,7 +1962,7 @@ describe('LS-DYNA keyword option interactions', () => {
     it('removes a strict managed TITLE comment with its empty skeleton line', async () => {
         const editor = makeEditableEditor([
             '*MAT_001_TITLE',
-            '$#                                                                         title',
+            '$# title                                                                        ',
             '',
             '        1'
         ], 0);
@@ -1962,7 +1979,7 @@ describe('LS-DYNA keyword option interactions', () => {
     it('removes orphan strict option comments that are not selected', async () => {
         const editor = makeEditableEditor([
             '*MAT_024',
-            '$#                                                                         title',
+            '$# title                                                                        ',
             '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
             '                                                                 1e+21          '
         ], 0);
@@ -1984,7 +2001,7 @@ describe('LS-DYNA keyword option interactions', () => {
         const editor = makeEditableEditor([
             '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
             '$#  ignore      bckt    lcbckt    ns2trk   inititr    parmax    unused    cparm8',
-            '$#     cid                                                               heading',
+            '$#     cidheading                                                               ',
             '',
             '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
             ''
@@ -2122,7 +2139,8 @@ describe('LS-DYNA keyword option interactions', () => {
         try {
             const provider = new LsdynaKeywordOptionsCodeLensProvider();
             const lenses = provider.provideCodeLenses(fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n'));
-            assert.ok(lenses[0].command.title.includes('LS-DYNA 选项'));
+            const optionsLens = lenses.find(lens => lens.command.command === 'extension.lsdynaChooseKeywordOptions');
+            assert.ok(optionsLens.command.title.includes('选项'));
 
             const editor = makeEditableEditor(['*NODE'], 0);
             let message = '';

@@ -271,7 +271,7 @@ describe('Phase 7 Features', () => {
                     { n: 'ELFORM', p: 20, w: 10 }
                 ];
                 const result = generateCommentLine(card);
-                const expected = '$#   SECID       MID    ELFORM';
+                const expected = '$#   secid       mid    elform';
                 assert.strictEqual(result, expected);
             });
 
@@ -294,10 +294,11 @@ describe('Phase 7 Features', () => {
 
             assert.strictEqual(items.length, 1);
             const item = items[0];
-            assert.strictEqual(item.label, '$#');
+            assert.strictEqual(item.label, item.insertText.trimEnd());
             assert.strictEqual(item.detail, '(LS-DYNA) 插入字段注释行');
-            assert.ok(item.insertText.includes('$#   SECID'));
-            assert.ok(item.documentation.value.includes('$#   SECID'));
+            assert.ok(item.label.includes('secid'));
+            assert.ok(item.insertText.includes('$#   secid'));
+            assert.ok(item.documentation.value.includes('$#   secid'));
             
             // The range should cover the entire line to wipe out trailing spaces and text
             assert.strictEqual(item.range.start.line, 1);
@@ -327,9 +328,10 @@ describe('Phase 7 Features', () => {
             const items = provider.provideCompletionItems(document, pos);
 
             assert.strictEqual(items.length, 1);
-            assert.strictEqual(items[0].label, '$#');
-            assert.ok(items[0].insertText.includes('PSTIFF'));
-            assert.ok(items[0].documentation.value.includes('PSTIFF'));
+            assert.strictEqual(items[0].label, items[0].insertText.trimEnd());
+            assert.ok(items[0].label.includes('pstiff'));
+            assert.ok(items[0].insertText.includes('pstiff'));
+            assert.ok(items[0].documentation.value.includes('pstiff'));
         });
     });
 

@@ -169,8 +169,8 @@ describe('createDiskSnapshotStore', () => {
 
     it('evicts least recently used entries when the disk cache exceeds the byte budget', async () => {
         const { createDiskSnapshotStore } = require('../../../src/core/cache/diskSnapshotStore');
+        const calibrationDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-calibration-'));
         const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-'));
-        const nowValues = [1000, 2000, 3000];
         const roots = [
             path.resolve('project', 'a.k'),
             path.resolve('project', 'b.k'),
@@ -183,11 +183,33 @@ describe('createDiskSnapshotStore', () => {
                 signatures.set(filePath, { mtimeMs: index + 1, size: (index + 1) * 100 });
             }
         }
+
+        const calibrationStore = createDiskSnapshotStore({
+            cacheDirectory: calibrationDirectory,
+            getFileSignature: async (filePath) => signatures.get(filePath),
+            now: () => 1000,
+        });
+
+        for (const snapshot of snapshots) {
+            await calibrationStore.persist({
+                snapshot,
+                trackedFiles: snapshot.files.map(filePath => ({ filePath, signature: signatures.get(filePath) })),
+            });
+        }
+
+        const sizes = calibrationStore.listEntries().map(entry => entry.byteSize);
+        assert.equal(sizes.length, 3);
+        const maxCacheBytes = Math.max(
+            sizes[0] + sizes[1],
+            sizes[0] + sizes[2],
+            sizes[1] + sizes[2]
+        );
+        const nowValues = [1000, 2000, 3000];
         const store = createDiskSnapshotStore({
             cacheDirectory,
             getFileSignature: async (filePath) => signatures.get(filePath),
             now: () => nowValues.shift() || 4000,
-            maxCacheBytes: 2500,
+            maxCacheBytes,
         });
 
         try {
@@ -198,9 +220,10 @@ describe('createDiskSnapshotStore', () => {
                 });
             }
 
-            assert.ok(store.getStats().totalBytes <= 2500);
+            assert.ok(store.getStats().totalBytes <= maxCacheBytes);
             assert.deepEqual(store.listEntries().map(entry => entry.rootFile), [roots[2], roots[1]]);
         } finally {
+            fs.rmSync(calibrationDirectory, { recursive: true, force: true });
             fs.rmSync(cacheDirectory, { recursive: true, force: true });
         }
     });
