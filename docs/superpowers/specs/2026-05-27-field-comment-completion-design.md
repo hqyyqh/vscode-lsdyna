@@ -77,7 +77,7 @@ function generateCommentLine(card) {
 ## 3. Verification Plan
 
 ### 3.1 Automated Unit Tests
-We will add new tests inside [test/client/providers/phase7_features.test.js](file:///d:/Project/vscode-lsdyna/test/client/providers/phase7_features.test.js) under the `LsdynaFieldCompletionProvider` suite:
+We will add new tests inside [test/client/providers/advanced_features.test.js](file:///d:/Project/vscode-lsdyna/test/client/providers/advanced_features.test.js) under the `LsdynaFieldCompletionProvider` suite:
 1. **Verification of trigger condition**: Verify that when text is `$` or `$#`, the provider does not return empty but provides a completion list containing the `$#` item.
 2. **Verification of aligned content**: Verify that `generateCommentLine(card)` produces exactly aligned comment lines for standard cards (e.g. 10-char fields like `*SECTION_SHELL` and 8-char fields like `*ELEMENT_SHELL`).
 3. **Verification of fallback**: Verify that if there are no card fields associated with the line, it returns empty.

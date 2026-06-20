@@ -53,6 +53,6 @@ const md = new vscode.MarkdownString(`### **${field.n}**${typeLabel}${helpText}\
 ## 3. Verification Plan
 
 ### 3.1 Automated Unit Tests
-We will update the hover tests in [test/client/providers/phase7_features.test.js](file:///d:/Project/vscode-lsdyna/test/client/providers/phase7_features.test.js) under the `LsdynaFieldHoverProvider` block to:
+We will update the hover tests in [test/client/providers/advanced_features.test.js](file:///d:/Project/vscode-lsdyna/test/client/providers/advanced_features.test.js) under the `LsdynaFieldHoverProvider` block to:
 1. Verify that `LsdynaFieldHoverProvider` output markdown text contains the updated structure layout (e.g. `### **MID**` instead of `### Field: **MID**`).
 2. Verify that the grid table contains columns as header and highlighted field name (e.g., matching the `**`MID`**` pattern).

@@ -13,13 +13,13 @@ Replace the extension marketplace icon and Activity Bar icon with the supplied D
 
 ## Main Extension Icon
 
-Use the supplied `主图标 (1)_看图王.png` artwork without redesigning its finite-element mesh, color gradient, or material-card motif. Normalize it onto a square transparent canvas at no less than 256 × 256 pixels, preserve its aspect ratio, center it optically, and retain enough edge clearance to avoid clipping in Marketplace and README presentation.
+Use the supplied `主图�?(1)_看图�?png` artwork without redesigning its finite-element mesh, color gradient, or material-card motif. Normalize it onto a square transparent canvas at no less than 256 × 256 pixels, preserve its aspect ratio, center it optically, and retain enough edge clearance to avoid clipping in Marketplace and README presentation.
 
 The material-card lettering is decorative at small sizes; correctness is judged by the recognizable mesh-and-card silhouette rather than text legibility at 32 pixels.
 
 ## Activity Bar Icon
 
-Use the supplied `侧边栏扩展图标_看图王.png` as the shape reference, not as the shipped file. Recreate its finite-element arch and small material-card motif as a centered, single-color SVG with a 24 × 24 view box. Simplify details that collapse at 24 pixels, use consistent stroke weight and filled nodes, and leave transparent negative space.
+Use the supplied `侧边栏扩展图标_看图�?png` as the shape reference, not as the shipped file. Recreate its finite-element arch and small material-card motif as a centered, single-color SVG with a 24 × 24 view box. Simplify details that collapse at 24 pixels, use consistent stroke weight and filled nodes, and leave transparent negative space.
 
 The shipped SVG must remain legible on light and dark themes and rely on VS Code's Activity Bar state styling instead of fixed brand colors.
 

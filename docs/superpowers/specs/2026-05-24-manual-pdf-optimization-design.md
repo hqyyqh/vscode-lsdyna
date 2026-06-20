@@ -29,7 +29,7 @@ This spec outlines changes to the VS Code LS-DYNA extension's PDF manuals integr
 ### 2.4 Hover Card Enhancements (`src/extension.js`)
 - Modify `appendManualLinks(md, kwName)`:
   - If `manualsDir` is empty/not configured, show a helper card with link to choose the folder:
-    `[⚙️ 设置手册文件夹 (Configure Folder)](command:extension.configureManualsDir)`
+    `[⚙️ 设置手册文件�?(Configure Folder)](command:extension.configureManualsDir)`
   - If manuals are configured and loaded, render bookmark links, and append an edit button:
     `[$(edit) 修改手册路径 (Change Path)](command:extension.configureManualsDir)`
 - In `provideHover`, enable hover triggers on keyword lines even if they have no pre-defined card fields (allowing the user to open manuals for unknown keywords).

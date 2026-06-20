@@ -16,7 +16,7 @@ We upgrade `alignLineText` to use a hybrid alignment approach:
 4. **Formatting**: Apply the determined values to the card layout, right-aligning each value within its field width, and padding with spaces as appropriate.
 
 ## 3. Test Cases (TDD)
-We will add three tests in `test/client/providers/phase7_features.test.js` under the `alignLineText` block:
+We will add three tests in `test/client/providers/advanced_features.test.js` under the `alignLineText` block:
 1. Formats empty line and returns a space-filled line matching card length.
 2. Preserves the physical columns and avoids shifting values leftward.
 3. Falls back to whitespace-splitting for unaligned lists.
