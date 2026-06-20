@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish to both marketplaces (dry-run when disabled)
+        description: Publish to Open VSX and create the VS Marketplace upload task
         required: true
         type: boolean
         default: false
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -90,22 +91,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Verify marketplace credentials
+      - name: Verify Open VSX credentials
         if: steps.metadata.outputs.publish == 'true'
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ -n "${VSCE_PAT}" ]] || { echo "Missing repository secret: VSCE_PAT" >&2; exit 1; }
           [[ -n "${OVSX_PAT}" ]] || { echo "Missing repository secret: OVSX_PAT" >&2; exit 1; }
-
-      - name: Publish to Visual Studio Marketplace
-        if: steps.metadata.outputs.publish == 'true'
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx --no-install vsce publish --packagePath "${{ steps.metadata.outputs.vsix }}" --skip-duplicate
 
       - name: Publish to Open VSX
         if: steps.metadata.outputs.publish == 'true'
@@ -123,3 +116,18 @@ jobs:
           generate_release_notes: true
           append_body: true
           body_path: .github/release-appendix.md
+
+      - name: Create VS Marketplace upload task
+        if: steps.metadata.outputs.publish == 'true'
+        uses: actions/github-script@v7
+        env:
+          RELEASE_VERSION: ${{ steps.metadata.outputs.version }}
+        with:
+          script: |
+            const coordinator = require('./.github/scripts/marketplace-release.cjs');
+            const issue = await coordinator.ensureMarketplaceUploadIssue({
+              github,
+              context,
+              version: process.env.RELEASE_VERSION
+            });
+            core.info(`VS Marketplace upload issue: #${issue.number}`);

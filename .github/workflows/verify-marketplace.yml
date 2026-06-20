@@ -1,0 +1,33 @@
+name: Verify Visual Studio Marketplace
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: verify-visual-studio-marketplace
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify pending Marketplace uploads
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify published versions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coordinator = require('./.github/scripts/marketplace-release.cjs');
+            const result = await coordinator.verifyMarketplaceUploadIssues({
+              github,
+              context
+            });
+            core.info(`Checked ${result.checked} issue(s); closed ${result.closed}.`);
