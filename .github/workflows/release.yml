@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish to Open VSX and create the VS Marketplace upload task
+        description: Publish to Visual Studio Marketplace and Open VSX
         required: true
         type: boolean
         default: false
@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   issues: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -28,6 +29,7 @@ jobs:
   release:
     name: Test, package, and publish
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -117,6 +119,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Sign in to Azure with GitHub OIDC
+        if: steps.metadata.outputs.publish == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish to Visual Studio Marketplace
+        if: steps.metadata.outputs.publish == 'true'
+        run: npx --no-install vsce publish --azure-credential --packagePath "${{ steps.metadata.outputs.vsix }}" --skip-duplicate
+
       - name: Verify Open VSX credentials
         if: steps.metadata.outputs.publish == 'true'
         env:
@@ -143,7 +157,7 @@ jobs:
           append_body: true
           body_path: .github/release-appendix.md
 
-      - name: Create VS Marketplace upload task
+      - name: Create marketplace release verification issue
         if: steps.metadata.outputs.publish == 'true'
         uses: actions/github-script@v9
         env:
@@ -151,9 +165,9 @@ jobs:
         with:
           script: |
             const coordinator = require('./.github/scripts/marketplace-release.cjs');
-            const issue = await coordinator.ensureMarketplaceUploadIssue({
+            const issue = await coordinator.ensureMarketplaceReleaseIssue({
               github,
               context,
               version: process.env.RELEASE_VERSION
             });
-            core.info(`VS Marketplace upload issue: #${issue.number}`);
+            core.info(`Marketplace release verification issue: #${issue.number}`);

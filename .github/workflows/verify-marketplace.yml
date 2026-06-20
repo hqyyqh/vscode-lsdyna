@@ -1,4 +1,4 @@
-name: Verify Visual Studio Marketplace
+name: Verify extension marketplaces
 
 on:
   schedule:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Verify pending Marketplace uploads
+    name: Verify pending marketplace releases
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,7 +26,7 @@ jobs:
         with:
           script: |
             const coordinator = require('./.github/scripts/marketplace-release.cjs');
-            const result = await coordinator.verifyMarketplaceUploadIssues({
+            const result = await coordinator.verifyMarketplaceReleaseIssues({
               github,
               context
             });

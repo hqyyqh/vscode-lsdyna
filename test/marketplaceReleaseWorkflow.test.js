@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 function loadCoordinator() {
     return require('../.github/scripts/marketplace-release.cjs');
@@ -11,27 +13,71 @@ function createContext() {
     };
 }
 
+function createStoreFetch({
+    visualStudioVersions = [],
+    openVsxVersions = [],
+    visualStudioResponse = { ok: true, status: 200, statusText: 'OK' },
+    openVsxResponse = { ok: true, status: 200, statusText: 'OK' }
+} = {}) {
+    const calls = [];
+    const fetchImpl = async (url, options = {}) => {
+        calls.push({ url, options });
+        if (url.includes('marketplace.visualstudio.com')) {
+            return {
+                ...visualStudioResponse,
+                json: async () => ({
+                    results: [{
+                        extensions: [{
+                            publisher: { publisherName: 'hqyyqh' },
+                            extensionName: 'dynasense',
+                            versions: visualStudioVersions.map(version => ({ version }))
+                        }]
+                    }]
+                })
+            };
+        }
+        if (url.includes('open-vsx.org')) {
+            return {
+                ...openVsxResponse,
+                json: async () => ({
+                    allVersions: Object.fromEntries([
+                        ['latest', 'https://open-vsx.org/api/hqyyqh/dynasense/latest'],
+                        ...openVsxVersions.map(version => [version, `https://open-vsx.org/api/hqyyqh/dynasense/${version}`])
+                    ])
+                })
+            };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+    };
+    return { calls, fetchImpl };
+}
+
 describe('marketplace release workflow coordinator', () => {
     it('extracts only a strict semantic version marker', () => {
         const { extractMarketplaceVersion } = loadCoordinator();
 
-        assert.equal(extractMarketplaceVersion('<!-- marketplace-version:3.0.6 -->'), '3.0.6');
+        assert.equal(extractMarketplaceVersion('<!-- marketplace-version:3.0.7 -->'), '3.0.7');
         assert.equal(extractMarketplaceVersion('<!-- marketplace-version:3.0 -->'), null);
         assert.equal(extractMarketplaceVersion('no marker'), null);
     });
 
-    it('reuses an existing upload issue for the same version', async () => {
-        const { ensureMarketplaceUploadIssue } = loadCoordinator();
+    it('uses a release verification label', () => {
+        const { RELEASE_LABEL } = loadCoordinator();
+        assert.equal(RELEASE_LABEL, 'marketplace-release');
+    });
+
+    it('reuses an existing verification issue for the same version', async () => {
+        const { ensureMarketplaceReleaseIssue } = loadCoordinator();
         const existing = {
             number: 42,
-            title: 'Upload DynaSense 3.0.6 to VS Marketplace',
-            body: '<!-- marketplace-version:3.0.6 -->'
+            title: 'Verify DynaSense 3.0.7 marketplace release',
+            body: '<!-- marketplace-version:3.0.7 -->'
         };
         let createCalls = 0;
         const github = {
             rest: {
                 issues: {
-                    getLabel: async () => ({ data: { name: 'marketplace-upload' } }),
+                    getLabel: async () => ({ data: { name: 'marketplace-release' } }),
                     createLabel: async () => assert.fail('label must not be recreated'),
                     listForRepo: async () => ({ data: [existing] }),
                     create: async () => { createCalls += 1; }
@@ -39,18 +85,18 @@ describe('marketplace release workflow coordinator', () => {
             }
         };
 
-        const result = await ensureMarketplaceUploadIssue({
+        const result = await ensureMarketplaceReleaseIssue({
             github,
             context: createContext(),
-            version: '3.0.6'
+            version: '3.0.7'
         });
 
         assert.equal(result.number, 42);
         assert.equal(createCalls, 0);
     });
 
-    it('creates the label and a complete upload issue when none exists', async () => {
-        const { ensureMarketplaceUploadIssue } = loadCoordinator();
+    it('creates a complete two-store verification issue when none exists', async () => {
+        const { ensureMarketplaceReleaseIssue } = loadCoordinator();
         let createdLabel;
         let createdIssue;
         const missingLabelError = Object.assign(new Error('missing'), { status: 404 });
@@ -68,67 +114,69 @@ describe('marketplace release workflow coordinator', () => {
             }
         };
 
-        const result = await ensureMarketplaceUploadIssue({
+        const result = await ensureMarketplaceReleaseIssue({
             github,
             context: createContext(),
-            version: '3.0.6'
+            version: '3.0.7'
         });
 
-        assert.equal(createdLabel.name, 'marketplace-upload');
-        assert.equal(createdIssue.title, 'Upload DynaSense 3.0.6 to VS Marketplace');
-        assert.deepEqual(createdIssue.labels, ['marketplace-upload']);
-        assert.ok(createdIssue.body.includes('releases/tag/v3.0.6'));
-        assert.ok(createdIssue.body.includes('https://marketplace.visualstudio.com/manage'));
-        assert.ok(createdIssue.body.includes('<!-- marketplace-version:3.0.6 -->'));
+        assert.equal(createdLabel.name, 'marketplace-release');
+        assert.equal(createdIssue.title, 'Verify DynaSense 3.0.7 marketplace release');
+        assert.deepEqual(createdIssue.labels, ['marketplace-release']);
+        assert.ok(createdIssue.body.includes('marketplace.visualstudio.com/items?itemName=hqyyqh.dynasense'));
+        assert.ok(createdIssue.body.includes('open-vsx.org/extension/hqyyqh/dynasense'));
+        assert.ok(createdIssue.body.includes('<!-- marketplace-version:3.0.7 -->'));
         assert.equal(result.number, 43);
     });
 
-    it('closes only upload issues whose version is publicly available', async () => {
-        const { verifyMarketplaceUploadIssues } = loadCoordinator();
+    it('reads version sets from both public store APIs', async () => {
+        const { fetchVisualStudioMarketplaceVersions, fetchOpenVsxVersions } = loadCoordinator();
+        const { calls, fetchImpl } = createStoreFetch({
+            visualStudioVersions: ['3.0.7', '3.0.6'],
+            openVsxVersions: ['3.0.7', '3.0.6']
+        });
+
+        const visualStudio = await fetchVisualStudioMarketplaceVersions(fetchImpl);
+        const openVsx = await fetchOpenVsxVersions(fetchImpl);
+
+        assert.deepEqual([...visualStudio], ['3.0.7', '3.0.6']);
+        assert.deepEqual([...openVsx], ['3.0.7', '3.0.6']);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0].options.method, 'POST');
+        assert.equal(calls[1].options.method, 'GET');
+    });
+
+    it('closes an issue only when both stores expose the target version', async () => {
+        const { verifyMarketplaceReleaseIssues } = loadCoordinator();
         const comments = [];
         const updates = [];
-        let fetchCalls = 0;
         const github = {
             rest: {
                 issues: {
                     listForRepo: async () => ({
-                        data: [
-                            { number: 10, body: '<!-- marketplace-version:3.0.6 -->' },
-                            { number: 11, body: '<!-- marketplace-version:3.0.7 -->' }
-                        ]
+                        data: [{ number: 10, body: '<!-- marketplace-version:3.0.7 -->' }]
                     }),
                     createComment: async args => { comments.push(args); },
                     update: async args => { updates.push(args); }
                 }
             }
         };
-        const fetchImpl = async () => {
-            fetchCalls += 1;
-            return {
-                ok: true,
-                json: async () => ({
-                    results: [{
-                        extensions: [{
-                            publisher: { publisherName: 'hqyyqh' },
-                            extensionName: 'dynasense',
-                            versions: [{ version: '3.0.6' }]
-                        }]
-                    }]
-                })
-            };
-        };
-
-        const result = await verifyMarketplaceUploadIssues({
-            github,
-            context: createContext(),
-            fetchImpl
+        const { fetchImpl } = createStoreFetch({
+            visualStudioVersions: ['3.0.7'],
+            openVsxVersions: ['3.0.7']
         });
 
-        assert.equal(fetchCalls, 1);
-        assert.deepEqual(result, { checked: 2, closed: 1 });
+        const result = await verifyMarketplaceReleaseIssues({ github, context: createContext(), fetchImpl });
+
+        assert.deepEqual(result, {
+            checked: 1,
+            closed: 1,
+            visualStudioMarketplaceVersions: 1,
+            openVsxVersions: 1
+        });
         assert.equal(comments.length, 1);
-        assert.equal(comments[0].issue_number, 10);
-        assert.ok(comments[0].body.includes('hqyyqh.dynasense'));
+        assert.ok(comments[0].body.includes('Visual Studio Marketplace'));
+        assert.ok(comments[0].body.includes('Open VSX'));
         assert.deepEqual(updates, [{
             owner: 'hqyyqh',
             repo: 'vscode-lsdyna',
@@ -138,8 +186,34 @@ describe('marketplace release workflow coordinator', () => {
         }]);
     });
 
-    it('skips the Gallery API when there are no open upload issues', async () => {
-        const { verifyMarketplaceUploadIssues } = loadCoordinator();
+    it('keeps the issue open when only one store exposes the target version', async () => {
+        const { verifyMarketplaceReleaseIssues } = loadCoordinator();
+        let writes = 0;
+        const github = {
+            rest: {
+                issues: {
+                    listForRepo: async () => ({
+                        data: [{ number: 10, body: '<!-- marketplace-version:3.0.7 -->' }]
+                    }),
+                    createComment: async () => { writes += 1; },
+                    update: async () => { writes += 1; }
+                }
+            }
+        };
+        const { fetchImpl } = createStoreFetch({
+            visualStudioVersions: ['3.0.7'],
+            openVsxVersions: ['3.0.6']
+        });
+
+        const result = await verifyMarketplaceReleaseIssues({ github, context: createContext(), fetchImpl });
+
+        assert.equal(result.checked, 1);
+        assert.equal(result.closed, 0);
+        assert.equal(writes, 0);
+    });
+
+    it('does not query either store when there are no open verification issues', async () => {
+        const { verifyMarketplaceReleaseIssues } = loadCoordinator();
         const github = {
             rest: {
                 issues: {
@@ -148,38 +222,66 @@ describe('marketplace release workflow coordinator', () => {
             }
         };
 
-        const result = await verifyMarketplaceUploadIssues({
+        const result = await verifyMarketplaceReleaseIssues({
             github,
             context: createContext(),
             fetchImpl: async () => assert.fail('fetch must not run')
         });
 
-        assert.deepEqual(result, { checked: 0, closed: 0 });
+        assert.deepEqual(result, {
+            checked: 0,
+            closed: 0,
+            visualStudioMarketplaceVersions: 0,
+            openVsxVersions: 0
+        });
     });
 
-    it('fails without changing issues when the Gallery API is unavailable', async () => {
-        const { verifyMarketplaceUploadIssues } = loadCoordinator();
+    it('fails without changing issues when a store API is unavailable', async () => {
+        const { verifyMarketplaceReleaseIssues } = loadCoordinator();
         let writes = 0;
         const github = {
             rest: {
                 issues: {
                     listForRepo: async () => ({
-                        data: [{ number: 10, body: '<!-- marketplace-version:3.0.6 -->' }]
+                        data: [{ number: 10, body: '<!-- marketplace-version:3.0.7 -->' }]
                     }),
                     createComment: async () => { writes += 1; },
                     update: async () => { writes += 1; }
                 }
             }
         };
+        const { fetchImpl } = createStoreFetch({
+            visualStudioVersions: ['3.0.7'],
+            openVsxResponse: { ok: false, status: 503, statusText: 'Unavailable' }
+        });
 
         await assert.rejects(
-            verifyMarketplaceUploadIssues({
-                github,
-                context: createContext(),
-                fetchImpl: async () => ({ ok: false, status: 503, statusText: 'Unavailable' })
-            }),
-            /Marketplace Gallery API request failed: 503 Unavailable/
+            verifyMarketplaceReleaseIssues({ github, context: createContext(), fetchImpl }),
+            /Open VSX API request failed: 503 Unavailable/
         );
         assert.equal(writes, 0);
+    });
+
+    it('configures the release workflow for Entra publishing and two-store verification', () => {
+        const releaseWorkflow = fs.readFileSync(
+            path.resolve(__dirname, '../.github/workflows/release.yml'),
+            'utf8'
+        );
+        const verifyWorkflow = fs.readFileSync(
+            path.resolve(__dirname, '../.github/workflows/verify-marketplace.yml'),
+            'utf8'
+        );
+
+        assert.match(releaseWorkflow, /id-token: write/);
+        assert.match(releaseWorkflow, /environment: release/);
+        assert.match(releaseWorkflow, /uses: azure\/login@v3/);
+        assert.match(releaseWorkflow, /vsce publish --azure-credential/);
+        assert.match(releaseWorkflow, /ensureMarketplaceReleaseIssue/);
+        assert.doesNotMatch(releaseWorkflow, /Create VS Marketplace upload task/);
+        assert.match(verifyWorkflow, /verifyMarketplaceReleaseIssues/);
+        assert.equal(
+            fs.existsSync(path.resolve(__dirname, '../.github/workflows/entra-bootstrap.yml')),
+            false
+        );
     });
 });
