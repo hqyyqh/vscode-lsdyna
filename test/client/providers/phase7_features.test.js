@@ -1077,8 +1077,12 @@ describe('Phase 7 Features', () => {
             });
             
             let infoMsg = '';
-            vscodeMock.window.showInformationMessage = (msg) => {
+            vscodeMock.window.showInformationMessage = (msg, ...items) => {
                 infoMsg = msg;
+                if (items.length > 0) {
+                    return Promise.resolve(items[0]);
+                }
+                return Promise.resolve();
             };
 
             const extension = require('../../../src/extension');
@@ -1128,6 +1132,13 @@ describe('Phase 7 Features', () => {
             vscodeMock.window.showErrorMessage = (msg) => {
                 errorMsg = msg;
             };
+            const originalShowInformationMessage = vscodeMock.window.showInformationMessage;
+            vscodeMock.window.showInformationMessage = (msg, ...items) => {
+                if (items.length > 0) {
+                    return Promise.resolve(items[0]);
+                }
+                return Promise.resolve();
+            };
 
             const extension = require('../../../src/extension');
             
@@ -1149,12 +1160,12 @@ describe('Phase 7 Features', () => {
 
             assert.ok(errorMsg.includes('Permission Denied'));
 
+            // Restore mocks
             vscodeMock.window.showOpenDialog = originalShowOpenDialog;
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             vscodeMock.window.showErrorMessage = originalShowErrorMessage;
+            vscodeMock.window.showInformationMessage = originalShowInformationMessage;
             vscodeMock.commands.registerCommand = originalRegisterCommand;
         });
     });
 });
-
-

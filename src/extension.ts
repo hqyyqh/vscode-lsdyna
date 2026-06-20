@@ -3080,6 +3080,20 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.configureManualsDir', async () => {
+            const hasPack = i18n.get('hasManualPackReady');
+            const btnYes = i18n.get('btnYesSelectFolder');
+            const btnDownload = i18n.get('btnDownloadPack');
+            const btnCancel = i18n.get('btnCancel');
+
+            const choice = await vscode.window.showInformationMessage(hasPack, btnYes, btnDownload, btnCancel);
+            
+            if (choice === btnDownload) {
+                vscode.env.openExternal(vscode.Uri.parse('https://github.com/hqyyqh/vscode-lsdyna/releases'));
+                return;
+            } else if (choice !== btnYes) {
+                return;
+            }
+
             const folders = await vscode.window.showOpenDialog({
                 canSelectFolders: true,
                 canSelectFiles: false,
