@@ -38,6 +38,7 @@
         "@types/vscode": "^1.50.0",
         "@vscode/vsce": "^3.9.2",
         "mocha": "^10.0.0",
+        "ovsx": "^1.0.1",
         "typescript": "^6.0.3"
     },
     "contributes": {
@@ -436,21 +437,6 @@
                 }
             ]
         }
-    },
-    "release": {
-        "branches": "master",
-        "verifyConditions": [
-            "@semantic-release/github"
-        ],
-        "publish": [
-            "@semantic-release/github"
-        ],
-        "success": [
-            "@semantic-release/github"
-        ],
-        "fail": [
-            "@semantic-release/github"
-        ]
     },
     "dependencies": {
         "vscode-languageclient": "^7.0.0",

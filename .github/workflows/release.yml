@@ -1,65 +1,125 @@
-name: Auto Release on Version Bump
+name: Release extension
 
 on:
   push:
-    branches:
-      - master
-      - dev
-    paths:
-      - "package.json"
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to both marketplaces (dry-run when disabled)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-release:
+  release:
+    name: Test, package, and publish
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-
-      - name: Check if version changed
-        id: check
-        run: |
-          CURRENT_VERSION=$(jq -r .version package.json)
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            PREV_VERSION=$(git show HEAD~1:package.json | jq -r .version 2>/dev/null || echo "null")
-          else
-            PREV_VERSION="null"
-          fi
-          if [ "$CURRENT_VERSION" != "$PREV_VERSION" ] && [ "$CURRENT_VERSION" != "null" ]; then
-            echo "Version bumped from $PREV_VERSION to $CURRENT_VERSION. Triggering release..."
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "Version not changed. Skipping release."
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
+          fetch-depth: 0
 
       - name: Setup Node.js
-        if: steps.check.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: 20
+          cache: npm
 
-      - name: Install dependencies
-        if: steps.check.outputs.changed == 'true'
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Package Extension
-        if: steps.check.outputs.changed == 'true'
-        run: npm run package
+      - name: Validate release metadata
+        id: metadata
+        env:
+          MANUAL_PUBLISH: ${{ inputs.publish }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          vsix="dynasense-${version}.vsix"
+          publish=false
 
-      - name: Create Release
-        if: steps.check.outputs.changed == 'true'
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "${tag_version}" != "${version}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}." >&2
+              exit 1
+            fi
+            git fetch --no-tags origin master
+            if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
+              echo "Tagged commit must be contained in origin/master." >&2
+              exit 1
+            fi
+            publish=true
+          elif [[ "${MANUAL_PUBLISH}" == "true" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
+              echo "Manual publishing is allowed only from master." >&2
+              exit 1
+            fi
+            publish=true
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "vsix=${vsix}" >> "${GITHUB_OUTPUT}"
+          echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev
+
+      - name: Package extension
+        run: npx --no-install vsce package --out "${{ steps.metadata.outputs.vsix }}"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynasense-${{ steps.metadata.outputs.version }}
+          path: ${{ steps.metadata.outputs.vsix }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify marketplace credentials
+        if: steps.metadata.outputs.publish == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${VSCE_PAT}" ]] || { echo "Missing repository secret: VSCE_PAT" >&2; exit 1; }
+          [[ -n "${OVSX_PAT}" ]] || { echo "Missing repository secret: OVSX_PAT" >&2; exit 1; }
+
+      - name: Publish to Visual Studio Marketplace
+        if: steps.metadata.outputs.publish == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --no-install vsce publish --packagePath "${{ steps.metadata.outputs.vsix }}" --skip-duplicate
+
+      - name: Publish to Open VSX
+        if: steps.metadata.outputs.publish == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --no-install ovsx --pat "$OVSX_PAT" publish "${{ steps.metadata.outputs.vsix }}" --skip-duplicate
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.check.outputs.version }}
-          name: Release v${{ steps.check.outputs.version }}
-          files: "*.vsix"
+          tag_name: ${{ github.ref_name }}
+          name: DynaSense ${{ steps.metadata.outputs.version }}
+          files: ${{ steps.metadata.outputs.vsix }}
           generate_release_notes: true
           append_body: true
           body_path: .github/release-appendix.md
