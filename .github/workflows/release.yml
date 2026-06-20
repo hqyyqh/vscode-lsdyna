@@ -2,6 +2,10 @@ name: Release extension
 
 on:
   push:
+    branches:
+      - master
+    paths:
+      - "package.json"
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -49,30 +53,52 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           vsix="dynasense-${version}.vsix"
           publish=false
+          tag_name=""
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            tag_version="${GITHUB_REF_NAME#v}"
-            if [[ "${tag_version}" != "${version}" ]]; then
-              echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}." >&2
-              exit 1
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              tag_version="${GITHUB_REF_NAME#v}"
+              if [[ "${tag_version}" != "${version}" ]]; then
+                echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}." >&2
+                exit 1
+              fi
+              git fetch --no-tags origin master
+              if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
+                echo "Tagged commit must be contained in origin/master." >&2
+                exit 1
+              fi
+              publish=true
+              tag_name="${GITHUB_REF_NAME}"
+            elif [[ "${GITHUB_REF_NAME}" == "master" ]]; then
+              # Auto-tag logic for push to master with package.json changes
+              git fetch origin master~1:master~1 || true
+              PREV_VERSION=$(git show HEAD^:package.json | grep '"version"' | head -1 | awk -F'"' '{print $4}' || echo "")
+              if [[ -n "${PREV_VERSION}" ]] && [[ "${PREV_VERSION}" != "${version}" ]]; then
+                echo "Version bumped from ${PREV_VERSION} to ${version}. Auto-tagging..."
+                git config user.name "github-actions[bot]"
+                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                git tag "v${version}"
+                git push origin "v${version}"
+                publish=true
+                tag_name="v${version}"
+              else
+                echo "Version not bumped or could not be determined. Skipping release."
+                publish=false
+              fi
             fi
-            git fetch --no-tags origin master
-            if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
-              echo "Tagged commit must be contained in origin/master." >&2
-              exit 1
-            fi
-            publish=true
           elif [[ "${MANUAL_PUBLISH}" == "true" ]]; then
             if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
               echo "Manual publishing is allowed only from master." >&2
               exit 1
             fi
             publish=true
+            tag_name="v${version}"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "vsix=${vsix}" >> "${GITHUB_OUTPUT}"
           echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
 
       - name: Run tests
         run: npm test
@@ -107,10 +133,10 @@ jobs:
         run: npx --no-install ovsx --pat "$OVSX_PAT" publish "${{ steps.metadata.outputs.vsix }}" --skip-duplicate
 
       - name: Create GitHub Release
-        if: github.event_name == 'push'
+        if: steps.metadata.outputs.publish == 'true' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.metadata.outputs.tag_name }}
           name: DynaSense ${{ steps.metadata.outputs.version }}
           files: ${{ steps.metadata.outputs.vsix }}
           generate_release_notes: true
