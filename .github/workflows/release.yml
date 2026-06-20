@@ -84,7 +84,7 @@ jobs:
         run: npx --no-install vsce package --out "${{ steps.metadata.outputs.vsix }}"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dynasense-${{ steps.metadata.outputs.version }}
           path: ${{ steps.metadata.outputs.vsix }}
