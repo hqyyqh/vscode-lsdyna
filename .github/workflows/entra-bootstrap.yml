@@ -1,0 +1,37 @@
+name: Bootstrap Marketplace Entra identity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  resolve-identity:
+    name: Resolve Azure DevOps identity
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Azure DevOps identity ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          profile_id="$(az rest \
+            --method get \
+            --url https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query id \
+            --output tsv)"
+          if [[ -z "${profile_id}" || "${profile_id}" == "null" ]]; then
+            echo "Azure DevOps did not return an identity ID." >&2
+            exit 1
+          fi
+          echo "::notice title=Azure DevOps identity ID::${profile_id}"
