@@ -1230,7 +1230,7 @@ function appendManualLinks(md, kwName) {
     if (notConfigured) {
         md.appendMarkdown('\n\n---');
         md.appendMarkdown(`\n\n${i18n.get('manualDirNotConfigured')}`);
-        md.appendMarkdown(`\n\n[${i18n.get('configureFolder')}](command:extension.configureManualsDir)`);
+        md.appendMarkdown(`\n\n[${i18n.get('configureFolder')}](command:extension.configureManualsDir) &nbsp;|&nbsp; [${i18n.get('howToConfigureManual')}](https://github.com/hqyyqh/vscode-lsdyna#%E9%99%84%E5%8A%A0%E5%8A%9F%E8%83%BDpdf-%E6%89%8B%E5%86%8C%E9%9B%86%E6%88%90%E9%85%8D%E7%BD%AE%E6%8C%87%E5%8D%97)`);
     } else if (manuals.length > 0) {
         md.appendMarkdown('\n\n---');
         const links = [];
