@@ -27,6 +27,7 @@
     ],
     "scripts": {
         "compile": "tsc -p .",
+        "check:contracts": "node scripts/validate-project-contracts.cjs",
         "watch": "tsc -watch -p .",
         "test": "npm run compile && mocha --require test/register-out.js test/**/*.test.js",
         "package": "npm run compile && vsce package",
