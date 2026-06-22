@@ -934,7 +934,7 @@ describe('activate', () => {
     it('registers a workspace watcher for LS-DYNA project files', () => {
         const context = { subscriptions: [] };
         const disposable = { dispose() {} };
-        let watcherGlob;
+        const watcherGlobs = [];
         const originalCreateFileSystemWatcher = vscodeMock.workspace.createFileSystemWatcher;
         const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
         const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
@@ -944,7 +944,7 @@ describe('activate', () => {
         const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
 
         vscodeMock.workspace.createFileSystemWatcher = (glob) => {
-            watcherGlob = glob;
+            watcherGlobs.push(glob);
             return {
                 onDidChange: () => disposable,
                 onDidCreate: () => disposable,
@@ -961,7 +961,7 @@ describe('activate', () => {
 
         try {
             extensionModule.activate(context);
-            assert.equal(watcherGlob, '**/*.{k,key,dyna}');
+            assert.deepEqual(watcherGlobs, ['**/*.asc', '**/*.dyna', '**/*.k', '**/*.key']);
         } finally {
             vscodeMock.workspace.createFileSystemWatcher = originalCreateFileSystemWatcher;
             vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;

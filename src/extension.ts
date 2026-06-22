@@ -20,6 +20,7 @@ const keywordSchema = require('./core/keywordSchema');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
+const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
@@ -2772,6 +2773,7 @@ function activate(context) {
 
     let includeTreeView;
     let keywordTreeView;
+    let workspaceWatcherManager;
 
     manualIndexer.initialize(context).catch(err => {
         console.error('Failed to initialize manual indexer:', err);
@@ -2831,6 +2833,9 @@ function activate(context) {
             }
             if (e.affectsConfiguration('lsdyna.additionalExtensions')) {
                 associateLsdynaLanguages();
+                workspaceWatcherManager?.rebuild(
+                    getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
+                );
             }
         })
     );
@@ -2914,6 +2919,15 @@ function activate(context) {
             }
         },
     });
+    workspaceWatcherManager = createWorkspaceWatcherManager({
+        createWatcher: glob => vscode.workspace.createFileSystemWatcher(glob),
+        onFileEvent: uri => invalidateChangedProjectRoots(uri),
+        logWarning: message => logDebug(message),
+    });
+    workspaceWatcherManager.rebuild(
+        getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
+    );
+    context.subscriptions.push(workspaceWatcherManager);
     const includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -2997,12 +3011,6 @@ function activate(context) {
             }
         })
     );
-    const workspaceWatcher = vscode.workspace.createFileSystemWatcher('**/*.{k,key,dyna}');
-    context.subscriptions.push(workspaceWatcher);
-    context.subscriptions.push(workspaceWatcher.onDidChange(uri => invalidateChangedProjectRoots(uri)));
-    context.subscriptions.push(workspaceWatcher.onDidCreate(uri => invalidateChangedProjectRoots(uri)));
-    context.subscriptions.push(workspaceWatcher.onDidDelete(uri => invalidateChangedProjectRoots(uri)));
-
     const initialUri = getActiveUri();
     logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);
     if (initialUri) {
