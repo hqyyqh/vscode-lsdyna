@@ -13,6 +13,7 @@
  */
 
 const fs = require('fs');
+const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
 
 /**
  * The default batch yield interval for stream scanning to prevent blocking the event loop.
@@ -40,10 +41,9 @@ function collectBlocksFromLineReader(lineCount, getLine) {
     let currentBlock = null;
 
     for (let i = 0; i < lineCount; i++) {
-        const line = getLine(i);
-        const trimmed = line.trim();
-        if (line.startsWith('*')) {
-            const keyword = trimmed.slice(1).trim();
+        const classification = classifyKeywordLine(getLine(i));
+        if (classification.isKeyword) {
+            const keyword = classification.normalizedKeyword.slice(1);
             if (keyword) {
                 if (currentBlock) {
                     currentBlock.endLine = i - 1;
@@ -87,9 +87,9 @@ async function collectBlocksFromFile(filePath) {
                 const lineStart = offset;
                 const lineEnd = nextNewLine;
 
-                if (combined[lineStart] === 0x2A) {
+                if (findKeywordAsterisk(combined, lineStart, lineEnd) !== -1) {
                     const lineStr = combined.toString('utf8', lineStart, lineEnd);
-                    const keyword = lineStr.trim().slice(1).trim();
+                    const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
                     if (keyword) {
                         if (currentBlock) {
                             currentBlock.endLine = lineIndex - 1;
@@ -114,9 +114,9 @@ async function collectBlocksFromFile(filePath) {
         }
 
         if (remainder.length > 0) {
-            if (remainder[0] === 0x2A) {
+            if (findKeywordAsterisk(remainder) !== -1) {
                 const lineStr = remainder.toString('utf8');
-                const keyword = lineStr.trim().slice(1).trim();
+                const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
                 if (keyword) {
                     if (currentBlock) {
                         currentBlock.endLine = lineIndex - 1;

@@ -6,6 +6,16 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../helpers');
 
 describe('keyword aliases and default valid keywords', () => {
+    it('warns for lowercase keywords even when they are indented', () => {
+        const keywordValidator = require('../../src/core/parser/keywordValidator');
+        keywordValidator.init(new Set(['NODE']));
+
+        const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(fakeDoc(' \t*node\n'));
+
+        assert.equal(diagnostics.length, 1);
+        assert.match(diagnostics[0].message, /lowercase/i);
+    });
+
     it('treats SET_PART and SET_PART_LIST as aliases in both directions', () => {
         const { getAliases } = require('../../src/core/keywordUtils');
 

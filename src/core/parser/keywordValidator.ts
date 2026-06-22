@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const i18n = require('../i18n');
 const { getAliases } = require('../keywordUtils');
 const keywordSchema = require('../keywordSchema');
+const { classifyKeywordLine } = require('./keywordLine');
 
 let validKeywords = new Set();
 let isInitialized = false;
@@ -58,11 +59,10 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
     const diagnostics = [];
     for (let i = 0; i < document.lineCount; i++) {
         const line = document.lineAt(i);
-        const text = line.text.trim();
+        const classification = classifyKeywordLine(line.text);
+        if (!classification.isKeyword) continue;
         
-        if (!text.startsWith('*')) continue;
-        
-        if (text.startsWith('**')) {
+        if (classification.rawKeyword.startsWith('**')) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
                 i18n.get('invalidKeywordFormat'),
@@ -74,13 +74,13 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         }
         
         // Extract the keyword part (up to the first space or comma)
-        const fullKeywordMatch = text.match(/^\*([A-Za-z0-9_+\-]+)/);
+        const fullKeywordMatch = classification.rawKeyword.match(/^\*([A-Za-z0-9_+\-]+)$/);
         if (!fullKeywordMatch) continue;
         
         const rawKeyword = fullKeywordMatch[1];
         
         // Check for lowercase letters
-        if (/[a-z]/.test(rawKeyword)) {
+        if (classification.hasLowercase) {
             const diagnostic = new vscode.Diagnostic(
                 new vscode.Range(i, 0, i, line.text.length),
                 i18n.get('keywordLowercase', rawKeyword),

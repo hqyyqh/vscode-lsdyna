@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
@@ -325,11 +326,12 @@ function flushPathEntry(state) {
  */
 function processIncludeDirectiveLine(state, line, lineIndex) {
     const trimmed = line.trim();
+    const classification = classifyKeywordLine(line);
 
-    if (line.startsWith('*')) {
+    if (classification.isKeyword) {
         flushIncludeEntry(state);
         flushPathEntry(state);
-        state.keyword = trimmed;
+        state.keyword = classification.normalizedKeyword;
         state.cardCount = 0;
         return;
     }
@@ -424,9 +426,7 @@ const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1 MB
  * @returns {IncludeResult} Include entries and search paths.
  */
 function collectIncludeDirectivesFromBuffer(buffer, basePath) {
-    // Quick scan: if the buffer doesn't contain '*INCLUDE' at all, skip parsing entirely
-    const INCLUDE_MARKER = Buffer.from('*INCLUDE');
-    if (buffer.indexOf(INCLUDE_MARKER) === -1) {
+    if (!bufferContainsIncludeKeyword(buffer)) {
         return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
     }
 
@@ -438,7 +438,7 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
         const nextNewLine = buffer.indexOf(0x0A, offset);
         const lineEnd = nextNewLine === -1 ? buffer.length : nextNewLine;
 
-        const isKeywordLine = buffer[offset] === 0x2A;
+        const isKeywordLine = findKeywordAsterisk(buffer, offset, lineEnd) !== -1;
         const inIncludeContext = !!state.pendingInclude ||
             (state.keyword && state.keyword.startsWith('*INCLUDE'));
 
@@ -507,7 +507,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
                     const lineStart = offset;
                     const lineEnd = nextNewLine;
 
-                    const isKeywordLine = combined[lineStart] === 0x2A;
+                    const isKeywordLine = findKeywordAsterisk(combined, lineStart, lineEnd) !== -1;
                     const inIncludeContext = !!state.pendingInclude ||
                         (state.keyword && state.keyword.startsWith('*INCLUDE'));
 
@@ -532,7 +532,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
             }
 
             if (remainder.length > 0 && (maxLines <= 0 || linesProcessed < maxLines)) {
-                const isKeywordLine = remainder[0] === 0x2A;
+                const isKeywordLine = findKeywordAsterisk(remainder) !== -1;
                 const inIncludeContext = !!state.pendingInclude ||
                     (state.keyword && state.keyword.startsWith('*INCLUDE'));
 
@@ -575,7 +575,6 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
  * @returns {Promise<boolean>} True if the file likely contains an *INCLUDE directive.
  */
 async function streamContainsIncludeKeyword(filePath) {
-    const INCLUDE_BYTES = Buffer.from('*INCLUDE');
     const stream = fs.createReadStream(filePath);
     let remainder = Buffer.alloc(0);
 
@@ -583,26 +582,43 @@ async function streamContainsIncludeKeyword(filePath) {
         for await (const chunk of stream) {
             const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
             
-            // Search for *INCLUDE pattern in raw bytes
-            if (combined.indexOf(INCLUDE_BYTES) !== -1) {
-                return true;
+            let offset = 0;
+            let nextNewLine = -1;
+            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
+                if (isIncludeKeywordBufferLine(combined, offset, nextNewLine)) return true;
+                offset = nextNewLine + 1;
             }
-
-            // Keep the last few bytes as remainder to handle pattern spanning chunks
-            const keepBytes = INCLUDE_BYTES.length - 1;
-            remainder = combined.length > keepBytes 
-                ? combined.subarray(combined.length - keepBytes)
-                : combined;
+            remainder = combined.subarray(offset);
         }
 
-        // Check remainder
-        if (remainder.length > 0 && remainder.indexOf(INCLUDE_BYTES) !== -1) {
-            return true;
-        }
+        if (remainder.length > 0 && isIncludeKeywordBufferLine(remainder, 0, remainder.length)) return true;
     } finally {
         stream.destroy();
     }
 
+    return false;
+}
+
+function isIncludeKeywordBufferLine(buffer, start, end) {
+    const asterisk = findKeywordAsterisk(buffer, start, end);
+    if (asterisk === -1 || asterisk + 8 > end) return false;
+    const marker = '*INCLUDE';
+    for (let index = 0; index < marker.length; index++) {
+        let byte = buffer[asterisk + index];
+        if (byte >= 0x61 && byte <= 0x7a) byte -= 0x20;
+        if (byte !== marker.charCodeAt(index)) return false;
+    }
+    return true;
+}
+
+function bufferContainsIncludeKeyword(buffer) {
+    let offset = 0;
+    while (offset < buffer.length) {
+        const nextNewLine = buffer.indexOf(0x0A, offset);
+        const lineEnd = nextNewLine === -1 ? buffer.length : nextNewLine;
+        if (isIncludeKeywordBufferLine(buffer, offset, lineEnd)) return true;
+        offset = lineEnd + 1;
+    }
     return false;
 }
 

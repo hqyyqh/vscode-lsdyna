@@ -8,6 +8,22 @@ const path = require('path');
 const { collectKeywordsFromFile } = require('../../../src/core/parser/keywordScanner');
 
 describe('keywordScanner', () => {
+    it('normalizes indented mixed-case keyword usages', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-case-'));
+        const filePath = path.join(tempDir, 'mixed-case.k');
+        fs.writeFileSync(filePath, ' \t*Keyword\ndata\n\t*node\n', 'utf8');
+
+        const keywords = await collectKeywordsFromFile(filePath);
+
+        assert.deepStrictEqual(
+            keywords.map(({ keyword, lineIndex }) => ({ keyword, lineIndex })),
+            [
+                { keyword: 'KEYWORD', lineIndex: 0 },
+                { keyword: 'NODE', lineIndex: 2 },
+            ]
+        );
+    });
+
     it('streams keyword usages with file path and line indexes', async () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-scanner-'));
         const filePath = path.join(tempDir, 'keywords.k');

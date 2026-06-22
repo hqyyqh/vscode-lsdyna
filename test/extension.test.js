@@ -132,6 +132,15 @@ function makeEditableEditor(lines, activeLine = 0) {
 // ---------------------------------------------------------------------------
 
 describe('findParameterDefinitions', () => {
+    it('handles indented mixed-case parameter keywords', () => {
+        const doc = fakeDoc('  *parameter\nR  tEnd  5.0\n\t*parameter_expression\nR  dtPlot  tEnd/100.0\n');
+        const defs = findParameterDefinitions(doc);
+
+        assert.ok(defs.has('TEND'));
+        assert.ok(defs.has('DTPLOT'));
+        assert.equal(findParameterReferences(doc).filter(ref => ref.name === 'TEND').length, 1);
+    });
+
     it('finds basic *PARAMETER definitions', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\nI  count  10\n');
         const defs = findParameterDefinitions(doc);
@@ -424,6 +433,10 @@ describe('searchFileFromPaths', () => {
 // ---------------------------------------------------------------------------
 
 describe('findNextKeyword', () => {
+    it('finds indented mixed-case keyword lines', () => {
+        assert.equal(findNextKeyword(['*A', 'data', ' \t*b'], 0), 2);
+    });
+
     it('finds the next * line', () => {
         assert.equal(findNextKeyword(['*A', 'data', '*B', 'data'], 0), 2);
     });
@@ -438,6 +451,10 @@ describe('findNextKeyword', () => {
 });
 
 describe('findPreviousKeyword', () => {
+    it('finds indented mixed-case keyword lines', () => {
+        assert.equal(findPreviousKeyword([' \t*a', 'data', '*B'], 2), 0);
+    });
+
     it('finds the previous * line', () => {
         assert.equal(findPreviousKeyword(['*A', 'data', '*B', 'data'], 3), 2);
     });
@@ -448,6 +465,10 @@ describe('findPreviousKeyword', () => {
 });
 
 describe('startLineOfCurrentKeyword', () => {
+    it('finds an indented mixed-case enclosing keyword', () => {
+        assert.equal(startLineOfCurrentKeyword([' \t*node', 'data'], 1), 0);
+    });
+
     it('returns own line when on a keyword', () => {
         assert.equal(startLineOfCurrentKeyword(['*A', 'data'], 0), 0);
     });
@@ -462,6 +483,10 @@ describe('startLineOfCurrentKeyword', () => {
 });
 
 describe('endLineOfCurrentKeyword', () => {
+    it('ends before an indented mixed-case keyword', () => {
+        assert.equal(endLineOfCurrentKeyword(['*A', 'data', ' \t*node'], 0), 1);
+    });
+
     it('ends one line before the next keyword', () => {
         assert.equal(endLineOfCurrentKeyword(['*A', 'data', '*B'], 0), 1);
     });
@@ -476,6 +501,10 @@ describe('endLineOfCurrentKeyword', () => {
 // ---------------------------------------------------------------------------
 
 describe('getFilenameFromKeyword', () => {
+    it('extracts filenames from indented mixed-case include keywords', () => {
+        assert.equal(getFilenameFromKeyword([' \t*Include', 'geometry.k'], 1), 'geometry.k');
+    });
+
     it('extracts filename from *INCLUDE', () => {
         const lines = ['*INCLUDE', 'geometry.k'];
         assert.equal(getFilenameFromKeyword(lines, 1), 'geometry.k');

@@ -8,6 +8,16 @@ const path = require('path');
 const { collectBlocksFromLineReader, collectBlocksFromFile } = require('../../../src/core/parser/blockScanner');
 
 describe('blockScanner', () => {
+    it('splits blocks on indented mixed-case keywords', () => {
+        const lines = [' \t*Keyword', 'data', '\t*node', '1,2,3'];
+        const blocks = collectBlocksFromLineReader(lines.length, i => lines[i]);
+
+        assert.deepStrictEqual(blocks, [
+            { keyword: 'KEYWORD', startLine: 0, endLine: 1 },
+            { keyword: 'NODE', startLine: 2, endLine: 3 },
+        ]);
+    });
+
     it('collects keyword blocks with correct start and end lines from line reader', () => {
         const lines = [
             '*KEYWORD',

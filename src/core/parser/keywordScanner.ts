@@ -12,6 +12,7 @@
  */
 
 const fs = require('fs');
+const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
@@ -41,9 +42,9 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
 function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
     const keywords = [];
     for (let i = 0; i < lineCount; i++) {
-        const trimmed = getLine(i).trim();
-        if (!trimmed.startsWith('*')) continue;
-        const keyword = trimmed.slice(1);
+        const classification = classifyKeywordLine(getLine(i));
+        if (!classification.isKeyword) continue;
+        const keyword = classification.normalizedKeyword.slice(1);
         if (!keyword) continue;
         keywords.push({ keyword, filePath, lineIndex: i });
     }
@@ -86,19 +87,9 @@ async function collectKeywordsFromFile(filePath, options: LargeFileScanOptions =
                     const lineStart = offset;
                     const lineEnd = nextNewLine;
 
-                    let firstNonSpaceIdx = lineStart;
-                    while (firstNonSpaceIdx < lineEnd) {
-                        const byte = combined[firstNonSpaceIdx];
-                        if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) { // space, tab, CR
-                            break;
-                        }
-                        firstNonSpaceIdx++;
-                    }
-
-                    if (firstNonSpaceIdx < lineEnd && combined[firstNonSpaceIdx] === 0x2A) {
+                    if (findKeywordAsterisk(combined, lineStart, lineEnd) !== -1) {
                         const lineStr = combined.toString('utf8', lineStart, lineEnd);
-                        const trimmed = lineStr.trim();
-                        const keyword = trimmed.slice(1);
+                        const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
                         if (keyword) {
                             keywords.push({ keyword, filePath, lineIndex });
                         }
@@ -120,17 +111,9 @@ async function collectKeywordsFromFile(filePath, options: LargeFileScanOptions =
             }
 
             if (remainder.length > 0 && (maxLines <= 0 || linesProcessed < maxLines)) {
-                let firstNonSpaceIdx = 0;
-                while (firstNonSpaceIdx < remainder.length) {
-                    const byte = remainder[firstNonSpaceIdx];
-                    if (byte !== 0x20 && byte !== 0x09 && byte !== 0x0D) {
-                        break;
-                    }
-                    firstNonSpaceIdx++;
-                }
-                if (firstNonSpaceIdx < remainder.length && remainder[firstNonSpaceIdx] === 0x2A) {
-                    const lineStr = remainder.toString('utf8').trim();
-                    const keyword = lineStr.slice(1);
+                if (findKeywordAsterisk(remainder) !== -1) {
+                    const lineStr = remainder.toString('utf8');
+                    const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
                     if (keyword) {
                         keywords.push({ keyword, filePath, lineIndex });
                     }

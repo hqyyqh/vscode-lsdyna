@@ -10,6 +10,17 @@ const { collectIncludeDirectivesFromFile } = require('../../../src/core/parser/i
 const FIXTURE_DIR = path.join(__dirname, '..', '..', 'Bolt_A_Explicit');
 
 describe('includeScanner', () => {
+    it('handles leading whitespace and mixed-case include keywords', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-case-'));
+        const filePath = path.join(tempDir, 'mixed-case.k');
+        fs.writeFileSync(filePath, ' \t*Include\nchild.k\n  *Include_Path\n/extra/path\n', 'utf8');
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+
+        assert.deepStrictEqual(result.includeEntries.map(entry => entry.fileName), ['child.k']);
+        assert.ok(result.searchPaths.includes('/extra/path'));
+    });
+
     it('streams include directives from a real fixture file', async () => {
         const fixturePath = path.join(FIXTURE_DIR, 'mainboltaexpl.k');
 

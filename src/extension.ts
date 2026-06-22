@@ -25,6 +25,7 @@ const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidatio
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const keywordValidator = require('./core/parser/keywordValidator');
+const { classifyKeywordLine } = require('./core/parser/keywordLine');
 const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
@@ -450,9 +451,10 @@ function findParameterDefinitions(document) {
 
     for (let i = 0; i < document.lineCount; i++) {
         const line = document.lineAt(i).text;
-        if (line.startsWith('$')) continue;
-        if (line.startsWith('*')) {
-            const kw = line.trim();
+        if (line.trimStart().startsWith('$')) continue;
+        const classification = classifyKeywordLine(line);
+        if (classification.isKeyword) {
+            const kw = classification.normalizedKeyword;
             inParamBlock = kw === '*PARAMETER' || kw.startsWith('*PARAMETER_');
             continue;
         }
@@ -488,9 +490,10 @@ function findParameterReferences(document) {
 
     for (let i = 0; i < document.lineCount; i++) {
         const line = document.lineAt(i).text;
-        if (line.startsWith('$')) continue;
-        if (line.startsWith('*')) {
-            inExprBlock = line.trim().startsWith('*PARAMETER_EXPRESSION');
+        if (line.trimStart().startsWith('$')) continue;
+        const classification = classifyKeywordLine(line);
+        if (classification.isKeyword) {
+            inExprBlock = classification.normalizedKeyword.startsWith('*PARAMETER_EXPRESSION');
             continue;
         }
 
@@ -543,8 +546,9 @@ function getParameterAtCursor(document, position) {
     let keyword = '';
     for (let i = position.line; i >= 0; i--) {
         const l = document.lineAt(i).text;
-        if (l.startsWith('$')) continue;
-        if (l.startsWith('*')) { keyword = l.trim(); break; }
+        if (l.trimStart().startsWith('$')) continue;
+        const classification = classifyKeywordLine(l);
+        if (classification.isKeyword) { keyword = classification.normalizedKeyword; break; }
     }
     if (keyword === '*PARAMETER' || keyword.startsWith('*PARAMETER_')) {
         const m = line.match(/^(\s*[RICric]\s+)(\w+)/);
@@ -871,20 +875,24 @@ function keywordOptionSummary(entry) {
 }
 
 function keywordLineNameFromText(text) {
-    return String(text || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
+    const classification = classifyKeywordLine(String(text || ''));
+    return classification.isKeyword ? classification.normalizedKeyword.slice(1) : '';
+}
+
+function isKeywordLineText(text) {
+    return classifyKeywordLine(String(text || '')).isKeyword;
 }
 
 function findKeywordLineForLine(document, lineNum) {
     for (let index = Math.min(lineNum, document.lineCount - 1); index >= 0; index--) {
-        const text = document.lineAt(index).text.trimStart();
-        if (text.startsWith('*')) return index;
+        if (isKeywordLineText(document.lineAt(index).text)) return index;
     }
     return null;
 }
 
 function findKeywordBlockEnd(document, keywordLine) {
     for (let index = keywordLine + 1; index < document.lineCount; index++) {
-        if (document.lineAt(index).text.trimStart().startsWith('*')) return index;
+        if (isKeywordLineText(document.lineAt(index).text)) return index;
     }
     return document.lineCount;
 }
@@ -1492,7 +1500,7 @@ function getSearchPath(document) {
  */
 function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     for (let i = lineindex; i >= 0; i--) {
-        if (getLine(i).startsWith('*')) return i;
+        if (isKeywordLineText(getLine(i))) return i;
     }
     throw new Error('Not on any keyword.');
 }
@@ -1507,7 +1515,7 @@ function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) 
  */
 function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
     for (let i = lineindex + 1; i < lineCount; i++) {
-        if (getLine(i).startsWith('*')) return i - 1;
+        if (isKeywordLineText(getLine(i))) return i - 1;
     }
     return lineCount - 1;
 }
@@ -1523,7 +1531,7 @@ function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
  */
 function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, basePath) {
     const linestart = startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex);
-    const keyword = getLine(linestart).trim();
+    const keyword = classifyKeywordLine(getLine(linestart)).normalizedKeyword;
     if (keyword.startsWith('*INCLUDE_PATH')) {
         throw new Error('This keyword does not have a filename card.');
     }
@@ -1592,7 +1600,7 @@ function searchFileFromPaths(filePath, paths) {
  */
 function findNextKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine + 1; i < lineCount; i++) {
-        if (getLine(i).startsWith('*')) return i;
+        if (isKeywordLineText(getLine(i))) return i;
     }
     throw new Error('No more keywords found.');
 }
@@ -1615,7 +1623,7 @@ function findNextKeywordInDocument(document, currentLine) {
  */
 function findPreviousKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine - 1; i >= 0; i--) {
-        if (getLine(i).startsWith('*')) return i;
+        if (isKeywordLineText(getLine(i))) return i;
     }
     throw new Error('No previous keywords found.');
 }
