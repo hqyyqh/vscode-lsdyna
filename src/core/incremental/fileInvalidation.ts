@@ -59,7 +59,11 @@ function findAffectedProjectRoots(changedFilePath, manifestEntries = []) {
         const rootFileKey = getTrackedFileKey(rootFile);
         if (seenRoots.has(rootFileKey)) continue;
 
-        const matchesChangedFile = entry.trackedFiles.some(trackedFile => getTrackedFileKey(trackedFile) === changedFileKey);
+        const dependencyPaths = [
+            ...entry.trackedFiles,
+            ...(Array.isArray(entry.missingDependencyPaths) ? entry.missingDependencyPaths : []),
+        ];
+        const matchesChangedFile = dependencyPaths.some(trackedFile => getTrackedFileKey(trackedFile) === changedFileKey);
         if (!matchesChangedFile) continue;
 
         seenRoots.add(rootFileKey);

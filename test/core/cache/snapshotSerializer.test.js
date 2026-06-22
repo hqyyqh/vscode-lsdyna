@@ -16,6 +16,7 @@ describe('snapshotSerializer', () => {
             fromFile: rootFile,
             fileName: 'missing.key',
             filePath: path.resolve('project', 'missing.key'),
+            candidatePaths: [path.resolve('project', 'missing.key'), path.resolve('search', 'missing.key')],
         });
         graph.addCycle({
             fromFile: childFile,
@@ -57,6 +58,10 @@ describe('snapshotSerializer', () => {
             ],
         });
         assert.strictEqual(hydrated.missingFiles, hydrated.graph.missingFiles);
+        assert.deepEqual(hydrated.missingFiles[0].candidatePaths, [
+            path.resolve('project', 'missing.key'),
+            path.resolve('search', 'missing.key'),
+        ]);
         assert.strictEqual(hydrated.cycles, hydrated.graph.cycles);
     });
 });

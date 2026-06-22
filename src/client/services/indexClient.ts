@@ -312,9 +312,21 @@ function createIndexClient({
 
     function touchSnapshotEntry(entry) {
         entry.lastAccessedAt = ++accessSequence;
+        const missingDependencyPaths = [];
+        const seenMissingPaths = new Set();
+        for (const record of entry.snapshot.missingFiles || []) {
+            for (const candidatePath of record.candidatePaths || []) {
+                const resolvedPath = path.resolve(candidatePath);
+                const candidateKey = process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+                if (seenMissingPaths.has(candidateKey)) continue;
+                seenMissingPaths.add(candidateKey);
+                missingDependencyPaths.push(resolvedPath);
+            }
+        }
         manifestStore.upsert({
             rootFile: entry.snapshot.rootFile,
             trackedFiles: entry.trackedFiles.map(trackedFile => trackedFile.filePath),
+            missingDependencyPaths,
             byteSize: entry.byteSize,
             lastAccessedAt: entry.lastAccessedAt,
         });

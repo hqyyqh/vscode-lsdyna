@@ -18,6 +18,7 @@ const path = require('path');
  * @typedef {Object} ManifestEntry
  * @property {string} rootFile - Absolute path of the project's root input file.
  * @property {string[]} trackedFiles - List of all dependency files included by the root file.
+ * @property {string[]} missingDependencyPaths - Candidate paths for unresolved includes.
  * @property {number} trackedFileCount - Number of files tracked by this project entry.
  * @property {number} byteSize - Size in bytes of the snapshot file on disk.
  * @property {number} lastAccessedAt - Timestamp (milliseconds) of the last access time.
@@ -89,6 +90,7 @@ function cloneManifestEntry(entry) {
         rootFile: entry.rootFile,
         trackedFiles: [...entry.trackedFiles],
         trackedFileCount: entry.trackedFileCount,
+        missingDependencyPaths: [...(entry.missingDependencyPaths || [])],
         byteSize: entry.byteSize,
         lastAccessedAt: entry.lastAccessedAt,
     };
@@ -119,7 +121,7 @@ function createCacheManifestStore() {
      * @param {number} params.lastAccessedAt - Timestamp of last access.
      * @returns {ManifestEntry} The created or updated entry clone.
      */
-    function upsert({ rootFile, trackedFiles, byteSize, lastAccessedAt }) {
+    function upsert({ rootFile, trackedFiles, missingDependencyPaths = [], byteSize, lastAccessedAt }) {
         if (typeof byteSize !== 'number' || Number.isNaN(byteSize) || byteSize < 0) {
             throw new TypeError('cache manifest entries require a non-negative byteSize');
         }
@@ -131,10 +133,12 @@ function createCacheManifestStore() {
         const normalizedTrackedFiles = normalizeTrackedFiles(trackedFiles && trackedFiles.length > 0
             ? trackedFiles
             : [resolvedRootFile]);
+        const normalizedMissingDependencyPaths = normalizeTrackedFiles(missingDependencyPaths);
         const entry = {
             rootFile: resolvedRootFile,
             trackedFiles: normalizedTrackedFiles,
             trackedFileCount: normalizedTrackedFiles.length,
+            missingDependencyPaths: normalizedMissingDependencyPaths,
             byteSize,
             lastAccessedAt,
         };

@@ -13,6 +13,7 @@ describe('createCacheManifestStore', () => {
         manifestStore.upsert({
             rootFile: canonicalRoot,
             trackedFiles: [canonicalRoot, path.resolve('project', 'child.key')],
+            missingDependencyPaths: [path.resolve('project', 'missing.key'), path.resolve('project', 'missing.key')],
             byteSize: 42,
             lastAccessedAt: 7,
         });
@@ -21,6 +22,7 @@ describe('createCacheManifestStore', () => {
             rootFile: canonicalRoot,
             trackedFiles: [canonicalRoot, path.resolve('project', 'child.key')],
             trackedFileCount: 2,
+            missingDependencyPaths: [path.resolve('project', 'missing.key')],
             byteSize: 42,
             lastAccessedAt: 7,
         });
@@ -35,12 +37,14 @@ describe('createCacheManifestStore', () => {
         manifestStore.upsert({
             rootFile: rootA,
             trackedFiles: [rootA],
+            missingDependencyPaths: [],
             byteSize: 12,
             lastAccessedAt: 1,
         });
         manifestStore.upsert({
             rootFile: rootB,
             trackedFiles: [rootB],
+            missingDependencyPaths: [],
             byteSize: 20,
             lastAccessedAt: 3,
         });

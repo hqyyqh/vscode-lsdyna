@@ -223,8 +223,13 @@ describe('createIndexClient', () => {
         const rootFile = path.resolve('project', 'main.k');
         const childFile = path.resolve('project', 'child.key');
         const manifestStore = createCacheManifestStore();
+        const missingPath = path.resolve('project', 'missing.key');
         const client = createIndexClient({
-            buildProjectIndex: async () => ({ rootFile, files: [rootFile, childFile] }),
+            buildProjectIndex: async () => ({
+                rootFile,
+                files: [rootFile, childFile],
+                missingFiles: [{ candidatePaths: [missingPath, missingPath] }],
+            }),
             getFileSignature: async () => ({ mtimeMs: 10, size: 100 }),
             estimateSnapshotSize: () => 24,
             manifestStore,
@@ -235,6 +240,7 @@ describe('createIndexClient', () => {
         assert.equal(initialEntry.byteSize, 24);
         assert.equal(initialEntry.trackedFileCount, 2);
         assert.deepEqual(initialEntry.trackedFiles, [rootFile, childFile]);
+        assert.deepEqual(initialEntry.missingDependencyPaths, [missingPath]);
 
         await client.loadProjectSnapshot(rootFile);
         const touchedEntry = manifestStore.get(rootFile);
@@ -287,6 +293,7 @@ describe('createIndexClient', () => {
             rootFile,
             trackedFiles: [rootFile],
             trackedFileCount: 1,
+            missingDependencyPaths: [],
             byteSize: Buffer.byteLength(JSON.stringify(snapshots[1]), 'utf8'),
             lastAccessedAt: 2,
         });

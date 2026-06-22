@@ -206,13 +206,23 @@ function createGraphUpdater({
             for (const entry of newIncludes.includeEntries) {
                 const resolved = await resolveInclude(entry.fileName, newIncludes.searchPaths);
                 if (!resolved) {
+                    const candidatePaths = [];
+                    const seenCandidates = new Set();
+                    for (const searchPath of newIncludes.searchPaths) {
+                        const candidatePath = path.resolve(searchPath, entry.fileName);
+                        const candidateKey = normalizeKey(candidatePath);
+                        if (seenCandidates.has(candidateKey)) continue;
+                        seenCandidates.add(candidateKey);
+                        candidatePaths.push(candidatePath);
+                    }
                     const missingRecord = {
                         fromFile: resolvedPath,
                         fileName: entry.fileName,
                         lineIndex: entry.lineIndex,
                         startChar: entry.startChar,
                         endChar: entry.endChar,
-                        filePath: path.resolve(newIncludes.searchPaths[0] || path.dirname(resolvedPath), entry.fileName),
+                        filePath: candidatePaths[0] || path.resolve(path.dirname(resolvedPath), entry.fileName),
+                        candidatePaths,
                     };
                     graph.addMissingFile(missingRecord);
                     if (!snapshot.missingFiles) snapshot.missingFiles = [];
