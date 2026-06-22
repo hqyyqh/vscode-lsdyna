@@ -156,6 +156,21 @@ async function resolveIncludeFromSearchPathsAsync(fileName, searchPaths, resolut
     return null;
 }
 
+async function resolveIncludeWithCandidatesAsync(fileName, searchPaths, resolutionCache) {
+    const candidatePaths = [];
+    const seen = new Set();
+    for (const searchPath of searchPaths) {
+        const candidate = path.resolve(searchPath, fileName);
+        const key = process.platform === 'win32' ? candidate.toLowerCase() : candidate;
+        if (!seen.has(key)) {
+            seen.add(key);
+            candidatePaths.push(candidate);
+        }
+    }
+    const resolvedPath = await resolveIncludeFromSearchPathsAsync(fileName, searchPaths, resolutionCache);
+    return { resolvedPath, candidatePaths };
+}
+
 /**
  * Merges scanned keyword items into a collective keywordMap index.
  * 
@@ -357,14 +372,14 @@ function createProjectIndexer({
                 // Resolve all includes for this file in parallel
                 const includeResolutions = await Promise.all(
                     scanResult.includeEntries.map(entry =>
-                        resolveIncludeFromSearchPathsAsync(entry.fileName, scanResult.searchPaths, resolutionCache)
+                        resolveIncludeWithCandidatesAsync(entry.fileName, scanResult.searchPaths, resolutionCache)
                     )
                 );
 
                 for (let j = 0; j < scanResult.includeEntries.length; j++) {
                     const entry = scanResult.includeEntries[j];
                     const { fileName, lineIndex, startChar, endChar } = entry;
-                    const resolvedPath = includeResolutions[j];
+                    const { resolvedPath, candidatePaths } = includeResolutions[j];
 
                     if (!resolvedPath) {
                         graph.addMissingFile({
@@ -373,7 +388,8 @@ function createProjectIndexer({
                             lineIndex,
                             startChar,
                             endChar,
-                            filePath: path.resolve(scanResult.searchPaths[0] || path.dirname(resolvedFilePath), fileName),
+                            filePath: candidatePaths[0] || path.resolve(path.dirname(resolvedFilePath), fileName),
+                            candidatePaths,
                         });
                         continue;
                     }
@@ -441,6 +457,7 @@ module.exports = {
     createProjectIndexer,
     resolveIncludeFromSearchPaths,
     resolveIncludeFromSearchPathsAsync,
+    resolveIncludeWithCandidatesAsync,
     createConcurrencyLimiter,
 };
 

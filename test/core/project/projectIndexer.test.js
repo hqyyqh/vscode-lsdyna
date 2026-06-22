@@ -8,6 +8,32 @@ const path = require('path');
 const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAsync, createConcurrencyLimiter } = require('../../../src/core/project/projectIndexer');
 
 describe('projectIndexer', () => {
+    it('records every deduplicated missing include candidate in search order', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-candidates-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const searchA = path.join(tempRoot, 'search-a');
+        const searchB = path.join(tempRoot, 'search-b');
+        fs.writeFileSync(rootFile, '*INCLUDE\nmissing.key\n', 'utf8');
+        const indexer = createProjectIndexer({
+            collectIncludeDirectivesFromFile: async () => ({
+                includeEntries: [{ fileName: 'missing.key', lineIndex: 1, startChar: 0, endChar: 11 }],
+                searchPaths: [searchA, searchB, searchA],
+            }),
+            collectKeywordsFromFile: async () => [],
+        });
+
+        try {
+            const snapshot = await indexer.buildProjectIndex(rootFile);
+
+            assert.deepStrictEqual(snapshot.missingFiles[0].candidatePaths, [
+                path.resolve(searchA, 'missing.key'),
+                path.resolve(searchB, 'missing.key'),
+            ]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('recursively aggregates included files and keyword usages into one project snapshot', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-index-'));
         const submodelsDir = path.join(tempRoot, 'submodels');

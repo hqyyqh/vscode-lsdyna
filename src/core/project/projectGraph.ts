@@ -42,6 +42,7 @@
  * @property {number} lineIndex - 0-indexed line number of the statement.
  * @property {number} startChar - 0-indexed starting character column.
  * @property {number} endChar - 0-indexed ending character column.
+ * @property {string[]} candidatePaths - Absolute paths checked while resolving the include.
  */
 
 /**
@@ -69,6 +70,7 @@ interface MissingFileRecord {
     lineIndex: number;
     startChar: number;
     endChar: number;
+    candidatePaths?: string[];
 }
 
 interface CycleRecord {
