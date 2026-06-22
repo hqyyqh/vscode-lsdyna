@@ -22,4 +22,7 @@
 - `npm run compile`：退出码 0。
 - `npm test`：退出码 0，329 项通过。
 - `npm run check:contracts`：退出码 0。
+- `npm audit --omit=dev`：退出码 0，`found 0 vulnerabilities`。
+- `npx --no-install vsce package --out dist/technical-debt-verification.vsix`：退出码 0；产物 8,011,813 字节，共 353 个文件。
 - 禁止模式搜索：`9999999`、`child_process.exec`、`cmd.exe`、`explorer.exe` 在 `src` 中均无匹配。
+- 完成标准搜索：`9999999`、`child_process.exec`、`lsdyna.format.enableOnSave`、`lsdyna.index.enableIncludeTree` 在 `src`、`test`、两份 README 和 `package.json` 中均无匹配。
