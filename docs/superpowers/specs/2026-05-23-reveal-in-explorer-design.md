@@ -17,15 +17,15 @@ We will add an inline action button on the tree view.
 ### 2. Left-Aligned Vivid Size Layout
 We will display file sizes in the `TreeItem.description`.
 - **Emoji Sizing**:
-  - Size < 10 KB: `âš?<Size>` (represents lightning fast loading)
+  - Size < 10 KB: `âš¡ <Size>` (represents lightning fast loading)
   - 10 KB <= Size < 1 MB: `ðŸ’¾ <Size>` (represents standard file disk size)
   - Size >= 1 MB: `ðŸ“¦ <Size>` (represents larger files)
 - **Separation & Layout**:
-  - If a file is nested in a relative path: `subpath  â€? [Emoji] [Size]`
+  - If a file is nested in a relative path: `subpath  â€¢  [Emoji] [Size]`
   - If a file is not nested: `[Emoji] [Size]`
-  - For missing files: `[subpath]  â€? not found` or just `not found`
-  - For circular dependencies: `[subpath]  â€? circular` or just `circular`
-  - For scan failures: `[subpath]  â€? scan failed` or just `scan failed`
+  - For missing files: `[subpath]  â€¢  not found` or just `not found`
+  - For circular dependencies: `[subpath]  â€¢  circular` or just `circular`
+  - For scan failures: `[subpath]  â€¢  scan failed` or just `scan failed`
 
 ## Proposed Components & Files
 

@@ -4,7 +4,7 @@
 
 Provide an integrated hover action and document opening utility for LS-DYNA keyword manuals inside the VS Code editor:
 1. Parse the PDF outline bookmarks dynamically during extension startup and map keywords to files and 1-based page numbers.
-2. Render an inline PDF manual link at the bottom of the keyword hover card and field hover cards: `[$(book) 打开帮助文档 - Vol I (�?20 �?](command:extension.openManual?...)`.
+2. Render an inline PDF manual link at the bottom of the keyword hover card and field hover cards: `[$(book) 打开帮助文档 - Vol I (第 20 页)](command:extension.openManual?...)`.
 3. Support opening the PDF at the precise page number in either the default OS-level PDF viewer/browser (with page parameter support on Windows) or via VS Code's built-in PDF viewer.
 
 ## 2. Proposed Design
@@ -27,7 +27,7 @@ We will add a new file [manualIndexer.js](file:///d:/Project/vscode-lsdyna/src/c
 In `LsdynaFieldHoverProvider.provideHover` in [extension.js](file:///d:/Project/vscode-lsdyna/src/extension.js):
 - Look up the hovered keyword (cleaned by stripping `_TITLE` suffix) in the manual index.
 - If a match is found, append `\n\n---\n` followed by a list of markdown command links (one for each matched manual/volume):
-  - Link text format: `$(book) 打开帮助文档 - [Volume Name] (�?[Page] �?`
+  - Link text format: `$(book) 打开帮助文档 - [Volume Name] (第 [Page] 页)`
   - Link target: `command:extension.openManual` with parameters: `[fullPdfPath, pageNum]`
 - Set `md.isTrusted = true` and `md.supportThemeIcons = true` on the returned Hover MarkdownString.
 
