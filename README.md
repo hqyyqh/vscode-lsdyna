@@ -108,6 +108,8 @@ If you prefer using your own PDF files, follow these steps:
 > ⚠️ **Important Note**
 > The extension indexes PDF pages entirely based on **PDF Bookmarks**. Filenames do not affect the search, but if you modify or merge the PDFs, **you must preserve the original bookmarks** for the precise navigation to work.
 
+On Windows, placing `SumatraPDF.exe` in the manuals directory enables precise page jumps. If SumatraPDF is unavailable or cannot start, DynaSense safely falls back to the system default PDF application; that application may ignore the requested `#page=` fragment.
+
 ---
 
 ## ⚙️ Extension Settings

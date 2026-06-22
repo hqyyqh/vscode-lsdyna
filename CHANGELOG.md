@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Quality**: Added CI-enforced contracts for manifest settings, activation events, localization parity, README defaults, command registration, and strict UTF-8 documentation.
+- **Diagnostics**: Added an explicit `include-path-too-long` diagnostic for LS-DYNA Include paths beyond the confirmed three-line/236-character limit.
+
+### Changed
+- **Parser**: Unified indented and mixed-case keyword recognition across Include, block, keyword, parameter, and navigation paths; large-file tail scans now report real line numbers.
+- **Workspace**: Watchers now include `.asc` and valid configured extensions, rebuild on configuration changes, and refresh projects when previously missing Include files appear.
+- **Diagnostics**: Project diagnostics are merged by project root, so refreshing one root no longer removes another root's shared-file diagnostics; stale document diagnostics are cleared.
+- **Docs**: Restored 61 corrupted Superpowers records from strict UTF-8 Git history and aligned both READMEs with all 11 manifest settings.
+
+### Security
+- **Windows**: Replaced shell-built PDF and Explorer commands with parameterized `spawn` (`shell: false`) and VS Code's `revealFileInOS`/`openExternal` APIs.
+
 ## [3.0.7] - 2026-06-20
 ### Added
 - **Features**: Added i18n support and a setup guide dialogue for configuring the PDF manual directory (`configureManualsDir`).
