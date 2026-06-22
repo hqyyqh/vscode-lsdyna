@@ -34,6 +34,9 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Validate project contracts
+        run: npm run check:contracts
+
       - name: Run tests
         run: npm test
 
