@@ -61,6 +61,19 @@ describe('updateDocumentDiagnostics', () => {
     });
 });
 
+describe('indented keyword editor features', () => {
+    it('provides symbols and folds for indented mixed-case keywords', () => {
+        const document = fakeDoc(' \t*node\n1,2,3\n  *Part\ntitle\n');
+        document.languageId = 'lsdyna';
+
+        const symbols = new LsdynaKeywordSymbolProvider().provideDocumentSymbols(document);
+        const folds = new LsDynaFoldingProvider().provideFoldingRanges(document);
+
+        assert.equal(symbols.length, 2);
+        assert.deepStrictEqual(folds.map(range => [range.start, range.end]), [[0, 1], [2, 4]]);
+    });
+});
+
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
 
 function decodeCommandUriArgs(uri) {

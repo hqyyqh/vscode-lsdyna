@@ -115,7 +115,7 @@ class LsDynaFoldingProvider {
         let foldStart = -1;
 
         for (let i = 0; i < document.lineCount; i++) {
-            if (/^\*/.test(document.lineAt(i).text)) {
+            if (isKeywordLineText(document.lineAt(i).text)) {
                 if (foldStart !== -1 && i - 1 > foldStart) {
                     ranges.push(new vscode.FoldingRange(foldStart, i - 1));
                 }
@@ -150,7 +150,7 @@ class LsdynaKeywordSymbolProvider {
         const symbols = [];
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
-            if (line.text.startsWith('*')) {
+            if (isKeywordLineText(line.text)) {
                 symbols.push(new vscode.DocumentSymbol(
                     line.text.trim(),
                     '',
@@ -1040,7 +1040,7 @@ function addOrphanManagedCommentDeletionRanges(ranges, document, keywordLine, bl
             const nextText = nextLine < blockEnd ? document.lineAt(nextLine).text : '';
             const hasEmptySkeleton = nextLine < blockEnd
                 && !nextText.trimStart().startsWith('$')
-                && !nextText.trimStart().startsWith('*')
+                && !isKeywordLineText(nextText)
                 && nextText.trim().length === 0;
             addLineDeletionRange(ranges, lineNum, hasEmptySkeleton ? 2 : 1);
         }
@@ -1217,8 +1217,9 @@ class LsdynaKeywordOptionsCodeLensProvider {
         if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
         const lenses = [];
         for (let lineNum = 0; lineNum < document.lineCount; lineNum++) {
-            const text = document.lineAt(lineNum).text.trimStart();
-            if (!text.startsWith('*') || text.startsWith('**')) continue;
+            const text = document.lineAt(lineNum).text;
+            const classification = classifyKeywordLine(text);
+            if (!classification.isKeyword || classification.rawKeyword.startsWith('**')) continue;
             const lookup = lookupKeywordInfo(keywordLineNameFromText(text));
             if (!lookup) continue;
             
@@ -1416,8 +1417,9 @@ class LsdynaFieldHoverProvider {
         }
 
         // Hover on keyword lines
-        if (trimmed.startsWith('*')) {
-            const kwName = trimmed.slice(1).toUpperCase().split(/[\s,$]/)[0];
+        const currentClassification = classifyKeywordLine(text);
+        if (currentClassification.isKeyword) {
+            const kwName = currentClassification.normalizedKeyword.slice(1);
             if (!kwName) return null;
             const lookup = lookupKeywordInfo(kwName);
             if (!lookup) {
@@ -1450,8 +1452,7 @@ class LsdynaFieldHoverProvider {
         // Find the enclosing keyword line
         let kwLine = null;
         for (let i = position.line - 1; i >= 0; i--) {
-            const t = document.lineAt(i).text.trimStart();
-            if (t.startsWith('*')) { kwLine = i; break; }
+            if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
         }
         if (kwLine === null) return null;
 
@@ -1787,8 +1788,7 @@ class LsdynaIncludeCompletionProvider {
         // Find enclosing keyword
         let kwLine = -1;
         for (let i = position.line; i >= 0; i--) {
-            const text = document.lineAt(i).text.trimStart();
-            if (text.startsWith('*')) {
+            if (isKeywordLineText(document.lineAt(i).text)) {
                 kwLine = i;
                 break;
             }
@@ -1796,7 +1796,7 @@ class LsdynaIncludeCompletionProvider {
 
         if (kwLine === -1 || position.line === kwLine) return [];
 
-        const kwText = document.lineAt(kwLine).text.trim().toUpperCase();
+        const kwText = classifyKeywordLine(document.lineAt(kwLine).text).normalizedKeyword;
         if (!kwText.startsWith('*INCLUDE') || kwText.startsWith('*INCLUDE_PATH')) {
             return [];
         }
@@ -1897,8 +1897,7 @@ class LsdynaIncludeCompletionProvider {
 function getCardFieldsForLine(document, lineNum) {
     let kwLine = null;
     for (let i = lineNum - 1; i >= 0; i--) {
-        const t = document.lineAt(i).text.trimStart();
-        if (t.startsWith('*')) { kwLine = i; break; }
+        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
     }
     if (kwLine === null) return null;
 
@@ -1918,8 +1917,7 @@ function getCardFieldsForLine(document, lineNum) {
 function getDataCardDisplayIndexForLine(document, lineNum) {
     let kwLine = null;
     for (let i = lineNum - 1; i >= 0; i--) {
-        const t = document.lineAt(i).text.trimStart();
-        if (t.startsWith('*')) { kwLine = i; break; }
+        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
     }
     if (kwLine === null) return 0;
 
@@ -1943,13 +1941,13 @@ class LsdynaFieldCompletionProvider {
         const isCommentTrigger = textBeforeCursor === '$' || textBeforeCursor === '$#';
 
         // Guard: Skip keywords and non-trigger comments
-        if (trimmed.startsWith('*') || (trimmed.startsWith('$') && !isCommentTrigger)) return [];
+        if (isKeywordLineText(text) || (trimmed.startsWith('$') && !isCommentTrigger)) return [];
 
         if (isCommentTrigger) {
             let targetLineNum = position.line + 1;
             for (let i = targetLineNum; i < document.lineCount; i++) {
-                const t = document.lineAt(i).text.trimStart();
-                if (t.startsWith('*')) break;
+                const t = document.lineAt(i).text;
+                if (isKeywordLineText(t)) break;
                 if (!t.startsWith('$')) {
                     targetLineNum = i;
                     break;
@@ -2053,9 +2051,7 @@ class LsdynaKeywordCompletionProvider {
         const line = document.lineAt(position.line);
         const textBeforeCursor = line.text.slice(0, position.character);
 
-        // Only trigger keyword completion if we are exactly at the beginning of the line.
-        // It strictly requires that there are no leading spaces before the `*`.
-        if (!textBeforeCursor.startsWith('*')) {
+        if (!isKeywordLineText(textBeforeCursor)) {
             return [];
         }
 
@@ -2339,7 +2335,7 @@ function getPathEntryRange(document, lineNum, kwLine) {
     let start = lineNum;
     while (start > kwLine + 1) {
         const prevText = document.lineAt(start - 1).text.trim();
-        if (prevText.startsWith('*') || prevText.startsWith('$')) {
+        if (isKeywordLineText(prevText) || prevText.startsWith('$')) {
             break;
         }
         if (prevText.endsWith(' +')) {
@@ -2354,7 +2350,7 @@ function getPathEntryRange(document, lineNum, kwLine) {
         const curText = document.lineAt(end).text.trim();
         if (curText.endsWith(' +')) {
             const nextText = document.lineAt(end + 1).text.trim();
-            if (nextText.startsWith('*') || nextText.startsWith('$')) {
+            if (isKeywordLineText(nextText) || nextText.startsWith('$')) {
                 break;
             }
             end++;
@@ -2459,17 +2455,16 @@ async function formatLineIfNeeded(document, lineNum) {
     const trimmed = text.trimStart();
     
     // Skip keywords
-    if (trimmed.startsWith('*')) return;
+    if (isKeywordLineText(text)) return;
 
     // Find the enclosing keyword line
     let kwLine = null;
     for (let i = lineNum - 1; i >= 0; i--) {
-        const t = document.lineAt(i).text.trimStart();
-        if (t.startsWith('*')) { kwLine = i; break; }
+        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
     }
     
     if (kwLine !== null) {
-        const kwText = document.lineAt(kwLine).text.trim().toUpperCase();
+        const kwText = classifyKeywordLine(document.lineAt(kwLine).text).normalizedKeyword;
         if (kwText.startsWith('*PARAMETER')) return;
         if (kwText === '*INCLUDE_PATH' || kwText === '*INCLUDE_PATH_RELATIVE') {
             await formatPathEntryIfNeeded(document, lineNum, kwLine);
@@ -2489,8 +2484,8 @@ async function formatLineIfNeeded(document, lineNum) {
 
     if (isCommentLine) {
         for (let i = lineNum + 1; i < document.lineCount; i++) {
-            const t = document.lineAt(i).text.trimStart();
-            if (t.startsWith('*')) return; // No data card after comment
+            const t = document.lineAt(i).text;
+            if (isKeywordLineText(t)) return; // No data card after comment
             if (!t.startsWith('$')) {
                 targetLineNum = i;
                 break;
@@ -2709,7 +2704,7 @@ function handleSelectionChange(e) {
     const line = currentDoc.lineAt(currentLineNum);
     const text = line.text;
     const trimmed = text.trimStart();
-    const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
+    const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
     const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
     const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
     const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
@@ -2740,13 +2735,14 @@ class LsdynaDocumentFormattingEditProvider {
             const text = line.text;
             const trimmed = text.trimStart();
             
-            if (trimmed.startsWith('*')) continue;
+            if (isKeywordLineText(text)) continue;
 
             let currentKwText = null;
             for (let i = lineNum; i >= 0; i--) {
-                const t = document.lineAt(i).text.trimStart();
-                if (t.startsWith('*')) {
-                    currentKwText = t.toUpperCase();
+                const t = document.lineAt(i).text;
+                const classification = classifyKeywordLine(t);
+                if (classification.isKeyword) {
+                    currentKwText = classification.normalizedKeyword;
                     break;
                 }
             }
@@ -2757,8 +2753,8 @@ class LsdynaDocumentFormattingEditProvider {
 
             if (isCommentLine) {
                 for (let i = lineNum + 1; i < document.lineCount; i++) {
-                    const t = document.lineAt(i).text.trimStart();
-                    if (t.startsWith('*')) break; // No data card after comment
+                    const t = document.lineAt(i).text;
+                    if (isKeywordLineText(t)) break; // No data card after comment
                     if (!t.startsWith('$')) {
                         targetLineNum = i;
                         break;
@@ -3342,22 +3338,23 @@ function activate(context) {
                         const trimmed = text.trimStart();
                         let currentKwText = null;
                         for (let i = lineNum; i >= 0; i--) {
-                            const t = document.lineAt(i).text.trimStart();
-                            if (t.startsWith('*')) {
-                                currentKwText = t.toUpperCase();
+                            const t = document.lineAt(i).text;
+                            const classification = classifyKeywordLine(t);
+                            if (classification.isKeyword) {
+                                currentKwText = classification.normalizedKeyword;
                                 break;
                             }
                         }
                         if (currentKwText && currentKwText.startsWith('*PARAMETER')) continue;
 
-                        const isCardLine = !trimmed.startsWith('*') && !trimmed.startsWith('$');
+                        const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
                         const isCommentLine = trimmed.startsWith('$');
                         
                         let targetLineNum = lineNum;
                         if (isCommentLine) {
                             for (let i = lineNum + 1; i < document.lineCount; i++) {
-                                const t = document.lineAt(i).text.trimStart();
-                                if (t.startsWith('*')) break;
+                                const t = document.lineAt(i).text;
+                                if (isKeywordLineText(t)) break;
                                 if (!t.startsWith('$')) {
                                     targetLineNum = i;
                                     break;

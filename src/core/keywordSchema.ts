@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { classifyKeywordLine } from './parser/keywordLine';
 
 export type KeywordField = {
     n: string;
@@ -382,15 +383,15 @@ export function getCardForDocumentLine(
         return null;
     }
 
-    const currentText = document.lineAt(lineNum).text.trimStart();
-    if (currentText.startsWith('*') || currentText.startsWith('$')) {
+    const currentText = document.lineAt(lineNum).text;
+    if (classifyKeywordLine(currentText).isKeyword || currentText.trimStart().startsWith('$')) {
         return null;
     }
 
     let keywordLine: number | null = null;
     for (let index = lineNum - 1; index >= 0; index--) {
-        const text = document.lineAt(index).text.trimStart();
-        if (text.startsWith('*')) {
+        const text = document.lineAt(index).text;
+        if (classifyKeywordLine(text).isKeyword) {
             keywordLine = index;
             break;
         }
