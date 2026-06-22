@@ -21,6 +21,7 @@ const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/provid
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
+const { createProjectDiagnosticStore } = require('./client/services/projectDiagnosticStore');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
@@ -900,6 +901,24 @@ function collectIncludePathLengthDiagnostics(document) {
             diagnostic.source = 'lsdyna';
             return diagnostic;
         });
+}
+
+function updateDocumentDiagnostics(document, diagnostics) {
+    if (!isLsdynaFile(document)) {
+        diagnostics.delete(document.uri);
+        return;
+    }
+    const lineLengthDiagnostics = collectLineLengthDiagnostics(document);
+    const includePathLengthDiagnostics = collectIncludePathLengthDiagnostics(document);
+    const keywordValidationDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(
+        document,
+        shouldSkipAutomaticDocumentScan
+    );
+    diagnostics.set(document.uri, [
+        ...lineLengthDiagnostics,
+        ...includePathLengthDiagnostics,
+        ...keywordValidationDiagnostics,
+    ]);
 }
 
 function isKeywordLineText(text) {
@@ -2837,6 +2856,14 @@ function activate(context) {
                     getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
                 );
             }
+            if (
+                e.affectsConfiguration('lsdyna.language')
+                || e.affectsConfiguration('lsdyna.additionalExtensions')
+                || e.affectsConfiguration('lsdyna.customValidKeywords')
+                || e.affectsConfiguration('lsdyna.largeFile.enableRendering')
+            ) {
+                vscode.workspace.textDocuments.forEach(updateDiagnostics);
+            }
         })
     );
 
@@ -2897,11 +2924,13 @@ function activate(context) {
 
     const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
     context.subscriptions.push(projectDiagnostics);
+    const projectDiagnosticStore = createProjectDiagnosticStore(projectDiagnostics);
+    context.subscriptions.push(projectDiagnosticStore);
 
     const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
     indexClient.loadProjectSnapshot = async (rootFile) => {
         const snapshot = await originalLoadProjectSnapshot(rootFile);
-        publishProjectDiagnostics(snapshot, projectDiagnostics);
+        projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
 
@@ -3180,13 +3209,7 @@ function activate(context) {
     context.subscriptions.push(diagnostics);
 
     function updateDiagnostics(document) {
-        if (!isLsdynaFile(document)) return;
-        
-        const lineLengthDiagnostics = collectLineLengthDiagnostics(document);
-        const includePathLengthDiagnostics = collectIncludePathLengthDiagnostics(document);
-        const keywordValidationDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocumentScan);
-        
-        diagnostics.set(document.uri, [...lineLengthDiagnostics, ...includePathLengthDiagnostics, ...keywordValidationDiagnostics]);
+        updateDocumentDiagnostics(document, diagnostics);
     }
 
     context.subscriptions.push(
@@ -3666,20 +3689,15 @@ function createProjectSnapshotPersistentCache({
 }
 
 /**
- * Publishes diagnostic warnings and errors (missing files, circular dependencies)
- * mapped to project snapshot results.
+ * Collects diagnostic warnings and errors (missing files, circular dependencies)
+ * mapped to project snapshot results without mutating a collection.
  * 
  * @param {import('./core/project/projectIndexer').ProjectIndexResult} snapshot - snapshot to translate.
- * @param {import('vscode').DiagnosticCollection} diagnosticsCollection - Target collection.
+ * @returns {Map<string, import('vscode').Diagnostic[]>} Diagnostics grouped by source file.
  */
-function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
-    if (!snapshot || !snapshot.files) return;
-
-    for (const filePath of snapshot.files) {
-        diagnosticsCollection.delete(vscode.Uri.file(filePath));
-    }
-
+function collectProjectDiagnostics(snapshot) {
     const fileDiagnostics = new Map();
+    if (!snapshot) return fileDiagnostics;
 
     const addDiag = (filePath, diag) => {
         if (!fileDiagnostics.has(filePath)) fileDiagnostics.set(filePath, []);
@@ -3725,9 +3743,14 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
         addDiag(record.fromFile, diagnostic);
     }
 
-    for (const [filePath, diags] of fileDiagnostics.entries()) {
-        diagnosticsCollection.set(vscode.Uri.file(filePath), diags);
-    }
+    return fileDiagnostics;
+}
+
+function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
+    if (!snapshot || !snapshot.files) return;
+    const fileDiagnostics = collectProjectDiagnostics(snapshot);
+    for (const filePath of snapshot.files) diagnosticsCollection.delete(vscode.Uri.file(filePath));
+    for (const [filePath, diags] of fileDiagnostics) diagnosticsCollection.set(vscode.Uri.file(filePath), diags);
 }
 
 
@@ -3794,11 +3817,13 @@ module.exports = { activate, deactivate };
 // Exported for unit testing
 module.exports._internals = {
     publishProjectDiagnostics,
+    collectProjectDiagnostics,
     collectIncludeDecorationSets,
     collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
     collectIncludePathLengthDiagnostics,
+    updateDocumentDiagnostics,
     createActiveDocumentDebouncer,
     collectIncludeFiles,
     findParameterDefinitions,

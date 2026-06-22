@@ -44,7 +44,22 @@ const {
     createProjectIndexLoader,
     createProjectSnapshotPersistentCache,
     chooseKeywordOptionsForEditor,
+    updateDocumentDiagnostics,
 } = extensionModule._internals;
+
+describe('updateDocumentDiagnostics', () => {
+    it('deletes stale diagnostics when a document is no longer LS-DYNA', () => {
+        const deleted = [];
+        const document = fakeDoc('plain text', '/project/readme.txt');
+        document.languageId = 'plaintext';
+        updateDocumentDiagnostics(document, {
+            set() {},
+            delete(uri) { deleted.push(uri.fsPath); },
+        });
+
+        assert.deepStrictEqual(deleted, ['/project/readme.txt']);
+    });
+});
 
 const FIXTURE_DIR = path.join(__dirname, 'Bolt_A_Explicit');
 
