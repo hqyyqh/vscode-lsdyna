@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.8] - 2026-06-22
+
 ### Added
 - **Quality**: Added CI-enforced contracts for manifest settings, activation events, localization parity, README defaults, command registration, and strict UTF-8 documentation.
 - **Diagnostics**: Added an explicit `include-path-too-long` diagnostic for LS-DYNA Include paths beyond the confirmed three-line/236-character limit.
