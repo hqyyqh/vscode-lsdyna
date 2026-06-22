@@ -15,14 +15,14 @@
 | 7 | 缺失 Include 创建后触发失效 | project graph/indexer、manifest、invalidation | projectIndexer、cache、fileInvalidation、indexClient 测试 | `npm test` | 通过 |
 | 8 | 多根项目诊断合并与清理 | `src/client/services/projectDiagnosticStore.ts` | `projectDiagnosticStore.test.js`、`updateDocumentDiagnostics` 测试 | `npm test` | 通过 |
 | 9 | Windows 外部调用不经过 shell | `src/platform/externalProcess.ts`、资源定位命令 | `externalProcess.test.js`、特殊字符路径与 reveal 命令测试 | `npm test` | `shell: false`，fallback 最多一次 |
-| 10 | CI 与交付门禁 | `.github/workflows/ci.yml`、`CHANGELOG.md` | 契约测试与完整测试套件 | `npm test`、`npm run check:contracts` | 329 项测试通过；契约通过 |
+| 10 | CI 与交付门禁 | `.github/workflows/ci.yml`、`CHANGELOG.md` | 契约测试与完整测试套件 | `npm test`、`npm run check:contracts` | 330 项测试通过；契约通过 |
 
 ## 当前验证结果
 
 - `npm run compile`：退出码 0。
-- `npm test`：退出码 0，329 项通过。
+- `npm test`：退出码 0，330 项通过。
 - `npm run check:contracts`：退出码 0。
 - `npm audit --omit=dev`：退出码 0，`found 0 vulnerabilities`。
-- `npx --no-install vsce package --out dist/technical-debt-verification.vsix`：退出码 0；产物 8,011,813 字节，共 353 个文件。
+- `npx --no-install vsce package --out dist/technical-debt-verification.vsix`：退出码 0；产物 8,011,830 字节，共 353 个文件。
 - 禁止模式搜索：`9999999`、`child_process.exec`、`cmd.exe`、`explorer.exe` 在 `src` 中均无匹配。
 - 完成标准搜索：`9999999`、`child_process.exec`、`lsdyna.format.enableOnSave`、`lsdyna.index.enableIncludeTree` 在 `src`、`test`、两份 README 和 `package.json` 中均无匹配。
