@@ -2504,6 +2504,44 @@ describe('LsdynaIncludeCompletionProvider', () => {
     });
 });
 
+describe('file reveal commands', () => {
+    it('send hostile paths only through the VS Code reveal API', () => {
+        const originalPlatform = process.platform;
+        const originalRegisterCommand = vscodeMock.commands.registerCommand;
+        const originalExecuteCommand = vscodeMock.commands.executeCommand;
+        const originalExec = require('child_process').exec;
+        const commands = new Map();
+        const executions = [];
+        let execCount = 0;
+        vscodeMock.commands.registerCommand = (id, callback) => {
+            commands.set(id, callback);
+            return { dispose() {} };
+        };
+        vscodeMock.commands.executeCommand = (id, ...args) => {
+            executions.push([id, ...args]);
+            return Promise.resolve();
+        };
+        require('child_process').exec = () => { execCount++; };
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+
+        try {
+            extensionModule.activate({ subscriptions: [], asAbsolutePath: value => value });
+            const filePath = 'C:\\模型 (2026) & data\\part.key';
+            commands.get('extension.openIncludeFolder')(filePath);
+            commands.get('extension.revealInExplorer')({ filePath });
+
+            const revealCalls = executions.filter(([id]) => id === 'revealFileInOS');
+            assert.deepStrictEqual(revealCalls.map(call => call[1].fsPath), [filePath, filePath]);
+            assert.equal(execCount, 0);
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform });
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+            vscodeMock.commands.executeCommand = originalExecuteCommand;
+            require('child_process').exec = originalExec;
+        }
+    });
+});
+
 describe('extension.openManual command', () => {
     let originalPlatform;
     let originalExec;

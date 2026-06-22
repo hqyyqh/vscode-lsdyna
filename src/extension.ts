@@ -14,7 +14,6 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
-const child_process = require('child_process');
 const manualIndexer = require('./core/manualIndexer');
 const keywordSchema = require('./core/keywordSchema');
 const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
@@ -3070,11 +3069,7 @@ function activate(context) {
         vscode.commands.registerCommand('extension.revealInExplorer', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                if (process.platform === 'win32') {
-                    child_process.exec(`explorer.exe /select,"${uri.fsPath}"`);
-                } else {
-                    vscode.commands.executeCommand('revealFileInOS', uri);
-                }
+                vscode.commands.executeCommand('revealFileInOS', uri);
             }
         })
     );
@@ -3103,11 +3098,7 @@ function activate(context) {
         vscode.commands.registerCommand('extension.openIncludeFolder', (filePath) => {
             try {
                 const uri = vscode.Uri.file(filePath);
-                if (process.platform === 'win32') {
-                    child_process.exec(`explorer.exe /select,"${uri.fsPath}"`);
-                } else {
-                    vscode.commands.executeCommand('revealFileInOS', uri);
-                }
+                vscode.commands.executeCommand('revealFileInOS', uri);
             } catch (err) {
                 vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
             }
