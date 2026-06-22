@@ -879,6 +879,28 @@ function keywordLineNameFromText(text) {
     return classification.isKeyword ? classification.normalizedKeyword.slice(1) : '';
 }
 
+function collectIncludePathLengthDiagnostics(document) {
+    if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) return [];
+
+    const data = getIncludeDirectiveData(document);
+    const entries = [
+        ...(data.includeEntries || []).map(entry => ({ ...entry, value: entry.fileName })),
+        ...(data.pathEntries || []).map(entry => ({ ...entry, value: entry.pathName })),
+    ];
+    return entries
+        .filter(entry => entry.value.length > 236)
+        .map(entry => {
+            const diagnostic = new vscode.Diagnostic(
+                new vscode.Range(entry.lineIndex, entry.startChar, entry.endLineIndex, entry.endChar),
+                i18n.get('includePathTooLong', entry.value.length, 236),
+                vscode.DiagnosticSeverity.Error
+            );
+            diagnostic.code = 'include-path-too-long';
+            diagnostic.source = 'lsdyna';
+            return diagnostic;
+        });
+}
+
 function isKeywordLineText(text) {
     return classifyKeywordLine(String(text || '')).isKeyword;
 }
@@ -2325,18 +2347,21 @@ function getPathEntryRange(document, lineNum, kwLine) {
 }
 
 function splitIncludePathEntry(fullPath) {
-    if (fullPath.length <= 80) return [fullPath];
+    if (fullPath.length > 236) {
+        return { status: 'tooLong', maxLength: 236, actualLength: fullPath.length };
+    }
+    if (fullPath.length <= 80) return { status: 'unchanged', lines: [fullPath] };
     if (fullPath.length <= 156) {
-        return [
+        return { status: 'formatted', lines: [
             fullPath.slice(0, 78) + ' +',
             fullPath.slice(78)
-        ];
+        ] };
     }
-    return [
+    return { status: 'formatted', lines: [
         fullPath.slice(0, 78) + ' +',
         fullPath.slice(78, 156) + ' +',
         fullPath.slice(156)
-    ];
+    ] };
 }
 
 function isIncludeFileKeyword(kwText) {
@@ -2368,12 +2393,14 @@ async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
     }
 
     const fullPath = parts.join('');
-    const newLines = splitIncludePathEntry(fullPath);
+    const result = splitIncludePathEntry(fullPath);
+    if (result.status === 'tooLong') return result;
+    const newLines = result.lines;
 
     const newText = newLines.join('\n');
     const oldText = lines.join('\n');
 
-    if (newText === oldText) return;
+    if (newText === oldText) return result;
 
     isFormattingLine = true;
     try {
@@ -2398,6 +2425,7 @@ async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
     } finally {
         isFormattingLine = false;
     }
+    return result;
 }
 
 let isFormattingLine = false;
@@ -3147,9 +3175,10 @@ function activate(context) {
         if (!isLsdynaFile(document)) return;
         
         const lineLengthDiagnostics = collectLineLengthDiagnostics(document);
+        const includePathLengthDiagnostics = collectIncludePathLengthDiagnostics(document);
         const keywordValidationDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocumentScan);
         
-        diagnostics.set(document.uri, [...lineLengthDiagnostics, ...keywordValidationDiagnostics]);
+        diagnostics.set(document.uri, [...lineLengthDiagnostics, ...includePathLengthDiagnostics, ...keywordValidationDiagnostics]);
     }
 
     context.subscriptions.push(
@@ -3761,6 +3790,7 @@ module.exports._internals = {
     collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
+    collectIncludePathLengthDiagnostics,
     createActiveDocumentDebouncer,
     collectIncludeFiles,
     findParameterDefinitions,
@@ -3804,6 +3834,7 @@ module.exports._internals = {
     handleTabAlignment,
     handleSelectionChange,
     getPathEntryRange,
+    splitIncludePathEntry,
     formatPathEntryIfNeeded,
     LsdynaKeywordCompletionProvider,
 };

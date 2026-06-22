@@ -80,7 +80,8 @@ const LOCALES = {
         // Keyword Validation
         invalidKeywordFormat: '无效的关键字格式：LS-DYNA 关键字只能以单个 \'*\' 开头。',
         keywordLowercase: '关键字 \'*{0}\' 包含小写字母。LS-DYNA 关键字应为大写。',
-        unknownKeyword: '未知或无效的关键字：*{0}'
+        unknownKeyword: '未知或无效的关键字：*{0}',
+        includePathTooLong: 'Include 路径长度为 {0} 个字符，超过 LS-DYNA 三行上限 {1}；未自动修改。'
     },
     'en': {
         openFileFirst: 'Please open an LS-DYNA file first. (Debug: {0})',
@@ -159,7 +160,8 @@ const LOCALES = {
         // Keyword Validation
         invalidKeywordFormat: 'Invalid keyword format: LS-DYNA keywords should start with a single \'*\'.',
         keywordLowercase: 'Keyword \'*{0}\' contains lowercase letters. LS-DYNA keywords should be uppercase.',
-        unknownKeyword: 'Unknown or invalid keyword: *{0}'
+        unknownKeyword: 'Unknown or invalid keyword: *{0}',
+        includePathTooLong: 'Include path is {0} characters, exceeding the LS-DYNA three-line limit of {1}; no automatic edit was applied.'
     }
 };
 

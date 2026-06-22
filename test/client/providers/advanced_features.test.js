@@ -5,7 +5,7 @@ const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, formatPathEntryIfNeeded } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -815,6 +815,59 @@ describe('Phase 7 Features', () => {
     });
 
     describe('formatPathEntryIfNeeded', () => {
+        it('enforces the 80/156/236 LS-DYNA path boundaries', () => {
+            const cases = [
+                [80, 'unchanged', 1],
+                [81, 'formatted', 2],
+                [156, 'formatted', 2],
+                [157, 'formatted', 3],
+                [236, 'formatted', 3],
+            ];
+
+            for (const [length, status, lineCount] of cases) {
+                const result = splitIncludePathEntry('x'.repeat(length));
+                assert.equal(result.status, status, `length ${length}`);
+                assert.equal(result.lines.length, lineCount, `length ${length}`);
+                assert.ok(result.lines.every(line => line.length <= 80), `length ${length}`);
+            }
+
+            assert.deepEqual(splitIncludePathEntry('x'.repeat(237)), {
+                status: 'tooLong',
+                maxLength: 236,
+                actualLength: 237,
+            });
+        });
+
+        it('does not edit a 237-character path and emits an explicit diagnostic', async () => {
+            const longPath = 'x'.repeat(237);
+            const document = fakeDoc(
+                `*INCLUDE_PATH\r\n${longPath}\r\n*INCLUDE\r\n${longPath}\r\n`,
+                '/project/main.k'
+            );
+            let editCalled = false;
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                },
+            };
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                const result = await formatPathEntryIfNeeded(document, 1, 0);
+                const diagnostics = collectIncludePathLengthDiagnostics(document);
+
+                assert.equal(result.status, 'tooLong');
+                assert.equal(editCalled, false);
+                assert.equal(diagnostics.length, 2);
+                assert.ok(diagnostics.every(diagnostic => diagnostic.code === 'include-path-too-long'));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
         it('wraps paths longer than 80 characters into segments of 78 characters with " +"', async () => {
             const longPath = 'a'.repeat(78) + 'b'.repeat(10); // length 88
             const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, '/project/main.k');
