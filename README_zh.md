@@ -38,7 +38,7 @@
 - **路径补全**：输入 `/` 补全同目录包含文件，自动过滤无效路径。
 - **注释自动生成**：使用 `$` 或 `#` 触发字段注释的自动生成，自动右对齐且无尾随空格。
 - **Tab 跳转**：按下 `Tab` 键可在 10 字符宽度分布的字段间实现跳转编辑，并支持自动换行。
-- **自动格式化**：将数据格式化为 **10 列 / 8 列** 对齐格式，支持**保存时自动格式化**。
+- **自动格式化**：将数据格式化为 **10 列 / 8 列** 对齐格式；可通过实验性 `lsdyna.autoFormat` 启用光标离开行时的自动格式化，默认关闭。
 
 > **部分功能演示：**
 > 
@@ -84,6 +84,8 @@
 
 ---
 
+<a id="手册集成设置"></a>
+
 ## 📖 附加功能：PDF 手册集成配置指南
 
 > **说明**: 由于体积原因，离线的 PDF 手册文件并没有直接打包在 `.vsix` 扩展插件中。您可以通过以下两种方式轻松完成配置。
@@ -114,10 +116,17 @@
 
 | 设置项 | 默认值 | 描述 |
 | :--- | :--- | :--- |
-| `lsdyna.additionalExtensions` | `[".txt"]` | 动态添加你想让插件接管并高亮的自定义文件后缀名。 |
+| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 包含 LS-DYNA PDF 手册的目录；Windows 下可同时放置 `SumatraPDF.exe`。 |
+| `lsdyna.enableTabNavigation` | `true` | 启用 Tab/Shift+Tab 智能字段跳转。 |
+| `lsdyna.largeFile.enableRendering` | `true` | 为超大 LS-DYNA 文件启用编辑器渲染功能。 |
+| `lsdyna.codeLens.showOnAllKeywords` | `false` | 在所有支持的关键字上显示选项 CodeLens。 |
 | `lsdyna.hover.previewMaxLines` | `20` | 控制鼠标悬停在包含文件上时，预览窗口所显示的行数。 |
-| `lsdyna.format.enableOnSave` | `true` | 是否开启保存 (Ctrl+S) 时自动格式化当前光标所在行的数据格式。 |
-| `lsdyna.index.enableIncludeTree` | `true` | 是否在侧边栏启用 `*INCLUDE` 嵌套层级树视图。 |
+| `lsdyna.autoFormat` | `"disabled"` | 实验性自动格式化模式：`onBlur` 或 `disabled`。 |
+| `lsdyna.language` | `"auto"` | 插件界面和悬停语言：跟随 VS Code、简体中文或英文。 |
+| `lsdyna.additionalExtensions` | `[".k",".key",".dyna",".asc"]` | 额外关联到 LS-DYNA 语言环境的文件后缀名。 |
+| `lsdyna.scanner.fullScanLargeFiles` | `false` | 对大文件执行完整扫描，而非优化后的首尾扫描。 |
+| `lsdyna.ignoreFormattingKeywords` | `[]` | 不进行格式化、Tab 对齐和注释补全的关键字或前缀。 |
+| `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | 关键字校验额外接受的名称；末尾 `*` 表示前缀通配。 |
 
 > [!TIP]
 > **文件关联与图标**

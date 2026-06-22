@@ -1832,6 +1832,10 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover);
             assert.ok(hover.contents[0].value.includes(i18n.get('manualDirNotConfigured')));
             assert.ok(hover.contents[0].value.includes('command:extension.configureManualsDir'));
+            const expectedGuide = hover.contents[0].value.includes('未设置手册路径')
+                ? 'README_zh.md#手册集成设置'
+                : 'README.md#manual-integration-setup';
+            assert.ok(hover.contents[0].value.includes(expectedGuide), hover.contents[0].value);
         } finally {
             workspace.getConfiguration = originalGetConfiguration;
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;

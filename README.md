@@ -38,7 +38,7 @@
 - **Path Autocomplete:** Type `/` to autocomplete included files in the same directory, filtering invalid paths.
 - **Auto Comment Generation:** Use `$` or `#` to trigger automatic generation of field comments, right-aligned with no trailing spaces.
 - **Tab Navigation:** Press `Tab` to jump between fields distributed across 10-character widths, with auto line wrapping.
-- **Formatting:** Format to align data into the **10-column / 8-column** layout. Supports **auto-format on save**.
+- **Formatting:** Format data into the **10-column / 8-column** layout. Optional cursor-leave formatting is available through the experimental `lsdyna.autoFormat` setting and is disabled by default.
 
 > **Feature Demos:**
 > 
@@ -84,6 +84,8 @@
 
 ---
 
+<a id="manual-integration-setup"></a>
+
 ## 📖 PDF Manual Integration Setup
 
 > **Note**: Due to size limits, offline PDF manuals are not packaged within the `.vsix` extension. You can easily configure them using either of the methods below.
@@ -114,10 +116,17 @@ In VS Code's `settings.json`, you can customize the following exclusive configur
 
 | Setting | Default | Description |
 | :--- | :--- | :--- |
-| `lsdyna.additionalExtensions` | `[".txt"]` | Dynamically add custom file extensions you want the extension to highlight. |
+| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | Directory containing LS-DYNA PDF manuals and, on Windows, the optional `SumatraPDF.exe`. |
+| `lsdyna.enableTabNavigation` | `true` | Enable smart Tab/Shift+Tab field navigation. |
+| `lsdyna.largeFile.enableRendering` | `true` | Enable editor rendering features for very large LS-DYNA files. |
+| `lsdyna.codeLens.showOnAllKeywords` | `false` | Show keyword option CodeLens on every supported keyword. |
 | `lsdyna.hover.previewMaxLines` | `20` | Controls the maximum number of lines displayed when hovering over an included file. |
-| `lsdyna.format.enableOnSave` | `true` | Enables auto-formatting of data fields on the line where the cursor is located when saving (Ctrl+S). |
-| `lsdyna.index.enableIncludeTree` | `true` | Enables the `*INCLUDE` nested hierarchy tree view in the sidebar. |
+| `lsdyna.autoFormat` | `"disabled"` | Experimental cursor-leave formatting mode: `onBlur` or `disabled`. |
+| `lsdyna.language` | `"auto"` | Extension UI and hover language: follow VS Code, Simplified Chinese, or English. |
+| `lsdyna.additionalExtensions` | `[".k",".key",".dyna",".asc"]` | Additional suffixes associated with the LS-DYNA language. |
+| `lsdyna.scanner.fullScanLargeFiles` | `false` | Fully scan large files instead of the optimized head/tail strategy. |
+| `lsdyna.ignoreFormattingKeywords` | `[]` | Keyword names or prefixes excluded from formatting, Tab alignment, and comment completion. |
+| `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | Additional keywords accepted by validation; a trailing `*` acts as a prefix wildcard. |
 
 > [!TIP]
 > **File Associations & Icons**

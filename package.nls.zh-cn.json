@@ -27,8 +27,6 @@
     "config.language.enumDescriptions.en": "英文",
     "config.additionalExtensions.description": "关联到 LS-DYNA 语言环境的额外文件后缀名。",
     "config.scanner.fullScanLargeFiles.markdownDescription": "是否对所有文件进行全量扫描以构建引用树和关键字索引。关闭此项时，大于 500KB 的文件只会扫描其前 1000 行和后 1000 行，从而大幅提升性能。\n\n> **警告:** 开启此选项在加载含有超大网格文件的项目时会导致极长的等待时间！",
-    "config.additionalExtensions.description": "关联到 LS-DYNA 语言环境的额外文件后缀名。",
-    "config.scanner.fullScanLargeFiles.markdownDescription": "是否对所有文件进行全量扫描以构建引用树和关键字索引。关闭此项时，大于 500KB 的文件只会扫描其前 1000 行和后 1000 行，从而大幅提升性能。\n\n> **警告:** 开启此选项在加载含有超大网格文件的项目时会导致极长的等待时间！",
     "config.ignoreFormattingKeywords.description": "列出不需要自动格式化对齐、Tab 智能跳转和注释自动补全的关键字或其前缀。",
     "config.customValidKeywords.description": "自定义不会被标记为语法错误的有效关键字。关键字可包含前导星号 (例如 '*END')。也可在末尾使用通配符 (例如 '*MAT_*') 来匹配以该前缀开头的所有关键字。",
     "config.enableTabNavigation.description": "启用 LS-DYNA 卡片中的智能 Tab 键跳转和字段覆盖选中功能。禁用时，Tab 键只插入普通空格/制表符。",

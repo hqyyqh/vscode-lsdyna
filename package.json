@@ -18,8 +18,22 @@
     "activationEvents": [
         "onLanguage:lsdyna",
         "onLanguage:lsprepost-command-file",
+        "onCommand:extension.openIncludeFile",
+        "onCommand:extension.selectKeyword",
+        "onCommand:extension.lsdynaShiftTab",
+        "onCommand:extension.lsdynaSelectCell",
+        "onCommand:extension.lsdynaFormatSelection",
+        "onCommand:extension.jumpToNextKeyword",
+        "onCommand:extension.jumpToPreviousKeyword",
+        "onCommand:extension.scanIncludeTree",
+        "onCommand:extension.scanKeywordIndex",
+        "onCommand:extension.keywordIndexSetLocal",
+        "onCommand:extension.openToSide",
+        "onCommand:extension.revealInExplorer",
         "onCommand:extension.openManual",
-        "onCommand:extension.lsdynaChooseKeywordOptions"
+        "onCommand:extension.lsdynaChooseKeywordOptions",
+        "onCommand:extension.configureManualsDir",
+        "onCommand:extension.lsdynaTab"
     ],
     "main": "./out/extension.js",
     "categories": [

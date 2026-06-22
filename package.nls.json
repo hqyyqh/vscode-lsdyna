@@ -26,7 +26,6 @@
     "config.language.enumDescriptions.zh-cn": "Simplified Chinese",
     "config.language.enumDescriptions.en": "English",
     "config.additionalExtensions.description": "Additional file extensions to associate with the LS-DYNA language.",
-    "config.additionalExtensions.description": "Additional file extensions to associate with the LS-DYNA language.",
     "config.scanner.fullScanLargeFiles.markdownDescription": "Whether to perform a full scan on all files for Include Tree and Keyword indexing. When disabled, files larger than 500KB will only have their first and last 1000 lines scanned for massive performance improvements. \n\n> **WARNING:** Enabling this will cause very long wait times when loading projects with giant mesh files!",
     "config.ignoreFormattingKeywords.description": "Keywords or prefixes that should ignore automatic formatting, smart tab alignment, and comment auto-completion.",
     "config.customValidKeywords.description": "Custom valid keywords that should not be marked as errors. Keywords can include the leading asterisk (e.g., '*END'). You can also use a wildcard at the end (e.g., '*MAT_*') to match any keyword starting with that prefix.",
