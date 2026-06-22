@@ -15,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
+const { locateTailWindow } = require('./tailLineLocator');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
@@ -550,17 +551,24 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
         const stream = fs.createReadStream(filePath);
         await scanStream(stream, 0, -1);
     } else {
-        const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
-        await scanStream(streamStart, 0, 1000);
+        try {
+            const tail = await locateTailWindow(filePath, fileStat);
+            const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
+            await scanStream(streamStart, 0, 1000);
 
-        state.pendingInclude = null;
-        state.keyword = null;
+            state.pendingInclude = null;
+            state.pendingPath = null;
+            state.keyword = '';
 
-        const tailBytes = 200 * 1024;
-        const startOffset = Math.max(0, fileStat.size - tailBytes);
-        const streamEnd = fs.createReadStream(filePath, { start: startOffset });
-        
-        await scanStream(streamEnd, 9999999, -1);
+            const streamEnd = fs.createReadStream(filePath, { start: tail.startOffset });
+            await scanStream(streamEnd, tail.startLineIndex, -1);
+        } catch (_error) {
+            const fallbackState = createIncludeDirectiveState(basePath);
+            const fallbackStream = fs.createReadStream(filePath);
+            const originalState = state;
+            Object.assign(originalState, fallbackState);
+            await scanStream(fallbackStream, 0, -1);
+        }
     }
 
     return finalizeIncludeDirectiveState(state);

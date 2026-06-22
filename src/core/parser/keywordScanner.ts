@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
+const { locateTailWindow } = require('./tailLineLocator');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
@@ -128,19 +129,19 @@ async function collectKeywordsFromFile(filePath, options: LargeFileScanOptions =
         const stream = fs.createReadStream(filePath);
         await scanStream(stream, 0, -1);
     } else {
-        // Phase 1: First 1000 lines (reading up to 1MB)
-        const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
-        await scanStream(streamStart, 0, 1000);
-        await new Promise(r => setImmediate(r));
+        try {
+            const tail = await locateTailWindow(filePath, fileStat);
+            const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
+            await scanStream(streamStart, 0, 1000);
+            await new Promise(r => setImmediate(r));
 
-        // Phase 2: Last 1000 lines equivalent (reading the last 200KB)
-        const tailBytes = 200 * 1024;
-        const startOffset = Math.max(0, fileStat.size - tailBytes);
-        const streamEnd = fs.createReadStream(filePath, { start: startOffset });
-        
-        // We assign a pseudo line index that will force VS Code to jump to the EOF.
-        // We use Number.MAX_SAFE_INTEGER / 2 to avoid any overflow issues in UI.
-        await scanStream(streamEnd, 9999999, -1);
+            const streamEnd = fs.createReadStream(filePath, { start: tail.startOffset });
+            await scanStream(streamEnd, tail.startLineIndex, -1);
+        } catch (_error) {
+            keywords.length = 0;
+            const fallbackStream = fs.createReadStream(filePath);
+            await scanStream(fallbackStream, 0, -1);
+        }
     }
 
     await new Promise(r => setImmediate(r));
