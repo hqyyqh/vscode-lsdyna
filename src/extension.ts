@@ -22,6 +22,7 @@ const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexP
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
 const { createProjectDiagnosticStore } = require('./client/services/projectDiagnosticStore');
+const { openPdfWithSumatra } = require('./platform/externalProcess');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
@@ -3117,39 +3118,20 @@ function activate(context) {
         vscode.commands.registerCommand('extension.openManual', async (pdfPath, pageNum) => {
             if (!pdfPath) return;
             if (typeof pdfPath !== 'string') return;
-            if (pdfPath.includes('"') || pdfPath.includes('&') || pdfPath.includes('|') || pdfPath.includes(';')) {
-                vscode.env.openExternal(vscode.Uri.file(pdfPath));
-                return;
-            }
 
             if (process.platform === 'win32') {
                 try {
                     const exePath = await resolveSumatraPath(context);
                     if (exePath) {
-                        const args = ['-reuse-instance'];
-                        if (pageNum) {
-                            args.push('-page', String(pageNum));
-                        }
-                        args.push(`"${pdfPath}"`);
-
-                        // Use cmd.exe 'start' to launch SumatraPDF in a new window context.
-                        // Direct spawn inherits VS Code Extension Host's hidden-window flags,
-                        // which prevents GUI applications from creating visible windows.
-                        const cmdArgs = args.join(' ');
-                        const cmd = `start "" "${exePath}" ${cmdArgs}`;
-                        child_process.exec(cmd, (err) => {
-                            if (err) {
-                                openManualFallback(pdfPath, pageNum);
-                            }
-                        });
+                        openPdfWithSumatra(exePath, pdfPath, pageNum, () => openManualExternal(pdfPath, pageNum));
                     } else {
-                        openManualFallback(pdfPath, pageNum);
+                        await openManualExternal(pdfPath, pageNum);
                     }
                 } catch (e) {
-                    openManualFallback(pdfPath, pageNum);
+                    await openManualExternal(pdfPath, pageNum);
                 }
             } else {
-                vscode.env.openExternal(vscode.Uri.file(pdfPath));
+                await openManualExternal(pdfPath, pageNum);
             }
         })
     );
@@ -3791,25 +3773,17 @@ async function resolveSumatraPath(context) {
 }
 
 /**
- * Fallback open command invoking cmd.exe shell start to recycle SumatraPDF or system browser windows.
+ * Opens a PDF through the platform default application without invoking a command shell.
  * 
  * @param {string} pdfPath - File path.
  * @param {number} [pageNum] - Page number.
  */
-function openManualFallback(pdfPath, pageNum) {
-    let fileUrl = `file:///${pdfPath.replace(/\\/g, '/')}`;
-    if (pageNum) {
-        fileUrl += `#page=${pageNum}`;
-    }
-    try {
-        child_process.exec(`cmd.exe /c start "" "${fileUrl}"`, (error) => {
-            if (error) {
-                vscode.env.openExternal(vscode.Uri.file(pdfPath));
-            }
-        });
-    } catch (e) {
-        vscode.env.openExternal(vscode.Uri.file(pdfPath));
-    }
+function openManualExternal(pdfPath, pageNum) {
+    const uri = vscode.Uri.file(pdfPath);
+    const target = pageNum && typeof uri.with === 'function'
+        ? uri.with({ fragment: `page=${pageNum}` })
+        : uri;
+    return vscode.env.openExternal(target);
 }
 
 module.exports = { activate, deactivate };

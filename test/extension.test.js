@@ -2654,9 +2654,12 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\custom\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
-        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
+        assert.deepStrictEqual(spawnCalls, [{
+            exe: 'C:\\custom\\manuals\\SumatraPDF.exe',
+            args: ['-reuse-instance', '-page', '12', pdfPath],
+            options: { shell: false, detached: true, stdio: 'ignore', windowsHide: false },
+        }]);
+        assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
@@ -2672,9 +2675,10 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = 'start "" "C:\\workspace\\relative\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
-        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, 'C:\\workspace\\relative\\manuals\\SumatraPDF.exe');
+        assert.deepStrictEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', pdfPath]);
+        assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
@@ -2691,9 +2695,10 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 0);
-        const expectedCmd = `start "" "${resolvedPath}" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"`;
-        assert.ok(execCalls.some(c => c === expectedCmd), `Expected exec call: ${expectedCmd}\nActual calls: ${JSON.stringify(execCalls)}`);
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].exe, resolvedPath);
+        assert.deepStrictEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', pdfPath]);
+        assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
@@ -2708,8 +2713,8 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
-        assert.strictEqual(openExternalCalls.length, 0);
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 1);
     });
 
     it('returns null and falls back when SumatraPDF.exe does not exist in manualsDir', async () => {
@@ -2724,18 +2729,16 @@ describe('extension.openManual command', () => {
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
-        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
-        assert.strictEqual(openExternalCalls.length, 0);
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 1);
     });
 
-    it('gracefully falls back to openManualFallback (using start command) on Windows if exec start command fails', async () => {
+    it('falls back to the system PDF handler when Sumatra launch fails', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'C:\\custom\\manuals';
         mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
 
-        // Mock the start command to fail
-        const startCmd = 'start "" "C:\\custom\\manuals\\SumatraPDF.exe" -reuse-instance -page 12 "C:\\path\\to\\manual.pdf"';
-        mockRegistryData[startCmd] = { error: 'Start failed' };
+        mockSpawnError = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
@@ -2743,30 +2746,26 @@ describe('extension.openManual command', () => {
         const pdfPath = 'C:\\path\\to\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 0);
-        assert.ok(execCalls.includes(startCmd));
-        // The fallback should also be called
-        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 1);
     });
 
-    it('falls back to vscode.env.openExternal if openManualFallback exec command fails', async () => {
+    it('passes shell metacharacters in PDF paths as opaque arguments', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'C:\\custom\\manuals';
-        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = false;
-
-        // Mock fallback exec command to fail
-        mockRegistryData['cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'] = { error: 'Start failed' };
+        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = 'C:\\path & 100%!\\manual.pdf';
         await openManual(pdfPath, 12);
 
-        assert.strictEqual(spawnCalls.length, 0);
-        assert.ok(execCalls.includes('cmd.exe /c start "" "file:///C:/path/to/manual.pdf#page=12"'));
-        assert.strictEqual(openExternalCalls.length, 1);
-        assert.strictEqual(openExternalCalls[0].fsPath, 'C:\\path\\to\\manual.pdf');
+        assert.strictEqual(spawnCalls.length, 1);
+        assert.strictEqual(spawnCalls[0].args.at(-1), pdfPath);
+        assert.strictEqual(execCalls.length, 0);
+        assert.strictEqual(openExternalCalls.length, 0);
     });
 
     it('directly uses vscode.env.openExternal on non-Windows platforms', async () => {
