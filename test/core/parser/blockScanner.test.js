@@ -54,4 +54,14 @@ describe('blockScanner', () => {
             { keyword: 'END', startLine: 5, endLine: 5 }
         ]);
     });
+
+    it('keeps the existing file API while using complete skeleton block ranges', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-block-api-'));
+        const filePath = path.join(tempDir, 'api.k');
+        fs.writeFileSync(filePath, '*KEYWORD\n*INCLUDE\nbody.k\n*NODE\n1,2,3\n*END\n', 'utf8');
+
+        const blocks = await collectBlocksFromFile(filePath);
+
+        assert.deepEqual(blocks.map(item => item.keyword), ['KEYWORD', 'INCLUDE', 'NODE', 'END']);
+    });
 });

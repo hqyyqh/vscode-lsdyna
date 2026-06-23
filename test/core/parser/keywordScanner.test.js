@@ -65,4 +65,27 @@ describe('keywordScanner', () => {
             ['PART', 'MAT_ELASTIC']
         );
     });
+
+    it('does not miss middle keywords in large files when fullScanLargeFiles is false', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-large-'));
+        const filePath = path.join(tempDir, 'large.k');
+        const lines = ['*KEYWORD'];
+        const filler = '0'.repeat(72);
+        for (let index = 1; index < 40000; index++) {
+            if (index === 5000) {
+                lines.push('*INCLUDE');
+            } else {
+                lines.push(`${index.toString().padStart(8, '0')} ${filler}`);
+            }
+        }
+        lines.push('*END');
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
+
+        const keywords = await collectKeywordsFromFile(filePath, { fullScanLargeFiles: false });
+
+        assert.deepEqual(
+            keywords.map(item => item.keyword),
+            ['KEYWORD', 'INCLUDE', 'END']
+        );
+    });
 });

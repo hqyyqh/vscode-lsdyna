@@ -12,14 +12,8 @@
  * and structural navigation without parsing the entire file content into memory.
  */
 
-const fs = require('fs');
-const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
-
-/**
- * The default batch yield interval for stream scanning to prevent blocking the event loop.
- * @type {number}
- */
-const STREAM_SCAN_YIELD_INTERVAL = 50000;
+const { classifyKeywordLine } = require('./keywordLine');
+const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScanner');
 
 /**
  * @typedef {Object} KeywordBlock
@@ -71,74 +65,17 @@ function collectBlocksFromLineReader(lineCount, getLine) {
  * @returns {Promise<KeywordBlock[]>} A promise resolving to the list of keyword blocks in the file.
  */
 async function collectBlocksFromFile(filePath) {
-    const stream = fs.createReadStream(filePath);
-    const blocks = [];
-    let remainder = Buffer.alloc(0);
-    let lineIndex = 0;
-    let currentBlock = null;
-
     try {
-        for await (const chunk of stream) {
-            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
-            let offset = 0;
-            let nextNewLine = -1;
-
-            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
-                const lineStart = offset;
-                const lineEnd = nextNewLine;
-
-                if (findKeywordAsterisk(combined, lineStart, lineEnd) !== -1) {
-                    const lineStr = combined.toString('utf8', lineStart, lineEnd);
-                    const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
-                    if (keyword) {
-                        if (currentBlock) {
-                            currentBlock.endLine = lineIndex - 1;
-                        }
-                        currentBlock = {
-                            keyword,
-                            startLine: lineIndex,
-                            endLine: lineIndex,
-                        };
-                        blocks.push(currentBlock);
-                    }
-                }
-
-                offset = nextNewLine + 1;
-                lineIndex++;
-
-                if (lineIndex % STREAM_SCAN_YIELD_INTERVAL === 0) {
-                    await new Promise(r => setImmediate(r));
-                }
-            }
-            remainder = combined.subarray(offset);
-        }
-
-        if (remainder.length > 0) {
-            if (findKeywordAsterisk(remainder) !== -1) {
-                const lineStr = remainder.toString('utf8');
-                const keyword = classifyKeywordLine(lineStr).normalizedKeyword.slice(1);
-                if (keyword) {
-                    if (currentBlock) {
-                        currentBlock.endLine = lineIndex - 1;
-                    }
-                    currentBlock = {
-                        keyword,
-                        startLine: lineIndex,
-                        endLine: lineIndex,
-                    };
-                    blocks.push(currentBlock);
-                }
-            }
-        }
-        if (currentBlock) {
-            currentBlock.endLine = remainder.length > 0 ? lineIndex : lineIndex - 1;
-        }
-    } finally {
-        stream.destroy();
+        const blocks = await scanKeywordSkeletonFromFile(filePath);
+        await new Promise(r => setImmediate(r));
+        return blocks.map(block => ({
+            keyword: block.keyword.slice(1),
+            startLine: block.startLine,
+            endLine: block.endLine,
+        }));
+    } catch (_error) {
+        return [];
     }
-
-    await new Promise(r => setImmediate(r));
-    return blocks;
 }
 
 module.exports = {
