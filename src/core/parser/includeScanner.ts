@@ -15,7 +15,8 @@
 const fs = require('fs');
 const path = require('path');
 const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
-const { locateTailWindow } = require('./tailLineLocator');
+const { readBlockText } = require('../scanner/blockReader');
+const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScanner');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
@@ -484,7 +485,6 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
  * @returns {Promise<IncludeResult>} Include entries and search paths.
  */
 async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScanOptions = {}) {
-    const fullScan = options.fullScanLargeFiles === true;
     const basePath = path.dirname(filePath);
 
     let fileStat;
@@ -499,97 +499,12 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
         return collectIncludeDirectivesFromBuffer(buffer, basePath);
     }
 
-    const LARGE_FILE_THRESHOLD = 500 * 1024;
-    const doChunkedScan = !fullScan && fileStat.size > LARGE_FILE_THRESHOLD;
-
-    if (!doChunkedScan) {
-        const hasInclude = await streamContainsIncludeKeyword(filePath);
-        if (!hasInclude) {
-            return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
-        }
-    }
-
-    const state = createIncludeDirectiveState(basePath);
-
-    async function scanStream(stream, startLineIndex, maxLines = -1) {
-        let remainder = Buffer.alloc(0);
-        let lineIndex = startLineIndex;
-        let linesProcessed = 0;
-
-        try {
-            for await (const chunk of stream) {
-                const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
-                let offset = 0;
-                let nextNewLine = -1;
-
-                while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
-                    const lineStart = offset;
-                    const lineEnd = nextNewLine;
-
-                    const isKeywordLine = findKeywordAsterisk(combined, lineStart, lineEnd) !== -1;
-                    const inIncludeContext = !!state.pendingInclude ||
-                        (state.keyword && state.keyword.startsWith('*INCLUDE'));
-
-                    if (isKeywordLine || inIncludeContext) {
-                        const lineStr = combined.toString('utf8', lineStart, lineEnd);
-                        processIncludeDirectiveLine(state, lineStr, lineIndex);
-                    }
-
-                    offset = nextNewLine + 1;
-                    lineIndex++;
-                    linesProcessed++;
-
-                    if (linesProcessed % STREAM_SCAN_YIELD_INTERVAL === 0) {
-                        await new Promise(r => setImmediate(r));
-                    }
-
-                    if (maxLines > 0 && linesProcessed >= maxLines) {
-                        return;
-                    }
-                }
-                remainder = combined.subarray(offset);
-            }
-
-            if (remainder.length > 0 && (maxLines <= 0 || linesProcessed < maxLines)) {
-                const isKeywordLine = findKeywordAsterisk(remainder) !== -1;
-                const inIncludeContext = !!state.pendingInclude ||
-                    (state.keyword && state.keyword.startsWith('*INCLUDE'));
-
-                if (isKeywordLine || inIncludeContext) {
-                    const lineStr = remainder.toString('utf8');
-                    processIncludeDirectiveLine(state, lineStr, lineIndex);
-                }
-            }
-        } finally {
-            stream.destroy();
-        }
-    }
-
-    if (!doChunkedScan) {
-        const stream = fs.createReadStream(filePath);
-        await scanStream(stream, 0, -1);
-    } else {
-        try {
-            const tail = await locateTailWindow(filePath, fileStat);
-            const streamStart = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
-            await scanStream(streamStart, 0, 1000);
-
-            state.pendingInclude = null;
-            state.pendingPath = null;
-            state.keyword = '';
-
-            const streamEnd = fs.createReadStream(filePath, { start: tail.startOffset });
-            await scanStream(streamEnd, tail.startLineIndex, -1);
-        } catch (_error) {
-            const fallbackState = createIncludeDirectiveState(basePath);
-            const fallbackStream = fs.createReadStream(filePath);
-            const originalState = state;
-            Object.assign(originalState, fallbackState);
-            await scanStream(fallbackStream, 0, -1);
-        }
-    }
-
-    return finalizeIncludeDirectiveState(state);
+    const keywordBlocks = await scanKeywordSkeletonFromFile(filePath, options);
+    return collectIncludeDirectivesFromKeywordBlocks(
+        filePath,
+        keywordBlocks,
+        block => readBlockText(block)
+    );
 }
 
 /**
