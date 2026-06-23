@@ -40,4 +40,16 @@ describe('scanKeywordSkeletonFromFile', () => {
         assert.equal(blocks[3].flags.isElementBlock, true);
         assert.ok(blocks[1].endOffset > blocks[1].startOffset);
     });
+
+    it('handles lowercase keywords, CRLF, chunk boundaries, and final line without newline', async () => {
+        const filePath = writeFixture('crlf.k', '*keyword\r\n\t*part\r\n$ comment\r\n*end');
+        const blocks = await scanKeywordSkeletonFromFile(filePath, { highWaterMark: 5 });
+
+        assert.deepEqual(blocks.map(block => block.keyword), ['*KEYWORD', '*PART', '*END']);
+        assert.equal(blocks[0].startLine, 0);
+        assert.equal(blocks[1].startLine, 1);
+        assert.equal(blocks[1].keywordStartChar, 1);
+        assert.equal(blocks[2].endLine, 3);
+        assert.equal(blocks[2].endOffset, fs.statSync(filePath).size);
+    });
 });
