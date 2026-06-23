@@ -104,11 +104,11 @@ describe('LSP server-client bridge', () => {
 
         const client = createIndexClient({ languageClient: mockLanguageClient });
 
-        const snapshot = await client.loadProjectSnapshot(rootFile);
+        const snapshot = await client.loadProjectSnapshot(rootFile, { largeFileMode: 'skeleton' }, () => undefined);
         assert.equal(snapshot.rootFile, rootFile);
         assert.ok(snapshot.keywordMap instanceof Map);
         assert.equal(requestMethod, protocol.LOAD_PROJECT_SNAPSHOT_REQUEST);
-        assert.deepEqual(requestParams, { rootFile });
+        assert.deepEqual(requestParams, { rootFile, options: { largeFileMode: 'skeleton' } });
 
         client.invalidate(rootFile);
         assert.equal(notificationMethod, protocol.INVALIDATE_NOTIFICATION);

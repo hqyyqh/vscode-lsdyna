@@ -11,6 +11,7 @@
  * Role in System: Orchestrates and holds state of the active LSP server runtime.
  */
 
+const path = require('path');
 const { createIndexClient } = require('../client/services/indexClient');
 const { createProjectIndexLoader } = require('../worker/projectIndexLoader');
 const { createDiskSnapshotStore } = require('../core/cache/diskSnapshotStore');
@@ -40,7 +41,9 @@ class LsdynaServerSession {
          * Pool coordinator for spawning background node worker processes.
          * @type {import('../worker/projectIndexLoader').ProjectIndexLoader}
          */
-        this.projectIndexLoader = createProjectIndexLoader();
+        this.projectIndexLoader = createProjectIndexLoader({
+            fileScanCacheDirectory: globalStoragePath ? path.join(globalStoragePath, 'file-scans') : null,
+        });
 
         /**
          * L2 persistent snapshot cache on disk.

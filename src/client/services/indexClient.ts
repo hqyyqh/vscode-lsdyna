@@ -242,7 +242,7 @@ function createIndexClient({
             bindNotification();
         }
         return {
-            async loadProjectSnapshot(rootFile, onProgress = null) {
+            async loadProjectSnapshot(rootFile, options = {}, onProgress = null) {
                 if (typeof languageClient.onReady === 'function') {
                     await languageClient.onReady();
                 }
@@ -251,7 +251,7 @@ function createIndexClient({
                 try {
                     const serialized = await languageClient.sendRequest(
                         protocol.LOAD_PROJECT_SNAPSHOT_REQUEST,
-                        { rootFile: resolvedRootFile }
+                        { rootFile: resolvedRootFile, options }
                     );
                     return hydrateProjectSnapshot(serialized);
                 } finally {

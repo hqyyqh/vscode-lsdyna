@@ -2924,8 +2924,8 @@ function activate(context) {
     context.subscriptions.push(projectDiagnosticStore);
 
     const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
-    indexClient.loadProjectSnapshot = async (rootFile) => {
-        const snapshot = await originalLoadProjectSnapshot(rootFile);
+    indexClient.loadProjectSnapshot = async (rootFile, options = {}, onProgress = null) => {
+        const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress);
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
