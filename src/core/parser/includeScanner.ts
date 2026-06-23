@@ -412,6 +412,24 @@ function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
     return finalizeIncludeDirectiveState(state);
 }
 
+async function collectIncludeDirectivesFromKeywordBlocks(filePath, keywordBlocks, readKeywordBlockText) {
+    const basePath = path.dirname(filePath);
+    const state = createIncludeDirectiveState(basePath);
+
+    for (const block of keywordBlocks) {
+        if (!block.keyword || !block.keyword.startsWith('*INCLUDE')) continue;
+
+        const text = await readKeywordBlockText(block);
+        const lines = text.split(/\r?\n/);
+        for (let lineOffset = 0; lineOffset < lines.length; lineOffset++) {
+            if (lineOffset === lines.length - 1 && lines[lineOffset] === '') continue;
+            processIncludeDirectiveLine(state, lines[lineOffset], block.startLine + lineOffset);
+        }
+    }
+
+    return finalizeIncludeDirectiveState(state);
+}
+
 /**
  * Size threshold below which files are read entirely into memory for faster parsing.
  * Files larger than this are processed via streaming to limit memory usage.
@@ -633,6 +651,7 @@ function bufferContainsIncludeKeyword(buffer) {
 module.exports = {
     collectIncludeDirectivesFromBuffer,
     collectIncludeDirectivesFromFile,
+    collectIncludeDirectivesFromKeywordBlocks,
     collectIncludeDirectivesFromLineReader,
     getIncludeEntryRanges,
     includeEntryContainsLine,
