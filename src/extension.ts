@@ -72,6 +72,7 @@ const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
+const activeFileIndexCache = new Map();
 
 function getLsdynaConfigurationValue(key, defaultValue, resource = undefined) {
     const config = vscode.workspace.getConfiguration('lsdyna', resource);
@@ -95,6 +96,36 @@ function logDebug(message) {
     console.log(`[lsdyna] ${message}`);
 }
 
+function normalizeFileIndexKey(filePath) {
+    const resolvedPath = path.resolve(filePath);
+    return process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
+function getFileIndexForDocument(document) {
+    if (!document || !document.uri || !document.uri.fsPath) return null;
+    return activeFileIndexCache.get(normalizeFileIndexKey(document.uri.fsPath)) || null;
+}
+
+function setFileIndexForTesting(filePath, fileIndex) {
+    const key = normalizeFileIndexKey(filePath);
+    if (!fileIndex) {
+        activeFileIndexCache.delete(key);
+        return;
+    }
+    activeFileIndexCache.set(key, fileIndex);
+}
+
+function cacheFileIndexesFromSnapshot(snapshot) {
+    if (!snapshot || !snapshot.fileIndexes) return;
+    const entries = snapshot.fileIndexes instanceof Map
+        ? snapshot.fileIndexes.entries()
+        : Object.entries(snapshot.fileIndexes);
+    for (const [filePath, fileIndex] of entries) {
+        if (!filePath || !fileIndex) continue;
+        activeFileIndexCache.set(normalizeFileIndexKey(filePath), fileIndex);
+    }
+}
+
 // --- Folding ---
 
 /**
@@ -109,6 +140,13 @@ class LsDynaFoldingProvider {
      * @returns {import('vscode').FoldingRange[]} Folding ranges.
      */
     provideFoldingRanges(document) {
+        const fileIndex = getFileIndexForDocument(document);
+        if (fileIndex && Array.isArray(fileIndex.keywordBlocks)) {
+            return fileIndex.keywordBlocks
+                .filter(block => block.endLine > block.startLine)
+                .map(block => new vscode.FoldingRange(block.startLine, block.endLine));
+        }
+
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
         const ranges = [];
@@ -145,6 +183,27 @@ class LsdynaKeywordSymbolProvider {
      * @returns {import('vscode').DocumentSymbol[]} Document symbols.
      */
     provideDocumentSymbols(document) {
+        const fileIndex = getFileIndexForDocument(document);
+        if (fileIndex && Array.isArray(fileIndex.keywordBlocks)) {
+            return fileIndex.keywordBlocks.map(block => {
+                const startChar = block.keywordStartChar || 0;
+                const keyword = block.keyword || block.rawKeyword || '';
+                const range = new vscode.Range(
+                    block.startLine,
+                    startChar,
+                    block.startLine,
+                    startChar + keyword.length
+                );
+                return new vscode.DocumentSymbol(
+                    keyword,
+                    '',
+                    vscode.SymbolKind.Property,
+                    range,
+                    range
+                );
+            });
+        }
+
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
         const symbols = [];
@@ -2926,6 +2985,7 @@ function activate(context) {
     const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
     indexClient.loadProjectSnapshot = async (rootFile, options = {}, onProgress = null) => {
         const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress);
+        cacheFileIndexesFromSnapshot(snapshot);
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
@@ -3786,6 +3846,7 @@ module.exports._internals = {
     collectLineLengthDiagnostics,
     collectIncludePathLengthDiagnostics,
     updateDocumentDiagnostics,
+    cacheFileIndexesFromSnapshot,
     createActiveDocumentDebouncer,
     collectIncludeFiles,
     findParameterDefinitions,
@@ -3805,6 +3866,7 @@ module.exports._internals = {
     findNextKeywordInDocument,
     findPreviousKeywordInDocument,
     shouldSkipAutomaticDocumentScan,
+    setFileIndexForTesting,
     startLineOfCurrentKeyword,
     endLineOfCurrentKeyword,
     getFilenameFromKeyword,

@@ -30,15 +30,28 @@ describe('snapshotSerializer', () => {
             keywordMap: new Map([
                 ['KEYWORD', [{ keyword: 'KEYWORD', filePath: childFile, lineIndex: 1 }]],
             ]),
+            fileIndexes: new Map([
+                [childFile, {
+                    filePath: childFile,
+                    scannerVersion: 1,
+                    keywordBlocks: [{ keyword: '*KEYWORD', startLine: 1, endLine: 1 }],
+                    includeEntries: [],
+                    searchPaths: [path.dirname(childFile)],
+                    pathEntries: [],
+                }],
+            ]),
             missingFiles: graph.missingFiles,
             cycles: graph.cycles,
             stats: { scannedFileCount: 1, reusedFileCount: 1 },
         };
 
-        const hydrated = hydrateProjectSnapshot(serializeProjectSnapshot(snapshot));
+        const serialized = JSON.parse(JSON.stringify(serializeProjectSnapshot(snapshot)));
+        const hydrated = hydrateProjectSnapshot(serialized);
 
         assert.ok(hydrated.keywordMap instanceof Map);
+        assert.ok(hydrated.fileIndexes instanceof Map);
         assert.deepEqual(hydrated.keywordMap.get('KEYWORD'), snapshot.keywordMap.get('KEYWORD'));
+        assert.deepEqual(hydrated.fileIndexes.get(childFile), snapshot.fileIndexes.get(childFile));
         assert.deepEqual(hydrated.graph.toTree(rootFile), {
             filePath: rootFile,
             children: [
@@ -50,9 +63,6 @@ describe('snapshotSerializer', () => {
                     filePath: path.resolve('project', 'missing.key'),
                     fileName: 'missing.key',
                     missing: true,
-                    lineIndex: undefined,
-                    startChar: undefined,
-                    endChar: undefined,
                     children: [],
                 },
             ],

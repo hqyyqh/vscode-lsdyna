@@ -31,6 +31,7 @@ function serializeProjectSnapshot(snapshot) {
     return {
         ...snapshot,
         graph: snapshot.graph.toJSON(),
+        fileIndexes: [...(snapshot.fileIndexes || new Map()).entries()],
         keywordMap: [...(snapshot.keywordMap || new Map()).entries()],
         missingFiles: [...(snapshot.missingFiles || [])],
         cycles: [...(snapshot.cycles || [])],
@@ -48,6 +49,7 @@ function hydrateProjectSnapshot(snapshot) {
     return {
         ...snapshot,
         graph,
+        fileIndexes: new Map(snapshot.fileIndexes || []),
         keywordMap: new Map(snapshot.keywordMap || []),
         missingFiles: graph.missingFiles,
         cycles: graph.cycles,

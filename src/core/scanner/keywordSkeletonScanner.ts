@@ -5,7 +5,10 @@ const { isElementKeyword, isNodeKeyword } = require('./scannerContracts');
 
 type KeywordSkeletonScanOptions = {
     highWaterMark?: number;
+    yieldInterval?: number;
 };
+
+const DEFAULT_SCAN_YIELD_INTERVAL = 50000;
 
 function isHorizontalWhitespace(byte) {
     return byte === 0x20 || byte === 0x09;
@@ -65,6 +68,8 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
     let absoluteOffset = 0;
     let lineStartOffset = 0;
     let lineIndex = 0;
+    let linesProcessed = 0;
+    const yieldInterval = options.yieldInterval || DEFAULT_SCAN_YIELD_INTERVAL;
 
     function processLine(lineBuffer, startOffset, currentLine) {
         const parsed = extractKeywordFromLine(lineBuffer);
@@ -101,7 +106,11 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                 processLine(lineBuffer, startOffset, lineIndex);
                 offset = nextNewLine + 1;
                 lineIndex++;
+                linesProcessed++;
                 lineStartOffset = combinedStartOffset + offset;
+                if (yieldInterval > 0 && linesProcessed % yieldInterval === 0) {
+                    await new Promise(r => setImmediate(r));
+                }
             }
 
             remainder = combined.subarray(offset);

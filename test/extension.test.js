@@ -45,6 +45,7 @@ const {
     createProjectSnapshotPersistentCache,
     chooseKeywordOptionsForEditor,
     updateDocumentDiagnostics,
+    setFileIndexForTesting,
 } = extensionModule._internals;
 
 describe('updateDocumentDiagnostics', () => {
@@ -1415,6 +1416,28 @@ describe('large document guards', () => {
             },
         };
     }
+
+    it('uses file index for folding and symbols without scanning huge documents', () => {
+        const document = createHugeDoc();
+        const fileIndex = {
+            keywordBlocks: [
+                { keyword: '*KEYWORD', startLine: 0, endLine: 9, keywordStartChar: 0 },
+                { keyword: '*NODE', startLine: 10, endLine: 100, keywordStartChar: 0 },
+                { keyword: '*END', startLine: 101, endLine: 101, keywordStartChar: 0 },
+            ],
+        };
+
+        setFileIndexForTesting(document.uri.fsPath, fileIndex);
+        try {
+            const folds = new LsDynaFoldingProvider().provideFoldingRanges(document);
+            const symbols = new LsdynaKeywordSymbolProvider().provideDocumentSymbols(document);
+
+            assert.deepStrictEqual(folds.map(range => [range.start, range.end]), [[0, 9], [10, 100]]);
+            assert.equal(symbols.length, 3);
+        } finally {
+            setFileIndexForTesting(document.uri.fsPath, null);
+        }
+    });
 
     it('skips automatic line-length diagnostics for very large documents', () => {
         assert.deepEqual(collectLineLengthDiagnostics(createHugeDoc()), []);
