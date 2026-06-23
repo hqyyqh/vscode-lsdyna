@@ -50,6 +50,30 @@ describe('createFileScanCacheStore', () => {
         assert.equal(retrieved, null);
     });
 
+    it('returns null for cached file indexes with a stale scanner version', async () => {
+        const store = createFileScanCacheStore({ cacheDirectory: tempDir });
+        const filePath = '/project/versioned.k';
+        const signature = { mtimeMs: 1000, size: 500 };
+        const scanResult = {
+            filePath,
+            fileIndex: {
+                filePath,
+                scannerVersion: 0,
+                keywordBlocks: [],
+                includeEntries: [],
+                searchPaths: ['/project'],
+            },
+            keywords: [],
+            includeEntries: [],
+            searchPaths: ['/project'],
+        };
+
+        await store.set(filePath, signature, scanResult);
+        const retrieved = await store.get(filePath, signature);
+
+        assert.equal(retrieved, null);
+    });
+
     it('returns null for unknown files', async () => {
         const store = createFileScanCacheStore({ cacheDirectory: tempDir });
         const retrieved = await store.get('/unknown.k', { mtimeMs: 1000, size: 100 });

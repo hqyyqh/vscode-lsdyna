@@ -8,6 +8,40 @@ const path = require('path');
 const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAsync, createConcurrencyLimiter } = require('../../../src/core/project/projectIndexer');
 
 describe('projectIndexer', () => {
+    it('loads each file index once and derives keywords plus includes from that result', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-file-index-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        fs.writeFileSync(rootFile, '*KEYWORD\n', 'utf8');
+
+        let loadCount = 0;
+        const indexer = createProjectIndexer({
+            loadFileIndex: async (filePath) => {
+                loadCount++;
+                return {
+                    filePath,
+                    size: 10,
+                    mtimeMs: 1,
+                    scannerVersion: 1,
+                    keywordBlocks: [{ keyword: '*KEYWORD', filePath, startLine: 0 }],
+                    includeEntries: [],
+                    searchPaths: [path.dirname(filePath)],
+                    pathEntries: [],
+                    scanStats: { mode: 'stream-skeleton', durationMs: 1, decodedLineCount: 0, keywordCount: 1 },
+                };
+            },
+            getFileSignature: async () => ({ mtimeMs: 1, size: 10 }),
+        });
+
+        try {
+            const snapshot = await indexer.buildProjectIndex(rootFile);
+            assert.equal(loadCount, 1);
+            assert.deepEqual(snapshot.keywordMap.get('KEYWORD').map(entry => entry.filePath), [rootFile]);
+            assert.equal(snapshot.fileIndexes.get(rootFile).scannerVersion, 1);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('records every deduplicated missing include candidate in search order', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-candidates-'));
         const rootFile = path.join(tempRoot, 'main.k');

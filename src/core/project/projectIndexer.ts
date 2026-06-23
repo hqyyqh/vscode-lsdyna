@@ -23,6 +23,7 @@ const path = require('path');
 
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
+const { buildFileIndex } = require('../scanner/fileIndexBuilder');
 const { ProjectGraph } = require('./projectGraph');
 
 type FileSignature = {
@@ -32,6 +33,7 @@ type FileSignature = {
 
 type FileScanResult = {
     filePath: string;
+    fileIndex: any;
     keywords: Array<{ keyword: string; filePath: string; lineIndex: number }>;
     includeEntries: Array<{
         fileName: string;
@@ -184,6 +186,42 @@ function addKeywordUsages(keywordMap, keywords) {
     }
 }
 
+function keywordsFromFileIndex(fileIndex) {
+    return (fileIndex.keywordBlocks || []).map(block => ({
+        keyword: String(block.keyword || '').startsWith('*')
+            ? String(block.keyword).slice(1)
+            : String(block.keyword || ''),
+        filePath: fileIndex.filePath,
+        lineIndex: block.startLine ?? block.lineIndex ?? block.line ?? 0,
+    })).filter(entry => entry.keyword);
+}
+
+async function buildLegacyFileIndexFromCollectors(filePath, options, collectKeywordsFromFile, collectIncludeDirectivesFromFile) {
+    const keywords = await collectKeywordsFromFile(filePath, options);
+    const { includeEntries, searchPaths, pathEntries = [] } = await collectIncludeDirectivesFromFile(filePath, options);
+    return {
+        filePath,
+        scannerVersion: 1,
+        keywordBlocks: (keywords || []).map(entry => ({
+            filePath,
+            keyword: String(entry.keyword || '').startsWith('*') ? entry.keyword : `*${entry.keyword}`,
+            rawKeyword: String(entry.keyword || '').startsWith('*') ? entry.keyword : `*${entry.keyword}`,
+            startLine: entry.lineIndex ?? entry.line ?? 0,
+            endLine: entry.lineIndex ?? entry.line ?? 0,
+            keywordStartChar: 0,
+        })),
+        includeEntries: includeEntries || [],
+        searchPaths: searchPaths || [path.dirname(filePath)],
+        pathEntries,
+        scanStats: {
+            mode: 'stream-skeleton',
+            durationMs: 0,
+            decodedLineCount: (includeEntries || []).length + pathEntries.length,
+            keywordCount: (keywords || []).length,
+        },
+    };
+}
+
 /**
  * Creates a concurrency limiter that restricts the number of parallel async operations.
  * 
@@ -230,10 +268,14 @@ function createConcurrencyLimiter(concurrency) {
 function createProjectIndexer({
     collectIncludeDirectivesFromFile = includeScanner.collectIncludeDirectivesFromFile,
     collectKeywordsFromFile = keywordScanner.collectKeywordsFromFile,
+    loadFileIndex = null,
     getFileSignature = readFileSignature,
     concurrency = DEFAULT_CONCURRENCY,
     persistentFileScanCache = null,
 } = {}) {
+    if (loadFileIndex !== null && typeof loadFileIndex !== 'function') {
+        throw new TypeError('createProjectIndexer requires loadFileIndex to be a function');
+    }
     if (typeof collectIncludeDirectivesFromFile !== 'function') {
         throw new TypeError('createProjectIndexer requires collectIncludeDirectivesFromFile to be a function');
     }
@@ -246,6 +288,13 @@ function createProjectIndexer({
 
     /** @type {Map<string, { signature: import('../cache/diskSnapshotStore').FileSignature, scanResult: Object }>} */
     const fileScanCache = new Map();
+    const usesLegacyCollectors = collectIncludeDirectivesFromFile !== includeScanner.collectIncludeDirectivesFromFile
+        || collectKeywordsFromFile !== keywordScanner.collectKeywordsFromFile;
+    const effectiveLoadFileIndex = loadFileIndex || (
+        usesLegacyCollectors
+            ? (filePath, options) => buildLegacyFileIndexFromCollectors(filePath, options, collectKeywordsFromFile, collectIncludeDirectivesFromFile)
+            : buildFileIndex
+    );
 
     /**
      * Performs a file-level scan (keywords, includes, paths), utilizing L1 in-memory cache
@@ -281,13 +330,14 @@ function createProjectIndexer({
             }
         }
 
-        const keywords = await collectKeywordsFromFile(resolvedFilePath, options);
-        const { includeEntries, searchPaths } = await collectIncludeDirectivesFromFile(resolvedFilePath, options);
+        const fileIndex = await effectiveLoadFileIndex(resolvedFilePath, options);
+        const keywords = keywordsFromFileIndex(fileIndex);
         const scanResult: FileScanResult = {
             filePath: resolvedFilePath,
+            fileIndex,
             keywords,
-            includeEntries,
-            searchPaths,
+            includeEntries: fileIndex.includeEntries || [],
+            searchPaths: fileIndex.searchPaths || [path.dirname(resolvedFilePath)],
         };
 
         fileScanCache.set(fileCacheKey, {
@@ -320,6 +370,7 @@ function createProjectIndexer({
     async function buildProjectIndex(rootFile, options = {}, onProgress = null) {
         const resolvedRootFile = resolveProjectFile(rootFile);
         const files = [];
+        const fileIndexes = new Map();
         const keywordMap = new Map();
         const graph = new ProjectGraph();
         const visited = new Set();
@@ -367,6 +418,9 @@ function createProjectIndexer({
                 const { filePath: resolvedFilePath, ancestry } = toScan[i];
                 const scanResult = scanResults[i];
 
+                if (scanResult.fileIndex) {
+                    fileIndexes.set(resolvedFilePath, scanResult.fileIndex);
+                }
                 addKeywordUsages(keywordMap, scanResult.keywords);
 
                 // Resolve all includes for this file in parallel
@@ -423,6 +477,7 @@ function createProjectIndexer({
                 onProgress({
                     rootFile: resolvedRootFile,
                     files: [...files],
+                    fileIndexes,
                     graph,
                     keywordMap,
                     missingFiles: graph.missingFiles,
@@ -437,6 +492,7 @@ function createProjectIndexer({
         return {
             rootFile: resolvedRootFile,
             files,
+            fileIndexes,
             graph,
             keywordMap,
             missingFiles: graph.missingFiles,

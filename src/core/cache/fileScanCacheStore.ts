@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { SCANNER_VERSION } = require('../scanner/scannerContracts');
 
 type FileSignature = {
     mtimeMs: number;
@@ -50,7 +51,7 @@ type FileScanCacheStoreOptions = {
 
 const INDEX_FILE_NAME = 'file-scan-index.json';
 const PAYLOAD_DIR_NAME = 'file-scans';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Generates a normalized cache key for a file path. Handles Windows casing.
@@ -198,7 +199,15 @@ function createFileScanCacheStore({
             try {
                 const payloadPath = path.join(payloadDirPath, entry.payloadFile);
                 const raw = await fs.promises.readFile(payloadPath, 'utf8');
-                return JSON.parse(raw);
+                const parsed = JSON.parse(raw);
+                const scannerVersion = parsed && parsed.fileIndex
+                    ? parsed.fileIndex.scannerVersion
+                    : parsed && parsed.scannerVersion;
+                if (scannerVersion !== undefined && scannerVersion !== SCANNER_VERSION) {
+                    index.delete(cacheKey);
+                    return null;
+                }
+                return parsed;
             } catch (_error) {
                 // Corrupted payload, remove entry
                 index.delete(cacheKey);
