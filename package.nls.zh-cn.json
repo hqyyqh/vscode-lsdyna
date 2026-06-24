@@ -18,6 +18,7 @@
     "commands.jumpToNextKeyword.title": "跳转到下一个关键字",
     "commands.jumpToPreviousKeyword.title": "跳转到上一个关键字",
     "commands.openManual.title": "打开 LS-DYNA 关键字手册",
+    "commands.openLsdynaReferenceDefinition.title": "打开 LS-DYNA 引用定义",
     "commands.lsdynaChooseKeywordOptions.title": "选择 LS-DYNA 关键字选项",
     "commands.configureManualsDir.title": "配置 LS-DYNA 手册目录",
     "config.manualsDir.description": "包含 LS-DYNA PDF 手册的文件夹路径 (支持绝对路径或相对于 VS Code 安装目录的相对路径)。在 Windows 系统中，可以将 SumatraPDF.exe 复制到此文件夹内以实现精准的书签页跳转。",

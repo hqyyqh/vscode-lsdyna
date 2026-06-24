@@ -18,6 +18,7 @@
     "commands.jumpToNextKeyword.title": "Jump to Next Keyword",
     "commands.jumpToPreviousKeyword.title": "Jump to Previous Keyword",
     "commands.openManual.title": "Open LS-DYNA Keyword Manual",
+    "commands.openLsdynaReferenceDefinition.title": "Open LS-DYNA Reference Definition",
     "commands.lsdynaChooseKeywordOptions.title": "Choose LS-DYNA Keyword Options",
     "commands.configureManualsDir.title": "Configure LS-DYNA Manuals Directory",
     "config.manualsDir.description": "Path to the directory containing LS-DYNA PDF manuals (absolute or relative to VS Code installation dir). On Windows, copy SumatraPDF.exe into this folder for precise page navigation.",

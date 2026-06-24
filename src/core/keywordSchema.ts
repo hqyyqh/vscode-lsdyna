@@ -277,20 +277,28 @@ function renderHeaderCandidateCards(entry: KeywordEntry, activeOptions: string[]
 }
 
 function findCardByCommentHeader(entry: KeywordEntry, activeOptions: string[], labels: string[]): KeywordCard | null {
+    const info = findCardInfoByCommentHeader(entry, activeOptions, labels);
+    return info ? info.card : null;
+}
+
+function findCardInfoByCommentHeader(entry: KeywordEntry, activeOptions: string[], labels: string[]): { card: KeywordCard; cardIndex: number } | null {
     const candidates = renderHeaderCandidateCards(entry, activeOptions);
     let bestCard: KeywordCard | null = null;
     let bestScore = 0;
+    let bestIndex = -1;
 
-    for (const card of candidates) {
+    for (let index = 0; index < candidates.length; index++) {
+        const card = candidates[index];
         const score = cardHeaderScore(card, labels);
         if (score > bestScore) {
             bestScore = score;
             bestCard = card;
+            bestIndex = index;
         }
     }
 
     const minimumScore = Math.max(2, Math.ceil(labels.length * 0.6));
-    return bestScore >= minimumScore ? bestCard : null;
+    return bestScore >= minimumScore && bestCard ? { card: bestCard, cardIndex: bestIndex + 1 } : null;
 }
 
 function expandRepeatingCards(cards: KeywordCard[], observedDataLineCount?: number): KeywordCard[] {
@@ -379,11 +387,11 @@ function countDataLinesThrough(document: any, keywordLine: number, lineNum: numb
     return count;
 }
 
-export function getCardForDocumentLine(
+export function getCardInfoForDocumentLine(
     document: any,
     lineNum: number,
     schema: KeywordSchema = loadKeywordSchema(),
-): KeywordCard | null {
+): { card: KeywordCard; cardIndex: number; keywordName: string; activeOptions: string[] } | null {
     if (!document || lineNum < 0 || lineNum >= document.lineCount) {
         return null;
     }
@@ -411,9 +419,13 @@ export function getCardForDocumentLine(
     }
 
     const headerLabels = previousCommentHeaderLabels(document, keywordLine, lineNum);
-    const headerCard = findCardByCommentHeader(lookup.entry, lookup.activeOptions, headerLabels);
-    if (headerCard) {
-        return headerCard;
+    const headerInfo = findCardInfoByCommentHeader(lookup.entry, lookup.activeOptions, headerLabels);
+    if (headerInfo) {
+        return {
+            ...headerInfo,
+            keywordName: lookup.inputName,
+            activeOptions: lookup.activeOptions,
+        };
     }
 
     const observedDataLineCount = countDataLinesThrough(document, keywordLine, lineNum);
@@ -422,5 +434,20 @@ export function getCardForDocumentLine(
     }
 
     const rendered = getRenderedCards(lookup.entry, lookup.activeOptions, observedDataLineCount);
-    return rendered[observedDataLineCount - 1] || null;
+    const card = rendered[observedDataLineCount - 1] || null;
+    return card ? {
+        card,
+        cardIndex: observedDataLineCount,
+        keywordName: lookup.inputName,
+        activeOptions: lookup.activeOptions,
+    } : null;
+}
+
+export function getCardForDocumentLine(
+    document: any,
+    lineNum: number,
+    schema: KeywordSchema = loadKeywordSchema(),
+): KeywordCard | null {
+    const info = getCardInfoForDocumentLine(document, lineNum, schema);
+    return info ? info.card : null;
 }

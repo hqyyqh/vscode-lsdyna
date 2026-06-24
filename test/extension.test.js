@@ -45,6 +45,8 @@ const {
     createProjectSnapshotPersistentCache,
     chooseKeywordOptionsForEditor,
     updateDocumentDiagnostics,
+    cacheReferenceIndexFromSnapshot,
+    clearReferenceIndexCacheForTesting,
     setFileIndexForTesting,
 } = extensionModule._internals;
 
@@ -1699,6 +1701,12 @@ describe('getParameterAtCursor', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaFieldHoverProvider', () => {
+    afterEach(() => {
+        if (typeof clearReferenceIndexCacheForTesting === 'function') {
+            clearReferenceIndexCacheForTesting();
+        }
+    });
+
     it('preserves embedded help newlines as markdown hard breaks', async () => {
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualLocations = manualIndexer.getManualLocations;
@@ -1719,6 +1727,116 @@ describe('LsdynaFieldHoverProvider', () => {
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
+    });
+
+    it('appends curve preview and definition link for current-file LCSS references from cached file index', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-curve-'));
+        const filePath = path.join(tempRoot, 'main.k');
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            '$#       c         p      lcss      lcsr        vp',
+            '       0.0       0.0      1001         0       0.0',
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+
+        const fileIndex = {
+            filePath,
+            referenceDefinitions: {
+                curves: [{
+                    kind: 'curve',
+                    id: 1001,
+                    keyword: '*DEFINE_CURVE',
+                    filePath,
+                    startLine: 10,
+                    endLine: 13,
+                    points: [
+                        { x: 0, y: 400, xRaw: '0', yRaw: '400', lineIndex: 12 },
+                        { x: 0.1, y: 450, xRaw: '0.1', yRaw: '450', lineIndex: 13 },
+                    ],
+                }],
+                tables: [],
+            },
+        };
+
+        try {
+            setFileIndexForTesting(filePath, fileIndex);
+            const provider = new LsdynaFieldHoverProvider();
+            const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+            const value = hover.contents[0].value;
+
+            assert.ok(value.includes('**LCSS**'));
+            assert.ok(value.includes('LCSS reference'));
+            assert.ok(value.includes('*DEFINE_CURVE'));
+            assert.ok(value.includes('command:extension.openLsdynaReferenceDefinition'));
+            assert.ok(value.includes('data:image/svg+xml;base64,'));
+            assert.ok(!value.includes('Scan Include Tree'));
+        } finally {
+            setFileIndexForTesting(filePath, null);
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('suggests scanning the include tree when a reference field has no cached project index', async () => {
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            '$#       c         p      lcss      lcsr        vp',
+            '       0.0       0.0      1001         0       0.0',
+        ].join('\n'), '/project/main.k');
+        doc.languageId = 'lsdyna';
+
+        const provider = new LsdynaFieldHoverProvider();
+        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const value = hover.contents[0].value;
+
+        assert.ok(value.includes('LCSS reference'));
+        assert.ok(value.includes('Scan Include Tree'));
+    });
+
+    it('resolves cross-file references from cached project snapshots', async () => {
+        const rootFile = path.resolve('model', 'main.k');
+        const childFile = path.resolve('model', 'curves.k');
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            '$#       c         p      lcss      lcsr        vp',
+            '       0.0       0.0      1001         0       0.0',
+        ].join('\n'), rootFile);
+        doc.languageId = 'lsdyna';
+
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, childFile],
+            fileIndexes: new Map([[childFile, {
+                referenceDefinitions: {
+                    curves: [{
+                        kind: 'curve',
+                        id: 1001,
+                        keyword: '*DEFINE_CURVE',
+                        filePath: childFile,
+                        startLine: 2,
+                        endLine: 4,
+                        points: [
+                            { x: 0, y: 1, xRaw: '0', yRaw: '1' },
+                            { x: 1, y: 2, xRaw: '1', yRaw: '2' },
+                        ],
+                    }],
+                    tables: [],
+                },
+            }]]),
+        });
+
+        const provider = new LsdynaFieldHoverProvider();
+        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const value = hover.contents[0].value;
+
+        assert.ok(value.includes(childFile));
+        assert.ok(value.includes('*DEFINE_CURVE'));
+        assert.ok(!value.includes('Scan Include Tree'));
     });
 
     it('resolves _TITLE suffix title and data lines through keyword schema', async () => {

@@ -157,4 +157,21 @@ describe('keywordSchema resolver', () => {
             keywordSchema.resetKeywordSchemaCache();
         }
     });
+
+    it('returns card info with keyword name and one-based card index', () => {
+        const keywordSchema = require('../../src/core/keywordSchema');
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            '$#       c         p      lcss      lcsr        vp',
+            '       0.0       0.0      1001         0       0.0',
+        ].join('\n'));
+
+        const info = keywordSchema.getCardInfoForDocumentLine(doc, 4, keywordSchema.loadKeywordSchema(() => 'en'));
+
+        assert.equal(info.keywordName, 'MAT_PIECEWISE_LINEAR_PLASTICITY');
+        assert.equal(info.cardIndex, 2);
+        assert.ok(info.card.some(field => field.n === 'LCSS'));
+    });
 });

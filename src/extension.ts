@@ -32,6 +32,16 @@ const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 const i18n = require('./core/i18n');
+const {
+    getFieldReferenceInfo,
+    parseFieldReferenceValue,
+} = require('./core/references/fieldReferenceClassifier');
+const {
+    buildProjectReferenceIndex,
+    resolveReferenceDefinitions,
+    attachResolvedTableChildren,
+} = require('./core/references/projectReferenceIndex');
+const { buildReferenceHoverSection } = require('./core/references/fieldReferenceHover');
 
 /**
  * Launches the background language server as a separate node process via VS Code LanguageClient.
@@ -73,6 +83,7 @@ const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
 const activeFileIndexCache = new Map();
+const activeProjectReferenceIndexCache = new Map();
 
 function getLsdynaConfigurationValue(key, defaultValue, resource = undefined) {
     const config = vscode.workspace.getConfiguration('lsdyna', resource);
@@ -124,6 +135,67 @@ function cacheFileIndexesFromSnapshot(snapshot) {
         if (!filePath || !fileIndex) continue;
         activeFileIndexCache.set(normalizeFileIndexKey(filePath), fileIndex);
     }
+}
+
+function normalizeSnapshotRootKey(rootFile) {
+    return normalizeFileIndexKey(rootFile);
+}
+
+function cacheReferenceIndexFromSnapshot(snapshot) {
+    if (!snapshot || !snapshot.rootFile) return;
+    activeProjectReferenceIndexCache.set(normalizeSnapshotRootKey(snapshot.rootFile), {
+        snapshot,
+        referenceIndex: buildProjectReferenceIndex(snapshot),
+    });
+}
+
+function clearReferenceIndexCacheForTesting() {
+    activeProjectReferenceIndexCache.clear();
+}
+
+function snapshotContainsDocument(snapshot, documentPath) {
+    const documentKey = normalizeFileIndexKey(documentPath);
+    return (snapshot.files || []).some(filePath => normalizeFileIndexKey(filePath) === documentKey);
+}
+
+function getReferenceIndexForDocument(document) {
+    if (!document || !document.uri || !document.uri.fsPath) {
+        return null;
+    }
+    for (const cached of activeProjectReferenceIndexCache.values()) {
+        if (snapshotContainsDocument(cached.snapshot, document.uri.fsPath)) {
+            return {
+                referenceIndex: cached.referenceIndex,
+                projectScoped: true,
+            };
+        }
+    }
+    const fileIndex = getFileIndexForDocument(document);
+    if (!fileIndex || !fileIndex.referenceDefinitions) {
+        return null;
+    }
+    return {
+        referenceIndex: buildProjectReferenceIndex({
+            rootFile: document.uri.fsPath,
+            files: [document.uri.fsPath],
+            fileIndexes: new Map([[document.uri.fsPath, fileIndex]]),
+        }),
+        projectScoped: false,
+    };
+}
+
+function resolveHoverDefinitions(referenceIndexState, referenceValue, referenceInfo) {
+    if (!referenceIndexState) {
+        return [];
+    }
+    return resolveReferenceDefinitions(
+        referenceIndexState.referenceIndex,
+        referenceValue.id,
+        referenceInfo.targetKinds
+    ).map(definition => definition.kind === 'table'
+        ? attachResolvedTableChildren(definition, referenceIndexState.referenceIndex)
+        : definition
+    );
 }
 
 // --- Folding ---
@@ -1517,7 +1589,8 @@ class LsdynaFieldHoverProvider {
 
         const kwText = document.lineAt(kwLine).text.trim();
         const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
-        const card = keywordSchema.getCardForDocumentLine(document, position.line, getFieldData());
+        const cardInfo = keywordSchema.getCardInfoForDocumentLine(document, position.line, getFieldData());
+        const card = cardInfo ? cardInfo.card : null;
         if (!card || card.length === 0) return null;
 
         const col = position.character;
@@ -1547,6 +1620,25 @@ class LsdynaFieldHoverProvider {
         md.supportHtml = true;
         md.supportThemeIcons = true;
         appendManualLinks(md, kwName);
+        const rawFieldValue = text.slice(field.p, field.p + field.w);
+        const referenceInfo = getFieldReferenceInfo({
+            keyword: cardInfo.keywordName || kwName,
+            cardIndex: cardInfo.cardIndex,
+            field,
+        });
+        const referenceValue = referenceInfo ? parseFieldReferenceValue(rawFieldValue, referenceInfo) : null;
+        if (referenceInfo && referenceValue) {
+            const referenceIndexState = getReferenceIndexForDocument(document);
+            const definitions = resolveHoverDefinitions(referenceIndexState, referenceValue, referenceInfo);
+            md.appendMarkdown(buildReferenceHoverSection({
+                fieldName: field.n,
+                id: referenceValue.id,
+                raw: referenceValue.raw,
+                isSignedSwitch: referenceValue.isSignedSwitch,
+                definitions,
+                needsProjectScan: !referenceIndexState || !referenceIndexState.projectScoped,
+            }));
+        }
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
         return new vscode.Hover(md, range);
     }
@@ -2986,6 +3078,7 @@ function activate(context) {
     indexClient.loadProjectSnapshot = async (rootFile, options = {}, onProgress = null) => {
         const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress);
         cacheFileIndexesFromSnapshot(snapshot);
+        cacheReferenceIndexFromSnapshot(snapshot);
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
@@ -3111,6 +3204,17 @@ function activate(context) {
                     vscode.window.showTextDocument(doc, { selection: range });
                 });
             });
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.openLsdynaReferenceDefinition', async (target) => {
+            if (!target || typeof target.filePath !== 'string') return;
+            const lineIndex = Number.isFinite(target.lineIndex) ? target.lineIndex : 0;
+            const character = Number.isFinite(target.character) ? target.character : 0;
+            const uri = vscode.Uri.file(target.filePath);
+            const pos = new vscode.Position(lineIndex, character);
+            const range = new vscode.Range(pos, pos);
+            await vscode.commands.executeCommand('vscode.open', uri, { selection: range, preview: false });
         })
     );
     context.subscriptions.push(
@@ -3847,6 +3951,8 @@ module.exports._internals = {
     collectIncludePathLengthDiagnostics,
     updateDocumentDiagnostics,
     cacheFileIndexesFromSnapshot,
+    cacheReferenceIndexFromSnapshot,
+    clearReferenceIndexCacheForTesting,
     createActiveDocumentDebouncer,
     collectIncludeFiles,
     findParameterDefinitions,
