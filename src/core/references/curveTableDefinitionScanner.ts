@@ -190,20 +190,36 @@ function parseTableBlock(block, text) {
     const tableType = tableTypeFromKeyword(keyword);
     const childKind = tableType === '3d' ? 'table' : 'curve';
     const rows = [];
-    for (const entry of entries.slice(cursor)) {
-        if (entry.tokens.length < 2) {
-            continue;
+    
+    if (tableType === '1d') {
+        for (const entry of entries.slice(cursor)) {
+            for (const token of entry.tokens) {
+                rows.push({
+                    valueRaw: token,
+                    value: parseNumberToken(token),
+                    childIdRaw: '',
+                    childId: null,
+                    childKind,
+                    lineIndex: entry.lineIndex,
+                });
+            }
         }
-        const valueRaw = entry.tokens[0];
-        const childIdRaw = entry.tokens[1];
-        rows.push({
-            valueRaw,
-            value: parseNumberToken(valueRaw),
-            childIdRaw,
-            childId: parseIntegerToken(childIdRaw),
-            childKind,
-            lineIndex: entry.lineIndex,
-        });
+    } else {
+        for (const entry of entries.slice(cursor)) {
+            if (entry.tokens.length < 2) {
+                continue;
+            }
+            const valueRaw = entry.tokens[0];
+            const childIdRaw = entry.tokens[1];
+            rows.push({
+                valueRaw,
+                value: parseNumberToken(valueRaw),
+                childIdRaw,
+                childId: parseIntegerToken(childIdRaw),
+                childKind,
+                lineIndex: entry.lineIndex,
+            });
+        }
     }
 
     return {
@@ -228,7 +244,8 @@ async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) 
         return { curves, tables };
     }
 
-    for (const block of fileIndex.keywordBlocks) {
+    for (let i = 0; i < fileIndex.keywordBlocks.length; i++) {
+        const block = fileIndex.keywordBlocks[i];
         const keyword = withStar(block.keyword);
         if (!isCurveKeyword(keyword) && !isTableKeyword(keyword)) {
             continue;
@@ -243,6 +260,40 @@ async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) 
             const definition = parseTableBlock(block, text);
             if (definition) {
                 tables.push(definition);
+                
+                // If it is a 1D table, resolve its child curves from subsequent blocks
+                if (definition.tableType === '1d' && definition.rows.length > 0) {
+                    let childCount = 0;
+                    const requiredChildren = definition.rows.length;
+                    for (let j = i + 1; j < fileIndex.keywordBlocks.length; j++) {
+                        if (childCount >= requiredChildren) {
+                            break;
+                        }
+                        const nextBlock = fileIndex.keywordBlocks[j];
+                        const nextKeyword = withStar(nextBlock.keyword);
+                        if (isCurveKeyword(nextKeyword)) {
+                            const curveText = await readBlockText(nextBlock);
+                            const curveDef = parseCurveBlock(nextBlock, curveText);
+                            if (curveDef) {
+                                const row = definition.rows[childCount];
+                                row.childIdRaw = curveDef.idRaw;
+                                row.childId = curveDef.id;
+                                row.childKind = 'curve';
+                                childCount++;
+                            }
+                        } else if (isTableKeyword(nextKeyword)) {
+                            const tableText = await readBlockText(nextBlock);
+                            const tableDef = parseTableBlock(nextBlock, tableText);
+                            if (tableDef) {
+                                const row = definition.rows[childCount];
+                                row.childIdRaw = tableDef.idRaw;
+                                row.childId = tableDef.id;
+                                row.childKind = 'table';
+                                childCount++;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
