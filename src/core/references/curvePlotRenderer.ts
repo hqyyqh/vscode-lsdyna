@@ -262,7 +262,7 @@ function renderTable3dSvgDataUri(definition, options = {}) {
         svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${tickY.toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(zVal)}</text>`);
     }
     // Add Z-axis title
-    svgElements.push(`<text x="${(zMax.u - 25).toFixed(1)}" y="${(zMax.v - 5).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Z (value)</text>`);
+    svgElements.push(`<text x="${zMax.u.toFixed(1)}" y="${(zMax.v - 15).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Z (value)</text>`);
 
     // Draw 5 ticks/labels along X-axis
     for (let i = 0; i <= 4; i++) {
@@ -276,7 +276,7 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     }
     // Add X-axis title
     const xMid = project(minX + spanX / 2, minY, minZ);
-    svgElements.push(`<text x="${(xMid.u + 15).toFixed(1)}" y="${(xMid.v + 22).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">X (curve var)</text>`);
+    svgElements.push(`<text x="${(xMid.u + 15).toFixed(1)}" y="${(xMid.v + 28).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">X (curve var)</text>`);
 
     // Draw 5 ticks/labels along Y-axis
     for (let i = 0; i <= 4; i++) {
@@ -289,8 +289,7 @@ function renderTable3dSvgDataUri(definition, options = {}) {
         svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${(tickY + 2).toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(yVal)}</text>`);
     }
     // Add Y-axis title
-    const yMid = project(minX, minY + spanY / 2, minZ);
-    svgElements.push(`<text x="${(yMid.u - 40).toFixed(1)}" y="${(yMid.v - 5).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Y (table var)</text>`);
+    svgElements.push(`<text x="${(yMax.u - 15).toFixed(1)}" y="${(yMax.v - 15).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="end">Y (table var)</text>`);
 
     svgElements.push('</svg>');
     return `data:image/svg+xml;base64,${Buffer.from(svgElements.join(''), 'utf8').toString('base64')}`;
