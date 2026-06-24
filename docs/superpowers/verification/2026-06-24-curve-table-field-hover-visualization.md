@@ -9,7 +9,7 @@
 ## 验证结果
 
 - `npm test`：退出码 0，361 passing。
-- `npm run test:scanner-benchmark`：退出码 0，1 passing；10MB deck skeleton benchmark 1378ms。
+- `npm run test:scanner-benchmark`：退出码 0，1 passing；10MB deck skeleton benchmark 1610ms。
 - `npx mocha --require test/register-out.js test/core/references/*.test.js`：退出码 0，15 passing。
 - 慢路径搜索：`rg -n "readFileSync\\(|createReadStream\\(|scanKeywordSkeletonFromFile\\(|buildProjectIndex\\(" src/core/references src/extension.ts` 只命中 `src/extension.ts` 的 snippet 读取；引用 Hover 路径没有 `buildProjectIndex()`、`scanKeywordSkeletonFromFile()` 或项目级磁盘扫描。
 
