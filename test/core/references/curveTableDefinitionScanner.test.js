@@ -106,4 +106,43 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    it('parses standard 1D table and maps to subsequent child curves', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-table1d-'));
+        const filePath = path.join(dir, 'table1d.k');
+        fs.writeFileSync(filePath, [
+            '*DEFINE_TABLE_TITLE',
+            'LCSDG',
+            '       100         1         0',
+            '$              Value',
+            '                  -1',
+            '                 0.5',
+            '*DEFINE_CURVE_TITLE',
+            'curve 1',
+            '       101',
+            '                  -1         1.5',
+            '*DEFINE_CURVE_TITLE',
+            'curve 2',
+            '       102',
+            '                  -1         0.8',
+            '*END'
+        ].join('\n'));
+
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block)
+            );
+            assert.equal(result.tables.length, 1);
+            assert.equal(result.tables[0].id, 100);
+            assert.equal(result.tables[0].tableType, '1d');
+            assert.equal(result.tables[0].rows.length, 2);
+            assert.equal(result.tables[0].rows[0].value, -1);
+            assert.equal(result.tables[0].rows[0].childId, 101);
+            assert.equal(result.tables[0].rows[1].value, 0.5);
+            assert.equal(result.tables[0].rows[1].childId, 102);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });
