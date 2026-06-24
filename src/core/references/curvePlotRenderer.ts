@@ -126,11 +126,183 @@ function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
     return lines.join('\n');
 }
 
+function renderTable3dSvgDataUri(definition, options = {}) {
+    const renderOptions: any = options || {};
+    const isDark = renderOptions.isDark !== false;
+    const width = 380;
+    const height = 220;
+    
+    const u0 = 70;
+    const v0 = 165;
+    
+    const dxX = 160;
+    const dyX = 20;
+    
+    const dxY = 90;
+    const dyY = -45;
+    
+    const dxZ = 0;
+    const dyZ = -100;
+
+    const curves = [];
+    const ys = [];
+    let minX = Infinity, maxX = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    for (const row of definition.rows || []) {
+        const pts = numericPoints(row.points);
+        if (pts.length < 2) continue;
+        ys.push(row.value);
+        curves.push({
+            y: row.value,
+            points: pts
+        });
+        for (const pt of pts) {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.x > maxX) maxX = pt.x;
+            if (pt.y < minZ) minZ = pt.y;
+            if (pt.y > maxZ) maxZ = pt.y;
+        }
+    }
+
+    if (curves.length === 0) return null;
+
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const spanX = maxX === minX ? 1 : maxX - minX;
+    const spanY = maxY === minY ? 1 : maxY - minY;
+    const spanZ = maxZ === minZ ? 1 : maxZ - minZ;
+
+    function project(x, y, z) {
+        const xn = maxX === minX ? 0.5 : (x - minX) / (maxX - minX);
+        const yn = maxY === minY ? 0.5 : (y - minY) / (maxY - minY);
+        const zn = maxZ === minZ ? 0.5 : (z - minZ) / (maxZ - minZ);
+        const u = u0 + xn * dxX + yn * dxY;
+        const v = v0 + xn * dyX + yn * dyY + zn * dyZ;
+        return { u, v };
+    }
+
+    function getCurveColor(t, isDark) {
+        if (isDark) {
+            const hue = 180 - t * 140;
+            return `hsl(${hue}, 100%, 65%)`;
+        } else {
+            const hue = 240 - t * 240;
+            return `hsl(${hue}, 80%, 45%)`;
+        }
+    }
+
+    const axisColor = isDark ? '#888888' : '#777777';
+    const gridColor = isDark ? '#444444' : '#dddddd';
+    const textColor = isDark ? '#cccccc' : '#333333';
+    const labelColor = isDark ? '#aaaaaa' : '#555555';
+
+    const svgElements = [];
+    const title = xmlEscape(definition.title || definition.keyword || 'table');
+    svgElements.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`);
+    svgElements.push(`<text x="${width / 2}" y="16" fill="${textColor}" font-size="11" font-family="sans-serif" font-weight="bold" text-anchor="middle">${title}</text>`);
+
+    // Floor & Wall Grid lines (Z = minZ, X = minX)
+    const gridDivs = 4;
+    for (let i = 0; i <= gridDivs; i++) {
+        const t = i / gridDivs;
+        const p1 = project(minX + t * spanX, minY, minZ);
+        const p2 = project(minX + t * spanX, maxY, minZ);
+        svgElements.push(`<line x1="${p1.u.toFixed(1)}" y1="${p1.v.toFixed(1)}" x2="${p2.u.toFixed(1)}" y2="${p2.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+        const p3 = project(minX, minY + t * spanY, minZ);
+        const p4 = project(maxX, minY + t * spanY, minZ);
+        svgElements.push(`<line x1="${p3.u.toFixed(1)}" y1="${p3.v.toFixed(1)}" x2="${p4.u.toFixed(1)}" y2="${p4.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+        const w1 = project(minX, minY + t * spanY, minZ);
+        const w2 = project(minX, minY + t * spanY, maxZ);
+        svgElements.push(`<line x1="${w1.u.toFixed(1)}" y1="${w1.v.toFixed(1)}" x2="${w2.u.toFixed(1)}" y2="${w2.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+        const w3 = project(minX, minY, minZ + t * spanZ);
+        const w4 = project(minX, maxY, minZ + t * spanZ);
+        svgElements.push(`<line x1="${w3.u.toFixed(1)}" y1="${w3.v.toFixed(1)}" x2="${w4.u.toFixed(1)}" y2="${w4.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+    }
+
+    // Draw Axes
+    const zOrigin = project(minX, minY, minZ);
+    const zMax = project(minX, minY, maxZ);
+    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${zMax.u.toFixed(1)}" y2="${zMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
+    const xMax = project(maxX, minY, minZ);
+    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${xMax.u.toFixed(1)}" y2="${xMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
+    const yMax = project(minX, maxY, minZ);
+    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${yMax.u.toFixed(1)}" y2="${yMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
+
+    // Draw Curves & connecting wireframe lines
+    const numCurves = curves.length;
+    for (let j = 0; j < numCurves; j++) {
+        const curve = curves[j];
+        const color = getCurveColor(numCurves > 1 ? j / (numCurves - 1) : 0.5, isDark);
+        const polyPoints = curve.points.map(pt => {
+            const p = project(pt.x, curve.y, pt.y);
+            return `${p.u.toFixed(1)},${p.v.toFixed(1)}`;
+        }).join(' ');
+        svgElements.push(`<polyline points="${polyPoints}" fill="none" stroke="${color}" stroke-width="2"/>`);
+
+        if (j < numCurves - 1 && curves[j+1].points.length === curve.points.length) {
+            const nextCurve = curves[j+1];
+            for (let k = 0; k < curve.points.length; k++) {
+                const pCurr = project(curve.points[k].x, curve.y, curve.points[k].y);
+                const pNext = project(nextCurve.points[k].x, nextCurve.y, nextCurve.points[k].y);
+                svgElements.push(`<line x1="${pCurr.u.toFixed(1)}" y1="${pCurr.v.toFixed(1)}" x2="${pNext.u.toFixed(1)}" y2="${pNext.v.toFixed(1)}" stroke="${color}" stroke-width="0.5" opacity="0.6"/>`);
+            }
+        }
+    }
+
+    // Draw 5 ticks/labels along Z-axis
+    for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const zVal = minZ + t * (maxZ - minZ);
+        const p = project(minX, minY, zVal);
+        const tickX = p.u - 4;
+        const tickY = p.v;
+        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
+        svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${tickY.toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(zVal)}</text>`);
+    }
+    // Add Z-axis title
+    svgElements.push(`<text x="${(zMax.u - 25).toFixed(1)}" y="${(zMax.v - 5).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Z (value)</text>`);
+
+    // Draw 5 ticks/labels along X-axis
+    for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const xVal = minX + t * (maxX - minX);
+        const p = project(xVal, minY, minZ);
+        const tickX = p.u;
+        const tickY = p.v + 4;
+        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
+        svgElements.push(`<text x="${tickX.toFixed(1)}" y="${(tickY + 8).toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="middle">${formatValue(xVal)}</text>`);
+    }
+    // Add X-axis title
+    const xMid = project(minX + spanX / 2, minY, minZ);
+    svgElements.push(`<text x="${(xMid.u + 15).toFixed(1)}" y="${(xMid.v + 22).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">X (curve var)</text>`);
+
+    // Draw 5 ticks/labels along Y-axis
+    for (let i = 0; i <= 4; i++) {
+        const t = i / 4;
+        const yVal = minY + t * (maxY - minY);
+        const p = project(minX, yVal, minZ);
+        const tickX = p.u - 4;
+        const tickY = p.v + 2;
+        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
+        svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${(tickY + 2).toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(yVal)}</text>`);
+    }
+    // Add Y-axis title
+    const yMid = project(minX, minY + spanY / 2, minZ);
+    svgElements.push(`<text x="${(yMid.u - 40).toFixed(1)}" y="${(yMid.v - 5).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Y (table var)</text>`);
+
+    svgElements.push('</svg>');
+    return `data:image/svg+xml;base64,${Buffer.from(svgElements.join(''), 'utf8').toString('base64')}`;
+}
+
 module.exports = {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
+    renderTable3dSvgDataUri,
     xmlEscape,
     markdownCode,
 };
 
 export {};
+
