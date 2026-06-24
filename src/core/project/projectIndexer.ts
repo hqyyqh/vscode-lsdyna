@@ -24,6 +24,7 @@ const path = require('path');
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
 const { buildFileIndex } = require('../scanner/fileIndexBuilder');
+const { SCANNER_VERSION } = require('../scanner/scannerContracts');
 const { ProjectGraph } = require('./projectGraph');
 
 type FileSignature = {
@@ -201,7 +202,7 @@ async function buildLegacyFileIndexFromCollectors(filePath, options, collectKeyw
     const { includeEntries, searchPaths, pathEntries = [] } = await collectIncludeDirectivesFromFile(filePath, options);
     return {
         filePath,
-        scannerVersion: 1,
+        scannerVersion: SCANNER_VERSION,
         keywordBlocks: (keywords || []).map(entry => ({
             filePath,
             keyword: String(entry.keyword || '').startsWith('*') ? entry.keyword : `*${entry.keyword}`,

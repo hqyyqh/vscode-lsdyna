@@ -4,6 +4,7 @@ const assert = require('assert');
 const path = require('path');
 
 const { ProjectGraph } = require('../../../src/core/project/projectGraph');
+const { SCANNER_VERSION } = require('../../../src/core/scanner/scannerContracts');
 
 describe('snapshotSerializer', () => {
     it('round-trips project snapshots with graph and keywordMap hydration', () => {
@@ -33,7 +34,11 @@ describe('snapshotSerializer', () => {
             fileIndexes: new Map([
                 [childFile, {
                     filePath: childFile,
-                    scannerVersion: 1,
+                    scannerVersion: SCANNER_VERSION,
+                    referenceDefinitions: {
+                        curves: [{ kind: 'curve', id: 1001, filePath: childFile, keyword: '*DEFINE_CURVE', startLine: 2, endLine: 4, points: [] }],
+                        tables: [],
+                    },
                     keywordBlocks: [{ keyword: '*KEYWORD', startLine: 1, endLine: 1 }],
                     includeEntries: [],
                     searchPaths: [path.dirname(childFile)],
@@ -52,6 +57,7 @@ describe('snapshotSerializer', () => {
         assert.ok(hydrated.fileIndexes instanceof Map);
         assert.deepEqual(hydrated.keywordMap.get('KEYWORD'), snapshot.keywordMap.get('KEYWORD'));
         assert.deepEqual(hydrated.fileIndexes.get(childFile), snapshot.fileIndexes.get(childFile));
+        assert.equal(hydrated.fileIndexes.get(childFile).referenceDefinitions.curves[0].id, 1001);
         assert.deepEqual(hydrated.graph.toTree(rootFile), {
             filePath: rootFile,
             children: [

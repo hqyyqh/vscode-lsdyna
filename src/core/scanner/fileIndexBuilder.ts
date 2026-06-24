@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const { collectIncludeDirectivesFromKeywordBlocks } = require('../parser/includeScanner');
+const { scanCurveTableDefinitionsFromFileIndex } = require('../references/curveTableDefinitionScanner');
 const { readBlockText } = require('./blockReader');
 const { SCANNER_VERSION } = require('./scannerContracts');
 const { scanKeywordSkeletonFromFile } = require('./keywordSkeletonScanner');
@@ -19,6 +20,10 @@ async function buildFileIndex(filePath, options: FileIndexBuildOptions = {}) {
         keywordBlocks,
         block => readBlockText(block)
     );
+    const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
+        { filePath, keywordBlocks },
+        block => readBlockText(block)
+    );
 
     return {
         filePath,
@@ -26,6 +31,7 @@ async function buildFileIndex(filePath, options: FileIndexBuildOptions = {}) {
         mtimeMs: stat.mtimeMs,
         scannerVersion: SCANNER_VERSION,
         keywordBlocks,
+        referenceDefinitions,
         includeEntries: includeResult.includeEntries,
         searchPaths: includeResult.searchPaths,
         pathEntries: includeResult.pathEntries || [],

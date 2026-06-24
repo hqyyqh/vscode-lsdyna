@@ -1,6 +1,6 @@
 'use strict';
 
-const SCANNER_VERSION = 1;
+const SCANNER_VERSION = 2;
 
 function isNodeKeyword(keyword) {
     return keyword === '*NODE' || keyword.startsWith('*NODE_');

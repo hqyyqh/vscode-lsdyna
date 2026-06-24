@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 
 const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAsync, createConcurrencyLimiter } = require('../../../src/core/project/projectIndexer');
+const { SCANNER_VERSION } = require('../../../src/core/scanner/scannerContracts');
 
 describe('projectIndexer', () => {
     it('loads each file index once and derives keywords plus includes from that result', async () => {
@@ -21,7 +22,7 @@ describe('projectIndexer', () => {
                     filePath,
                     size: 10,
                     mtimeMs: 1,
-                    scannerVersion: 1,
+                    scannerVersion: SCANNER_VERSION,
                     keywordBlocks: [{ keyword: '*KEYWORD', filePath, startLine: 0 }],
                     includeEntries: [],
                     searchPaths: [path.dirname(filePath)],
@@ -36,7 +37,7 @@ describe('projectIndexer', () => {
             const snapshot = await indexer.buildProjectIndex(rootFile);
             assert.equal(loadCount, 1);
             assert.deepEqual(snapshot.keywordMap.get('KEYWORD').map(entry => entry.filePath), [rootFile]);
-            assert.equal(snapshot.fileIndexes.get(rootFile).scannerVersion, 1);
+            assert.equal(snapshot.fileIndexes.get(rootFile).scannerVersion, SCANNER_VERSION);
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
