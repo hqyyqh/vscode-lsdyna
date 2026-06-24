@@ -1,0 +1,26 @@
+{
+  "MAT_PIECEWISE_LINEAR_PLASTICITY": {
+    "2:LCSS": {
+      "targetKinds": ["curve", "table"],
+      "label": "effective stress versus effective plastic strain",
+      "allowSignedSwitch": true
+    },
+    "2:LCSR": {
+      "targetKinds": ["curve"],
+      "label": "strain rate scaling effect on yield stress",
+      "allowSignedSwitch": true
+    }
+  },
+  "MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE": {
+    "2:LCSS": {
+      "targetKinds": ["curve", "table"],
+      "label": "effective stress versus effective plastic strain",
+      "allowSignedSwitch": true
+    },
+    "2:LCSR": {
+      "targetKinds": ["curve"],
+      "label": "strain rate scaling effect on yield stress",
+      "allowSignedSwitch": true
+    }
+  }
+}

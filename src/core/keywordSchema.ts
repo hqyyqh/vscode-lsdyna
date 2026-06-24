@@ -11,6 +11,11 @@ export type KeywordField = {
     d?: unknown;
     e?: unknown[];
     active?: string;
+    ref?: {
+        targetKinds?: string[];
+        label?: string;
+        allowSignedSwitch?: boolean;
+    };
 };
 
 export type KeywordCard = KeywordField[];
