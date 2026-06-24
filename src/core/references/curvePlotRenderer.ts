@@ -43,6 +43,8 @@ function formatValue(val) {
 function renderCurveSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
     const maxPoints = typeof renderOptions.maxPoints === 'number' ? renderOptions.maxPoints : MAX_SVG_POINTS;
+    const isDark = renderOptions.isDark !== false;
+    
     const points = samplePoints(numericPoints(definition && definition.points), maxPoints);
     if (points.length < 2) {
         return null;
@@ -74,30 +76,34 @@ function renderCurveSvgDataUri(definition, options = {}) {
         return `${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(' ');
     const title = xmlEscape(definition.title || definition.keyword || 'curve');
+
+    const axisColor = isDark ? '#888888' : '#777777';
+    const curveColor = isDark ? '#5cceff' : '#007acc';
+    const textColor = isDark ? '#cccccc' : '#333333';
+
+    const midX = minX + spanX / 2;
+    const midY = minY + spanY / 2;
+    const midXPos = paddingLeft + innerWidth / 2;
+    const midYPos = paddingTop + innerHeight / 2;
+
     const svg = [
         `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`,
-        '<style>',
-        '  .axis { stroke: #666666; }',
-        '  .curve { stroke: #007acc; }',
-        '  .text { fill: #333333; }',
-        '  @media (prefers-color-scheme: dark) {',
-        '    .axis { stroke: #999999; }',
-        '    .curve { stroke: #5cceff; }',
-        '    .text { fill: #cccccc; }',
-        '  }',
-        '</style>',
-        `<text class="text" x="${paddingLeft}" y="16" font-size="11" font-family="sans-serif" font-weight="bold">${title}</text>`,
-        `<line class="axis" x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
-        `<line class="axis" x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
-        `<line class="axis" x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom + 4}" stroke-width="1.5"/>`,
-        `<line class="axis" x1="${width - paddingRight}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom + 4}" stroke-width="1.5"/>`,
-        `<line class="axis" x1="${paddingLeft - 4}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
-        `<line class="axis" x1="${paddingLeft - 4}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop}" stroke-width="1.5"/>`,
-        `<text class="text" x="${paddingLeft}" y="${height - paddingBottom + 15}" font-size="9" font-family="sans-serif">${formatValue(minX)}</text>`,
-        `<text class="text" x="${width - paddingRight}" y="${height - paddingBottom + 15}" font-size="9" font-family="sans-serif" text-anchor="end">${formatValue(maxX)}</text>`,
-        `<text class="text" x="${paddingLeft - 8}" y="${height - paddingBottom}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(minY)}</text>`,
-        `<text class="text" x="${paddingLeft - 8}" y="${paddingTop}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(maxY)}</text>`,
-        `<polyline points="${polyline}" fill="none" class="curve" stroke-width="2"/>`,
+        `<text x="${paddingLeft}" y="16" fill="${textColor}" font-size="11" font-family="sans-serif" font-weight="bold">${title}</text>`,
+        `<line x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom + 4}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${midXPos}" y1="${height - paddingBottom}" x2="${midXPos}" y2="${height - paddingBottom + 4}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${width - paddingRight}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom + 4}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${paddingLeft - 4}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${paddingLeft - 4}" y1="${midYPos}" x2="${paddingLeft}" y2="${midYPos}" stroke="${axisColor}" stroke-width="1.5"/>`,
+        `<line x1="${paddingLeft - 4}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop}" stroke-width="1.5"/>`,
+        `<text x="${paddingLeft}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(minX)}</text>`,
+        `<text x="${midXPos}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(midX)}</text>`,
+        `<text x="${width - paddingRight}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(maxX)}</text>`,
+        `<text x="${paddingLeft - 8}" y="${height - paddingBottom}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(minY)}</text>`,
+        `<text x="${paddingLeft - 8}" y="${midYPos}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(midY)}</text>`,
+        `<text x="${paddingLeft - 8}" y="${paddingTop}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(maxY)}</text>`,
+        `<polyline points="${polyline}" fill="none" stroke="${curveColor}" stroke-width="2"/>`,
         '</svg>',
     ].join('');
     return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;

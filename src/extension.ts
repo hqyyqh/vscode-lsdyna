@@ -1680,6 +1680,9 @@ class LsdynaFieldHoverProvider {
         if (referenceInfo && referenceValue) {
             const referenceIndexState = await getReferenceIndexForDocument(document);
             const definitions = resolveHoverDefinitions(referenceIndexState, referenceValue, referenceInfo);
+            const themeKind = vscode.window?.activeColorTheme?.kind;
+            const isDark = themeKind === undefined ||
+                           (vscode.ColorThemeKind && (themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast));
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
                 id: referenceValue.id,
@@ -1687,6 +1690,7 @@ class LsdynaFieldHoverProvider {
                 isSignedSwitch: referenceValue.isSignedSwitch,
                 definitions,
                 needsProjectScan: !referenceIndexState || !referenceIndexState.projectScoped,
+                isDark,
             }));
         }
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
