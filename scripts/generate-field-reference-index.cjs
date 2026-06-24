@@ -7,6 +7,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const fieldDataPath = path.join(repoRoot, 'keywords', 'field_data.json');
 const overridesPath = path.join(repoRoot, 'keywords', 'field_reference_overrides.json');
 const outputPath = path.join(repoRoot, 'keywords', 'field_reference_index.json');
+const { getRenderedCards } = require('../out/core/keywordSchema');
 
 function normalizeKeywordName(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
@@ -23,6 +24,18 @@ function normalizeTargetKinds(values) {
 
 function keyFor(cardIndex, fieldName) {
     return `${cardIndex}:${normalizeFieldName(fieldName)}`;
+}
+
+function findBaseCardIndex(renderedCard, baseCards) {
+    if (!baseCards) return -1;
+    const renderedNames = renderedCard.map(f => normalizeFieldName(f.n)).join(',');
+    for (let i = 0; i < baseCards.length; i++) {
+        const baseNames = baseCards[i].map(f => normalizeFieldName(f.n)).join(',');
+        if (renderedNames === baseNames) {
+            return i + 1; // 1-based base card index
+        }
+    }
+    return -1;
 }
 
 function helpMentionsCurve(field) {
@@ -101,17 +114,40 @@ function buildIndex(schema, overrides) {
     for (const [keyword, entry] of Object.entries(schema)) {
         const normalizedKeyword = normalizeKeywordName(keyword);
         const keywordRules = {};
-        const explicitRules = overrides[normalizedKeyword] || {};
 
-        for (const [cardOffset, card] of (entry.c || []).entries()) {
+        // Resolve canonical base keyword entry and active options
+        const activeOptions = entry.active || [];
+        const canonicalName = entry.x && schema[normalizeKeywordName(entry.x)]
+            ? normalizeKeywordName(entry.x)
+            : keyword;
+        const canonicalEntry = schema[canonicalName] || entry;
+
+        // Render the cards with active options
+        const renderedCards = getRenderedCards(canonicalEntry, activeOptions);
+
+        // Overrides can be defined on this keyword or on the canonical base keyword
+        const explicitRules = overrides[normalizedKeyword] || overrides[canonicalName] || {};
+
+        for (const [cardOffset, card] of renderedCards.entries()) {
             const cardIndex = cardOffset + 1;
             for (const field of card || []) {
                 const fieldName = normalizeFieldName(field.n);
                 if (!fieldName) {
                     continue;
                 }
-                const refKey = keyFor(cardIndex, fieldName);
-                const explicit = explicitRules[refKey];
+
+                // Determine base card index to match overrides written in terms of base cards
+                const baseCardIdx = findBaseCardIndex(card, canonicalEntry.c);
+
+                // Look up overrides using both baseCardIdx (if matched) and rendered cardIndex
+                let explicit = null;
+                if (baseCardIdx !== -1) {
+                    explicit = explicitRules[`${baseCardIdx}:${fieldName}`];
+                }
+                if (!explicit) {
+                    explicit = explicitRules[`${cardIndex}:${fieldName}`];
+                }
+
                 const inferred = inferReference(field);
                 const reference = explicit
                     ? applyOverride(inferred || {}, explicit)
@@ -119,7 +155,8 @@ function buildIndex(schema, overrides) {
                 if (!reference) {
                     continue;
                 }
-                keywordRules[refKey] = {
+
+                keywordRules[`${cardIndex}:${fieldName}`] = {
                     keyword: normalizedKeyword,
                     cardIndex,
                     fieldName,
@@ -135,19 +172,28 @@ function buildIndex(schema, overrides) {
             }
         }
 
+        // Fallback for rules in overrides that weren't matched in schema cards
         for (const [refKey, explicit] of Object.entries(explicitRules)) {
-            if (keywordRules[refKey]) {
+            const [rawCardIndex, rawFieldName] = refKey.split(':');
+            const fieldName = normalizeFieldName(rawFieldName);
+
+            // Check if this fieldName is already in keywordRules (with any cardIndex)
+            const alreadyMatched = Object.values(keywordRules).some(
+                r => r.fieldName === fieldName
+            );
+            if (alreadyMatched) {
                 continue;
             }
-            const [rawCardIndex, rawFieldName] = refKey.split(':');
+
             const reference = applyOverride({}, explicit);
             if (!reference) {
                 continue;
             }
-            keywordRules[refKey] = {
+            const cardIndex = Number.parseInt(rawCardIndex, 10);
+            keywordRules[`${cardIndex}:${fieldName}`] = {
                 keyword: normalizedKeyword,
-                cardIndex: Number.parseInt(rawCardIndex, 10),
-                fieldName: normalizeFieldName(rawFieldName),
+                cardIndex,
+                fieldName,
                 targetKinds: reference.targetKinds,
                 confidence: reference.confidence,
                 source: reference.source,

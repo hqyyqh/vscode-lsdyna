@@ -22,6 +22,22 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(info.source, 'override');
     });
 
+    it('classifies MAT_024_TITLE LCSS as curve or table at cardIndex 3', () => {
+        const schema = keywordSchema.loadKeywordSchema(() => 'en');
+        const lookup = keywordSchema.lookupKeywordSchema('MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE', schema);
+        const field = lookup.entry.c[1].find(item => item.n === 'LCSS');
+
+        const info = getFieldReferenceInfo({
+            keyword: 'MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE',
+            cardIndex: 3,
+            field,
+        });
+
+        assert.deepEqual(info.targetKinds, ['curve', 'table']);
+        assert.equal(info.confidence, 'explicit');
+        assert.equal(info.source, 'override');
+    });
+
     it('does not classify non-curve/table integer fields', () => {
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const lookup = keywordSchema.lookupKeywordSchema('MAT_PIECEWISE_LINEAR_PLASTICITY', schema);

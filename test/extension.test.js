@@ -1858,6 +1858,54 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;MID&nbsp;**</span>'));
     });
 
+    it('resolves curve preview on LCSS field in MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-title-curve-'));
+        const filePath = path.join(tempRoot, 'main.k');
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE',
+            'Material Title',
+            '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            '$#       c         p      lcss      lcsr        vp',
+            '       0.0       0.0         1         0       0.0',
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+
+        const fileIndex = {
+            filePath,
+            referenceDefinitions: {
+                curves: [{
+                    kind: 'curve',
+                    id: 1,
+                    keyword: '*DEFINE_CURVE',
+                    filePath,
+                    startLine: 10,
+                    endLine: 13,
+                    points: [
+                        { x: 0, y: 400, xRaw: '0', yRaw: '400', lineIndex: 12 },
+                        { x: 0.1, y: 450, xRaw: '0.1', yRaw: '450', lineIndex: 13 },
+                    ],
+                }],
+                tables: [],
+            },
+        };
+
+        try {
+            setFileIndexForTesting(filePath, fileIndex);
+            const provider = new LsdynaFieldHoverProvider();
+            const hover = await provider.provideHover(doc, { line: 5, character: 24 });
+            const value = hover.contents[0].value;
+
+            assert.ok(value.includes('**LCSS**'));
+            assert.ok(value.includes('LCSS reference'));
+            assert.ok(value.includes('*DEFINE_CURVE'));
+            assert.ok(value.includes('data:image/svg+xml;base64,'));
+        } finally {
+            setFileIndexForTesting(filePath, null);
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('resolves CONTACT optional card fields by data line count', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc([
