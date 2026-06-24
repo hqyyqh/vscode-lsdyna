@@ -1,4 +1,4 @@
-'use strict';
+const i18n = require('../i18n');
 
 const {
     renderCurveSvgDataUri,
@@ -69,18 +69,16 @@ function appendTablePreview(lines, definition, isDark = true) {
 
     // Fallback text table underneath
     const childLabel = definition.tableType === '3d' ? 'table ID' : 'curve ID';
-    const rows = (definition.rows || []).slice(0, MAX_TABLE_ROWS);
-    if (rows.length === 0) {
+    const allRows = definition.rows || [];
+    if (allRows.length === 0) {
         return;
     }
+    lines.push('', `<details>`, `<summary><b>${i18n.get('valuesAndChildIdsTable', allRows.length)}</b></summary>`, '');
     lines.push('', `| value | ${childLabel} |`, '| ---: | ---: |');
-    for (const row of rows) {
+    for (const row of allRows) {
         lines.push(`| ${markdownCode(row.valueRaw)} | ${childLink(row, definition)} |`);
     }
-    const omitted = (definition.rows || []).length - rows.length;
-    if (omitted > 0) {
-        lines.push(`| ... | ${omitted} more rows |`);
-    }
+    lines.push('', `</details>`);
 }
 
 function appendDefinition(lines, definition, isDark = true) {

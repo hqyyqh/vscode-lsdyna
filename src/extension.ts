@@ -1664,12 +1664,6 @@ class LsdynaFieldHoverProvider {
             `| ${separators.join(' | ')} |`,
             `| ${fieldNamesBody.join(' | ')} |`
         ].join('\n');
-
-        const md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
-        md.isTrusted = true;
-        md.supportHtml = true;
-        md.supportThemeIcons = true;
-        appendManualLinks(md, kwName);
         const rawFieldValue = text.slice(field.p, field.p + field.w);
         const referenceInfo = getFieldReferenceInfo({
             keyword: cardInfo.keywordName || kwName,
@@ -1677,12 +1671,20 @@ class LsdynaFieldHoverProvider {
             field,
         });
         const referenceValue = referenceInfo ? parseFieldReferenceValue(rawFieldValue, referenceInfo) : null;
+
+        let md;
         if (referenceInfo && referenceValue) {
+            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}`);
+            md.isTrusted = true;
+            md.supportHtml = true;
+            md.supportThemeIcons = true;
+
             const referenceIndexState = await getReferenceIndexForDocument(document);
             const definitions = resolveHoverDefinitions(referenceIndexState, referenceValue, referenceInfo);
             const themeKind = vscode.window?.activeColorTheme?.kind;
             const isDark = themeKind === undefined ||
                            (vscode.ColorThemeKind && (themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast));
+
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
                 id: referenceValue.id,
@@ -1692,7 +1694,24 @@ class LsdynaFieldHoverProvider {
                 needsProjectScan: !referenceIndexState || !referenceIndexState.projectScoped,
                 isDark,
             }));
+
+            // Collapsible Manual & columns at the bottom
+            const detailsMd = new vscode.MarkdownString();
+            detailsMd.isTrusted = true;
+            detailsMd.supportHtml = true;
+            detailsMd.supportThemeIcons = true;
+            detailsMd.appendMarkdown(`${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            appendManualLinks(detailsMd, kwName);
+
+            md.appendMarkdown(`\n\n---\n\n<details>\n<summary><b>${i18n.get('documentationAndCardColumns')}</b></summary>\n\n${detailsMd.value}\n\n</details>`);
+        } else {
+            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            md.isTrusted = true;
+            md.supportHtml = true;
+            md.supportThemeIcons = true;
+            appendManualLinks(md, kwName);
         }
+
         const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
         return new vscode.Hover(md, range);
     }

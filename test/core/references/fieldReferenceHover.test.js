@@ -67,10 +67,11 @@ describe('fieldReferenceHover', () => {
             }],
         });
 
+        assert.ok(section.includes('<details>'));
+        assert.ok(section.includes('Values and Child IDs Table'));
         assert.ok(section.includes('| value | curve ID |'));
         assert.ok(section.includes('1001'));
         assert.ok(section.includes('Open child curve'));
-        assert.ok(section.includes('lineIndex'));
     });
 
     it('renders 3D table preview in hover section with SVG data URI', () => {

@@ -76,6 +76,8 @@ const LOCALES = {
         keywordOptionNone: '无',
         removeNonEmptyOptionLinesWarning: '更改 LS-DYNA 关键字选项将删除非空 option 卡片行。',
         removeLines: '删除行',
+        documentationAndCardColumns: '📘 字段手册说明与卡片列',
+        valuesAndChildIdsTable: '📊 数值与子项对应表 ({0} 行)',
         
         // Keyword Validation
         invalidKeywordFormat: '无效的关键字格式：LS-DYNA 关键字只能以单个 \'*\' 开头。',
@@ -156,6 +158,8 @@ const LOCALES = {
         keywordOptionNone: 'None',
         removeNonEmptyOptionLinesWarning: 'Changing LS-DYNA keyword options would remove non-empty option card lines.',
         removeLines: 'Remove lines',
+        documentationAndCardColumns: '📘 Field Documentation & Card Columns',
+        valuesAndChildIdsTable: '📊 Values and Child IDs Table ({0} rows)',
         
         // Keyword Validation
         invalidKeywordFormat: 'Invalid keyword format: LS-DYNA keywords should start with a single \'*\'.',
