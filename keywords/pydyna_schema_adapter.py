@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 from dataclasses import dataclass
 import importlib
@@ -17,6 +18,7 @@ TITLE_VARIANT_LIMIT = 32
 LOCAL_ALIASES = {
     "SET_PART_LIST": "SET_PART",
 }
+MANUAL_KEYWORD_CLASSES_DIR = Path("src") / "ansys" / "dyna" / "core" / "keywords" / "keyword_classes" / "manual"
 
 
 @dataclass
@@ -192,10 +194,38 @@ def _field_type(field: Any) -> str:
     }.get(value, value)
 
 
+def _manual_field_type(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        value = node.id
+    elif isinstance(node, ast.Attribute):
+        value = node.attr
+    else:
+        value = ""
+    return {
+        "int": "integer",
+        "float": "real",
+        "str": "string",
+    }.get(value, value)
+
+
 def _clean_default(value: Any) -> Any:
     if isinstance(value, str) and len(value) >= 2 and value[0] == value[-1] == '"':
         return value[1:-1]
     return value
+
+
+def _literal_value(node: ast.AST | None) -> Any:
+    if node is None:
+        return None
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        value = _literal_value(node.operand)
+        if isinstance(value, (int, float)):
+            return -value
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "ReadOnlyValue":
+        return _literal_value(node.args[0]) if node.args else None
+    return None
 
 
 def _card_active(card: Any) -> str | None:
@@ -621,6 +651,265 @@ def _entry_from_keyword_data(keyword_data: Any, generation_options: dict[str, An
     return entry
 
 
+def _manual_field_schema(call: ast.Call) -> dict[str, Any] | None:
+    if not isinstance(call.func, ast.Name) or call.func.id != "FieldSchema":
+        return None
+    if len(call.args) < 5:
+        return None
+
+    name = _literal_value(call.args[0])
+    position = _literal_value(call.args[2])
+    width = _literal_value(call.args[3])
+    if not isinstance(name, str) or not isinstance(position, int) or not isinstance(width, int):
+        return None
+
+    label = _literal_value(call.args[5]) if len(call.args) > 5 else None
+    display_name = label if isinstance(label, str) and label else name
+    field: dict[str, Any] = {
+        "n": display_name.upper(),
+        "p": position,
+        "w": width,
+        "h": "",
+        "t": _manual_field_type(call.args[1]),
+    }
+
+    default = _clean_default(_literal_value(call.args[4]))
+    if default is not None:
+        field["d"] = default
+
+    return field
+
+
+def _manual_card_definitions(tree: ast.Module) -> dict[str, list[dict[str, Any]]]:
+    definitions: dict[str, list[dict[str, Any]]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        target_names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+        if not target_names or not isinstance(node.value, (ast.Tuple, ast.List)):
+            continue
+
+        fields = []
+        for item in node.value.elts:
+            if not isinstance(item, ast.Call):
+                fields = []
+                break
+            field = _manual_field_schema(item)
+            if not field:
+                fields = []
+                break
+            fields.append(field)
+
+        if fields:
+            for target_name in target_names:
+                definitions[target_name] = fields
+    return definitions
+
+
+def _manual_text_card(call: ast.Call) -> list[dict[str, Any]] | None:
+    if not isinstance(call.func, ast.Name) or call.func.id != "TextCard":
+        return None
+    if not call.args:
+        return None
+    name = _literal_value(call.args[0])
+    if not isinstance(name, str) or not name:
+        return None
+    return [{"n": name.upper(), "p": 0, "w": 80, "h": "", "t": "string"}]
+
+
+def _manual_card_from_call(call: ast.Call, definitions: dict[str, list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
+    if isinstance(call.func, ast.Attribute) and call.func.attr == "from_field_schemas_with_defaults":
+        if call.args and isinstance(call.args[0], ast.Name) and call.args[0].id in definitions:
+            return [copy.deepcopy(definitions[call.args[0].id])]
+        return []
+
+    if isinstance(call.func, ast.Name) and call.func.id == "TableCardGroup":
+        if not call.args or not isinstance(call.args[0], (ast.List, ast.Tuple)):
+            return []
+        cards = []
+        for item in call.args[0].elts:
+            if isinstance(item, ast.Name) and item.id in definitions:
+                cards.append(copy.deepcopy(definitions[item.id]))
+        return cards
+
+    text_card = _manual_text_card(call)
+    if text_card:
+        return [text_card]
+
+    return []
+
+
+def _manual_cards_assignment(init_func: ast.FunctionDef) -> ast.List | ast.Tuple | None:
+    for node in ast.walk(init_func):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "_cards"
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "self"
+                and isinstance(node.value, (ast.List, ast.Tuple))
+            ):
+                return node.value
+    return None
+
+
+def _manual_class_keyword_name(class_node: ast.ClassDef) -> str | None:
+    keyword = None
+    subkeyword = None
+    for stmt in class_node.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for target in stmt.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id == "keyword":
+                keyword = _literal_value(stmt.value)
+            elif target.id == "subkeyword":
+                subkeyword = _literal_value(stmt.value)
+
+    if not isinstance(keyword, str) or not keyword:
+        return None
+    raw_name = f"{keyword}_{subkeyword}" if isinstance(subkeyword, str) and subkeyword else keyword
+    return keyword_name(raw_name)
+
+
+def _manual_entry_from_class(
+    class_node: ast.ClassDef,
+    definitions: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any] | None:
+    init_func = next(
+        (node for node in class_node.body if isinstance(node, ast.FunctionDef) and node.name == "__init__"),
+        None,
+    )
+    if not init_func:
+        return None
+
+    assignment = _manual_cards_assignment(init_func)
+    if assignment is None:
+        return None
+
+    cards: list[list[dict[str, Any]]] = []
+    repeats = False
+    for item in assignment.elts:
+        if not isinstance(item, ast.Call):
+            continue
+        item_cards = _manual_card_from_call(item, definitions)
+        if item_cards:
+            cards.extend(item_cards)
+        if isinstance(item.func, ast.Name) and item.func.id == "TableCardGroup":
+            repeats = True
+
+    if not cards:
+        return None
+
+    entry: dict[str, Any] = {"c": cards}
+    if repeats:
+        entry["r"] = 1
+    return entry
+
+
+def _manual_schema_entries(codegen_dir: Path) -> dict[str, dict[str, Any]]:
+    manual_dir = codegen_dir.parent / MANUAL_KEYWORD_CLASSES_DIR
+    if not manual_dir.exists():
+        return {}
+
+    entries: dict[str, dict[str, Any]] = {}
+    for path in sorted(manual_dir.glob("*.py")):
+        if path.name == "__init__.py" or "_version_" in path.stem:
+            continue
+
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        definitions = _manual_card_definitions(tree)
+        for class_node in (node for node in tree.body if isinstance(node, ast.ClassDef)):
+            name = _manual_class_keyword_name(class_node)
+            if not name:
+                continue
+            entry = _manual_entry_from_class(class_node, definitions)
+            if entry:
+                entries[name] = entry
+
+    return entries
+
+
+def _sync_entry_shape_from_manual(entry: dict[str, Any], manual_entry: dict[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(entry)
+    merged["c"] = copy.deepcopy(manual_entry["c"])
+    if manual_entry.get("r"):
+        merged["r"] = manual_entry["r"]
+    else:
+        merged.pop("r", None)
+    return merged
+
+
+def _compact_field_signature(field: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
+    return (
+        field.get("n"),
+        field.get("p"),
+        field.get("w"),
+        field.get("t"),
+        field.get("d"),
+    )
+
+
+def _compact_cards_equal(cards1: list[list[dict[str, Any]]], cards2: list[list[dict[str, Any]]]) -> bool:
+    if len(cards1) != len(cards2):
+        return False
+    for card1, card2 in zip(cards1, cards2):
+        if len(card1) != len(card2):
+            return False
+        for field1, field2 in zip(card1, card2):
+            if _compact_field_signature(field1) != _compact_field_signature(field2):
+                return False
+    return True
+
+
+def _render_entry_snippet_cards(entry: dict[str, Any], active_options: list[str] | None = None) -> list[list[dict[str, Any]]]:
+    if not active_options:
+        return entry["c"]
+    selected_options = [option for option in entry.get("o", []) if option["n"] in active_options]
+    return _render_cards(entry["c"], selected_options)
+
+
+def _apply_manual_schema_overrides(
+    codegen_dir: Path,
+    field_data: dict[str, dict[str, Any]],
+    snippets: dict[str, dict[str, Any]],
+) -> int:
+    manual_entries = _manual_schema_entries(codegen_dir)
+    override_count = 0
+
+    for name, manual_entry in manual_entries.items():
+        if name in field_data and _compact_cards_equal(field_data[name].get("c", []), manual_entry["c"]):
+            continue
+
+        if name not in field_data:
+            field_data[name] = copy.deepcopy(manual_entry)
+        else:
+            field_data[name] = _sync_entry_shape_from_manual(field_data[name], manual_entry)
+        snippets[f"*{name}"] = _build_snippet(name, _render_entry_snippet_cards(field_data[name]))
+        override_count += 1
+
+        for alias_name, alias_entry in list(field_data.items()):
+            if alias_name == name or normalize_keyword_reference(alias_entry.get("x")) != name:
+                continue
+            field_data[alias_name] = _sync_entry_shape_from_manual(alias_entry, manual_entry)
+            active_options = field_data[alias_name].get("active")
+            snippets[f"*{alias_name}"] = _build_snippet(
+                alias_name,
+                _render_entry_snippet_cards(field_data[name], active_options),
+            )
+
+    return override_count
+
+
+def normalize_keyword_reference(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return keyword_name(value.strip().replace("*", "").upper())
+
+
 def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSchema:
     """Return snippets and compact field data generated from pydyna codegen inputs."""
     codegen_dir = Path(codegen_dir)
@@ -673,6 +962,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
         snippets[f"*{alias_name}"] = _build_snippet(alias_name, alias_entry["c"])
         _add_alias_title_variants(canonical_name, alias_name, field_data, snippets)
 
+    manual_overrides = _apply_manual_schema_overrides(codegen_dir, field_data, snippets)
     option_enabled = sum(1 for entry in field_data.values() if entry.get("o"))
     variant_count = sum(len(entry.get("v", {})) for entry in field_data.values())
     alias_count = len(config.get_aliases())
@@ -685,6 +975,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
             "items": len(items),
             "skipped": skipped,
             "aliases": alias_count,
+            "manual_overrides": manual_overrides,
             "option_enabled": option_enabled,
             "title_variants": variant_count,
             "field_entries": len(field_data),

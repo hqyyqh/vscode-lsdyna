@@ -129,6 +129,49 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         self.assertGreaterEqual(len(section["c"]), 2)
         self.assertIn("MISC", options)
 
+    def test_manual_element_solid_overrides_codegen_legacy_card(self):
+        solid = self.field_data["ELEMENT_SOLID"]
+
+        self.assertEqual(2, len(solid["c"]))
+        self.assertEqual(
+            [("EID", 0, 8), ("PID", 8, 8)],
+            [(field["n"], field["p"], field["w"]) for field in solid["c"][0]],
+        )
+        self.assertEqual("N1", solid["c"][1][0]["n"])
+        self.assertEqual("N10", solid["c"][1][-1]["n"])
+        self.assertEqual(72, solid["c"][1][-1]["p"])
+        self.assertEqual(8, solid["c"][1][-1]["w"])
+        self.assertEqual(1, solid["r"])
+
+        body = "\n".join(self.snippets["*ELEMENT_SOLID"]["body"]).lower()
+        self.assertIn("eid", body)
+        self.assertIn("n10", body)
+
+    def test_manual_element_solid_ortho_overrides_codegen_legacy_card(self):
+        solid = self.field_data["ELEMENT_SOLID_ORTHO"]
+
+        self.assertEqual(4, len(solid["c"]))
+        self.assertEqual(["EID", "PID"], [field["n"] for field in solid["c"][0]])
+        self.assertEqual("N10", solid["c"][1][-1]["n"])
+        self.assertEqual(
+            [("A1", 0, 16), ("A2", 16, 16), ("A3", 32, 16)],
+            [(field["n"], field["p"], field["w"]) for field in solid["c"][2]],
+        )
+        self.assertEqual(
+            [("D1", 0, 16), ("D2", 16, 16), ("D3", 32, 16)],
+            [(field["n"], field["p"], field["w"]) for field in solid["c"][3]],
+        )
+        self.assertEqual(1, solid["r"])
+
+    def test_manual_shape_match_does_not_remove_generated_title_variant(self):
+        self.assertEqual(2, self.generated.stats["manual_overrides"])
+        self.assertEqual(["TITLE"], self.field_data["DEFINE_FUNCTION_TITLE"]["active"])
+
+        snippet = self.snippets["*DEFINE_FUNCTION_TITLE"]
+        self.assertEqual("*DEFINE_FUNCTION_TITLE", snippet["body"][0])
+        self.assertIn("title", snippet["body"][1].lower())
+        self.assertIn("fid", "\n".join(snippet["body"]).lower())
+
 
 if __name__ == "__main__":
     unittest.main()
