@@ -2,9 +2,9 @@
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 当鼠标悬浮在 LS-DYNA keyword card 中引用 `*DEFINE_CURVE*` 或 `*DEFINE_TABLE*` 的字段上时，在 Hover 中毫秒级展示对应定义摘要、静态可视化预览，并提供跳转到定义关键字的链接。
+**目标：** 当鼠标悬浮在 LS-DYNA keyword card 中引用 `*DEFINE_CURVE*` 或 `*DEFINE_TABLE*` 的字段上时，在 Hover 中毫秒级展示对应定义摘要、静态可视化预览，并提供跳转到定义关键字的链接；字段引用语义和定义索引在目录树扫描阶段预先生成并缓存，Hover 不做项目级识别。
 
-**架构：** 在 keyword schema 之上增加机器可读的字段引用语义层，用现有 `FileIndex.keywordBlocks` 和 `BlockReader` 在项目索引阶段抽取 curve/table 定义，随 `ProjectSnapshot.fileIndexes` 缓存。Hover 阶段只读取当前字段值并查询内存中的项目引用索引，渲染安全 Markdown/SVG 预览和命令链接；没有可用项目索引时降级为普通字段 Hover，不在 Hover 中触发全项目磁盘扫描。
+**架构：** 在 keyword schema 之上增加机器可读的字段引用语义层，离线/构建期生成 `keywords/field_reference_index.json`，运行时按 keyword/card/field 直接查 JSON；用现有 `FileIndex.keywordBlocks` 和 `BlockReader` 在项目索引阶段抽取 curve/table 定义，随 `FileIndex.referenceDefinitions` 和 `ProjectSnapshot.fileIndexes` 缓存。Hover 阶段只读取当前字段值并查询内存中的项目引用索引，渲染安全 Markdown/SVG 预览和命令链接；没有可用项目索引时只尝试当前文件的已缓存 FileIndex，仍不触发全项目磁盘扫描。
 
 **技术栈：** TypeScript、Node.js Buffer/fs、VS Code Hover MarkdownString/command URI、现有 ProjectSnapshot/FileIndex 缓存、Mocha。
 
@@ -27,8 +27,9 @@
 
 1. 字段是否引用 curve/table 不能只靠字段名猜测。优先使用显式 `keywords/field_reference_overrides.json`，再用高置信帮助文本规则补充。
 2. Hover 期间不能读全项目文件。定义解析必须发生在 FileIndex 构建/项目快照阶段，Hover 只查内存 Map。
-3. 可视化必须可降级。无法绘图时仍显示定义位置、数据表摘要和跳转链接。
-4. 不求一次覆盖所有 LS-DYNA 引用类型。本计划只覆盖 curve/table/function-curve 引用，不加入 part/set/node/material 等其它 ID 引用。
+3. 字段引用判定必须预生成成 JSON 并随扩展加载到内存。Hover 不做帮助文本正则扫描，只做 O(1) lookup。
+4. 可视化必须可降级。无法绘图时仍显示定义位置、数据表摘要和跳转链接。
+5. 不求一次覆盖所有 LS-DYNA 引用类型。本计划只覆盖 curve/table/function-curve 引用，不加入 part/set/node/material 等其它 ID 引用。
 
 ### 主要风险与处理方式
 
@@ -40,6 +41,8 @@
 - **Hover Markdown 对 SVG 支持因 VS Code 版本差异异常：** 测试 Markdown 输出结构；运行时若 SVG 为空则显示 Markdown table fallback。
 - **未保存编辑导致 snapshot 过期：** 当前文档字段值以 TextDocument 为准；定义索引来自最近 snapshot。若定义块本身正在未保存修改，第一阶段不解析未保存 definition。
 - **大 table/curve：** 预览只采样最多 200 个点，Markdown 表格只展示前 8 行和总数。
+- **扫描等待：** 目录树扫描仍可能明显耗时。手动触发 `Scan Include Tree` / `Scan Keyword Index` 时使用既有进度入口建立缓存；Hover 在扫描完成前显示“需要先扫描目录树以索引跨文件 curve/table 定义”的轻量提示。如果当前文件的 FileIndex 已有定义，则直接预览当前文件定义，不要求项目扫描完成。
+- **大文件扫描：** 沿用 `lsdyna.scanner.fullScanLargeFiles` 作为显式开关。默认不为了 Hover 自动开启大文件全量扫描；用户手动扫描目录树时才承担该等待成本。
 - **安全：** 所有 label/title/function 文本进行 Markdown/SVG escaping；command URI 只传 `{ filePath, lineIndex, character }`，命令内部再校验参数类型。
 
 ### 收益与必要性
@@ -56,18 +59,18 @@
 
 ## LS-DYNA 语义边界
 
-本功能只处理以下定义关键字：
+本功能扫描所有以 `*DEFINE_CURVE` 或 `*DEFINE_TABLE` 开头的定义关键字，并按可视化能力分级：
 
-- `*DEFINE_CURVE`
-- `*DEFINE_CURVE_TITLE`
-- `*DEFINE_CURVE_FUNCTION`
-- `*DEFINE_CURVE_FUNCTION_TITLE`
-- `*DEFINE_TABLE`
-- `*DEFINE_TABLE_TITLE`
-- `*DEFINE_TABLE_2D`
-- `*DEFINE_TABLE_2D_TITLE`
-- `*DEFINE_TABLE_3D`
-- `*DEFINE_TABLE_3D_TITLE`
+- **可绘制 curve：** `*DEFINE_CURVE*` 中首张数据卡可解析出 curve ID，后续数据行可解析为 X/Y 点。包含 `_TITLE` 时读取标题；包含 `_FUNCTION` 时作为 function curve，只展示函数摘要，不画离散点。
+- **可展示 table：** `*DEFINE_TABLE*` 中首张数据卡可解析出 table ID，后续数据行可解析为 `value -> child ID`。`*DEFINE_TABLE_3D*` 的 child ID 指向 table，其它 table 默认指向 curve。
+- **暂不画但索引：** 其它以 `*DEFINE_CURVE` 或 `*DEFINE_TABLE` 开头、格式无法稳定解析的扩展变体仍记录 keyword/id/位置；Hover 显示定义位置与原始摘要，不生成曲线图。
+- **不纳入：** `*DEFINE_FUNCTION`、`*DEFINE_VECTOR`、`*DEFINE_COORDINATE*` 等不是 curve/table 前缀的定义，即使语义上可能影响曲线，也不在本目标内。
+
+本轮需要显式扫描 schema 中的 `DEFINE_CURVE*` / `DEFINE_TABLE*` 关键字，并在验证记录中列出：
+
+- 已支持绘制/展示的关键字集合。
+- 仅索引位置、暂不绘制的关键字集合。
+- schema 中不存在但 scanner 可按前缀容忍处理的未来变体。
 
 字段引用支持范围：
 
@@ -75,7 +78,7 @@
 - `targetKinds: ['table']`：只解析到 table。
 - `targetKinds: ['curve', 'table']`：先按实际定义查找；若两类都存在则显示二义。
 - `0`、空白、非数字 token 不触发可视化。
-- 负数 ID 暂不作为 curve/table 引用，除非字段 override 明确允许 `allowNegative: true`。
+- 字段值是整数才触发引用解析。负整数默认按 LS-DYNA 常见开关语义取绝对值搜索 ID，同时在 Hover 中保留原始负号并标注“negative switch stripped for lookup”；显式 override 可设置 `allowSignedSwitch: false` 禁止这种行为。
 
 `*MAT_PIECEWISE_LINEAR_PLASTICITY` 的 `LCSS` 必须作为第一批显式规则：
 
@@ -108,11 +111,39 @@
 }
 ```
 
+## 字段引用扫描与 JSON 索引方案
+
+新增 `keywords/field_reference_index.json`，由脚本从 `keywords/field_data.json` 与 `keywords/field_reference_overrides.json` 生成并提交到仓库。运行时 `fieldReferenceClassifier` 只读取这个 JSON，不在 Hover 中执行推断。
+
+生成规则：
+
+1. 遍历所有 keyword schema entry 的所有 card/field，记录 1-based `cardIndex`、`fieldName`、`fieldType`、`position`、`width`。
+2. 只考虑 `field.t === "integer"` 的字段；LS-DYNA 负数开关通过 `allowSignedSwitch: true` 表示，解析时用 `Math.abs(id)` 查找定义。
+3. 显式 overrides 优先，适合 `LCSS` 这类 curve/table 二义字段、或帮助文本不稳定但工程上确定的字段。
+4. 高置信自动规则只接受帮助文本包含 `load curve id`、`curve id`、`table id`、`*DEFINE_CURVE`、`*DEFINE_TABLE` 等明确语义的整数字段；仅字段名像 `LCID` 但帮助文本没有曲线/表语义时不纳入，避免误识别其它 ID。
+5. JSON 结构以 keyword 为第一层、`cardIndex:FIELD` 为第二层，便于 Hover 直接 lookup。每条记录包含 `targetKinds`、`confidence`、`source`、`allowSignedSwitch`、`label`。
+6. 测试读取生成 JSON，确保 `MAT_PIECEWISE_LINEAR_PLASTICITY` 的 `LCSS` 为 `["curve","table"]`，普通 `MID` 不出现，且至少覆盖一批由 schema 自动识别的 `LCID/TBID` 字段。
+
+缓存策略：
+
+- `referenceDefinitions` 存在于每个 `FileIndex`，和 `keywordBlocks/includeEntries` 一起进入 L1 内存缓存、L1.5 file scan disk cache、L2 project snapshot disk cache。
+- 引入 `SCANNER_VERSION = 2`，使旧 file scan payload 自动失效，避免旧缓存缺少 `referenceDefinitions`。
+- 不新增独立 curve/table cache 文件。复用现有 per-file signature + scanner version 更简单、更少失效状态，也天然支持过期删除和 LRU project snapshot cache。
+- 保持默认 `PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256MB`。这是比“按时间过期”更好的默认：LS-DYNA 工程可能长时间不变，时间过期会制造无意义重扫；容量驱逐能控制磁盘占用且保留常用项目热缓存。
+
+用户提示策略：
+
+- Hover 命中 curve/table 引用但内存项目索引为空时，显示当前字段普通说明并附加一句提示：`Run Scan Include Tree to index cross-file curve/table definitions.`。
+- 如果当前文件 FileIndex 已缓存且含该 ID 定义，直接展示预览，不显示目录树扫描提示。
+- 手动目录树扫描完成后，`cacheReferenceIndexFromSnapshot()` 建立项目级 Map，之后 Hover 只读内存。
+
 ---
 
 ## 文件结构
 
 - 创建：`keywords/field_reference_overrides.json` - 高置信字段引用显式规则。
+- 创建：`keywords/field_reference_index.json` - 由 schema/overrides 生成的运行时字段引用索引。
+- 创建：`scripts/generate-field-reference-index.cjs` - 生成并校验字段引用索引。
 - 修改：`src/core/keywordSchema.ts` - 为 `KeywordField` 增加可选引用 metadata 类型，不改变现有 schema 读取行为。
 - 创建：`src/core/references/fieldReferenceClassifier.ts` - 根据 keyword/card/field 判断是否为 curve/table 引用字段。
 - 创建：`src/core/references/curveTableDefinitionScanner.ts` - 从 `FileIndex.keywordBlocks` 解析 curve/table/function 定义。
@@ -126,6 +157,7 @@
 - 修改：`src/extension.ts` - 缓存项目引用索引、增强 `LsdynaFieldHoverProvider`、注册跳转命令。
 - 修改：`package.json`、`package.nls.json`、`package.nls.zh-cn.json` - 注册 `extension.openLsdynaReferenceDefinition` 命令及本地化标题。
 - 测试：`test/core/references/fieldReferenceClassifier.test.js`
+- 测试：`test/core/references/fieldReferenceIndex.test.js`
 - 测试：`test/core/references/curveTableDefinitionScanner.test.js`
 - 测试：`test/core/references/projectReferenceIndex.test.js`
 - 测试：`test/core/references/curvePlotRenderer.test.js`
