@@ -31,6 +31,15 @@ function samplePoints(points, maxPoints) {
     return sampled;
 }
 
+function formatValue(val) {
+    if (val === 0) return '0';
+    const abs = Math.abs(val);
+    if (abs < 0.0001 || abs >= 100000) {
+        return val.toExponential(2);
+    }
+    return parseFloat(val.toFixed(4)).toString();
+}
+
 function renderCurveSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
     const maxPoints = typeof renderOptions.maxPoints === 'number' ? renderOptions.maxPoints : MAX_SVG_POINTS;
@@ -41,7 +50,12 @@ function renderCurveSvgDataUri(definition, options = {}) {
 
     const width = 360;
     const height = 180;
-    const padding = 24;
+    
+    const paddingTop = 25;
+    const paddingBottom = 30;
+    const paddingLeft = 55;
+    const paddingRight = 20;
+
     const xs = points.map(point => point.x);
     const ys = points.map(point => point.y);
     const minX = Math.min(...xs);
@@ -50,22 +64,40 @@ function renderCurveSvgDataUri(definition, options = {}) {
     const maxY = Math.max(...ys);
     const spanX = maxX === minX ? 1 : maxX - minX;
     const spanY = maxY === minY ? 1 : maxY - minY;
-    const innerWidth = width - padding * 2;
-    const innerHeight = height - padding * 2;
+    
+    const innerWidth = width - paddingLeft - paddingRight;
+    const innerHeight = height - paddingTop - paddingBottom;
 
     const polyline = points.map(point => {
-        const x = padding + ((point.x - minX) / spanX) * innerWidth;
-        const y = height - padding - ((point.y - minY) / spanY) * innerHeight;
+        const x = paddingLeft + ((point.x - minX) / spanX) * innerWidth;
+        const y = height - paddingBottom - ((point.y - minY) / spanY) * innerHeight;
         return `${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(' ');
     const title = xmlEscape(definition.title || definition.keyword || 'curve');
     const svg = [
         `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`,
-        '<rect width="100%" height="100%" fill="#1f1f1f"/>',
-        `<text x="${padding}" y="16" fill="#d4d4d4" font-size="11" font-family="sans-serif">${title}</text>`,
-        `<line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#777"/>`,
-        `<line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#777"/>`,
-        `<polyline points="${polyline}" fill="none" stroke="#4fc3f7" stroke-width="2"/>`,
+        '<style>',
+        '  .axis { stroke: #666666; }',
+        '  .curve { stroke: #007acc; }',
+        '  .text { fill: #333333; }',
+        '  @media (prefers-color-scheme: dark) {',
+        '    .axis { stroke: #999999; }',
+        '    .curve { stroke: #5cceff; }',
+        '    .text { fill: #cccccc; }',
+        '  }',
+        '</style>',
+        `<text class="text" x="${paddingLeft}" y="16" font-size="11" font-family="sans-serif" font-weight="bold">${title}</text>`,
+        `<line class="axis" x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
+        `<line class="axis" x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
+        `<line class="axis" x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom + 4}" stroke-width="1.5"/>`,
+        `<line class="axis" x1="${width - paddingRight}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom + 4}" stroke-width="1.5"/>`,
+        `<line class="axis" x1="${paddingLeft - 4}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke-width="1.5"/>`,
+        `<line class="axis" x1="${paddingLeft - 4}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop}" stroke-width="1.5"/>`,
+        `<text class="text" x="${paddingLeft}" y="${height - paddingBottom + 15}" font-size="9" font-family="sans-serif">${formatValue(minX)}</text>`,
+        `<text class="text" x="${width - paddingRight}" y="${height - paddingBottom + 15}" font-size="9" font-family="sans-serif" text-anchor="end">${formatValue(maxX)}</text>`,
+        `<text class="text" x="${paddingLeft - 8}" y="${height - paddingBottom}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(minY)}</text>`,
+        `<text class="text" x="${paddingLeft - 8}" y="${paddingTop}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(maxY)}</text>`,
+        `<polyline points="${polyline}" fill="none" class="curve" stroke-width="2"/>`,
         '</svg>',
     ].join('');
     return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;

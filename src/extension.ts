@@ -42,6 +42,7 @@ const {
     attachResolvedTableChildren,
 } = require('./core/references/projectReferenceIndex');
 const { buildReferenceHoverSection } = require('./core/references/fieldReferenceHover');
+const { scanCurveTableDefinitionsFromFileIndex } = require('./core/references/curveTableDefinitionScanner');
 
 /**
  * Launches the background language server as a separate node process via VS Code LanguageClient.
@@ -158,7 +159,35 @@ function snapshotContainsDocument(snapshot, documentPath) {
     return (snapshot.files || []).some(filePath => normalizeFileIndexKey(filePath) === documentKey);
 }
 
-function getReferenceIndexForDocument(document) {
+function parseKeywordBlocksFromDocument(document) {
+    const blocks = [];
+    let currentBlock = null;
+    const lineCount = document.lineCount;
+    for (let i = 0; i < lineCount; i++) {
+        const text = document.lineAt(i).text;
+        const trimmed = text.trimStart();
+        if (isKeywordLineText(text)) {
+            if (currentBlock) {
+                currentBlock.endLine = i - 1;
+            }
+            const cleanKw = trimmed.trim();
+            const keyword = cleanKw.slice(1).toUpperCase().split(/[\s,$]/)[0];
+            currentBlock = {
+                filePath: document.uri.fsPath,
+                keyword: '*' + keyword,
+                rawKeyword: cleanKw,
+                startOffset: 0,
+                endOffset: 0,
+                startLine: i,
+                endLine: lineCount - 1,
+            };
+            blocks.push(currentBlock);
+        }
+    }
+    return blocks;
+}
+
+async function getReferenceIndexForDocument(document) {
     if (!document || !document.uri || !document.uri.fsPath) {
         return null;
     }
@@ -170,9 +199,30 @@ function getReferenceIndexForDocument(document) {
             };
         }
     }
-    const fileIndex = getFileIndexForDocument(document);
+    let fileIndex = getFileIndexForDocument(document);
     if (!fileIndex || !fileIndex.referenceDefinitions) {
-        return null;
+        try {
+            const blocks = parseKeywordBlocksFromDocument(document);
+            const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
+                { filePath: document.uri.fsPath, keywordBlocks: blocks },
+                (block) => {
+                    const lines = [];
+                    for (let i = block.startLine; i <= block.endLine; i++) {
+                        lines.push(document.lineAt(i).text);
+                    }
+                    return Promise.resolve(lines.join('\n'));
+                }
+            );
+            fileIndex = {
+                filePath: document.uri.fsPath,
+                keywordBlocks: blocks,
+                referenceDefinitions,
+            };
+            activeFileIndexCache.set(normalizeFileIndexKey(document.uri.fsPath), fileIndex);
+        } catch (e) {
+            console.error('[lsdyna] Failed to dynamically build file index:', e);
+            return null;
+        }
     }
     return {
         referenceIndex: buildProjectReferenceIndex({
@@ -1628,7 +1678,7 @@ class LsdynaFieldHoverProvider {
         });
         const referenceValue = referenceInfo ? parseFieldReferenceValue(rawFieldValue, referenceInfo) : null;
         if (referenceInfo && referenceValue) {
-            const referenceIndexState = getReferenceIndexForDocument(document);
+            const referenceIndexState = await getReferenceIndexForDocument(document);
             const definitions = resolveHoverDefinitions(referenceIndexState, referenceValue, referenceInfo);
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
@@ -3349,7 +3399,10 @@ function activate(context) {
         vscode.workspace.onDidOpenTextDocument(doc => updateDiagnostics(doc))
     );
     context.subscriptions.push(
-        vscode.workspace.onDidChangeTextDocument(e => updateDiagnostics(e.document))
+        vscode.workspace.onDidChangeTextDocument(e => {
+            activeFileIndexCache.delete(normalizeFileIndexKey(e.document.uri.fsPath));
+            updateDiagnostics(e.document);
+        })
     );
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri))

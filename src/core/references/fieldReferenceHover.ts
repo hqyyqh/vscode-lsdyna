@@ -82,6 +82,7 @@ function appendDefinition(lines, definition) {
 function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false, definitions = [], needsProjectScan = false }) {
     const lines = [
         '',
+        '',
         '---',
         '',
         `**$(graph-line) ${fieldName} reference:** \`${id}\``,
