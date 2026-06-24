@@ -1,9 +1,7 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
-let referenceIndexCache = null;
+const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
+let referenceIndexCache = loadedReferenceIndex;
 
 function normalizeKeyword(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
@@ -13,19 +11,7 @@ function normalizeFieldName(value) {
     return String(value || '').trim().toUpperCase();
 }
 
-function referenceIndexPath() {
-    return path.join(__dirname, '..', '..', '..', 'keywords', 'field_reference_index.json');
-}
-
 function loadReferenceIndex() {
-    if (referenceIndexCache) {
-        return referenceIndexCache;
-    }
-    try {
-        referenceIndexCache = JSON.parse(fs.readFileSync(referenceIndexPath(), 'utf8'));
-    } catch (_error) {
-        referenceIndexCache = { references: {} };
-    }
     return referenceIndexCache;
 }
 
@@ -76,7 +62,7 @@ function parseFieldReferenceValue(rawValue, info = null) {
 }
 
 function resetFieldReferenceIndexCacheForTesting() {
-    referenceIndexCache = null;
+    referenceIndexCache = loadedReferenceIndex;
 }
 
 module.exports = {
