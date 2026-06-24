@@ -73,12 +73,15 @@ function appendTablePreview(lines, definition, isDark = true) {
     if (allRows.length === 0) {
         return;
     }
-    lines.push('', `<details>`, `<summary><b>${i18n.get('valuesAndChildIdsTable', allRows.length)}</b></summary>`, '');
+    const rows = allRows.slice(0, MAX_TABLE_ROWS);
     lines.push('', `| value | ${childLabel} |`, '| ---: | ---: |');
-    for (const row of allRows) {
+    for (const row of rows) {
         lines.push(`| ${markdownCode(row.valueRaw)} | ${childLink(row, definition)} |`);
     }
-    lines.push('', `</details>`);
+    const omitted = allRows.length - rows.length;
+    if (omitted > 0) {
+        lines.push(`| ... | ${omitted} more rows |`);
+    }
 }
 
 function appendDefinition(lines, definition, isDark = true) {

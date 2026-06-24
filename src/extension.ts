@@ -1695,15 +1695,9 @@ class LsdynaFieldHoverProvider {
                 isDark,
             }));
 
-            // Collapsible Manual & columns at the bottom
-            const detailsMd = new vscode.MarkdownString();
-            detailsMd.isTrusted = true;
-            detailsMd.supportHtml = true;
-            detailsMd.supportThemeIcons = true;
-            detailsMd.appendMarkdown(`${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
-            appendManualLinks(detailsMd, kwName);
-
-            md.appendMarkdown(`\n\n---\n\n<details>\n<summary><b>${i18n.get('documentationAndCardColumns')}</b></summary>\n\n${detailsMd.value}\n\n</details>`);
+            // Manual & columns at the bottom
+            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            appendManualLinks(md, kwName);
         } else {
             md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
             md.isTrusted = true;
