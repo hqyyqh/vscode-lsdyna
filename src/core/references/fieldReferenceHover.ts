@@ -3,6 +3,7 @@
 const {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
+    renderTable3dSvgDataUri,
     markdownCode,
 } = require('./curvePlotRenderer');
 
@@ -23,8 +24,8 @@ function definitionLink(definition, title = 'Open definition') {
     return `[$(go-to-file) ${title}](command:extension.openLsdynaReferenceDefinition?${args} "${title}")`;
 }
 
-function appendCurvePreview(lines, definition) {
-    const dataUri = renderCurveSvgDataUri(definition);
+function appendCurvePreview(lines, definition, isDark = true) {
+    const dataUri = renderCurveSvgDataUri(definition, { isDark });
     if (dataUri) {
         lines.push('', `![curve preview](${dataUri})`);
     }
@@ -49,7 +50,24 @@ function childLink(row, definition) {
     return `${markdownCode(row.childIdRaw)} ${definitionLink(matches[0], `Open child ${row.childKind}`)}`;
 }
 
-function appendTablePreview(lines, definition) {
+function appendTablePreview(lines, definition, isDark = true) {
+    // Hydrate child curve points into table rows
+    const tableWithPoints = {
+        ...definition,
+        rows: (definition.rows || []).map(row => {
+            const matches = definition.resolvedChildren && definition.resolvedChildren.get(row.childId);
+            const points = (matches && matches[0] && matches[0].points) || [];
+            return { ...row, points };
+        })
+    };
+
+    // Try rendering 3D SVG
+    const dataUri = renderTable3dSvgDataUri(tableWithPoints, { isDark });
+    if (dataUri) {
+        lines.push('', `![3D table preview](${dataUri})`);
+    }
+
+    // Fallback text table underneath
     const childLabel = definition.tableType === '3d' ? 'table ID' : 'curve ID';
     const rows = (definition.rows || []).slice(0, MAX_TABLE_ROWS);
     if (rows.length === 0) {
@@ -65,21 +83,21 @@ function appendTablePreview(lines, definition) {
     }
 }
 
-function appendDefinition(lines, definition) {
+function appendDefinition(lines, definition, isDark = true) {
     lines.push('', `**${definition.keyword}** in \`${definition.filePath}\``, definitionLink(definition));
     if (definition.title) {
         lines.push(`_${definition.title}_`);
     }
     if (definition.kind === 'curve') {
-        appendCurvePreview(lines, definition);
+        appendCurvePreview(lines, definition, isDark);
     } else if (definition.kind === 'functionCurve') {
         appendFunctionPreview(lines, definition);
     } else if (definition.kind === 'table') {
-        appendTablePreview(lines, definition);
+        appendTablePreview(lines, definition, isDark);
     }
 }
 
-function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false, definitions = [], needsProjectScan = false }) {
+function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false, definitions = [], needsProjectScan = false, isDark = true }) {
     const lines = [
         '',
         '',
@@ -108,7 +126,7 @@ function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false
     }
 
     for (const definition of definitions.slice(0, MAX_HOVER_DEFINITIONS)) {
-        appendDefinition(lines, definition);
+        appendDefinition(lines, definition, isDark);
     }
 
     const omitted = definitions.length - MAX_HOVER_DEFINITIONS;

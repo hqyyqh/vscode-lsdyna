@@ -72,4 +72,39 @@ describe('fieldReferenceHover', () => {
         assert.ok(section.includes('Open child curve'));
         assert.ok(section.includes('lineIndex'));
     });
+
+    it('renders 3D table preview in hover section with SVG data URI', () => {
+        const childCurve = {
+            kind: 'curve',
+            id: 1001,
+            keyword: '*DEFINE_CURVE',
+            filePath: 'C:/model/main.k',
+            startLine: 30,
+            endLine: 35,
+            points: [
+                { x: 0, y: 10, xRaw: '0', yRaw: '10' },
+                { x: 1, y: 20, xRaw: '1', yRaw: '20' }
+            ],
+        };
+        const section = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            id: 2001,
+            definitions: [{
+                kind: 'table',
+                tableType: '2d',
+                id: 2001,
+                keyword: '*DEFINE_TABLE_2D',
+                filePath: 'C:/model/main.k',
+                startLine: 20,
+                endLine: 25,
+                rows: [{ valueRaw: '0.01', value: 0.01, childIdRaw: '1001', childId: 1001, childKind: 'curve', lineIndex: 23 }],
+                resolvedChildren: new Map([[1001, [childCurve]]]),
+            }],
+        });
+
+        assert.ok(section.includes('![3D table preview](data:image/svg+xml;base64,'));
+        assert.ok(section.includes('| value | curve ID |'));
+        assert.ok(section.includes('1001'));
+        assert.ok(section.includes('Open child curve'));
+    });
 });
