@@ -138,9 +138,26 @@ function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false
     return lines.join('\n');
 }
 
+function buildDefinitionHoverSection(definition, isDark = true) {
+    const lines = [];
+    const titleStr = definition.title ? ` - _${definition.title}_` : '';
+    const cleanKeyword = definition.keyword.replace(/^\*/, '');
+    lines.push(`### $(graph-line) **\\*${cleanKeyword} (ID: ${definition.id})**${titleStr}`);
+    if (definition.kind === 'curve') {
+        appendCurvePreview(lines, definition, isDark);
+    } else if (definition.kind === 'functionCurve') {
+        appendFunctionPreview(lines, definition);
+    } else if (definition.kind === 'table') {
+        appendTablePreview(lines, definition, isDark);
+    }
+    return lines.join('\n');
+}
+
 module.exports = {
     buildReferenceHoverSection,
+    buildDefinitionHoverSection,
     definitionLink,
 };
 
 export {};
+

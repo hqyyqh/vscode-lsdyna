@@ -41,7 +41,7 @@ const {
     resolveReferenceDefinitions,
     attachResolvedTableChildren,
 } = require('./core/references/projectReferenceIndex');
-const { buildReferenceHoverSection } = require('./core/references/fieldReferenceHover');
+const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('./core/references/fieldReferenceHover');
 const { scanCurveTableDefinitionsFromFileIndex } = require('./core/references/curveTableDefinitionScanner');
 
 /**
@@ -1602,6 +1602,28 @@ class LsdynaFieldHoverProvider {
         if (currentClassification.isKeyword) {
             const kwName = currentClassification.normalizedKeyword.slice(1);
             if (!kwName) return null;
+
+            let previewMd = '';
+            const normalizedKw = kwName.toUpperCase();
+            if (normalizedKw.startsWith('DEFINE_CURVE') || normalizedKw.startsWith('DEFINE_TABLE')) {
+                const referenceIndexState = await getReferenceIndexForDocument(document);
+                const fileIndex = getFileIndexForDocument(document);
+                if (fileIndex && fileIndex.referenceDefinitions) {
+                    const { curves, tables } = fileIndex.referenceDefinitions;
+                    const match = (curves || []).find(c => c.startLine === position.line) ||
+                                  (tables || []).find(t => t.startLine === position.line);
+                    if (match) {
+                        const themeKind = vscode.window?.activeColorTheme?.kind;
+                        const isDark = themeKind === undefined ||
+                                       (vscode.ColorThemeKind && (themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast));
+                        const resolvedMatch = match.kind === 'table' && referenceIndexState
+                            ? attachResolvedTableChildren(match, referenceIndexState.referenceIndex)
+                            : match;
+                        previewMd = buildDefinitionHoverSection(resolvedMatch, isDark);
+                    }
+                }
+            }
+
             const lookup = lookupKeywordInfo(kwName);
             if (!lookup) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
@@ -1610,18 +1632,28 @@ class LsdynaFieldHoverProvider {
                 const hasManuals = manuals.length > 0;
                 const notConfigured = fileCount === 0;
                 
-                if (hasManuals || notConfigured) {
-                    const md = new vscode.MarkdownString(`**\\*${kwName}**`);
+                if (hasManuals || notConfigured || previewMd) {
+                    let header = `**\\*${kwName}**`;
+                    if (previewMd) {
+                        header = `${previewMd}\n\n---\n\n${header}`;
+                    }
+                    const md = new vscode.MarkdownString(header);
                     md.isTrusted = true;
                     md.supportThemeIcons = true;
+                    md.supportHtml = true;
                     appendManualLinks(md, kwName);
                     return new vscode.Hover(md);
                 }
                 return null;
             }
-            const md = new vscode.MarkdownString(keywordHoverMarkdown(kwName, lookup.entry, lookup.activeOptions));
+            let hoverContent = keywordHoverMarkdown(kwName, lookup.entry, lookup.activeOptions);
+            if (previewMd) {
+                hoverContent = `${previewMd}\n\n---\n\n${hoverContent}`;
+            }
+            const md = new vscode.MarkdownString(hoverContent);
             md.isTrusted = true;
             md.supportThemeIcons = true;
+            md.supportHtml = true;
             appendKeywordOptionCommand(md, lookup.entry);
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);

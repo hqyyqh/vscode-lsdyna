@@ -1906,6 +1906,56 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
+    it('prepends curve definition preview when hovering on *DEFINE_CURVE definition keyword line', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-def-curve-'));
+        const filePath = path.join(tempRoot, 'main.k');
+        const doc = fakeDoc([
+            '*DEFINE_CURVE_TITLE',
+            'My Curve Title',
+            '      1001         0       1.0       1.0       0.0       0.0',
+            '       0.0     400.0',
+            '       0.1     450.0',
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+
+        const fileIndex = {
+            filePath,
+            referenceDefinitions: {
+                curves: [{
+                    kind: 'curve',
+                    id: 1001,
+                    keyword: '*DEFINE_CURVE_TITLE',
+                    filePath,
+                    startLine: 0,
+                    endLine: 4,
+                    title: 'My Curve Title',
+                    points: [
+                        { x: 0, y: 400, xRaw: '0.0', yRaw: '400.0', lineIndex: 3 },
+                        { x: 0.1, y: 450, xRaw: '0.1', yRaw: '450.0', lineIndex: 4 },
+                    ],
+                }],
+                tables: [],
+            },
+        };
+
+        try {
+            setFileIndexForTesting(filePath, fileIndex);
+            const provider = new LsdynaFieldHoverProvider();
+            // Hover directly on line 0 (the *DEFINE_CURVE_TITLE keyword line)
+            const hover = await provider.provideHover(doc, { line: 0, character: 5 });
+            assert.ok(hover);
+            const value = hover.contents[0].value;
+
+            // Assert it contains both the graph preview and the keyword documentation
+            assert.ok(value.includes('### $(graph-line) **\\*DEFINE_CURVE_TITLE (ID: 1001)** - _My Curve Title_'));
+            assert.ok(value.includes('data:image/svg+xml;base64,'));
+            assert.ok(value.includes('**\\*DEFINE_CURVE')); // Manual/help text
+        } finally {
+            setFileIndexForTesting(filePath, null);
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('resolves CONTACT optional card fields by data line count', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc([

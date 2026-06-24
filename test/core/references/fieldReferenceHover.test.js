@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildReferenceHoverSection } = require('../../../out/core/references/fieldReferenceHover');
+const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
 
 describe('fieldReferenceHover', () => {
     it('renders curve preview, signed switch note and definition link', () => {
@@ -106,4 +106,30 @@ describe('fieldReferenceHover', () => {
         assert.ok(section.includes('1001'));
         assert.ok(section.includes('Open child curve'));
     });
+
+    describe('buildDefinitionHoverSection', () => {
+        it('renders curve definition preview without redundant reference or file links', () => {
+            const section = buildDefinitionHoverSection({
+                kind: 'curve',
+                id: 1001,
+                keyword: '*DEFINE_CURVE',
+                filePath: 'C:/model/main.k',
+                startLine: 10,
+                endLine: 13,
+                title: 'My Curve Title',
+                points: [
+                    { x: 0, y: 400, xRaw: '0', yRaw: '400', lineIndex: 12 },
+                    { x: 0.1, y: 450, xRaw: '0.1', yRaw: '450', lineIndex: 13 },
+                ],
+            });
+
+            // Should have headers, title, and preview SVG
+            assert.ok(section.includes('### $(graph-line) **\\*DEFINE_CURVE (ID: 1001)** - _My Curve Title_'));
+            assert.ok(section.includes('data:image/svg+xml;base64,'));
+            // Should NOT have reference header or Go to File links since it's definition hover
+            assert.ok(!section.includes('LCSS reference'));
+            assert.ok(!section.includes('command:extension.openLsdynaReferenceDefinition'));
+        });
+    });
 });
+
