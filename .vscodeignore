@@ -8,6 +8,7 @@ out/**/*.map
 keywords/**
 !keywords/field_data.json
 !keywords/field_data_zh.json
+!keywords/field_reference_index.json
 **/*.ipynb
 *.vsix
 .antigravity
