@@ -44601,6 +44601,21 @@
         "source": "schema-help",
         "allowSignedSwitch": true
       },
+      "3:LCSDG": {
+        "keyword": "MAT_ADD_EROSION",
+        "cardIndex": 3,
+        "fieldName": "LCSDG",
+        "fieldType": "integer",
+        "position": 20,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
+      },
       "4:LCEPS12": {
         "keyword": "MAT_ADD_EROSION",
         "cardIndex": 4,
@@ -44669,6 +44684,21 @@
         "width": 10,
         "targetKinds": [
           "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
+      },
+      "4:LCSDG": {
+        "keyword": "MAT_ADD_EROSION_TITLE",
+        "cardIndex": 4,
+        "fieldName": "LCSDG",
+        "fieldType": "integer",
+        "position": 20,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
         ],
         "confidence": "high",
         "source": "schema-help",
