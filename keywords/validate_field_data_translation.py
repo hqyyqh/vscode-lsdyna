@@ -21,6 +21,8 @@ KEYWORDS_DIR = Path(__file__).resolve().parent
 DEFAULT_ENGLISH_PATH = KEYWORDS_DIR / "field_data.json"
 DEFAULT_LOCALIZED_PATH = KEYWORDS_DIR / "field_data_zh.json"
 TRANSLATABLE_KEYS = {"h", "description", "desc", "summary"}
+HAN_RANGE_START = "\u3400"
+HAN_RANGE_END = "\u9fff"
 
 
 def load_json(path: Path) -> Any:
@@ -50,6 +52,39 @@ def compare_field_data_structure(english: dict[str, Any], localized: dict[str, A
 
     for key in sorted(english_keys & localized_keys):
         _compare_node(english[key], localized[key], key, errors)
+
+    return errors
+
+
+def contains_han_text(value: Any) -> bool:
+    return any(HAN_RANGE_START <= char <= HAN_RANGE_END for char in str(value or ""))
+
+
+def find_untranslated_help(english: Any, localized: Any, path: str = "") -> list[str]:
+    """Return paths whose localized help text still lacks Chinese text."""
+    errors: list[str] = []
+    if isinstance(english, dict):
+        localized_dict = localized if isinstance(localized, dict) else {}
+        english_help = str(english.get("h") or "")
+        localized_help = str(localized_dict.get("h") or "")
+        if english_help and not contains_han_text(localized_help):
+            field_name = english.get("n")
+            suffix = f" ({field_name})" if field_name else ""
+            errors.append(f"{_format_path(path)}.h{suffix}: missing Chinese help text")
+
+        for key, english_value in english.items():
+            if key == "h":
+                continue
+            next_path = f"{path}.{key}" if path else key
+            errors.extend(find_untranslated_help(english_value, localized_dict.get(key), next_path))
+        return errors
+
+    if isinstance(english, list):
+        localized_list = localized if isinstance(localized, list) else []
+        for index, english_item in enumerate(english):
+            localized_item = localized_list[index] if index < len(localized_list) else None
+            errors.extend(find_untranslated_help(english_item, localized_item, f"{path}[{index}]"))
+        return errors
 
     return errors
 
@@ -129,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--english", type=Path, default=DEFAULT_ENGLISH_PATH)
     parser.add_argument("--localized", type=Path, default=DEFAULT_LOCALIZED_PATH)
     parser.add_argument("--sync", action="store_true", help="Update localized JSON with English structural fallback.")
+    parser.add_argument("--check-content", action="store_true", help="Require localized help text to contain Chinese text.")
     args = parser.parse_args(argv)
 
     if args.sync:
@@ -137,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
         english = load_json(args.english)
         localized = load_json(args.localized)
         errors = compare_field_data_structure(english, localized)
+        if args.check_content:
+            errors.extend(find_untranslated_help(english, localized))
 
     if errors:
         print("field_data translation structure check FAILED", file=sys.stderr)

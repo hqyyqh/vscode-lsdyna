@@ -9,7 +9,12 @@ KEYWORDS_DIR = REPO_ROOT / "keywords"
 
 sys.path.insert(0, str(KEYWORDS_DIR))
 
-from validate_field_data_translation import compare_field_data_structure, sync_translation_data  # noqa: E402
+from validate_field_data_translation import (  # noqa: E402
+    compare_field_data_structure,
+    find_untranslated_help,
+    load_json,
+    sync_translation_data,
+)
 
 
 def sample_field_data():
@@ -81,6 +86,25 @@ class FieldDataTranslationTest(unittest.TestCase):
         self.assertEqual(0, synced["MAT_001"]["c"][0][0]["d"])
         self.assertIn("SET_NODE", synced)
         self.assertEqual([], compare_field_data_structure(english, synced))
+
+    def test_content_reports_help_without_chinese_text(self):
+        english = sample_field_data()
+        localized = copy.deepcopy(english)
+        localized["MAT_001"]["c"][0][0]["h"] = "Material ID"
+        localized["SET_NODE"]["c"][0][0]["h"] = "Set ID\n集合 ID。"
+
+        errors = find_untranslated_help(english, localized)
+
+        self.assertTrue(any("MAT_001.c[0][0].h (MID)" in error for error in errors))
+        self.assertFalse(any("SET_NODE.c[0][0].h" in error for error in errors))
+
+    def test_repository_localized_help_is_fully_translated(self):
+        english = load_json(KEYWORDS_DIR / "field_data.json")
+        localized = load_json(KEYWORDS_DIR / "field_data_zh.json")
+
+        errors = find_untranslated_help(english, localized)
+
+        self.assertEqual([], errors[:50])
 
 
 if __name__ == "__main__":
