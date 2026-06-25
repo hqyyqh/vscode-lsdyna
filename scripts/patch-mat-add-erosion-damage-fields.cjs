@@ -6,10 +6,22 @@ const path = require('path');
 const repoRoot = path.resolve(__dirname, '..');
 const englishPath = path.join(repoRoot, 'keywords', 'field_data.json');
 const localizedPath = path.join(repoRoot, 'keywords', 'field_data_zh.json');
+const snippetsPath = path.join(repoRoot, 'snippets', 'lsdyna.json');
 
 const TARGET_KEYWORDS = [
     'MAT_ADD_EROSION',
     'MAT_ADD_EROSION_TITLE',
+];
+
+const DAMAGE_SNIPPET_FIELDS = [
+    'IDAM',
+    'DMGTYP',
+    'LCSDG',
+    'ECRIT',
+    'DMGEXP',
+    'DCRIT',
+    'FADEXP',
+    'LCREGD',
 ];
 
 const ENGLISH_FIELDS = [
@@ -179,6 +191,76 @@ function patchMatAddErosionDamageFields(schema, locale = 'en') {
     return { changedFields };
 }
 
+function buildSnippetCommentHeader(fieldNames) {
+    let line = '$#';
+    let written = 2;
+    fieldNames.forEach((fieldName, index) => {
+        const pos = index * 10;
+        const width = 10;
+        const available = (pos + width) - written;
+        if (available <= 0) {
+            return;
+        }
+        line += fieldName.toLowerCase().slice(0, available).padStart(available);
+        written = pos + width;
+    });
+    return line;
+}
+
+function buildSnippetDataLine(existingLine, fieldNames) {
+    const matches = Array.from(existingLine.matchAll(/\$\{(\d+):([^}]*)\}/g));
+    if (matches.length < fieldNames.length) {
+        throw new Error('MAT_ADD_EROSION snippet damage data line has too few placeholders');
+    }
+
+    return fieldNames.map((fieldName, index) => {
+        const [, tab, currentValue] = matches[index];
+        const placeholder = fieldName.slice(0, currentValue.length).padStart(currentValue.length);
+        return `\${${tab}:${placeholder}}`;
+    }).join('');
+}
+
+function isDamageSnippetHeader(line) {
+    return /^\$#\s+idam\b/i.test(line) && /\blcregd\b/i.test(line);
+}
+
+function patchSnippetBody(snippetKey, body) {
+    if (!Array.isArray(body)) {
+        throw new Error(`${snippetKey} is missing snippet body`);
+    }
+
+    const headerIndex = body.findIndex(isDamageSnippetHeader);
+    if (headerIndex < 0 || headerIndex + 1 >= body.length) {
+        throw new Error(`${snippetKey} damage snippet card IDAM...LCREGD was not found`);
+    }
+
+    const commentLine = buildSnippetCommentHeader(DAMAGE_SNIPPET_FIELDS);
+    const dataLine = buildSnippetDataLine(body[headerIndex + 1], DAMAGE_SNIPPET_FIELDS);
+    const changed = body[headerIndex] !== commentLine || body[headerIndex + 1] !== dataLine;
+
+    body[headerIndex] = commentLine;
+    body[headerIndex + 1] = dataLine;
+
+    return changed;
+}
+
+function patchMatAddErosionSnippets(snippets) {
+    let changedSnippets = 0;
+
+    for (const keyword of TARGET_KEYWORDS) {
+        const snippetKey = `*${keyword}`;
+        const snippet = snippets[snippetKey];
+        if (!snippet) {
+            throw new Error(`${snippetKey} snippet was not found`);
+        }
+        if (patchSnippetBody(snippetKey, snippet.body)) {
+            changedSnippets++;
+        }
+    }
+
+    return { changedSnippets };
+}
+
 function loadJson(filePath) {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
@@ -194,12 +276,23 @@ function patchFile(filePath, locale) {
     return result;
 }
 
+function patchSnippetsFile(filePath) {
+    const data = loadJson(filePath);
+    const result = patchMatAddErosionSnippets(data);
+    if (result.changedSnippets > 0) {
+        fs.writeFileSync(filePath, `${JSON.stringify(data, null, 4)}\n`, 'utf8');
+    }
+    return result;
+}
+
 function main() {
     const english = patchFile(englishPath, 'en');
     const localized = patchFile(localizedPath, 'zh');
+    const snippets = patchSnippetsFile(snippetsPath);
 
     console.log(`Patched ${path.relative(repoRoot, englishPath)} (${english.changedFields} fields changed).`);
     console.log(`Patched ${path.relative(repoRoot, localizedPath)} (${localized.changedFields} fields changed).`);
+    console.log(`Patched ${path.relative(repoRoot, snippetsPath)} (${snippets.changedSnippets} snippets changed).`);
 }
 
 if (require.main === module) {
@@ -208,5 +301,7 @@ if (require.main === module) {
 
 module.exports = {
     patchMatAddErosionDamageFields,
+    patchMatAddErosionSnippets,
     patchFile,
+    patchSnippetsFile,
 };

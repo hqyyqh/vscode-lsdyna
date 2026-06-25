@@ -4,6 +4,7 @@ const path = require('path');
 
 const {
     patchMatAddErosionDamageFields,
+    patchMatAddErosionSnippets,
 } = require('../../scripts/patch-mat-add-erosion-damage-fields.cjs');
 
 function makeCard() {
@@ -28,6 +29,29 @@ function makeSchema() {
 
 function fieldNames(schema, keyword) {
     return schema[keyword].c[2].map(field => field.n);
+}
+
+function makeSnippets() {
+    return {
+        '*MAT_ADD_EROSION': {
+            body: [
+                '*MAT_ADD_EROSION',
+                '$#    idam    unused    unused    unused    unused    unused    unused    lcregd',
+                '${17:      IDAM}${18:    UNUSED}${19:    UNUSED}${20:    UNUSED}${21:    UNUSED}${22:    UNUSED}${23:    UNUSED}${24:    LCREGD}',
+                '$0',
+            ],
+        },
+        '*MAT_ADD_EROSION_TITLE': {
+            body: [
+                '*MAT_ADD_EROSION_TITLE',
+                '$# title                                                                        ',
+                '${1:TITLE}',
+                '$#    idam    unused    unused    unused    unused    unused    unused    lcregd',
+                '${18:      IDAM}${19:    UNUSED}${20:    UNUSED}${21:    UNUSED}${22:    UNUSED}${23:    UNUSED}${24:    UNUSED}${25:    LCREGD}',
+                '$0',
+            ],
+        },
+    };
 }
 
 describe('patchMatAddErosionDamageFields', () => {
@@ -77,10 +101,31 @@ describe('patchMatAddErosionDamageFields', () => {
         assert.equal(second.changedFields, 0);
     });
 
-    it('keeps repository field_data files patched in both languages', () => {
+    it('updates MAT_ADD_EROSION keyword snippets for restored damage fields', () => {
+        const snippets = makeSnippets();
+
+        const result = patchMatAddErosionSnippets(snippets);
+
+        assert.equal(result.changedSnippets, 2);
+        assert.ok(snippets['*MAT_ADD_EROSION'].body.includes(
+            '$#    idam    dmgtyp     lcsdg     ecrit    dmgexp     dcrit    fadexp    lcregd'
+        ));
+        assert.ok(snippets['*MAT_ADD_EROSION'].body.includes(
+            '${17:      IDAM}${18:    DMGTYP}${19:     LCSDG}${20:     ECRIT}${21:    DMGEXP}${22:     DCRIT}${23:    FADEXP}${24:    LCREGD}'
+        ));
+        assert.ok(snippets['*MAT_ADD_EROSION_TITLE'].body.includes(
+            '${18:      IDAM}${19:    DMGTYP}${20:     LCSDG}${21:     ECRIT}${22:    DMGEXP}${23:     DCRIT}${24:    FADEXP}${25:    LCREGD}'
+        ));
+
+        const second = patchMatAddErosionSnippets(snippets);
+        assert.equal(second.changedSnippets, 0);
+    });
+
+    it('keeps repository field_data and snippet files patched', () => {
         const repoRoot = path.resolve(__dirname, '..', '..');
         const english = JSON.parse(fs.readFileSync(path.join(repoRoot, 'keywords', 'field_data.json'), 'utf8'));
         const localized = JSON.parse(fs.readFileSync(path.join(repoRoot, 'keywords', 'field_data_zh.json'), 'utf8'));
+        const snippets = JSON.parse(fs.readFileSync(path.join(repoRoot, 'snippets', 'lsdyna.json'), 'utf8'));
 
         assert.deepEqual(fieldNames(english, 'MAT_ADD_EROSION'), [
             'IDAM', 'DMGTYP', 'LCSDG', 'ECRIT', 'DMGEXP', 'DCRIT', 'FADEXP', 'LCREGD',
@@ -89,5 +134,11 @@ describe('patchMatAddErosionDamageFields', () => {
             'IDAM', 'DMGTYP', 'LCSDG', 'ECRIT', 'DMGEXP', 'DCRIT', 'FADEXP', 'LCREGD',
         ]);
         assert.ok(localized.MAT_ADD_EROSION.c[2][1].h.includes('对于 GISSMO 损伤类型'));
+        assert.ok(snippets['*MAT_ADD_EROSION'].body.includes(
+            '$#    idam    dmgtyp     lcsdg     ecrit    dmgexp     dcrit    fadexp    lcregd'
+        ));
+        assert.ok(snippets['*MAT_ADD_EROSION_TITLE'].body.includes(
+            '$#    idam    dmgtyp     lcsdg     ecrit    dmgexp     dcrit    fadexp    lcregd'
+        ));
     });
 });
