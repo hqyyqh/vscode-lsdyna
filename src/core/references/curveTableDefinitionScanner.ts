@@ -155,6 +155,9 @@ function parseCurveBlock(block, text) {
 
 function tableTypeFromKeyword(keyword) {
     const normalized = normalizeKeyword(keyword);
+    if (normalized.includes('_4D')) {
+        return '4d';
+    }
     if (normalized.includes('_3D')) {
         return '3d';
     }
@@ -188,7 +191,7 @@ function parseTableBlock(block, text) {
     cursor += 1;
 
     const tableType = tableTypeFromKeyword(keyword);
-    const childKind = tableType === '3d' ? 'table' : 'curve';
+    const childKind = tableType === '3d' || tableType === '4d' ? 'table' : 'curve';
     const rows = [];
     
     if (tableType === '1d') {

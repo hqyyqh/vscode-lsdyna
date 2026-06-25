@@ -34,21 +34,37 @@ function getFieldReferenceInfo({ keyword, cardIndex, field }) {
         keyword: normalizedKeyword,
         cardIndex,
         fieldName: normalizedField,
+        fieldType: reference.fieldType,
         targetKinds: reference.targetKinds || [],
         label: reference.label,
         allowSignedSwitch: reference.allowSignedSwitch !== false,
+        requiresSignedSwitch: reference.requiresSignedSwitch === true,
         confidence: reference.confidence || 'high',
         source: reference.source || 'schema-help',
     };
 }
 
-function parseFieldReferenceValue(rawValue, info = null) {
-    const raw = String(rawValue || '').trim();
-    if (!raw || !/^-?\d+$/.test(raw)) {
+function parseReferenceInteger(raw) {
+    if (!/^[+-]?\d+(?:\.0*)?$/.test(raw)) {
         return null;
     }
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed === 0) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed === 0) {
+        return null;
+    }
+    return parsed;
+}
+
+function parseFieldReferenceValue(rawValue, info = null) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) {
+        return null;
+    }
+    const parsed = parseReferenceInteger(raw);
+    if (parsed === null) {
+        return null;
+    }
+    if (info && info.requiresSignedSwitch === true && parsed > 0) {
         return null;
     }
     if (parsed < 0 && info && info.allowSignedSwitch === false) {

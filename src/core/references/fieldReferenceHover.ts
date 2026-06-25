@@ -68,7 +68,7 @@ function appendTablePreview(lines, definition, isDark = true) {
     }
 
     // Fallback text table underneath
-    const childLabel = definition.tableType === '3d' ? 'table ID' : 'curve ID';
+    const childLabel = definition.tableType === '3d' || definition.tableType === '4d' ? 'table ID' : 'curve ID';
     const allRows = definition.rows || [];
     if (allRows.length === 0) {
         return;

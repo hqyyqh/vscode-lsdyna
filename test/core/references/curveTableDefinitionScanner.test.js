@@ -145,4 +145,37 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    it('parses DEFINE_TABLE_4D rows as value to child table id', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-table4d-'));
+        const filePath = path.join(dir, 'table4d.k');
+        fs.writeFileSync(filePath, [
+            '*DEFINE_TABLE_4D_TITLE',
+            'strain rate table',
+            '$#    tbid       sfa      offa',
+            '      4001       1.0       0.0',
+            '$#             value             tableId',
+            '                0.0                3001',
+            '              100.0                3002',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block)
+            );
+
+            assert.equal(result.tables.length, 1);
+            assert.equal(result.tables[0].id, 4001);
+            assert.equal(result.tables[0].title, 'strain rate table');
+            assert.equal(result.tables[0].tableType, '4d');
+            assert.deepEqual(result.tables[0].rows.map(row => [row.value, row.childId, row.childKind]), [
+                [0.0, 3001, 'table'],
+                [100.0, 3002, 'table'],
+            ]);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
 });

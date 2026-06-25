@@ -38,6 +38,32 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(info.source, 'schema-help');
     });
 
+    it('classifies MAT_ADD_EROSION signed real damage fields from schema help metadata', () => {
+        const schema = keywordSchema.loadKeywordSchema(() => 'en');
+        const lookup = keywordSchema.lookupKeywordSchema('MAT_ADD_EROSION', schema);
+        const damageCard = lookup.entry.c[2];
+        const ecrit = damageCard.find(item => item.n === 'ECRIT');
+        const fadexp = damageCard.find(item => item.n === 'FADEXP');
+
+        const ecritInfo = getFieldReferenceInfo({
+            keyword: 'MAT_ADD_EROSION',
+            cardIndex: 3,
+            field: ecrit,
+        });
+        const fadexpInfo = getFieldReferenceInfo({
+            keyword: 'MAT_ADD_EROSION',
+            cardIndex: 3,
+            field: fadexp,
+        });
+
+        assert.deepEqual(ecritInfo.targetKinds, ['curve', 'table']);
+        assert.equal(ecritInfo.fieldType, 'real');
+        assert.equal(ecritInfo.requiresSignedSwitch, true);
+        assert.deepEqual(fadexpInfo.targetKinds, ['curve']);
+        assert.equal(fadexpInfo.fieldType, 'real');
+        assert.equal(fadexpInfo.requiresSignedSwitch, true);
+    });
+
     it('does not classify non-curve/table integer fields', () => {
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const lookup = keywordSchema.lookupKeywordSchema('MAT_PIECEWISE_LINEAR_PLASTICITY', schema);
@@ -66,5 +92,21 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(parseFieldReferenceValue('         0', { allowSignedSwitch: true }), null);
         assert.equal(parseFieldReferenceValue('     &LCSS', { allowSignedSwitch: true }), null);
         assert.equal(parseFieldReferenceValue('        -7', { allowSignedSwitch: false }), null);
+    });
+
+    it('parses signed real references only when the schema says the switch is required', () => {
+        const signedRealInfo = {
+            allowSignedSwitch: true,
+            requiresSignedSwitch: true,
+            fieldType: 'real',
+        };
+
+        assert.deepEqual(parseFieldReferenceValue(' -31001008.0', signedRealInfo), {
+            id: 31001008,
+            raw: '-31001008.0',
+            isSignedSwitch: true,
+        });
+        assert.equal(parseFieldReferenceValue('  31001008.0', signedRealInfo), null);
+        assert.equal(parseFieldReferenceValue('        -0.5', signedRealInfo), null);
     });
 });
