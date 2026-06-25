@@ -961,11 +961,6 @@ function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
     return lines.join('\n');
 }
 
-function appendKeywordOptionCommand(md, entry) {
-    if (!entry || !entry.o || entry.o.length === 0) return;
-    md.appendMarkdown(`\n\n---\n\n[$(list-selection) ${i18n.get('chooseKeywordOptions')}](command:extension.lsdynaChooseKeywordOptions)`);
-}
-
 function normalizeOptionName(name) {
     return String(name || '').trim().toUpperCase();
 }
@@ -1654,7 +1649,6 @@ class LsdynaFieldHoverProvider {
             md.isTrusted = true;
             md.supportThemeIcons = true;
             md.supportHtml = true;
-            appendKeywordOptionCommand(md, lookup.entry);
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);
         }

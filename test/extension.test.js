@@ -1977,15 +1977,16 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(hover.contents[0].value.includes('**PSTIFF**'));
     });
 
-    it('adds a keyword option command link on keyword hovers with options', async () => {
+    it('does not show keyword option command links on keyword hovers with options', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n');
 
         const hover = await provider.provideHover(doc, { line: 0, character: 3 });
 
         assert.ok(hover);
-        assert.ok(hover.contents[0].value.includes('command:extension.lsdynaChooseKeywordOptions'));
-        assert.ok(hover.contents[0].value.includes('Choose keyword options'));
+        assert.ok(hover.contents[0].value.includes('**\\*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE**'));
+        assert.ok(!hover.contents[0].value.includes('command:extension.lsdynaChooseKeywordOptions'));
+        assert.ok(!hover.contents[0].value.includes('Choose keyword options'));
     });
 
     it('returns custom hover actions for existing include files', async () => {
