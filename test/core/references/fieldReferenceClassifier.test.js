@@ -6,7 +6,7 @@ const {
 } = require('../../../out/core/references/fieldReferenceClassifier');
 
 describe('fieldReferenceClassifier', () => {
-    it('classifies MAT_024 LCSS as curve or table from generated explicit metadata', () => {
+    it('classifies MAT_024 LCSS as curve or table from schema help metadata', () => {
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const lookup = keywordSchema.lookupKeywordSchema('MAT_PIECEWISE_LINEAR_PLASTICITY', schema);
         const field = lookup.entry.c[1].find(item => item.n === 'LCSS');
@@ -18,8 +18,8 @@ describe('fieldReferenceClassifier', () => {
         });
 
         assert.deepEqual(info.targetKinds, ['curve', 'table']);
-        assert.equal(info.confidence, 'explicit');
-        assert.equal(info.source, 'override');
+        assert.equal(info.confidence, 'high');
+        assert.equal(info.source, 'schema-help');
     });
 
     it('classifies MAT_024_TITLE LCSS as curve or table at cardIndex 3', () => {
@@ -34,8 +34,8 @@ describe('fieldReferenceClassifier', () => {
         });
 
         assert.deepEqual(info.targetKinds, ['curve', 'table']);
-        assert.equal(info.confidence, 'explicit');
-        assert.equal(info.source, 'override');
+        assert.equal(info.confidence, 'high');
+        assert.equal(info.source, 'schema-help');
     });
 
     it('does not classify non-curve/table integer fields', () => {

@@ -15,7 +15,7 @@
 
 ## 字段引用索引
 
-- `keywords/field_reference_index.json` 由 `scripts/generate-field-reference-index.cjs` 从 `keywords/field_data.json` 和 `keywords/field_reference_overrides.json` 生成。
+- `keywords/field_reference_index.json` 由 `scripts/generate-field-reference-index.cjs` 从 `keywords/field_data.json` 生成。
 - 生成结果覆盖 1490 个 keyword 的 curve/table 字段引用。
 - `MAT_PIECEWISE_LINEAR_PLASTICITY` card 2 的 `LCSS` 显式识别为 `curve/table`，`MID` 不进入引用索引。
 - 负整数引用默认按 signed switch 处理，Hover 用绝对值查找定义并保留原始负号提示。

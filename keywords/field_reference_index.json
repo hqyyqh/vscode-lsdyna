@@ -1,8 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedFrom": {
-    "fieldData": "keywords/field_data.json",
-    "overrides": "keywords/field_reference_overrides.json"
+    "fieldData": "keywords/field_data.json"
   },
   "definitionKeywords": {
     "scanned": [
@@ -57512,10 +57511,9 @@
         "targetKinds": [
           "curve"
         ],
-        "confidence": "explicit",
-        "source": "override",
-        "allowSignedSwitch": true,
-        "label": "strain rate scaling effect on yield stress"
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
       },
       "2:LCSS": {
         "keyword": "MAT_PIECEWISE_LINEAR_PLASTICITY",
@@ -57528,10 +57526,9 @@
           "curve",
           "table"
         ],
-        "confidence": "explicit",
-        "source": "override",
-        "allowSignedSwitch": true,
-        "label": "effective stress versus effective plastic strain"
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
       }
     },
     "MAT_PIECEWISE_LINEAR_PLASTICITY_2D": {
@@ -57855,10 +57852,9 @@
         "targetKinds": [
           "curve"
         ],
-        "confidence": "explicit",
-        "source": "override",
-        "allowSignedSwitch": true,
-        "label": "strain rate scaling effect on yield stress"
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
       },
       "3:LCSS": {
         "keyword": "MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE",
@@ -57871,10 +57867,9 @@
           "curve",
           "table"
         ],
-        "confidence": "explicit",
-        "source": "override",
-        "allowSignedSwitch": true,
-        "label": "effective stress versus effective plastic strain"
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
       }
     },
     "MAT_PITZER_CRUSHABLE_FOAM": {

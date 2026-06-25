@@ -5,7 +5,6 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const fieldDataPath = path.join(repoRoot, 'keywords', 'field_data.json');
-const overridesPath = path.join(repoRoot, 'keywords', 'field_reference_overrides.json');
 const outputPath = path.join(repoRoot, 'keywords', 'field_reference_index.json');
 const { getRenderedCards } = require('../out/core/keywordSchema');
 
@@ -24,18 +23,6 @@ function normalizeTargetKinds(values) {
 
 function keyFor(cardIndex, fieldName) {
     return `${cardIndex}:${normalizeFieldName(fieldName)}`;
-}
-
-function findBaseCardIndex(renderedCard, baseCards) {
-    if (!baseCards) return -1;
-    const renderedNames = renderedCard.map(f => normalizeFieldName(f.n)).join(',');
-    for (let i = 0; i < baseCards.length; i++) {
-        const baseNames = baseCards[i].map(f => normalizeFieldName(f.n)).join(',');
-        if (renderedNames === baseNames) {
-            return i + 1; // 1-based base card index
-        }
-    }
-    return -1;
 }
 
 function helpMentionsCurve(field) {
@@ -93,22 +80,7 @@ function collectDefinitionKeywords(schema) {
     return { scanned, drawable, indexOnly };
 }
 
-function applyOverride(reference, override) {
-    const targetKinds = normalizeTargetKinds(override.targetKinds);
-    if (targetKinds.length === 0) {
-        return null;
-    }
-    return {
-        ...reference,
-        ...override,
-        targetKinds,
-        confidence: 'explicit',
-        source: 'override',
-        allowSignedSwitch: override.allowSignedSwitch !== false && override.allowNegative !== false,
-    };
-}
-
-function buildIndex(schema, overrides) {
+function buildIndex(schema) {
     const references = {};
 
     for (const [keyword, entry] of Object.entries(schema)) {
@@ -125,9 +97,6 @@ function buildIndex(schema, overrides) {
         // Render the cards with active options
         const renderedCards = getRenderedCards(canonicalEntry, activeOptions);
 
-        // Overrides can be defined on this keyword or on the canonical base keyword
-        const explicitRules = overrides[normalizedKeyword] || overrides[canonicalName] || {};
-
         for (const [cardOffset, card] of renderedCards.entries()) {
             const cardIndex = cardOffset + 1;
             for (const field of card || []) {
@@ -136,23 +105,8 @@ function buildIndex(schema, overrides) {
                     continue;
                 }
 
-                // Determine base card index to match overrides written in terms of base cards
-                const baseCardIdx = findBaseCardIndex(card, canonicalEntry.c);
-
-                // Look up overrides using both baseCardIdx (if matched) and rendered cardIndex
-                let explicit = null;
-                if (baseCardIdx !== -1) {
-                    explicit = explicitRules[`${baseCardIdx}:${fieldName}`];
-                }
-                if (!explicit) {
-                    explicit = explicitRules[`${cardIndex}:${fieldName}`];
-                }
-
                 const inferred = inferReference(field);
-                const reference = explicit
-                    ? applyOverride(inferred || {}, explicit)
-                    : inferred;
-                if (!reference) {
+                if (!inferred) {
                     continue;
                 }
 
@@ -163,43 +117,12 @@ function buildIndex(schema, overrides) {
                     fieldType: field.t,
                     position: field.p,
                     width: field.w,
-                    targetKinds: normalizeTargetKinds(reference.targetKinds),
-                    confidence: reference.confidence,
-                    source: reference.source,
-                    allowSignedSwitch: reference.allowSignedSwitch !== false,
-                    ...(reference.label ? { label: reference.label } : {}),
+                    targetKinds: normalizeTargetKinds(inferred.targetKinds),
+                    confidence: inferred.confidence,
+                    source: inferred.source,
+                    allowSignedSwitch: inferred.allowSignedSwitch !== false,
                 };
             }
-        }
-
-        // Fallback for rules in overrides that weren't matched in schema cards
-        for (const [refKey, explicit] of Object.entries(explicitRules)) {
-            const [rawCardIndex, rawFieldName] = refKey.split(':');
-            const fieldName = normalizeFieldName(rawFieldName);
-
-            // Check if this fieldName is already in keywordRules (with any cardIndex)
-            const alreadyMatched = Object.values(keywordRules).some(
-                r => r.fieldName === fieldName
-            );
-            if (alreadyMatched) {
-                continue;
-            }
-
-            const reference = applyOverride({}, explicit);
-            if (!reference) {
-                continue;
-            }
-            const cardIndex = Number.parseInt(rawCardIndex, 10);
-            keywordRules[`${cardIndex}:${fieldName}`] = {
-                keyword: normalizedKeyword,
-                cardIndex,
-                fieldName,
-                targetKinds: reference.targetKinds,
-                confidence: reference.confidence,
-                source: reference.source,
-                allowSignedSwitch: reference.allowSignedSwitch !== false,
-                ...(reference.label ? { label: reference.label } : {}),
-            };
         }
 
         if (Object.keys(keywordRules).length > 0) {
@@ -211,7 +134,6 @@ function buildIndex(schema, overrides) {
         schemaVersion: 1,
         generatedFrom: {
             fieldData: 'keywords/field_data.json',
-            overrides: 'keywords/field_reference_overrides.json',
         },
         definitionKeywords: collectDefinitionKeywords(schema),
         references: Object.fromEntries(Object.entries(references).sort(([a], [b]) => a.localeCompare(b))),
@@ -220,8 +142,7 @@ function buildIndex(schema, overrides) {
 
 function main() {
     const schema = JSON.parse(fs.readFileSync(fieldDataPath, 'utf8'));
-    const overrides = JSON.parse(fs.readFileSync(overridesPath, 'utf8'));
-    const index = buildIndex(schema, overrides);
+    const index = buildIndex(schema);
     fs.writeFileSync(outputPath, JSON.stringify(index, null, 2) + '\n', 'utf8');
     console.log(`Wrote ${outputPath}`);
     console.log(`Indexed ${Object.keys(index.references).length} keywords with curve/table field references.`);
