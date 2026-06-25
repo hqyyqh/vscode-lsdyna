@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.12] - 2026-06-25
+
+### Fixed
+- **i18n**: Added missing Chinese translations for field data.
+
+### Changed
+- **Build**: Excluded `scripts` folder from the extension package.
+
+## [3.0.11] - 2026-06-25
+
+- Triggered clean release.
+
+## [3.0.10] - 2026-06-25
+
+### Fixed
+- **Hover**: Added support for referencing curve/table definitions from real number fields.
+- **Hover**: Removed keyword option entry.
+- **Snippets**: Synchronized `MAT_ADD_EROSION` damage field annotations.
+- **Keywords**: Restored `MAT_ADD_EROSION` damage field descriptions.
+
+### Changed
+- **References**: Refactored to remove field reference override files.
+
 ## [3.0.9] - 2026-06-24
 
 ### Added
