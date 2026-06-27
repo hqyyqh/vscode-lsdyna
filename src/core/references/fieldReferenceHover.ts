@@ -24,6 +24,10 @@ function definitionLink(definition, title = i18n.get('openDefinition')) {
     return `[$(go-to-file) ${title}](command:extension.openLsdynaReferenceDefinition?${args} "${title}")`;
 }
 
+function childDefinitionKindLabel(kind) {
+    return kind === 'table' ? i18n.get('tableDefinitionKind') : i18n.get('curveDefinitionKind');
+}
+
 function appendCurvePreview(lines, definition, isDark = true) {
     const dataUri = renderCurveSvgDataUri(definition, { isDark });
     if (dataUri) {
@@ -47,7 +51,7 @@ function childLink(row, definition) {
     if (!matches || matches.length === 0) {
         return markdownCode(row.childIdRaw);
     }
-    return `${markdownCode(row.childIdRaw)} ${definitionLink(matches[0], i18n.get('openChildDefinition', row.childKind))}`;
+    return `${markdownCode(row.childIdRaw)} ${definitionLink(matches[0], i18n.get('openChildDefinition', childDefinitionKindLabel(row.childKind)))}`;
 }
 
 function appendTablePreview(lines, definition, isDark = true) {
@@ -68,7 +72,9 @@ function appendTablePreview(lines, definition, isDark = true) {
     }
 
     // Fallback text table underneath
-    const childLabel = definition.tableType === '3d' || definition.tableType === '4d' ? 'table ID' : 'curve ID';
+    const childLabel = definition.tableType === '3d' || definition.tableType === '4d'
+        ? i18n.get('tableIdColumn')
+        : i18n.get('curveIdColumn');
     const allRows = definition.rows || [];
     if (allRows.length === 0) {
         return;
@@ -142,7 +148,7 @@ function buildDefinitionHoverSection(definition, isDark = true) {
     const lines = [];
     const titleStr = definition.title ? ` - _${definition.title}_` : '';
     const cleanKeyword = definition.keyword.replace(/^\*/, '');
-    lines.push(`### $(graph-line) **\\*${cleanKeyword} (ID: ${definition.id})**${titleStr}`);
+    lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', definition.id)}**${titleStr}`);
     if (definition.kind === 'curve') {
         appendCurvePreview(lines, definition, isDark);
     } else if (definition.kind === 'functionCurve') {

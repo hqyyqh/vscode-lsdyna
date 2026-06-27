@@ -1757,7 +1757,7 @@ class LsdynaParameterCodeLensProvider {
             const pos = new vscode.Position(def.lineIndex, def.startChar);
             const range = new vscode.Range(pos, pos);
             lenses.push(new vscode.CodeLens(range, {
-                title: count === 1 ? '1 reference' : `${count} references`,
+                title: count === 1 ? i18n.get('parameterReferenceSingular') : i18n.get('parameterReferencesPlural', count),
                 command: 'editor.action.findReferences',
                 arguments: [document.uri, pos],
             }));
@@ -4056,6 +4056,7 @@ module.exports._internals = {
     findIncludeFileLines,
     LsdynaIncludeTreeProvider,
     LsdynaFieldHoverProvider,
+    LsdynaParameterCodeLensProvider,
     LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordIndexProvider,
     LsdynaKeywordSymbolProvider,

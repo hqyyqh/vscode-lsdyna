@@ -27,7 +27,7 @@ describe('Phase 7 Features', () => {
             
             const childItem = item.children[0];
             assert.equal(childItem.filePath, '/project/cycle.k');
-            assert.equal(childItem.description, 'circular');
+            assert.equal(childItem.description, i18n.get('circular'));
             assert.equal(childItem.collapsibleState, vscodeMock.TreeItemCollapsibleState.None);
             assert.deepEqual(childItem.iconPath, new vscodeMock.ThemeIcon('sync'));
         });
@@ -247,7 +247,7 @@ describe('Phase 7 Features', () => {
             assert.ok(items.length > 0);
             // Should contain row template item at index 0
             const templateItem = items[0];
-            assert.ok(templateItem.label.includes('卡片') || templateItem.label.includes('Template'));
+            assert.equal(templateItem.label, i18n.get('rowTemplateLabel', 1));
             assert.equal(templateItem.insertText.value.length, 102); // 102 chars with snippet wrappers
 
             // Should contain individual fields starting from index 1
@@ -265,7 +265,7 @@ describe('Phase 7 Features', () => {
             const items = provider.provideCompletionItems(document, pos);
 
             // Row template should NOT be returned
-            const templates = items.filter(item => item.label.includes('卡片') || item.label.includes('Template'));
+            const templates = items.filter(item => item.detail === i18n.get('rowTemplateDetail'));
             assert.equal(templates.length, 0);
 
             // The next field is X (p=8). Spacing should be 8 - 5 = 3 spaces.

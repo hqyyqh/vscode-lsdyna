@@ -25,6 +25,7 @@ const {
     isIncludeLine,
     isLsdynaUri,
     LsdynaFieldHoverProvider,
+    LsdynaParameterCodeLensProvider,
     LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordSymbolProvider,
     LsDynaFoldingProvider,
@@ -262,6 +263,27 @@ describe('findParameterReferences', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n$ &tEnd this is a comment\n');
         const refs = findParameterReferences(doc).filter(r => r.name === 'TEND');
         assert.equal(refs.length, 0);
+    });
+});
+
+describe('LsdynaParameterCodeLensProvider', () => {
+    it('localizes parameter reference counts in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            const provider = new LsdynaParameterCodeLensProvider();
+            const lenses = provider.provideCodeLenses(fakeDoc('*PARAMETER\nR  t  1.0\n*KEYWORD\n&t  &t\n'));
+
+            assert.equal(lenses.length, 1);
+            assert.equal(lenses[0].command.title, '2 处引用');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
     });
 });
 
@@ -2527,6 +2549,61 @@ describe('LS-DYNA keyword option interactions', () => {
         for (const key of usedKeys) {
             assert.ok(zhKeys.has(key), `${key} should exist in zh-cn runtime locale`);
             assert.ok(enKeys.has(key), `${key} should exist in en runtime locale`);
+        }
+    });
+
+    it('keeps runtime Chinese copy natural and free of mixed-language setup terms', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            assert.equal(
+                i18n.get('openFileFirst', 'activeEditor=false'),
+                '请先打开一个 LS-DYNA 文件。（诊断信息：activeEditor=false）'
+            );
+            assert.equal(i18n.get('configureFolder'), '⚙️ 设置手册目录');
+            assert.equal(i18n.get('howToConfigureManual'), '📖 查看 PDF 手册配置说明');
+            assert.equal(i18n.get('manualDirSetTo', 'D:\\manuals'), 'LS-DYNA 手册目录已设置为：D:\\manuals');
+            assert.equal(i18n.get('loadingFieldData'), '正在加载字段数据...');
+            assert.equal(i18n.get('fieldCompletionLabel', 'LCSS', 21, 30), 'LCSS（第 21-30 列）');
+            assert.equal(i18n.get('chooseConsecutiveOptionalCards'), '选择连续可选卡片');
+            assert.equal(i18n.get('removeNonEmptyOptionLinesWarning'), '更改 LS-DYNA 关键字选项会删除非空的选项卡片行。');
+            assert.equal(i18n.get('moreDefinitionsOmitted', 2), '悬停提示中已省略 2 个定义。');
+            assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
+            assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
+            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 处引用');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('keeps runtime English copy concise and idiomatic', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            assert.equal(i18n.get('filesFound', 3), '3 files found');
+            assert.equal(i18n.get('rowTemplateLabel', 4), '✨ Generate full card row template (card 4)');
+            assert.equal(i18n.get('rowTemplateDetail'), 'LS-DYNA aligned card template');
+            assert.equal(i18n.get('loadingFieldData'), 'Loading keyword field definitions...');
+            assert.equal(i18n.get('chooseConsecutiveOptionalCards'), 'Choose consecutive optional card rows');
+            assert.equal(i18n.get('btnDownloadPack'), 'Download ready-to-use pack');
+            assert.equal(i18n.get('notOnAnyKeyword'), 'The cursor is not inside a keyword block.');
+            assert.equal(i18n.get('noFileToJumpTo'), 'No include file is available at the current cursor.');
+            assert.equal(i18n.get('noMoreKeywordsFound'), 'No next keyword found.');
+            assert.equal(i18n.get('noPreviousKeywordsFound'), 'No previous keyword found.');
+            assert.equal(i18n.get('parameterReferenceSingular'), '1 reference');
+            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 references');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
         }
     });
 
