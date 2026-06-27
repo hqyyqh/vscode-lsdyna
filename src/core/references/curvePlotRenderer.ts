@@ -1,5 +1,7 @@
 'use strict';
 
+const i18n = require('../i18n');
+
 const MAX_SVG_POINTS = 200;
 const MAX_TABLE_ROWS = 8;
 const MAX_TABLE_CURVES = 16;
@@ -131,7 +133,7 @@ function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
     ];
     const omitted = (definition.points || []).length - rows.length;
     if (omitted > 0) {
-        lines.push(`| ... | ${omitted} more rows |`);
+        lines.push(`| ... | ${i18n.get('moreRows', omitted)} |`);
     }
     return lines.join('\n');
 }

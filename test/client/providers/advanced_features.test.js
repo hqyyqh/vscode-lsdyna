@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const { fakeDoc, vscodeMock } = require('../../helpers');
+const i18n = require('../../../src/core/i18n');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
 const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics } = require('../../../src/extension')._internals;
@@ -152,6 +153,12 @@ describe('Phase 7 Features', () => {
 
     describe('publishProjectDiagnostics', () => {
         it('publishes warnings for missing files and errors for cycles at exact source ranges', () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+            });
+            i18n.updateLanguage();
+
             const diagnosticsCollection = {
                 deletedFiles: [],
                 sets: new Map(),
@@ -185,27 +192,32 @@ describe('Phase 7 Features', () => {
                 ]
             };
 
-            publishProjectDiagnostics(snapshot, diagnosticsCollection);
+            try {
+                publishProjectDiagnostics(snapshot, diagnosticsCollection);
 
-            // Verified both files were cleared first
-            assert.deepEqual(diagnosticsCollection.deletedFiles.sort(), ['/project/main.k', '/project/child.k'].sort());
+                // Verified both files were cleared first
+                assert.deepEqual(diagnosticsCollection.deletedFiles.sort(), ['/project/main.k', '/project/child.k'].sort());
 
-            // Check diagnostics set
-            const mainDiags = diagnosticsCollection.sets.get('/project/main.k');
-            assert.equal(mainDiags.length, 1);
-            assert.equal(mainDiags[0].message, 'Included file "missing.k" not found.');
-            assert.equal(mainDiags[0].severity, vscodeMock.DiagnosticSeverity.Warning);
-            assert.equal(mainDiags[0].range.start.line, 2);
-            assert.equal(mainDiags[0].range.start.character, 5);
-            assert.equal(mainDiags[0].range.end.character, 15);
+                // Check diagnostics set
+                const mainDiags = diagnosticsCollection.sets.get('/project/main.k');
+                assert.equal(mainDiags.length, 1);
+                assert.equal(mainDiags[0].message, i18n.get('includedFileNotFound', 'missing.k'));
+                assert.equal(mainDiags[0].severity, vscodeMock.DiagnosticSeverity.Warning);
+                assert.equal(mainDiags[0].range.start.line, 2);
+                assert.equal(mainDiags[0].range.start.character, 5);
+                assert.equal(mainDiags[0].range.end.character, 15);
 
-            const childDiags = diagnosticsCollection.sets.get('/project/child.k');
-            assert.equal(childDiags.length, 1);
-            assert.equal(childDiags[0].message, 'Circular include dependency detected: main.k -> child.k -> main.k');
-            assert.equal(childDiags[0].severity, vscodeMock.DiagnosticSeverity.Error);
-            assert.equal(childDiags[0].range.start.line, 4);
-            assert.equal(childDiags[0].range.start.character, 10);
-            assert.equal(childDiags[0].range.end.character, 25);
+                const childDiags = diagnosticsCollection.sets.get('/project/child.k');
+                assert.equal(childDiags.length, 1);
+                assert.equal(childDiags[0].message, i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'));
+                assert.equal(childDiags[0].severity, vscodeMock.DiagnosticSeverity.Error);
+                assert.equal(childDiags[0].range.start.line, 4);
+                assert.equal(childDiags[0].range.start.character, 10);
+                assert.equal(childDiags[0].range.end.character, 25);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                i18n.updateLanguage();
+            }
         });
     });
 
@@ -285,26 +297,61 @@ describe('Phase 7 Features', () => {
         });
 
         it('should return $# completion item with documentation when typing $ under a keyword block', () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
+            });
+            i18n.updateLanguage();
+
             const provider = new LsdynaFieldCompletionProvider();
             const document = fakeDoc('*SECTION_SHELL\n$ some extra trailing space and text\n', '/project/main.k');
             document.languageId = 'lsdyna';
 
-            const pos = new vscodeMock.Position(1, 1); // cursor after '$'
-            const items = provider.provideCompletionItems(document, pos);
+            try {
+                const pos = new vscodeMock.Position(1, 1); // cursor after '$'
+                const items = provider.provideCompletionItems(document, pos);
 
-            assert.strictEqual(items.length, 1);
-            const item = items[0];
-            assert.strictEqual(item.label, item.insertText.trimEnd());
-            assert.strictEqual(item.detail, '(LS-DYNA) 插入字段注释行');
-            assert.ok(item.label.includes('secid'));
-            assert.ok(item.insertText.includes('$#   secid'));
-            assert.ok(item.documentation.value.includes('$#   secid'));
-            
-            // The range should cover the entire line to wipe out trailing spaces and text
-            assert.strictEqual(item.range.start.line, 1);
-            assert.strictEqual(item.range.start.character, 0);
-            assert.strictEqual(item.range.end.line, 1);
-            assert.strictEqual(item.range.end.character, 36);
+                assert.strictEqual(items.length, 1);
+                const item = items[0];
+                assert.strictEqual(item.label, item.insertText.trimEnd());
+                assert.strictEqual(item.detail, i18n.get('fieldCommentCompletionDetail'));
+                assert.ok(item.label.includes('secid'));
+                assert.ok(item.insertText.includes('$#   secid'));
+                assert.ok(item.documentation.value.includes(i18n.get('fieldCommentCompletionTitle')));
+                assert.ok(item.documentation.value.includes(i18n.get('fieldCommentCompletionInsertHint')));
+                assert.ok(item.documentation.value.includes('$#   secid'));
+                
+                // The range should cover the entire line to wipe out trailing spaces and text
+                assert.strictEqual(item.range.start.line, 1);
+                assert.strictEqual(item.range.start.character, 0);
+                assert.strictEqual(item.range.end.line, 1);
+                assert.strictEqual(item.range.end.character, 36);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                i18n.updateLanguage();
+            }
+        });
+
+        it('localizes row template completion documentation in Chinese', () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+            });
+            i18n.updateLanguage();
+
+            try {
+                const provider = new LsdynaFieldCompletionProvider();
+                const document = fakeDoc('*NODE\n\n', '/project/main.k');
+                document.languageId = 'lsdyna';
+
+                const items = provider.provideCompletionItems(document, new vscodeMock.Position(1, 0));
+                const templateItem = items[0];
+
+                assert.equal(templateItem.documentation.value, i18n.get('rowTemplateDocumentation'));
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                i18n.updateLanguage();
+            }
         });
 
         it('should return CONTACT optional card comment completion based on data line count', () => {

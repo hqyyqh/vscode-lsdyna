@@ -2486,6 +2486,69 @@ describe('LS-DYNA keyword option interactions', () => {
         assert.equal(languageConfig.default, 'auto');
         assert.deepEqual(languageConfig.enum, ['auto', 'zh-cn', 'en']);
     });
+
+    it('keeps runtime i18n keys complete for both supported languages', () => {
+        function collectSourceFiles(dir, result = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const entryPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    collectSourceFiles(entryPath, result);
+                } else if (entry.name.endsWith('.ts')) {
+                    result.push(entryPath);
+                }
+            }
+            return result;
+        }
+
+        function collectUsedI18nKeys(srcDir) {
+            const keys = new Set();
+            for (const filePath of collectSourceFiles(srcDir)) {
+                const source = fs.readFileSync(filePath, 'utf8');
+                for (const match of source.matchAll(/i18n\.get\('([^']+)'/g)) {
+                    keys.add(match[1]);
+                }
+            }
+            return keys;
+        }
+
+        function collectLocaleKeys(source, locale, nextLocale) {
+            const blockPattern = new RegExp(`'${locale}':\\s*{([\\s\\S]*?)\\n\\s*}${nextLocale ? `,\\s*\\n\\s*'${nextLocale}':` : '\\s*\\n};'}`);
+            const match = source.match(blockPattern);
+            assert.ok(match, `${locale} locale block should exist`);
+            return new Set([...match[1].matchAll(/\n\s*([A-Za-z0-9_]+):/g)].map(item => item[1]));
+        }
+
+        const repoRoot = path.join(__dirname, '..');
+        const i18nSource = fs.readFileSync(path.join(repoRoot, 'src', 'core', 'i18n.ts'), 'utf8');
+        const usedKeys = collectUsedI18nKeys(path.join(repoRoot, 'src'));
+        const zhKeys = collectLocaleKeys(i18nSource, 'zh-cn', 'en');
+        const enKeys = collectLocaleKeys(i18nSource, 'en');
+
+        for (const key of usedKeys) {
+            assert.ok(zhKeys.has(key), `${key} should exist in zh-cn runtime locale`);
+            assert.ok(enKeys.has(key), `${key} should exist in en runtime locale`);
+        }
+    });
+
+    it('localizes line length diagnostics in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            const doc = fakeDoc('*NODE\n' + '1'.repeat(81) + '\n', '/project/main.k');
+            doc.languageId = 'lsdyna';
+            const diagnostics = collectLineLengthDiagnostics(doc);
+
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].message, i18n.get('lineExceeds80Characters', 81));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
 });
 
 // ---------------------------------------------------------------------------

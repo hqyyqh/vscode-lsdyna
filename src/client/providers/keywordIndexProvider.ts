@@ -450,7 +450,7 @@ class LsdynaKeywordIndexProvider {
                         if (partialSnapshot && partialSnapshot.files) {
                             scannedCount = partialSnapshot.files.length;
                         }
-                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) || `Scanned ${scannedCount} files...` });
+                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) });
                         this._onDidChangeTreeData.fire(undefined);
                     });
                     this.roots = this._buildRootsFromSnapshot(snapshot, rootDir);

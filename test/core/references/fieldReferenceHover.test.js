@@ -1,7 +1,13 @@
 const assert = require('assert');
+const { vscodeMock } = require('../../helpers');
+const i18n = require('../../../src/core/i18n');
 const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
 
 describe('fieldReferenceHover', () => {
+    afterEach(() => {
+        i18n.updateLanguage();
+    });
+
     it('renders curve preview, signed switch note and definition link', () => {
         const section = buildReferenceHoverSection({
             fieldName: 'LCSS',
@@ -23,7 +29,7 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('LCSS reference'));
-        assert.ok(section.includes('negative switch stripped'));
+        assert.ok(section.includes(i18n.get('negativeSwitchStripped')));
         assert.ok(section.includes('*DEFINE_CURVE'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
@@ -39,6 +45,32 @@ describe('fieldReferenceHover', () => {
 
         assert.ok(section.includes('No matching curve/table definition'));
         assert.ok(section.includes('Scan Include Tree'));
+    });
+
+    it('localizes reference hover guidance in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'language' ? 'zh-cn' : undefined
+        });
+        i18n.updateLanguage();
+
+        try {
+            const section = buildReferenceHoverSection({
+                fieldName: 'LCSS',
+                id: 1001,
+                raw: '-1001',
+                isSignedSwitch: true,
+                definitions: [],
+                needsProjectScan: true,
+            });
+
+            assert.ok(section.includes('LCSS 引用'));
+            assert.ok(section.includes('原始值'));
+            assert.ok(section.includes('负号开关'));
+            assert.ok(section.includes('扫描引用文件树'));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
     });
 
     it('renders resolved child curve links for table rows when available', () => {

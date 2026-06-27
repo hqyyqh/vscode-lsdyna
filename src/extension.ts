@@ -529,7 +529,7 @@ function collectLineLengthDiagnostics(document) {
         if (!line.text.startsWith('$') && line.text.length > 80) {
             issues.push(new vscode.Diagnostic(
                 new vscode.Range(i, 80, i, line.text.length),
-                `Line exceeds 80 characters (${line.text.length}); LS-DYNA may truncate it`,
+                i18n.get('lineExceeds80Characters', line.text.length),
                 vscode.DiagnosticSeverity.Warning
             ));
         }
@@ -835,7 +835,7 @@ class LsdynaRenameProvider {
      */
     prepareRename(document, position) {
         const param = getParameterAtCursor(document, position);
-        if (!param) throw new Error('Cannot rename this symbol.');
+        if (!param) throw new Error(i18n.get('cannotRenameSymbol'));
         return param.range;
     }
 
@@ -1722,10 +1722,10 @@ class LsdynaFieldHoverProvider {
             }));
 
             // Manual & columns at the bottom
-            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
             appendManualLinks(md, kwName);
         } else {
-            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
             md.isTrusted = true;
             md.supportHtml = true;
             md.supportThemeIcons = true;
@@ -1789,7 +1789,7 @@ function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) 
     for (let i = lineindex; i >= 0; i--) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('Not on any keyword.');
+    throw new Error(i18n.get('notOnAnyKeyword'));
 }
 
 /**
@@ -1820,10 +1820,10 @@ function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, bas
     const linestart = startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex);
     const keyword = classifyKeywordLine(getLine(linestart)).normalizedKeyword;
     if (keyword.startsWith('*INCLUDE_PATH')) {
-        throw new Error('This keyword does not have a filename card.');
+        throw new Error(i18n.get('keywordHasNoFilenameCard'));
     }
     if (!keyword.startsWith('*INCLUDE')) {
-        throw new Error('This keyword is not supported.');
+        throw new Error(i18n.get('keywordNotSupported'));
     }
 
     const lineend = endLineOfCurrentKeywordFromLineReader(lineCount, getLine, linestart);
@@ -1838,7 +1838,7 @@ function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, bas
 
     if (currentEntry) return currentEntry.fileName;
     if (entries.length > 0) return entries[0].fileName;
-    throw new Error('No file to jump to.');
+    throw new Error(i18n.get('noFileToJumpTo'));
 }
 
 function startLineOfCurrentKeyword(lines, lineindex) {
@@ -1874,7 +1874,7 @@ function searchFileFromPaths(filePath, paths) {
         const fullPath = path.resolve(searchPath, filePath);
         if (fs.existsSync(fullPath)) return fullPath;
     }
-    throw new Error(`${filePath} not found.`);
+    throw new Error(i18n.get('fileNotFound', filePath));
 }
 
 /**
@@ -1889,7 +1889,7 @@ function findNextKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine + 1; i < lineCount; i++) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('No more keywords found.');
+    throw new Error(i18n.get('noMoreKeywordsFound'));
 }
 
 function findNextKeyword(lines, currentLine) {
@@ -1912,7 +1912,7 @@ function findPreviousKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine - 1; i >= 0; i--) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('No previous keywords found.');
+    throw new Error(i18n.get('noPreviousKeywordsFound'));
 }
 
 function findPreviousKeyword(lines, currentLine) {
@@ -2118,7 +2118,7 @@ class LsdynaIncludeCompletionProvider {
         const items = [];
         for (const file of suggestions) {
             const item = new vscode.CompletionItem(file, vscode.CompletionItemKind.File);
-            item.detail = 'Include File';
+            item.detail = i18n.get('includeFile');
             item.range = range;
             if (!file.includes('/') && !file.includes('\\')) {
                 if (currentPrefix.startsWith('./')) {
@@ -2205,8 +2205,8 @@ class LsdynaFieldCompletionProvider {
             if (!commentText) return [];
 
             const item = new vscode.CompletionItem(commentText.trimEnd(), vscode.CompletionItemKind.Snippet);
-            item.detail = '(LS-DYNA) 插入字段注释行';
-            item.documentation = new vscode.MarkdownString(`**插入字段注释行**\n\n按下 Tab 将插入：\n\`\`\`lsdyna\n${commentText}\n\`\`\``);
+            item.detail = i18n.get('fieldCommentCompletionDetail');
+            item.documentation = new vscode.MarkdownString(`**${i18n.get('fieldCommentCompletionTitle')}**\n\n${i18n.get('fieldCommentCompletionInsertHint')}\n\`\`\`lsdyna\n${commentText}\n\`\`\``);
             item.insertText = commentText;
             item.range = new vscode.Range(position.line, 0, position.line, line.text.length);
 
@@ -2230,7 +2230,7 @@ class LsdynaFieldCompletionProvider {
                 vscode.CompletionItemKind.Snippet
             );
             templateItem.detail = i18n.get('rowTemplateDetail');
-            templateItem.documentation = new vscode.MarkdownString('Insert a pre-aligned full data card row.');
+            templateItem.documentation = new vscode.MarkdownString(i18n.get('rowTemplateDocumentation'));
 
             let snippetText = '';
             let prevEnd = 0;
@@ -3333,7 +3333,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('vscode.open', uri, { preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToOpenFile', err.message));
             }
         })
     );
@@ -3343,7 +3343,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside, preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to split open file: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToSplitOpenFile', err.message));
             }
         })
     );
@@ -3353,7 +3353,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('revealFileInOS', uri);
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToRevealFolder', err.message));
             }
         })
     );
@@ -3945,7 +3945,7 @@ function collectProjectDiagnostics(snapshot) {
         );
         const diagnostic = new vscode.Diagnostic(
             range,
-            `Included file "${record.fileName}" not found.`,
+            i18n.get('includedFileNotFound', record.fileName),
             vscode.DiagnosticSeverity.Warning
         );
         diagnostic.source = 'lsdyna';
@@ -3965,7 +3965,7 @@ function collectProjectDiagnostics(snapshot) {
         const cyclePathStr = record.path ? record.path.map(p => path.basename(p)).join(' -> ') : '';
         const diagnostic = new vscode.Diagnostic(
             range,
-            `Circular include dependency detected: ${cyclePathStr}`,
+            i18n.get('circularIncludeDependency', cyclePathStr),
             vscode.DiagnosticSeverity.Error
         );
         diagnostic.source = 'lsdyna';
