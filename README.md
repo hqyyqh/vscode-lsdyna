@@ -15,6 +15,21 @@
 
 ---
 
+## 🚀 Quick Start (30 Seconds)
+
+1. **Awaken AI**: Open any `.k` or `.key` file and type `*` to trigger 3100+ keyword autocompletions.
+2. **Align Columns**: Press `Tab` on data lines to jump precisely between 10-character column widths.
+3. **Read Definitions**: Hover over any keyword or field to see detailed explanations and default values.
+4. **Link Manuals**: Click the ⚙️ gear icon on the hover card (or use the bottom Status Bar Dashboard) to link your local LS-DYNA PDF manuals for instant page jumping.
+
+> **Preview:**
+> 
+> | 💡 Awaken AI | 📖 Read Definitions |
+> | :---: | :---: |
+> | ![Keyword Completion](./images/completion_keyword.gif) | ![Hover Hints](./images/hover_hints.gif) |
+
+---
+
 ## 🌟 Core Features
 
 <details open>
