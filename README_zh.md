@@ -120,6 +120,8 @@
 | :--- | :--- | :--- |
 | `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 包含 LS-DYNA PDF 手册的目录；Windows 下可同时放置 `SumatraPDF.exe`。 |
 | `lsdyna.enableTabNavigation` | `true` | 启用 Tab/Shift+Tab 智能字段跳转。 |
+| `lsdyna.statusBar.level` | `"simple"` | 控制 DynaSense 状态栏入口：`off`、`simple` 或 `detail`。 |
+| `lsdyna.health.showFirstRunNotice` | `true` | 打开 LS-DYNA 文件且存在需要配置的项目时，显示一次环境状态提示。 |
 | `lsdyna.largeFile.enableRendering` | `true` | 为超大 LS-DYNA 文件启用编辑器渲染功能。 |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | 在所有支持的关键字上显示选项 CodeLens。 |
 | `lsdyna.hover.previewMaxLines` | `20` | 控制鼠标悬停在包含文件上时，预览窗口所显示的行数。 |

@@ -120,6 +120,8 @@ In VS Code's `settings.json`, you can customize the following exclusive configur
 | :--- | :--- | :--- |
 | `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | Directory containing LS-DYNA PDF manuals and, on Windows, the optional `SumatraPDF.exe`. |
 | `lsdyna.enableTabNavigation` | `true` | Enable smart Tab/Shift+Tab field navigation. |
+| `lsdyna.statusBar.level` | `"simple"` | Controls the DynaSense status bar entry: `off`, `simple`, or `detail`. |
+| `lsdyna.health.showFirstRunNotice` | `true` | Show a one-time environment status notice when an LS-DYNA file has setup items. |
 | `lsdyna.largeFile.enableRendering` | `true` | Enable editor rendering features for very large LS-DYNA files. |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | Show keyword option CodeLens on every supported keyword. |
 | `lsdyna.hover.previewMaxLines` | `20` | Controls the maximum number of lines displayed when hovering over an included file. |

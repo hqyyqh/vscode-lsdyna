@@ -34,6 +34,8 @@
         "onCommand:extension.openLsdynaReferenceDefinition",
         "onCommand:extension.lsdynaChooseKeywordOptions",
         "onCommand:extension.configureManualsDir",
+        "onCommand:extension.showHealthStatus",
+        "onCommand:extension.lsdynaStatusDashboard",
         "onCommand:extension.lsdynaTab"
     ],
     "main": "./out/extension.js",
@@ -261,6 +263,16 @@
                 "category": "LS-DYNA"
             },
             {
+                "command": "extension.lsdynaStatusDashboard",
+                "title": "%commands.lsdynaStatusDashboard.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.showHealthStatus",
+                "title": "%commands.showHealthStatus.title%",
+                "category": "LS-DYNA"
+            },
+            {
                 "command": "extension.lsdynaTab",
                 "title": "%commands.lsdynaTab.title%"
             }
@@ -304,6 +316,26 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.enableTabNavigation.description%"
+                },
+                "lsdyna.statusBar.level": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "simple",
+                        "detail"
+                    ],
+                    "default": "simple",
+                    "enumDescriptions": [
+                        "%config.statusBar.level.enumDescriptions.off%",
+                        "%config.statusBar.level.enumDescriptions.simple%",
+                        "%config.statusBar.level.enumDescriptions.detail%"
+                    ],
+                    "description": "%config.statusBar.level.description%"
+                },
+                "lsdyna.health.showFirstRunNotice": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.health.showFirstRunNotice.description%"
                 },
                 "lsdyna.largeFile.enableRendering": {
                     "type": "boolean",

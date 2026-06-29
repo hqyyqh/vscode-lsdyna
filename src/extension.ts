@@ -21,6 +21,8 @@ const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexP
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
 const { createProjectDiagnosticStore } = require('./client/services/projectDiagnosticStore');
+const { createHealthService, shouldShowHealthNotice } = require('./client/services/healthService');
+const { LsdynaStatusBarDashboard } = require('./client/statusBar/dashboard');
 const { openPdfWithSumatra } = require('./platform/externalProcess');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
@@ -2965,6 +2967,235 @@ function handleSelectionChange(e) {
     lastActiveDoc = currentDoc;
 }
 
+function getStatusDashboardLabels() {
+    return {
+        dashboardTooltip: i18n.get('statusDashboardTooltip'),
+        placeHolder: i18n.get('statusDashboardPlaceHolder'),
+        showHealthLabel: i18n.get('statusDashboardShowHealthLabel'),
+        healthReadyDescription: i18n.get('statusDashboardHealthReadyDescription'),
+        healthIssuesDescription: i18n.get('statusDashboardHealthIssuesDescription'),
+        showHealthDetail: i18n.get('statusDashboardShowHealthDetail'),
+        scanIncludesLabel: i18n.get('statusDashboardScanIncludesLabel'),
+        scanIncludesDescription: i18n.get('statusDashboardScanIncludesDescription'),
+        scanIncludesDetail: i18n.get('statusDashboardScanIncludesDetail'),
+        scanKeywordIndexLabel: i18n.get('statusDashboardScanKeywordIndexLabel'),
+        scanKeywordIndexDescription: i18n.get('statusDashboardScanKeywordIndexDescription'),
+        scanKeywordIndexDetail: i18n.get('statusDashboardScanKeywordIndexDetail'),
+        configureManualsLabel: i18n.get('statusDashboardConfigureManualsLabel'),
+        manualReadyDescription: i18n.get('statusDashboardManualReadyDescription'),
+        manualSetupDescription: i18n.get('statusDashboardManualSetupDescription'),
+        configureManualsDetail: i18n.get('statusDashboardConfigureManualsDetail'),
+        showOutputLabel: i18n.get('statusDashboardShowOutputLabel'),
+        showOutputDescription: i18n.get('statusDashboardShowOutputDescription'),
+        showOutputDetail: i18n.get('statusDashboardShowOutputDetail'),
+        copyDiagnosticsLabel: i18n.get('statusDashboardCopyDiagnosticsLabel'),
+        diagnosticsSingularDescription: i18n.get('statusDashboardDiagnosticsSingularDescription'),
+        diagnosticsPluralDescription: i18n.get('statusDashboardDiagnosticsPluralDescription'),
+        copyDiagnosticsDetail: i18n.get('statusDashboardCopyDiagnosticsDetail'),
+        toggleTabNavigationLabel: i18n.get('statusDashboardToggleTabNavigationLabel'),
+        tabNavigationOnDescription: i18n.get('statusDashboardTabNavigationOnDescription'),
+        tabNavigationOffDescription: i18n.get('statusDashboardTabNavigationOffDescription'),
+        toggleTabNavigationDetail: i18n.get('statusDashboardToggleTabNavigationDetail'),
+    };
+}
+
+function healthStateIcon(state) {
+    if (state === 'ready') return '$(check)';
+    if (state === 'warning') return '$(warning)';
+    return '$(info)';
+}
+
+function healthMetadataValue(item, key, fallback = '') {
+    if (!item || !item.metadata) return fallback;
+    const value = item.metadata[key];
+    if (value === undefined || value === null || value === '') return fallback;
+    return String(value);
+}
+
+function getHealthItemDescription(item) {
+    if (!item) return '';
+    switch (item.id) {
+        case 'language':
+            return item.state === 'ready'
+                ? i18n.get('health_language_ready_description')
+                : i18n.get('health_language_warning_description');
+        case 'workspace':
+            return item.state === 'ready'
+                ? i18n.get('health_workspace_ready_description')
+                : i18n.get('health_workspace_info_description');
+        case 'manualsDir':
+            return item.state === 'ready'
+                ? i18n.get('health_manualsDir_ready_description')
+                : i18n.get('health_manualsDir_warning_description');
+        case 'pdfFiles':
+            return item.state === 'ready'
+                ? i18n.get('health_pdfFiles_ready_description', healthMetadataValue(item, 'pdfCount', '0'))
+                : i18n.get('health_pdfFiles_warning_description');
+        case 'manualIndex':
+            return item.state === 'ready'
+                ? i18n.get('health_manualIndex_ready_description', healthMetadataValue(item, 'indexedPdfCount', '0'))
+                : i18n.get('health_manualIndex_warning_description');
+        case 'sumatra':
+            if (item.metadata && item.metadata.required === false) {
+                return i18n.get('health_sumatra_info_description');
+            }
+            return item.state === 'ready'
+                ? i18n.get('health_sumatra_ready_description')
+                : i18n.get('health_sumatra_warning_description');
+        case 'keywordDatabase':
+            return item.state === 'ready'
+                ? i18n.get('health_keywordDatabase_ready_description')
+                : i18n.get('health_keywordDatabase_warning_description');
+        case 'projectTools':
+            return item.state === 'ready'
+                ? i18n.get('health_projectTools_ready_description')
+                : i18n.get('health_projectTools_warning_description');
+        default:
+            return item.state;
+    }
+}
+
+function getHealthItemDetail(item) {
+    if (!item) return '';
+    switch (item.id) {
+        case 'language':
+            return item.state === 'ready'
+                ? i18n.get('health_language_ready_detail')
+                : i18n.get('health_language_warning_detail', healthMetadataValue(item, 'languageId', 'unknown'));
+        case 'workspace':
+            return item.state === 'ready'
+                ? i18n.get('health_workspace_ready_detail', healthMetadataValue(item, 'workspaceRoot', ''))
+                : i18n.get('health_workspace_info_detail');
+        case 'manualsDir':
+            return item.state === 'ready'
+                ? i18n.get('health_manualsDir_ready_detail', healthMetadataValue(item, 'resolvedDir', ''))
+                : i18n.get('health_manualsDir_warning_detail', healthMetadataValue(item, 'manualsDir', ''));
+        case 'pdfFiles':
+            return item.state === 'ready'
+                ? i18n.get('health_pdfFiles_ready_detail', healthMetadataValue(item, 'resolvedDir', ''))
+                : i18n.get('health_pdfFiles_warning_detail');
+        case 'manualIndex':
+            return item.state === 'ready'
+                ? i18n.get('health_manualIndex_ready_detail')
+                : i18n.get('health_manualIndex_warning_detail');
+        case 'sumatra':
+            if (item.metadata && item.metadata.required === false) {
+                return i18n.get('health_sumatra_info_detail');
+            }
+            return item.state === 'ready'
+                ? i18n.get('health_sumatra_ready_detail', healthMetadataValue(item, 'sumatraPath', ''))
+                : i18n.get('health_sumatra_warning_detail');
+        case 'keywordDatabase':
+            return item.state === 'ready'
+                ? i18n.get('health_keywordDatabase_ready_detail')
+                : i18n.get('health_keywordDatabase_warning_detail');
+        case 'projectTools':
+            return item.state === 'ready'
+                ? i18n.get('health_projectTools_ready_detail')
+                : i18n.get('health_projectTools_warning_detail');
+        default:
+            return '';
+    }
+}
+
+function buildHealthQuickPickItems(report) {
+    if (!report || !Array.isArray(report.items)) return [];
+    return report.items.map(item => ({
+        id: item.id,
+        actionId: item.actionId,
+        label: `${healthStateIcon(item.state)} ${i18n.get(item.labelKey)}`,
+        description: getHealthItemDescription(item),
+        detail: getHealthItemDetail(item),
+        healthItem: item,
+    }));
+}
+
+function getDiagnosticSeverityName(severity) {
+    if (severity === 0) return 'error';
+    if (severity === 1) return 'warning';
+    if (severity === 2) return 'information';
+    if (severity === 3) return 'hint';
+    return 'diagnostic';
+}
+
+function getDiagnosticsForUri(uri) {
+    if (!uri || !vscode.languages || typeof vscode.languages.getDiagnostics !== 'function') {
+        return [];
+    }
+    return vscode.languages.getDiagnostics(uri) || [];
+}
+
+function getStatusDashboardCursorContext(editor) {
+    if (!editor || !editor.document || !editor.selection || !editor.selection.active) {
+        return { keyword: '', fieldIndex: null, fieldCount: 0 };
+    }
+
+    const document = editor.document;
+    const lineNum = Math.max(0, Math.min(editor.selection.active.line, document.lineCount - 1));
+    let keyword = '';
+    for (let index = lineNum; index >= 0; index--) {
+        const classification = classifyKeywordLine(document.lineAt(index).text);
+        if (classification.isKeyword) {
+            keyword = classification.normalizedKeyword || classification.rawKeyword || '';
+            break;
+        }
+    }
+
+    const text = document.lineAt(lineNum).text;
+    const trimmed = text.trimStart();
+    const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
+    if (!isCardLine) {
+        return { keyword, fieldIndex: null, fieldCount: 0 };
+    }
+
+    const cardFields = getCardFieldsForLine(document, lineNum);
+    const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
+    if (!cardFields || cardFields.length === 0 || isWideField) {
+        return { keyword, fieldIndex: null, fieldCount: 0 };
+    }
+
+    const character = editor.selection.active.character;
+    let fieldIndex = cardFields.findIndex(field => (
+        character >= field.p && character < field.p + field.w
+    ));
+    if (fieldIndex < 0) {
+        fieldIndex = Math.max(0, Math.min(cardFields.length - 1, Math.floor(character / 10)));
+    }
+
+    return {
+        keyword,
+        fieldIndex: fieldIndex + 1,
+        fieldCount: cardFields.length,
+    };
+}
+
+function formatStatusDashboardDiagnostics(editor, diagnosticsList, dashboardContext) {
+    const filePath = editor && editor.document && editor.document.uri
+        ? editor.document.uri.fsPath
+        : 'No active LS-DYNA file';
+    const lines = [
+        'DynaSense diagnostics',
+        `File: ${filePath}`,
+        `Keyword: ${dashboardContext.keyword || 'none'}`,
+        `Diagnostics: ${diagnosticsList.length}`,
+    ];
+
+    if (diagnosticsList.length === 0) {
+        lines.push(i18n.get('statusDashboardNoDiagnostics'));
+        return lines.join('\n');
+    }
+
+    diagnosticsList.forEach((diagnostic, index) => {
+        const range = diagnostic.range;
+        const line = range && range.start ? range.start.line + 1 : '?';
+        const character = range && range.start ? range.start.character + 1 : '?';
+        const severity = getDiagnosticSeverityName(diagnostic.severity);
+        lines.push(`${index + 1}. [${severity}] ${line}:${character} ${diagnostic.message}`);
+    });
+
+    return lines.join('\n');
+}
+
 class LsdynaDocumentFormattingEditProvider {
     provideDocumentFormattingEdits(document, options, token) {
         return this.provideDocumentRangeFormattingEdits(document, new vscode.Range(0, 0, document.lineCount, 0), options, token);
@@ -3033,8 +3264,15 @@ function activate(context) {
     let includeTreeView;
     let keywordTreeView;
     let workspaceWatcherManager;
+    let healthService = null;
+    let statusDashboard = null;
+    let maybeShowHealthNoticeForEditor = (_editor = undefined) => {};
 
-    manualIndexer.initialize(context).catch(err => {
+    manualIndexer.initialize(context).then(() => {
+        if (healthService) healthService.invalidate();
+        if (statusDashboard) statusDashboard.scheduleRefresh();
+        maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
+    }).catch(err => {
         console.error('Failed to initialize manual indexer:', err);
     });
 
@@ -3044,6 +3282,26 @@ function activate(context) {
         debugChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
     }
     logDebug("Extension activated.");
+
+    healthService = createHealthService({
+        fs,
+        pathModule: path,
+        platform: process.platform,
+        cwd: process.cwd(),
+        execPath: process.execPath,
+        appRoot: vscode.env && vscode.env.appRoot ? vscode.env.appRoot : null,
+        extensionPath: getExtensionPath(context),
+        getManualsDir: () => getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack',
+        getManualFilesCount: () => manualIndexer.getManualFilesCount(),
+        getKeywordDatabaseReady: () => {
+            try {
+                return Object.keys(getFieldData()).length > 0;
+            } catch (_error) {
+                return false;
+            }
+        },
+        getProjectToolsReady: () => true,
+    });
 
     const snippetsPath = typeof context.asAbsolutePath === 'function'
         ? context.asAbsolutePath(path.join('snippets', 'lsdyna.json'))
@@ -3421,6 +3679,9 @@ function activate(context) {
                     }
                 }
                 await manualIndexer.initialize(context);
+                if (healthService) healthService.invalidate();
+                if (statusDashboard) statusDashboard.scheduleRefresh();
+                maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
             }
         })
     );
@@ -3451,6 +3712,181 @@ function activate(context) {
         vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri))
     );
     vscode.workspace.textDocuments.forEach(updateDiagnostics);
+
+    const HEALTH_NOTICE_SIGNATURE_KEY = 'lsdyna.health.lastPromptedIssueSignature';
+
+    function getHealthReportForEditor(editor = vscode.window.activeTextEditor) {
+        const document = editor && editor.document ? editor.document : null;
+        return healthService.getReport({
+            isLsdyna: isLsdynaFile(document),
+            document,
+            workspaceFolders: vscode.workspace.workspaceFolders || [],
+        });
+    }
+
+    async function executeHealthAction(actionId) {
+        if (actionId === 'configureManuals') {
+            await vscode.commands.executeCommand('extension.configureManualsDir');
+        } else if (actionId === 'showOutput') {
+            if (debugChannel && typeof debugChannel.show === 'function') {
+                debugChannel.show(true);
+            }
+        } else if (actionId === 'scanIncludes') {
+            await vscode.commands.executeCommand('extension.scanIncludeTree');
+        } else if (actionId === 'scanKeywordIndex') {
+            await vscode.commands.executeCommand('extension.scanKeywordIndex');
+        }
+    }
+
+    async function showHealthStatus() {
+        const report = getHealthReportForEditor();
+        const items = buildHealthQuickPickItems(report);
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: report.issueCount > 0
+                ? i18n.get('healthStatusNeedsSetup', report.issueCount)
+                : i18n.get('healthStatusReady'),
+            matchOnDescription: true,
+            matchOnDetail: true,
+        });
+        if (!picked || !picked.actionId) return;
+        await executeHealthAction(picked.actionId);
+    }
+
+    maybeShowHealthNoticeForEditor = function maybeShowHealthNotice(editor = vscode.window.activeTextEditor) {
+        const document = editor && editor.document ? editor.document : null;
+        if (!isLsdynaFile(document)) return;
+        const resource = document && document.uri ? document.uri : undefined;
+        const showFirstRunNotice = getLsdynaConfigurationValue('health.showFirstRunNotice', true, resource) !== false;
+        const report = getHealthReportForEditor(editor);
+        const lastPromptedIssueSignature = context.globalState && typeof context.globalState.get === 'function'
+            ? context.globalState.get(HEALTH_NOTICE_SIGNATURE_KEY, '')
+            : '';
+        if (!shouldShowHealthNotice({
+            showFirstRunNotice,
+            isLsdyna: true,
+            report,
+            lastPromptedIssueSignature,
+        })) {
+            return;
+        }
+
+        if (context.globalState && typeof context.globalState.update === 'function') {
+            Promise.resolve(context.globalState.update(HEALTH_NOTICE_SIGNATURE_KEY, report.issueSignature)).then(undefined, () => {});
+        }
+
+        const btnView = i18n.get('healthNoticeViewStatus');
+        const btnLater = i18n.get('healthNoticeLater');
+        Promise.resolve(vscode.window.showInformationMessage(
+            i18n.get('healthNoticeMessage', report.issueCount),
+            btnView,
+            btnLater
+        )).then(choice => {
+            if (choice === btnView) {
+                vscode.commands.executeCommand('extension.showHealthStatus');
+            }
+        }, () => {});
+    };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.showHealthStatus', () => showHealthStatus())
+    );
+
+    function getStatusDashboardContext() {
+        const editor = vscode.window.activeTextEditor;
+        const document = editor && editor.document ? editor.document : null;
+        const resource = document && document.uri ? document.uri : undefined;
+        const diagnosticsList = resource ? getDiagnosticsForUri(resource) : [];
+        const healthReport = getHealthReportForEditor(editor);
+        return {
+            isLsdyna: isLsdynaFile(document),
+            level: getLsdynaConfigurationValue('statusBar.level', 'simple', resource),
+            ...getStatusDashboardCursorContext(editor),
+            manualReady: manualIndexer.getManualFilesCount() > 0,
+            warningCount: diagnosticsList.length,
+            healthIssueCount: healthReport.issueCount,
+            tabNavigationEnabled: getLsdynaConfigurationValue('enableTabNavigation', true, resource) !== false,
+            labels: getStatusDashboardLabels(),
+        };
+    }
+
+    const statusBarAlignment = vscode.StatusBarAlignment && vscode.StatusBarAlignment.Left !== undefined
+        ? vscode.StatusBarAlignment.Left
+        : undefined;
+    const statusBarItem = vscode.window.createStatusBarItem(statusBarAlignment, 50);
+    statusDashboard = new LsdynaStatusBarDashboard({
+        statusBarItem,
+        getContext: getStatusDashboardContext,
+        actions: {
+            showHealth: () => vscode.commands.executeCommand('extension.showHealthStatus'),
+            scanIncludes: () => vscode.commands.executeCommand('extension.scanIncludeTree'),
+            scanKeywordIndex: () => vscode.commands.executeCommand('extension.scanKeywordIndex'),
+            configureManuals: () => vscode.commands.executeCommand('extension.configureManualsDir'),
+            showOutput: () => {
+                if (debugChannel && typeof debugChannel.show === 'function') {
+                    debugChannel.show(true);
+                }
+            },
+            copyDiagnostics: async () => {
+                const editor = vscode.window.activeTextEditor;
+                const diagnosticsList = editor && editor.document
+                    ? getDiagnosticsForUri(editor.document.uri)
+                    : [];
+                const text = formatStatusDashboardDiagnostics(editor, diagnosticsList, getStatusDashboardContext());
+                if (vscode.env && vscode.env.clipboard && typeof vscode.env.clipboard.writeText === 'function') {
+                    await vscode.env.clipboard.writeText(text);
+                }
+                vscode.window.showInformationMessage(i18n.get('statusDashboardDiagnosticsCopied', diagnosticsList.length));
+            },
+            toggleTabNavigation: async () => {
+                const editor = vscode.window.activeTextEditor;
+                const resource = editor && editor.document ? editor.document.uri : undefined;
+                const config = vscode.workspace.getConfiguration('lsdyna', resource);
+                const nextValue = !getLsdynaConfigurationValue('enableTabNavigation', true, resource);
+                await config.update('enableTabNavigation', nextValue, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage(
+                    i18n.get(nextValue ? 'statusDashboardTabNavigationEnabled' : 'statusDashboardTabNavigationDisabled')
+                );
+                statusDashboard.scheduleRefresh();
+            },
+        },
+    });
+    context.subscriptions.push(statusDashboard);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaStatusDashboard', () => statusDashboard.showMenu())
+    );
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            statusDashboard.scheduleRefresh();
+            maybeShowHealthNoticeForEditor(editor);
+        })
+    );
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorSelection(() => statusDashboard.scheduleRefresh())
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (
+                !e
+                || typeof e.affectsConfiguration !== 'function'
+                || e.affectsConfiguration('lsdyna.health.showFirstRunNotice')
+                || e.affectsConfiguration('lsdyna.statusBar.level')
+                || e.affectsConfiguration('lsdyna.enableTabNavigation')
+                || e.affectsConfiguration('lsdyna.manualsDir')
+                || e.affectsConfiguration('lsdyna.language')
+            ) {
+                healthService.invalidate();
+                statusDashboard.scheduleRefresh();
+                maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
+            }
+        })
+    );
+    if (vscode.languages && typeof vscode.languages.onDidChangeDiagnostics === 'function') {
+        context.subscriptions.push(
+            vscode.languages.onDidChangeDiagnostics(() => statusDashboard.scheduleRefresh())
+        );
+    }
+    statusDashboard.refresh();
+    maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider({ language: 'lsdyna' }, new LsdynaDefinitionProvider())

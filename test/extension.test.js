@@ -2575,6 +2575,10 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
             assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
             assert.equal(i18n.get('parameterReferencesPlural', 2), '2 处引用');
+            assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) 环境状态');
+            assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '2 项需要配置');
+            assert.equal(i18n.get('healthNoticeMessage', 2), 'DynaSense 发现 2 项需要配置。');
+            assert.equal(i18n.get('health_manualsDir_warning_description'), '需要配置手册目录');
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             i18n.updateLanguage();
@@ -2601,6 +2605,10 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('noPreviousKeywordsFound'), 'No previous keyword found.');
             assert.equal(i18n.get('parameterReferenceSingular'), '1 reference');
             assert.equal(i18n.get('parameterReferencesPlural', 2), '2 references');
+            assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) Environment Status');
+            assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '2 setup items');
+            assert.equal(i18n.get('healthNoticeMessage', 2), 'DynaSense found 2 setup items.');
+            assert.equal(i18n.get('health_manualsDir_warning_description'), 'Manual folder needs setup');
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             i18n.updateLanguage();
@@ -2624,6 +2632,51 @@ describe('LS-DYNA keyword option interactions', () => {
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             i18n.updateLanguage();
+        }
+    });
+
+    it('registers the first-run health status command', () => {
+        const context = {
+            subscriptions: [],
+            globalState: {
+                get: () => undefined,
+                update: () => Promise.resolve(),
+            },
+        };
+        const disposable = { dispose() {} };
+        const registeredCommands = [];
+        const originalRegisterCommand = vscodeMock.commands.registerCommand;
+        const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
+        const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
+        const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
+        const originalRegisterHoverProvider = vscodeMock.languages.registerHoverProvider;
+        const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
+
+        vscodeMock.commands.registerCommand = (id, callback) => {
+            registeredCommands.push(id);
+            return disposable;
+        };
+        vscodeMock.window.registerTreeDataProvider = () => disposable;
+        vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
+        vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
+        vscodeMock.window.createTextEditorDecorationType = () => disposable;
+        vscodeMock.languages.registerHoverProvider = () => disposable;
+        vscodeMock.languages.registerCodeLensProvider = () => disposable;
+
+        try {
+            extensionModule.activate(context);
+
+            assert.ok(registeredCommands.includes('extension.showHealthStatus'));
+            assert.ok(registeredCommands.includes('extension.lsdynaStatusDashboard'));
+        } finally {
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+            vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
+            vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
+            vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
+            vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
+            vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
         }
     });
 });
