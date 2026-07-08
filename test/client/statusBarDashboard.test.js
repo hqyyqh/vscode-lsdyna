@@ -82,26 +82,52 @@ describe('DynaSense status bar dashboard', () => {
     });
 
     describe('buildDashboardItems', () => {
-        it('builds high-frequency actions first and diagnostics/settings last', () => {
+        it('keeps health first when setup items exist and output last', () => {
             const items = buildDashboardItems({
                 tabNavigationEnabled: true,
                 warningCount: 2,
+                healthIssueCount: 2,
                 manualReady: false,
+                labels: {
+                    toggleTabNavigationLabel: '$(keyboard) 字段跳转',
+                    tabNavigationOnDescription: '已开启',
+                },
             });
 
             assert.deepStrictEqual(items.map(item => item.id), [
                 'showHealth',
                 'scanIncludes',
                 'scanKeywordIndex',
-                'configureManuals',
-                'showOutput',
-                'copyDiagnostics',
                 'toggleTabNavigation',
+                'configureManuals',
+                'showDiagnostics',
+                'showOutput',
             ]);
             assert.ok(items.every(item => item.label && item.description && item.detail));
             assert.ok(items.find(item => item.id === 'showHealth').description.includes('2'));
-            assert.ok(items.find(item => item.id === 'copyDiagnostics').description.includes('2'));
-            assert.ok(items.find(item => item.id === 'toggleTabNavigation').description.includes('On'));
+            assert.equal(items.find(item => item.id === 'toggleTabNavigation').label, '$(keyboard) 字段跳转');
+            assert.ok(items.find(item => item.id === 'toggleTabNavigation').description.includes('已开启'));
+        });
+
+        it('moves health to the end when there are no setup items', () => {
+            const items = buildDashboardItems({
+                tabNavigationEnabled: false,
+                warningCount: 0,
+                healthIssueCount: 0,
+                manualReady: true,
+            });
+
+            assert.deepStrictEqual(items.map(item => item.id), [
+                'scanIncludes',
+                'scanKeywordIndex',
+                'toggleTabNavigation',
+                'configureManuals',
+                'showDiagnostics',
+                'showOutput',
+                'showHealth',
+            ]);
+            assert.ok(items.find(item => item.id === 'showHealth').description.includes('Ready'));
+            assert.ok(items.find(item => item.id === 'toggleTabNavigation').description.includes('Off'));
         });
     });
 

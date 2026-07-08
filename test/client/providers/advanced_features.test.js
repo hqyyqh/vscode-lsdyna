@@ -6,7 +6,7 @@ const { fakeDoc, vscodeMock } = require('../../helpers');
 const i18n = require('../../../src/core/i18n');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics, LsdynaDocumentFormattingEditProvider } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -1095,6 +1095,73 @@ describe('Phase 7 Features', () => {
                 assert.equal(editVal, 'a'.repeat(78) + ' +\n' + 'b'.repeat(12));
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+    });
+
+    describe('LsdynaDocumentFormattingEditProvider path wrapping', () => {
+        it('formats long Windows *INCLUDE_PATH entries into LS-DYNA continuation lines', () => {
+            const longPath = 'D:\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model';
+            const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, 'D:\\project\\main.k');
+            document.languageId = 'lsdyna';
+            const provider = new LsdynaDocumentFormattingEditProvider();
+
+            const edits = provider.provideDocumentRangeFormattingEdits(
+                document,
+                new vscodeMock.Range(0, 0, document.lineCount, 0),
+                {},
+                {}
+            );
+
+            assert.equal(edits.length, 1);
+            assert.equal(
+                edits[0].newText,
+                longPath.slice(0, 78) + ' +\n' + longPath.slice(78)
+            );
+        });
+
+        it('formats long *INCLUDE_PATH entries through the code lens command', async () => {
+            const longPath = 'D:\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model';
+            const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, 'D:\\project\\main.k');
+            document.languageId = 'lsdyna';
+
+            let editVal = '';
+            const editor = {
+                document,
+                selection: { active: new vscodeMock.Position(1, 0) },
+                selections: [new vscodeMock.Selection(
+                    new vscodeMock.Position(0, 0),
+                    new vscodeMock.Position(2, 0)
+                )],
+                setDecorations() {},
+                edit: async (callback) => {
+                    callback({
+                        replace(_range, value) {
+                            editVal = value;
+                        },
+                    });
+                    return true;
+                },
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const originalRegisterCommand = vscodeMock.commands.registerCommand;
+            const registeredCommands = new Map();
+            vscodeMock.window.activeTextEditor = editor;
+            vscodeMock.commands.registerCommand = (cmd, cb) => {
+                registeredCommands.set(cmd, cb);
+                return { dispose() {} };
+            };
+
+            try {
+                const extension = require('../../../src/extension');
+                extension.activate({ subscriptions: [] });
+                await registeredCommands.get('extension.lsdynaFormatSelection')(0);
+
+                assert.equal(editVal, longPath.slice(0, 78) + ' +\n' + longPath.slice(78));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+                vscodeMock.commands.registerCommand = originalRegisterCommand;
             }
         });
     });

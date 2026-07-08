@@ -49,6 +49,7 @@ const {
     cacheReferenceIndexFromSnapshot,
     clearReferenceIndexCacheForTesting,
     setFileIndexForTesting,
+    buildStatusDashboardDiagnosticItems,
 } = extensionModule._internals;
 
 describe('updateDocumentDiagnostics', () => {
@@ -62,6 +63,35 @@ describe('updateDocumentDiagnostics', () => {
         });
 
         assert.deepStrictEqual(deleted, ['/project/readme.txt']);
+    });
+});
+
+describe('status dashboard diagnostic details', () => {
+    it('builds actions and jump targets for visible diagnostics', () => {
+        const document = fakeDoc('*KEYWORD\n' + 'x'.repeat(81) + '\n', '/project/main.k');
+        document.languageId = 'lsdyna';
+        const editor = { document };
+        const diagnostics = [
+            {
+                severity: vscodeMock.DiagnosticSeverity.Warning,
+                message: 'Line exceeds 80 characters',
+                range: new vscodeMock.Range(1, 80, 1, 81),
+            },
+        ];
+
+        const items = buildStatusDashboardDiagnosticItems(editor, diagnostics, {
+            keyword: '*KEYWORD',
+        });
+
+        assert.deepStrictEqual(items.map(item => item.id), [
+            'openProblems',
+            'copyDiagnostics',
+            'diagnostic',
+        ]);
+        assert.match(items[0].label, /问题|Problems/);
+        assert.match(items[1].label, /复制|Copy/);
+        assert.match(items[2].label, /第 2 行|Line 2/);
+        assert.strictEqual(items[2].diagnostic, diagnostics[0]);
     });
 });
 
@@ -2497,6 +2527,58 @@ describe('LS-DYNA keyword option interactions', () => {
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             vscodeMock.env = originalEnv;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('refreshes auto language UI when VS Code display language changes at runtime', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        const originalEnv = vscodeMock.env;
+        const originalOnDidChangeConfiguration = vscodeMock.workspace.onDidChangeConfiguration;
+        const originalCreateTreeView = vscodeMock.window.createTreeView;
+        const configCallbacks = [];
+        const treeViews = new Map();
+
+        vscodeMock.env = { ...(vscodeMock.env || {}), language: 'en' };
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'auto' : defaultValue
+        });
+        vscodeMock.workspace.onDidChangeConfiguration = (callback) => {
+            configCallbacks.push(callback);
+            return { dispose() {} };
+        };
+        vscodeMock.window.createTreeView = (id) => {
+            const view = { title: '', dispose() {} };
+            treeViews.set(id, view);
+            return view;
+        };
+
+        try {
+            i18n.updateLanguage();
+            extensionModule.activate({
+                subscriptions: [],
+                globalState: {
+                    get: () => undefined,
+                    update: () => Promise.resolve(),
+                },
+            });
+
+            assert.equal(i18n.getLanguage(), 'en');
+            assert.equal(treeViews.get('lsdynaIncludeTree').title, 'Include Tree');
+
+            vscodeMock.env.language = 'zh-cn';
+            for (const callback of configCallbacks) {
+                callback({ affectsConfiguration: key => key === 'locale' });
+            }
+
+            assert.equal(i18n.getLanguage(), 'zh-cn');
+            assert.equal(treeViews.get('lsdynaIncludeTree').title, '引用文件树');
+            assert.equal(treeViews.get('lsdynaKeywordIndex').title, '关键字索引');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            vscodeMock.env = originalEnv;
+            vscodeMock.workspace.onDidChangeConfiguration = originalOnDidChangeConfiguration;
+            vscodeMock.window.createTreeView = originalCreateTreeView;
             i18n.updateLanguage();
         }
     });

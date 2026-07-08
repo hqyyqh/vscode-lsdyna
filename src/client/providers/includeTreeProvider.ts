@@ -298,6 +298,10 @@ class LsdynaIncludeTreeProvider {
         this.missingPaths = new Set();
     }
 
+    refresh() {
+        this._onDidChangeTreeData.fire(undefined);
+    }
+
     /**
      * Triggers a workspace scan starting from the active editor document to rebuild the tree.
      * 

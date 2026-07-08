@@ -235,6 +235,10 @@ class LsdynaKeywordIndexProvider {
         this.documentIndices = new Map();
     }
 
+    refresh() {
+        this._onDidChangeTreeData.fire(undefined);
+    }
+
     /**
      * Sets view mode and updates VS Code context state.
      * 

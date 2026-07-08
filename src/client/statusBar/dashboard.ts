@@ -30,7 +30,7 @@ type DashboardActions = {
     scanKeywordIndex?: () => Promise<void> | void;
     configureManuals?: () => Promise<void> | void;
     showOutput?: () => Promise<void> | void;
-    copyDiagnostics?: () => Promise<void> | void;
+    showDiagnostics?: () => Promise<void> | void;
     toggleTabNavigation?: () => Promise<void> | void;
 };
 
@@ -56,10 +56,10 @@ type DashboardLabels = {
     showOutputLabel: string;
     showOutputDescription: string;
     showOutputDetail: string;
-    copyDiagnosticsLabel: string;
+    showDiagnosticsLabel: string;
     diagnosticsSingularDescription: string;
     diagnosticsPluralDescription: string;
-    copyDiagnosticsDetail: string;
+    showDiagnosticsDetail: string;
     toggleTabNavigationLabel: string;
     tabNavigationOnDescription: string;
     tabNavigationOffDescription: string;
@@ -86,14 +86,14 @@ const DEFAULT_DASHBOARD_LABELS: DashboardLabels = {
     showOutputLabel: '$(output) Open Log',
     showOutputDescription: 'DynaSense output',
     showOutputDetail: 'Open the extension output channel for recent scan and indexing messages.',
-    copyDiagnosticsLabel: '$(copy) Copy Diagnostics',
+    showDiagnosticsLabel: '$(pulse) Diagnostic Details',
     diagnosticsSingularDescription: '1 warning',
     diagnosticsPluralDescription: '{0} warnings',
-    copyDiagnosticsDetail: 'Copy active-file diagnostics and DynaSense context to the clipboard.',
-    toggleTabNavigationLabel: '$(keyboard) Toggle Tab Navigation',
+    showDiagnosticsDetail: 'View current-file diagnostics, jump to a problem, or copy the full report.',
+    toggleTabNavigationLabel: '$(keyboard) Field Tab Jump',
     tabNavigationOnDescription: 'On',
     tabNavigationOffDescription: 'Off',
-    toggleTabNavigationDetail: 'Switch fixed-width LS-DYNA field navigation for the Tab key.',
+    toggleTabNavigationDetail: 'Switch Tab-key jumps between fixed-width LS-DYNA fields.',
 };
 
 function resolveDashboardLabels(overrides: Partial<DashboardLabels> = {}): DashboardLabels {
@@ -168,15 +168,15 @@ function buildDashboardItems(context: DashboardContext = {}): DashboardItem[] {
         ? labels.diagnosticsSingularDescription
         : formatLabelTemplate(labels.diagnosticsPluralDescription, warningCount);
 
-    return [
-        {
-            id: 'showHealth',
-            label: labels.showHealthLabel,
-            description: healthIssueCount > 0
-                ? formatLabelTemplate(labels.healthIssuesDescription, healthIssueCount)
-                : labels.healthReadyDescription,
-            detail: labels.showHealthDetail,
-        },
+    const healthItem = {
+        id: 'showHealth',
+        label: labels.showHealthLabel,
+        description: healthIssueCount > 0
+            ? formatLabelTemplate(labels.healthIssuesDescription, healthIssueCount)
+            : labels.healthReadyDescription,
+        detail: labels.showHealthDetail,
+    };
+    const items = [
         {
             id: 'scanIncludes',
             label: labels.scanIncludesLabel,
@@ -190,10 +190,22 @@ function buildDashboardItems(context: DashboardContext = {}): DashboardItem[] {
             detail: labels.scanKeywordIndexDetail,
         },
         {
+            id: 'toggleTabNavigation',
+            label: labels.toggleTabNavigationLabel,
+            description: tabNavigationEnabled ? labels.tabNavigationOnDescription : labels.tabNavigationOffDescription,
+            detail: labels.toggleTabNavigationDetail,
+        },
+        {
             id: 'configureManuals',
             label: labels.configureManualsLabel,
             description: manualReady ? labels.manualReadyDescription : labels.manualSetupDescription,
             detail: labels.configureManualsDetail,
+        },
+        {
+            id: 'showDiagnostics',
+            label: labels.showDiagnosticsLabel,
+            description: diagnosticsDescription,
+            detail: labels.showDiagnosticsDetail,
         },
         {
             id: 'showOutput',
@@ -201,19 +213,15 @@ function buildDashboardItems(context: DashboardContext = {}): DashboardItem[] {
             description: labels.showOutputDescription,
             detail: labels.showOutputDetail,
         },
-        {
-            id: 'copyDiagnostics',
-            label: labels.copyDiagnosticsLabel,
-            description: diagnosticsDescription,
-            detail: labels.copyDiagnosticsDetail,
-        },
-        {
-            id: 'toggleTabNavigation',
-            label: labels.toggleTabNavigationLabel,
-            description: tabNavigationEnabled ? labels.tabNavigationOnDescription : labels.tabNavigationOffDescription,
-            detail: labels.toggleTabNavigationDetail,
-        },
     ];
+
+    if (healthIssueCount > 0) {
+        items.unshift(healthItem);
+    } else {
+        items.push(healthItem);
+    }
+
+    return items;
 }
 
 class LsdynaStatusBarDashboard {

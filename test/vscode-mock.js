@@ -101,6 +101,12 @@ class WorkspaceEdit {
     }
 }
 
+class TextEdit {
+    static replace(range, newText) {
+        return { range, newText };
+    }
+}
+
 module.exports = {
     Position,
     Range,
@@ -113,6 +119,7 @@ module.exports = {
     SnippetString,
     CompletionList,
     WorkspaceEdit,
+    TextEdit,
     Uri: {
         file: p => ({ fsPath: p }),
         parse: value => ({ fsPath: value, scheme: String(value).split(':')[0], toString: () => value })
