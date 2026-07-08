@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.13] - 2026-07-08
+
+### Added
+- **Status Bar**: Added an in-editor diagnostic details view from the DynaSense status dashboard.
+
+### Changed
+- **Status Bar**: Refined dashboard action names and ordering, moving DynaSense output to the end and placing healthy environment status after primary workflow actions.
+- **i18n**: The extension language now follows VS Code display language changes at runtime when `lsdyna.language` is set to `auto`.
+- **Formatter**: Restored `*INCLUDE_PATH` wrapping through both document formatting and the CodeLens formatting command.
+
+### Fixed
+- **Keywords**: Accepted numbered `*CASE_BEGIN_<n>` and `*CASE_END_<n>` variants as valid custom case boundary keywords.
+
 ## [3.0.12] - 2026-06-25
 
 ### Fixed
