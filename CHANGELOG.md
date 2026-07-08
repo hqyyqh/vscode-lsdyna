@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.13] - 2026-07-08
+
+### Added
+- **Status Bar**: Added an in-editor diagnostic details view from the DynaSense status dashboard.
+
+### Changed
+- **Status Bar**: Refined dashboard action names and ordering, moving DynaSense output to the end and placing healthy environment status after primary workflow actions.
+- **i18n**: The extension language now follows VS Code display language changes at runtime when `lsdyna.language` is set to `auto`.
+- **Formatter**: Restored `*INCLUDE_PATH` wrapping through both document formatting and the CodeLens formatting command.
+
+### Fixed
+- **Keywords**: Accepted numbered `*CASE_BEGIN_<n>` and `*CASE_END_<n>` variants as valid custom case boundary keywords.
+
+## [3.0.12] - 2026-06-25
+
+### Fixed
+- **i18n**: Added missing Chinese translations for field data.
+
+### Changed
+- **Build**: Excluded `scripts` folder from the extension package.
+
+## [3.0.11] - 2026-06-25
+
+- Triggered clean release.
+
+## [3.0.10] - 2026-06-25
+
+### Fixed
+- **Hover**: Added support for referencing curve/table definitions from real number fields.
+- **Hover**: Removed keyword option entry.
+- **Snippets**: Synchronized `MAT_ADD_EROSION` damage field annotations.
+- **Keywords**: Restored `MAT_ADD_EROSION` damage field descriptions.
+
+### Changed
+- **References**: Refactored to remove field reference override files.
+
 ## [3.0.9] - 2026-06-24
 
 ### Added

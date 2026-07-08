@@ -1,7 +1,11 @@
 'use strict';
 
+const i18n = require('../i18n');
+
 const MAX_SVG_POINTS = 200;
 const MAX_TABLE_ROWS = 8;
+const MAX_TABLE_CURVES = 16;
+const MAX_TABLE_POINTS_PER_CURVE = 32;
 
 function xmlEscape(value) {
     return String(value || '')
@@ -19,16 +23,24 @@ function numericPoints(points) {
     return (points || []).filter(point => Number.isFinite(point.x) && Number.isFinite(point.y));
 }
 
-function samplePoints(points, maxPoints) {
-    if (points.length <= maxPoints) {
-        return points;
+function sampleItems(items, maxItems) {
+    if (!Array.isArray(items) || items.length <= maxItems) {
+        return items || [];
     }
+    if (maxItems <= 1) {
+        return [items[0]];
+    }
+
     const sampled = [];
-    const step = (points.length - 1) / (maxPoints - 1);
-    for (let index = 0; index < maxPoints; index++) {
-        sampled.push(points[Math.round(index * step)]);
+    const step = (items.length - 1) / (maxItems - 1);
+    for (let index = 0; index < maxItems; index++) {
+        sampled.push(items[Math.round(index * step)]);
     }
     return sampled;
+}
+
+function samplePoints(points, maxPoints) {
+    return sampleItems(points, maxPoints);
 }
 
 function formatValue(val) {
@@ -121,7 +133,7 @@ function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
     ];
     const omitted = (definition.points || []).length - rows.length;
     if (omitted > 0) {
-        lines.push(`| ... | ${omitted} more rows |`);
+        lines.push(`| ... | ${i18n.get('moreRows', omitted)} |`);
     }
     return lines.join('\n');
 }
@@ -129,6 +141,12 @@ function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
 function renderTable3dSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
     const isDark = renderOptions.isDark !== false;
+    const maxCurves = Number.isFinite(renderOptions.maxCurves)
+        ? Math.max(1, Math.floor(renderOptions.maxCurves))
+        : MAX_TABLE_CURVES;
+    const maxPointsPerCurve = Number.isFinite(renderOptions.maxPointsPerCurve)
+        ? Math.max(2, Math.floor(renderOptions.maxPointsPerCurve))
+        : MAX_TABLE_POINTS_PER_CURVE;
     const width = 380;
     const height = 220;
     
@@ -149,8 +167,9 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     let minX = Infinity, maxX = -Infinity;
     let minZ = Infinity, maxZ = -Infinity;
 
-    for (const row of definition.rows || []) {
-        const pts = numericPoints(row.points);
+    const sampledRows = sampleItems(definition.rows || [], maxCurves);
+    for (const row of sampledRows) {
+        const pts = samplePoints(numericPoints(row.points), maxPointsPerCurve);
         if (pts.length < 2) continue;
         ys.push(row.value);
         curves.push({

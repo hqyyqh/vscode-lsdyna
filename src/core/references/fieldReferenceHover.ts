@@ -15,7 +15,7 @@ function encodeCommandArgs(args) {
     return encodeURIComponent(JSON.stringify([args]));
 }
 
-function definitionLink(definition, title = 'Open definition') {
+function definitionLink(definition, title = i18n.get('openDefinition')) {
     const args = encodeCommandArgs({
         filePath: definition.filePath,
         lineIndex: definition.startLine || 0,
@@ -24,10 +24,14 @@ function definitionLink(definition, title = 'Open definition') {
     return `[$(go-to-file) ${title}](command:extension.openLsdynaReferenceDefinition?${args} "${title}")`;
 }
 
+function childDefinitionKindLabel(kind) {
+    return kind === 'table' ? i18n.get('tableDefinitionKind') : i18n.get('curveDefinitionKind');
+}
+
 function appendCurvePreview(lines, definition, isDark = true) {
     const dataUri = renderCurveSvgDataUri(definition, { isDark });
     if (dataUri) {
-        lines.push('', `![curve preview](${dataUri})`);
+        lines.push('', `![${i18n.get('curvePreviewAlt')}](${dataUri})`);
     }
     const fallback = renderCurveMarkdownFallback(definition);
     if (fallback) {
@@ -47,7 +51,7 @@ function childLink(row, definition) {
     if (!matches || matches.length === 0) {
         return markdownCode(row.childIdRaw);
     }
-    return `${markdownCode(row.childIdRaw)} ${definitionLink(matches[0], `Open child ${row.childKind}`)}`;
+    return `${markdownCode(row.childIdRaw)} ${definitionLink(matches[0], i18n.get('openChildDefinition', childDefinitionKindLabel(row.childKind)))}`;
 }
 
 function appendTablePreview(lines, definition, isDark = true) {
@@ -64,28 +68,30 @@ function appendTablePreview(lines, definition, isDark = true) {
     // Try rendering 3D SVG
     const dataUri = renderTable3dSvgDataUri(tableWithPoints, { isDark });
     if (dataUri) {
-        lines.push('', `![3D table preview](${dataUri})`);
+        lines.push('', `![${i18n.get('table3dPreviewAlt')}](${dataUri})`);
     }
 
     // Fallback text table underneath
-    const childLabel = definition.tableType === '3d' || definition.tableType === '4d' ? 'table ID' : 'curve ID';
+    const childLabel = definition.tableType === '3d' || definition.tableType === '4d'
+        ? i18n.get('tableIdColumn')
+        : i18n.get('curveIdColumn');
     const allRows = definition.rows || [];
     if (allRows.length === 0) {
         return;
     }
     const rows = allRows.slice(0, MAX_TABLE_ROWS);
-    lines.push('', `| value | ${childLabel} |`, '| ---: | ---: |');
+    lines.push('', `| ${i18n.get('valueColumn')} | ${childLabel} |`, '| ---: | ---: |');
     for (const row of rows) {
         lines.push(`| ${markdownCode(row.valueRaw)} | ${childLink(row, definition)} |`);
     }
     const omitted = allRows.length - rows.length;
     if (omitted > 0) {
-        lines.push(`| ... | ${omitted} more rows |`);
+        lines.push(`| ... | ${i18n.get('moreRows', omitted)} |`);
     }
 }
 
 function appendDefinition(lines, definition, isDark = true) {
-    lines.push('', `**${definition.keyword}** in \`${definition.filePath}\``, definitionLink(definition));
+    lines.push('', i18n.get('definitionLocation', definition.keyword, definition.filePath), definitionLink(definition));
     if (definition.title) {
         lines.push(`_${definition.title}_`);
     }
@@ -104,26 +110,26 @@ function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false
         '',
         '---',
         '',
-        `**$(graph-line) ${fieldName} reference:** \`${id}\``,
+        `**$(graph-line) ${i18n.get('referenceLabel', fieldName)}:** \`${id}\``,
     ];
 
     if (raw && String(raw) !== String(id)) {
-        lines.push(`Raw value: \`${raw}\`.`);
+        lines.push(i18n.get('rawValue', raw));
     }
     if (isSignedSwitch) {
-        lines.push('$(info) negative switch stripped for lookup.');
+        lines.push(i18n.get('negativeSwitchStripped'));
     }
 
     if (!definitions || definitions.length === 0) {
-        lines.push('', `$(warning) No matching curve/table definition found for ID \`${id}\`.`);
+        lines.push('', i18n.get('noMatchingDefinition', id));
         if (needsProjectScan) {
-            lines.push('', 'Run **Scan Include Tree** to index cross-file curve/table definitions.');
+            lines.push('', i18n.get('runScanIncludeTreeForDefinitions'));
         }
         return lines.join('\n');
     }
 
     if (definitions.length > 1) {
-        lines.push('', `$(warning) ${definitions.length} matching definitions found. Review duplicates or ambiguity before trusting the preview.`);
+        lines.push('', i18n.get('matchingDefinitionsFound', definitions.length));
     }
 
     for (const definition of definitions.slice(0, MAX_HOVER_DEFINITIONS)) {
@@ -132,7 +138,7 @@ function buildReferenceHoverSection({ fieldName, id, raw, isSignedSwitch = false
 
     const omitted = definitions.length - MAX_HOVER_DEFINITIONS;
     if (omitted > 0) {
-        lines.push('', `${omitted} more definitions omitted from hover.`);
+        lines.push('', i18n.get('moreDefinitionsOmitted', omitted));
     }
 
     return lines.join('\n');
@@ -142,7 +148,7 @@ function buildDefinitionHoverSection(definition, isDark = true) {
     const lines = [];
     const titleStr = definition.title ? ` - _${definition.title}_` : '';
     const cleanKeyword = definition.keyword.replace(/^\*/, '');
-    lines.push(`### $(graph-line) **\\*${cleanKeyword} (ID: ${definition.id})**${titleStr}`);
+    lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', definition.id)}**${titleStr}`);
     if (definition.kind === 'curve') {
         appendCurvePreview(lines, definition, isDark);
     } else if (definition.kind === 'functionCurve') {

@@ -49,7 +49,7 @@ describe('keyword aliases and default valid keywords', () => {
 
         try {
             keywordValidator.init(new Set(['KEYWORD']));
-            const doc = fakeDoc('*TITLE\n*CASE_BEGIN\n*CASE_END\n*UNKNOWN_CASE_TOKEN\n');
+            const doc = fakeDoc('*TITLE\n*CASE_BEGIN\n*CASE_END\n*CASE_BEGIN_1\n*CASE_END_2\n*UNKNOWN_CASE_TOKEN\n');
             const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
 
             assert.deepEqual(

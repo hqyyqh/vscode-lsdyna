@@ -21,6 +21,8 @@ const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexP
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
 const { createProjectDiagnosticStore } = require('./client/services/projectDiagnosticStore');
+const { createHealthService, shouldShowHealthNotice } = require('./client/services/healthService');
+const { LsdynaStatusBarDashboard } = require('./client/statusBar/dashboard');
 const { openPdfWithSumatra } = require('./platform/externalProcess');
 const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
@@ -529,7 +531,7 @@ function collectLineLengthDiagnostics(document) {
         if (!line.text.startsWith('$') && line.text.length > 80) {
             issues.push(new vscode.Diagnostic(
                 new vscode.Range(i, 80, i, line.text.length),
-                `Line exceeds 80 characters (${line.text.length}); LS-DYNA may truncate it`,
+                i18n.get('lineExceeds80Characters', line.text.length),
                 vscode.DiagnosticSeverity.Warning
             ));
         }
@@ -835,7 +837,7 @@ class LsdynaRenameProvider {
      */
     prepareRename(document, position) {
         const param = getParameterAtCursor(document, position);
-        if (!param) throw new Error('Cannot rename this symbol.');
+        if (!param) throw new Error(i18n.get('cannotRenameSymbol'));
         return param.range;
     }
 
@@ -1722,10 +1724,10 @@ class LsdynaFieldHoverProvider {
             }));
 
             // Manual & columns at the bottom
-            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
             appendManualLinks(md, kwName);
         } else {
-            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) Card Columns:**\n\n${gridTable}`);
+            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${typeLabel}${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
             md.isTrusted = true;
             md.supportHtml = true;
             md.supportThemeIcons = true;
@@ -1757,7 +1759,7 @@ class LsdynaParameterCodeLensProvider {
             const pos = new vscode.Position(def.lineIndex, def.startChar);
             const range = new vscode.Range(pos, pos);
             lenses.push(new vscode.CodeLens(range, {
-                title: count === 1 ? '1 reference' : `${count} references`,
+                title: count === 1 ? i18n.get('parameterReferenceSingular') : i18n.get('parameterReferencesPlural', count),
                 command: 'editor.action.findReferences',
                 arguments: [document.uri, pos],
             }));
@@ -1789,7 +1791,7 @@ function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) 
     for (let i = lineindex; i >= 0; i--) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('Not on any keyword.');
+    throw new Error(i18n.get('notOnAnyKeyword'));
 }
 
 /**
@@ -1820,10 +1822,10 @@ function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, bas
     const linestart = startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex);
     const keyword = classifyKeywordLine(getLine(linestart)).normalizedKeyword;
     if (keyword.startsWith('*INCLUDE_PATH')) {
-        throw new Error('This keyword does not have a filename card.');
+        throw new Error(i18n.get('keywordHasNoFilenameCard'));
     }
     if (!keyword.startsWith('*INCLUDE')) {
-        throw new Error('This keyword is not supported.');
+        throw new Error(i18n.get('keywordNotSupported'));
     }
 
     const lineend = endLineOfCurrentKeywordFromLineReader(lineCount, getLine, linestart);
@@ -1838,7 +1840,7 @@ function getFilenameFromKeywordFromLineReader(lineCount, getLine, lineindex, bas
 
     if (currentEntry) return currentEntry.fileName;
     if (entries.length > 0) return entries[0].fileName;
-    throw new Error('No file to jump to.');
+    throw new Error(i18n.get('noFileToJumpTo'));
 }
 
 function startLineOfCurrentKeyword(lines, lineindex) {
@@ -1874,7 +1876,7 @@ function searchFileFromPaths(filePath, paths) {
         const fullPath = path.resolve(searchPath, filePath);
         if (fs.existsSync(fullPath)) return fullPath;
     }
-    throw new Error(`${filePath} not found.`);
+    throw new Error(i18n.get('fileNotFound', filePath));
 }
 
 /**
@@ -1889,7 +1891,7 @@ function findNextKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine + 1; i < lineCount; i++) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('No more keywords found.');
+    throw new Error(i18n.get('noMoreKeywordsFound'));
 }
 
 function findNextKeyword(lines, currentLine) {
@@ -1912,7 +1914,7 @@ function findPreviousKeywordFromLineReader(lineCount, getLine, currentLine) {
     for (let i = currentLine - 1; i >= 0; i--) {
         if (isKeywordLineText(getLine(i))) return i;
     }
-    throw new Error('No previous keywords found.');
+    throw new Error(i18n.get('noPreviousKeywordsFound'));
 }
 
 function findPreviousKeyword(lines, currentLine) {
@@ -2118,7 +2120,7 @@ class LsdynaIncludeCompletionProvider {
         const items = [];
         for (const file of suggestions) {
             const item = new vscode.CompletionItem(file, vscode.CompletionItemKind.File);
-            item.detail = 'Include File';
+            item.detail = i18n.get('includeFile');
             item.range = range;
             if (!file.includes('/') && !file.includes('\\')) {
                 if (currentPrefix.startsWith('./')) {
@@ -2205,8 +2207,8 @@ class LsdynaFieldCompletionProvider {
             if (!commentText) return [];
 
             const item = new vscode.CompletionItem(commentText.trimEnd(), vscode.CompletionItemKind.Snippet);
-            item.detail = '(LS-DYNA) 插入字段注释行';
-            item.documentation = new vscode.MarkdownString(`**插入字段注释行**\n\n按下 Tab 将插入：\n\`\`\`lsdyna\n${commentText}\n\`\`\``);
+            item.detail = i18n.get('fieldCommentCompletionDetail');
+            item.documentation = new vscode.MarkdownString(`**${i18n.get('fieldCommentCompletionTitle')}**\n\n${i18n.get('fieldCommentCompletionInsertHint')}\n\`\`\`lsdyna\n${commentText}\n\`\`\``);
             item.insertText = commentText;
             item.range = new vscode.Range(position.line, 0, position.line, line.text.length);
 
@@ -2230,7 +2232,7 @@ class LsdynaFieldCompletionProvider {
                 vscode.CompletionItemKind.Snippet
             );
             templateItem.detail = i18n.get('rowTemplateDetail');
-            templateItem.documentation = new vscode.MarkdownString('Insert a pre-aligned full data card row.');
+            templateItem.documentation = new vscode.MarkdownString(i18n.get('rowTemplateDocumentation'));
 
             let snippetText = '';
             let prevEnd = 0;
@@ -2636,6 +2638,31 @@ function isSingleEightyColumnCard(cardFields) {
 }
 
 async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
+    const edit = createPathEntryFormatEdit(document, lineNum, kwLine);
+    const result = edit.result;
+    if (result.status === 'tooLong' || !edit.range) return result;
+
+    isFormattingLine = true;
+    try {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document === document) {
+            await editor.edit(editBuilder => {
+                editBuilder.replace(edit.range, edit.newText);
+            }, { undoStopBefore: false, undoStopAfter: false });
+        } else {
+            const workspaceEdit = new vscode.WorkspaceEdit();
+            workspaceEdit.replace(document.uri, edit.range, edit.newText);
+            await vscode.workspace.applyEdit(workspaceEdit);
+        }
+    } catch (err) {
+        console.error('Error formatting path entry:', err);
+    } finally {
+        isFormattingLine = false;
+    }
+    return result;
+}
+
+function createPathEntryFormatEdit(document, lineNum, kwLine) {
     const range = getPathEntryRange(document, lineNum, kwLine);
     const lines = [];
     for (let i = range.start; i <= range.end; i++) {
@@ -2654,38 +2681,23 @@ async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
 
     const fullPath = parts.join('');
     const result = splitIncludePathEntry(fullPath);
-    if (result.status === 'tooLong') return result;
+    if (result.status === 'tooLong') return { result };
     const newLines = result.lines;
 
     const newText = newLines.join('\n');
     const oldText = lines.join('\n');
 
-    if (newText === oldText) return result;
+    if (newText === oldText) return { result };
 
-    isFormattingLine = true;
-    try {
-        const endLineText = document.lineAt(range.end).text;
-        const replaceRange = new vscode.Range(
+    const endLineText = document.lineAt(range.end).text;
+    return {
+        result,
+        range: new vscode.Range(
             new vscode.Position(range.start, 0),
             new vscode.Position(range.end, endLineText.length)
-        );
-
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document === document) {
-            await editor.edit(editBuilder => {
-                editBuilder.replace(replaceRange, newText);
-            }, { undoStopBefore: false, undoStopAfter: false });
-        } else {
-            const edit = new vscode.WorkspaceEdit();
-            edit.replace(document.uri, replaceRange, newText);
-            await vscode.workspace.applyEdit(edit);
-        }
-    } catch (err) {
-        console.error('Error formatting path entry:', err);
-    } finally {
-        isFormattingLine = false;
-    }
-    return result;
+        ),
+        newText,
+    };
 }
 
 let isFormattingLine = false;
@@ -2965,6 +2977,282 @@ function handleSelectionChange(e) {
     lastActiveDoc = currentDoc;
 }
 
+function getStatusDashboardLabels() {
+    return {
+        dashboardTooltip: i18n.get('statusDashboardTooltip'),
+        placeHolder: i18n.get('statusDashboardPlaceHolder'),
+        showHealthLabel: i18n.get('statusDashboardShowHealthLabel'),
+        healthReadyDescription: i18n.get('statusDashboardHealthReadyDescription'),
+        healthIssuesDescription: i18n.get('statusDashboardHealthIssuesDescription'),
+        showHealthDetail: i18n.get('statusDashboardShowHealthDetail'),
+        scanIncludesLabel: i18n.get('statusDashboardScanIncludesLabel'),
+        scanIncludesDescription: i18n.get('statusDashboardScanIncludesDescription'),
+        scanIncludesDetail: i18n.get('statusDashboardScanIncludesDetail'),
+        scanKeywordIndexLabel: i18n.get('statusDashboardScanKeywordIndexLabel'),
+        scanKeywordIndexDescription: i18n.get('statusDashboardScanKeywordIndexDescription'),
+        scanKeywordIndexDetail: i18n.get('statusDashboardScanKeywordIndexDetail'),
+        configureManualsLabel: i18n.get('statusDashboardConfigureManualsLabel'),
+        manualReadyDescription: i18n.get('statusDashboardManualReadyDescription'),
+        manualSetupDescription: i18n.get('statusDashboardManualSetupDescription'),
+        configureManualsDetail: i18n.get('statusDashboardConfigureManualsDetail'),
+        showOutputLabel: i18n.get('statusDashboardShowOutputLabel'),
+        showOutputDescription: i18n.get('statusDashboardShowOutputDescription'),
+        showOutputDetail: i18n.get('statusDashboardShowOutputDetail'),
+        showDiagnosticsLabel: i18n.get('statusDashboardShowDiagnosticsLabel'),
+        diagnosticsSingularDescription: i18n.get('statusDashboardDiagnosticsSingularDescription'),
+        diagnosticsPluralDescription: i18n.get('statusDashboardDiagnosticsPluralDescription'),
+        showDiagnosticsDetail: i18n.get('statusDashboardShowDiagnosticsDetail'),
+        toggleTabNavigationLabel: i18n.get('statusDashboardToggleTabNavigationLabel'),
+        tabNavigationOnDescription: i18n.get('statusDashboardTabNavigationOnDescription'),
+        tabNavigationOffDescription: i18n.get('statusDashboardTabNavigationOffDescription'),
+        toggleTabNavigationDetail: i18n.get('statusDashboardToggleTabNavigationDetail'),
+    };
+}
+
+function healthStateIcon(state) {
+    if (state === 'ready') return '$(check)';
+    if (state === 'warning') return '$(warning)';
+    return '$(info)';
+}
+
+function healthMetadataValue(item, key, fallback = '') {
+    if (!item || !item.metadata) return fallback;
+    const value = item.metadata[key];
+    if (value === undefined || value === null || value === '') return fallback;
+    return String(value);
+}
+
+function getHealthItemDescription(item) {
+    if (!item) return '';
+    switch (item.id) {
+        case 'language':
+            return item.state === 'ready'
+                ? i18n.get('health_language_ready_description')
+                : i18n.get('health_language_warning_description');
+        case 'workspace':
+            return item.state === 'ready'
+                ? i18n.get('health_workspace_ready_description')
+                : i18n.get('health_workspace_info_description');
+        case 'manualsDir':
+            return item.state === 'ready'
+                ? i18n.get('health_manualsDir_ready_description')
+                : i18n.get('health_manualsDir_warning_description');
+        case 'pdfFiles':
+            return item.state === 'ready'
+                ? i18n.get('health_pdfFiles_ready_description', healthMetadataValue(item, 'pdfCount', '0'))
+                : i18n.get('health_pdfFiles_warning_description');
+        case 'manualIndex':
+            return item.state === 'ready'
+                ? i18n.get('health_manualIndex_ready_description', healthMetadataValue(item, 'indexedPdfCount', '0'))
+                : i18n.get('health_manualIndex_warning_description');
+        case 'sumatra':
+            if (item.metadata && item.metadata.required === false) {
+                return i18n.get('health_sumatra_info_description');
+            }
+            return item.state === 'ready'
+                ? i18n.get('health_sumatra_ready_description')
+                : i18n.get('health_sumatra_warning_description');
+        case 'keywordDatabase':
+            return item.state === 'ready'
+                ? i18n.get('health_keywordDatabase_ready_description')
+                : i18n.get('health_keywordDatabase_warning_description');
+        case 'projectTools':
+            return item.state === 'ready'
+                ? i18n.get('health_projectTools_ready_description')
+                : i18n.get('health_projectTools_warning_description');
+        default:
+            return item.state;
+    }
+}
+
+function getHealthItemDetail(item) {
+    if (!item) return '';
+    switch (item.id) {
+        case 'language':
+            return item.state === 'ready'
+                ? i18n.get('health_language_ready_detail')
+                : i18n.get('health_language_warning_detail', healthMetadataValue(item, 'languageId', 'unknown'));
+        case 'workspace':
+            return item.state === 'ready'
+                ? i18n.get('health_workspace_ready_detail', healthMetadataValue(item, 'workspaceRoot', ''))
+                : i18n.get('health_workspace_info_detail');
+        case 'manualsDir':
+            return item.state === 'ready'
+                ? i18n.get('health_manualsDir_ready_detail', healthMetadataValue(item, 'resolvedDir', ''))
+                : i18n.get('health_manualsDir_warning_detail', healthMetadataValue(item, 'manualsDir', ''));
+        case 'pdfFiles':
+            return item.state === 'ready'
+                ? i18n.get('health_pdfFiles_ready_detail', healthMetadataValue(item, 'resolvedDir', ''))
+                : i18n.get('health_pdfFiles_warning_detail');
+        case 'manualIndex':
+            return item.state === 'ready'
+                ? i18n.get('health_manualIndex_ready_detail')
+                : i18n.get('health_manualIndex_warning_detail');
+        case 'sumatra':
+            if (item.metadata && item.metadata.required === false) {
+                return i18n.get('health_sumatra_info_detail');
+            }
+            return item.state === 'ready'
+                ? i18n.get('health_sumatra_ready_detail', healthMetadataValue(item, 'sumatraPath', ''))
+                : i18n.get('health_sumatra_warning_detail');
+        case 'keywordDatabase':
+            return item.state === 'ready'
+                ? i18n.get('health_keywordDatabase_ready_detail')
+                : i18n.get('health_keywordDatabase_warning_detail');
+        case 'projectTools':
+            return item.state === 'ready'
+                ? i18n.get('health_projectTools_ready_detail')
+                : i18n.get('health_projectTools_warning_detail');
+        default:
+            return '';
+    }
+}
+
+function buildHealthQuickPickItems(report) {
+    if (!report || !Array.isArray(report.items)) return [];
+    return report.items.map(item => ({
+        id: item.id,
+        actionId: item.actionId,
+        label: `${healthStateIcon(item.state)} ${i18n.get(item.labelKey)}`,
+        description: getHealthItemDescription(item),
+        detail: getHealthItemDetail(item),
+        healthItem: item,
+    }));
+}
+
+function getDiagnosticSeverityName(severity) {
+    if (severity === 0) return 'error';
+    if (severity === 1) return 'warning';
+    if (severity === 2) return 'information';
+    if (severity === 3) return 'hint';
+    return 'diagnostic';
+}
+
+function getDiagnosticSeverityIcon(severity) {
+    if (severity === 0) return '$(error)';
+    if (severity === 1) return '$(warning)';
+    if (severity === 2) return '$(info)';
+    if (severity === 3) return '$(lightbulb)';
+    return '$(pulse)';
+}
+
+function getDiagnosticsForUri(uri) {
+    if (!uri || !vscode.languages || typeof vscode.languages.getDiagnostics !== 'function') {
+        return [];
+    }
+    return vscode.languages.getDiagnostics(uri) || [];
+}
+
+function getStatusDashboardCursorContext(editor) {
+    if (!editor || !editor.document || !editor.selection || !editor.selection.active) {
+        return { keyword: '', fieldIndex: null, fieldCount: 0 };
+    }
+
+    const document = editor.document;
+    const lineNum = Math.max(0, Math.min(editor.selection.active.line, document.lineCount - 1));
+    let keyword = '';
+    for (let index = lineNum; index >= 0; index--) {
+        const classification = classifyKeywordLine(document.lineAt(index).text);
+        if (classification.isKeyword) {
+            keyword = classification.normalizedKeyword || classification.rawKeyword || '';
+            break;
+        }
+    }
+
+    const text = document.lineAt(lineNum).text;
+    const trimmed = text.trimStart();
+    const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
+    if (!isCardLine) {
+        return { keyword, fieldIndex: null, fieldCount: 0 };
+    }
+
+    const cardFields = getCardFieldsForLine(document, lineNum);
+    const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
+    if (!cardFields || cardFields.length === 0 || isWideField) {
+        return { keyword, fieldIndex: null, fieldCount: 0 };
+    }
+
+    const character = editor.selection.active.character;
+    let fieldIndex = cardFields.findIndex(field => (
+        character >= field.p && character < field.p + field.w
+    ));
+    if (fieldIndex < 0) {
+        fieldIndex = Math.max(0, Math.min(cardFields.length - 1, Math.floor(character / 10)));
+    }
+
+    return {
+        keyword,
+        fieldIndex: fieldIndex + 1,
+        fieldCount: cardFields.length,
+    };
+}
+
+function formatStatusDashboardDiagnostics(editor, diagnosticsList, dashboardContext) {
+    const filePath = editor && editor.document && editor.document.uri
+        ? editor.document.uri.fsPath
+        : 'No active LS-DYNA file';
+    const lines = [
+        'DynaSense diagnostics',
+        `File: ${filePath}`,
+        `Keyword: ${dashboardContext.keyword || 'none'}`,
+        `Diagnostics: ${diagnosticsList.length}`,
+    ];
+
+    if (diagnosticsList.length === 0) {
+        lines.push(i18n.get('statusDashboardNoDiagnostics'));
+        return lines.join('\n');
+    }
+
+    diagnosticsList.forEach((diagnostic, index) => {
+        const range = diagnostic.range;
+        const line = range && range.start ? range.start.line + 1 : '?';
+        const character = range && range.start ? range.start.character + 1 : '?';
+        const severity = getDiagnosticSeverityName(diagnostic.severity);
+        lines.push(`${index + 1}. [${severity}] ${line}:${character} ${diagnostic.message}`);
+    });
+
+    return lines.join('\n');
+}
+
+function buildStatusDashboardDiagnosticItems(editor, diagnosticsList, dashboardContext) {
+    const diagnosticsDescription = diagnosticsList.length === 1
+        ? i18n.get('statusDashboardDiagnosticsSingularDescription')
+        : i18n.get('statusDashboardDiagnosticsPluralDescription', diagnosticsList.length);
+    const items: any[] = [
+        {
+            id: 'openProblems',
+            label: i18n.get('statusDashboardOpenProblemsLabel'),
+            description: i18n.get('statusDashboardOpenProblemsDescription'),
+            detail: i18n.get('statusDashboardOpenProblemsDetail'),
+        },
+        {
+            id: 'copyDiagnostics',
+            label: i18n.get('statusDashboardCopyFullDiagnosticsLabel'),
+            description: diagnosticsDescription,
+            detail: i18n.get('statusDashboardCopyFullDiagnosticsDetail'),
+        },
+    ];
+
+    for (const diagnostic of diagnosticsList) {
+        const range = diagnostic.range;
+        const line = range && range.start ? range.start.line + 1 : '?';
+        const character = range && range.start ? range.start.character + 1 : '?';
+        const severity = getDiagnosticSeverityName(diagnostic.severity);
+        const lineLabel = line === '?' ? i18n.get('lineLabel', '?') : i18n.get('lineLabel', line);
+        items.push({
+            id: 'diagnostic',
+            label: `${getDiagnosticSeverityIcon(diagnostic.severity)} ${lineLabel}: ${diagnostic.message}`,
+            description: `${severity} ${line}:${character}`,
+            detail: i18n.get('statusDashboardDiagnosticJumpDetail'),
+            diagnostic,
+            dashboardContext,
+            editor,
+        });
+    }
+
+    return items;
+}
+
 class LsdynaDocumentFormattingEditProvider {
     provideDocumentFormattingEdits(document, options, token) {
         return this.provideDocumentRangeFormattingEdits(document, new vscode.Range(0, 0, document.lineCount, 0), options, token);
@@ -2982,15 +3270,26 @@ class LsdynaDocumentFormattingEditProvider {
             if (isKeywordLineText(text)) continue;
 
             let currentKwText = null;
+            let currentKwLine = null;
             for (let i = lineNum; i >= 0; i--) {
                 const t = document.lineAt(i).text;
                 const classification = classifyKeywordLine(t);
                 if (classification.isKeyword) {
                     currentKwText = classification.normalizedKeyword;
+                    currentKwLine = i;
                     break;
                 }
             }
             if (!currentKwText || currentKwText.startsWith('*PARAMETER')) continue;
+
+            if (currentKwText === '*INCLUDE_PATH' || currentKwText === '*INCLUDE_PATH_RELATIVE') {
+                const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
+                if (pathEdit.range) {
+                    edits.push(vscode.TextEdit.replace(pathEdit.range, pathEdit.newText));
+                    lineNum = pathEdit.range.end.line;
+                }
+                continue;
+            }
 
             const isCommentLine = trimmed.startsWith('$');
             let targetLineNum = lineNum;
@@ -3010,6 +3309,15 @@ class LsdynaDocumentFormattingEditProvider {
 
             const cardFields = getCardFieldsForLine(document, targetLineNum);
             if (!cardFields || cardFields.length === 0) continue;
+
+            if (!isCommentLine && isIncludeFileKeyword(currentKwText) && isSingleEightyColumnCard(cardFields)) {
+                const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
+                if (pathEdit.range) {
+                    edits.push(vscode.TextEdit.replace(pathEdit.range, pathEdit.newText));
+                    lineNum = pathEdit.range.end.line;
+                }
+                continue;
+            }
 
             const alignedText = alignLineText(text, cardFields, isCommentLine);
             if (text !== alignedText) {
@@ -3033,8 +3341,18 @@ function activate(context) {
     let includeTreeView;
     let keywordTreeView;
     let workspaceWatcherManager;
+    let healthService = null;
+    let statusDashboard = null;
+    let includeTreeProvider = null;
+    let keywordIndexProvider = null;
+    let fileDecorationProvider = null;
+    let maybeShowHealthNoticeForEditor = (_editor = undefined) => {};
 
-    manualIndexer.initialize(context).catch(err => {
+    manualIndexer.initialize(context).then(() => {
+        if (healthService) healthService.invalidate();
+        if (statusDashboard) statusDashboard.scheduleRefresh();
+        maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
+    }).catch(err => {
         console.error('Failed to initialize manual indexer:', err);
     });
 
@@ -3044,6 +3362,57 @@ function activate(context) {
         debugChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
     }
     logDebug("Extension activated.");
+
+    function refreshRuntimeLanguageIfNeeded({ force = false } = {}) {
+        const previousLanguage = i18n.getLanguage();
+        i18n.updateLanguage();
+        const languageChanged = previousLanguage !== i18n.getLanguage();
+        if (!force && !languageChanged) return false;
+
+        _fieldData = null;
+        if (includeTreeView) {
+            includeTreeView.title = i18n.get('includeTreeTitle');
+        }
+        if (keywordTreeView) {
+            keywordTreeView.title = i18n.get('keywordIndexTitle');
+        }
+        if (includeTreeProvider && typeof includeTreeProvider.refresh === 'function') {
+            includeTreeProvider.refresh();
+        }
+        if (keywordIndexProvider && typeof keywordIndexProvider.refresh === 'function') {
+            keywordIndexProvider.refresh();
+        }
+        if (fileDecorationProvider && typeof fileDecorationProvider.refresh === 'function') {
+            fileDecorationProvider.refresh();
+        }
+        if (statusDashboard) {
+            statusDashboard.scheduleRefresh();
+        }
+        if (healthService) {
+            healthService.invalidate();
+        }
+        return true;
+    }
+
+    healthService = createHealthService({
+        fs,
+        pathModule: path,
+        platform: process.platform,
+        cwd: process.cwd(),
+        execPath: process.execPath,
+        appRoot: vscode.env && vscode.env.appRoot ? vscode.env.appRoot : null,
+        extensionPath: getExtensionPath(context),
+        getManualsDir: () => getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack',
+        getManualFilesCount: () => manualIndexer.getManualFilesCount(),
+        getKeywordDatabaseReady: () => {
+            try {
+                return Object.keys(getFieldData()).length > 0;
+            } catch (_error) {
+                return false;
+            }
+        },
+        getProjectToolsReady: () => true,
+    });
 
     const snippetsPath = typeof context.asAbsolutePath === 'function'
         ? context.asAbsolutePath(path.join('snippets', 'lsdyna.json'))
@@ -3080,27 +3449,19 @@ function activate(context) {
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('lsdyna.language')) {
-                i18n.updateLanguage();
-                _fieldData = null;
-                if (includeTreeView) {
-                    includeTreeView.title = i18n.get('includeTreeTitle');
-                }
-                if (keywordTreeView) {
-                    keywordTreeView.title = i18n.get('keywordIndexTitle');
-                }
-            }
-            if (e.affectsConfiguration('lsdyna.additionalExtensions')) {
+            const affects = key => e && typeof e.affectsConfiguration === 'function' && e.affectsConfiguration(key);
+            const languageChanged = refreshRuntimeLanguageIfNeeded({ force: affects('lsdyna.language') });
+            if (affects('lsdyna.additionalExtensions')) {
                 associateLsdynaLanguages();
                 workspaceWatcherManager?.rebuild(
                     getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
                 );
             }
             if (
-                e.affectsConfiguration('lsdyna.language')
-                || e.affectsConfiguration('lsdyna.additionalExtensions')
-                || e.affectsConfiguration('lsdyna.customValidKeywords')
-                || e.affectsConfiguration('lsdyna.largeFile.enableRendering')
+                languageChanged
+                || affects('lsdyna.additionalExtensions')
+                || affects('lsdyna.customValidKeywords')
+                || affects('lsdyna.largeFile.enableRendering')
             ) {
                 vscode.workspace.textDocuments.forEach(updateDiagnostics);
             }
@@ -3199,7 +3560,7 @@ function activate(context) {
         getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
     );
     context.subscriptions.push(workspaceWatcherManager);
-    const includeTreeProvider = new LsdynaIncludeTreeProvider({
+    includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         invalidateProjectSnapshot: indexClient.invalidate,
@@ -3210,7 +3571,7 @@ function activate(context) {
     includeTreeView.title = i18n.get('includeTreeTitle');
     context.subscriptions.push(includeTreeView);
 
-    const fileDecorationProvider = new LsdynaFileDecorationProvider(includeTreeProvider);
+    fileDecorationProvider = new LsdynaFileDecorationProvider(includeTreeProvider);
     context.subscriptions.push(
         vscode.window.registerFileDecorationProvider(fileDecorationProvider)
     );
@@ -3222,7 +3583,7 @@ function activate(context) {
         })
     );
 
-    const keywordIndexProvider = new LsdynaKeywordIndexProvider({
+    keywordIndexProvider = new LsdynaKeywordIndexProvider({
         shouldSkipAutomaticDocumentScan,
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -3333,7 +3694,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('vscode.open', uri, { preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToOpenFile', err.message));
             }
         })
     );
@@ -3343,7 +3704,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside, preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to split open file: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToSplitOpenFile', err.message));
             }
         })
     );
@@ -3353,7 +3714,7 @@ function activate(context) {
                 const uri = vscode.Uri.file(filePath);
                 vscode.commands.executeCommand('revealFileInOS', uri);
             } catch (err) {
-                vscode.window.showErrorMessage(`Failed to reveal folder: ${err.message}`);
+                vscode.window.showErrorMessage(i18n.get('failedToRevealFolder', err.message));
             }
         })
     );
@@ -3421,6 +3782,9 @@ function activate(context) {
                     }
                 }
                 await manualIndexer.initialize(context);
+                if (healthService) healthService.invalidate();
+                if (statusDashboard) statusDashboard.scheduleRefresh();
+                maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
             }
         })
     );
@@ -3451,6 +3815,213 @@ function activate(context) {
         vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri))
     );
     vscode.workspace.textDocuments.forEach(updateDiagnostics);
+
+    const HEALTH_NOTICE_SIGNATURE_KEY = 'lsdyna.health.lastPromptedIssueSignature';
+
+    function getHealthReportForEditor(editor = vscode.window.activeTextEditor) {
+        const document = editor && editor.document ? editor.document : null;
+        return healthService.getReport({
+            isLsdyna: isLsdynaFile(document),
+            document,
+            workspaceFolders: vscode.workspace.workspaceFolders || [],
+        });
+    }
+
+    async function executeHealthAction(actionId) {
+        if (actionId === 'configureManuals') {
+            await vscode.commands.executeCommand('extension.configureManualsDir');
+        } else if (actionId === 'showOutput') {
+            if (debugChannel && typeof debugChannel.show === 'function') {
+                debugChannel.show(true);
+            }
+        } else if (actionId === 'scanIncludes') {
+            await vscode.commands.executeCommand('extension.scanIncludeTree');
+        } else if (actionId === 'scanKeywordIndex') {
+            await vscode.commands.executeCommand('extension.scanKeywordIndex');
+        }
+    }
+
+    async function showHealthStatus() {
+        const report = getHealthReportForEditor();
+        const items = buildHealthQuickPickItems(report);
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: report.issueCount > 0
+                ? i18n.get('healthStatusNeedsSetup', report.issueCount)
+                : i18n.get('healthStatusReady'),
+            matchOnDescription: true,
+            matchOnDetail: true,
+        });
+        if (!picked || !picked.actionId) return;
+        await executeHealthAction(picked.actionId);
+    }
+
+    async function showStatusDashboardDiagnostics() {
+        const editor = vscode.window.activeTextEditor;
+        const diagnosticsList = editor && editor.document
+            ? getDiagnosticsForUri(editor.document.uri)
+            : [];
+        if (diagnosticsList.length === 0) {
+            vscode.window.showInformationMessage(i18n.get('statusDashboardNoDiagnostics'));
+            return;
+        }
+
+        const dashboardContext = getStatusDashboardContext();
+        const items = buildStatusDashboardDiagnosticItems(editor, diagnosticsList, dashboardContext);
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: i18n.get('statusDashboardDiagnosticsPlaceHolder'),
+            matchOnDescription: true,
+            matchOnDetail: true,
+        });
+        if (!picked) return;
+
+        if (picked.id === 'openProblems') {
+            await vscode.commands.executeCommand('workbench.actions.view.problems');
+            return;
+        }
+
+        if (picked.id === 'copyDiagnostics') {
+            const text = formatStatusDashboardDiagnostics(editor, diagnosticsList, dashboardContext);
+            if (vscode.env && vscode.env.clipboard && typeof vscode.env.clipboard.writeText === 'function') {
+                await vscode.env.clipboard.writeText(text);
+            }
+            vscode.window.showInformationMessage(i18n.get('statusDashboardDiagnosticsCopied', diagnosticsList.length));
+            return;
+        }
+
+        if (picked.id === 'diagnostic' && editor && picked.diagnostic && picked.diagnostic.range) {
+            const start = picked.diagnostic.range.start;
+            editor.selection = new vscode.Selection(start, start);
+            if (typeof editor.revealRange === 'function') {
+                editor.revealRange(picked.diagnostic.range);
+            }
+        }
+    }
+
+    maybeShowHealthNoticeForEditor = function maybeShowHealthNotice(editor = vscode.window.activeTextEditor) {
+        const document = editor && editor.document ? editor.document : null;
+        if (!isLsdynaFile(document)) return;
+        const resource = document && document.uri ? document.uri : undefined;
+        const showFirstRunNotice = getLsdynaConfigurationValue('health.showFirstRunNotice', true, resource) !== false;
+        const report = getHealthReportForEditor(editor);
+        const lastPromptedIssueSignature = context.globalState && typeof context.globalState.get === 'function'
+            ? context.globalState.get(HEALTH_NOTICE_SIGNATURE_KEY, '')
+            : '';
+        if (!shouldShowHealthNotice({
+            showFirstRunNotice,
+            isLsdyna: true,
+            report,
+            lastPromptedIssueSignature,
+        })) {
+            return;
+        }
+
+        if (context.globalState && typeof context.globalState.update === 'function') {
+            Promise.resolve(context.globalState.update(HEALTH_NOTICE_SIGNATURE_KEY, report.issueSignature)).then(undefined, () => {});
+        }
+
+        const btnView = i18n.get('healthNoticeViewStatus');
+        const btnLater = i18n.get('healthNoticeLater');
+        Promise.resolve(vscode.window.showInformationMessage(
+            i18n.get('healthNoticeMessage', report.issueCount),
+            btnView,
+            btnLater
+        )).then(choice => {
+            if (choice === btnView) {
+                vscode.commands.executeCommand('extension.showHealthStatus');
+            }
+        }, () => {});
+    };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.showHealthStatus', () => showHealthStatus())
+    );
+
+    function getStatusDashboardContext() {
+        const editor = vscode.window.activeTextEditor;
+        const document = editor && editor.document ? editor.document : null;
+        const resource = document && document.uri ? document.uri : undefined;
+        const diagnosticsList = resource ? getDiagnosticsForUri(resource) : [];
+        const healthReport = getHealthReportForEditor(editor);
+        return {
+            isLsdyna: isLsdynaFile(document),
+            level: getLsdynaConfigurationValue('statusBar.level', 'simple', resource),
+            ...getStatusDashboardCursorContext(editor),
+            manualReady: manualIndexer.getManualFilesCount() > 0,
+            warningCount: diagnosticsList.length,
+            healthIssueCount: healthReport.issueCount,
+            tabNavigationEnabled: getLsdynaConfigurationValue('enableTabNavigation', true, resource) !== false,
+            labels: getStatusDashboardLabels(),
+        };
+    }
+
+    const statusBarAlignment = vscode.StatusBarAlignment && vscode.StatusBarAlignment.Left !== undefined
+        ? vscode.StatusBarAlignment.Left
+        : undefined;
+    const statusBarItem = vscode.window.createStatusBarItem(statusBarAlignment, 50);
+    statusDashboard = new LsdynaStatusBarDashboard({
+        statusBarItem,
+        getContext: getStatusDashboardContext,
+        actions: {
+            showHealth: () => vscode.commands.executeCommand('extension.showHealthStatus'),
+            scanIncludes: () => vscode.commands.executeCommand('extension.scanIncludeTree'),
+            scanKeywordIndex: () => vscode.commands.executeCommand('extension.scanKeywordIndex'),
+            configureManuals: () => vscode.commands.executeCommand('extension.configureManualsDir'),
+            showOutput: () => {
+                if (debugChannel && typeof debugChannel.show === 'function') {
+                    debugChannel.show(true);
+                }
+            },
+            showDiagnostics: () => showStatusDashboardDiagnostics(),
+            toggleTabNavigation: async () => {
+                const editor = vscode.window.activeTextEditor;
+                const resource = editor && editor.document ? editor.document.uri : undefined;
+                const config = vscode.workspace.getConfiguration('lsdyna', resource);
+                const nextValue = !getLsdynaConfigurationValue('enableTabNavigation', true, resource);
+                await config.update('enableTabNavigation', nextValue, vscode.ConfigurationTarget.Global);
+                vscode.window.showInformationMessage(
+                    i18n.get(nextValue ? 'statusDashboardTabNavigationEnabled' : 'statusDashboardTabNavigationDisabled')
+                );
+                statusDashboard.scheduleRefresh();
+            },
+        },
+    });
+    context.subscriptions.push(statusDashboard);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.lsdynaStatusDashboard', () => statusDashboard.showMenu())
+    );
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            statusDashboard.scheduleRefresh();
+            maybeShowHealthNoticeForEditor(editor);
+        })
+    );
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorSelection(() => statusDashboard.scheduleRefresh())
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (
+                !e
+                || typeof e.affectsConfiguration !== 'function'
+                || e.affectsConfiguration('lsdyna.health.showFirstRunNotice')
+                || e.affectsConfiguration('lsdyna.statusBar.level')
+                || e.affectsConfiguration('lsdyna.enableTabNavigation')
+                || e.affectsConfiguration('lsdyna.manualsDir')
+                || e.affectsConfiguration('lsdyna.language')
+            ) {
+                healthService.invalidate();
+                statusDashboard.scheduleRefresh();
+                maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
+            }
+        })
+    );
+    if (vscode.languages && typeof vscode.languages.onDidChangeDiagnostics === 'function') {
+        context.subscriptions.push(
+            vscode.languages.onDidChangeDiagnostics(() => statusDashboard.scheduleRefresh())
+        );
+    }
+    statusDashboard.refresh();
+    maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
 
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider({ language: 'lsdyna' }, new LsdynaDefinitionProvider())
@@ -3597,11 +4168,13 @@ function activate(context) {
                         const text = line.text;
                         const trimmed = text.trimStart();
                         let currentKwText = null;
+                        let currentKwLine = null;
                         for (let i = lineNum; i >= 0; i--) {
                             const t = document.lineAt(i).text;
                             const classification = classifyKeywordLine(t);
                             if (classification.isKeyword) {
                                 currentKwText = classification.normalizedKeyword;
+                                currentKwLine = i;
                                 break;
                             }
                         }
@@ -3609,6 +4182,15 @@ function activate(context) {
 
                         const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
                         const isCommentLine = trimmed.startsWith('$');
+
+                        if (currentKwText === '*INCLUDE_PATH' || currentKwText === '*INCLUDE_PATH_RELATIVE') {
+                            const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
+                            if (pathEdit.range) {
+                                editBuilder.replace(pathEdit.range, pathEdit.newText);
+                                lineNum = pathEdit.range.end.line;
+                            }
+                            continue;
+                        }
                         
                         let targetLineNum = lineNum;
                         if (isCommentLine) {
@@ -3625,6 +4207,14 @@ function activate(context) {
                         if (targetLineNum !== lineNum || isCardLine) {
                             const card = getCardFieldsForLine(document, targetLineNum);
                             if (card && card.length > 0) {
+                                if (!isCommentLine && isIncludeFileKeyword(currentKwText) && isSingleEightyColumnCard(card)) {
+                                    const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
+                                    if (pathEdit.range) {
+                                        editBuilder.replace(pathEdit.range, pathEdit.newText);
+                                        lineNum = pathEdit.range.end.line;
+                                    }
+                                    continue;
+                                }
                                 const alignedText = alignLineText(text, card, isCommentLine);
                                 if (alignedText !== text) {
                                     const range = new vscode.Range(
@@ -3945,7 +4535,7 @@ function collectProjectDiagnostics(snapshot) {
         );
         const diagnostic = new vscode.Diagnostic(
             range,
-            `Included file "${record.fileName}" not found.`,
+            i18n.get('includedFileNotFound', record.fileName),
             vscode.DiagnosticSeverity.Warning
         );
         diagnostic.source = 'lsdyna';
@@ -3965,7 +4555,7 @@ function collectProjectDiagnostics(snapshot) {
         const cyclePathStr = record.path ? record.path.map(p => path.basename(p)).join(' -> ') : '';
         const diagnostic = new vscode.Diagnostic(
             range,
-            `Circular include dependency detected: ${cyclePathStr}`,
+            i18n.get('circularIncludeDependency', cyclePathStr),
             vscode.DiagnosticSeverity.Error
         );
         diagnostic.source = 'lsdyna';
@@ -4056,6 +4646,7 @@ module.exports._internals = {
     findIncludeFileLines,
     LsdynaIncludeTreeProvider,
     LsdynaFieldHoverProvider,
+    LsdynaParameterCodeLensProvider,
     LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordIndexProvider,
     LsdynaKeywordSymbolProvider,
@@ -4096,4 +4687,6 @@ module.exports._internals = {
     splitIncludePathEntry,
     formatPathEntryIfNeeded,
     LsdynaKeywordCompletionProvider,
+    LsdynaDocumentFormattingEditProvider,
+    buildStatusDashboardDiagnosticItems,
 };

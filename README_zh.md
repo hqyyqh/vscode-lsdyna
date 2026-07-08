@@ -15,6 +15,21 @@
 
 ---
 
+## 🚀 快速开始 (30秒上手)
+
+1. **唤醒智能**：打开任意 `.k` 或 `.key` 文件，输入 `*` 即可立即体验 3100+ 关键字智能补全。
+2. **列宽对齐**：在数据行按下 `Tab` 键，光标将自动在 10 字符列宽间精准跳跃。
+3. **查看释义**：将鼠标悬停在任意关键字或字段上，即可查看详细说明和默认值。
+4. **配置手册**：点击悬停卡片右上角的 ⚙️ 齿轮（或查看底部状态栏的 DynaSense 仪表盘），一键关联本地 LS-DYNA PDF 手册，实现精准跳转。
+
+> **功能预览：**
+> 
+> | 💡 唤醒智能 | 📖 查看释义 |
+> | :---: | :---: |
+> | ![Keyword Completion](./images/completion_keyword.gif) | ![Hover Hints](./images/hover_hints.gif) |
+
+---
+
 ## 🌟 核心特性 (Core Features)
 
 <details open>
@@ -120,6 +135,8 @@
 | :--- | :--- | :--- |
 | `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 包含 LS-DYNA PDF 手册的目录；Windows 下可同时放置 `SumatraPDF.exe`。 |
 | `lsdyna.enableTabNavigation` | `true` | 启用 Tab/Shift+Tab 智能字段跳转。 |
+| `lsdyna.statusBar.level` | `"simple"` | 控制 DynaSense 状态栏入口：`off`、`simple` 或 `detail`。 |
+| `lsdyna.health.showFirstRunNotice` | `true` | 打开 LS-DYNA 文件且存在需要配置的项目时，显示一次环境状态提示。 |
 | `lsdyna.largeFile.enableRendering` | `true` | 为超大 LS-DYNA 文件启用编辑器渲染功能。 |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | 在所有支持的关键字上显示选项 CodeLens。 |
 | `lsdyna.hover.previewMaxLines` | `20` | 控制鼠标悬停在包含文件上时，预览窗口所显示的行数。 |

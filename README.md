@@ -15,6 +15,21 @@
 
 ---
 
+## 🚀 Quick Start (30 Seconds)
+
+1. **Awaken AI**: Open any `.k` or `.key` file and type `*` to trigger 3100+ keyword autocompletions.
+2. **Align Columns**: Press `Tab` on data lines to jump precisely between 10-character column widths.
+3. **Read Definitions**: Hover over any keyword or field to see detailed explanations and default values.
+4. **Link Manuals**: Click the ⚙️ gear icon on the hover card (or use the bottom Status Bar Dashboard) to link your local LS-DYNA PDF manuals for instant page jumping.
+
+> **Preview:**
+> 
+> | 💡 Awaken AI | 📖 Read Definitions |
+> | :---: | :---: |
+> | ![Keyword Completion](./images/completion_keyword.gif) | ![Hover Hints](./images/hover_hints.gif) |
+
+---
+
 ## 🌟 Core Features
 
 <details open>
@@ -120,6 +135,8 @@ In VS Code's `settings.json`, you can customize the following exclusive configur
 | :--- | :--- | :--- |
 | `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | Directory containing LS-DYNA PDF manuals and, on Windows, the optional `SumatraPDF.exe`. |
 | `lsdyna.enableTabNavigation` | `true` | Enable smart Tab/Shift+Tab field navigation. |
+| `lsdyna.statusBar.level` | `"simple"` | Controls the DynaSense status bar entry: `off`, `simple`, or `detail`. |
+| `lsdyna.health.showFirstRunNotice` | `true` | Show a one-time environment status notice when an LS-DYNA file has setup items. |
 | `lsdyna.largeFile.enableRendering` | `true` | Enable editor rendering features for very large LS-DYNA files. |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | Show keyword option CodeLens on every supported keyword. |
 | `lsdyna.hover.previewMaxLines` | `20` | Controls the maximum number of lines displayed when hovering over an included file. |

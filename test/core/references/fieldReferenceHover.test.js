@@ -1,7 +1,13 @@
 const assert = require('assert');
+const { vscodeMock } = require('../../helpers');
+const i18n = require('../../../src/core/i18n');
 const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
 
 describe('fieldReferenceHover', () => {
+    afterEach(() => {
+        i18n.updateLanguage();
+    });
+
     it('renders curve preview, signed switch note and definition link', () => {
         const section = buildReferenceHoverSection({
             fieldName: 'LCSS',
@@ -23,7 +29,7 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('LCSS reference'));
-        assert.ok(section.includes('negative switch stripped'));
+        assert.ok(section.includes(i18n.get('negativeSwitchStripped')));
         assert.ok(section.includes('*DEFINE_CURVE'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
@@ -39,6 +45,32 @@ describe('fieldReferenceHover', () => {
 
         assert.ok(section.includes('No matching curve/table definition'));
         assert.ok(section.includes('Scan Include Tree'));
+    });
+
+    it('localizes reference hover guidance in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'language' ? 'zh-cn' : undefined
+        });
+        i18n.updateLanguage();
+
+        try {
+            const section = buildReferenceHoverSection({
+                fieldName: 'LCSS',
+                id: 1001,
+                raw: '-1001',
+                isSignedSwitch: true,
+                definitions: [],
+                needsProjectScan: true,
+            });
+
+            assert.ok(section.includes('LCSS 引用'));
+            assert.ok(section.includes('原始值'));
+            assert.ok(section.includes('负号开关'));
+            assert.ok(section.includes('扫描引用文件树'));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
     });
 
     it('renders resolved child curve links for table rows when available', () => {
@@ -70,6 +102,48 @@ describe('fieldReferenceHover', () => {
         assert.ok(section.includes('| value | curve ID |'));
         assert.ok(section.includes('1001'));
         assert.ok(section.includes('Open child curve'));
+    });
+
+    it('localizes resolved child curve labels in Chinese table previews', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key) => key === 'language' ? 'zh-cn' : undefined
+        });
+        i18n.updateLanguage();
+
+        try {
+            const childCurve = {
+                kind: 'curve',
+                id: 1001,
+                keyword: '*DEFINE_CURVE',
+                filePath: 'C:/model/main.k',
+                startLine: 30,
+                endLine: 35,
+                points: [],
+            };
+            const section = buildReferenceHoverSection({
+                fieldName: 'LCSS',
+                id: 2001,
+                definitions: [{
+                    kind: 'table',
+                    tableType: '2d',
+                    id: 2001,
+                    keyword: '*DEFINE_TABLE_2D',
+                    filePath: 'C:/model/main.k',
+                    startLine: 20,
+                    endLine: 25,
+                    rows: [{ valueRaw: '0.01', value: 0.01, childIdRaw: '1001', childId: 1001, childKind: 'curve', lineIndex: 23 }],
+                    resolvedChildren: new Map([[1001, [childCurve]]]),
+                }],
+            });
+
+            assert.ok(section.includes('| 值 | 曲线 ID |'));
+            assert.ok(section.includes('打开子级曲线'));
+            assert.ok(!section.includes('curve ID'));
+            assert.ok(!section.includes('Open child curve'));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
     });
 
     it('renders 3D table preview in hover section with SVG data URI', () => {
@@ -129,6 +203,30 @@ describe('fieldReferenceHover', () => {
             // Should NOT have reference header or Go to File links since it's definition hover
             assert.ok(!section.includes('LCSS reference'));
             assert.ok(!section.includes('command:extension.openLsdynaReferenceDefinition'));
+        });
+
+        it('localizes curve definition title punctuation in Chinese', () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key) => key === 'language' ? 'zh-cn' : undefined
+            });
+            i18n.updateLanguage();
+
+            try {
+                const section = buildDefinitionHoverSection({
+                    kind: 'curve',
+                    id: 1001,
+                    keyword: '*DEFINE_CURVE',
+                    filePath: 'C:/model/main.k',
+                    startLine: 10,
+                    endLine: 13,
+                    points: [],
+                });
+
+                assert.ok(section.includes('### $(graph-line) **\\*DEFINE_CURVE（ID：1001）**'));
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            }
         });
     });
 });

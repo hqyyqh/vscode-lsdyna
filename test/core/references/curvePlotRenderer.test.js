@@ -65,5 +65,38 @@ describe('curvePlotRenderer', () => {
         // Verify ticks and HSL interpolation
         assert.ok(svg.includes('hsl('));
     });
+
+    it('samples large 3D table previews to a hover-safe SVG size', () => {
+        const rows = [];
+        for (let rowIndex = 0; rowIndex < 200; rowIndex++) {
+            const points = [];
+            for (let pointIndex = 0; pointIndex < 200; pointIndex++) {
+                points.push({
+                    x: pointIndex,
+                    y: Math.sin(pointIndex / 12) + rowIndex / 20,
+                });
+            }
+            rows.push({
+                value: -1 + rowIndex / 100,
+                points,
+            });
+        }
+
+        const dataUri = renderTable3dSvgDataUri({
+            title: 'LCSDG',
+            keyword: '*DEFINE_TABLE_TITLE',
+            rows,
+        }, { isDark: false });
+
+        assert.ok(dataUri.startsWith('data:image/svg+xml;base64,'));
+        assert.ok(dataUri.length < 100000, `expected sampled SVG under 100 KB, got ${dataUri.length}`);
+
+        const svg = Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
+        const polylineCount = (svg.match(/<polyline/g) || []).length;
+        const lineCount = (svg.match(/<line/g) || []).length;
+
+        assert.ok(polylineCount <= 16, `expected at most 16 sampled curves, got ${polylineCount}`);
+        assert.ok(lineCount <= 600, `expected bounded wireframe lines, got ${lineCount}`);
+    });
 });
 

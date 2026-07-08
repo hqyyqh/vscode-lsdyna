@@ -101,6 +101,12 @@ class WorkspaceEdit {
     }
 }
 
+class TextEdit {
+    static replace(range, newText) {
+        return { range, newText };
+    }
+}
+
 module.exports = {
     Position,
     Range,
@@ -113,6 +119,7 @@ module.exports = {
     SnippetString,
     CompletionList,
     WorkspaceEdit,
+    TextEdit,
     Uri: {
         file: p => ({ fsPath: p }),
         parse: value => ({ fsPath: value, scheme: String(value).split(':')[0], toString: () => value })
@@ -136,11 +143,19 @@ module.exports = {
         showInformationMessage: () => {},
         showErrorMessage: () => {},
         showWarningMessage: () => {},
+        createStatusBarItem: () => ({
+            text: '',
+            tooltip: '',
+            command: '',
+            show() {},
+            hide() {},
+            dispose() {},
+        }),
         createTreeView: (id, options) => ({
             title: '',
             dispose() {}
         }),
-        createOutputChannel: () => ({ appendLine: () => {} }),
+        createOutputChannel: () => ({ appendLine: () => {}, show: () => {}, dispose() {} }),
         registerFileDecorationProvider: () => ({ dispose() {} }),
         registerTreeDataProvider: () => ({ dispose() {} }),
         onDidChangeActiveTextEditor: () => ({ dispose() {} }),
@@ -184,8 +199,10 @@ module.exports = {
             get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
         }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider: () => ({ dispose() {} }), registerDocumentRangeFormattingEditProvider: () => ({ dispose() {} }), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); } },
+    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider: () => ({ dispose() {} }), registerDocumentRangeFormattingEditProvider: () => ({ dispose() {} }), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); }, getDiagnostics: () => [], onDidChangeDiagnostics: () => ({ dispose() {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
+    env: { language: 'en', clipboard: { writeText: () => Promise.resolve() } },
+    StatusBarAlignment: { Left: 1, Right: 2 },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
 };

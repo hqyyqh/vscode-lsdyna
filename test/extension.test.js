@@ -25,6 +25,7 @@ const {
     isIncludeLine,
     isLsdynaUri,
     LsdynaFieldHoverProvider,
+    LsdynaParameterCodeLensProvider,
     LsdynaKeywordOptionsCodeLensProvider,
     LsdynaKeywordSymbolProvider,
     LsDynaFoldingProvider,
@@ -48,6 +49,7 @@ const {
     cacheReferenceIndexFromSnapshot,
     clearReferenceIndexCacheForTesting,
     setFileIndexForTesting,
+    buildStatusDashboardDiagnosticItems,
 } = extensionModule._internals;
 
 describe('updateDocumentDiagnostics', () => {
@@ -61,6 +63,35 @@ describe('updateDocumentDiagnostics', () => {
         });
 
         assert.deepStrictEqual(deleted, ['/project/readme.txt']);
+    });
+});
+
+describe('status dashboard diagnostic details', () => {
+    it('builds actions and jump targets for visible diagnostics', () => {
+        const document = fakeDoc('*KEYWORD\n' + 'x'.repeat(81) + '\n', '/project/main.k');
+        document.languageId = 'lsdyna';
+        const editor = { document };
+        const diagnostics = [
+            {
+                severity: vscodeMock.DiagnosticSeverity.Warning,
+                message: 'Line exceeds 80 characters',
+                range: new vscodeMock.Range(1, 80, 1, 81),
+            },
+        ];
+
+        const items = buildStatusDashboardDiagnosticItems(editor, diagnostics, {
+            keyword: '*KEYWORD',
+        });
+
+        assert.deepStrictEqual(items.map(item => item.id), [
+            'openProblems',
+            'copyDiagnostics',
+            'diagnostic',
+        ]);
+        assert.match(items[0].label, /问题|Problems/);
+        assert.match(items[1].label, /复制|Copy/);
+        assert.match(items[2].label, /第 2 行|Line 2/);
+        assert.strictEqual(items[2].diagnostic, diagnostics[0]);
     });
 });
 
@@ -262,6 +293,27 @@ describe('findParameterReferences', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n$ &tEnd this is a comment\n');
         const refs = findParameterReferences(doc).filter(r => r.name === 'TEND');
         assert.equal(refs.length, 0);
+    });
+});
+
+describe('LsdynaParameterCodeLensProvider', () => {
+    it('localizes parameter reference counts in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            const provider = new LsdynaParameterCodeLensProvider();
+            const lenses = provider.provideCodeLenses(fakeDoc('*PARAMETER\nR  t  1.0\n*KEYWORD\n&t  &t\n'));
+
+            assert.equal(lenses.length, 1);
+            assert.equal(lenses[0].command.title, '2 处引用');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
     });
 });
 
@@ -2479,12 +2531,235 @@ describe('LS-DYNA keyword option interactions', () => {
         }
     });
 
+    it('refreshes auto language UI when VS Code display language changes at runtime', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        const originalEnv = vscodeMock.env;
+        const originalOnDidChangeConfiguration = vscodeMock.workspace.onDidChangeConfiguration;
+        const originalCreateTreeView = vscodeMock.window.createTreeView;
+        const configCallbacks = [];
+        const treeViews = new Map();
+
+        vscodeMock.env = { ...(vscodeMock.env || {}), language: 'en' };
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'auto' : defaultValue
+        });
+        vscodeMock.workspace.onDidChangeConfiguration = (callback) => {
+            configCallbacks.push(callback);
+            return { dispose() {} };
+        };
+        vscodeMock.window.createTreeView = (id) => {
+            const view = { title: '', dispose() {} };
+            treeViews.set(id, view);
+            return view;
+        };
+
+        try {
+            i18n.updateLanguage();
+            extensionModule.activate({
+                subscriptions: [],
+                globalState: {
+                    get: () => undefined,
+                    update: () => Promise.resolve(),
+                },
+            });
+
+            assert.equal(i18n.getLanguage(), 'en');
+            assert.equal(treeViews.get('lsdynaIncludeTree').title, 'Include Tree');
+
+            vscodeMock.env.language = 'zh-cn';
+            for (const callback of configCallbacks) {
+                callback({ affectsConfiguration: key => key === 'locale' });
+            }
+
+            assert.equal(i18n.getLanguage(), 'zh-cn');
+            assert.equal(treeViews.get('lsdynaIncludeTree').title, '引用文件树');
+            assert.equal(treeViews.get('lsdynaKeywordIndex').title, '关键字索引');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            vscodeMock.env = originalEnv;
+            vscodeMock.workspace.onDidChangeConfiguration = originalOnDidChangeConfiguration;
+            vscodeMock.window.createTreeView = originalCreateTreeView;
+            i18n.updateLanguage();
+        }
+    });
+
     it('declares auto as the default extension language option', () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
         const languageConfig = pkg.contributes.configuration.properties['lsdyna.language'];
 
         assert.equal(languageConfig.default, 'auto');
         assert.deepEqual(languageConfig.enum, ['auto', 'zh-cn', 'en']);
+    });
+
+    it('keeps runtime i18n keys complete for both supported languages', () => {
+        function collectSourceFiles(dir, result = []) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const entryPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    collectSourceFiles(entryPath, result);
+                } else if (entry.name.endsWith('.ts')) {
+                    result.push(entryPath);
+                }
+            }
+            return result;
+        }
+
+        function collectUsedI18nKeys(srcDir) {
+            const keys = new Set();
+            for (const filePath of collectSourceFiles(srcDir)) {
+                const source = fs.readFileSync(filePath, 'utf8');
+                for (const match of source.matchAll(/i18n\.get\('([^']+)'/g)) {
+                    keys.add(match[1]);
+                }
+            }
+            return keys;
+        }
+
+        function collectLocaleKeys(source, locale, nextLocale) {
+            const blockPattern = new RegExp(`'${locale}':\\s*{([\\s\\S]*?)\\n\\s*}${nextLocale ? `,\\s*\\n\\s*'${nextLocale}':` : '\\s*\\n};'}`);
+            const match = source.match(blockPattern);
+            assert.ok(match, `${locale} locale block should exist`);
+            return new Set([...match[1].matchAll(/\n\s*([A-Za-z0-9_]+):/g)].map(item => item[1]));
+        }
+
+        const repoRoot = path.join(__dirname, '..');
+        const i18nSource = fs.readFileSync(path.join(repoRoot, 'src', 'core', 'i18n.ts'), 'utf8');
+        const usedKeys = collectUsedI18nKeys(path.join(repoRoot, 'src'));
+        const zhKeys = collectLocaleKeys(i18nSource, 'zh-cn', 'en');
+        const enKeys = collectLocaleKeys(i18nSource, 'en');
+
+        for (const key of usedKeys) {
+            assert.ok(zhKeys.has(key), `${key} should exist in zh-cn runtime locale`);
+            assert.ok(enKeys.has(key), `${key} should exist in en runtime locale`);
+        }
+    });
+
+    it('keeps runtime Chinese copy natural and free of mixed-language setup terms', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            assert.equal(
+                i18n.get('openFileFirst', 'activeEditor=false'),
+                '请先打开一个 LS-DYNA 文件。（诊断信息：activeEditor=false）'
+            );
+            assert.equal(i18n.get('configureFolder'), '⚙️ 设置手册目录');
+            assert.equal(i18n.get('howToConfigureManual'), '📖 查看 PDF 手册配置说明');
+            assert.equal(i18n.get('manualDirSetTo', 'D:\\manuals'), 'LS-DYNA 手册目录已设置为：D:\\manuals');
+            assert.equal(i18n.get('loadingFieldData'), '正在加载字段数据...');
+            assert.equal(i18n.get('fieldCompletionLabel', 'LCSS', 21, 30), 'LCSS（第 21-30 列）');
+            assert.equal(i18n.get('chooseConsecutiveOptionalCards'), '选择连续可选卡片');
+            assert.equal(i18n.get('removeNonEmptyOptionLinesWarning'), '更改 LS-DYNA 关键字选项会删除非空的选项卡片行。');
+            assert.equal(i18n.get('moreDefinitionsOmitted', 2), '悬停提示中已省略 2 个定义。');
+            assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
+            assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
+            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 处引用');
+            assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) 环境状态');
+            assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '2 项需要配置');
+            assert.equal(i18n.get('healthNoticeMessage', 2), 'DynaSense 发现 2 项需要配置。');
+            assert.equal(i18n.get('health_manualsDir_warning_description'), '需要配置手册目录');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('keeps runtime English copy concise and idiomatic', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            assert.equal(i18n.get('filesFound', 3), '3 files found');
+            assert.equal(i18n.get('rowTemplateLabel', 4), '✨ Generate full card row template (card 4)');
+            assert.equal(i18n.get('rowTemplateDetail'), 'LS-DYNA aligned card template');
+            assert.equal(i18n.get('loadingFieldData'), 'Loading keyword field definitions...');
+            assert.equal(i18n.get('chooseConsecutiveOptionalCards'), 'Choose consecutive optional card rows');
+            assert.equal(i18n.get('btnDownloadPack'), 'Download ready-to-use pack');
+            assert.equal(i18n.get('notOnAnyKeyword'), 'The cursor is not inside a keyword block.');
+            assert.equal(i18n.get('noFileToJumpTo'), 'No include file is available at the current cursor.');
+            assert.equal(i18n.get('noMoreKeywordsFound'), 'No next keyword found.');
+            assert.equal(i18n.get('noPreviousKeywordsFound'), 'No previous keyword found.');
+            assert.equal(i18n.get('parameterReferenceSingular'), '1 reference');
+            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 references');
+            assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) Environment Status');
+            assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '2 setup items');
+            assert.equal(i18n.get('healthNoticeMessage', 2), 'DynaSense found 2 setup items.');
+            assert.equal(i18n.get('health_manualsDir_warning_description'), 'Manual folder needs setup');
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('localizes line length diagnostics in Chinese', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
+        });
+        i18n.updateLanguage();
+
+        try {
+            const doc = fakeDoc('*NODE\n' + '1'.repeat(81) + '\n', '/project/main.k');
+            doc.languageId = 'lsdyna';
+            const diagnostics = collectLineLengthDiagnostics(doc);
+
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].message, i18n.get('lineExceeds80Characters', 81));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+    it('registers the first-run health status command', () => {
+        const context = {
+            subscriptions: [],
+            globalState: {
+                get: () => undefined,
+                update: () => Promise.resolve(),
+            },
+        };
+        const disposable = { dispose() {} };
+        const registeredCommands = [];
+        const originalRegisterCommand = vscodeMock.commands.registerCommand;
+        const originalRegisterTreeDataProvider = vscodeMock.window.registerTreeDataProvider;
+        const originalOnDidChangeActiveTextEditor = vscodeMock.window.onDidChangeActiveTextEditor;
+        const originalOnDidChangeTextEditorSelection = vscodeMock.window.onDidChangeTextEditorSelection;
+        const originalCreateTextEditorDecorationType = vscodeMock.window.createTextEditorDecorationType;
+        const originalRegisterHoverProvider = vscodeMock.languages.registerHoverProvider;
+        const originalRegisterCodeLensProvider = vscodeMock.languages.registerCodeLensProvider;
+
+        vscodeMock.commands.registerCommand = (id, callback) => {
+            registeredCommands.push(id);
+            return disposable;
+        };
+        vscodeMock.window.registerTreeDataProvider = () => disposable;
+        vscodeMock.window.onDidChangeActiveTextEditor = () => disposable;
+        vscodeMock.window.onDidChangeTextEditorSelection = () => disposable;
+        vscodeMock.window.createTextEditorDecorationType = () => disposable;
+        vscodeMock.languages.registerHoverProvider = () => disposable;
+        vscodeMock.languages.registerCodeLensProvider = () => disposable;
+
+        try {
+            extensionModule.activate(context);
+
+            assert.ok(registeredCommands.includes('extension.showHealthStatus'));
+            assert.ok(registeredCommands.includes('extension.lsdynaStatusDashboard'));
+        } finally {
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+            vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
+            vscodeMock.window.onDidChangeActiveTextEditor = originalOnDidChangeActiveTextEditor;
+            vscodeMock.window.onDidChangeTextEditorSelection = originalOnDidChangeTextEditorSelection;
+            vscodeMock.window.createTextEditorDecorationType = originalCreateTextEditorDecorationType;
+            vscodeMock.languages.registerHoverProvider = originalRegisterHoverProvider;
+            vscodeMock.languages.registerCodeLensProvider = originalRegisterCodeLensProvider;
+        }
     });
 });
 

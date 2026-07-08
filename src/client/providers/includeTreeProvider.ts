@@ -200,7 +200,7 @@ class IncludeItem extends vscode.TreeItem {
         }
         
         if (exists) {
-            this.command = { command: 'vscode.open', title: 'Open', arguments: [vscode.Uri.file(filePath)] };
+            this.command = { command: 'vscode.open', title: i18n.get('openFile'), arguments: [vscode.Uri.file(filePath)] };
         }
         applyVividDescription(this, '');
     }
@@ -298,6 +298,10 @@ class LsdynaIncludeTreeProvider {
         this.missingPaths = new Set();
     }
 
+    refresh() {
+        this._onDidChangeTreeData.fire(undefined);
+    }
+
     /**
      * Triggers a workspace scan starting from the active editor document to rebuild the tree.
      * 
@@ -337,7 +341,7 @@ class LsdynaIncludeTreeProvider {
                             scannedCount = partialSnapshot.files.length;
                         }
                         console.log(`[lsdyna progress] Scanned ${scannedCount} files...`);
-                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) || `Scanned ${scannedCount} files...` });
+                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) });
                         this._onDidChangeTreeData.fire(undefined);
                     });
                     this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
