@@ -39,6 +39,7 @@ function customKeywordMatches(keyword, customValidKeywords) {
 }
 
 function builtInKeywordMatches(keyword, schema) {
+    if (/^CASE_(BEGIN|END)_\d+$/.test(keyword)) return true;
     if (validKeywords.has(keyword) || schema[keyword]) return true;
     for (const alias of getAliases(keyword)) {
         if (validKeywords.has(alias) || schema[alias]) return true;
