@@ -1,0 +1,8 @@
+*KEYWORD
+$ E-P05: official integer parameter card form (PRMR, VAL, PRTYP).
+*PARAMETER_TYPE
+I WHLPID 100 PID
+*DEFINE_CURVE
+1001
+0.0 1.0
+*END

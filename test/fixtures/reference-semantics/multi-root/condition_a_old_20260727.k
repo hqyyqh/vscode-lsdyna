@@ -1,0 +1,6 @@
+*KEYWORD
+*PARAMETER
+ICID            9999
+*INCLUDE
+old_curve.k
+*END

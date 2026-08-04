@@ -34,4 +34,40 @@ describe('createProjectDiagnosticStore', () => {
         assert.equal(collection.sets.has(shared), false);
         assert.ok(collection.deletes.includes(shared));
     });
+
+    it('shows only the selected root and suppresses an ambiguous shared file', () => {
+        const { createProjectDiagnosticStore } = require('../../../out/client/services/projectDiagnosticStore');
+        const collection = {
+            sets: new Map(),
+            set(uri, diagnostics) { this.sets.set(uri.fsPath, diagnostics); },
+            delete(uri) { this.sets.delete(uri.fsPath); },
+        };
+        const rootA = '/project/a.k';
+        const rootB = '/project/b.k';
+        const shared = '/project/shared.k';
+        const diagA = { message: 'A' };
+        const diagB = { message: 'B' };
+        let selectedRoot = null;
+        const store = createProjectDiagnosticStore(collection, {
+            resolveRootForFile() {
+                return selectedRoot;
+            },
+        });
+
+        store.publish(rootA, new Map([[shared, [diagA]]]));
+        store.publish(rootB, new Map([[shared, [diagB]]]));
+        assert.equal(collection.sets.has(shared), false);
+
+        selectedRoot = rootA;
+        store.refresh(shared);
+        assert.deepStrictEqual(collection.sets.get(shared), [diagA]);
+
+        selectedRoot = rootB;
+        store.refresh(shared);
+        assert.deepStrictEqual(collection.sets.get(shared), [diagB]);
+
+        selectedRoot = undefined;
+        store.refresh(shared);
+        assert.deepStrictEqual(collection.sets.get(shared), [diagA, diagB]);
+    });
 });

@@ -1,0 +1,682 @@
+:root {
+    color-scheme: light dark;
+    --reader-border: var(--vscode-widget-border, var(--vscode-panel-border));
+    --reader-surface: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    --reader-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+    /* Stable single-row toolbar; ResizeObserver overwrites with measured height. */
+    --reader-toolbar-height: 44px;
+    /* Horizontal inset for full-bleed content (tracks panel width; no fixed column max). */
+    --reader-content-pad-inline: 32px;
+    --reader-toolbar-control: 32px;
+    --reader-toolbar-icon: 20px;
+    --reader-toolbar-radius: 8px;
+    /* Content-only font scale (toolbar chrome stays on --vscode-font-size). */
+    --reader-font-scale: 1;
+}
+
+* { box-sizing: border-box; }
+html {
+    scroll-behavior: smooth;
+    /* Avoid ~15px width thrash when section length toggles the vertical scrollbar. */
+    scrollbar-gutter: stable;
+}
+body {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    margin: 0;
+    overflow-x: hidden;
+}
+button, input, select { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+/* ── Sticky chrome: single row, no wrap thrash ── */
+.reader-toolbar {
+    align-items: center;
+    backdrop-filter: blur(14px) saturate(1.15);
+    background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--reader-border) 85%, transparent);
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    height: var(--reader-toolbar-height);
+    min-height: var(--reader-toolbar-height);
+    /* Match content inset so chrome aligns with full-width reading column. */
+    padding: 0 max(12px, var(--reader-content-pad-inline));
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.reader-progress {
+    background: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
+    bottom: 0;
+    height: 2px;
+    left: 0;
+    overflow: hidden;
+    position: absolute;
+    right: 0;
+}
+.reader-progress i {
+    background: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+    border-radius: 0 1px 1px 0;
+    display: block;
+    height: 100%;
+    transition: width 90ms linear;
+}
+
+.reader-toolbar__navigation,
+.reader-toolbar__actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+}
+
+/* Segmented icon groups — 32px faces, 20px glyphs */
+.reader-toolbar__cluster {
+    align-items: stretch;
+    background: color-mix(in srgb, var(--vscode-editor-foreground) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--reader-border) 90%, transparent);
+    border-radius: var(--reader-toolbar-radius);
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0;
+    height: var(--reader-toolbar-control);
+    padding: 0;
+}
+.reader-toolbar__cluster .reader-toolbar__button {
+    background: transparent;
+    border-radius: 0;
+    color: var(--vscode-editor-foreground);
+    height: 100%;
+    min-height: 0;
+    min-width: var(--reader-toolbar-control);
+    opacity: .95;
+    padding: 0;
+    width: var(--reader-toolbar-control);
+}
+.reader-toolbar__cluster .reader-toolbar__button + .reader-toolbar__button {
+    border-left: 1px solid color-mix(in srgb, var(--reader-border) 70%, transparent);
+}
+.reader-toolbar__cluster .reader-toolbar__button:first-child {
+    border-radius: calc(var(--reader-toolbar-radius) - 1px) 0 0 calc(var(--reader-toolbar-radius) - 1px);
+}
+.reader-toolbar__cluster .reader-toolbar__button:last-child {
+    border-radius: 0 calc(var(--reader-toolbar-radius) - 1px) calc(var(--reader-toolbar-radius) - 1px) 0;
+}
+.reader-toolbar__cluster .reader-toolbar__button:only-child {
+    border-radius: calc(var(--reader-toolbar-radius) - 1px);
+}
+.reader-toolbar__cluster .reader-toolbar__button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
+    opacity: 1;
+}
+.reader-toolbar__cluster .reader-toolbar__button:disabled {
+    opacity: .3;
+}
+
+/*
+ * Single-line identity between nav and actions.
+ * - Title keeps intrinsic width (prefer full section name).
+ * - Crumb absorbs leftover width and ellipsizes only when needed.
+ * - Avoid title { flex:1 } + crumb { max-width:46% }: short titles left a
+ *   large empty flex band while the path was truncated early.
+ */
+.reader-toolbar__identity {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    gap: 6px;
+    justify-content: flex-start;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 4px;
+    white-space: nowrap;
+}
+.reader-toolbar__crumb {
+    color: var(--vscode-descriptionForeground);
+    flex: 1 1 auto;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.reader-toolbar__sep {
+    color: var(--vscode-descriptionForeground);
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 1;
+    opacity: .55;
+    user-select: none;
+}
+.reader-toolbar__title {
+    color: var(--vscode-editor-foreground);
+    flex: 0 1 auto;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    line-height: 1.2;
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Icon-only = fixed square; text/lang grow width only */
+.reader-toolbar__button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--reader-toolbar-radius);
+    box-sizing: border-box;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    flex-shrink: 0;
+    gap: 5px;
+    height: var(--reader-toolbar-control);
+    justify-content: center;
+    line-height: 0;
+    margin: 0;
+    min-height: var(--reader-toolbar-control);
+    min-width: var(--reader-toolbar-control);
+    padding: 0;
+    transition: background 80ms ease, border-color 80ms ease, opacity 80ms ease;
+    width: var(--reader-toolbar-control);
+}
+.reader-toolbar__button svg,
+.reader-toolbar__icon {
+    display: block;
+    flex: 0 0 auto;
+    height: var(--reader-toolbar-icon) !important;
+    overflow: visible;
+    width: var(--reader-toolbar-icon) !important;
+}
+.reader-toolbar__button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
+}
+.reader-toolbar__button:disabled {
+    cursor: default;
+    opacity: .38;
+}
+.reader-toolbar__button--text {
+    border-color: color-mix(in srgb, var(--reader-border) 90%, transparent);
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    line-height: 1;
+    min-width: auto;
+    padding: 0 10px 0 8px;
+    width: auto;
+}
+.reader-toolbar__button--text:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--vscode-editor-foreground) 22%, transparent);
+    color: var(--vscode-editor-foreground);
+}
+.reader-toolbar__btn-label {
+    line-height: 1;
+}
+.reader-toolbar__button--lang {
+    height: var(--reader-toolbar-control);
+    min-width: auto;
+    padding: 0;
+    width: auto;
+}
+.reader-toolbar__lang-pill {
+    align-items: center;
+    background: color-mix(in srgb, var(--vscode-badge-background, var(--vscode-button-secondaryBackground)) 88%, transparent);
+    border-radius: 999px;
+    color: var(--vscode-badge-foreground, var(--vscode-button-secondaryForeground));
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 600;
+    height: calc(var(--reader-toolbar-control) - 6px);
+    justify-content: center;
+    letter-spacing: .03em;
+    line-height: 1;
+    min-width: 2.4em;
+    padding: 0 10px;
+    text-align: center;
+}
+.reader-toolbar__button--lang:hover:not(:disabled) {
+    background: transparent;
+}
+.reader-toolbar__button--lang:hover:not(:disabled) .reader-toolbar__lang-pill {
+    filter: brightness(1.08);
+}
+.reader-toolbar__button--search {
+    background: color-mix(in srgb, var(--vscode-button-secondaryBackground) 70%, transparent);
+    border-color: color-mix(in srgb, var(--reader-border) 80%, transparent);
+    color: var(--vscode-editor-foreground);
+}
+.reader-toolbar__button--search:hover:not(:disabled) {
+    background: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent));
+    border-color: transparent;
+}
+
+.reader-search-popover {
+    background: var(--reader-surface);
+    border: 1px solid var(--reader-border);
+    border-radius: 7px;
+    box-shadow: var(--reader-shadow);
+    left: 50%;
+    max-height: min(480px, calc(100vh - var(--reader-toolbar-height) - 20px));
+    overflow: hidden;
+    padding: 8px;
+    position: fixed;
+    top: calc(var(--reader-toolbar-height) + 6px);
+    transform: translateX(-50%);
+    width: min(760px, calc(100vw - 32px));
+    z-index: 12;
+}
+.reader-search-controls { display: flex; gap: 6px; align-items: center; }
+.reader-search-input-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+.reader-search-controls input {
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--reader-border));
+    border-radius: 4px;
+    color: var(--vscode-input-foreground);
+    min-width: 0;
+    padding: 5px 8px;
+}
+.reader-search-input-wrap input {
+    box-sizing: border-box;
+    width: 100%;
+    padding-right: 84px;
+}
+.reader-search-mode-toggle {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    box-sizing: border-box;
+    width: 76px;
+    padding: 2px 6px;
+    border: 1px solid var(--vscode-input-border, var(--reader-border));
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+.reader-search-mode-toggle:hover {
+    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-foreground);
+}
+/* Weak selected: badge/list tokens — avoid primary button blue in dark themes */
+.reader-search-mode-toggle[aria-pressed="true"] {
+    background: var(--vscode-badge-background, var(--vscode-list-inactiveSelectionBackground));
+    color: var(--vscode-badge-foreground, var(--vscode-foreground));
+    border-color: var(--vscode-list-inactiveSelectionBackground, transparent);
+}
+.reader-search-controls > button, .reader-request-banner button, .reader-loading button {
+    background: var(--vscode-button-background);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--vscode-button-foreground);
+    cursor: pointer;
+    padding: 5px 9px;
+}
+.reader-search-controls > button:hover, .reader-request-banner button:hover, .reader-loading button:hover { background: var(--vscode-button-hoverBackground); }
+.reader-search-summary { color: var(--vscode-descriptionForeground); font-size: 12px; min-height: 26px; padding: 8px 4px 4px; }
+.reader-search-results { max-height: 380px; overflow: auto; }
+.reader-search-results button { background: transparent; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; display: block; padding: 8px 10px; text-align: left; width: 100%; }
+.reader-search-results button[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); color: var(--vscode-list-activeSelectionForeground); }
+.reader-search-results strong, .reader-search-results small { display: block; }
+.reader-search-results small { color: var(--vscode-descriptionForeground); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-search-results mark { background: var(--vscode-editor-findMatchHighlightBackground); color: inherit; }
+
+/* Full panel width: no fixed max-width column; only horizontal padding. */
+.reader-content, .reader-footer {
+    box-sizing: border-box;
+    margin: 0;
+    max-width: none;
+    padding-left: var(--reader-content-pad-inline);
+    padding-right: var(--reader-content-pad-inline);
+    width: 100%;
+}
+.reader-content {
+    font-size: calc(var(--vscode-font-size) * var(--reader-font-scale));
+    min-height: calc(100vh - 120px);
+    padding-bottom: 48px;
+    padding-top: 28px;
+}
+.reader-footer {
+    border-top: 1px solid var(--reader-border);
+    color: var(--vscode-descriptionForeground);
+    font-size: calc(var(--vscode-font-size) * var(--reader-font-scale) * 0.92);
+    padding-bottom: 36px;
+    padding-top: 14px;
+}
+
+/* Compact font-scale cluster in the toolbar (chrome stays unscaled). */
+.reader-toolbar__cluster--font-scale .reader-toolbar__button--font-scale-label {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    min-width: 2.75rem;
+    width: auto;
+    padding: 0 4px;
+}
+.reader-error { background: var(--vscode-inputValidation-errorBackground, var(--reader-surface)); border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); border-radius: 6px; color: var(--vscode-errorForeground); padding: 12px; }
+.reader-request-banner {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin: 8px var(--reader-content-pad-inline);
+    max-width: none;
+    width: auto;
+}
+.reader-pending { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.reader-loading { display: grid; gap: 14px; justify-items: start; }
+.reader-skeleton { display: grid; gap: 12px; width: 100%; }
+.reader-skeleton i { animation: reader-pulse 1.4s ease-in-out infinite; background: var(--vscode-editorWidget-background); border-radius: 4px; display: block; height: 18px; width: 100%; }
+.reader-skeleton i:first-child { height: 32px; width: 52%; }
+.reader-skeleton i:nth-child(3) { width: 88%; }
+@keyframes reader-pulse { 50% { opacity: .45; } }
+
+/*
+ * github-markdown-css switches light/dark via prefers-color-scheme (and
+ * data-theme). VS Code webviews follow --vscode-* + body.vscode-dark/light,
+ * which often diverge from the OS scheme — tables/code then keep GitHub
+ * light cells on a dark editor background.
+ *
+ * Remap Primer-style tokens onto VS Code theme tokens (this file loads after
+ * github-markdown.css so these win the cascade). Keep layout from GFM CSS.
+ */
+.markdown-body {
+    /* Surfaces & type */
+    --bgColor-default: transparent;
+    --bgColor-muted: var(--vscode-textCodeBlock-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+    --bgColor-neutral-muted: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent);
+    --bgColor-attention-muted: var(--vscode-inputValidation-warningBackground, color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 14%, transparent));
+    --bgColor-danger-muted: var(--vscode-inputValidation-errorBackground, color-mix(in srgb, var(--vscode-errorForeground) 14%, transparent));
+    --fgColor-default: var(--vscode-editor-foreground);
+    --fgColor-muted: var(--vscode-descriptionForeground);
+    --fgColor-accent: var(--vscode-textLink-foreground);
+    --fgColor-attention: var(--vscode-editorWarning-foreground, var(--vscode-inputValidation-warningForeground, #cca700));
+    --fgColor-danger: var(--vscode-errorForeground);
+    --fgColor-success: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #89d185));
+    --fgColor-done: var(--vscode-charts-purple, var(--vscode-symbolIcon-keywordForeground, #c586c0));
+    /* Borders & focus */
+    --borderColor-default: var(--reader-border);
+    --borderColor-muted: color-mix(in srgb, var(--reader-border) 85%, transparent);
+    --borderColor-neutral-muted: color-mix(in srgb, var(--reader-border) 70%, transparent);
+    --borderColor-accent-emphasis: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+    --borderColor-attention-emphasis: var(--vscode-editorWarning-foreground, #cca700);
+    --borderColor-danger-emphasis: var(--vscode-errorForeground);
+    --borderColor-success-emphasis: var(--vscode-testing-iconPassed, #89d185);
+    --borderColor-done-emphasis: var(--vscode-charts-purple, #c586c0);
+    --focus-outlineColor: var(--vscode-focusBorder);
+    /* Typography: inherit workbench fonts (github-markdown forces 16px system UI) */
+    --fontStack-sansSerif: var(--vscode-font-family);
+    --fontStack-monospace: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    background: transparent;
+    color: var(--vscode-editor-foreground);
+    font-family: inherit;
+    /* em so headings/tables follow .reader-content scale (rem would ignore it). */
+    font-size: 1em;
+    line-height: 1.78;
+    overflow-wrap: break-word;
+}
+.markdown-body a {
+    color: var(--vscode-textLink-foreground);
+}
+.markdown-body a:hover {
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+.markdown-body h1 { font-size: clamp(1.75em, 4vw, 2.2em); letter-spacing: -.02em; }
+.markdown-body h2 { border-bottom-color: var(--reader-border); font-size: 1.55em; margin-top: 2.2em; }
+.markdown-body h3 { font-size: 1.25em; margin-top: 1.8em; }
+/* KaTeX inherits text color; keep display math readable on themed backgrounds */
+.markdown-body .katex,
+.markdown-body .katex-display {
+    color: var(--vscode-editor-foreground);
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6, .markdown-body a[id] {
+    scroll-margin-top: calc(var(--reader-toolbar-height) + 16px);
+}
+/* Tables: local horizontal scroll only; kind modifiers come from pack markers
+   (<!-- manual-table:card-grid|variable-desc -->) or header inference. */
+.reader-table-scroll {
+    margin: 1.25em 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    /* Edge fade hints more content when the region can scroll horizontally. */
+    background:
+        linear-gradient(to right, var(--vscode-editor-background) 30%, transparent) left center / 16px 100% no-repeat,
+        linear-gradient(to left, var(--vscode-editor-background) 30%, transparent) right center / 16px 100% no-repeat,
+        var(--vscode-editor-background);
+    background-attachment: local, local, scroll;
+}
+.reader-table-scroll:focus-visible { outline-offset: -2px; }
+.markdown-body .reader-table-scroll table {
+    display: table;
+    margin: 0;
+    min-width: 100%;
+    width: 100%;
+    border-collapse: collapse;
+}
+.markdown-body .reader-table-scroll th,
+.markdown-body .reader-table-scroll td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+    word-break: normal;
+}
+.markdown-body .reader-table-scroll th code,
+.markdown-body .reader-table-scroll td code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+/* Prose / default: fill the content column and wrap long DESCRIPTION cells. */
+.markdown-body .reader-table-scroll.reader-table--prose table,
+.markdown-body .reader-table-scroll.reader-table--default table {
+    width: 100%;
+    max-width: 100%;
+}
+/* Variable column (variable-desc): content-sized up to 2× prior 12ch cap. */
+.markdown-body .reader-table-scroll.reader-table--prose th:first-child,
+.markdown-body .reader-table-scroll.reader-table--prose td:first-child {
+    max-width: 24ch;
+    width: max-content;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+/* Field tokens are usually <code>; keep them single-line inside Variable column. */
+.markdown-body .reader-table-scroll.reader-table--prose th:first-child code,
+.markdown-body .reader-table-scroll.reader-table--prose td:first-child code {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+/* Card grids: natural width + scroll; keep short field labels from wrapping. */
+.markdown-body .reader-table-scroll.reader-table--grid table {
+    width: max-content;
+    max-width: none;
+}
+.markdown-body .reader-table-scroll.reader-table--grid th,
+.markdown-body .reader-table-scroll.reader-table--grid td {
+    overflow-wrap: normal;
+    white-space: nowrap;
+}
+.markdown-body .reader-table-scroll.reader-table--grid th:first-child,
+.markdown-body .reader-table-scroll.reader-table--grid td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--vscode-editor-background);
+    box-shadow: 1px 0 0 var(--reader-border);
+}
+.markdown-body thead th {
+    background: var(--vscode-editor-background);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.markdown-body .reader-table-scroll.reader-table--grid thead th:first-child {
+    z-index: 3;
+}
+.markdown-body pre { max-width: 100%; overflow: auto; overscroll-behavior-inline: contain; }
+.markdown-body code { overflow-wrap: anywhere; }
+.markdown-body pre code { overflow: visible; overflow-wrap: normal; }
+.markdown-body .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: .25em 0; }
+.markdown-body .reader-table-scroll .katex-display { max-width: 100%; }
+.reader-image-trigger { background: transparent; border: 0; cursor: zoom-in; display: block; margin: 1em auto; max-width: 100%; padding: 0; }
+.markdown-body .reader-image-trigger img { background: var(--reader-surface); border: 1px solid var(--reader-border); border-radius: 6px; display: block; height: auto; margin-inline: auto; max-width: 100%; object-fit: contain; }
+.reader-image-unavailable { display: none; }
+.bilingual-text { border-bottom: 1px dashed transparent; border-radius: 3px; }
+.translation-peek .bilingual-text { background: var(--vscode-list-hoverBackground); border-bottom-color: var(--vscode-textLink-foreground); }
+.reader-translation-hint { color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-bottom: 12px; }
+.translation-tooltip { background: var(--vscode-editorHoverWidget-background, var(--reader-surface)); border: 1px solid var(--vscode-editorHoverWidget-border, var(--reader-border)); border-radius: 6px; box-shadow: var(--reader-shadow); color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground)); display: flex; gap: 10px; max-height: 36vh; max-width: min(620px, calc(100vw - 24px)); overflow: auto; padding: 9px 11px; position: fixed; white-space: pre-wrap; width: max-content; z-index: 20; }
+.translation-tooltip--pinned { border-color: var(--vscode-focusBorder); }
+.translation-tooltip button { align-self: start; background: transparent; border: 0; color: inherit; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 2px; }
+/* Classic lightbox: always dim with a dark scrim so light themes still isolate the image. */
+.reader-lightbox {
+    align-items: center;
+    background: rgba(0, 0, 0, 0.78);
+    cursor: zoom-out;
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    /* Keep wheel/trackpad gestures from chaining into the document behind the modal. */
+    overscroll-behavior: contain;
+    padding: 52px 20px 20px;
+    position: fixed;
+    touch-action: none;
+    z-index: 100;
+}
+.reader-lightbox__toolbar {
+    align-items: center;
+    background: var(--reader-surface);
+    border: 1px solid var(--reader-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    cursor: default;
+    display: flex;
+    gap: 6px;
+    padding: 5px;
+    position: absolute;
+    right: 16px;
+    top: 12px;
+    z-index: 2;
+}
+.reader-lightbox__toolbar button { background: var(--vscode-button-secondaryBackground); border: 1px solid transparent; border-radius: 3px; color: var(--vscode-button-secondaryForeground); cursor: pointer; min-height: 30px; min-width: 34px; }
+.reader-lightbox__toolbar output { color: var(--vscode-descriptionForeground); min-width: 48px; text-align: center; }
+.reader-lightbox__figure { display: grid; height: 100%; margin: 0; max-width: 100%; place-items: center; width: 100%; }
+.reader-lightbox__stage { align-items: center; display: flex; height: min(78vh, 900px); justify-content: center; overflow: hidden; touch-action: none; width: 100%; }
+.reader-lightbox__stage img {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    cursor: grab;
+    max-height: 100%;
+    max-width: 100%;
+    transform-origin: center;
+    user-select: none;
+}
+.reader-lightbox__stage img:active { cursor: grabbing; }
+.reader-lightbox figcaption {
+    background: rgba(0, 0, 0, 0.62);
+    border-radius: 4px;
+    bottom: 10px;
+    color: rgba(255, 255, 255, 0.92);
+    max-width: calc(100vw - 40px);
+    padding: 5px 9px;
+    position: absolute;
+    text-align: center;
+    z-index: 2;
+}
+/* Same glyph family as toolbar (SVG + --reader-toolbar-icon); flex-center the 20px icon in the FAB. */
+.reader-back-to-top {
+    align-items: center;
+    background: var(--vscode-button-background);
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 50%;
+    bottom: 18px;
+    box-shadow: var(--reader-shadow);
+    color: var(--vscode-button-foreground);
+    cursor: pointer;
+    display: inline-flex;
+    height: 38px;
+    justify-content: center;
+    line-height: 0;
+    padding: 0;
+    position: fixed;
+    right: 18px;
+    width: 38px;
+    z-index: 9;
+}
+.reader-back-to-top:hover {
+    background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+.reader-back-to-top .reader-toolbar__icon {
+    display: block;
+    flex: 0 0 auto;
+    height: var(--reader-fab-icon, var(--reader-toolbar-icon)) !important;
+    overflow: visible;
+    width: var(--reader-fab-icon, var(--reader-toolbar-icon)) !important;
+}
+
+/* Keep a single row at all widths — never wrap identity under nav (that caused jump). */
+@media (max-width: 760px) {
+    :root { --reader-content-pad-inline: 18px; }
+    .reader-toolbar { gap: 8px; padding-inline: 10px; }
+    .reader-toolbar__btn-label { display: none; }
+    .reader-toolbar__button--text {
+        min-width: var(--reader-toolbar-control);
+        padding: 0;
+        width: var(--reader-toolbar-control);
+    }
+    .reader-search-popover { border-left: 0; border-radius: 0; border-right: 0; left: 0; right: 0; transform: none; width: 100%; }
+}
+
+@media (max-width: 560px) {
+    /* Drop crumb first; keep section title on the same row. */
+    .reader-toolbar__crumb,
+    .reader-toolbar__sep { display: none; }
+}
+
+@media (max-width: 480px) {
+    :root { --reader-content-pad-inline: 12px; }
+    .reader-toolbar { gap: 6px; padding-inline: 8px; }
+    .reader-toolbar__identity { display: none; }
+    .reader-toolbar__actions { margin-left: auto; }
+    .reader-content { padding-top: 18px; }
+}
+
+@media (forced-colors: active) {
+    .reader-toolbar, .reader-table-scroll, .markdown-body img, .reader-results, .reader-error { border: 1px solid CanvasText; }
+    .reader-toolbar__button, .reader-search-controls button { border-color: ButtonText; }
+    .reader-toolbar__cluster { border: 1px solid CanvasText; background: transparent; }
+    .reader-toolbar__button--text,
+    .reader-toolbar__button--search { border: 1px solid ButtonText; }
+    .reader-toolbar__lang-pill { border: 1px solid ButtonText; }
+    .bilingual-text { border-bottom-color: LinkText; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
+}

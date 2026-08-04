@@ -49,6 +49,7 @@ describe('projectIndexer', () => {
         const searchA = path.join(tempRoot, 'search-a');
         const searchB = path.join(tempRoot, 'search-b');
         fs.writeFileSync(rootFile, '*INCLUDE\nmissing.key\n', 'utf8');
+        // Legacy mock searchPaths omit dirname seed; effective paths always prepend dirname(file).
         const indexer = createProjectIndexer({
             collectIncludeDirectivesFromFile: async () => ({
                 includeEntries: [{ fileName: 'missing.key', lineIndex: 1, startChar: 0, endChar: 11 }],
@@ -61,6 +62,7 @@ describe('projectIndexer', () => {
             const snapshot = await indexer.buildProjectIndex(rootFile);
 
             assert.deepStrictEqual(snapshot.missingFiles[0].candidatePaths, [
+                path.resolve(path.dirname(rootFile), 'missing.key'),
                 path.resolve(searchA, 'missing.key'),
                 path.resolve(searchB, 'missing.key'),
             ]);
@@ -135,6 +137,44 @@ describe('projectIndexer', () => {
 
             assert.deepEqual(snapshot.graph.getChildren(rootFile), [childFile]);
             assert.deepEqual(snapshot.graph.getParents(childFile), [rootFile]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps repeated transformed includes as distinct occurrences while aggregating the file graph', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-occurrences-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.key');
+        const transformBlock = idfoff => [
+            '*INCLUDE_TRANSFORM',
+            'child.key',
+            `0 0 0 0 0 ${idfoff} 0`,
+            '0',
+            '1 1 1 1 1',
+            '0',
+        ].join('\n');
+        fs.writeFileSync(rootFile, `${transformBlock(0)}\n${transformBlock(100)}\n*END\n`, 'utf8');
+        fs.writeFileSync(childFile, '*DEFINE_CURVE\n1\n0 0\n*END\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+            const occurrences = snapshot.graph.includeOccurrences.filter(item =>
+                item.fromFile === rootFile && item.filePath === childFile
+            );
+
+            assert.deepEqual(snapshot.graph.getChildren(rootFile), [childFile]);
+            assert.equal(snapshot.graph.getIncludeEntries(rootFile).length, 1);
+            assert.equal(occurrences.length, 2);
+            assert.notEqual(occurrences[0].occurrenceId, occurrences[1].occurrenceId);
+            assert.deepEqual(
+                occurrences.map(item => item.transform.offsets.idfoff.value),
+                [0, 100]
+            );
+            assert.deepEqual(
+                occurrences.map(item => item.lineIndex),
+                [1, 7]
+            );
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
@@ -315,6 +355,7 @@ describe('projectIndexer', () => {
             assert.deepEqual(initialSnapshot.stats, {
                 scannedFileCount: 3,
                 reusedFileCount: 0,
+                includeOccurrenceCount: 2,
             });
 
             signatures.set(bFile, { mtimeMs: 20, size: 300 });
@@ -324,6 +365,7 @@ describe('projectIndexer', () => {
             assert.deepEqual(updatedSnapshot.stats, {
                 scannedFileCount: 1,
                 reusedFileCount: 2,
+                includeOccurrenceCount: 2,
             });
             assert.deepEqual(updatedSnapshot.keywordMap.get('PART').map(entry => entry.filePath), [aFile]);
             assert.deepEqual(updatedSnapshot.keywordMap.get('SECTION').map(entry => entry.filePath), [bFile]);
@@ -400,6 +442,81 @@ describe('projectIndexer', () => {
             // shared.key should appear once in files (deduplication)
             assert.deepEqual(snapshot.files.sort(), [rootFile, sharedFile].sort());
             assert.equal(snapshot.stats.scannedFileCount, 2);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('inherits *INCLUDE_PATH from main so child short names resolve (vehicle deck pattern)', async () => {
+        // Expert pattern: PATH only on main; body.k uses bare steel.k under mats/
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ancestor-path-'));
+        const matsDir = path.join(tempRoot, 'mats');
+        const rootFile = path.join(tempRoot, 'main.k');
+        const bodyFile = path.join(tempRoot, 'body.k');
+        const steelFile = path.join(matsDir, 'steel.k');
+
+        fs.mkdirSync(matsDir);
+        // RELATIVE so mats is resolved against main's directory (vehicle relative PATH habit).
+        fs.writeFileSync(rootFile, '*INCLUDE_PATH_RELATIVE\nmats\n*INCLUDE\nbody.k\n', 'utf8');
+        fs.writeFileSync(bodyFile, '*INCLUDE\nsteel.k\n', 'utf8');
+        fs.writeFileSync(steelFile, '*MAT_ELASTIC\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.deepEqual(snapshot.files.sort(), [rootFile, bodyFile, steelFile].sort());
+            assert.deepEqual(snapshot.missingFiles, []);
+            assert.deepEqual(snapshot.graph.getChildren(bodyFile), [steelFile]);
+
+            assert.ok(snapshot.effectiveSearchPathsByFile instanceof Map);
+            const bodyPaths = snapshot.effectiveSearchPathsByFile.get(bodyFile);
+            assert.ok(Array.isArray(bodyPaths), 'body should have effective search paths');
+            const matsAbs = path.normalize(matsDir);
+            assert.ok(
+                bodyPaths.some(p => path.normalize(p) === matsAbs),
+                `expected mats in body effective paths, got ${JSON.stringify(bodyPaths)}`
+            );
+
+            // Without ancestor context (file-local only), steel.k is not found from body dir.
+            const includeScanner = require('../../../src/core/parser/includeScanner');
+            const local = await includeScanner.collectIncludeDirectivesFromFile(bodyFile);
+            const localHit = await resolveIncludeFromSearchPathsAsync('steel.k', local.searchPaths, new Map());
+            assert.equal(localHit, null, 'local-only scan of body must not find steel.k');
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('inherits *INCLUDE_PATH declared on intermediate setup (main → setup → body)', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-setup-path-'));
+        const setupDir = path.join(tempRoot, 'setup');
+        const matsDir = path.join(tempRoot, 'mats');
+        const rootFile = path.join(tempRoot, 'main.k');
+        const setupFile = path.join(setupDir, 'paths.k');
+        const bodyFile = path.join(tempRoot, 'body.k');
+        const steelFile = path.join(matsDir, 'steel.k');
+
+        fs.mkdirSync(setupDir);
+        fs.mkdirSync(matsDir);
+        fs.writeFileSync(rootFile, '*INCLUDE\nsetup/paths.k\n', 'utf8');
+        // PATH relative to setup/ → ../mats
+        fs.writeFileSync(setupFile, '*INCLUDE_PATH_RELATIVE\n../mats\n*INCLUDE\n../body.k\n', 'utf8');
+        fs.writeFileSync(bodyFile, '*INCLUDE\nsteel.k\n', 'utf8');
+        fs.writeFileSync(steelFile, '*MAT_ELASTIC\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+
+            assert.ok(snapshot.files.includes(steelFile), 'steel.k must resolve via setup PATH');
+            assert.deepEqual(snapshot.missingFiles, []);
+            assert.deepEqual(snapshot.graph.getChildren(bodyFile), [steelFile]);
+
+            const bodyPaths = snapshot.effectiveSearchPathsByFile.get(bodyFile);
+            const matsAbs = path.normalize(matsDir);
+            assert.ok(
+                bodyPaths && bodyPaths.some(p => path.normalize(p) === matsAbs),
+                `expected mats in body effective paths, got ${JSON.stringify(bodyPaths)}`
+            );
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }

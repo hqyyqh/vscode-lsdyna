@@ -39,6 +39,7 @@ describe('createHealthService', () => {
             pathModule: path.posix,
             platform: 'win32',
             cwd: '/ws',
+            execPath: '/vscode/Code',
             extensionPath: '/ext',
             getManualsDir: () => 'manuals',
             getManualFilesCount: () => 2,
@@ -68,6 +69,43 @@ describe('createHealthService', () => {
         assert.ok(report.items.every(item => item.state === 'ready'));
     });
 
+    it('reports ready when PDFs and SumatraPDF live in a packaged pdf/ subfolder', () => {
+        const fsMock = createFakeFileSystem({
+            directories: ['/ws/manuals', '/ws/manuals/pdf'],
+            files: {
+                '/ws/manuals': [],
+                '/ws/manuals/pdf': ['keyword.pdf', 'vol2.PDF', 'SumatraPDF.exe'],
+            },
+        });
+        const service = createHealthService({
+            fs: fsMock,
+            pathModule: path.posix,
+            platform: 'win32',
+            cwd: '/ws',
+            execPath: '/vscode/Code',
+            extensionPath: '/ext',
+            getManualsDir: () => 'manuals',
+            getManualFilesCount: () => 2,
+            getKeywordDatabaseReady: () => true,
+            getProjectToolsReady: () => true,
+        });
+
+        const report = service.getReport({
+            isLsdyna: true,
+            document: { languageId: 'lsdyna', uri: { fsPath: '/ws/main.k' } },
+            workspaceFolders: [{ uri: { fsPath: '/ws' } }],
+        });
+
+        const itemsById = Object.fromEntries(report.items.map(item => [item.id, item]));
+        assert.strictEqual(report.ready, true);
+        assert.strictEqual(report.issueCount, 0);
+        assert.strictEqual(itemsById.manualsDir.state, 'ready');
+        assert.strictEqual(itemsById.pdfFiles.state, 'ready');
+        assert.strictEqual(itemsById.pdfFiles.metadata.pdfCount, 2);
+        assert.strictEqual(itemsById.sumatra.state, 'ready');
+        assert.strictEqual(itemsById.sumatra.metadata.sumatraPath, '/ws/manuals/pdf/SumatraPDF.exe');
+    });
+
     it('reports setup warnings without running project scans or parsing PDFs', () => {
         const fsMock = createFakeFileSystem();
         const service = createHealthService({
@@ -75,6 +113,7 @@ describe('createHealthService', () => {
             pathModule: path.posix,
             platform: 'win32',
             cwd: '/ws',
+            execPath: '/vscode/Code',
             extensionPath: '/ext',
             getManualsDir: () => 'missing-manuals',
             getManualFilesCount: () => 0,
@@ -97,6 +136,61 @@ describe('createHealthService', () => {
         assert.strictEqual(statesById.sumatra, 'warning');
     });
 
+    it('prefers Code.exe manualsDir over workspace when both exist', () => {
+        const fsMock = createFakeFileSystem({
+            directories: [
+                '/portable/manuals',
+                '/portable/manuals/indexes',
+                '/ws/manuals',
+                '/ws/manuals/indexes',
+            ],
+            files: {
+                '/portable/manuals': ['SumatraPDF.exe', 'keyword.pdf'],
+                '/portable/manuals/manifest.json': true,
+                '/ws/manuals': ['other.pdf'],
+                '/ws/manuals/manifest.json': true,
+            },
+        });
+        // createFakeFileSystem treats files keys as paths for existsSync; readdir uses files[dir]
+        fsMock.existsSync = (target) => {
+            const dirs = new Set([
+                '/portable/manuals',
+                '/portable/manuals/indexes',
+                '/ws/manuals',
+                '/ws/manuals/indexes',
+            ]);
+            if (dirs.has(target)) return true;
+            if (target === '/portable/manuals/manifest.json') return true;
+            if (target === '/ws/manuals/manifest.json') return true;
+            return false;
+        };
+        fsMock.readdirSync = (target) => {
+            if (target === '/portable/manuals') return ['SumatraPDF.exe', 'keyword.pdf', 'manifest.json', 'indexes'];
+            if (target === '/ws/manuals') return ['other.pdf', 'manifest.json', 'indexes'];
+            return [];
+        };
+        const service = createHealthService({
+            fs: fsMock,
+            pathModule: path.posix,
+            platform: 'win32',
+            cwd: '/ws',
+            execPath: '/portable/Code.exe',
+            extensionPath: '/ext',
+            getManualsDir: () => 'manuals',
+            getManualFilesCount: () => 1,
+            getKeywordDatabaseReady: () => true,
+            getProjectToolsReady: () => true,
+        });
+        const report = service.getReport({
+            isLsdyna: true,
+            document: { languageId: 'lsdyna', uri: { fsPath: '/ws/main.k' } },
+            workspaceFolders: [{ uri: { fsPath: '/ws' } }],
+        });
+        const manualsItem = report.items.find(item => item.id === 'manualsDir');
+        assert.strictEqual(manualsItem.metadata.resolvedDir, '/portable/manuals');
+        assert.strictEqual(manualsItem.metadata.candidates[0], '/portable/manuals');
+    });
+
     it('caches directory checks until invalidated', () => {
         const fsMock = createFakeFileSystem({
             directories: ['/ws/manuals'],
@@ -109,6 +203,7 @@ describe('createHealthService', () => {
             pathModule: path.posix,
             platform: 'linux',
             cwd: '/ws',
+            execPath: '/vscode/Code',
             extensionPath: '/ext',
             getManualsDir: () => 'manuals',
             getManualFilesCount: () => 1,

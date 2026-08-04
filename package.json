@@ -1,7 +1,7 @@
 {
     "name": "dynasense",
     "displayName": "DynaSense",
-    "description": "Smart LS-DYNA Editor with Syntax Highlighting, Formatting, and Advanced IntelliSense",
+    "description": "%extension.description%",
     "publisher": "hqyyqh",
     "author": "hqyyqh",
     "license": "SEE LICENSE IN LICENSE",
@@ -11,9 +11,9 @@
         "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
     "icon": "images/extension-icon.png",
-    "version": "3.0.13",
+    "version": "3.1.4",
     "engines": {
-        "vscode": "^1.50.0"
+        "vscode": "^1.100.0"
     },
     "activationEvents": [
         "onLanguage:lsdyna",
@@ -23,44 +23,117 @@
         "onCommand:extension.lsdynaShiftTab",
         "onCommand:extension.lsdynaSelectCell",
         "onCommand:extension.lsdynaFormatSelection",
+        "onCommand:extension.lsdynaLineComment",
         "onCommand:extension.jumpToNextKeyword",
         "onCommand:extension.jumpToPreviousKeyword",
         "onCommand:extension.scanIncludeTree",
         "onCommand:extension.scanKeywordIndex",
+        "onCommand:extension.searchIncludeTree",
+        "onCommand:extension.searchKeywordIndex",
         "onCommand:extension.keywordIndexSetLocal",
+        "onCommand:extension.addCustomValidKeyword",
+        "onCommand:extension.manageCustomValidKeywords",
+        "onCommand:extension.addAllUnknownKeywordsInFile",
+        "onCommand:extension.pickSimilarKeywordHelp",
         "onCommand:extension.openToSide",
         "onCommand:extension.revealInExplorer",
+        "onCommand:extension.copyIncludeTreeItem",
         "onCommand:extension.openManual",
+        "onCommand:extension.manual.openReader",
+        "onCommand:extension.manual.openCurrentKeyword",
         "onCommand:extension.openLsdynaReferenceDefinition",
+        "onCommand:extension.selectMainDeckContext",
         "onCommand:extension.lsdynaChooseKeywordOptions",
         "onCommand:extension.configureManualsDir",
         "onCommand:extension.showHealthStatus",
+        "onCommand:extension.showFieldHelpEnglish",
         "onCommand:extension.lsdynaStatusDashboard",
-        "onCommand:extension.lsdynaTab"
+        "onCommand:extension.muteFieldHoverSession",
+        "onCommand:extension.disableFieldHover",
+        "onCommand:extension.toggleFieldHover",
+        "onCommand:extension.lsdynaTab",
+        "onCommand:extension.lsdynaCellDeleteLeft",
+        "onCommand:extension.lsdynaCellDeleteRight",
+        "onCommand:extension.changeMarks.next",
+        "onCommand:extension.changeMarks.previous",
+        "onCommand:extension.changeMarks.resetOrigin",
+        "onCommand:extension.changeMarks.diffSinceOpened",
+        "onCommand:extension.changeMarks.diffUnsaved"
     ],
     "main": "./out/extension.js",
     "categories": [
         "Programming Languages"
     ],
     "scripts": {
-        "compile": "tsc -p .",
+        "compile": "tsc -p . && npm run build:field-help-delta",
+        "build:field-help-delta": "node scripts/generate-field-help-zh-delta.cjs",
         "check:contracts": "node scripts/validate-project-contracts.cjs",
+        "build:webview": "vite build --config webview/manual-reader/vite.config.ts",
+        "typecheck:webview": "tsc --noEmit -p webview/manual-reader/tsconfig.json",
+        "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts",
+        "pretest": "npm run build:webview",
         "watch": "tsc -watch -p .",
         "test": "npm run compile && mocha --require test/register-out.js test/**/*.test.js",
+        "test:editor-safety:host": "npm run compile && node scripts/run-editor-safety-extension-host.cjs",
+        "test:editor-safety:close-dialog": "npm run compile && node scripts/run-editor-safety-close-dialog.cjs",
+        "test:editor-safety:vehicles": "npm run compile && node scripts/run-editor-safety-vehicle-host.cjs",
+        "test:editor-safety:large-files": "npm run compile && node scripts/run-editor-safety-large-file-host.cjs",
         "test:scanner-benchmark": "npm run compile && mocha --require test/register-out.js test/core/scanner/scannerBenchmark.test.js",
-        "package": "npm run compile && vsce package",
-        "vscode:prepublish": "npm run compile"
+        "package": "npm run vscode:prepublish && vsce package",
+        "vscode:prepublish": "npm run build:webview && npm run typecheck:webview && npm run compile"
     },
     "devDependencies": {
+        "@testing-library/jest-dom": "^6.9.1",
+        "@testing-library/react": "^16.3.2",
+        "@testing-library/user-event": "^14.6.1",
         "@types/mocha": "^10.0.10",
         "@types/node": "^22.0.0",
-        "@types/vscode": "^1.50.0",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "@types/vscode": "^1.100.0",
+        "@vitejs/plugin-react": "^6.0.3",
+        "@vscode-elements/elements": "^2.5.1",
+        "@vscode/test-electron": "^2.5.2",
         "@vscode/vsce": "^3.9.2",
+        "github-markdown-css": "^5.9.0",
+        "jsdom": "^29.1.1",
+        "katex": "^0.16.47",
         "mocha": "^11.7.6",
         "ovsx": "^1.0.1",
-        "typescript": "^6.0.3"
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
+        "react-markdown": "^10.1.0",
+        "rehype-katex": "^7.0.1",
+        "rehype-raw": "^7.0.0",
+        "remark-gfm": "^4.0.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.1.4",
+        "vitest": "^4.1.10",
+        "vscode-messenger-webview": "^0.6.1"
     },
     "contributes": {
+        "colors": [
+            {
+                "id": "lsdyna.changeMarks.unsaved",
+                "description": "%colors.changeMarks.unsaved.description%",
+                "defaults": {
+                    "dark": "#e2a03a",
+                    "light": "#b8860b",
+                    "highContrast": "#ffcc00",
+                    "highContrastLight": "#8b6914"
+                }
+            },
+            {
+                "id": "lsdyna.changeMarks.saved",
+                "description": "%colors.changeMarks.saved.description%",
+                "defaults": {
+                    "dark": "#89d185",
+                    "light": "#2e7d32",
+                    "highContrast": "#3ddc84",
+                    "highContrastLight": "#0b6a0b"
+                }
+            }
+        ],
         "viewsContainers": {
             "activitybar": [
                 {
@@ -79,6 +152,11 @@
                 {
                     "id": "lsdynaKeywordIndex",
                     "name": "%views.lsdynaKeywordIndex.name%"
+                },
+                {
+                    "type": "webview",
+                    "id": "lsdynaManuals",
+                    "name": "%views.lsdynaManuals.name%"
                 }
             ]
         },
@@ -204,6 +282,10 @@
                 "title": "%commands.lsdynaSelectCell.title%"
             },
             {
+                "command": "extension.lsdynaLineComment",
+                "title": "%commands.lsdynaLineComment.title%"
+            },
+            {
                 "command": "extension.lsdynaFormatSelection",
                 "title": "%commands.lsdynaFormatSelection.title%"
             },
@@ -228,9 +310,35 @@
                 "icon": "$(list-tree)"
             },
             {
+                "command": "extension.searchIncludeTree",
+                "title": "%commands.searchIncludeTree.title%",
+                "icon": "$(search)"
+            },
+            {
+                "command": "extension.searchKeywordIndex",
+                "title": "%commands.searchKeywordIndex.title%",
+                "icon": "$(search)"
+            },
+            {
                 "command": "extension.keywordIndexSetLocal",
                 "title": "%commands.keywordIndexSetLocal.title%",
                 "icon": "$(file-text)"
+            },
+            {
+                "command": "extension.addCustomValidKeyword",
+                "title": "%commands.addCustomValidKeyword.title%"
+            },
+            {
+                "command": "extension.manageCustomValidKeywords",
+                "title": "%commands.manageCustomValidKeywords.title%"
+            },
+            {
+                "command": "extension.addAllUnknownKeywordsInFile",
+                "title": "%commands.addAllUnknownKeywordsInFile.title%"
+            },
+            {
+                "command": "extension.pickSimilarKeywordHelp",
+                "title": "%commands.pickSimilarKeywordHelp.title%"
             },
             {
                 "command": "extension.openToSide",
@@ -243,14 +351,33 @@
                 "icon": "$(folder-opened)"
             },
             {
+                "command": "extension.copyIncludeTreeItem",
+                "title": "%commands.copyIncludeTreeItem.title%"
+            },
+            {
                 "command": "extension.openManual",
                 "title": "%commands.openManual.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.manual.openReader",
+                "title": "%commands.openManualReader.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.manual.openCurrentKeyword",
+                "title": "%commands.openCurrentKeywordManual.title%",
                 "category": "LS-DYNA"
             },
             {
                 "command": "extension.openLsdynaReferenceDefinition",
                 "title": "%commands.openLsdynaReferenceDefinition.title%",
                 "icon": "$(go-to-file)"
+            },
+            {
+                "command": "extension.selectMainDeckContext",
+                "title": "%commands.selectMainDeckContext.title%",
+                "category": "LS-DYNA"
             },
             {
                 "command": "extension.lsdynaChooseKeywordOptions",
@@ -273,8 +400,61 @@
                 "category": "LS-DYNA"
             },
             {
+                "command": "extension.showFieldHelpEnglish",
+                "title": "%commands.showFieldHelpEnglish.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.muteFieldHoverSession",
+                "title": "%commands.muteFieldHoverSession.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.disableFieldHover",
+                "title": "%commands.disableFieldHover.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.toggleFieldHover",
+                "title": "%commands.toggleFieldHover.title%",
+                "category": "LS-DYNA"
+            },
+            {
                 "command": "extension.lsdynaTab",
                 "title": "%commands.lsdynaTab.title%"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteRight",
+                "title": "%commands.lsdynaCellDeleteRight.title%"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteLeft",
+                "title": "%commands.lsdynaCellDeleteLeft.title%"
+            },
+            {
+                "command": "extension.changeMarks.next",
+                "title": "%commands.changeMarks.next.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.changeMarks.previous",
+                "title": "%commands.changeMarks.previous.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.changeMarks.resetOrigin",
+                "title": "%commands.changeMarks.resetOrigin.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.changeMarks.diffSinceOpened",
+                "title": "%commands.changeMarks.diffSinceOpened.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.changeMarks.diffUnsaved",
+                "title": "%commands.changeMarks.diffUnsaved.title%",
+                "category": "LS-DYNA"
             }
         ],
         "keybindings": [
@@ -291,17 +471,43 @@
             {
                 "command": "extension.lsdynaTab",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !editorHasMultipleSelections && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaShiftTab",
                 "key": "shift+tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !editorHasMultipleSelections && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaSelectCell",
                 "key": "shift+alt+right",
                 "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteRight",
+                "key": "delete",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteLeft",
+                "key": "backspace",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+            },
+            {
+                "command": "extension.changeMarks.next",
+                "key": "alt+f5",
+                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+            },
+            {
+                "command": "extension.changeMarks.previous",
+                "key": "shift+alt+f5",
+                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+            },
+            {
+                "command": "extension.lsdynaLineComment",
+                "key": "ctrl+/",
+                "mac": "cmd+/",
+                "when": "editorTextFocus && editorLangId == 'lsdyna'"
             }
         ],
         "configuration": {
@@ -316,6 +522,55 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.enableTabNavigation.description%"
+                },
+                "lsdyna.enableCellEditProtect": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.enableCellEditProtect.description%"
+                },
+                "lsdyna.enableFieldHover": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.enableFieldHover.description%"
+                },
+                "lsdyna.changeMarks.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.changeMarks.enabled.description%"
+                },
+                "lsdyna.changeMarks.maxLineCount": {
+                    "type": "number",
+                    "default": 100000,
+                    "minimum": 1000,
+                    "maximum": 5000000,
+                    "description": "%config.changeMarks.maxLineCount.description%"
+                },
+                "lsdyna.changeMarks.debounceMs": {
+                    "type": "number",
+                    "default": 250,
+                    "minimum": 0,
+                    "maximum": 5000,
+                    "description": "%config.changeMarks.debounceMs.description%"
+                },
+                "lsdyna.changeMarks.showOverviewRuler": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.changeMarks.showOverviewRuler.description%"
+                },
+                "lsdyna.changeMarks.showLineBackground": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.changeMarks.showLineBackground.description%"
+                },
+                "lsdyna.changeMarks.showMinimap": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.changeMarks.showMinimap.description%"
+                },
+                "lsdyna.navigation.pulseOnJump": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.navigation.pulseOnJump.description%"
                 },
                 "lsdyna.statusBar.level": {
                     "type": "string",
@@ -423,28 +678,80 @@
                         "*CASE_END"
                     ],
                     "description": "%config.customValidKeywords.description%"
+                },
+                "lsdyna.unknownKeywordSeverity": {
+                    "type": "string",
+                    "enum": [
+                        "error",
+                        "warning",
+                        "hint",
+                        "off"
+                    ],
+                    "default": "error",
+                    "enumDescriptions": [
+                        "%config.unknownKeywordSeverity.enumDescriptions.error%",
+                        "%config.unknownKeywordSeverity.enumDescriptions.warning%",
+                        "%config.unknownKeywordSeverity.enumDescriptions.hint%",
+                        "%config.unknownKeywordSeverity.enumDescriptions.off%"
+                    ],
+                    "description": "%config.unknownKeywordSeverity.description%"
+                },
+                "lsdyna.warnLowercaseKeyword": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.warnLowercaseKeyword.description%"
+                },
+                "lsdyna.include.pathCaseCheck": {
+                    "type": "string",
+                    "enum": [
+                        "crossPlatform",
+                        "off",
+                        "strict"
+                    ],
+                    "default": "crossPlatform",
+                    "enumDescriptions": [
+                        "%config.include.pathCaseCheck.enumDescriptions.crossPlatform%",
+                        "%config.include.pathCaseCheck.enumDescriptions.off%",
+                        "%config.include.pathCaseCheck.enumDescriptions.strict%"
+                    ],
+                    "description": "%config.include.pathCaseCheck.description%"
                 }
             }
         },
         "menus": {
             "view/title": [
                 {
+                    "command": "extension.searchIncludeTree",
+                    "when": "view == lsdynaIncludeTree",
+                    "group": "navigation@1"
+                },
+                {
                     "command": "extension.scanIncludeTree",
                     "when": "view == lsdynaIncludeTree",
-                    "group": "navigation"
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "extension.searchKeywordIndex",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "navigation@1"
                 },
                 {
                     "command": "extension.scanKeywordIndex",
                     "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'local'",
-                    "group": "navigation"
+                    "group": "navigation@2"
                 },
                 {
                     "command": "extension.keywordIndexSetLocal",
                     "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'recursive'",
-                    "group": "navigation"
+                    "group": "navigation@2"
                 }
             ],
             "editor/context": [
+                {
+                    "command": "extension.lsdynaLineComment",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "lsdyna@0"
+                },
                 {
                     "command": "extension.lsdynaFormatSelection",
                     "when": "editorLangId == 'lsdyna'",
@@ -488,13 +795,20 @@
                     "command": "extension.revealInExplorer",
                     "when": "view == lsdynaIncludeTree && viewItem == file || view == lsdynaKeywordIndex && viewItem == file",
                     "group": "inline"
+                },
+                {
+                    "command": "extension.copyIncludeTreeItem",
+                    "when": "view == lsdynaIncludeTree && (viewItem == file || viewItem == file-missing)",
+                    "group": "1_copy@1"
                 }
             ]
         }
     },
     "dependencies": {
-        "vscode-languageclient": "^7.0.0",
-        "vscode-languageserver": "^7.0.0"
+        "vscode-languageclient": "^10.1.0",
+        "vscode-languageserver": "^10.1.0",
+        "vscode-messenger": "^0.6.1",
+        "vscode-messenger-common": "^0.6.1"
     },
     "overrides": {
         "serialize-javascript": "^7.0.6",

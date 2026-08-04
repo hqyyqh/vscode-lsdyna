@@ -6,8 +6,9 @@ const vscodeMock = require('./vscode-mock');
 const languageClientMock = {
     LanguageClient: class LanguageClient {
         constructor() {}
-        start() {
-            return { dispose() {} };
+        async start() {
+        }
+        async dispose() {
         }
         sendRequest() {
             return Promise.resolve();

@@ -61,6 +61,10 @@ interface IncludeEntryNode {
     lineIndex?: number;
     startChar?: number;
     endChar?: number;
+    keyword?: string;
+    keywordLine?: number;
+    transform?: any;
+    parameterizedFileName?: boolean;
 }
 
 interface MissingFileRecord {
@@ -71,6 +75,10 @@ interface MissingFileRecord {
     startChar: number;
     endChar: number;
     candidatePaths?: string[];
+    keyword?: string;
+    keywordLine?: number;
+    transform?: any;
+    parameterizedFileName?: boolean;
 }
 
 interface CycleRecord {
@@ -87,6 +95,8 @@ interface CycleRecord {
 class ProjectGraph {
     children: Map<string, string[]>;
     includeEntries: Map<string, IncludeEntryNode[]>;
+    includeOccurrences: any[];
+    includeOccurrencesComplete: boolean;
     parents: Map<string, string[]>;
     missingFiles: MissingFileRecord[];
     cycles: CycleRecord[];
@@ -106,6 +116,14 @@ class ProjectGraph {
          * @type {Map<string, IncludeEntryNode[]>}
          */
         this.includeEntries = new Map();
+
+        /**
+         * Ordered include statements. Unlike children/includeEntries, these are not
+         * collapsed by child file path because one source file may be instantiated
+         * multiple times through *INCLUDE_TRANSFORM.
+         */
+        this.includeOccurrences = [];
+        this.includeOccurrencesComplete = true;
 
         /**
          * Maps a file path to its parent (including) files list.
@@ -151,11 +169,25 @@ class ProjectGraph {
             return;
         }
         const exists = entries.some(candidate =>
-            candidate.filePath === entry.filePath && Boolean(candidate.missing) === Boolean(entry.missing)
+            candidate.filePath === entry.filePath &&
+            Boolean(candidate.missing) === Boolean(entry.missing)
         );
         if (!exists) {
             entries.push(entry);
         }
+    }
+
+    addIncludeOccurrence(fromFile, entry) {
+        const lineIndex = Number.isInteger(entry.lineIndex) ? entry.lineIndex : -1;
+        const occurrenceId = entry.occurrenceId ||
+            `${fromFile}::${lineIndex}::${entry.filePath || entry.fileName || ''}`;
+        const occurrence = {
+            ...entry,
+            occurrenceId,
+            fromFile,
+        };
+        this.includeOccurrences.push(occurrence);
+        return occurrence;
     }
 
     /**
@@ -164,7 +196,7 @@ class ProjectGraph {
      * @param {string} fromFile - Parent file.
      * @param {string} toFile - Child file.
      */
-    addIncludeEdge(fromFile, toFile) {
+    addIncludeEdge(fromFile, toFile, details: IncludeEntryNode | null = null) {
         this.addFile(fromFile);
         this.addFile(toFile);
 
@@ -175,7 +207,11 @@ class ProjectGraph {
             this.parents.get(toFile).push(fromFile);
         }
 
-        this.addIncludeEntry(fromFile, { filePath: toFile });
+        const entry = details
+            ? { ...details, filePath: toFile }
+            : { filePath: toFile };
+        this.addIncludeEntry(fromFile, entry);
+        this.addIncludeOccurrence(fromFile, entry);
     }
 
     /**
@@ -186,14 +222,20 @@ class ProjectGraph {
     addMissingFile(record) {
         this.missingFiles.push(record);
         if (record.fromFile && record.filePath) {
-            this.addIncludeEntry(record.fromFile, {
+            const entry = {
                 filePath: record.filePath,
                 fileName: record.fileName,
                 missing: true,
                 lineIndex: record.lineIndex,
                 startChar: record.startChar,
                 endChar: record.endChar,
-            });
+                keyword: record.keyword,
+                keywordLine: record.keywordLine,
+                transform: record.transform,
+                parameterizedFileName: record.parameterizedFileName,
+            };
+            this.addIncludeEntry(record.fromFile, entry);
+            this.addIncludeOccurrence(record.fromFile, entry);
         }
     }
 
@@ -257,7 +299,15 @@ class ProjectGraph {
             filePath: rootFile,
             children: this.getIncludeEntries(rootFile).map(entry => (
                 entry.missing
-                    ? { ...entry, children: [] }
+                    ? {
+                        filePath: entry.filePath,
+                        fileName: entry.fileName,
+                        missing: true,
+                        ...(Number.isInteger(entry.lineIndex) ? { lineIndex: entry.lineIndex } : {}),
+                        ...(Number.isInteger(entry.startChar) ? { startChar: entry.startChar } : {}),
+                        ...(Number.isInteger(entry.endChar) ? { endChar: entry.endChar } : {}),
+                        children: [],
+                    }
                     : this.toTree(entry.filePath, [...ancestry, rootFile])
             )),
         };
@@ -272,6 +322,8 @@ class ProjectGraph {
         return {
             children: [...this.children.entries()].map(([filePath, childFiles]) => [filePath, [...childFiles]]),
             includeEntries: [...this.includeEntries.entries()].map(([filePath, entries]) => [filePath, [...entries]]),
+            includeOccurrences: [...this.includeOccurrences],
+            includeOccurrencesComplete: this.includeOccurrencesComplete,
             parents: [...this.parents.entries()].map(([filePath, parentFiles]) => [filePath, [...parentFiles]]),
             missingFiles: [...this.missingFiles],
             cycles: [...this.cycles],
@@ -281,13 +333,17 @@ class ProjectGraph {
     /**
      * De-serializes a JSON representation back into a ProjectGraph instance.
      * 
-     * @param {{children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[]}} [data={}] - Plain data object.
+     * @param {{children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, includeOccurrences?: any[], includeOccurrencesComplete?: boolean, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[]}} [data={}] - Plain data object.
      * @returns {ProjectGraph} A new ProjectGraph instance populated with data.
      */
-    static fromJSON(data: { children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[] } = {}) {
+    static fromJSON(data: { children?: Array<[string, string[]]>, includeEntries?: Array<[string, IncludeEntryNode[]]>, includeOccurrences?: any[], includeOccurrencesComplete?: boolean, parents?: Array<[string, string[]]>, missingFiles?: MissingFileRecord[], cycles?: CycleRecord[] } = {}) {
         const graph = new ProjectGraph();
         graph.children = new Map(data.children || []);
         graph.includeEntries = new Map(data.includeEntries || []);
+        graph.includeOccurrences = [...(data.includeOccurrences || [])];
+        graph.includeOccurrencesComplete = typeof data.includeOccurrencesComplete === 'boolean'
+            ? data.includeOccurrencesComplete
+            : Array.isArray(data.includeOccurrences);
         graph.parents = new Map(data.parents || []);
         graph.missingFiles = [...(data.missingFiles || [])];
         graph.cycles = [...(data.cycles || [])];

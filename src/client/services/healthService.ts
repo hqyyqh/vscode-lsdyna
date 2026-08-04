@@ -2,6 +2,11 @@
 
 const fsDefault = require('fs');
 const pathDefault = require('path');
+const {
+    resolveManualDirectoryCandidates,
+    resolveManualsRoot,
+    looksLikeManualPack,
+} = require('../../manual/manualsDirResolve');
 
 type HealthState = 'ready' | 'warning' | 'info';
 
@@ -42,10 +47,6 @@ type HealthReportInput = {
     workspaceFolders?: any[];
 };
 
-function unique(values: string[]): string[] {
-    return [...new Set(values.filter(Boolean))];
-}
-
 function safeCall<T>(callback: () => T, fallback: T): T {
     try {
         return callback();
@@ -72,74 +73,89 @@ function isDocumentInWorkspace(filePath: string, workspaceFolders: any[] = [], p
     });
 }
 
-function resolveManualDirectoryCandidates({
-    manualsDir,
-    workspaceFolders = [],
-    cwd,
-    execPath,
-    appRoot,
-    extensionPath,
-    pathModule = pathDefault,
-}: {
-    manualsDir: string;
-    workspaceFolders?: any[];
-    cwd?: string;
-    execPath?: string;
-    appRoot?: string | null;
-    extensionPath?: string | null;
-    pathModule?: any;
-}): string[] {
-    if (!manualsDir || typeof manualsDir !== 'string') return [];
-    if (pathModule.isAbsolute(manualsDir)) return [manualsDir];
-
-    const candidates = [];
-    if (Array.isArray(workspaceFolders)) {
-        for (const folder of workspaceFolders) {
-            const root = folder && folder.uri && folder.uri.fsPath;
-            if (root) candidates.push(pathModule.resolve(root, manualsDir));
-        }
-    }
-    if (cwd) candidates.push(pathModule.resolve(cwd, manualsDir));
-    if (execPath) candidates.push(pathModule.resolve(pathModule.dirname(execPath), manualsDir));
-    if (appRoot) {
-        candidates.push(pathModule.resolve(appRoot, '../../', manualsDir));
-        candidates.push(pathModule.resolve(appRoot, manualsDir));
-    }
-    if (extensionPath) candidates.push(pathModule.resolve(extensionPath, manualsDir));
-
-    return unique(candidates);
-}
-
 function inspectManualDirectories({
     fs,
     pathModule,
     candidates,
+    resolvedDir,
 }: {
     fs: any;
     pathModule: any;
     candidates: string[];
+    resolvedDir?: string;
 }) {
+    // Prefer the shared root pick (exe-first + pack shape); fall back to first existing.
     const existingDirs = candidates.filter(dir => safeCall(() => fs.existsSync(dir), false));
-    const pdfFiles = [];
+    const preferred =
+        (resolvedDir && existingDirs.includes(resolvedDir) && resolvedDir)
+        || existingDirs.find(dir => looksLikeManualPack(dir, fs, pathModule))
+        || existingDirs[0]
+        || '';
+    // Scan preferred root first so Sumatra/PDF counts match the active pack.
+    const scanOrder = preferred
+        ? [preferred, ...existingDirs.filter(d => d !== preferred)]
+        : existingDirs;
+
+    const pdfFiles: string[] = [];
     let sumatraPath = '';
 
-    for (const dir of existingDirs) {
+    // Align with manualIndexer: when a pack manifest declares PDFs, count only
+    // those. Otherwise one readdir of root + optional pdf/ (legacy layout).
+    let discoverManualPdfFiles: ((dir: string, fsImpl?: any, pathImpl?: any) => string[]) | null = null;
+    try {
+        discoverManualPdfFiles = require('../../manual/packPdf').discoverManualPdfFiles;
+    } catch {
+        discoverManualPdfFiles = null;
+    }
+
+    // Single readdir collects both PDFs and Sumatra (matches prior readdir budget).
+    const scanDir = (dir: string, collectPdfs: boolean) => {
         const entries = safeCall(() => fs.readdirSync(dir), []);
         for (const entry of entries) {
             if (typeof entry !== 'string') continue;
             const fullPath = pathModule.resolve(dir, entry);
-            if (entry.toLowerCase().endsWith('.pdf')) {
-                pdfFiles.push(fullPath);
+            if (collectPdfs && entry.toLowerCase().endsWith('.pdf')) {
+                if (!pdfFiles.includes(fullPath)) pdfFiles.push(fullPath);
             }
-            if (entry.toLowerCase() === 'sumatrapdf.exe') {
+            if (entry.toLowerCase() === 'sumatrapdf.exe' && !sumatraPath) {
                 sumatraPath = fullPath;
+            }
+        }
+    };
+
+    for (const dir of scanOrder) {
+        const manifestFile = pathModule.join(dir, 'manifest.json');
+        let declared: string[] = [];
+        if (
+            typeof discoverManualPdfFiles === 'function'
+            && safeCall(() => fs.existsSync(manifestFile), false)
+        ) {
+            declared = safeCall(() => discoverManualPdfFiles!(dir, fs, pathModule), []) || [];
+        }
+
+        if (declared.length) {
+            for (const fullPath of declared) {
+                const resolved = pathModule.resolve(fullPath);
+                if (!pdfFiles.includes(resolved)) pdfFiles.push(resolved);
+            }
+            // Viewer may still sit at root or under pdf/.
+            scanDir(dir, false);
+            const pdfSubdir = pathModule.join(dir, 'pdf');
+            if (safeCall(() => fs.existsSync(pdfSubdir), false)) {
+                scanDir(pdfSubdir, false);
+            }
+        } else {
+            scanDir(dir, true);
+            const pdfSubdir = pathModule.join(dir, 'pdf');
+            if (safeCall(() => fs.existsSync(pdfSubdir), false)) {
+                scanDir(pdfSubdir, true);
             }
         }
     }
 
     return {
         existingDirs,
-        resolvedDir: existingDirs[0] || '',
+        resolvedDir: preferred,
         pdfFiles,
         pdfCount: pdfFiles.length,
         sumatraPath,
@@ -244,10 +260,21 @@ function createHealthService({
             extensionPath,
             pathModule,
         });
+        const preferredRoot = resolveManualsRoot({
+            manualsDir,
+            workspaceFolders,
+            cwd,
+            execPath,
+            appRoot,
+            extensionPath,
+            pathModule,
+            fs,
+        });
         const manualState = inspectManualDirectories({
             fs,
             pathModule,
             candidates: manualCandidates,
+            resolvedDir: preferredRoot,
         });
         const workspaceReady = isDocumentInWorkspace(filePath, workspaceFolders, pathModule);
         const needsSumatra = platform === 'win32';
@@ -311,6 +338,7 @@ function createHealthService({
 module.exports = {
     createHealthService,
     resolveManualDirectoryCandidates,
+    resolveManualsRoot,
     shouldShowHealthNotice,
 };
 

@@ -6,7 +6,7 @@ const { fakeDoc, vscodeMock } = require('../../helpers');
 const i18n = require('../../../src/core/i18n');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
-const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, alignLineText, formatLineIfNeeded, handleTabAlignment, handleSelectionChange, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics, LsdynaDocumentFormattingEditProvider } = require('../../../src/extension')._internals;
+const { publishProjectDiagnostics, LsdynaFieldCompletionProvider, getCardFieldsForLine, generateCommentLine, handleEnterIndentationRemoval, findNextDataLineInKeywordBlock, planAlignedLine, alignLineText, formatLineIfNeeded, setFormatLineErrorObserverForTesting, handleTabAlignment, handleSelectionChange, handleActiveEditorChangeForFormatting, getPathEntryRange, splitIncludePathEntry, formatPathEntryIfNeeded, collectIncludePathLengthDiagnostics, LsdynaDocumentFormattingEditProvider } = require('../../../src/extension')._internals;
 
 describe('Phase 7 Features', () => {
     describe('LsdynaIncludeTreeProvider Markers', () => {
@@ -53,6 +53,64 @@ describe('Phase 7 Features', () => {
             assert.equal(childItem.description, 'missing');
             assert.equal(childItem.collapsibleState, vscodeMock.TreeItemCollapsibleState.None);
             assert.deepEqual(childItem.iconPath, new vscodeMock.ThemeIcon('warning'));
+        });
+
+        it('listSearchEntries returns unique include nodes with missing flags', () => {
+            const provider = new LsdynaIncludeTreeProvider();
+            provider.root = provider._buildRootFromSnapshot({
+                graph: {
+                    toTree: () => ({
+                        filePath: '/project/main.k',
+                        children: [
+                            {
+                                filePath: '/project/parts.k',
+                                children: [],
+                            },
+                            {
+                                filePath: '/project/missing.k',
+                                missing: true,
+                                children: [],
+                            },
+                            {
+                                // duplicate path should be de-duplicated in search entries
+                                filePath: '/project/parts.k',
+                                children: [],
+                            },
+                        ],
+                    }),
+                },
+            }, '/project/main.k');
+
+            const entries = provider.listSearchEntries();
+            assert.equal(entries.length, 3);
+            assert.equal(entries[0].label, 'main.k');
+            assert.equal(entries[1].label, 'parts.k');
+            assert.equal(entries[2].label, 'missing.k');
+            // Graph-marked missing and on-disk-absent fixtures both surface as missing for search.
+            assert.equal(entries[2].missing, true);
+            assert.equal(provider.getParent(entries[1].treeItem), provider.root);
+            assert.equal(entries[1].treeItem, provider.root.children[0]);
+        });
+
+        it('listSearchEntries returns empty list when tree is not scanned', () => {
+            const provider = new LsdynaIncludeTreeProvider();
+            assert.deepEqual(provider.listSearchEntries(), []);
+        });
+
+        it('getLastScanRootName returns root basename after scan tree is built', () => {
+            const provider = new LsdynaIncludeTreeProvider();
+            assert.strictEqual(provider.getLastScanRootName(), null);
+
+            provider.root = provider._buildRootFromSnapshot({
+                graph: {
+                    toTree: () => ({
+                        filePath: '/project/jobs/front_lh.k',
+                        children: [],
+                    }),
+                },
+            }, '/project/jobs/front_lh.k');
+
+            assert.strictEqual(provider.getLastScanRootName(), 'front_lh.k');
         });
     });
 
@@ -148,6 +206,34 @@ describe('Phase 7 Features', () => {
             assert.equal(provider.roots.length, 2);
             assert.equal(provider.roots[0].label, 'ELEMENT_SHELL');
             assert.equal(provider.roots[1].label, 'NODE');
+        });
+
+        it('listSearchEntries exposes keyword names and usages for QuickPick', () => {
+            const provider = new LsdynaKeywordIndexProvider({
+                shouldSkipAutomaticDocumentScan: () => false,
+            });
+            const keywordMap = new Map([
+                ['PART', [
+                    { filePath: '/project/a.key', lineIndex: 10 },
+                    { filePath: '/project/b.key', lineIndex: 20 },
+                ]],
+                ['NODE', [
+                    { filePath: '/project/a.key', lineIndex: 0 },
+                ]],
+            ]);
+            provider.roots = provider._buildRootsFromKeywordMap(keywordMap, '/project');
+            const entries = provider.listSearchEntries();
+            assert.equal(entries.length, 2);
+            assert.equal(entries[0].keyword, 'NODE');
+            assert.equal(entries[0].usages.length, 1);
+            assert.equal(entries[1].keyword, 'PART');
+            assert.equal(entries[1].usages.length, 2);
+            assert.equal(entries[1].treeItem.label, 'PART');
+        });
+
+        it('listSearchEntries returns empty list when index is empty', () => {
+            const provider = new LsdynaKeywordIndexProvider();
+            assert.deepEqual(provider.listSearchEntries(), []);
         });
     });
 
@@ -332,6 +418,38 @@ describe('Phase 7 Features', () => {
             }
         });
 
+        it('does not resolve a field-header completion across the next keyword boundary', () => {
+            const provider = new LsdynaFieldCompletionProvider();
+            const document = fakeDoc(
+                '*NODE\n' +
+                '       1             0.0             0.0             0.0\n' +
+                '$#\n' +
+                '*SECTION_SHELL\n' +
+                '\n',
+                '/project/main.k'
+            );
+            document.languageId = 'lsdyna';
+
+            const items = provider.provideCompletionItems(
+                document,
+                new vscodeMock.Position(2, 2)
+            );
+
+            assert.deepEqual(items, []);
+        });
+
+        it('finds the next data line in the same block while skipping indented comments', () => {
+            const document = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '$#\n' +
+                '   $ ordinary comment\n' +
+                '         1         2\n',
+                '/project/main.k'
+            );
+
+            assert.equal(findNextDataLineInKeywordBlock(document, 2), 3);
+        });
+
         it('localizes row template completion documentation in Chinese', () => {
             const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
             vscodeMock.workspace.getConfiguration = () => ({
@@ -426,6 +544,54 @@ describe('Phase 7 Features', () => {
             // Restore
             vscodeMock.window.activeTextEditor = originalActiveTextEditor;
         });
+
+        it('clears auto-copied indentation for every cursor or none', async () => {
+            const document = fakeDoc('line 1\n    \nline 2\n\t', '/project/main.k');
+            document.languageId = 'lsdyna';
+            const deletedRanges = [];
+            const activeEditor = {
+                document,
+                edit: async callback => {
+                    callback({ delete: range => deletedRanges.push(range) });
+                    return true;
+                },
+            };
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = activeEditor;
+
+            try {
+                await handleEnterIndentationRemoval({
+                    document,
+                    contentChanges: [
+                        {
+                            range: new vscodeMock.Range(0, 6, 0, 6),
+                            rangeLength: 0,
+                            text: '\n    ',
+                        },
+                        {
+                            range: new vscodeMock.Range(1, 6, 1, 6),
+                            rangeLength: 0,
+                            text: '\n\t',
+                        },
+                    ],
+                });
+
+                assert.deepEqual(
+                    deletedRanges.map(range => [
+                        range.start.line,
+                        range.start.character,
+                        range.end.line,
+                        range.end.character,
+                    ]),
+                    [
+                        [1, 0, 1, 4],
+                        [3, 0, 3, 1],
+                    ],
+                );
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('alignLineText', () => {
@@ -457,9 +623,137 @@ describe('Phase 7 Features', () => {
             const aligned = alignLineText(rawText, cardFields);
             assert.equal(aligned, '     12323        10');
         });
+
+        it('preserves the entire line when a token exceeds its field width', () => {
+            const cardFields = [
+                { n: 'SECID', p: 0, w: 10 },
+                { n: 'MID', p: 10, w: 10 }
+            ];
+            const rawText = '12345678901 2';
+            const result = planAlignedLine(rawText, cardFields);
+
+            assert.equal(result.status, 'unsafe');
+            assert.equal(result.reason, 'field-overflow');
+            assert.equal(result.text, rawText);
+            assert.equal(alignLineText(rawText, cardFields), rawText);
+        });
+
+        it('does not truncate an over-width PRMR value', () => {
+            const cardFields = [
+                { n: 'PRMR1', p: 0, w: 8 },
+                { n: 'VALUE', p: 8, w: 8 }
+            ];
+            const rawText = 'Rparameter_name 2';
+            const result = planAlignedLine(rawText, cardFields);
+
+            assert.equal(result.status, 'unsafe');
+            assert.equal(result.text, rawText);
+        });
+
+        it('keeps safe PRMR normalization behavior when the value fits', () => {
+            const cardFields = [
+                { n: 'PRMR1', p: 0, w: 8 },
+                { n: 'VALUE', p: 8, w: 8 }
+            ];
+            const result = planAlignedLine('Rfoo 2', cardFields);
+
+            assert.equal(result.status, 'aligned');
+            assert.equal(result.text.slice(0, 8), 'R foo   ');
+            assert.equal(result.text.slice(8, 16), '       2');
+        });
+
+        it('still aligns a safe $# field-header line', () => {
+            const cardFields = [
+                { n: 'SECID', p: 0, w: 10 },
+                { n: 'MID', p: 10, w: 10 }
+            ];
+            const result = planAlignedLine('$# secid mid', cardFields, true);
+
+            assert.equal(result.status, 'aligned');
+            assert.equal(result.text, '$#   secid       mid');
+        });
     });
 
     describe('handleTabAlignment', () => {
+        it('fails closed without partially rewriting a multi-cursor edit', async () => {
+            const document = fakeDoc('*NODE\n1\n2\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let selectionSet = false;
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 0),
+                new vscodeMock.Position(1, 0),
+            );
+            const originalSelections = [
+                selectionVal,
+                new vscodeMock.Selection(
+                    new vscodeMock.Position(2, 0),
+                    new vscodeMock.Position(2, 0),
+                ),
+            ];
+            const editor = {
+                document,
+                selections: originalSelections,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(value) {
+                    selectionSet = true;
+                    selectionVal = value;
+                },
+            };
+
+            await handleTabAlignment(editor, 1);
+
+            assert.equal(editCalled, false);
+            assert.equal(selectionSet, false);
+            assert.strictEqual(editor.selections, originalSelections);
+        });
+
+        for (const [label, line] of [
+            ['valid comma-delimited', '1,2,3,4'],
+            ['ambiguous whitespace-collapsed', '1 2 3 4'],
+        ]) {
+            it(`hands a ${label} card back to native Tab without rewriting it`, async () => {
+                const document = fakeDoc(`*NODE\n${line}\n`, '/project/main.k');
+                document.languageId = 'lsdyna';
+                let editCalled = false;
+                let selectionSet = false;
+                let delegatedCommand = null;
+                let selectionVal = new vscodeMock.Selection(
+                    new vscodeMock.Position(1, 0),
+                    new vscodeMock.Position(1, 0),
+                );
+                const editor = {
+                    document,
+                    edit: async () => {
+                        editCalled = true;
+                        return true;
+                    },
+                    get selection() { return selectionVal; },
+                    set selection(value) {
+                        selectionSet = true;
+                        selectionVal = value;
+                    },
+                };
+                const originalExecuteCommand = vscodeMock.commands.executeCommand;
+                vscodeMock.commands.executeCommand = async command => {
+                    delegatedCommand = command;
+                };
+
+                try {
+                    await handleTabAlignment(editor, 1);
+                    assert.equal(editCalled, false);
+                    assert.equal(selectionSet, false);
+                    assert.equal(delegatedCommand, 'tab');
+                } finally {
+                    vscodeMock.commands.executeCommand = originalExecuteCommand;
+                }
+            });
+        }
+
         it('aligns the line and moves the cursor to the next field (with +1 offset for separation if prev field is not empty)', async () => {
             const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
             document.languageId = 'lsdyna';
@@ -494,6 +788,112 @@ describe('Phase 7 Features', () => {
                 assert.equal(selectionVal.active.line, 1);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('uses the invoking caret when an older selection event arrives while Tab is pending', async () => {
+            const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 0),
+                new vscodeMock.Position(1, 0),
+            );
+            const editor = {
+                document,
+                selections: [selectionVal],
+                edit: async callback => {
+                    callback({ replace: () => {} });
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(value) {
+                    selectionVal = value;
+                    this.selections = [value];
+                },
+            };
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+
+            try {
+                const tabPromise = handleTabAlignment(editor, 1);
+                selectionVal = new vscodeMock.Selection(
+                    new vscodeMock.Position(1, 16),
+                    new vscodeMock.Position(1, 16),
+                );
+                editor.selections = [selectionVal];
+                handleSelectionChange({ textEditor: editor });
+                await tabPromise;
+
+                assert.equal(selectionVal.active.line, 1);
+                assert.equal(selectionVal.active.character, 9);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('leaves whitespace-collapsed multi-value lines to native Tab', async () => {
+            const document = fakeDoc('*NODE\n1 2 3 4\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let delegatedCommand = null;
+            let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 0), new vscodeMock.Position(1, 0));
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; },
+            };
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const originalExecuteCommand = vscodeMock.commands.executeCommand;
+            vscodeMock.window.activeTextEditor = editor;
+            vscodeMock.commands.executeCommand = async command => {
+                delegatedCommand = command;
+            };
+            try {
+                await handleTabAlignment(editor, 1);
+                assert.equal(editCalled, false);
+                assert.equal(delegatedCommand, 'tab');
+                assert.equal(selectionVal.active.character, 0);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+                vscodeMock.commands.executeCommand = originalExecuteCommand;
+            }
+        });
+
+        it('hands an unsafe over-width line back to native Tab without guessed navigation', async () => {
+            const document = fakeDoc('*NODE\n123456789 2 3 4\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            let delegatedCommand = null;
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 0),
+                new vscodeMock.Position(1, 0)
+            );
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; },
+            };
+
+            const originalExecuteCommand = vscodeMock.commands.executeCommand;
+            vscodeMock.commands.executeCommand = async command => {
+                delegatedCommand = command;
+            };
+            try {
+                await handleTabAlignment(editor, 1);
+
+                assert.equal(editCalled, false);
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(delegatedCommand, 'tab');
+            } finally {
+                vscodeMock.commands.executeCommand = originalExecuteCommand;
             }
         });
 
@@ -707,17 +1107,111 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('Tab from full previous exclusive end advances to next field (does not skip)', async () => {
+            // *NODE: NID w=8, X w=16. Full NID exclusive end = col 8 = X start.
+            // Without tab-nav ownership, fieldIndexAt(8)=1 → Tab would land on Y (skip X).
+            // With ownership, current=NID → Tab selects X (keep-separator start 9, end 24).
+            const document = fakeDoc('*NODE\n12345678               0               0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 8),
+                new vscodeMock.Position(1, 8)
+            );
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    callback({ replace() {} });
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; },
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            try {
+                await handleTabAlignment(editor, 1);
+                // Selection is built as Selection(selEnd, selStart); active is the nav left edge.
+                assert.equal(selectionVal.active.line, 1);
+                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.anchor.character, 24);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('Tab from empty previous field start still advances (no loop)', async () => {
+            // Empty NID; caret at X start (col 8) after Tab into empty X.
+            // Geometric current = X → Tab must advance to Y (not re-select X).
+            // *NODE X ends at 24; Y starts at 24; prev X may be empty → sel at 24.
+            const document = fakeDoc('*NODE\n                                 0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 8),
+                new vscodeMock.Position(1, 8)
+            );
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    callback({ replace() {} });
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; },
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            try {
+                await handleTabAlignment(editor, 1);
+                assert.equal(selectionVal.active.line, 1);
+                // Y is field 2 at p=24; empty X → no keep-separator → active at 24
+                assert.equal(selectionVal.active.character, 24);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('Shift+Tab at next-field start after full previous goes to previous field', async () => {
+            const document = fakeDoc('*NODE\n12345678               0               0\n', '/project/main.k');
+            document.languageId = 'lsdyna';
+            // Caret at col 8: geometric field X; Shift+Tab must select NID [0,8), not skip past it.
+            let selectionVal = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 8),
+                new vscodeMock.Position(1, 8)
+            );
+            const editor = {
+                document,
+                edit: async (callback) => {
+                    callback({ replace() {} });
+                    return true;
+                },
+                get selection() { return selectionVal; },
+                set selection(v) { selectionVal = v; },
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            try {
+                await handleTabAlignment(editor, -1);
+                assert.equal(selectionVal.active.line, 1);
+                // First field: Selection(selEnd=8, selStart=0) → active 0, anchor 8
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('Selection context key setting', () => {
         it('sets shouldAlignTab context based on current line card applicability', async () => {
-            let lastContextKey = null;
-            let lastContextVal = null;
+            const contextMap = Object.create(null);
             const originalExecuteCommand = vscodeMock.commands.executeCommand;
             vscodeMock.commands.executeCommand = async (cmd, ...args) => {
                 if (cmd === 'setContext') {
-                    lastContextKey = args[0];
-                    lastContextVal = args[1];
+                    contextMap[args[0]] = args[1];
                 }
                 return originalExecuteCommand ? originalExecuteCommand(cmd, ...args) : undefined;
             };
@@ -729,21 +1223,32 @@ describe('Phase 7 Features', () => {
                 // Simulate editor select line 1 (data line)
                 const editor = {
                     document,
-                    selection: { active: new vscodeMock.Position(1, 2) }
+                    selection: {
+                        active: new vscodeMock.Position(1, 2),
+                        start: new vscodeMock.Position(1, 2),
+                        end: new vscodeMock.Position(1, 2),
+                        isEmpty: true,
+                    },
                 };
 
                 // Invoke internals handler trigger
                 const { handleSelectionChange } = require('../../../src/extension')._internals;
                 
                 handleSelectionChange(editor);
-                assert.equal(lastContextKey, 'lsdyna.shouldAlignTab');
-                assert.equal(lastContextVal, true);
+                assert.equal(contextMap['lsdyna.shouldAlignTab'], true);
+                // Caret inside a card field also enables cell-edit protect context
+                assert.equal(contextMap['lsdyna.cellEditActive'], true);
 
                 // Simulate editor select line 2 (comment line)
-                editor.selection.active = new vscodeMock.Position(2, 2);
+                editor.selection = {
+                    active: new vscodeMock.Position(2, 2),
+                    start: new vscodeMock.Position(2, 2),
+                    end: new vscodeMock.Position(2, 2),
+                    isEmpty: true,
+                };
                 handleSelectionChange(editor);
-                assert.equal(lastContextKey, 'lsdyna.shouldAlignTab');
-                assert.equal(lastContextVal, false);
+                assert.equal(contextMap['lsdyna.shouldAlignTab'], false);
+                assert.equal(contextMap['lsdyna.cellEditActive'], false);
             } finally {
                 vscodeMock.commands.executeCommand = originalExecuteCommand;
             }
@@ -823,6 +1328,242 @@ describe('Phase 7 Features', () => {
 
                 assert.equal(applyEditCount, 0);
             } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+            }
+        });
+
+        it('does not format the previous editor when autoFormat is disabled', async () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            let applyEditCount = 0;
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'autoFormat' ? 'disabled' : defaultValue,
+            });
+            vscodeMock.workspace.applyEdit = async () => {
+                applyEditCount += 1;
+                return true;
+            };
+
+            try {
+                const resetDoc = fakeDoc('$ reset\n', '/project/reset.txt');
+                resetDoc.languageId = 'plaintext';
+                handleSelectionChange({
+                    document: resetDoc,
+                    selection: { active: new vscodeMock.Position(0, 0) }
+                });
+
+                const previousDoc = fakeDoc('*NODE\n1 2 3\n', '/project/previous.k');
+                previousDoc.languageId = 'lsdyna';
+                handleSelectionChange({
+                    document: previousDoc,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                });
+
+                const nextDoc = fakeDoc('*NODE\n\n', '/project/next.k');
+                nextDoc.languageId = 'lsdyna';
+                await handleActiveEditorChangeForFormatting({
+                    document: nextDoc,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                });
+
+                assert.equal(applyEditCount, 0);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+            }
+        });
+
+        it('formats the previous editor on switch only when autoFormat is onBlur', async () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            let appliedEdits = [];
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'autoFormat' ? 'onBlur' : defaultValue,
+            });
+            vscodeMock.workspace.applyEdit = async edit => {
+                appliedEdits = edit.edits;
+                return true;
+            };
+
+            try {
+                const resetDoc = fakeDoc('$ reset\n', '/project/reset.txt');
+                resetDoc.languageId = 'plaintext';
+                handleSelectionChange({
+                    document: resetDoc,
+                    selection: { active: new vscodeMock.Position(0, 0) }
+                });
+
+                const previousDoc = fakeDoc('*NODE\n1 2 3\n', '/project/previous.k');
+                previousDoc.languageId = 'lsdyna';
+                handleSelectionChange({
+                    document: previousDoc,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                });
+
+                const nextDoc = fakeDoc('*NODE\n\n', '/project/next.k');
+                nextDoc.languageId = 'lsdyna';
+                const nextEditor = {
+                    document: nextDoc,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                };
+                vscodeMock.window.activeTextEditor = nextEditor;
+                await handleActiveEditorChangeForFormatting(nextEditor);
+
+                assert.equal(appliedEdits.length, 1);
+                assert.equal(appliedEdits[0].uri, previousDoc.uri);
+                assert.notEqual(appliedEdits[0].text, '1 2 3');
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('does not dirty the previous document when the last editor closes', async () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            let applyEditCount = 0;
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'autoFormat' ? 'onBlur' : defaultValue,
+            });
+            vscodeMock.workspace.applyEdit = async () => {
+                applyEditCount += 1;
+                return true;
+            };
+
+            try {
+                const previousDoc = fakeDoc('*NODE\n1 2 3\n', '/project/closing.k');
+                previousDoc.languageId = 'lsdyna';
+                handleSelectionChange({
+                    document: previousDoc,
+                    selection: { active: new vscodeMock.Position(1, 0) }
+                });
+
+                await handleActiveEditorChangeForFormatting(undefined);
+
+                assert.equal(applyEditCount, 0);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+            }
+        });
+
+        it('does not retarget onBlur formatting from an inactive editor selection event', async () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const appliedUris = [];
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'autoFormat' ? 'onBlur' : defaultValue,
+            });
+            vscodeMock.workspace.applyEdit = async edit => {
+                appliedUris.push(...edit.edits.map(item => item.uri));
+                return true;
+            };
+
+            const makeEditor = (filePath, line) => {
+                const document = fakeDoc(`*NODE\n${line}\n`, filePath);
+                document.languageId = 'lsdyna';
+                return {
+                    document,
+                    selection: { active: new vscodeMock.Position(1, 0) },
+                };
+            };
+            const activeEditor = makeEditor('/project/active-condition.k', '1 2 3');
+            const inactiveEditor = makeEditor('/project/inactive-condition.k', '4 5 6');
+            const nextEditor = makeEditor('/project/next-condition.k', '7 8 9');
+            const resetEditor = {
+                document: Object.assign(fakeDoc('$ reset\n', '/project/reset.txt'), {
+                    languageId: 'plaintext',
+                }),
+                selection: { active: new vscodeMock.Position(0, 0) },
+            };
+
+            try {
+                vscodeMock.window.activeTextEditor = resetEditor;
+                handleSelectionChange(resetEditor);
+                vscodeMock.window.activeTextEditor = activeEditor;
+                handleSelectionChange(activeEditor);
+
+                // The VS Code event carries the editor whose selection changed;
+                // it is not guaranteed to be the active editor in a split view.
+                handleSelectionChange({
+                    textEditor: inactiveEditor,
+                    selections: [inactiveEditor.selection],
+                    kind: 3,
+                });
+
+                vscodeMock.window.activeTextEditor = nextEditor;
+                await handleActiveEditorChangeForFormatting(nextEditor);
+
+                assert.deepEqual(appliedUris, [activeEditor.document.uri]);
+            } finally {
+                vscodeMock.window.activeTextEditor = resetEditor;
+                handleSelectionChange(resetEditor);
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+            }
+        });
+
+        it('preserves the previous onBlur target when the new editor selection event arrives first', async () => {
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const appliedUris = [];
+
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => key === 'autoFormat' ? 'onBlur' : defaultValue,
+            });
+            vscodeMock.workspace.applyEdit = async edit => {
+                appliedUris.push(...edit.edits.map(item => item.uri));
+                return true;
+            };
+
+            const makeEditor = (filePath, line) => {
+                const document = fakeDoc(`*NODE\n${line}\n`, filePath);
+                document.languageId = 'lsdyna';
+                return {
+                    document,
+                    selection: { active: new vscodeMock.Position(1, 0) },
+                };
+            };
+            const previousEditor = makeEditor('/project/event-order-previous.k', '1 2 3');
+            const nextEditor = makeEditor('/project/event-order-next.k', '7 8 9');
+            const resetEditor = {
+                document: Object.assign(fakeDoc('$ reset\n', '/project/reset.txt'), {
+                    languageId: 'plaintext',
+                }),
+                selection: { active: new vscodeMock.Position(0, 0) },
+            };
+
+            try {
+                vscodeMock.window.activeTextEditor = resetEditor;
+                handleSelectionChange(resetEditor);
+                vscodeMock.window.activeTextEditor = previousEditor;
+                handleSelectionChange(previousEditor);
+
+                // VS Code may publish the new editor's selection before its
+                // onDidChangeActiveTextEditor listener has consumed the transition.
+                vscodeMock.window.activeTextEditor = nextEditor;
+                handleSelectionChange({
+                    textEditor: nextEditor,
+                    selections: [nextEditor.selection],
+                    kind: 3,
+                });
+                await handleActiveEditorChangeForFormatting(nextEditor);
+
+                assert.deepEqual(appliedUris, [previousEditor.document.uri]);
+            } finally {
+                vscodeMock.window.activeTextEditor = resetEditor;
+                handleSelectionChange(resetEditor);
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
                 vscodeMock.workspace.getConfiguration = originalGetConfiguration;
                 vscodeMock.workspace.applyEdit = originalApplyEdit;
             }
@@ -1097,9 +1838,211 @@ describe('Phase 7 Features', () => {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
+
+        it('leaves ordinary comments unchanged', async () => {
+            const document = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '$ Units: mm, ms, kg\n' +
+                '         1         2',
+                '/project/main.k'
+            );
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            try {
+                await formatLineIfNeeded(document, 1);
+                assert.equal(editCalled, false);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('leaves an unsafe over-width data line unchanged', async () => {
+            const document = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '12345678901 2',
+                '/project/main.k'
+            );
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            const editor = {
+                document,
+                edit: async () => {
+                    editCalled = true;
+                    return true;
+                }
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            try {
+                await formatLineIfNeeded(document, 1);
+                assert.equal(editCalled, false);
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('does not call a TextEditor that became invisible during an async check', async () => {
+            const document = fakeDoc('*NODE\n1 2 3\n', '/project/closing.k');
+            document.languageId = 'lsdyna';
+            let editCalled = false;
+            const errors = [];
+            const editor = {
+                document,
+                viewColumn: undefined,
+                edit: async () => {
+                    editCalled = true;
+                    throw new Error('Illegal argument: TextEditor');
+                },
+            };
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            setFormatLineErrorObserverForTesting(error => errors.push(error));
+
+            try {
+                await formatLineIfNeeded(document, 1);
+                assert.equal(editCalled, false);
+                assert.deepEqual(errors, []);
+            } finally {
+                setFormatLineErrorObserverForTesting(null);
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
+
+        it('keeps automatic line formatting single-flight across async readonly checks', async () => {
+            const firstDocument = fakeDoc('*NODE\n1 2 3\n', '/project/first.k');
+            const secondDocument = fakeDoc('*NODE\n4 5 6\n', '/project/second.k');
+            firstDocument.languageId = 'lsdyna';
+            secondDocument.languageId = 'lsdyna';
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            const appliedUris = [];
+            let releaseApply;
+            const applyGate = new Promise(resolve => {
+                releaseApply = resolve;
+            });
+
+            vscodeMock.window.activeTextEditor = {
+                document: fakeDoc('*NODE\n\n', '/project/current.k'),
+            };
+            vscodeMock.workspace.applyEdit = async edit => {
+                appliedUris.push(...edit.edits.map(item => item.uri));
+                await applyGate;
+                return true;
+            };
+
+            try {
+                const first = formatLineIfNeeded(firstDocument, 1);
+                const second = formatLineIfNeeded(secondDocument, 1);
+                await new Promise(resolve => setImmediate(resolve));
+
+                assert.equal(appliedUris.length, 1);
+                releaseApply();
+                await Promise.all([first, second]);
+            } finally {
+                releaseApply();
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+            }
+        });
+
+        it('abandons automatic formatting when the document closes during the readonly check', async () => {
+            const document = fakeDoc('*NODE\n1 2 3\n', '/project/closing.k');
+            document.languageId = 'lsdyna';
+            document.isClosed = false;
+            const originalLineAt = document.lineAt.bind(document);
+            document.lineAt = line => {
+                if (document.isClosed) throw new Error('closed document accessed');
+                return originalLineAt(line);
+            };
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            const originalWorkspaceFs = vscodeMock.workspace.fs;
+            const originalApplyEdit = vscodeMock.workspace.applyEdit;
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            let releaseStat;
+            const statGate = new Promise(resolve => {
+                releaseStat = resolve;
+            });
+            let applyEditCount = 0;
+
+            vscodeMock.workspace.getConfiguration = section => ({
+                get: (key, defaultValue) =>
+                    section === 'files' && key === 'readonlyFromPermissions'
+                        ? true
+                        : defaultValue,
+            });
+            vscodeMock.workspace.fs = {
+                async stat() {
+                    await statGate;
+                    return { permissions: 0 };
+                },
+            };
+            vscodeMock.workspace.applyEdit = async () => {
+                applyEditCount += 1;
+                return true;
+            };
+            vscodeMock.window.activeTextEditor = undefined;
+
+            try {
+                const formatting = formatLineIfNeeded(document, 1);
+                document.isClosed = true;
+                releaseStat();
+                await formatting;
+                assert.equal(applyEditCount, 0);
+            } finally {
+                releaseStat();
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                vscodeMock.workspace.fs = originalWorkspaceFs;
+                vscodeMock.workspace.applyEdit = originalApplyEdit;
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            }
+        });
     });
 
     describe('LsdynaDocumentFormattingEditProvider path wrapping', () => {
+        it('does not emit edits for ordinary comments or unsafe data lines', () => {
+            const provider = new LsdynaDocumentFormattingEditProvider();
+            const commentDocument = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '$ Units: mm, ms, kg\n' +
+                '         1         2',
+                '/project/comments.k'
+            );
+            commentDocument.languageId = 'lsdyna';
+            const unsafeDocument = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '12345678901 2',
+                '/project/unsafe.k'
+            );
+            unsafeDocument.languageId = 'lsdyna';
+
+            const commentEdits = provider.provideDocumentRangeFormattingEdits(
+                commentDocument,
+                new vscodeMock.Range(1, 0, 1, commentDocument.lineAt(1).text.length),
+                {},
+                {}
+            );
+            const unsafeEdits = provider.provideDocumentRangeFormattingEdits(
+                unsafeDocument,
+                new vscodeMock.Range(1, 0, 1, unsafeDocument.lineAt(1).text.length),
+                {},
+                {}
+            );
+
+            assert.deepEqual(commentEdits, []);
+            assert.deepEqual(unsafeEdits, []);
+        });
+
         it('formats long Windows *INCLUDE_PATH entries into LS-DYNA continuation lines', () => {
             const longPath = 'D:\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model\\temp\\LSDYNA\\lsdyna_mat\\model\\sim_model';
             const document = fakeDoc(`*INCLUDE_PATH\n${longPath}\n`, 'D:\\project\\main.k');
@@ -1155,10 +2098,59 @@ describe('Phase 7 Features', () => {
 
             try {
                 const extension = require('../../../src/extension');
-                extension.activate({ subscriptions: [] });
+                await extension.activate({ subscriptions: [] });
                 await registeredCommands.get('extension.lsdynaFormatSelection')(0);
 
                 assert.equal(editVal, longPath.slice(0, 78) + ' +\n' + longPath.slice(78));
+            } finally {
+                vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+                vscodeMock.commands.registerCommand = originalRegisterCommand;
+            }
+        });
+
+        it('keeps ordinary comments unchanged through the format-selection command', async () => {
+            const document = fakeDoc(
+                '*SECTION_SHELL\n' +
+                '$ Units: mm, ms, kg\n' +
+                '         1         2',
+                '/project/main.k'
+            );
+            document.languageId = 'lsdyna';
+            let replaceCount = 0;
+            const commentSelection = new vscodeMock.Selection(
+                new vscodeMock.Position(1, 0),
+                new vscodeMock.Position(1, document.lineAt(1).text.length)
+            );
+            const editor = {
+                document,
+                selection: commentSelection,
+                selections: [commentSelection],
+                setDecorations() {},
+                edit: async callback => {
+                    callback({
+                        replace() {
+                            replaceCount += 1;
+                        },
+                    });
+                    return true;
+                },
+            };
+
+            const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+            const originalRegisterCommand = vscodeMock.commands.registerCommand;
+            const registeredCommands = new Map();
+            vscodeMock.window.activeTextEditor = editor;
+            vscodeMock.commands.registerCommand = (cmd, cb) => {
+                registeredCommands.set(cmd, cb);
+                return { dispose() {} };
+            };
+
+            try {
+                const extension = require('../../../src/extension');
+                await extension.activate({ subscriptions: [] });
+                await registeredCommands.get('extension.lsdynaFormatSelection')();
+
+                assert.equal(replaceCount, 0);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
                 vscodeMock.commands.registerCommand = originalRegisterCommand;
@@ -1203,7 +2195,7 @@ describe('Phase 7 Features', () => {
 
             const extension = require('../../../src/extension');
             const context = { subscriptions: [] };
-            extension.activate(context);
+            await extension.activate(context);
             
             // Verify doc languageId is set to lsdyna
             assert.equal(doc.languageId, 'lsdyna');
@@ -1264,7 +2256,7 @@ describe('Phase 7 Features', () => {
             };
 
             const context = { subscriptions: [] };
-            extension.activate(context);
+            await extension.activate(context);
 
             if (registeredCallback) {
                 await registeredCallback();
@@ -1319,7 +2311,7 @@ describe('Phase 7 Features', () => {
             };
 
             const context = { subscriptions: [] };
-            extension.activate(context);
+            await extension.activate(context);
 
             if (registeredCallback) {
                 await registeredCallback();

@@ -196,4 +196,110 @@ describe('includeScanner', () => {
         assert.deepEqual(result.includeEntries, []);
         assert.deepEqual(result.searchPaths, [basePath]);
     });
+
+    it('collects only filename card under *INCLUDE_TRANSFORM (not offset cards)', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-xform-'));
+        const filePath = path.join(tempDir, 'xform.k');
+        fs.writeFileSync(
+            filePath,
+            [
+                '*INCLUDE_TRANSFORM',
+                'parts/door.k',
+                '         0         0         0         0         0         0         0',
+                '         0',
+                '       1.0       1.0       1.0       1.0         1',
+                '         0',
+            ].join('\n'),
+            'utf8',
+        );
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+        assert.deepStrictEqual(
+            result.includeEntries.map((e) => e.fileName),
+            ['parts/door.k'],
+        );
+        const entry = result.includeEntries[0];
+        assert.equal(entry.keyword, '*INCLUDE_TRANSFORM');
+        assert.equal(entry.keywordLine, 0);
+        assert.equal(entry.transform.filenameLine, 1);
+        assert.equal(entry.transform.offsets.idfoff.kind, 'numeric');
+        assert.equal(entry.transform.offsets.idfoff.value, 0);
+        assert.equal(entry.transform.offsets.idnoff.value, 0);
+        assert.equal(entry.transform.tranid.value, 0);
+        assert.deepEqual(entry.transform.parseCompleteness, {
+            state: 'complete',
+            reasons: [],
+        });
+    });
+
+    it('preserves comma-format and parameterized IDFOFF transform metadata', () => {
+        const { collectIncludeDirectivesFromBuffer } = require('../../../src/core/parser/includeScanner');
+        const result = collectIncludeDirectivesFromBuffer(Buffer.from([
+            '*INCLUDE_TRANSFORM',
+            'parts/door.k',
+            '10,20,30,40,50,&FOFF,70',
+            '80',
+            '1.0,1.0,1.0,1.0,1',
+            '9',
+            '*END',
+        ].join('\n')), 'C:/model');
+
+        const transform = result.includeEntries[0].transform;
+        assert.equal(transform.offsets.idnoff.value, 10);
+        assert.equal(transform.offsets.idsoff.value, 50);
+        assert.deepEqual(transform.offsets.idfoff, {
+            kind: 'parameter',
+            raw: '&FOFF',
+            name: 'FOFF',
+            negated: false,
+        });
+        assert.equal(transform.offsets.iddoff.value, 70);
+        assert.equal(transform.offsets.idroff.value, 80);
+        assert.equal(transform.tranid.value, 9);
+        assert.deepEqual(transform.parseCompleteness, {
+            state: 'incomplete',
+            reasons: ['transform-idfoff-parameterized'],
+        });
+    });
+
+    it('does not let unrelated nonzero offsets degrade a known zero IDFOFF', () => {
+        const { collectIncludeDirectivesFromBuffer } = require('../../../src/core/parser/includeScanner');
+        const result = collectIncludeDirectivesFromBuffer(Buffer.from([
+            '*INCLUDE_TRANSFORM',
+            'parts/door.k',
+            '10 20 30 40 50 0 70',
+            '80',
+            '1 1 1 1 1',
+            '0',
+            '*END',
+        ].join('\n')), 'C:/model');
+
+        const transform = result.includeEntries[0].transform;
+        assert.equal(transform.offsets.idnoff.value, 10);
+        assert.equal(transform.offsets.idfoff.value, 0);
+        assert.equal(transform.parseCompleteness.state, 'complete');
+    });
+
+    it('collects filename on card 2 for *INCLUDE_MULTISCALE and SPOTWELD', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-ms-'));
+        const filePath = path.join(tempDir, 'ms.k');
+        fs.writeFileSync(
+            filePath,
+            [
+                '*INCLUDE_MULTISCALE',
+                '        10',
+                'local_model.k',
+                '*INCLUDE_MULTISCALE_SPOTWELD',
+                '         1',
+                'weld_ms.k',
+            ].join('\n'),
+            'utf8',
+        );
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+        assert.deepStrictEqual(
+            result.includeEntries.map((e) => e.fileName),
+            ['local_model.k', 'weld_ms.k'],
+        );
+    });
 });

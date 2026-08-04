@@ -325,17 +325,25 @@ trailer
                 assert.strictEqual(nodeLocs.length, 1);
                 assert.strictEqual(nodeLocs[0].page, 1);
                 assert.strictEqual(nodeLocs[0].file, path.resolve(mockPdfPath));
+                assert.strictEqual(nodeLocs[0].requestedKeyword, '*NODE');
+                assert.strictEqual(nodeLocs[0].matchedKeyword, '*NODE');
+                assert.strictEqual(nodeLocs[0].matchKind, 'exact');
 
                 assert.strictEqual(eosLocs.length, 1);
                 assert.strictEqual(eosLocs[0].page, 2);
                 assert.strictEqual(eosLocs[0].file, path.resolve(mockPdfPath));
+                assert.strictEqual(eosLocs[0].matchKind, 'exact');
 
                 assert.deepEqual(invalidLocs, []);
 
                 // Check backtrack matching
                 const backtrackedLocs = getManualLocations('*NODE_SUB_KW');
-                assert.deepEqual(backtrackedLocs, nodeLocs);
-                assert.ok(backtrackedLocs.length > 0);
+                assert.strictEqual(backtrackedLocs.length, 1);
+                assert.strictEqual(backtrackedLocs[0].file, nodeLocs[0].file);
+                assert.strictEqual(backtrackedLocs[0].page, nodeLocs[0].page);
+                assert.strictEqual(backtrackedLocs[0].requestedKeyword, '*NODE_SUB_KW');
+                assert.strictEqual(backtrackedLocs[0].matchedKeyword, '*NODE');
+                assert.strictEqual(backtrackedLocs[0].matchKind, 'approximate');
 
                 // Verify cache is updated in workspaceState
                 const cache = mockState.get('manuals_bookmark_cache');
@@ -344,6 +352,59 @@ trailer
                 assert.strictEqual(cache[path.resolve(mockPdfPath)].bookmarks.length, 2);
             } finally {
                 vscode.workspace.getConfiguration = originalGetConfiguration;
+            }
+        });
+
+        it('scans a packaged pdf subdirectory as well as the legacy root layout', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            const packagedPdfDir = path.join(tempDir, 'pdf');
+            const packagedPdf = path.join(packagedPdfDir, 'packaged_manual.pdf');
+            fs.mkdirSync(packagedPdfDir, { recursive: true });
+            fs.copyFileSync(mockPdfPath, packagedPdf);
+            vscode.workspace.getConfiguration = (section) => section === 'lsdyna' ? {
+                get: key => key === 'manualsDir' ? tempDir : undefined,
+            } : originalGetConfiguration(section);
+
+            try {
+                await initialize(mockContext);
+                const locations = getManualLocations('*NODE_TITLE');
+                assert.ok(locations.some(location => location.file === path.resolve(packagedPdf)));
+                assert.ok(getManualFilesCount() >= 2);
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+                fs.rmSync(packagedPdfDir, { recursive: true, force: true });
+            }
+        });
+
+        it('indexes only manifest-declared PDFs when pdfFile is present', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            const packagedPdfDir = path.join(tempDir, 'pdf');
+            fs.mkdirSync(packagedPdfDir, { recursive: true });
+            const keep = path.join(packagedPdfDir, 'keep.zh-CN.pdf');
+            const extra = path.join(packagedPdfDir, 'extra.pdf');
+            fs.copyFileSync(mockPdfPath, keep);
+            fs.copyFileSync(mockPdfPath, extra);
+            // Remove root-level mock so only pack PDFs remain candidates.
+            const rootMock = mockPdfPath;
+            fs.writeFileSync(path.join(tempDir, 'manifest.json'), JSON.stringify({
+                documents: [{ slug: 'vol', title: 'Vol', pdfFile: 'pdf/keep.zh-CN.pdf' }],
+            }));
+            vscode.workspace.getConfiguration = (section) => section === 'lsdyna' ? {
+                get: key => key === 'manualsDir' ? tempDir : undefined,
+            } : originalGetConfiguration(section);
+
+            try {
+                await initialize(mockContext);
+                assert.strictEqual(getManualFilesCount(), 1);
+                const locations = getManualLocations('*NODE_TITLE');
+                assert.strictEqual(locations.length, 1);
+                assert.strictEqual(locations[0].file, path.resolve(keep));
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+                fs.rmSync(path.join(tempDir, 'manifest.json'), { force: true });
+                fs.rmSync(packagedPdfDir, { recursive: true, force: true });
+                // root mock still present from suite setup
+                void rootMock;
             }
         });
 
@@ -452,7 +513,8 @@ trailer
                     mtimeMs: stats.mtimeMs,
                     bookmarks: [
                         { title: '14. *MAT_026/*MAT_HONEYCOMB', page: 40 },
-                        { title: 'CONTROL_TERMINATION/CONTROL_TIMESTEP', page: 50 }
+                        { title: 'CONTROL_TERMINATION/CONTROL_TIMESTEP', page: 50 },
+                        { title: '*MAT_024/*MAT_PIECEWISE_LINEAR_PLASTICITY', page: 60 }
                     ]
                 };
                 mockState.set('manuals_bookmark_cache', mockCache);
@@ -463,6 +525,7 @@ trailer
                 const honeycombLocs = getManualLocations('*MAT_HONEYCOMB');
                 const terminationLocs = getManualLocations('*CONTROL_TERMINATION');
                 const timestepLocs = getManualLocations('*CONTROL_TIMESTEP');
+                const matOptionLocs = getManualLocations('*MAT_024_LOG_INTERPOLATION');
 
                 assert.strictEqual(mat26Locs.length, 1);
                 assert.strictEqual(mat26Locs[0].page, 40);
@@ -475,6 +538,11 @@ trailer
 
                 assert.strictEqual(timestepLocs.length, 1);
                 assert.strictEqual(timestepLocs[0].page, 50);
+
+                assert.strictEqual(matOptionLocs.length, 1);
+                assert.strictEqual(matOptionLocs[0].page, 60);
+                assert.strictEqual(matOptionLocs[0].matchedKeyword, '*MAT_024');
+                assert.strictEqual(matOptionLocs[0].matchKind, 'section');
             } finally {
                 vscode.workspace.getConfiguration = originalGetConfiguration;
             }

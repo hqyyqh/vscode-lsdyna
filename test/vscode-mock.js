@@ -58,6 +58,15 @@ class Hover {
     }
 }
 
+class Location {
+    constructor(uri, rangeOrPosition) {
+        this.uri = uri;
+        this.range = rangeOrPosition instanceof Position
+            ? new Range(rangeOrPosition, rangeOrPosition)
+            : rangeOrPosition;
+    }
+}
+
 class CodeLens {
     constructor(range, command) {
         this.range = range;
@@ -74,6 +83,7 @@ class CompletionItem {
 
 const CompletionItemKind = {
     File: 17,
+    Folder: 19,
     Snippet: 27,
     Field: 5
 };
@@ -107,12 +117,27 @@ class TextEdit {
     }
 }
 
+class CodeAction {
+    constructor(title, kind) {
+        this.title = title;
+        this.kind = kind;
+        this.edit = undefined;
+        this.diagnostics = [];
+        this.isPreferred = false;
+    }
+}
+
+const CodeActionKind = {
+    QuickFix: { value: 'quickfix' },
+};
+
 module.exports = {
     Position,
     Range,
     Selection,
     MarkdownString,
     Hover,
+    Location,
     CodeLens,
     CompletionItem,
     CompletionItemKind,
@@ -120,6 +145,8 @@ module.exports = {
     CompletionList,
     WorkspaceEdit,
     TextEdit,
+    CodeAction,
+    CodeActionKind,
     Uri: {
         file: p => ({ fsPath: p }),
         parse: value => ({ fsPath: value, scheme: String(value).split(':')[0], toString: () => value })
@@ -130,7 +157,7 @@ module.exports = {
     InlayHint: class InlayHint { constructor(p, l) { this.position = p; this.label = l; } },
     InlayHintKind: { Parameter: 2 },
     Diagnostic: class Diagnostic { constructor(r, m, s) { this.range = r; this.message = m; this.severity = s; } },
-    DiagnosticSeverity: { Warning: 1 },
+    DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
     SymbolKind: { Property: 6 },
     ThemeColor: class ThemeColor {},
     ThemeIcon: class ThemeIcon {},
@@ -143,6 +170,7 @@ module.exports = {
         showInformationMessage: () => {},
         showErrorMessage: () => {},
         showWarningMessage: () => {},
+        setStatusBarMessage: () => ({ dispose() {} }),
         createStatusBarItem: () => ({
             text: '',
             tooltip: '',
@@ -158,8 +186,13 @@ module.exports = {
         createOutputChannel: () => ({ appendLine: () => {}, show: () => {}, dispose() {} }),
         registerFileDecorationProvider: () => ({ dispose() {} }),
         registerTreeDataProvider: () => ({ dispose() {} }),
+        registerWebviewViewProvider: () => ({ dispose() {} }),
         onDidChangeActiveTextEditor: () => ({ dispose() {} }),
         onDidChangeTextEditorSelection: () => ({ dispose() {} }),
+        onDidChangeVisibleTextEditors: () => ({ dispose() {} }),
+        onDidChangeActiveColorTheme: () => ({ dispose() {} }),
+        visibleTextEditors: [],
+        activeColorTheme: { kind: 2 },
         createTextEditorDecorationType: () => ({ dispose() {} }),
         tabGroups: { onDidChangeTabs: () => ({ dispose() {} }) },
         createWebviewPanel: (viewType, title, showOptions, options) => {
@@ -167,7 +200,11 @@ module.exports = {
                 webview: {
                     asWebviewUri: uri => uri,
                     cspSource: 'vscode-resource:',
-                    postMessage: () => Promise.resolve(true)
+                    postMessage: () => Promise.resolve(true),
+                    onDidReceiveMessage: callback => {
+                        panel._messageCallback = callback;
+                        return { dispose() {} };
+                    }
                 },
                 reveal: () => {},
                 onDidDispose: (callback) => {
@@ -189,6 +226,7 @@ module.exports = {
         onDidSaveTextDocument: () => ({ dispose() {} }),
         onDidChangeConfiguration: () => ({ dispose() {} }),
         applyEdit: () => Promise.resolve(true),
+        registerTextDocumentContentProvider: () => ({ dispose() {} }),
         createFileSystemWatcher: () => ({
             onDidChange: () => ({}),
             onDidCreate: () => ({}),
@@ -199,10 +237,12 @@ module.exports = {
             get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
         }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider: () => ({ dispose() {} }), registerDocumentRangeFormattingEditProvider: () => ({ dispose() {} }), registerCodeLensProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); }, getDiagnostics: () => [], onDidChangeDiagnostics: () => ({ dispose() {} }) },
+    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider: () => ({ dispose() {} }), registerDocumentRangeFormattingEditProvider: () => ({ dispose() {} }), registerCodeLensProvider: () => ({}), registerCodeActionsProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); }, getDiagnostics: () => [], onDidChangeDiagnostics: () => ({ dispose() {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
     env: { language: 'en', clipboard: { writeText: () => Promise.resolve() } },
     StatusBarAlignment: { Left: 1, Right: 2 },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+    MinimapPosition: { Inline: 1, Gutter: 2 },
+    OverviewRulerLane: { Left: 1, Center: 2, Right: 4, Full: 7 },
 };

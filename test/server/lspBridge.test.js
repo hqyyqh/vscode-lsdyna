@@ -26,6 +26,40 @@ describe('LSP server-client bridge', () => {
         assert.equal(getActiveSession(), null);
     });
 
+    it('reuses the active session when initialize is received twice', () => {
+        const first = initializeSession();
+        const second = initializeSession();
+
+        assert.strictEqual(second, first);
+        assert.strictEqual(getActiveSession(), first);
+    });
+
+    it('detaches a closing session before awaiting disposal and preserves its replacement', async () => {
+        const closingSession = initializeSession();
+        let releaseDispose;
+        let disposeStarted = false;
+        closingSession.projectIndexLoader.dispose = async () => {
+            disposeStarted = true;
+            await new Promise(resolve => {
+                releaseDispose = resolve;
+            });
+        };
+
+        const closing = shutdownSession();
+        assert.strictEqual(disposeStarted, true);
+
+        let replacement = null;
+        try {
+            assert.equal(getActiveSession(), null);
+            replacement = initializeSession();
+        } finally {
+            releaseDispose();
+            await closing;
+        }
+
+        assert.strictEqual(getActiveSession(), replacement);
+    });
+
     it('requestRouter handles loadProjectSnapshot request', async () => {
         const rootFile = path.resolve('project', 'main.k');
         const childFile = path.resolve('project', 'child.key');

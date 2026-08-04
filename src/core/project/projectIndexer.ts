@@ -20,6 +20,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const {
+    localDeclaredSearchPaths,
+    mergeEffectiveSearchPaths,
+    inheritedPathsForChild,
+} = require('./includeSearchPathResolve');
 
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
@@ -41,6 +46,10 @@ type FileScanResult = {
         lineIndex: number;
         startChar: number;
         endChar: number;
+        keyword?: string;
+        keywordLine?: number;
+        transform?: any;
+        parameterizedFileName?: boolean;
     }>;
     searchPaths: string[];
 };
@@ -59,7 +68,8 @@ const DEFAULT_CONCURRENCY = 16;
  * @property {Map<string, import('../parser/keywordScanner').ScannedKeyword[]>} keywordMap - Registry of keywords associated with their occurrences across the project.
  * @property {import('./projectGraph').MissingFileRecord[]} missingFiles - References to all included files that could not be resolved.
  * @property {import('./projectGraph').CycleRecord[]} cycles - References to circular inclusion loops.
- * @property {{scannedFileCount: number, reusedFileCount: number}} stats - Indexing run performance statistics.
+ * @property {Map<string, string[]>} [effectiveSearchPathsByFile] - Effective *INCLUDE* search dirs per file (local + ancestor PATH cards). First BFS visit wins.
+ * @property {{scannedFileCount: number, reusedFileCount: number, includeOccurrenceCount: number}} stats - Indexing run performance statistics.
  */
 
 /**
@@ -303,7 +313,7 @@ function createProjectIndexer({
      * 
      * @param {string} filePath - Target file path.
      * @param {Object} options - Indexing options.
-     * @param {{scannedFileCount: number, reusedFileCount: number}} stats - Indexing session statistics.
+     * @param {{scannedFileCount: number, reusedFileCount: number, includeOccurrenceCount: number}} stats - Indexing session statistics.
      * @returns {Promise<Object>} The cached or newly scanned file result.
      */
     async function loadFileScan(filePath, options, stats): Promise<FileScanResult> {
@@ -375,9 +385,12 @@ function createProjectIndexer({
         const keywordMap = new Map();
         const graph = new ProjectGraph();
         const visited = new Set();
+        /** @type {Map<string, string[]>} first-visit effective search paths (ancestor PATH inheritance) */
+        const effectiveSearchPathsByFile = new Map();
         const stats = {
             scannedFileCount: 0,
             reusedFileCount: 0,
+            includeOccurrenceCount: 0,
         };
         let lastProgressTime = Date.now();
 
@@ -388,10 +401,11 @@ function createProjectIndexer({
          * @typedef {Object} BFSQueueItem
          * @property {string} filePath - Resolved file path to visit.
          * @property {string[]} ancestry - Traversal ancestry chain.
+         * @property {string[]} inheritedPaths - Absolute PATH dirs from ancestors (cards only).
          */
 
         /** @type {BFSQueueItem[]} */
-        let currentLevel = [{ filePath: resolvedRootFile, ancestry: [] }];
+        let currentLevel = [{ filePath: resolvedRootFile, ancestry: [], inheritedPaths: [] }];
 
         while (currentLevel.length > 0) {
             // Filter out already-visited files before scanning
@@ -416,7 +430,7 @@ function createProjectIndexer({
             const nextLevel = [];
 
             for (let i = 0; i < toScan.length; i++) {
-                const { filePath: resolvedFilePath, ancestry } = toScan[i];
+                const { filePath: resolvedFilePath, ancestry, inheritedPaths } = toScan[i];
                 const scanResult = scanResults[i];
 
                 if (scanResult.fileIndex) {
@@ -424,16 +438,49 @@ function createProjectIndexer({
                 }
                 addKeywordUsages(keywordMap, scanResult.keywords);
 
-                // Resolve all includes for this file in parallel
+                const fileDir = path.dirname(resolvedFilePath);
+                const pathEntries = scanResult.fileIndex && scanResult.fileIndex.pathEntries
+                    ? scanResult.fileIndex.pathEntries
+                    : [];
+                const localDeclared = localDeclaredSearchPaths({
+                    fileDir,
+                    searchPaths: scanResult.searchPaths,
+                    pathEntries,
+                });
+                const effectivePaths = mergeEffectiveSearchPaths({
+                    fileDir,
+                    localDeclaredPaths: localDeclared,
+                    inheritedPaths: inheritedPaths || [],
+                });
+                // First BFS visit wins (diamond: later parents do not rescan with other PATH sets).
+                if (!effectiveSearchPathsByFile.has(resolvedFilePath)) {
+                    effectiveSearchPathsByFile.set(resolvedFilePath, effectivePaths);
+                }
+
+                const childInherited = inheritedPathsForChild({
+                    localDeclaredPaths: localDeclared,
+                    inheritedPaths: inheritedPaths || [],
+                });
+
+                // Resolve all includes using ancestor-aware search paths
                 const includeResolutions = await Promise.all(
                     scanResult.includeEntries.map(entry =>
-                        resolveIncludeWithCandidatesAsync(entry.fileName, scanResult.searchPaths, resolutionCache)
+                        resolveIncludeWithCandidatesAsync(entry.fileName, effectivePaths, resolutionCache)
                     )
                 );
 
                 for (let j = 0; j < scanResult.includeEntries.length; j++) {
                     const entry = scanResult.includeEntries[j];
-                    const { fileName, lineIndex, startChar, endChar } = entry;
+                    const {
+                        fileName,
+                        lineIndex,
+                        startChar,
+                        endChar,
+                        keyword,
+                        keywordLine,
+                        transform,
+                        parameterizedFileName,
+                    } = entry;
                     const { resolvedPath, candidatePaths } = includeResolutions[j];
 
                     if (!resolvedPath) {
@@ -445,6 +492,10 @@ function createProjectIndexer({
                             endChar,
                             filePath: candidatePaths[0] || path.resolve(path.dirname(resolvedFilePath), fileName),
                             candidatePaths,
+                            keyword,
+                            keywordLine,
+                            transform,
+                            parameterizedFileName,
                         });
                         continue;
                     }
@@ -458,15 +509,38 @@ function createProjectIndexer({
                             endChar,
                             path: [...ancestry, resolvedFilePath, resolvedPath],
                         });
+                        graph.addIncludeOccurrence(resolvedFilePath, {
+                            filePath: resolvedPath,
+                            fileName,
+                            lineIndex,
+                            startChar,
+                            endChar,
+                            keyword,
+                            keywordLine,
+                            transform,
+                            parameterizedFileName,
+                            cycle: true,
+                        });
                         continue;
                     }
 
-                    graph.addIncludeEdge(resolvedFilePath, resolvedPath);
+                    graph.addIncludeEdge(resolvedFilePath, resolvedPath, {
+                        filePath: resolvedPath,
+                        fileName,
+                        lineIndex,
+                        startChar,
+                        endChar,
+                        keyword,
+                        keywordLine,
+                        transform,
+                        parameterizedFileName,
+                    });
 
                     if (!visited.has(resolvedPath)) {
                         nextLevel.push({
                             filePath: resolvedPath,
                             ancestry: [...ancestry, resolvedFilePath],
+                            inheritedPaths: childInherited,
                         });
                     }
                 }
@@ -475,6 +549,7 @@ function createProjectIndexer({
             // Report progress between BFS levels
             if (onProgress && Date.now() - lastProgressTime >= 500) {
                 lastProgressTime = Date.now();
+                stats.includeOccurrenceCount = graph.includeOccurrences.length;
                 onProgress({
                     rootFile: resolvedRootFile,
                     files: [...files],
@@ -483,6 +558,7 @@ function createProjectIndexer({
                     keywordMap,
                     missingFiles: graph.missingFiles,
                     cycles: graph.cycles,
+                    effectiveSearchPathsByFile,
                     stats: { ...stats },
                 });
             }
@@ -490,6 +566,7 @@ function createProjectIndexer({
             currentLevel = nextLevel;
         }
 
+        stats.includeOccurrenceCount = graph.includeOccurrences.length;
         return {
             rootFile: resolvedRootFile,
             files,
@@ -498,6 +575,7 @@ function createProjectIndexer({
             keywordMap,
             missingFiles: graph.missingFiles,
             cycles: graph.cycles,
+            effectiveSearchPathsByFile,
             stats,
         };
     }

@@ -7,6 +7,7 @@ describe('DynaSense status bar dashboard', () => {
         LsdynaStatusBarDashboard,
         buildDashboardItems,
         formatDashboardText,
+        formatDashboardTooltip,
         normalizeStatusBarLevel,
         shouldShowDashboard,
     } = require('../../src/client/statusBar/dashboard');
@@ -31,15 +32,17 @@ describe('DynaSense status bar dashboard', () => {
     });
 
     describe('formatDashboardText', () => {
-        it('formats compact and detailed healthy state', () => {
+        it('shows keyword in quiet state and ignores setup when keyword exists', () => {
             assert.strictEqual(formatDashboardText({
                 level: 'simple',
                 keyword: '*PART',
                 fieldIndex: 3,
                 fieldCount: 8,
                 manualReady: true,
+                errorCount: 0,
                 warningCount: 0,
-            }), 'DynaSense: *PART');
+                healthIssueCount: 3,
+            }), 'LS-DYNA: *PART');
 
             assert.strictEqual(formatDashboardText({
                 level: 'detail',
@@ -47,45 +50,120 @@ describe('DynaSense status bar dashboard', () => {
                 fieldIndex: 3,
                 fieldCount: 8,
                 manualReady: true,
+                errorCount: 0,
                 warningCount: 0,
-            }), 'DynaSense: *PART · F3/8 · Manual OK');
+            }), 'LS-DYNA: *PART · 3/8');
         });
 
-        it('prioritizes warnings and handles empty context', () => {
+        it('prioritizes errors over warnings over keyword over setup', () => {
             assert.strictEqual(formatDashboardText({
                 level: 'detail',
                 keyword: '*PART',
-                fieldIndex: 3,
-                fieldCount: 8,
                 manualReady: true,
-                warningCount: 2,
-            }), 'DynaSense: 2 warnings');
+                errorCount: 2,
+                warningCount: 5,
+                healthIssueCount: 9,
+            }), 'LS-DYNA · 2✗');
 
             assert.strictEqual(formatDashboardText({
-                level: 'detail',
-                keyword: '',
-                fieldIndex: null,
-                fieldCount: 0,
-                manualReady: false,
-                warningCount: 1,
-            }), 'DynaSense: 1 warning');
+                level: 'simple',
+                keyword: '*PART',
+                errorCount: 0,
+                warningCount: 2,
+                healthIssueCount: 9,
+            }), 'LS-DYNA · 2⚠');
 
             assert.strictEqual(formatDashboardText({
                 level: 'simple',
                 keyword: '',
-                fieldIndex: null,
-                fieldCount: 0,
                 manualReady: false,
+                errorCount: 0,
                 warningCount: 0,
-            }), 'DynaSense');
+                healthIssueCount: 2,
+            }), 'LS-DYNA: Manual setup');
+
+            assert.strictEqual(formatDashboardText({
+                level: 'simple',
+                keyword: '',
+                manualReady: true,
+                errorCount: 0,
+                warningCount: 0,
+                healthIssueCount: 0,
+            }), 'LS-DYNA');
+        });
+
+        it('detail can append scan short name without Manual OK', () => {
+            assert.strictEqual(formatDashboardText({
+                level: 'detail',
+                keyword: '*MAT_024',
+                fieldIndex: 1,
+                fieldCount: 8,
+                manualReady: true,
+                scanRootName: 'front_lh.k',
+            }), 'LS-DYNA: *MAT_024 · 1/8 · front_lh.k');
+        });
+
+        it('simple mode does not append scan short name', () => {
+            assert.strictEqual(formatDashboardText({
+                level: 'simple',
+                keyword: '*MAT_024',
+                scanRootName: 'front_lh.k',
+                errorCount: 0,
+                warningCount: 0,
+                manualReady: true,
+            }), 'LS-DYNA: *MAT_024');
+        });
+    });
+
+    describe('formatDashboardTooltip', () => {
+        it('states current-file scope and keyword', () => {
+            const tip = formatDashboardTooltip({
+                keyword: '*CONTACT',
+                fieldIndex: 2,
+                fieldCount: 8,
+                errorCount: 1,
+                warningCount: 2,
+            });
+            assert.ok(tip.includes('Current file'));
+            assert.ok(tip.includes('1') && tip.includes('2'));
+            assert.ok(tip.includes('*CONTACT'));
+            assert.ok(tip.includes('2/8') || tip.includes('Field'));
+            assert.ok(tip.includes('not scanned') || tip.includes('scan'));
+        });
+
+        it('shows scanned root basename when provided', () => {
+            const tip = formatDashboardTooltip({
+                keyword: '*PART',
+                scanRootName: 'front_lh.k',
+                errorCount: 0,
+                warningCount: 0,
+            });
+            assert.ok(tip.includes('front_lh.k'));
+            assert.ok(!tip.includes('not scanned'));
+        });
+
+        it('shows a selected or ambiguous main deck context', () => {
+            const selected = formatDashboardTooltip({
+                mainDeckContextState: 'selected',
+                mainDeckRootName: 'condition_a.k',
+            });
+            assert.ok(selected.includes('Main deck context'));
+            assert.ok(selected.includes('condition_a.k'));
+
+            const ambiguous = formatDashboardTooltip({
+                mainDeckContextState: 'ambiguous',
+                mainDeckRootName: null,
+            });
+            assert.ok(ambiguous.includes('choose one'));
         });
     });
 
     describe('buildDashboardItems', () => {
-        it('keeps health first when setup items exist and output last', () => {
+        it('puts problems and manuals CTA first when broken, health before log', () => {
             const items = buildDashboardItems({
                 tabNavigationEnabled: true,
-                warningCount: 2,
+                errorCount: 1,
+                warningCount: 1,
                 healthIssueCount: 2,
                 manualReady: false,
                 labels: {
@@ -95,23 +173,27 @@ describe('DynaSense status bar dashboard', () => {
             });
 
             assert.deepStrictEqual(items.map(item => item.id), [
-                'showHealth',
+                'showDiagnostics',
+                'configureManuals',
                 'scanIncludes',
                 'scanKeywordIndex',
                 'toggleTabNavigation',
-                'configureManuals',
-                'showDiagnostics',
+                'toggleFieldHover',
+                'manageCustomValidKeywords',
+                'showHealth',
                 'showOutput',
             ]);
             assert.ok(items.every(item => item.label && item.description && item.detail));
             assert.ok(items.find(item => item.id === 'showHealth').description.includes('2'));
             assert.equal(items.find(item => item.id === 'toggleTabNavigation').label, '$(keyboard) 字段跳转');
-            assert.ok(items.find(item => item.id === 'toggleTabNavigation').description.includes('已开启'));
+            assert.ok(items.find(item => item.id === 'showDiagnostics').description.toLowerCase().includes('error'));
         });
 
-        it('moves health to the end when there are no setup items', () => {
+        it('keeps include before keyword index; sinks health; diagnostics stay discoverable', () => {
             const items = buildDashboardItems({
                 tabNavigationEnabled: false,
+                fieldHoverMenuState: 'off',
+                errorCount: 0,
                 warningCount: 0,
                 healthIssueCount: 0,
                 manualReady: true,
@@ -121,13 +203,54 @@ describe('DynaSense status bar dashboard', () => {
                 'scanIncludes',
                 'scanKeywordIndex',
                 'toggleTabNavigation',
+                'toggleFieldHover',
+                'manageCustomValidKeywords',
                 'configureManuals',
                 'showDiagnostics',
-                'showOutput',
                 'showHealth',
+                'showOutput',
             ]);
-            assert.ok(items.find(item => item.id === 'showHealth').description.includes('Ready'));
-            assert.ok(items.find(item => item.id === 'toggleTabNavigation').description.includes('Off'));
+            assert.ok(items.find(item => item.id === 'showHealth').description.includes('OK'));
+            assert.ok(items.find(item => item.id === 'showDiagnostics').description.includes('No problems'));
+            assert.ok(items.find(item => item.id === 'toggleFieldHover').description.includes('Off'));
+        });
+
+        it('shows session-off description for field hover menu state', () => {
+            const items = buildDashboardItems({
+                fieldHoverMenuState: 'offSession',
+                labels: {
+                    fieldHoverOffSessionDescription: '关（本会话）',
+                },
+            });
+            assert.equal(
+                items.find(item => item.id === 'toggleFieldHover').description,
+                '关（本会话）',
+            );
+        });
+
+        it('offers a main deck action only for selected or ambiguous shared contexts', () => {
+            const ambiguous = buildDashboardItems({
+                mainDeckContextState: 'ambiguous',
+            });
+            assert.ok(ambiguous.find(item =>
+                item.id === 'selectMainDeckContext' &&
+                item.description.includes('choose')
+            ));
+
+            const selected = buildDashboardItems({
+                mainDeckContextState: 'selected',
+                mainDeckRootName: 'condition_a.k',
+            });
+            assert.ok(selected.find(item =>
+                item.id === 'selectMainDeckContext' &&
+                item.description.includes('condition_a.k')
+            ));
+
+            const unique = buildDashboardItems({
+                mainDeckContextState: 'unique',
+                mainDeckRootName: 'condition_a.k',
+            });
+            assert.equal(unique.some(item => item.id === 'selectMainDeckContext'), false);
         });
     });
 
@@ -150,8 +273,9 @@ describe('DynaSense status bar dashboard', () => {
                     keyword: '*NODE',
                     fieldIndex: 2,
                     fieldCount: 4,
-                    manualReady: false,
-                warningCount: 0,
+                    manualReady: true,
+                    errorCount: 0,
+                    warningCount: 0,
                     healthIssueCount: 0,
                     tabNavigationEnabled: true,
                 }),
@@ -160,7 +284,8 @@ describe('DynaSense status bar dashboard', () => {
 
             dashboard.refresh();
 
-            assert.strictEqual(statusBarItem.text, 'DynaSense: *NODE · F2/4 · Manual setup');
+            assert.strictEqual(statusBarItem.text, 'LS-DYNA: *NODE · 2/4');
+            assert.ok(String(statusBarItem.tooltip).includes('*NODE'));
             assert.strictEqual(statusBarItem.command, 'extension.lsdynaStatusDashboard');
             assert.deepStrictEqual(calls, ['show']);
         });
@@ -176,6 +301,7 @@ describe('DynaSense status bar dashboard', () => {
                     fieldIndex: 1,
                     fieldCount: 2,
                     manualReady: true,
+                    errorCount: 0,
                     warningCount: 0,
                     healthIssueCount: 1,
                     tabNavigationEnabled: true,
@@ -189,6 +315,43 @@ describe('DynaSense status bar dashboard', () => {
             await dashboard.showMenu();
 
             assert.deepStrictEqual(executed, ['showHealth']);
+        });
+
+        it('dispatches custom valid keyword management from the status menu', async () => {
+            const executed = [];
+            const dashboard = new LsdynaStatusBarDashboard({
+                statusBarItem: { show() {}, hide() {}, dispose() {} },
+                getContext: () => ({ isLsdyna: true, level: 'simple' }),
+                showQuickPick: async (items) => items.find(item => item.id === 'manageCustomValidKeywords'),
+                actions: {
+                    manageCustomValidKeywords: () => executed.push('manageCustomValidKeywords'),
+                },
+            });
+
+            await dashboard.showMenu();
+
+            assert.deepStrictEqual(executed, ['manageCustomValidKeywords']);
+        });
+
+        it('dispatches main deck context selection from the status menu', async () => {
+            const executed = [];
+            const dashboard = new LsdynaStatusBarDashboard({
+                statusBarItem: { show() {}, hide() {}, dispose() {} },
+                getContext: () => ({
+                    isLsdyna: true,
+                    level: 'simple',
+                    mainDeckContextState: 'ambiguous',
+                }),
+                showQuickPick: async items =>
+                    items.find(item => item.id === 'selectMainDeckContext'),
+                actions: {
+                    selectMainDeckContext: () => executed.push('selectMainDeckContext'),
+                },
+            });
+
+            await dashboard.showMenu();
+
+            assert.deepStrictEqual(executed, ['selectMainDeckContext']);
         });
     });
 });

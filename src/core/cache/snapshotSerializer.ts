@@ -28,6 +28,7 @@ const { ProjectGraph } = require('../project/projectGraph');
  * @returns {SerializedProjectSnapshot} Plain JSON-serializable object.
  */
 function serializeProjectSnapshot(snapshot) {
+    const effective = snapshot.effectiveSearchPathsByFile;
     return {
         ...snapshot,
         graph: snapshot.graph.toJSON(),
@@ -35,6 +36,9 @@ function serializeProjectSnapshot(snapshot) {
         keywordMap: [...(snapshot.keywordMap || new Map()).entries()],
         missingFiles: [...(snapshot.missingFiles || [])],
         cycles: [...(snapshot.cycles || [])],
+        effectiveSearchPathsByFile: effective instanceof Map
+            ? [...effective.entries()]
+            : (effective || []),
     };
 }
 
@@ -46,6 +50,10 @@ function serializeProjectSnapshot(snapshot) {
  */
 function hydrateProjectSnapshot(snapshot) {
     const graph = ProjectGraph.fromJSON(snapshot.graph);
+    const effectiveRaw = snapshot.effectiveSearchPathsByFile;
+    const effectiveSearchPathsByFile = effectiveRaw instanceof Map
+        ? effectiveRaw
+        : new Map(Array.isArray(effectiveRaw) ? effectiveRaw : []);
     return {
         ...snapshot,
         graph,
@@ -53,6 +61,7 @@ function hydrateProjectSnapshot(snapshot) {
         keywordMap: new Map(snapshot.keywordMap || []),
         missingFiles: graph.missingFiles,
         cycles: graph.cycles,
+        effectiveSearchPathsByFile,
     };
 }
 

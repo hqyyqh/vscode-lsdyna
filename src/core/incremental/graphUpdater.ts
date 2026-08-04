@@ -21,6 +21,10 @@ const path = require('path');
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
 const { ProjectGraph } = require('../project/projectGraph');
+const {
+    getEffectiveSearchPathsFromSnapshot,
+    pathCardsChanged,
+} = require('../project/effectiveSearchPathLookup');
 
 /**
  * Resolves a project file path to absolute.
@@ -67,6 +71,7 @@ async function resolveIncludeAsync(fileName, searchPaths) {
  * @property {string[]} removedFiles - Files removed from the graph (orphaned).
  * @property {boolean} includesChanged - Whether the include structure changed.
  * @property {boolean} keywordsChanged - Whether keywords changed.
+ * @property {boolean} [requiresFullRebuild] - PATH cards changed; caller should invalidate root and rebuild.
  */
 
 /**
@@ -102,6 +107,42 @@ function createGraphUpdater({
      * @param {string} snapshot.rootFile - Root file path.
      * @returns {Promise<IncrementalUpdateResult>}
      */
+    /**
+     * Resolve search dirs for include names: prefer snapshot effective paths
+     * (ancestor PATH inheritance), else file-local scanner searchPaths.
+     */
+    function resolveSearchPathsForFile(resolvedPath, newIncludes, snapshot) {
+        const fromSnapshot = getEffectiveSearchPathsFromSnapshot(resolvedPath, snapshot);
+        if (Array.isArray(fromSnapshot) && fromSnapshot.length > 0) {
+            return fromSnapshot;
+        }
+        return newIncludes.searchPaths || [path.dirname(resolvedPath)];
+    }
+
+    /**
+     * Previous PATH cards for this file from fileIndexes (if present).
+     */
+    function previousPathEntries(resolvedPath, snapshot) {
+        const fileIndexes = snapshot.fileIndexes;
+        if (!fileIndexes) return [];
+        const key = normalizeKey(resolvedPath);
+        let fileIndex = null;
+        if (fileIndexes instanceof Map) {
+            fileIndex = fileIndexes.get(resolvedPath);
+            if (!fileIndex) {
+                for (const [fp, fi] of fileIndexes.entries()) {
+                    if (normalizeKey(fp) === key) {
+                        fileIndex = fi;
+                        break;
+                    }
+                }
+            }
+        } else if (typeof fileIndexes === 'object') {
+            fileIndex = fileIndexes[resolvedPath];
+        }
+        return (fileIndex && fileIndex.pathEntries) || [];
+    }
+
     async function updateFile(changedFilePath, snapshot) {
         const resolvedPath = resolveFile(changedFilePath);
         const { graph, keywordMap, files } = snapshot;
@@ -110,7 +151,14 @@ function createGraphUpdater({
         const fileKey = normalizeKey(resolvedPath);
         const isTracked = files.some(f => normalizeKey(f) === fileKey);
         if (!isTracked) {
-            return { changed: false, addedFiles: [], removedFiles: [], includesChanged: false, keywordsChanged: false };
+            return {
+                changed: false,
+                addedFiles: [],
+                removedFiles: [],
+                includesChanged: false,
+                keywordsChanged: false,
+                requiresFullRebuild: false,
+            };
         }
 
         // Re-scan the changed file
@@ -123,6 +171,22 @@ function createGraphUpdater({
             // File may have been deleted or become unreadable
             return removeFile(changedFilePath, snapshot);
         }
+
+        // PATH card changes invalidate ancestor inheritance for the whole tree.
+        const oldPathEntries = previousPathEntries(resolvedPath, snapshot);
+        const newPathEntries = newIncludes.pathEntries || [];
+        if (pathCardsChanged(oldPathEntries, newPathEntries)) {
+            return {
+                changed: true,
+                addedFiles: [],
+                removedFiles: [],
+                includesChanged: true,
+                keywordsChanged: false,
+                requiresFullRebuild: true,
+            };
+        }
+
+        const searchPaths = resolveSearchPathsForFile(resolvedPath, newIncludes, snapshot);
 
         // --- Update keywords ---
         let keywordsChanged = false;
@@ -153,7 +217,7 @@ function createGraphUpdater({
         const newChildPaths = [];
 
         for (const entry of newIncludes.includeEntries) {
-            const resolved = await resolveInclude(entry.fileName, newIncludes.searchPaths);
+            const resolved = await resolveInclude(entry.fileName, searchPaths);
             if (resolved) {
                 newChildPaths.push(resolved);
             }
@@ -204,11 +268,11 @@ function createGraphUpdater({
 
             // Add new edges
             for (const entry of newIncludes.includeEntries) {
-                const resolved = await resolveInclude(entry.fileName, newIncludes.searchPaths);
+                const resolved = await resolveInclude(entry.fileName, searchPaths);
                 if (!resolved) {
                     const candidatePaths = [];
                     const seenCandidates = new Set();
-                    for (const searchPath of newIncludes.searchPaths) {
+                    for (const searchPath of searchPaths) {
                         const candidatePath = path.resolve(searchPath, entry.fileName);
                         const candidateKey = normalizeKey(candidatePath);
                         if (seenCandidates.has(candidateKey)) continue;
@@ -275,6 +339,7 @@ function createGraphUpdater({
             removedFiles,
             includesChanged,
             keywordsChanged,
+            requiresFullRebuild: false,
         };
     }
 
@@ -343,6 +408,7 @@ function createGraphUpdater({
             removedFiles: [resolvedPath],
             includesChanged: true,
             keywordsChanged: true,
+            requiresFullRebuild: false,
         };
     }
 

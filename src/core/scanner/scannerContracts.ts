@@ -1,6 +1,7 @@
 'use strict';
 
-const SCANNER_VERSION = 2;
+// Increment whenever the persisted file-index shape or scanner semantics change.
+const SCANNER_VERSION = 6;
 
 function isNodeKeyword(keyword) {
     return keyword === '*NODE' || keyword.startsWith('*NODE_');

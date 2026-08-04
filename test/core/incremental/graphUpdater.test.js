@@ -150,5 +150,75 @@ describe('createGraphUpdater', () => {
 
         // Keywords same, includes same → no structural change
         assert.equal(result.includesChanged, false);
+        assert.equal(result.requiresFullRebuild, false);
+    });
+
+    it('resolves child short names via snapshot effectiveSearchPathsByFile', async () => {
+        const rootFile = path.resolve('/project/main.k');
+        const bodyFile = path.resolve('/project/body.k');
+        const steelFile = path.resolve('/project/mats/steel.k');
+        const matsDir = path.resolve('/project/mats');
+
+        const graph = new ProjectGraph();
+        graph.addIncludeEdge(rootFile, bodyFile);
+
+        const snapshot = createSnapshot(rootFile, [rootFile, bodyFile], graph, new Map());
+        snapshot.effectiveSearchPathsByFile = new Map([
+            [bodyFile, [path.dirname(bodyFile), matsDir]],
+        ]);
+        snapshot.fileIndexes = new Map([
+            [bodyFile, { pathEntries: [] }],
+        ]);
+
+        const updater = createGraphUpdater({
+            collectIncludeDirectivesFromFile: async () => ({
+                includeEntries: [{ fileName: 'steel.k', lineIndex: 1, startChar: 0, endChar: 7 }],
+                searchPaths: [path.dirname(bodyFile)], // local only — steel not here
+                pathEntries: [],
+            }),
+            collectKeywordsFromFile: async () => [],
+            resolveInclude: async (fileName, searchPaths) => {
+                for (const sp of searchPaths) {
+                    if (path.resolve(sp, fileName) === steelFile) return steelFile;
+                }
+                return null;
+            },
+        });
+
+        const result = await updater.updateFile(bodyFile, snapshot);
+        assert.equal(result.requiresFullRebuild, false);
+        assert.equal(result.includesChanged, true);
+        assert.deepEqual(graph.getChildren(bodyFile), [steelFile]);
+        assert.ok(snapshot.files.some(f => path.resolve(f) === steelFile));
+    });
+
+    it('flags requiresFullRebuild when *INCLUDE_PATH cards change', async () => {
+        const rootFile = path.resolve('/project/main.k');
+        const matsDir = path.resolve('/project/mats');
+        const matsV2 = path.resolve('/project/mats_v2');
+
+        const graph = new ProjectGraph();
+        graph.addFile(rootFile);
+
+        const snapshot = createSnapshot(rootFile, [rootFile], graph, new Map());
+        snapshot.fileIndexes = new Map([
+            [rootFile, { pathEntries: [{ searchPath: matsDir }] }],
+        ]);
+        snapshot.effectiveSearchPathsByFile = new Map([
+            [rootFile, [path.dirname(rootFile), matsDir]],
+        ]);
+
+        const updater = createGraphUpdater({
+            collectIncludeDirectivesFromFile: async () => ({
+                includeEntries: [],
+                searchPaths: [path.dirname(rootFile), matsV2],
+                pathEntries: [{ searchPath: matsV2 }],
+            }),
+            collectKeywordsFromFile: async () => [],
+        });
+
+        const result = await updater.updateFile(rootFile, snapshot);
+        assert.equal(result.requiresFullRebuild, true);
+        assert.equal(result.changed, true);
     });
 });

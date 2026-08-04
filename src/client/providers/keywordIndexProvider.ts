@@ -65,6 +65,16 @@ class KeywordItem extends vscode.TreeItem {
      */
     constructor(keyword) {
         super(keyword, vscode.TreeItemCollapsibleState.Collapsed);
+        /**
+         * Keyword name (same as label).
+         * @type {string}
+         */
+        this.keyword = keyword;
+        /**
+         * All occurrences for this keyword (search / jump target list).
+         * @type {KeywordUsage[]}
+         */
+        this.usages = [];
         this.children = [];
         this.iconPath = new vscode.ThemeIcon('symbol-keyword');
     }
@@ -263,6 +273,7 @@ class LsdynaKeywordIndexProvider {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([keyword, usages]) => {
                 const item = new KeywordItem(keyword);
+                item.usages = usages.map(({ filePath, lineIndex }) => ({ filePath, lineIndex }));
                 item.description = usages.length === 1 ? i18n.get('usageSingular') : i18n.get('usagesPlural', usages.length);
 
                 const tooltip = new vscode.MarkdownString();
@@ -535,6 +546,22 @@ class LsdynaKeywordIndexProvider {
     getChildren(element) {
         if (element) return element.children;
         return this.roots;
+    }
+
+    /**
+     * List keyword roots for title-bar QuickPick search.
+     * Returns an empty array when nothing is indexed yet.
+     *
+     * @returns {Array<{keyword: string, usages: KeywordUsage[], treeItem: KeywordItem}>}
+     */
+    listSearchEntries() {
+        return (this.roots || [])
+            .filter(item => item instanceof KeywordItem)
+            .map(item => ({
+                keyword: item.keyword || String(item.label || ''),
+                usages: Array.isArray(item.usages) ? item.usages.slice() : [],
+                treeItem: item,
+            }));
     }
 }
 

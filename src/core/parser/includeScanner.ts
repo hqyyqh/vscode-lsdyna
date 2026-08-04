@@ -15,6 +15,13 @@
 const fs = require('fs');
 const path = require('path');
 const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
+const { getIncludeDirectiveRule } = require('./includeDirectiveRules');
+const {
+    createIncludeTransformMetadata,
+    applyIncludeTransformDataCard,
+    finalizeIncludeTransformMetadata,
+    isTransformIncludeKeyword,
+} = require('./includeTransformMetadata');
 const { readBlockText } = require('../scanner/blockReader');
 const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScanner');
 
@@ -84,12 +91,14 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  * @typedef {Object} IncludeDirectiveState
  * @property {string} basePath - Base directory path for resolving relative include paths.
  * @property {string} keyword - The active keyword context (e.g. '*INCLUDE', '*INCLUDE_PATH').
+ * @property {number} keywordLine - Source line of the active keyword.
  * @property {number} cardCount - Number of data cards processed under the current keyword.
  * @property {IncludeEntry[]} includeEntries - Scanned include file references.
  * @property {string[]} searchPaths - Search directories resolved for this file.
  * @property {PathEntry[]} pathEntries - Scanned include search path references.
  * @property {PendingInclude|null} pendingInclude - Active include entry being built.
  * @property {PendingPath|null} pendingPath - Active path entry being built (for *INCLUDE_PATH continuation).
+ * @property {IncludeEntry|null} activeTransformEntry - Transform include receiving cards 2b.1-2b.4.
  */
 
 /**
@@ -109,32 +118,15 @@ function createIncludeDirectiveState(basePath) {
     return {
         basePath,
         keyword: '',
+        keywordLine: -1,
         cardCount: 0,
         includeEntries: [],
         searchPaths: [basePath],
         pathEntries: [],
         pendingInclude: null,
         pendingPath: null,
+        activeTransformEntry: null,
     };
-}
-
-/**
- * Returns parsing rules for a given include-related keyword.
- * 
- * @param {string} keyword - The keyword to check.
- * @returns {{repeatable: boolean, filenameCard: number}|null} Parser rules, or null if not an include keyword.
- */
-function getIncludeDirectiveRule(keyword) {
-    if (keyword === '*INCLUDE') {
-        return { repeatable: true, filenameCard: 1 };
-    }
-    if (keyword.startsWith('*INCLUDE_MULTISCALE_SPOTWELD')) {
-        return { repeatable: false, filenameCard: 2 };
-    }
-    if (keyword.startsWith('*INCLUDE') && !keyword.startsWith('*INCLUDE_PATH')) {
-        return { repeatable: false, filenameCard: 1 };
-    }
-    return null;
 }
 
 /**
@@ -160,7 +152,7 @@ function createIncludeSegment(line, lineIndex) {
  * @param {number} lineIndex - 0-indexed line number.
  * @returns {PendingInclude} A new pending include object.
  */
-function startIncludeEntry(line, lineIndex) {
+function startIncludeEntry(line, lineIndex, keyword = '', keywordLine = -1) {
     const trimmed = line.trim();
     const segment = createIncludeSegment(line, lineIndex);
     return {
@@ -171,6 +163,8 @@ function startIncludeEntry(line, lineIndex) {
         parts: [trimmed.endsWith(' +') ? trimmed.slice(0, -2) : trimmed],
         segments: [segment],
         awaitingContinuation: trimmed.endsWith(' +'),
+        keyword,
+        keywordLine,
     };
 }
 
@@ -294,10 +288,39 @@ function flushIncludeEntry(state) {
     if (!state.pendingInclude) return;
     const fileName = state.pendingInclude.parts.join('').trim();
     if (fileName) {
-        const { lineIndex, startChar, endLineIndex, endChar, segments } = state.pendingInclude;
-        state.includeEntries.push({ lineIndex, startChar, endLineIndex, endChar, fileName, segments });
+        const {
+            lineIndex,
+            startChar,
+            endLineIndex,
+            endChar,
+            segments,
+            keyword,
+            keywordLine,
+        } = state.pendingInclude;
+        const entry: any = {
+            lineIndex,
+            startChar,
+            endLineIndex,
+            endChar,
+            fileName,
+            segments,
+            keyword,
+            keywordLine,
+            parameterizedFileName: /&[A-Za-z_][A-Za-z0-9_-]{0,8}/.test(fileName),
+        };
+        if (isTransformIncludeKeyword(keyword)) {
+            entry.transform = createIncludeTransformMetadata(keyword, keywordLine, lineIndex);
+            state.activeTransformEntry = entry;
+        }
+        state.includeEntries.push(entry);
     }
     state.pendingInclude = null;
+}
+
+function finalizeActiveTransformEntry(state) {
+    if (!state.activeTransformEntry) return;
+    finalizeIncludeTransformMetadata(state.activeTransformEntry.transform);
+    state.activeTransformEntry = null;
 }
 
 /**
@@ -333,7 +356,9 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
     if (classification.isKeyword) {
         flushIncludeEntry(state);
         flushPathEntry(state);
+        finalizeActiveTransformEntry(state);
         state.keyword = classification.normalizedKeyword;
+        state.keywordLine = lineIndex;
         state.cardCount = 0;
         return;
     }
@@ -378,10 +403,17 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 
     state.cardCount++;
     if (includeRule.repeatable || state.cardCount === includeRule.filenameCard) {
-        state.pendingInclude = startIncludeEntry(line, lineIndex);
+        state.pendingInclude = startIncludeEntry(line, lineIndex, state.keyword, state.keywordLine);
         if (!state.pendingInclude.awaitingContinuation) {
             flushIncludeEntry(state);
         }
+    } else if (state.activeTransformEntry && isTransformIncludeKeyword(state.keyword)) {
+        applyIncludeTransformDataCard(
+            state.activeTransformEntry.transform,
+            state.cardCount,
+            line,
+            lineIndex
+        );
     }
 }
 
@@ -394,6 +426,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 function finalizeIncludeDirectiveState(state) {
     flushIncludeEntry(state);
     flushPathEntry(state);
+    finalizeActiveTransformEntry(state);
     return { includeEntries: state.includeEntries, searchPaths: state.searchPaths, pathEntries: state.pathEntries };
 }
 

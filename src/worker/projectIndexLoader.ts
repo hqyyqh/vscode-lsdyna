@@ -35,7 +35,8 @@ type ProjectIndexLoaderOptions = {
  * @param {string} [options.fileScanCacheDirectory] - Optional path for persistent per-file scan cache.
  * @returns {{
  *   buildProjectIndex: function(string): Promise<import('../core/project/projectIndexer').ProjectIndexResult>,
- *   dispose: function(): Promise<void>
+ *   dispose: function(): Promise<void>,
+ *   isDisposed: function(): boolean
  * }} The loader API client.
  */
 function createProjectIndexLoader({
@@ -45,6 +46,7 @@ function createProjectIndexLoader({
 }: ProjectIndexLoaderOptions = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
+    let disposed = false;
 
     /**
      * Checks if the worker pool has been disposed.
@@ -62,6 +64,9 @@ function createProjectIndexLoader({
      * @returns {import('./workerPool').WorkerPool} Active worker pool.
      */
     function getWorkerPool() {
+        if (disposed) {
+            throw new Error('project index loader has been disposed');
+        }
         if (isPoolDisposed(workerPool)) {
             workerPool = null;
         }
@@ -85,7 +90,7 @@ function createProjectIndexLoader({
             try {
                 return await pool.buildProjectIndex(rootFile, options, onProgress);
             } catch (error) {
-                if (workerPool === pool && isPoolDisposed(pool)) {
+                if (!disposed && workerPool === pool && isPoolDisposed(pool)) {
                     workerPool = null;
                 }
                 throw error;
@@ -98,9 +103,20 @@ function createProjectIndexLoader({
          * @returns {Promise<void>}
          */
         async dispose() {
-            if (!workerPool) return;
-            await workerPool.dispose();
+            if (disposed) return;
+            disposed = true;
+            const closingPool = workerPool;
             workerPool = null;
+            if (closingPool) {
+                await closingPool.dispose();
+            }
+        },
+
+        /**
+         * Reports whether this loader has begun permanent shutdown.
+         */
+        isDisposed() {
+            return disposed;
         },
     };
 }

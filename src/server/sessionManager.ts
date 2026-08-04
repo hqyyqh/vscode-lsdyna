@@ -88,13 +88,15 @@ let activeSession = null;
 /**
  * Boots and registers the active server session singleton.
  * 
- * @param {Object} options - Config options passed to construction.
+ * @param {Object} [options={}] - Config options passed to construction.
  * @returns {LsdynaServerSession} The newly created active session.
- * @throws {Error} If a session has already been initialized.
+ * Repeated initialization is idempotent for the lifetime of the server
+ * process. Initialization options are applied only when the first session is
+ * created.
  */
-function initializeSession(options: ServerSessionOptions) {
+function initializeSession(options: ServerSessionOptions = {}) {
     if (activeSession) {
-        throw new Error('Server session is already initialized');
+        return activeSession;
     }
     activeSession = new LsdynaServerSession(options);
     return activeSession;
@@ -115,10 +117,13 @@ function getActiveSession() {
  * @returns {Promise<void>}
  */
 async function shutdownSession() {
-    if (activeSession) {
-        await activeSession.dispose();
-        activeSession = null;
-    }
+    const closingSession = activeSession;
+    if (!closingSession) return;
+
+    // Detach before awaiting disposal so requests cannot enter a closing
+    // session. A replacement created during the await must remain active.
+    activeSession = null;
+    await closingSession.dispose();
 }
 
 module.exports = {

@@ -4,16 +4,30 @@ const assert = require('assert');
 const path = require('path');
 
 const { fakeDoc, vscodeMock } = require('../helpers');
+const i18n = require('../../src/core/i18n');
 
 describe('keyword aliases and default valid keywords', () => {
-    it('warns for lowercase keywords even when they are indented', () => {
+    it('does not warn for lowercase keywords by default, but does when opted in', () => {
         const keywordValidator = require('../../src/core/parser/keywordValidator');
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
         keywordValidator.init(new Set(['NODE']));
 
-        const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(fakeDoc(' \t*node\n'));
+        try {
+            // Default: lowercase keywords are valid LS-DYNA, so no warning.
+            const offDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(fakeDoc(' \t*node\n'));
+            assert.equal(offDiagnostics.filter(d => /lowercase/i.test(d.message)).length, 0);
 
-        assert.equal(diagnostics.length, 1);
-        assert.match(diagnostics[0].message, /lowercase/i);
+            // Opt-in: warnLowercaseKeyword = true restores the warning, indent and all.
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => (key === 'warnLowercaseKeyword' ? true : defaultValue),
+            });
+            const onDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(fakeDoc(' \t*node\n'));
+            const lowercaseWarnings = onDiagnostics.filter(d => /lowercase/i.test(d.message));
+            assert.equal(lowercaseWarnings.length, 1);
+            assert.match(lowercaseWarnings[0].message, /lowercase/i);
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
     });
 
     it('treats SET_PART and SET_PART_LIST as aliases in both directions', () => {
@@ -32,6 +46,32 @@ describe('keyword aliases and default valid keywords', () => {
         assert.ok(getAliases('ALE_STRUCTURED_MULTI_MATERIAL_GROUP').includes('ALE_STRUCTURED_MULTI-MATERIAL_GROUP'));
     });
 
+    it('supplies every retired hardcoded alias from generated schema metadata', () => {
+        const { getAliases } = require('../../src/core/keywordUtils');
+        const retiredPairs = [
+            ['CONTROL_TIMESTEP', 'CONTROL_TIME_STEP'],
+            ['MAT_034', 'MAT_FABRIC'],
+            ['MAT_058', 'MAT_LAMINATED_COMPOSITE_FABRIC'],
+            ['MAT_058_SOLID', 'MAT_LAMINATED_COMPOSITE_FABRIC_SOLID'],
+            ['MAT_077_H', 'MAT_HYPERELASTIC_RUBBER'],
+            ['MAT_077_O', 'MAT_OGDEN_RUBBER'],
+            ['MAT_MODIFIED_JOHNSON_COOK', 'MAT_107'],
+            ['MAT_124', 'MAT_PLASTICITY_COMPRESSION_TENSION'],
+            ['MAT_181', 'MAT_SIMPLIFIED_RUBBER/FOAM'],
+            ['MAT_138', 'MAT_COHESIVE_MIXED_MODE'],
+            ['MAT_196', 'MAT_GENERAL_SPRING_DISCRETE_BEAM'],
+            ['MAT_023', 'MAT_TEMPERATURE_DEPENDENT_ORTHOTROPIC'],
+            ['MAT_295', 'MAT_ANISOTROPIC_HYPERELASTIC'],
+            ['SET_NODE_LIST', 'SET_NODE'],
+            ['SET_PART_LIST', 'SET_PART'],
+        ];
+
+        for (const [left, right] of retiredPairs) {
+            assert.ok(getAliases(left).includes(right), `${left} should resolve to ${right}`);
+            assert.ok(getAliases(right).includes(left), `${right} should resolve to ${left}`);
+        }
+    });
+
     it('keeps title suffix stripping scoped to manual keyword normalization', () => {
         const keywordUtils = require('../../src/core/keywordUtils');
 
@@ -44,7 +84,11 @@ describe('keyword aliases and default valid keywords', () => {
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
 
         vscodeMock.workspace.getConfiguration = () => ({
-            get: () => undefined,
+            get: (key, defaultValue) => {
+                if (key === 'customValidKeywords') return undefined;
+                if (key === 'unknownKeywordSeverity') return defaultValue || 'error';
+                return defaultValue;
+            },
         });
 
         try {
@@ -52,10 +96,105 @@ describe('keyword aliases and default valid keywords', () => {
             const doc = fakeDoc('*TITLE\n*CASE_BEGIN\n*CASE_END\n*CASE_BEGIN_1\n*CASE_END_2\n*UNKNOWN_CASE_TOKEN\n');
             const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
 
-            assert.deepEqual(
-                diagnostics.map(diagnostic => diagnostic.message),
-                ['Unknown or invalid keyword: *UNKNOWN_CASE_TOKEN']
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].code, 'unknown-keyword');
+            assert.equal(diagnostics[0].unknownKeyword, 'UNKNOWN_CASE_TOKEN');
+            assert.match(diagnostics[0].message, /UNKNOWN_CASE_TOKEN/);
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
+    it('marks unknown keywords with stable diagnostic code for quick fixes', () => {
+        const keywordValidator = require('../../src/core/parser/keywordValidator');
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => {
+                if (key === 'customValidKeywords') return ['*END'];
+                if (key === 'unknownKeywordSeverity') return defaultValue || 'error';
+                return defaultValue;
+            },
+        });
+
+        try {
+            keywordValidator.init(new Set(['NODE']));
+            const doc = fakeDoc('*NODE\n*NOT_IN_LIBRARY\n');
+            const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].code, 'unknown-keyword');
+            assert.equal(diagnostics[0].unknownKeyword, 'NOT_IN_LIBRARY');
+            assert.equal(diagnostics[0].source, 'lsdyna');
+            assert.equal(diagnostics[0].message, i18n.get('unknownKeyword', 'NOT_IN_LIBRARY'));
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
+    it('accepts keywords covered by custom valid list without unknown diagnostic', () => {
+        const keywordValidator = require('../../src/core/parser/keywordValidator');
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => {
+                if (key === 'customValidKeywords') return ['*END', '*NOT_IN_LIBRARY'];
+                if (key === 'unknownKeywordSeverity') return defaultValue;
+                return defaultValue;
+            },
+        });
+
+        try {
+            keywordValidator.init(new Set(['NODE']));
+            const doc = fakeDoc('*NOT_IN_LIBRARY\n');
+            const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
+            assert.equal(diagnostics.length, 0);
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
+    it('maps unknownKeywordSeverity to diagnostic severity and supports off', () => {
+        const keywordValidator = require('../../src/core/parser/keywordValidator');
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+
+        assert.equal(
+            keywordValidator.resolveUnknownKeywordSeverity('warning'),
+            vscodeMock.DiagnosticSeverity.Warning
+        );
+        assert.equal(
+            keywordValidator.resolveUnknownKeywordSeverity('hint'),
+            vscodeMock.DiagnosticSeverity.Hint
+        );
+        assert.equal(keywordValidator.resolveUnknownKeywordSeverity('off'), null);
+        assert.equal(
+            keywordValidator.resolveUnknownKeywordSeverity('nope'),
+            vscodeMock.DiagnosticSeverity.Error
+        );
+
+        const runWith = (severityMode) => {
+            vscodeMock.workspace.getConfiguration = () => ({
+                get: (key, defaultValue) => {
+                    if (key === 'customValidKeywords') return ['*END'];
+                    if (key === 'unknownKeywordSeverity') return severityMode;
+                    return defaultValue;
+                },
+            });
+            keywordValidator.init(new Set(['NODE']));
+            return keywordValidator.collectKeywordValidationDiagnostics(
+                fakeDoc('*NOT_IN_LIBRARY\n**BAD\n')
             );
+        };
+
+        try {
+            const asWarning = runWith('warning');
+            const unknown = asWarning.find(d => d.code === 'unknown-keyword');
+            assert.ok(unknown);
+            assert.equal(unknown.severity, vscodeMock.DiagnosticSeverity.Warning);
+
+            const asOff = runWith('off');
+            assert.equal(asOff.filter(d => d.code === 'unknown-keyword').length, 0);
+            // ** format errors are independent of unknownKeywordSeverity
+            assert.ok(asOff.some(d => /invalid|无效|format/i.test(d.message)));
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         }
@@ -66,7 +205,11 @@ describe('keyword aliases and default valid keywords', () => {
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
 
         vscodeMock.workspace.getConfiguration = () => ({
-            get: () => undefined,
+            get: (key, defaultValue) => {
+                if (key === 'customValidKeywords') return undefined;
+                if (key === 'unknownKeywordSeverity') return defaultValue || 'error';
+                return defaultValue;
+            },
         });
 
         try {
@@ -86,10 +229,10 @@ describe('keyword aliases and default valid keywords', () => {
             ].join('\n'));
             const diagnostics = keywordValidator.collectKeywordValidationDiagnostics(doc);
 
-            assert.deepEqual(
-                diagnostics.map(diagnostic => diagnostic.message),
-                ['Unknown or invalid keyword: *CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F']
-            );
+            assert.equal(diagnostics.length, 1);
+            assert.equal(diagnostics[0].code, 'unknown-keyword');
+            assert.equal(diagnostics[0].unknownKeyword, 'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F');
+            assert.match(diagnostics[0].message, /CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_F/);
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         }
@@ -132,15 +275,24 @@ describe('keyword aliases and default valid keywords', () => {
         }
     });
 
-    it('allows LS-DYNA tab alignment while keyword snippets are active', () => {
+    it('routes LS-DYNA cell navigation safely in snippets and with multiple selections', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
         const keybindings = packageJson.contributes.keybindings;
 
-        for (const command of ['extension.lsdynaTab', 'extension.lsdynaShiftTab']) {
+        for (const command of [
+            'extension.lsdynaTab',
+            'extension.lsdynaShiftTab',
+            'extension.lsdynaSelectCell',
+        ]) {
             const binding = keybindings.find(item => item.command === command);
             assert.ok(binding, `${command} keybinding should exist`);
             assert.ok(!binding.when.includes('!inSnippetMode'));
             assert.ok(binding.when.includes('lsdyna.shouldAlignTab'));
+            if (command === 'extension.lsdynaSelectCell') {
+                assert.ok(!binding.when.includes('!editorHasMultipleSelections'));
+            } else {
+                assert.ok(binding.when.includes('!editorHasMultipleSelections'));
+            }
         }
     });
 });

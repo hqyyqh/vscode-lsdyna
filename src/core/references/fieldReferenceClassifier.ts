@@ -1,6 +1,7 @@
 'use strict';
 
 const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
+const { parseNumericInput } = require('./referenceInputValue');
 let referenceIndexCache = loadedReferenceIndex;
 
 function normalizeKeyword(value) {
@@ -36,6 +37,7 @@ function getFieldReferenceInfo({ keyword, cardIndex, field }) {
         fieldName: normalizedField,
         fieldType: reference.fieldType,
         targetKinds: reference.targetKinds || [],
+        targetDefinitions: reference.targetDefinitions || [],
         label: reference.label,
         allowSignedSwitch: reference.allowSignedSwitch !== false,
         requiresSignedSwitch: reference.requiresSignedSwitch === true,
@@ -44,36 +46,46 @@ function getFieldReferenceInfo({ keyword, cardIndex, field }) {
     };
 }
 
-function parseReferenceInteger(raw) {
-    if (!/^[+-]?\d+(?:\.0*)?$/.test(raw)) {
-        return null;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed === 0) {
-        return null;
-    }
-    return parsed;
-}
-
 function parseFieldReferenceValue(rawValue, info = null) {
     const raw = String(rawValue || '').trim();
     if (!raw) {
         return null;
     }
-    const parsed = parseReferenceInteger(raw);
-    if (parsed === null) {
+
+    const input = parseNumericInput(raw, {
+        integerOnly: true,
+        nonZero: true,
+    });
+    if (input.kind === 'parameter') {
+        if (info && info.requiresSignedSwitch === true && !input.negated) {
+            return null;
+        }
+        if (input.negated && info && info.allowSignedSwitch === false) {
+            return null;
+        }
+        return {
+            kind: 'parameter',
+            parameterName: input.name,
+            raw: input.raw,
+            isSignedSwitch: input.negated,
+            input,
+        };
+    }
+    if (input.kind !== 'numeric') {
         return null;
     }
-    if (info && info.requiresSignedSwitch === true && parsed > 0) {
+    if (info && info.requiresSignedSwitch === true && input.value > 0) {
         return null;
     }
-    if (parsed < 0 && info && info.allowSignedSwitch === false) {
+    if (input.value < 0 && info && info.allowSignedSwitch === false) {
         return null;
     }
     return {
-        id: Math.abs(parsed),
+        kind: 'numeric',
+        id: Math.abs(input.value),
         raw,
-        isSignedSwitch: parsed < 0,
+        isSignedSwitch: input.value < 0,
+        input,
     };
 }
 

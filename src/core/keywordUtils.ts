@@ -28,33 +28,6 @@ function stripTitleSuffix(kwName) {
     return kwName;
 }
 
-const ALIAS_MAP = {
-    "CONTROL_TIMESTEP": "CONTROL_TIME_STEP",
-    "MAT_034": "MAT_FABRIC",
-    "MAT_058": "MAT_LAMINATED_COMPOSITE_FABRIC",
-    "MAT_058_SOLID": "MAT_LAMINATED_COMPOSITE_FABRIC_SOLID",
-    "MAT_077_H": "MAT_HYPERELASTIC_RUBBER",
-    "MAT_077_O": "MAT_OGDEN_RUBBER",
-    "MAT_MODIFIED_JOHNSON_COOK": "MAT_107",
-    "MAT_124": "MAT_PLASTICITY_COMPRESSION_TENSION",
-    "MAT_181": "MAT_SIMPLIFIED_RUBBER/FOAM",
-    "MAT_138": "MAT_COHESIVE_MIXED_MODE",
-    "MAT_196": "MAT_GENERAL_SPRING_DISCRETE_BEAM",
-    "MAT_023": "MAT_TEMPERATURE_DEPENDENT_ORTHOTROPIC",
-    "MAT_295": "MAT_ANISOTROPIC_HYPERELASTIC",
-    "SET_NODE_LIST": "SET_NODE",
-    "SET_PART_LIST": "SET_PART"
-};
-
-const BIDIRECTIONAL_ALIASES = {};
-for (const k of Object.keys(ALIAS_MAP)) {
-    const v = ALIAS_MAP[k];
-    if (!BIDIRECTIONAL_ALIASES[k]) BIDIRECTIONAL_ALIASES[k] = [];
-    if (!BIDIRECTIONAL_ALIASES[v]) BIDIRECTIONAL_ALIASES[v] = [];
-    if (!BIDIRECTIONAL_ALIASES[k].includes(v)) BIDIRECTIONAL_ALIASES[k].push(v);
-    if (!BIDIRECTIONAL_ALIASES[v].includes(k)) BIDIRECTIONAL_ALIASES[v].push(k);
-}
-
 let GENERATED_ALIASES = null;
 
 function addAliasPair(map, left, right) {
@@ -102,10 +75,7 @@ function getAliases(kwName) {
         prefix = '*';
         name = name.slice(1);
     }
-    const aliases = [
-        ...(BIDIRECTIONAL_ALIASES[name] || []),
-        ...(loadGeneratedAliases()[name] || [])
-    ];
+    const aliases = loadGeneratedAliases()[name] || [];
     return [...new Set(aliases)].map(a => prefix + a);
 }
 

@@ -1,5 +1,8 @@
 'use strict';
 
+const { parseNumericInput, numericInputValue } = require('./referenceInputValue');
+const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
+
 function normalizeKeyword(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
 }
@@ -15,6 +18,13 @@ function isCurveKeyword(keyword) {
 
 function isTableKeyword(keyword) {
     return normalizeKeyword(keyword).startsWith('DEFINE_TABLE');
+}
+
+function genericDefinitionDescriptor(keyword, definitionKeywords = loadedReferenceIndex.definitionKeywords) {
+    const normalized = normalizeKeyword(keyword).replace(/\+$/, '');
+    return definitionKeywords && definitionKeywords.generic
+        ? definitionKeywords.generic[normalized] || null
+        : null;
 }
 
 function splitLines(text) {
@@ -38,19 +48,27 @@ function tokenize(line) {
 }
 
 function parseNumberToken(token) {
-    if (!token || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?$/.test(token)) {
-        return null;
-    }
-    const value = Number(token);
-    return Number.isFinite(value) ? value : null;
+    return numericInputValue(parseNumericInput(token, { integerOnly: false }));
 }
 
-function parseIntegerToken(token) {
-    if (!token || !/^[+-]?\d+$/.test(token)) {
-        return null;
-    }
-    const value = Number.parseInt(token, 10);
-    return Number.isFinite(value) && value !== 0 ? Math.abs(value) : null;
+function parseDefinitionIdInput(token) {
+    return parseNumericInput(token, {
+        integerOnly: true,
+        nonZero: true,
+        absoluteNumeric: true,
+    });
+}
+
+function completenessFromInputs(inputs) {
+    const unresolved = (inputs || []).filter(input => input && input.kind !== 'numeric');
+    return unresolved.length === 0
+        ? { state: 'complete', reasons: [] }
+        : {
+            state: 'incomplete',
+            reasons: [...new Set(unresolved.map(input =>
+                input.kind === 'parameter' ? 'parameter-unresolved' : 'reference-data-unresolved'
+            ))],
+        };
 }
 
 function nonCommentEntries(lines, startLine) {
@@ -101,8 +119,9 @@ function parseCurveBlock(block, text) {
         return null;
     }
     const idRaw = idEntry.tokens[0];
-    const id = parseIntegerToken(idRaw);
-    if (id === null) {
+    const idInput = parseDefinitionIdInput(idRaw);
+    const id = numericInputValue(idInput);
+    if (idInput.kind === 'blank' || idInput.kind === 'invalid') {
         return null;
     }
     cursor += 1;
@@ -113,6 +132,7 @@ function parseCurveBlock(block, text) {
             kind: 'functionCurve',
             id,
             idRaw,
+            idInput,
             keyword,
             filePath: block.filePath,
             startLine: block.startLine || 0,
@@ -120,21 +140,28 @@ function parseCurveBlock(block, text) {
             ...(title ? { title } : {}),
             points: [],
             functionText,
+            dataCompleteness: { state: 'complete', reasons: [] },
         };
     }
 
     const points = [];
+    const pointInputs = [];
     for (const entry of entries.slice(cursor)) {
         if (entry.tokens.length < 2) {
             continue;
         }
         const xRaw = entry.tokens[0];
         const yRaw = entry.tokens[1];
+        const xInput = parseNumericInput(xRaw, { integerOnly: false });
+        const yInput = parseNumericInput(yRaw, { integerOnly: false });
+        pointInputs.push(xInput, yInput);
         points.push({
             xRaw,
             yRaw,
-            x: parseNumberToken(xRaw),
-            y: parseNumberToken(yRaw),
+            x: numericInputValue(xInput),
+            y: numericInputValue(yInput),
+            xInput,
+            yInput,
             lineIndex: entry.lineIndex,
         });
     }
@@ -143,12 +170,14 @@ function parseCurveBlock(block, text) {
         kind: 'curve',
         id,
         idRaw,
+        idInput,
         keyword,
         filePath: block.filePath,
         startLine: block.startLine || 0,
         endLine: block.endLine || block.startLine || 0,
         ...(title ? { title } : {}),
         points,
+        dataCompleteness: completenessFromInputs(pointInputs),
         scale: parseScale(idEntry.tokens, { sfa: 2, sfo: 3, offa: 4, offo: 5 }),
     };
 }
@@ -184,8 +213,9 @@ function parseTableBlock(block, text) {
         return null;
     }
     const idRaw = idEntry.tokens[0];
-    const id = parseIntegerToken(idRaw);
-    if (id === null) {
+    const idInput = parseDefinitionIdInput(idRaw);
+    const id = numericInputValue(idInput);
+    if (idInput.kind === 'blank' || idInput.kind === 'invalid') {
         return null;
     }
     cursor += 1;
@@ -193,15 +223,20 @@ function parseTableBlock(block, text) {
     const tableType = tableTypeFromKeyword(keyword);
     const childKind = tableType === '3d' || tableType === '4d' ? 'table' : 'curve';
     const rows = [];
+    const rowInputs = [];
     
     if (tableType === '1d') {
         for (const entry of entries.slice(cursor)) {
             for (const token of entry.tokens) {
+                const valueInput = parseNumericInput(token, { integerOnly: false });
+                rowInputs.push(valueInput);
                 rows.push({
                     valueRaw: token,
-                    value: parseNumberToken(token),
+                    value: numericInputValue(valueInput),
+                    valueInput,
                     childIdRaw: '',
                     childId: null,
+                    childIdInput: { kind: 'blank', raw: '' },
                     childKind,
                     lineIndex: entry.lineIndex,
                 });
@@ -214,11 +249,16 @@ function parseTableBlock(block, text) {
             }
             const valueRaw = entry.tokens[0];
             const childIdRaw = entry.tokens[1];
+            const valueInput = parseNumericInput(valueRaw, { integerOnly: false });
+            const childIdInput = parseDefinitionIdInput(childIdRaw);
+            rowInputs.push(valueInput, childIdInput);
             rows.push({
                 valueRaw,
-                value: parseNumberToken(valueRaw),
+                value: numericInputValue(valueInput),
+                valueInput,
                 childIdRaw,
-                childId: parseIntegerToken(childIdRaw),
+                childId: numericInputValue(childIdInput),
+                childIdInput,
                 childKind,
                 lineIndex: entry.lineIndex,
             });
@@ -230,27 +270,89 @@ function parseTableBlock(block, text) {
         tableType,
         id,
         idRaw,
+        idInput,
         keyword,
         filePath: block.filePath,
         startLine: block.startLine || 0,
         endLine: block.endLine || block.startLine || 0,
         ...(title ? { title } : {}),
         rows,
+        dataCompleteness: completenessFromInputs(rowInputs),
         scale: parseScale(idEntry.tokens, { sfa: 1, offa: 2 }),
     };
 }
 
-async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) {
+function descriptorRawCandidates(entry, descriptor, keyword) {
+    if (entry.text.includes(',')) {
+        const values = entry.text.split(',').map(value => value.trim());
+        return [values[descriptor.fieldIndex] || ''];
+    }
+
+    const longFormatScale = /\+$/.test(normalizeKeyword(keyword)) ? 2 : 1;
+    const start = descriptor.position * longFormatScale;
+    const width = descriptor.width * longFormatScale;
+    const fixedValue = entry.text.slice(start, start + width).trim();
+    const tokenValue = entry.tokens[descriptor.fieldIndex] || '';
+    return fixedValue === tokenValue ? [fixedValue] : [fixedValue, tokenValue];
+}
+
+function parseGenericDefineBlock(block, text, descriptor) {
+    if (!descriptor) {
+        return null;
+    }
+    const keyword = withStar(block.keyword);
+    const entries = nonCommentEntries(splitLines(text), block.startLine || 0);
+    const idEntry = entries[descriptor.cardIndex - 1];
+    if (!idEntry) {
+        return null;
+    }
+
+    let idRaw = '';
+    let idInput = { kind: 'blank', raw: '' };
+    for (const candidate of descriptorRawCandidates(idEntry, descriptor, block.keyword)) {
+        const parsed = parseDefinitionIdInput(candidate);
+        if (parsed.kind !== 'blank' && parsed.kind !== 'invalid') {
+            idRaw = candidate;
+            idInput = parsed;
+            break;
+        }
+    }
+    if (idInput.kind === 'blank' || idInput.kind === 'invalid') {
+        return null;
+    }
+    const id = numericInputValue(idInput);
+
+    return {
+        kind: 'generic',
+        id,
+        idRaw,
+        idInput,
+        keyword,
+        targetKeyword: descriptor.target,
+        idFieldName: descriptor.fieldName,
+        filePath: block.filePath,
+        startLine: block.startLine || 0,
+        endLine: block.endLine || block.startLine || 0,
+    };
+}
+
+async function scanCurveTableDefinitionsFromFileIndex(
+    fileIndex,
+    readBlockText,
+    definitionKeywords = loadedReferenceIndex.definitionKeywords
+) {
     const curves = [];
     const tables = [];
+    const genericDefinitions = [];
     if (!fileIndex || !Array.isArray(fileIndex.keywordBlocks) || typeof readBlockText !== 'function') {
-        return { curves, tables };
+        return { curves, tables, genericDefinitions };
     }
 
     for (let i = 0; i < fileIndex.keywordBlocks.length; i++) {
         const block = fileIndex.keywordBlocks[i];
         const keyword = withStar(block.keyword);
-        if (!isCurveKeyword(keyword) && !isTableKeyword(keyword)) {
+        const genericDescriptor = genericDefinitionDescriptor(keyword, definitionKeywords);
+        if (!isCurveKeyword(keyword) && !isTableKeyword(keyword) && !genericDescriptor) {
             continue;
         }
         const text = await readBlockText(block);
@@ -259,7 +361,7 @@ async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) 
             if (definition) {
                 curves.push(definition);
             }
-        } else {
+        } else if (isTableKeyword(keyword)) {
             const definition = parseTableBlock(block, text);
             if (definition) {
                 tables.push(definition);
@@ -281,6 +383,7 @@ async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) 
                                 const row = definition.rows[childCount];
                                 row.childIdRaw = curveDef.idRaw;
                                 row.childId = curveDef.id;
+                                row.childIdInput = curveDef.idInput;
                                 row.childKind = 'curve';
                                 childCount++;
                             }
@@ -291,23 +394,33 @@ async function scanCurveTableDefinitionsFromFileIndex(fileIndex, readBlockText) 
                                 const row = definition.rows[childCount];
                                 row.childIdRaw = tableDef.idRaw;
                                 row.childId = tableDef.id;
+                                row.childIdInput = tableDef.idInput;
                                 row.childKind = 'table';
                                 childCount++;
                             }
                         }
                     }
+                    definition.dataCompleteness = completenessFromInputs(
+                        definition.rows.flatMap(row => [row.valueInput, row.childIdInput])
+                    );
                 }
+            }
+        } else {
+            const definition = parseGenericDefineBlock(block, text, genericDescriptor);
+            if (definition) {
+                genericDefinitions.push(definition);
             }
         }
     }
 
-    return { curves, tables };
+    return { curves, tables, genericDefinitions };
 }
 
 module.exports = {
     scanCurveTableDefinitionsFromFileIndex,
     parseCurveBlock,
     parseTableBlock,
+    parseGenericDefineBlock,
 };
 
 export {};

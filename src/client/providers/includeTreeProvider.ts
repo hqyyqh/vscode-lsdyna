@@ -17,6 +17,11 @@ const vscode = require('vscode');
 
 const includeScanner = require('../../core/parser/includeScanner');
 const i18n = require('../../core/i18n');
+const {
+    localDeclaredSearchPaths,
+    mergeEffectiveSearchPaths,
+    inheritedPathsForChild,
+} = require('../../core/project/includeSearchPathResolve');
 
 type IncludeTreeProviderOptions = {
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
@@ -171,6 +176,11 @@ class IncludeItem extends vscode.TreeItem {
          * @type {IncludeItem[]}
          */
         this.children = [];
+        /**
+         * Parent include node (for TreeView.reveal).
+         * @type {IncludeItem|null}
+         */
+        this.parent = null;
         this.resourceUri = vscode.Uri.file(filePath);
         /**
          * Formatted file size string.
@@ -203,6 +213,36 @@ class IncludeItem extends vscode.TreeItem {
             this.command = { command: 'vscode.open', title: i18n.get('openFile'), arguments: [vscode.Uri.file(filePath)] };
         }
         applyVividDescription(this, '');
+    }
+}
+
+/**
+ * Whether an include tree item represents a missing/unresolved file.
+ *
+ * @param {IncludeItem} item
+ * @returns {boolean}
+ */
+function isMissingIncludeItem(item) {
+    if (!item) return false;
+    if (item.contextValue === 'file-missing') return true;
+    const desc = item.description;
+    return desc === 'not found'
+        || desc === 'missing'
+        || desc === i18n.get('notFound')
+        || desc === i18n.get('missing');
+}
+
+/**
+ * Attaches parent pointers so TreeView.reveal can walk up the include hierarchy.
+ *
+ * @param {IncludeItem} item
+ * @param {IncludeItem|null} parent
+ */
+function attachParentLinks(item, parent) {
+    if (!item) return;
+    item.parent = parent || null;
+    for (const child of item.children || []) {
+        attachParentLinks(child, item);
     }
 }
 
@@ -452,7 +492,9 @@ class LsdynaIncludeTreeProvider {
      * @returns {IncludeItem} Assembled tree.
      */
     _buildRootFromSnapshot(snapshot, rootFile) {
-        return this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile), rootFile);
+        const root = this._buildItemFromTreeNode(snapshot.graph.toTree(rootFile), rootFile);
+        attachParentLinks(root, null);
+        return root;
     }
 
     /**
@@ -466,7 +508,7 @@ class LsdynaIncludeTreeProvider {
      * @param {string} rootPath - Ancestor file path.
      * @returns {Promise<IncludeItem>} Assembled tree item.
      */
-    async _buildItem(filePath, visited, progress, rootPath) {
+    async _buildItem(filePath, visited, progress, rootPath, inheritedPaths = []) {
         const exists = fs.existsSync(filePath);
         const item = new IncludeItem(filePath, exists);
         const actualRootPath = rootPath || filePath;
@@ -503,8 +545,10 @@ class LsdynaIncludeTreeProvider {
 
         let includeEntries;
         let searchPaths;
+        let pathEntries = [];
         try {
-            ({ includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath));
+            ({ includeEntries, searchPaths, pathEntries = [] } =
+                await includeScanner.collectIncludeDirectivesFromFile(filePath));
         } catch (error) {
             item.description = 'scan failed';
             applyVividDescription(item, dirStr);
@@ -520,14 +564,38 @@ class LsdynaIncludeTreeProvider {
             return item;
         }
 
+        const fileDir = path.dirname(filePath);
+        const localDeclared = localDeclaredSearchPaths({
+            fileDir,
+            searchPaths,
+            pathEntries,
+        });
+        const effectivePaths = mergeEffectiveSearchPaths({
+            fileDir,
+            localDeclaredPaths: localDeclared,
+            inheritedPaths: inheritedPaths || [],
+        });
+        const childInherited = inheritedPathsForChild({
+            localDeclaredPaths: localDeclared,
+            inheritedPaths: inheritedPaths || [],
+        });
+
         for (const { fileName } of includeEntries) {
             let childPath;
             try {
-                childPath = this.searchFileFromPaths(fileName, searchPaths);
+                childPath = this.searchFileFromPaths(fileName, effectivePaths);
             } catch (e) {
                 childPath = path.resolve(path.dirname(filePath), fileName);
             }
-            item.children.push(await this._buildItem(childPath, new Set(visited), progress, actualRootPath));
+            const child = await this._buildItem(
+                childPath,
+                new Set(visited),
+                progress,
+                actualRootPath,
+                childInherited
+            );
+            child.parent = item;
+            item.children.push(child);
         }
 
         item.collapsibleState = item.children.length > 0
@@ -600,6 +668,16 @@ class LsdynaIncludeTreeProvider {
     getTreeItem(element) { return element; }
 
     /**
+     * Parent resolver required by TreeView.reveal for nested include nodes.
+     *
+     * @param {IncludeItem} element
+     * @returns {IncludeItem|null}
+     */
+    getParent(element) {
+        return element && element.parent ? element.parent : null;
+    }
+
+    /**
      * Fetches nested child items for a node.
      * 
      * @param {IncludeItem} [element] - Target element.
@@ -608,6 +686,56 @@ class LsdynaIncludeTreeProvider {
     getChildren(element) {
         if (!this.root) return [];
         return element ? element.children : [this.root];
+    }
+
+    /**
+     * Flatten unique include nodes for title-bar QuickPick search.
+     * Returns an empty array when the tree has not been scanned.
+     *
+     * @returns {Array<{filePath: string, label: string, description: string, missing: boolean, treeItem: IncludeItem}>}
+     */
+    listSearchEntries() {
+        if (!this.root) {
+            return [];
+        }
+        const seen = new Set();
+        const entries = [];
+        const walk = (item) => {
+            if (!item || !item.filePath) {
+                return;
+            }
+            const key = normalizePathKey(item.filePath);
+            if (!seen.has(key)) {
+                seen.add(key);
+                entries.push({
+                    filePath: item.filePath,
+                    label: path.basename(item.filePath),
+                    description: item.relDir || '',
+                    missing: isMissingIncludeItem(item),
+                    treeItem: item,
+                });
+            }
+            for (const child of item.children || []) {
+                walk(child);
+            }
+        };
+        walk(this.root);
+        return entries;
+    }
+
+    /**
+     * Basename of the last successful Include Tree scan root (main deck),
+     * or null when the tree has not been scanned this session.
+     * Used by the status bar detail HUD / tooltip — honest, not a job manager.
+     *
+     * @returns {string|null}
+     */
+    getLastScanRootName() {
+        if (!this.root || !this.root.filePath) {
+            return null;
+        }
+        const base = path.basename(String(this.root.filePath));
+        return base || null;
     }
 }
 
@@ -618,6 +746,7 @@ module.exports = {
     formatVividBytes,
     applyVividDescription,
     normalizePathKey,
+    isMissingIncludeItem,
 };
 
 export {};

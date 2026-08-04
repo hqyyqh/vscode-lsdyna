@@ -16,11 +16,15 @@
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
+const { resolveManualDirectoryCandidates } = require('../manual/manualsDirResolve');
 
 /**
  * @typedef {Object} ManualLocation
  * @property {string} file - Absolute path to the PDF manual file.
  * @property {number} page - 1-based page number where the keyword definition resides.
+ * @property {string} [requestedKeyword] - Normalized keyword requested by the user.
+ * @property {string} [matchedKeyword] - Normalized bookmark keyword that supplied the location.
+ * @property {'exact'|'section'|'approximate'} [matchKind] - Confidence of the manual match.
  */
 
 /**
@@ -34,6 +38,8 @@ const vscode = require('vscode');
  * @type {Map<string, ManualLocation[]>}
  */
 let keywordMap = new Map();
+/** @type {Map<string, string[]>} */
+let keywordsByLocation = new Map();
 
 /**
  * Version number for the bookmark serialization format.
@@ -81,6 +87,30 @@ function log(msg) {
 }
 
 const { stripTitleSuffix } = require('./keywordUtils');
+const { classifyManualMatch } = require('./manualMatch');
+
+function manualLocationKey(file, page) {
+    return `${file}\u0000${page}`;
+}
+
+function registerLocationKeyword(file, page, keyword) {
+    const key = manualLocationKey(file, page);
+    const keywords = keywordsByLocation.get(key) || [];
+    if (!keywords.includes(keyword)) {
+        keywords.push(keyword);
+        keywordsByLocation.set(key, keywords);
+    }
+}
+
+function equivalentKeywordsForLocations(locs) {
+    const equivalent = new Set();
+    for (const loc of locs || []) {
+        for (const keyword of keywordsByLocation.get(manualLocationKey(loc.file, loc.page)) || []) {
+            equivalent.add(keyword);
+        }
+    }
+    return [...equivalent];
+}
 
 /**
  * Normalizes a keyword string (e.g., trims, capitalizes, strips title suffixes, adds leading '*').
@@ -399,6 +429,7 @@ function parsePdf(pdfPath) {
  */
 async function initialize(context) {
     keywordMap.clear();
+    keywordsByLocation.clear();
     pdfFilesList = [];
     for (const w of dirWatchers) {
         try { w.close(); } catch (e) {}
@@ -412,34 +443,18 @@ async function initialize(context) {
             : 'lsdyna_manual_pack';
         log(`Configured manualsDir: "${manualsDir}"`);
 
-        let dirsToScan = [];
-        if (path.isAbsolute(manualsDir)) {
-            dirsToScan.push(manualsDir);
-        } else {
-            // Highest priority: Relative to VS Code installation folder (where code.exe is)
-            const codeExeDir = path.dirname(process.execPath);
-            dirsToScan.push(path.resolve(codeExeDir, manualsDir));
-            
-            // appRoot is usually resources/app, so code.exe is two levels up
-            if (vscode.env && vscode.env.appRoot) {
-                dirsToScan.push(path.resolve(vscode.env.appRoot, '../../', manualsDir));
-                dirsToScan.push(path.resolve(vscode.env.appRoot, manualsDir));
-            }
+        // Shared portable contract: relative manualsDir → Code.exe dir first, then
+        // appRoot, workspaces, cwd, extension (exe wins when both exist).
+        const dirsToScan = resolveManualDirectoryCandidates({
+            manualsDir,
+            workspaceFolders: vscode.workspace.workspaceFolders || [],
+            cwd: process.cwd(),
+            execPath: process.execPath,
+            appRoot: vscode.env && vscode.env.appRoot ? vscode.env.appRoot : null,
+            extensionPath: context && context.extensionPath ? context.extensionPath : null,
+        });
 
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (workspaceFolders && workspaceFolders.length > 0) {
-                for (const folder of workspaceFolders) {
-                    dirsToScan.push(path.resolve(folder.uri.fsPath, manualsDir));
-                }
-            } else {
-                dirsToScan.push(path.resolve(process.cwd(), manualsDir));
-            }
-        }
-        if (context && context.extensionPath) {
-            dirsToScan.push(path.resolve(context.extensionPath, manualsDir));
-        }
-
-        const uniqueDirs = [...new Set(dirsToScan)].filter(d => {
+        const uniqueDirs = dirsToScan.filter(d => {
             const exists = fs.existsSync(d);
             if (exists) {
                 log(`Found existing manuals directory candidate: "${d}"`);
@@ -452,12 +467,23 @@ async function initialize(context) {
             return;
         }
 
+        // Prefer pack-declared PDFs (manifest documents[].pdfFile) when present
+        // so versioned / zh-CN-only basenames do not rely on title.pdf guesses.
+        // Hand-assembled folders without a usable manifest still scan all PDFs.
+        let discoverManualPdfFiles;
+        try {
+            discoverManualPdfFiles = require('../manual/packPdf').discoverManualPdfFiles;
+        } catch (requireErr) {
+            discoverManualPdfFiles = null;
+            log(`packPdf helper unavailable, falling back to full PDF scan: ${requireErr && requireErr.message}`);
+        }
+
         const pdfFiles = [];
         for (const dir of uniqueDirs) {
             log(`Scanning directory: "${dir}"`);
             try {
                 const watcher = fs.watch(dir, (eventType, filename) => {
-                    if (filename && filename.toLowerCase().endsWith('.pdf')) {
+                    if (filename && (filename.toLowerCase().endsWith('.pdf') || filename.toLowerCase() === 'manifest.json')) {
                         log(`Manual PDF directory changed (${eventType} on ${filename}). Re-initializing indexer...`);
                         if (refreshTimeout) clearTimeout(refreshTimeout);
                         refreshTimeout = setTimeout(() => {
@@ -469,19 +495,57 @@ async function initialize(context) {
             } catch (watchErr) {
                 log(`Failed to watch directory "${dir}": ${watchErr.message}`);
             }
-            try {
-                const files = fs.readdirSync(dir);
-                const pdfs = files
-                    .filter(f => f.toLowerCase().endsWith('.pdf'))
-                    .map(f => path.resolve(dir, f));
-                log(`Found ${pdfs.length} PDF(s) in "${dir}"`);
-                for (const pdf of pdfs) {
-                    if (!pdfFiles.includes(pdf)) {
-                        pdfFiles.push(pdf);
-                    }
+            const pdfSubdir = path.join(dir, 'pdf');
+            if (fs.existsSync(pdfSubdir)) {
+                try {
+                    const subWatcher = fs.watch(pdfSubdir, (eventType, filename) => {
+                        if (filename && filename.toLowerCase().endsWith('.pdf')) {
+                            log(`Manual PDF subdirectory changed (${eventType} on ${filename}). Re-initializing indexer...`);
+                            if (refreshTimeout) clearTimeout(refreshTimeout);
+                            refreshTimeout = setTimeout(() => {
+                                initialize(context).catch(err => log(`Failed to auto-refresh manuals: ${err.message}`));
+                            }, 1000);
+                        }
+                    });
+                    dirWatchers.push(subWatcher);
+                } catch (watchErr) {
+                    log(`Failed to watch directory "${pdfSubdir}": ${watchErr.message}`);
                 }
-            } catch (err) {
-                log(`Error reading directory "${dir}": ${err.message}`);
+            }
+
+            let discovered = [];
+            if (typeof discoverManualPdfFiles === 'function') {
+                try {
+                    discovered = discoverManualPdfFiles(dir) || [];
+                } catch (discoverErr) {
+                    log(`discoverManualPdfFiles failed for "${dir}": ${discoverErr.message}`);
+                    discovered = [];
+                }
+            }
+            if (!discovered.length) {
+                // Legacy full scan (root + pdf/) when helper missing or no declared PDFs.
+                const scanDir = (d) => {
+                    try {
+                        const files = fs.readdirSync(d);
+                        return files
+                            .filter(f => f.toLowerCase().endsWith('.pdf'))
+                            .map(f => path.resolve(d, f));
+                    } catch (err) {
+                        log(`Error reading directory "${d}": ${err.message}`);
+                        return [];
+                    }
+                };
+                discovered = scanDir(dir);
+                if (fs.existsSync(pdfSubdir)) {
+                    discovered = discovered.concat(scanDir(pdfSubdir));
+                }
+            }
+            log(`Found ${discovered.length} PDF(s) for "${dir}"`);
+            for (const pdf of discovered) {
+                const resolved = path.resolve(pdf);
+                if (!pdfFiles.includes(resolved)) {
+                    pdfFiles.push(resolved);
+                }
             }
         }
 
@@ -540,6 +604,7 @@ async function initialize(context) {
                             if (!isDuplicate) {
                                 existing.push({ file: pdfPath, page: bookmark.page });
                                 keywordMap.set(cleaned, existing);
+                                registerLocationKeyword(pdfPath, bookmark.page, cleaned);
                                 kwCount++;
                             }
                         }
@@ -579,7 +644,12 @@ function getManualLocations(kwName) {
     for (const cand of candidatesToCheck) {
         let locs = keywordMap.get(cand);
         if (locs && locs.length > 0) {
-            return locs.map(loc => ({ ...loc, matchedKeyword: cand }));
+            return locs.map(loc => ({
+                ...loc,
+                requestedKeyword: cleaned,
+                matchedKeyword: cand,
+                matchKind: 'exact',
+            }));
         }
 
         const tokens = cand.split('_');
@@ -587,13 +657,25 @@ function getManualLocations(kwName) {
             const candidate = tokens.slice(0, i).join('_');
             locs = keywordMap.get(candidate);
             if (locs && locs.length > 0) {
-                return locs.map(loc => ({ ...loc, matchedKeyword: candidate }));
+                const equivalents = equivalentKeywordsForLocations(locs);
+                return locs.map(loc => ({
+                    ...loc,
+                    requestedKeyword: cleaned,
+                    matchedKeyword: candidate,
+                    matchKind: classifyManualMatch(cand, candidate, equivalents),
+                }));
             }
             const subAliases = getAliases(candidate);
             for (const sa of subAliases) {
                 locs = keywordMap.get(sa);
                 if (locs && locs.length > 0) {
-                    return locs.map(loc => ({ ...loc, matchedKeyword: sa }));
+                    const equivalents = equivalentKeywordsForLocations(locs);
+                    return locs.map(loc => ({
+                        ...loc,
+                        requestedKeyword: cleaned,
+                        matchedKeyword: sa,
+                        matchKind: classifyManualMatch(cand, sa, equivalents),
+                    }));
                 }
             }
         }

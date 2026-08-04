@@ -4,15 +4,18 @@
 .vscode
 test
 src/**
-out/**/*.map
+**/*.map
 keywords/**
 !keywords/field_data.json
-!keywords/field_data_zh.json
 !keywords/field_reference_index.json
 **/*.ipynb
 *.vsix
+.keyword-artifact-staging-*
+conversation-*.txt
 .antigravity
+.zcode
 .worktrees
+webview/
 docs
 LS-DYNA Manuals
 bin
@@ -24,3 +27,5 @@ images/
 !images/activitybar-icon.svg
 !images/ls.svg
 scripts/
+tsconfig.json
+DEVELOPMENT.md

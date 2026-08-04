@@ -41,7 +41,50 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
             assert.equal(result.curves[0].scale.sfa, 2);
             assert.equal(result.curves[0].scale.sfo, 3);
             assert.deepEqual(result.curves[0].points.map(point => [point.x, point.y]), [[0, 100], [1, 200], [null, null]]);
+            assert.equal(result.curves[0].points[2].xRaw, '&x');
+            assert.equal(result.curves[0].points[2].xInput.kind, 'parameter');
+            assert.deepEqual(result.curves[0].dataCompleteness, {
+                state: 'incomplete',
+                reasons: ['parameter-unresolved'],
+            });
             assert.equal(result.curves[0].points[0].lineIndex, 5);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('preserves parameterized definition and table child IDs as symbolic records', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-symbolic-'));
+        const filePath = path.join(dir, 'symbolic.k');
+        fs.writeFileSync(filePath, [
+            '*DEFINE_CURVE',
+            '      &CID',
+            '       0.0       1.0',
+            '*DEFINE_TABLE_2D',
+            '      &TID',
+            '       0.0      &CID',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block)
+            );
+
+            assert.equal(result.curves.length, 1);
+            assert.equal(result.curves[0].id, null);
+            assert.equal(result.curves[0].idRaw, '&CID');
+            assert.equal(result.curves[0].idInput.kind, 'parameter');
+
+            assert.equal(result.tables.length, 1);
+            assert.equal(result.tables[0].id, null);
+            assert.equal(result.tables[0].idRaw, '&TID');
+            assert.equal(result.tables[0].idInput.kind, 'parameter');
+            assert.equal(result.tables[0].rows[0].childId, null);
+            assert.equal(result.tables[0].rows[0].childIdRaw, '&CID');
+            assert.equal(result.tables[0].rows[0].childIdInput.kind, 'parameter');
+            assert.equal(result.tables[0].dataCompleteness.state, 'incomplete');
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -174,6 +217,57 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
                 [0.0, 3001, 'table'],
                 [100.0, 3002, 'table'],
             ]);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('indexes generic DEFINE keywords separately by their exact keyword and numeric ID', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-generic-'));
+        const filePath = path.join(dir, 'generic.k');
+        fs.writeFileSync(filePath, [
+            '*DEFINE_CPG_GAS_PROPERTIES',
+            '      7001',
+            '*DEFINE_CPM_GAS_PROPERTIES',
+            '      7001',
+            '*DEFINE_CPG_GAS_PROPERTIES_TITLE',
+            'gas title',
+            '      7002',
+            '*DEFINE_CABLE',
+            '      9001      9002',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const definitionKeywords = {
+                generic: {
+                    DEFINE_CPG_GAS_PROPERTIES: {
+                        target: 'DEFINE_CPG_GAS_PROPERTIES', cardIndex: 1, fieldIndex: 0,
+                        fieldName: 'ID', fieldType: 'integer', position: 0, width: 10,
+                    },
+                    DEFINE_CPG_GAS_PROPERTIES_TITLE: {
+                        target: 'DEFINE_CPG_GAS_PROPERTIES', cardIndex: 2, fieldIndex: 0,
+                        fieldName: 'ID', fieldType: 'integer', position: 0, width: 10,
+                    },
+                    DEFINE_CPM_GAS_PROPERTIES: {
+                        target: 'DEFINE_CPM_GAS_PROPERTIES', cardIndex: 1, fieldIndex: 0,
+                        fieldName: 'ID', fieldType: 'integer', position: 0, width: 10,
+                    },
+                },
+            };
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block),
+                definitionKeywords,
+            );
+
+            assert.deepEqual(result.genericDefinitions.map(definition => [definition.keyword, definition.targetKeyword, definition.id]), [
+                ['*DEFINE_CPG_GAS_PROPERTIES', 'DEFINE_CPG_GAS_PROPERTIES', 7001],
+                ['*DEFINE_CPM_GAS_PROPERTIES', 'DEFINE_CPM_GAS_PROPERTIES', 7001],
+                ['*DEFINE_CPG_GAS_PROPERTIES_TITLE', 'DEFINE_CPG_GAS_PROPERTIES', 7002],
+            ]);
+            assert.deepEqual(result.curves, []);
+            assert.deepEqual(result.tables, []);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }

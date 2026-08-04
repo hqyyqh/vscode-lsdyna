@@ -41,11 +41,38 @@ describe('buildFileIndex', () => {
         try {
             const index = await buildFileIndex(filePath, { highWaterMark: 16 });
 
-            assert.equal(index.scannerVersion, 2);
+            assert.equal(index.scannerVersion, SCANNER_VERSION);
             assert.equal(index.referenceDefinitions.curves.length, 1);
             assert.equal(index.referenceDefinitions.curves[0].id, 1001);
             assert.equal(index.referenceDefinitions.tables.length, 1);
             assert.equal(index.referenceDefinitions.tables[0].id, 2001);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('adds parameter events without scanning unrelated files in the directory', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-file-index-param-'));
+        const filePath = path.join(dir, 'condition-a.k');
+        const unrelatedFile = path.join(dir, 'condition-b-old.k');
+        fs.writeFileSync(filePath, [
+            '*PARAMETER',
+            'ICID            100',
+            '*END',
+        ].join('\n'));
+        fs.writeFileSync(unrelatedFile, [
+            '*PARAMETER',
+            'ICID            999',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const index = await buildFileIndex(filePath);
+
+            assert.equal(index.parameterEvents.length, 1);
+            assert.equal(index.parameterEvents[0].name, 'CID');
+            assert.equal(index.parameterEvents[0].value, 100);
+            assert.ok(!index.parameterEvents.some(event => event.value === 999));
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
