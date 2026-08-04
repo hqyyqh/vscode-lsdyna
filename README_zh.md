@@ -3,7 +3,7 @@
 <div align="center">
   <img src="images/extension-icon.png" width="120" height="120" alt="DynaSense 图标">
   <h3>面向 VS Code 的 LS-DYNA 关键字文件编辑器</h3>
-  <p>为 CAE 与整车仿真工程师提供关键字和字段说明、引用文件树、定宽卡片编辑、本地手册与 PDF 跳转。</p>
+  <p>为 CAE 工程师提供关键字说明、定宽卡片编辑、引用文件树、对象预览和本地手册。</p>
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code%20Marketplace-Available-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=hqyyqh.dynasense)
 [![Open VSX](https://img.shields.io/open-vsx/dt/hqyyqh/dynasense?label=Open%20VSX&logo=eclipse-ide)](https://open-vsx.org/extension/hqyyqh/dynasense)
@@ -15,206 +15,153 @@
 
 ---
 
-## 快速开始（大约一分钟）
+## 快速开始
 
-1. **打开关键字文件** — 任意 `.k` / `.key` / `.dyna` 文件，主文件或引用文件均可。
-2. **插入关键字** — 输入 `*`，从 4,700 多个关键字中选择，并插入对应的卡片格式。
-3. **按列修改数据** — 在数据行用 `Tab` / `Shift+Tab` 按实际字段宽度跳转。字段保护默认开启：Delete 清空选中字段且后续字段不前移；经 Tab 选中后，输入只替换当前字段。
-4. **看字段含义** — 鼠标悬停在关键字或字段上，查看说明、类型、宽度和默认值。
-5. **查看整车引用关系** — 打开活动栏 **LS-DYNA** → **引用文件树**，从主文件扫描，浏览所有 `*INCLUDE`。
-6. **配置手册（可选）** — 将 `lsdyna.manualsDir` 指向手册包根目录（见 [手册配置](#手册集成设置)），即可跳转 PDF 页码并使用内置手册阅读器。
+先从 VS Code Marketplace 或 Open VSX 安装 DynaSense，然后：
 
-> **功能预览**
->
-> | 关键字补全 | 悬停说明 |
-> | :---: | :---: |
-> | ![关键字补全](./images/completion_keyword.gif) | ![悬停说明](./images/hover_hints.gif) |
+1. **打开关键字文件** — 打开 `.k`、`.key` 或 `.dyna` 文件，主文件和引用文件均可。
+2. **插入关键字** — 输入 `*`，从 4,700 多个关键字中选择并插入对应的卡片格式。
+3. **按字段编辑** — 在数据行按 `Tab` / `Shift+Tab`。Delete 清空选中字段且不移动后续字段；经 Tab 选中后，输入只替换该字段。
+4. **查看说明和引用** — 将鼠标悬停在关键字、字段、参数、曲线 ID 或表格 ID 上。
+5. **扫描模型** — 打开活动栏中的 **LS-DYNA** → **引用文件树**，然后从主文件开始扫描。
+
+| 关键字补全 | 字段说明 |
+| :---: | :---: |
+| ![关键字补全](./images/completion_keyword.gif) | ![字段说明](./images/hover_hints.gif) |
 
 ---
 
-## 日常能做什么
+## 核心工作流程
 
-### 关键字卡片、列宽与排版
+### 安全地编辑关键字卡片
 
-- **关键字数据**来自开源项目 [ansys/pydyna](https://github.com/ansys/pydyna)，覆盖 4,700 多个关键字。
-- **代码片段**可插入已排好格式的关键字块，无需从空行开始手动搭建。
-- **Tab 跳转**在 10 字符（部分 8 字符）字段间移动，可换行到下一数据行。
-- **字段标题注释**：输入 `$` 或 `$#`，生成右对齐的字段名，且不保留行尾多余空格。
-- **行注释**：按 `Ctrl+/` 在第 1 列切换 `$`，符合 LS-DYNA 对注释标记位置的要求。
-- **格式化选区或全文**为标准定宽布局。实验性设置 `lsdyna.autoFormat` 可在光标离开当前行时自动格式化；默认关闭，因为它会自动改写卡片间距。
+- 关键字和字段数据来自开源项目 [ansys/pydyna](https://github.com/ansys/pydyna)，覆盖 4,700 多个关键字。
+- 代码片段可直接插入排好格式的卡片。对于支持的关键字，可通过悬停操作选择卡片、格式和可选字段。
+- `Tab` 按实际的 10 字符或 8 字符字段宽度移动。到达最后一个字段后，再按 Tab 会回到**同一数据行**的第一个字段，不会新建或进入下一行。
+- 输入 `$` 或 `$#` 可生成对齐的字段标题注释；`Ctrl+/` 可添加或删除 LS-DYNA 使用的 `$` 行注释标记。
+- 可按需整理选中内容或整个文件。自动排版属于试验功能且默认关闭，因为它会改写卡片间距。
 
-> **演示**
->
-> | 关键字 | 引用文件路径 |
-> | :---: | :---: |
-> | ![关键字补全](./images/completion_keyword.gif) | ![引用文件补全](./images/completion_include.gif) |
-> | **注释** | **Tab** |
-> | ![注释补全](./images/completion_comment.gif) | ![Tab跳转和编辑](./images/tab_navigation.gif) |
-> | **格式化** | |
-> | ![自动格式化](./images/auto_format.gif) | |
+| 引用路径补全 | Tab 跳转 | 排版 |
+| :---: | :---: | :---: |
+| ![引用路径补全](./images/completion_include.gif) | ![Tab 跳转](./images/tab_navigation.gif) | ![排版](./images/auto_format.gif) |
 
-### `*INCLUDE` 路径 — 浏览、补全与检查
+### 管理 `*INCLUDE` 文件
 
-整车模型通常拆分在多个目录中，例如 `mats/`、`assembly/` 和 `loadcases/`。插件会根据当前适用的**搜索根目录**解析引用路径，而不是只按文件名匹配。
+- 在 `*INCLUDE` 下方的文件名行输入 `/` 或 `\`，可逐层浏览文件夹。输入文件名或其中一部分（例如 `LC_Front`），可在所有子目录中查找。选中后使用正斜杠路径，便于将模型传到 Linux。
+- 从主文件扫描引用文件树后，主文件及上层引用文件中的 `*INCLUDE_PATH` 和 `*INCLUDE_PATH_RELATIVE` 会应用到下级文件。如果扫描前单独打开一个引用文件，只能使用该文件所在目录和它自己声明的路径。
+- 带下划线的路径表示已在本机找到并可打开。末尾的 **!** 表示按当前已知目录未找到文件，也可能是该文件尚未同步到本机。
+- 引用文件树会把真正的循环引用作为错误报告。同一个材料文件被多个上级文件引用是正常情况，不会被当作循环。
+- 将鼠标悬停在路径上可预览文件开头。路径超过 LS-DYNA 三行、236 字符的限制时，会在提交计算前提示。
 
-**在 `*INCLUDE` 下补全路径（`*INCLUDE_PATH` 行不会走这套补全）：**
+在 Windows 上，即使磁盘目录是 `Sub/Part.k`，`sub/part.k` 也可能正常打开；Linux 通常要求大小写完全一致。默认的 `crossPlatform` 检查会保持本地跳转并提示差异；最终提交到 Linux 前可改为 `strict` 严格检查。
 
-1. 光标放在 `*INCLUDE` 下面的**文件名行**。
-2. 输入 `/` 或 `\`：按**搜索根目录**列出下一级目录和文件。搜索根目录包括当前关键字文件所在目录，以及本机实际存在的 `*INCLUDE_PATH` 和 `*INCLUDE_PATH_RELATIVE` 目录。
-3. 在分隔符后继续输入（如 `/ma`）只过滤**当前层**；选中目录（以 `/` 结尾）后再输入 `/` 进入下一层。浏览结果始终目录优先，并按自然顺序排列（`1`、`2`、`10`）。
-4. 也可以从不含路径分隔符的**裸文件名片段**开始输入（如 `LC_Front`）进行递归搜索；列表里会给出**完整相对路径**，避免两个不同目录下的 `mat.k` 分不清。
-5. 选中后统一写入使用**正斜杠**的路径，例如 `loadcases/frontal/run.k`，便于在 Linux 求解环境中使用。
-
-空的文件名行**不会**一次列出整个工程。可输入 `/` 开始浏览，或输入部分文件名进行搜索。日常操作**无需**按 `Ctrl+Space`。
-
-**`*INCLUDE_PATH` 与整车习惯（祖先继承）**
-
-- 常见做法是只在**主文件**或前置设置文件中声明 `*INCLUDE_PATH`，引用文件使用 `steel.k` 之类的短文件名，无需重复路径卡片。
-- **从主文件扫描引用文件树**时，引用文件会继承祖先文件声明的搜索目录，因此无需重复路径卡片也能解析短文件名。
-- 若**只打开某个引用文件**，且尚未从其主文件扫描，搜索根目录仅包括该文件所在目录及文件内的路径卡片。此时显示路径缺失，可能只是因为尚无主文件上下文，并不一定是路径写错。
-- **从主文件扫描后**，文件跳转、路径状态、编辑器链接和 `*INCLUDE` 补全都会复用扫描时记录的继承搜索路径。
-- 插件**不会**合并工作区中所有文件的 `*INCLUDE_PATH`，以免混入其他工况的目录，并将缺失文件误判为已解析。
-
-**引用文件树与状态**
-
-- 路径带有**下划线链接**：文件或目录已在本地找到，可以直接打开，不再额外显示成功勾选图标。
-- 路径没有链接且末尾出现 **!**：当前本地搜索路径下找不到该文件（名称错误、PATH 不正确、文件只在服务器上或尚未同步）。
-- **引用文件树**从主文件展示层级；同一材料文件被多个 `*INCLUDE` 引用时，树中可能出现多次。这表示文件被共用，本身并非循环引用。
-- **循环引用**（A 包含 B、B 又包含 A，或更长的环）会在树上标出，并作为**错误**诊断，避免长作业跑到一半才发现。
-- 悬停引用路径可预览文件**头部**，无需完整打开具有数百万行的网格文件。
-- 引用路径超过 LS-DYNA 的三行、236 字符上限时会显示诊断，避免求解器静默截断。
-
-**Windows 前处理 → Linux 求解**
-
-在 Windows 上，即使关键字文件写的是 `sub/part.k`、磁盘路径实际是 `Sub/Part.k`，文件也常能打开；Linux 上的 LS-DYNA 通常要求大小写**完全一致**。`lsdyna.include.pathCaseCheck` 默认为 `crossPlatform`：本机仍可跳转，但会发出警告，并提供快速修复，将路径大小写改为与磁盘一致。提交 Linux 求解任务前，可改为 `strict` 进行强制检查。
-
-### 手册、悬停与 PDF
-
-- 悬停查看关键字/字段说明；配置手册包后可打开对应 **PDF 页**（依据书签）。
-- **双语包**：包内有中文内容时可在阅读器中切换中英文；**纯英文包**：只有英文正文，**没有**中文切换是正常现象。
-- **正文语言**取决于手册包是否提供中文内容，不只取决于 VS Code 界面语言。界面菜单等仍随插件语言设置。
-
-### 参数、导航与“未知关键字”
-
-- `*PARAMETER` 上方显示参数引用次数；支持可选后缀的关键字还可添加 `_TITLE` 等后缀。
-- 悬停 `&参数名` 查看当前文档内解析值。
-- `F2` 重命名参数；`Ctrl+Alt+Up` / `Down` 跳到上一个/下一个关键字。
-- 支持 `.k`、`.key`、`.dyna`、`.cfile` 等的高亮与折叠。
-- 内置关键字库可能落后于新版本求解器。确认关键字有效后，可通过悬停提示、快速修复或 DynaSense 快捷操作将其加入自定义有效列表，也可调低 `lsdyna.unknownKeywordSeverity`。
-
-| 引用文件树 | 路径悬停 |
+| 引用文件树 | 引用文件预览 |
 | :---: | :---: |
-| ![引用树](./images/include_tree.gif) | ![包含文件操作](./images/open_include.png) |
+| ![引用文件树](./images/include_tree.gif) | ![引用文件预览](./images/open_include.png) |
+
+### 检查参数、曲线和引用对象
+
+- 将鼠标悬停在 `&name` 上，可查看当前文件中的参数来源；扫描项目后，还可查看该参数在选定或唯一主文件环境中、当前位置实际采用的值。
+- 将鼠标悬停在支持的曲线或表格引用字段上，可查看定义以及一维曲线或组合三维图形预览。如果存在多个可能目标，DynaSense 会列出候选项，不会自动选择其中一个。
+- 对已确认的引用可使用**转到定义**。如果一个文件可能属于多个模型，请运行**选择主文件环境**，确保按目标模型计算继承的参数和引用。
+- `F2` 可在当前文件内重命名参数；`Ctrl+Alt+Up` / `Ctrl+Alt+Down` 可跳到上一个或下一个关键字。
+- 如果某个有效关键字比内置库更新，可通过悬停操作、快速修复或 DynaSense 快捷操作，把它加入“有效关键字”名单。
 
 ![参数提示](./images/parameter_hints.png)
 
----
+### 在关键字文件旁阅读本地手册
 
-<a id="手册集成设置"></a>
+完整手册包支持关键字/标题搜索、全文搜索、章节目录、独立字号调整、阅读进度、图片放大和 PDF 页码跳转。双语包还可在有译文的章节中切换中英文并预览句子译文。阅读器会恢复上次位置，默认在关键字文件旁打开，便于对照查看。
 
-## 手册配置（PDF + 内置阅读器）
+当前下载地址见[手册配置](#手册配置)。手册包必须完整解压，阅读器需要同时使用其中的 `manifest.json`、索引、图片和 PDF 文件。
 
-由于安装包大小限制，PDF 手册**不会**包含在 `.vsix` 中。请将 `lsdyna.manualsDir` 指向**手册包根目录**：使用预构建包时，应选择包含 `manifest.json` 的目录；使用自备手册时，应选择存放 PDF 的目录，并可在 Windows 上同时放置 SumatraPDF。
+### 查看本次编辑的修改
 
-### 方式 A — 预构建手册包（推荐）
-
-手册包发布在项目 **[GitHub Releases](https://github.com/hqyyqh/vscode-lsdyna/releases)**。请优先使用**最新** Release 里的资源；旧文章里的 zip 名可能已更换。
-
-| 包类型 | 常见目录名 | 内容 |
-| --- | --- | --- |
-| **双语** | `lsdyna-manual-pack-bilingual` | 中英文文档、中文搜索、句级译文悬停；有中文内容时显示语言切换 |
-| **仅英文** | `lsdyna-manual-pack-en` | 英文文档与搜索，体积更小；**无**中文正文切换（属正常） |
-
-**步骤**
-
-1. 从最新 Release 下载对应 zip。
-2. 解压到固定目录。
-3. 在 VS Code 中，通过关键字悬停提示中的设置按钮、命令 **设置 LS-DYNA 手册目录**，或配置项 `lsdyna.manualsDir` 选择**解压后的包根目录**，即包含 `manifest.json` 的目录。
-4. 运行 **LS-DYNA: 打开手册阅读器**，或从 LS-DYNA 活动栏的 **手册** 视图打开章节。
-
-阅读器默认在关键字文件编辑器**旁边**分栏打开，不会覆盖正在修改的模型。
-
-> **需要中文手册的用户：** 请安装 **双语包**。
-> **只需英文手册：** 用 **en** 包即可。
-
-若个别旧链接 404，请到最新 Release 列表重新下载。
-
-### 方式 B — 自备 PDF
-
-1. 从 [Ansys LS-DYNA 手册页](https://lsdyna.ansys.com/manuals-download/) 下载 PDF。
-2. Windows 建议下载便携版 [SumatraPDF](https://www.sumatrapdfreader.org/free-pdf-reader)，将 `SumatraPDF.exe` 与 PDF 放在同一目录（或 `pdf/` 子目录）。
-3. 将 `lsdyna.manualsDir` 指到该目录。
-
-> **重要：** 页码跳转依赖 PDF **书签**。改文件名一般无妨；合并/编辑时去掉书签会导致无法精确定位。
-> 没有 SumatraPDF 时可能用系统默认阅读器打开，但常常**忽略**页码。
+- 无需使用 Git，也能查看本次编辑的变化：橙色或琥珀色表示尚未保存，绿色表示打开文件后已保存；不同形状用于区分修改、插入和删除的行。
+- 可跳到上一个或下一个修改位置，对比打开时版本或当前未保存内容，也可以重设比较起点。
+- 为保持编辑流畅，超大文件会限制扫描范围，并可自动跳过修改标记。只有确实需要完整索引时，才建议开启大文件完整扫描并接受更长的加载时间。
 
 ---
 
-## 常用设置（整车场景）
+<a id="手册配置"></a>
 
-### 主题颜色
+## 手册配置
 
-注释、关键字、数字、字符串、参数和路径等语法颜色通过标准 TextMate 作用域继承当前 VS Code 主题。编辑器链接、警告、文件树警告、列参考线和 Webview 也使用 VS Code 的语义主题颜色。DynaSense 只为会话变更标记以及必须生成具体 SVG/动画颜色的场景维护自定义调色板，并分别适配亮色、暗色、高对比度和高对比度亮色主题。
+由于体积较大，PDF 手册不包含在 `.vsix` 中。请下载一个完整的 **2026-08-04** 手册包：
 
-可以通过 `workbench.colorCustomizations` 覆盖概览标尺和缩略图中的变更标记颜色。标志边栏 SVG 使用对应的四主题回退色，因为 VS Code 不会把解析后的用户自定义颜色提供给 SVG 数据地址：
+| 手册包 | 下载 |
+| --- | --- |
+| **英文原版** | [下载 `lsdyna-manual-pack-en_20260804.zip`](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-en_20260804.zip) |
+| **双语：英文原版 + 中文翻译** | [下载 `lsdyna-manual-pack-bilingual_20260804.zip`](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-bilingual_20260804.zip) |
 
-```json
-{
-  "workbench.colorCustomizations": {
-    "lsdyna.changeMarks.unsaved": "#d18616",
-    "lsdyna.changeMarks.saved": "#4caf50"
-  }
-}
-```
+> **权威性说明：** 只有 PDF 手册是官方权威资料。内置阅读器中的文字、中文翻译、悬停摘要、搜索结果和索引仅用于辅助阅读；如内容存在差异，请以 PDF 手册为准。
 
-| 设置项 | 默认 | 实际怎么用 |
+1. 下载一个手册包并完整解压到固定的本机目录，不要直接选择压缩包。
+2. 运行**设置 LS-DYNA 手册目录**，或在 VS Code 设置中修改 `lsdyna.manualsDir`。
+3. 选择解压后包含 `manifest.json` 的最外层文件夹。
+4. 运行 **LS-DYNA: 打开手册阅读器**，或从活动栏的**手册**视图打开章节。
+
+**注意事项**
+
+- 手册包使用第三方 [SumatraPDF](https://www.sumatrapdfreader.org/free-pdf-reader) 程序打开官方 PDF 并跳到指定页；SumatraPDF **仅支持 Windows**。
+- VS Code 内置手册阅读器仍可在 Windows、macOS 和 Linux 上使用。非 Windows 系统会调用默认 PDF 阅读器，是否能准确跳到指定页取决于该阅读器。
+- 请保持解压后的内部目录结构不变。可以移动或重命名最外层文件夹，但不要重命名或删除其中的 `manifest.json`、索引、图片或 PDF 文件，否则可能影响搜索、图片显示或 PDF 链接。
+- 英文包只包含英文原版；需要中文内容和译文预览时，请安装双语包。
+
+---
+
+## 常用设置
+
+在 VS Code 设置中搜索 `LS-DYNA`。多数用户只需关注以下选项：
+
+| 设置 | 默认值 | 何时调整 |
 | :--- | :--- | :--- |
-| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 手册包或 PDF 目录。解压后请改成真实包根（如 `…/lsdyna-manual-pack-bilingual`）。 |
-| `lsdyna.include.pathCaseCheck` | `"crossPlatform"` | Windows 前处理时保持默认；提交 Linux 求解任务前，可用 `"strict"` 强制检查路径大小写。 |
-| `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | 厂内关键字或新版本求解器关键字，避免被报告为未知。末尾的 `*` 表示前缀匹配。 |
-| `lsdyna.unknownKeywordSeverity` | `"error"` | 库滞后时可改为 `warning` / `hint` / `off`。 |
-| `lsdyna.warnLowercaseKeyword` | `false` | 对小写关键字（如 `*node`）报警。LS-DYNA 大小写不敏感，仅在团队约定统一大写时开启。 |
-| `lsdyna.enableTabNavigation` | `true` | Tab 跳字段；若要普通 Tab 空格则关掉。 |
-| `lsdyna.enableCellEditProtect` | `true` | Delete/Backspace 使用空格清空选中字段。只有经 **Tab 选中字段后**，输入才会替换整个字段；`*` 和 `$` 始终按普通方式编辑。此设置不依赖 Tab 跳转。 |
-| `lsdyna.enableFieldHover` | `true` | 鼠标停留在卡片字段上时显示说明。不希望改数时弹出说明可关闭，并从 DynaSense 快捷操作中重新开启。 |
-| `lsdyna.changeMarks.enabled` | `true` | 在编辑器标志边栏显示会话变更：主题适配的琥珀色表示未保存，绿色表示打开文件后已保存；未保存状态还带有一个小圆点，因此不只依赖颜色区分。实心条表示修改，空心条表示新增，三角形表示附近有删除行。 |
-| `lsdyna.changeMarks.maxLineCount` | `100000` | 超过此行数的文件不画标记（超大网格保护）。 |
-| `lsdyna.changeMarks.debounceMs` | `250` | 输入后延迟多久再重算标记。 |
-| `lsdyna.changeMarks.showOverviewRuler` | `true` | 同时在滚动条概览标尺上显示标记。 |
-| `lsdyna.changeMarks.showLineBackground` | `true` | 标记行极淡**整行**底色；嫌花可关，只保留竖条。 |
-| `lsdyna.changeMarks.showMinimap` | `true` | 在缩略图中显示橙色未保存标记和绿色已保存标记；修改、新增和删除的形状仍仅在标志边栏中区分。 |
-| `lsdyna.scanner.fullScanLargeFiles` | `false` | 超大网格建议保持关闭（树/索引可能只扫首尾）。需要完整扫描且能接受变慢时再开。 |
-| `lsdyna.hover.previewMaxLines` | `20` | 悬停引用路径时预览的最大行数。 |
-| `lsdyna.language` | `"auto"` | 插件界面语言。手册**正文**是否有中文仍取决于手册包。 |
-| `lsdyna.additionalExtensions` | `[".k",".key",".dyna",".asc"]` | 额外当作 LS-DYNA 的后缀。 |
-| `lsdyna.autoFormat` | `"disabled"` | 光标离开当前行时自动格式化的实验性功能。除非接受自动改写卡片，否则保持关闭。 |
-| `lsdyna.statusBar.level` | `"simple"` | 当前文件状态：`off`、`simple`（问题或关键字）或 `detail`（另加字段 `n/N` 和最近一次引用文件树扫描根目录）。单击可打开 LS-DYNA 快捷操作。 |
-| `lsdyna.health.showFirstRunNotice` | `true` | 有未配置项时的一次性提示。 |
-| `lsdyna.largeFile.enableRendering` | `true` | 极大文件可关以省内存。 |
-| `lsdyna.codeLens.showOnAllKeywords` | `false` | 需要时在每个关键字上方显示“选中卡片”“格式化”等操作。 |
-| `lsdyna.navigation.pulseOnJump` | `true` | 跳转后短暂高亮目标行。 |
-| `lsdyna.ignoreFormattingKeywords` | `[]` | 不做格式化 / Tab / 注释工具的关键字。 |
+| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 选择完整解压且包含 `manifest.json` 的手册包文件夹。 |
+| `lsdyna.include.pathCaseCheck` | `"crossPlatform"` | 提交到 Linux 且必须严格匹配大小写时，改为 `strict`。 |
+| `lsdyna.enableTabNavigation` | `true` | 如需恢复普通 Tab 空格则关闭。 |
+| `lsdyna.enableCellEditProtect` | `true` | 防止 Delete/Backspace 导致后续定宽字段向前移动。 |
+| `lsdyna.enableFieldHover` | `true` | 希望界面更安静时关闭；引用路径、关键字和参数说明仍会保留。 |
+| `lsdyna.unknownKeywordSeverity` | `"error"` | 求解器版本比内置库更新时，可降为警告、提示或关闭。 |
+| `lsdyna.scanner.fullScanLargeFiles` | `false` | 只有需要超大文件的完整索引时才开启。 |
+| `lsdyna.language` | `"auto"` | 修改扩展界面语言；手册内容仍由安装的手册包决定。 |
 
-> [!TIP]
-> **未知关键字**
-> 确认关键字有效后，可从悬停提示、快速修复、DynaSense 快捷操作或“加入当前文件的全部未知关键字”命令添加。自定义项只会关闭未知关键字诊断，不会添加字段定义。
+<details>
+<summary><strong>高级选项与外观</strong></summary>
 
-> [!TIP]
-> **自定义后缀图标**
-> `"files.associations": { "*.my_ext": "lsdyna" }`，资源管理器图标与语言功能一并生效。
+为满足发布校核并方便高级用户，下面保留完整设置索引；日常使用通常不需要修改这些默认值。
 
-> [!TIP]
-> **提交前短检查**
-> 引用文件树中没有缺失路径 → 没有循环引用错误 → 目标为 Linux 时将 `pathCaseCheck` 设为 `strict` → 主文件中的 `*INCLUDE_PATH` 与提交目录一致。
+| 设置 | 默认值 | 用途 |
+| :--- | :--- | :--- |
+| `lsdyna.changeMarks.enabled` | `true` | 显示本次编辑产生的修改。 |
+| `lsdyna.changeMarks.maxLineCount` | `100000` | 文件超过此行数时跳过修改标记。 |
+| `lsdyna.changeMarks.debounceMs` | `250` | 编辑后等待相应毫秒数再刷新标记。 |
+| `lsdyna.changeMarks.showOverviewRuler` | `true` | 在编辑器右侧概览尺显示修改。 |
+| `lsdyna.changeMarks.showLineBackground` | `true` | 为修改行增加浅色背景。 |
+| `lsdyna.changeMarks.showMinimap` | `true` | 在缩略图中显示已保存和未保存的修改。 |
+| `lsdyna.navigation.pulseOnJump` | `true` | 跳转后短暂突出显示目标位置。 |
+| `lsdyna.statusBar.level` | `"simple"` | 选择关闭、简要或详细的当前文件状态。 |
+| `lsdyna.health.showFirstRunNotice` | `true` | 首次使用时显示一次配置提示。 |
+| `lsdyna.largeFile.enableRendering` | `true` | 仅在超大文件上需要节省资源时关闭附加显示。 |
+| `lsdyna.codeLens.showOnAllKeywords` | `false` | 在每个关键字上方显示附加操作。 |
+| `lsdyna.hover.previewMaxLines` | `20` | 限制引用文件预览的行数。 |
+| `lsdyna.autoFormat` | `"disabled"` | 离开数据行后自动整理卡片的试验功能。 |
+| `lsdyna.additionalExtensions` | `[".k",".key",".dyna",".asc"]` | 按 LS-DYNA 关键字文件处理的扩展名。 |
+| `lsdyna.ignoreFormattingKeywords` | `[]` | 不参与排版和字段操作的关键字。 |
+| `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | 不应被报告为未知的已确认关键字。 |
+| `lsdyna.warnLowercaseKeyword` | `false` | 关键字不是大写时发出提示。 |
+
+自定义扩展名还应配置 VS Code 的 `files.associations`，例如 `"*.my_ext": "lsdyna"`。本次修改标记和其他界面元素会跟随 VS Code 主题；可在 `workbench.colorCustomizations` 中使用 `lsdyna.changeMarks.unsaved` 和 `lsdyna.changeMarks.saved` 覆盖修改标记颜色。
+
+</details>
+
+> **提交模型前：** 从正确的主文件扫描引用文件树 → 处理所有缺失的 **!** → 消除循环引用 → 提交到 Linux 时严格检查路径大小写 → 确认提交目录与扫描时使用的 `*INCLUDE_PATH` 结构一致。
 
 ---
 
-## 鸣谢与贡献者
+## 致谢与贡献者
 
-本项目由 [hqyyqh](https://github.com/hqyyqh) 在 LS-DYNA VS Code 生态上深度定制维护。
+本项目由 [hqyyqh](https://github.com/hqyyqh) 维护，是对 LS-DYNA VS Code 编辑器生态的深度定制。
 
-- **上游：** [osullivryan/vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna) — 感谢 [osullivryan](https://github.com/osullivryan)、[DCHartlen](https://github.com/DCHartlen)、[maxiiss](https://github.com/maxiiss)、[yshl](https://github.com/yshl)。
+- **上游项目：** [osullivryan/vscode-lsdyna](https://github.com/osullivryan/vscode-lsdyna)；感谢 [osullivryan](https://github.com/osullivryan)、[DCHartlen](https://github.com/DCHartlen)、[maxiiss](https://github.com/maxiiss) 和 [yshl](https://github.com/yshl)。
 - **关键字数据：** [ansys/pydyna](https://github.com/ansys/pydyna)。
-- **亦受启发于：** [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) 及社区其它工具。
-
-感谢所有为 LS-DYNA 编辑体验做出贡献的开发者。
+- **参考项目：** [vim-lsdyna](https://github.com/gradzikb/vim-lsdyna) 以及其他 LS-DYNA 编辑器社区项目。
