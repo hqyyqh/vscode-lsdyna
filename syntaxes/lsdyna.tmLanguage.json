@@ -21,7 +21,7 @@
 					"comment": "Comment line",
 					"begin": "^[$]",
 					"end": "(?=\\n|\\r)",
-					"name": "comment.line.c.lsdyna"
+					"name": "comment.line.dollar.lsdyna"
 				}
 			]
 		},
@@ -38,7 +38,7 @@
 			"patterns": [
 				{
 					"comment": "LS-DYNA separate",
-					"name": "keyword.operator.other",
+					"name": "punctuation.separator.delimiter.lsdyna",
 					"begin": "_|\\,",
 					"end": "(?=\\w|\\s)"
 				}
@@ -48,7 +48,7 @@
 			"patterns": [
 				{
 					"comment": "LS-DYNA keywords type",
-					"name": "keyword.other.lsdyna",
+					"name": "keyword.control.lsdyna",
 					"begin": "^[*]",
 					"end": "(?=\\,|\\n|\\r|[ ])"
 				}
@@ -58,7 +58,7 @@
 			"patterns": [
 				{
 					"comment": "posterior keywords and options",
-					"name": "entity.name.function.lsdyna",
+					"name": "keyword.control.lsdyna",
 					"begin": "(?<=_)\\w",
 					"end": "(?=\\n|\\r|[ ])"
 				}
@@ -78,7 +78,7 @@
 			"comment": "PARAMETER_EXPRESSION block — bare variable refs in expression values",
 			"begin": "^(\\*PARAMETER_EXPRESSION[^\\n]*)",
 			"beginCaptures": {
-				"1": { "name": "keyword.other.lsdyna" }
+				"1": { "name": "keyword.control.lsdyna" }
 			},
 			"while": "^(?![*])",
 			"patterns": [
@@ -112,7 +112,7 @@
             "patterns": [
                 {
                 "comment": "name",
-                "name": "string.interpolated.lsdyna",
+                "name": "string.unquoted.lsdyna",
                 "match": "^([\\S]+)$"
                 }
             ]

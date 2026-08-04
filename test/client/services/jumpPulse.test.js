@@ -89,9 +89,11 @@ describe('jumpPulse', () => {
         assert.ok(sumHold >= 800 && sumHold <= 1400, `total hold ${sumHold}`);
     });
 
-    it('resolvePulseRgb picks light vs dark tones', () => {
-        assert.equal(resolvePulseRgb({ window: { activeColorTheme: { kind: 1 } } }), '255, 152, 0');
+    it('resolvePulseRgb picks distinct colors for all four VS Code theme kinds', () => {
+        assert.equal(resolvePulseRgb({ window: { activeColorTheme: { kind: 1 } } }), '214, 113, 0');
         assert.equal(resolvePulseRgb({ window: { activeColorTheme: { kind: 2 } } }), '255, 213, 79');
+        assert.equal(resolvePulseRgb({ window: { activeColorTheme: { kind: 3 } } }), '255, 255, 0');
+        assert.equal(resolvePulseRgb({ window: { activeColorTheme: { kind: 4 } } }), '138, 79, 0');
         assert.equal(resolvePulseRgb({}, '10, 20, 30'), '10, 20, 30');
     });
 
@@ -202,5 +204,30 @@ describe('jumpPulse', () => {
         const last = opts[opts.length - 1].backgroundColor;
         assert.ok(last.includes('1.000') || last.includes('0.9'));
         controller.dispose();
+    });
+
+    it('rebuilds concrete animation colors when the active theme changes', () => {
+        const vscodeApi = createMockVscode(1);
+        let listener = null;
+        let listenerDisposed = false;
+        vscodeApi.window.onDidChangeActiveColorTheme = callback => {
+            listener = callback;
+            return { dispose() { listenerDisposed = true; } };
+        };
+        const controller = createJumpPulseController(vscodeApi, {
+            schedule: () => 1,
+            clearSchedule: () => {},
+        });
+        assert.equal(vscodeApi._created.length, ALPHA_LEVELS);
+        assert.ok(vscodeApi._created[0].opts.backgroundColor.startsWith('rgba(214, 113, 0'));
+
+        vscodeApi.window.activeColorTheme.kind = 4;
+        listener();
+
+        assert.equal(vscodeApi._created.length, ALPHA_LEVELS * 2);
+        assert.equal(vscodeApi._disposed.length, ALPHA_LEVELS);
+        assert.ok(vscodeApi._created[ALPHA_LEVELS].opts.backgroundColor.startsWith('rgba(138, 79, 0'));
+        controller.dispose();
+        assert.equal(listenerDisposed, true);
     });
 });

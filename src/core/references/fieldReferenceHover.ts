@@ -39,12 +39,16 @@ function childDefinitionKindLabel(kind) {
     return kind === 'table' ? i18n.get('tableDefinitionKind') : i18n.get('curveDefinitionKind');
 }
 
-function appendCurvePreview(lines, definition, isDark = true) {
+function hoverRenderOptions(themeKind, isDark = true) {
+    return themeKind == null ? { isDark } : { themeKind };
+}
+
+function appendCurvePreview(lines, definition, renderOptions: any = { isDark: true }) {
     const incomplete = definition.dataCompleteness && definition.dataCompleteness.state !== 'complete';
     if (incomplete) {
         lines.push('', i18n.get('referenceDataIncomplete'));
     } else {
-        const dataUri = renderCurveSvgDataUri(definition, { isDark });
+        const dataUri = renderCurveSvgDataUri(definition, renderOptions);
         if (dataUri) {
             lines.push('', `![${i18n.get('curvePreviewAlt')}](${dataUri})`);
         }
@@ -124,7 +128,7 @@ function appendTableChildDiagnostics(lines, rows) {
     }
 }
 
-function appendTablePreview(lines, definition, isDark = true) {
+function appendTablePreview(lines, definition, renderOptions: any = { isDark: true }) {
     const allRows = definition.rows || [];
     const requiredChildRows = allRows.filter(row =>
         !(row.childIdInput && row.childIdInput.kind === 'blank') &&
@@ -154,7 +158,7 @@ function appendTablePreview(lines, definition, isDark = true) {
     } else if (!allChildrenExact) {
         lines.push('', i18n.get('tablePreviewRequiresExactChildren'));
     } else {
-        const dataUri = renderTable3dSvgDataUri(tableWithPoints, { isDark });
+        const dataUri = renderTable3dSvgDataUri(tableWithPoints, renderOptions);
         if (dataUri) {
             lines.push('', `![${i18n.get('table3dPreviewAlt')}](${dataUri})`);
         }
@@ -178,7 +182,7 @@ function appendTablePreview(lines, definition, isDark = true) {
     appendTableChildDiagnostics(lines, rows);
 }
 
-function appendDefinition(lines, definition, isDark = true, candidate = null) {
+function appendDefinition(lines, definition, renderOptions: any = { isDark: true }, candidate = null) {
     const isPossibleMatch = candidate && candidate.relation === 'possible-match';
     if (isPossibleMatch) {
         lines.push('', `**${i18n.get(
@@ -217,11 +221,11 @@ function appendDefinition(lines, definition, isDark = true, candidate = null) {
         return;
     }
     if (definition.kind === 'curve') {
-        appendCurvePreview(lines, definition, isDark);
+        appendCurvePreview(lines, definition, renderOptions);
     } else if (definition.kind === 'functionCurve') {
         appendFunctionPreview(lines, definition);
     } else if (definition.kind === 'table') {
-        appendTablePreview(lines, definition, isDark);
+        appendTablePreview(lines, definition, renderOptions);
     }
 }
 
@@ -287,6 +291,7 @@ function buildReferenceHoverSection({
     definitions = [],
     needsProjectScan = false,
     isDark = true,
+    themeKind = null,
     documentPath = '',
 }) {
     const effectiveReference = referenceValue || {
@@ -298,6 +303,7 @@ function buildReferenceHoverSection({
     const presentation = buildReferencePresentation(effectiveAnalysis, { documentPath });
     const resolvedDefinitions = effectiveAnalysis.definitions || [];
     const presentedCandidates = presentation.candidates;
+    const renderOptions = hoverRenderOptions(themeKind, isDark);
     const displayValue = effectiveReference.kind === 'parameter'
         ? effectiveReference.raw
         : effectiveReference.id;
@@ -341,7 +347,7 @@ function buildReferenceHoverSection({
         if (presentedCandidates.length > 0) {
             lines.push('', i18n.get('referenceKnownCandidates', presentedCandidates.length));
             for (const candidate of presentedCandidates.slice(0, MAX_HOVER_DEFINITIONS)) {
-                appendDefinition(lines, candidate.definition, isDark, candidate);
+                appendDefinition(lines, candidate.definition, renderOptions, candidate);
             }
         }
         const omitted = presentedCandidates.length - MAX_HOVER_DEFINITIONS;
@@ -363,7 +369,7 @@ function buildReferenceHoverSection({
     }
 
     for (const candidate of presentedCandidates.slice(0, MAX_HOVER_DEFINITIONS)) {
-        appendDefinition(lines, candidate.definition, isDark, candidate);
+        appendDefinition(lines, candidate.definition, renderOptions, candidate);
     }
 
     const omitted = resolvedDefinitions.length - MAX_HOVER_DEFINITIONS;
@@ -374,18 +380,21 @@ function buildReferenceHoverSection({
     return lines.join('\n');
 }
 
-function buildDefinitionHoverSection(definition, isDark = true) {
+function buildDefinitionHoverSection(definition, themeOrIsDark: any = true) {
     const lines = [];
+    const renderOptions = typeof themeOrIsDark === 'boolean'
+        ? { isDark: themeOrIsDark }
+        : { themeKind: themeOrIsDark };
     const titleStr = definition.title ? ` - _${definition.title}_` : '';
     const cleanKeyword = definition.keyword.replace(/^\*/, '');
     const displayId = Number.isFinite(definition.id) ? definition.id : definition.idRaw;
     lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', displayId)}**${titleStr}`);
     if (definition.kind === 'curve') {
-        appendCurvePreview(lines, definition, isDark);
+        appendCurvePreview(lines, definition, renderOptions);
     } else if (definition.kind === 'functionCurve') {
         appendFunctionPreview(lines, definition);
     } else if (definition.kind === 'table') {
-        appendTablePreview(lines, definition, isDark);
+        appendTablePreview(lines, definition, renderOptions);
     }
     return lines.join('\n');
 }

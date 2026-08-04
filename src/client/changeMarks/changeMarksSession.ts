@@ -16,6 +16,8 @@ export type SessionRecord = {
     marks: ChangeMarksDiffResult;
 };
 
+type SessionOrigin = string | { toString(): string } | Pick<SessionRecord, 'originText'>;
+
 function cloneMarks(marks: ChangeMarksDiffResult): ChangeMarksDiffResult {
     return {
         unsavedModifiedLines: marks.unsavedModifiedLines.slice(),
@@ -74,6 +76,37 @@ export function createChangeMarksSessionStore() {
         return recompute(rec, rec.savePointText);
     }
 
+    /**
+     * Creates a destination session that continues an existing editing lineage.
+     * The source record is left untouched: Save As creates a branch, not a move.
+     * A snapshot-like object is accepted so the source document may close before
+     * VS Code emits the destination save event.
+     */
+    function branch(
+        source: SessionOrigin,
+        destinationUri: string | { toString(): string },
+        currentText: string,
+    ): SessionRecord | null {
+        const sourceRec = typeof source === 'string'
+            ? get(source)
+            : source && typeof source === 'object' && 'originText' in source
+                ? source
+                : get(source as { toString(): string });
+        if (!sourceRec || typeof sourceRec.originText !== 'string') return null;
+
+        const destinationKey = keyOf(destinationUri);
+        const t = currentText == null ? '' : String(currentText);
+        const rec: SessionRecord = {
+            uri: destinationKey,
+            originText: sourceRec.originText,
+            savePointText: t,
+            marks: emptyChangeMarks(),
+        };
+        sessions.set(destinationKey, rec);
+        recompute(rec, t);
+        return rec;
+    }
+
     function resetOrigin(uri: string | { toString(): string }, currentText: string): ChangeMarksDiffResult | null {
         const rec = get(uri);
         if (!rec) return null;
@@ -109,6 +142,7 @@ export function createChangeMarksSessionStore() {
         close,
         applyCurrent,
         save,
+        branch,
         resetOrigin,
         snapshot,
         clearAll,

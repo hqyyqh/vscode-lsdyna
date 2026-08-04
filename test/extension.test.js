@@ -12,6 +12,8 @@ const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordI
 const { buildProjectIndex } = require('../src/core/project/projectIndexer');
 const {
     collectIncludeDecorationSets,
+    createIncludeDecorationTypes,
+    createLatestDocumentRequestGuard,
     collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,
@@ -2408,32 +2410,115 @@ describe('large document guards', () => {
     });
 
     it('skips automatic include decorations for very large documents', async () => {
-        assert.deepEqual(await collectIncludeDecorationSets(createHugeDoc()), { resolved: [], missing: [] });
+        assert.deepEqual(await collectIncludeDecorationSets(createHugeDoc()), {
+            resolved: [],
+            missing: [],
+            missingIndicators: [],
+        });
     });
 
-    it('uses multi-line ranges for continued include decorations', async () => {
+    it('puts one missing indicator after the final segment of a continued include', async () => {
         const doc = fakeDoc('*INCLUDE\npart_a +\npart_b.key\n', '/project/main.k');
         doc.languageId = 'lsdyna';
 
-        const { missing } = await collectIncludeDecorationSets(doc);
+        const { missing, missingIndicators } = await collectIncludeDecorationSets(doc);
 
         assert.equal(missing.length, 1);
         assert.equal(missing[0].range.start.line, 1);
         assert.equal(missing[0].range.end.line, 2);
         assert.equal(missing[0].range.end.character, 'part_b.key'.length);
+        assert.equal(missing[0].hoverMessage, i18n.get('includeDecorationMissingLocal', 'part_apart_b.key'));
+        assert.equal(missingIndicators.length, 1);
+        assert.equal(missingIndicators[0].range.start.line, 2);
+        assert.equal(missingIndicators[0].range.start.character, 'part_b.key'.length);
+        assert.equal(missingIndicators[0].range.end.line, 2);
+        assert.equal(missingIndicators[0].range.end.character, 'part_b.key'.length);
+        assert.equal(
+            missingIndicators[0].hoverMessage,
+            i18n.get('includeDecorationMissingLocal', 'part_apart_b.key')
+        );
     });
 
-    it('splits continued include decorations around skipped comment lines', async () => {
+    it('splits missing path styling around comments but keeps one trailing indicator', async () => {
         const doc = fakeDoc('*INCLUDE\npart_a +\n$ skip me\npart_b.key\n', '/project/main.k');
         doc.languageId = 'lsdyna';
 
-        const { missing } = await collectIncludeDecorationSets(doc);
+        const { missing, missingIndicators } = await collectIncludeDecorationSets(doc);
 
         assert.equal(missing.length, 2);
         assert.deepEqual(
             missing.map(item => [item.range.start.line, item.range.end.line]),
             [[1, 1], [3, 3]]
         );
+        assert.equal(missingIndicators.length, 1);
+        assert.equal(missingIndicators[0].range.start.line, 3);
+        assert.equal(missingIndicators[0].range.start.character, 'part_b.key'.length);
+    });
+
+    it('creates include decorations without consuming the glyph margin', () => {
+        const created = [];
+        const vscodeApi = {
+            Uri: { parse: value => ({ value, toString: () => value }) },
+            ThemeColor: function ThemeColor(id) { this.id = id; },
+            window: {
+                createTextEditorDecorationType(options) {
+                    const type = { options, dispose() {} };
+                    created.push(type);
+                    return type;
+                },
+            },
+        };
+
+        const types = createIncludeDecorationTypes(vscodeApi);
+
+        assert.equal(created.length, 3);
+        for (const type of created) {
+            assert.equal(type.options.gutterIconPath, undefined);
+        }
+        assert.equal(types.missingIndicatorDecoration.options.after.contentText, ' !');
+        assert.equal(types.missingIndicatorDecoration.options.after.color.id, 'editorWarning.foreground');
+        assert.equal(types.missingIndicatorDecoration.options.after.margin, '0 0 0 0.35em');
+        assert.equal(types.missingPathDecoration.options.fontStyle, 'italic');
+        assert.equal(types.missingPathDecoration.options.color.id, 'editorWarning.foreground');
+    });
+
+    it('rejects stale asynchronous include decoration results', () => {
+        const guard = createLatestDocumentRequestGuard();
+        const document = {};
+        const first = guard.begin(document);
+        const second = guard.begin(document);
+
+        assert.equal(guard.isLatest(document, first), false);
+        assert.equal(guard.isLatest(document, second), true);
+    });
+
+    it('uses only a document link for an existing include and only a warning attachment for a missing one', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-affordance-'));
+        const mainFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.k');
+        fs.writeFileSync(childFile, '*KEYWORD\n');
+
+        try {
+            const resolvedDoc = fakeDoc('*INCLUDE\nchild.k\n', mainFile);
+            resolvedDoc.languageId = 'lsdyna';
+            const resolvedDecorations = await collectIncludeDecorationSets(resolvedDoc);
+            const resolvedLinks = await collectIncludeDocumentLinks(resolvedDoc);
+            assert.equal(resolvedDecorations.resolved.length, 1);
+            assert.equal(resolvedDecorations.missing.length, 0);
+            assert.equal(resolvedDecorations.missingIndicators.length, 0);
+            assert.equal(resolvedLinks.length, 1);
+
+            const missingDoc = fakeDoc('*INCLUDE\nmissing.k\n', mainFile);
+            missingDoc.languageId = 'lsdyna';
+            const missingDecorations = await collectIncludeDecorationSets(missingDoc);
+            const missingLinks = await collectIncludeDocumentLinks(missingDoc);
+            assert.equal(missingDecorations.resolved.length, 0);
+            assert.equal(missingDecorations.missing.length, 1);
+            assert.equal(missingDecorations.missingIndicators.length, 1);
+            assert.equal(missingLinks.length, 0);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
     });
 
     it('skips automatic include document links for very large documents', async () => {
@@ -2570,6 +2655,7 @@ describe('large document guards', () => {
             const strictDeco = await collectIncludeDecorationSets(doc, { mode: 'strict' });
             assert.equal(strictDeco.resolved.length, 0);
             assert.ok(strictDeco.missing.length >= 1);
+            assert.equal(strictDeco.missingIndicators.length, 1);
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
             fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -5237,7 +5323,7 @@ describe('formatBytes', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaFileDecorationProvider', () => {
-    it('provides file decorations with size badge and status colors', () => {
+    it('decorates only missing files and leaves resolved files to normal link styling', () => {
         const { LsdynaFileDecorationProvider, normalizePathKey } = extensionModule._internals;
         const includeTreeProvider = {
             resolvedPaths: new Map([
@@ -5252,17 +5338,15 @@ describe('LsdynaFileDecorationProvider', () => {
         // Test resolved
         const resolvedUri = { scheme: 'file', fsPath: 'some/file.k' };
         const resolvedDec = provider.provideFileDecoration(resolvedUri);
-        assert.ok(resolvedDec);
-        assert.strictEqual(resolvedDec.badge, undefined);
-        assert.strictEqual(resolvedDec.color.constructor.name, 'ThemeColor');
-        assert.strictEqual(resolvedDec.tooltip, i18n.get('includeDecorationResolved'));
+        assert.strictEqual(resolvedDec, undefined);
 
         // Test missing
         const missingUri = { scheme: 'file', fsPath: 'some/missing.k' };
         const missingDec = provider.provideFileDecoration(missingUri);
         assert.ok(missingDec);
-        assert.strictEqual(missingDec.badge, '⚠');
+        assert.strictEqual(missingDec.badge, '!');
         assert.strictEqual(missingDec.tooltip, i18n.get('includeDecorationMissing'));
+        assert.strictEqual(missingDec.color.id, 'list.warningForeground');
 
         // Test untracked
         const untrackedUri = { scheme: 'file', fsPath: 'some/other.k' };

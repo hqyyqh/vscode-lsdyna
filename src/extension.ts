@@ -875,16 +875,22 @@ function collectLineLengthDiagnostics(document) {
 }
 
 /**
- * Constructs decoration ranges (color markers) for resolved versus missing include files.
+ * Constructs path-style ranges plus one trailing indicator for each missing include.
+ * Resolved ranges are retained for callers that need resolution metadata, but
+ * their visible affordance is supplied solely by the DocumentLink provider.
  * In `strict` pathCaseCheck mode, casing mismatches decorate as missing.
  *
  * @param {import('vscode').TextDocument} document - Target document.
  * @param {{ mode?: string, resolveIncludeWithCaseCheck?: Function }} [options]
- * @returns {Promise<{resolved: import('vscode').DecorationOptions[], missing: import('vscode').DecorationOptions[]}>}
+ * @returns {Promise<{
+ *   resolved: import('vscode').DecorationOptions[],
+ *   missing: import('vscode').DecorationOptions[],
+ *   missingIndicators: import('vscode').DecorationOptions[]
+ * }>}
  */
 async function collectIncludeDecorationSets(document, options: any = {}) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) {
-        return { resolved: [], missing: [] };
+        return { resolved: [], missing: [], missingIndicators: [] };
     }
 
     const mode = pathCaseFidelity.normalizePathCaseCheckMode(
@@ -894,28 +900,84 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
     const searchPaths = getSearchPath(document);
     const resolved = [];
     const missing = [];
+    const missingIndicators = [];
 
     for (const entry of findIncludeFileLines(document)) {
-        const ranges = includeScanner.getIncludeEntryRanges(entry)
+        const entryRanges = includeScanner.getIncludeEntryRanges(entry);
+        const ranges = entryRanges
             .map(({ lineIndex, startChar, endLineIndex, endChar }) => ({
                 range: new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
             }));
+        const markMissing = () => {
+            const hoverMessage = i18n.get('includeDecorationMissingLocal', entry.fileName);
+            missing.push(...ranges.map(item => ({ ...item, hoverMessage })));
+            const last = entryRanges[entryRanges.length - 1];
+            if (!last) return;
+            missingIndicators.push({
+                range: new vscode.Range(
+                    last.endLineIndex,
+                    last.endChar,
+                    last.endLineIndex,
+                    last.endChar
+                ),
+                hoverMessage,
+            });
+        };
         try {
             searchFileFromPaths(entry.fileName, searchPaths);
             if (mode === 'strict') {
                 const caseResult = await resolveFn(entry.fileName, searchPaths);
                 if (!pathCaseFidelity.isIncludeResolveAccepted(caseResult, mode)) {
-                    missing.push(...ranges);
+                    markMissing();
                     continue;
                 }
             }
             resolved.push(...ranges);
         } catch (e) {
-            missing.push(...ranges);
+            markMissing();
         }
     }
 
-    return { resolved, missing };
+    return { resolved, missing, missingIndicators };
+}
+
+/**
+ * Creates include-specific editor decorations without using the glyph margin.
+ * The warning attachment is spatially independent from session change marks.
+ */
+function createIncludeDecorationTypes(vscodeApi) {
+    const warningColor = new vscodeApi.ThemeColor('editorWarning.foreground');
+    return {
+        missingPathDecoration: vscodeApi.window.createTextEditorDecorationType({
+            color: warningColor,
+            fontStyle: 'italic',
+        }),
+        missingIndicatorDecoration: vscodeApi.window.createTextEditorDecorationType({
+            after: {
+                contentText: ' !',
+                color: warningColor,
+                fontWeight: 'bold',
+                margin: '0 0 0 0.35em',
+            },
+        }),
+        keywordDecoration: vscodeApi.window.createTextEditorDecorationType({
+            fontWeight: 'bold',
+        }),
+    };
+}
+
+function createLatestDocumentRequestGuard() {
+    const requests = new WeakMap();
+    return {
+        begin(document) {
+            const requestId = (requests.get(document) || 0) + 1;
+            requests.set(document, requestId);
+            return requestId;
+        },
+        isLatest(document, requestId) {
+            return requests.get(document) === requestId;
+        },
+    };
 }
 
 function collectKeywordDecorationRanges(document) {
@@ -2763,8 +2825,6 @@ class LsdynaFieldHoverProvider {
                                   (tables || []).find(t => t.startLine === position.line);
                     if (match) {
                         const themeKind = vscode.window?.activeColorTheme?.kind;
-                        const isDark = themeKind === undefined ||
-                                       (vscode.ColorThemeKind && (themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast));
                         const resolvedMatch = match.kind === 'table' && referenceIndexState
                             ? attachResolvedTableChildren(
                                 match,
@@ -2772,7 +2832,7 @@ class LsdynaFieldHoverProvider {
                                 { projectScoped: referenceIndexState.projectScoped }
                             )
                             : match;
-                        previewMd = buildDefinitionHoverSection(resolvedMatch, isDark);
+                        previewMd = buildDefinitionHoverSection(resolvedMatch, themeKind);
                     }
                 }
             }
@@ -2896,15 +2956,13 @@ class LsdynaFieldHoverProvider {
                 }
             );
             const themeKind = vscode.window?.activeColorTheme?.kind;
-            const isDark = themeKind === undefined ||
-                           (vscode.ColorThemeKind && (themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast));
 
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
                 referenceValue,
                 isSignedSwitch: referenceValue.isSignedSwitch,
                 analysis,
-                isDark,
+                themeKind,
                 documentPath: document.uri.fsPath,
             }));
             const mainDeckContextMarkdown = buildMainDeckContextHoverMarkdown(
@@ -3226,16 +3284,9 @@ class LsdynaFileDecorationProvider {
 
         if (this.includeTreeProvider.missingPaths.has(key)) {
             return {
-                badge: '⚠',
+                badge: '!',
                 tooltip: i18n.get('includeDecorationMissing'),
                 color: new vscode.ThemeColor('list.warningForeground')
-            };
-        }
-
-        if (this.includeTreeProvider.resolvedPaths.has(key)) {
-            return {
-                tooltip: i18n.get('includeDecorationResolved'),
-                color: new vscode.ThemeColor('gitDecoration.untrackedResourceForeground')
             };
         }
 
@@ -6401,6 +6452,7 @@ async function activate(context) {
     let fileDecorationProvider = null;
     let jumpPulseController = null;
     let maybeShowHealthNoticeForEditor = (_editor = undefined) => {};
+    let refreshActiveIncludeDecorations = () => {};
 
     jumpPulseController = createJumpPulseController(vscode);
     context.subscriptions.push({ dispose: () => {
@@ -6839,7 +6891,10 @@ async function activate(context) {
     });
     workspaceWatcherManager = createWorkspaceWatcherManager({
         createWatcher: glob => vscode.workspace.createFileSystemWatcher(glob),
-        onFileEvent: uri => invalidateChangedProjectRoots(uri),
+        onFileEvent: uri => {
+            invalidateChangedProjectRoots(uri);
+            refreshActiveIncludeDecorations();
+        },
         logWarning: message => logDebug(message),
     });
     workspaceWatcherManager.rebuild(
@@ -7640,33 +7695,29 @@ async function activate(context) {
         vscode.languages.registerRenameProvider({ language: 'lsdyna' }, new LsdynaRenameProvider())
     );
 
-    // Decorations: green for resolved paths, yellow for missing ones
-    const checkmarkSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%2389d185" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path></svg>`;
-    const resolvedDecoration = vscode.window.createTextEditorDecorationType({
-        color: new vscode.ThemeColor('textLink.foreground'),
-        gutterIconPath: vscode.Uri.parse(`data:image/svg+xml;utf8,${checkmarkSvg}`),
-        gutterIconSize: 'contain',
-    });
-    
-    const warningSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="%23cca700" d="M8.22 1.754a.25.25 0 00-.44 0L1.698 13.132a.25.25 0 00.22.368h12.164a.25.25 0 00.22-.368L8.22 1.754zm-1.763-.707c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM9 11a1 1 0 11-2 0 1 1 0 012 0zm-.25-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z"></path></svg>`;
-    const missingDecoration = vscode.window.createTextEditorDecorationType({
-        color: new vscode.ThemeColor('list.warningForeground'),
-        fontStyle: 'italic',
-        gutterIconPath: vscode.Uri.parse(`data:image/svg+xml;utf8,${warningSvg}`),
-        gutterIconSize: 'contain',
-    });
-    const keywordDecoration = vscode.window.createTextEditorDecorationType({
-        fontWeight: 'bold'
-    });
-    context.subscriptions.push(resolvedDecoration, missingDecoration, keywordDecoration);
+    // Resolved includes use their native DocumentLink underline. Missing paths
+    // keep a warning style and place one icon after the path, leaving the glyph
+    // margin exclusively to session change marks.
+    const {
+        missingPathDecoration,
+        missingIndicatorDecoration,
+        keywordDecoration,
+    } = createIncludeDecorationTypes(vscode);
+    context.subscriptions.push(missingPathDecoration, missingIndicatorDecoration, keywordDecoration);
+    const includeDecorationRequests = createLatestDocumentRequestGuard();
 
     function updateDecorations(editor) {
         if (!editor || !isLsdynaFile(editor.document)) return;
         const document = editor.document;
-        collectIncludeDecorationSets(document).then(({ resolved, missing }) => {
-            if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document === document) {
-                editor.setDecorations(resolvedDecoration, resolved);
-                editor.setDecorations(missingDecoration, missing);
+        const requestId = includeDecorationRequests.begin(document);
+        collectIncludeDecorationSets(document).then(({ missing, missingIndicators }) => {
+            if (
+                includeDecorationRequests.isLatest(document, requestId)
+                && vscode.window.activeTextEditor
+                && vscode.window.activeTextEditor.document === document
+            ) {
+                editor.setDecorations(missingPathDecoration, missing);
+                editor.setDecorations(missingIndicatorDecoration, missingIndicators);
             }
         }).catch(error => {
             logDebug(`collectIncludeDecorationSets failed: ${error && error.message ? error.message : error}`);
@@ -7675,6 +7726,8 @@ async function activate(context) {
         const keywordRanges = collectKeywordDecorationRanges(document);
         editor.setDecorations(keywordDecoration, keywordRanges);
     }
+
+    refreshActiveIncludeDecorations = () => updateDecorations(vscode.window.activeTextEditor);
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -7687,6 +7740,18 @@ async function activate(context) {
         vscode.workspace.onDidChangeTextDocument(event => {
             if (vscode.window.activeTextEditor?.document === event.document) {
                 updateDecorations(vscode.window.activeTextEditor);
+            }
+        })
+    );
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (
+                !event
+                || typeof event.affectsConfiguration !== 'function'
+                || event.affectsConfiguration('lsdyna.include.pathCaseCheck')
+                || event.affectsConfiguration('lsdyna.additionalExtensions')
+            ) {
+                refreshActiveIncludeDecorations();
             }
         })
     );
@@ -8464,6 +8529,8 @@ module.exports._internals = {
     publishProjectDiagnostics,
     collectProjectDiagnostics,
     collectIncludeDecorationSets,
+    createIncludeDecorationTypes,
+    createLatestDocumentRequestGuard,
     collectKeywordDecorationRanges,
     collectIncludeDocumentLinks,
     collectLineLengthDiagnostics,

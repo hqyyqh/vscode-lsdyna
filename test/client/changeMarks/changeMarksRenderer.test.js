@@ -54,6 +54,16 @@ describe('changeMarksRenderer', () => {
         assert.ok(tri.includes('polygon'));
     });
 
+    it('adds a shape cue to unsaved marks so save state is not color-only', () => {
+        for (const render of [solidBarSvg, hollowBarSvg, deleteTriangleSvg]) {
+            const saved = render('#777777', 'saved');
+            const unsaved = render('#777777', 'unsaved');
+            assert.ok(!saved.includes('data-change-state="unsaved"'));
+            assert.ok(unsaved.includes('data-change-state="unsaved"'));
+            assert.ok(unsaved.includes('<circle'));
+        }
+    });
+
     it('uses theme palette for gutter SVG (light vs dark differ)', () => {
         const darkVscode = createMockVscode(2);
         createChangeMarksRenderer(darkVscode, { showMinimap: false, showOverviewRuler: false }).dispose();

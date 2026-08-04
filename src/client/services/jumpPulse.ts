@@ -1,5 +1,7 @@
 'use strict';
 
+const { resolveExtensionThemePalette } = require('../../core/theme/extensionTheme');
+
 /**
  * Brief whole-line highlight after navigation jumps (keyword usage, etc.).
  *
@@ -33,8 +35,8 @@ export type CreateJumpPulseOptions = {
     schedule?: JumpPulseSchedule;
     clearSchedule?: JumpPulseClearSchedule;
     /**
-     * Override base RGB triple `"r, g, b"`. When omitted, picks amber tones
-     * from `window.activeColorTheme.kind` (light vs dark).
+     * Override base RGB triple `"r, g, b"`. When omitted, uses the centralized
+     * four-theme extension palette.
      */
     baseRgb?: string;
 };
@@ -117,13 +119,7 @@ export function resolvePulseRgb(vscodeApi: any, override?: string): string {
     } catch {
         kind = undefined;
     }
-    // ColorThemeKind: Light=1, Dark=2, HighContrast=3, HighContrastLight=4
-    if (kind === 1 || kind === 4) {
-        // Amber that reads on light editor backgrounds
-        return '255, 152, 0';
-    }
-    // Soft gold / find-like on dark
-    return '255, 213, 79';
+    return resolveExtensionThemePalette(kind).jumpPulseRgb;
 }
 
 function rgba(rgb: string, alpha: number): string {
@@ -147,13 +143,33 @@ export function createJumpPulseController(vscodeApi: any, options: CreateJumpPul
     const clearSchedule: JumpPulseClearSchedule = options.clearSchedule
         || ((handle) => clearTimeout(handle));
 
-    const baseRgb = resolvePulseRgb(vscodeApi, options.baseRgb);
-
     /** Index 1..ALPHA_LEVELS → decoration type; 0 unused. */
     const levelTypes: any[] = new Array(ALPHA_LEVELS + 1).fill(null);
     let canDecorate = false;
-    if (vscodeApi && vscodeApi.window && typeof vscodeApi.window.createTextEditorDecorationType === 'function') {
-        canDecorate = true;
+    let baseRgb = resolvePulseRgb(vscodeApi, options.baseRgb);
+
+    function disposeLevelTypes() {
+        for (let level = 1; level <= ALPHA_LEVELS; level++) {
+            const type = levelTypes[level];
+            if (type && typeof type.dispose === 'function') {
+                try {
+                    type.dispose();
+                } catch {
+                    // ignore decoration disposal during shutdown/theme replacement
+                }
+            }
+            levelTypes[level] = null;
+        }
+    }
+
+    function buildLevelTypes() {
+        canDecorate = !!(
+            vscodeApi
+            && vscodeApi.window
+            && typeof vscodeApi.window.createTextEditorDecorationType === 'function'
+        );
+        if (!canDecorate) return;
+        baseRgb = resolvePulseRgb(vscodeApi, options.baseRgb);
         for (let level = 1; level <= ALPHA_LEVELS; level++) {
             const alpha = level / ALPHA_LEVELS;
             levelTypes[level] = vscodeApi.window.createTextEditorDecorationType({
@@ -162,11 +178,13 @@ export function createJumpPulseController(vscodeApi: any, options: CreateJumpPul
             });
         }
     }
+    buildLevelTypes();
 
     let timer: any = null;
     let currentEditor: any = null;
     let activeType: any = null;
     let disposed = false;
+    let themeSubscription: any = null;
     /** Monotonic token so late scheduled frames ignore stale sequences. */
     let pulseGen = 0;
 
@@ -318,17 +336,28 @@ export function createJumpPulseController(vscodeApi: any, options: CreateJumpPul
         }
         disposed = true;
         cancel();
-        for (let level = 1; level <= ALPHA_LEVELS; level++) {
-            const t = levelTypes[level];
-            if (t && typeof t.dispose === 'function') {
-                try {
-                    t.dispose();
-                } catch {
-                    // ignore
-                }
+        if (themeSubscription && typeof themeSubscription.dispose === 'function') {
+            try {
+                themeSubscription.dispose();
+            } catch {
+                // ignore
             }
-            levelTypes[level] = null;
         }
+        themeSubscription = null;
+        disposeLevelTypes();
+    }
+
+    if (
+        !options.baseRgb
+        && vscodeApi?.window
+        && typeof vscodeApi.window.onDidChangeActiveColorTheme === 'function'
+    ) {
+        themeSubscription = vscodeApi.window.onDidChangeActiveColorTheme(() => {
+            if (disposed) return;
+            cancel();
+            disposeLevelTypes();
+            buildLevelTypes();
+        });
     }
 
     return {

@@ -9,7 +9,12 @@ const { createChangeMarksSessionStore } = require('./changeMarksSession');
 const { createChangeMarksRenderer } = require('./changeMarksRenderer');
 const { orderedMarkLines } = require('./changeMarksDiff');
 const { emptyChangeMarks } = require('./types');
-import type { ChangeMarksConfig, ChangeMarksDiffResult, ChangeMarkVisualKind } from './types';
+import type {
+    ChangeMarksConfig,
+    ChangeMarksDiffResult,
+    ChangeMarksSessionSnapshot,
+    ChangeMarkVisualKind,
+} from './types';
 
 export type ChangeMarksControllerDeps = {
     vscode: any;
@@ -18,9 +23,25 @@ export type ChangeMarksControllerDeps = {
     /** Optional toast / i18n messages */
     showMessage?: (message: string) => void;
     getMessage?: (key: string, ...args: any[]) => string;
+    /** Injectable clock for deterministic lifecycle tests. */
+    now?: () => number;
 };
 
 const SCHEME = 'lsdyna-change-marks';
+const SAVE_AS_CANDIDATE_TTL_MS = 10_000;
+
+type SaveAsSource = {
+    key: string;
+    currentText: string;
+    snapshot: ChangeMarksSessionSnapshot;
+    capturedAt: number;
+};
+
+type SaveAsCandidate = {
+    source: SaveAsSource;
+    targetTextAtAssociation: string;
+    createdAt: number;
+};
 
 /**
  * Keep the session-store URI key opaque while it travels through a VS Code
@@ -68,6 +89,10 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
     let renderer = buildRenderer();
     const timers = new Map(); // uri -> timeout
     const disposables: { dispose: () => void }[] = [];
+    const recentlyCreated = new Map<string, number>();
+    const saveAsCandidates = new Map<string, SaveAsCandidate>();
+    let activeDocument: any = vscode.window.activeTextEditor?.document || null;
+    let recentlyClosedSource: SaveAsSource | null = null;
 
     function buildRenderer() {
         const c = cfg();
@@ -104,6 +129,34 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         return String(uri);
     }
 
+    function keyFromUri(uri: any): string {
+        return uriKey(uri ? { uri } : null);
+    }
+
+    function now(): number {
+        try {
+            return Number(deps.now?.()) || Date.now();
+        } catch {
+            return Date.now();
+        }
+    }
+
+    function isFresh(timestamp: number): boolean {
+        return timestamp > 0 && now() - timestamp <= SAVE_AS_CANDIDATE_TTL_MS;
+    }
+
+    function pruneSaveAsState() {
+        for (const [key, candidate] of saveAsCandidates) {
+            if (!isFresh(candidate.createdAt)) saveAsCandidates.delete(key);
+        }
+        for (const [key, timestamp] of recentlyCreated) {
+            if (!isFresh(timestamp)) recentlyCreated.delete(key);
+        }
+        if (recentlyClosedSource && !isFresh(recentlyClosedSource.capturedAt)) {
+            recentlyClosedSource = null;
+        }
+    }
+
     /** Safe document text; incomplete stubs must not crash activation. */
     function safeGetText(document: any): string | null {
         if (!document || typeof document.getText !== 'function') return null;
@@ -124,6 +177,60 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         const lineCount = Number(document.lineCount);
         if (Number.isFinite(lineCount) && lineCount > c.maxLineCount) return false;
         return true;
+    }
+
+    function captureSource(document: any): SaveAsSource | null {
+        if (!document || !isEligible(document)) return null;
+        const key = uriKey(document);
+        const currentText = safeGetText(document);
+        if (!key || currentText == null) return null;
+        ensureSession(document);
+        store.applyCurrent(key, currentText);
+        const snapshot = store.snapshot(key);
+        if (!snapshot) {
+            if (recentlyClosedSource?.key === key && isFresh(recentlyClosedSource.capturedAt)) {
+                return recentlyClosedSource;
+            }
+            return null;
+        }
+        return { key, currentText, snapshot, capturedAt: now() };
+    }
+
+    function considerSaveAsTarget(targetDocument: any, sourceDocument?: any) {
+        pruneSaveAsState();
+        if (!targetDocument || !isEligible(targetDocument)) return;
+        const targetKey = uriKey(targetDocument);
+        if (!targetKey) return;
+        if (store.get(targetKey) && !saveAsCandidates.has(targetKey)) return;
+
+        let source = captureSource(sourceDocument);
+        if (!source && recentlyClosedSource && isFresh(recentlyClosedSource.capturedAt)) {
+            source = recentlyClosedSource;
+        }
+        if (!source || source.key === targetKey) return;
+
+        const targetText = safeGetText(targetDocument);
+        const existing = saveAsCandidates.get(targetKey);
+        if (
+            existing
+            && isFresh(existing.createdAt)
+            && existing.source.key === source.key
+        ) {
+            return;
+        }
+        saveAsCandidates.set(targetKey, {
+            source,
+            targetTextAtAssociation: targetText == null ? '' : targetText,
+            createdAt: now(),
+        });
+    }
+
+    function onDidChangeActiveEditor(editor: any) {
+        const nextDocument = editor?.document || null;
+        if (nextDocument && uriKey(nextDocument) !== uriKey(activeDocument)) {
+            considerSaveAsTarget(nextDocument, activeDocument);
+        }
+        activeDocument = nextDocument;
     }
 
     function ensureSession(document: any) {
@@ -186,7 +293,13 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         if (!isEligible(document)) return;
         const text = safeGetText(document);
         if (text == null) return;
-        store.open(uriKey(document), text);
+        const key = uriKey(document);
+        if (activeDocument && uriKey(activeDocument) !== key) {
+            considerSaveAsTarget(document, activeDocument);
+        } else if (!activeDocument && recentlyClosedSource) {
+            considerSaveAsTarget(document, null);
+        }
+        store.open(key, text);
         paintDocument(document, emptyChangeMarks());
     }
 
@@ -207,22 +320,60 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
 
     function onDidSave(document: any) {
         if (!document || !isEligible(document)) return;
-        ensureSession(document);
         const text = safeGetText(document);
         if (text == null) return;
-        const marks = store.save(uriKey(document), text);
+        const key = uriKey(document);
+        const observedCandidate = saveAsCandidates.get(key);
+        pruneSaveAsState();
+        const candidate = saveAsCandidates.get(key);
+        const createdTimestamp = recentlyCreated.get(key) || 0;
+        const targetWasPopulated = !!candidate && candidate.targetTextAtAssociation !== text;
+        const hasSaveAsEvidence = isFresh(createdTimestamp) || targetWasPopulated;
+
+        let marks: ChangeMarksDiffResult | null = null;
+        if (
+            candidate
+            && isFresh(candidate.createdAt)
+            && candidate.source.currentText === text
+            && hasSaveAsEvidence
+        ) {
+            const branched = store.branch(candidate.source.snapshot, key, text);
+            marks = branched?.marks || null;
+        }
+        if (!marks) {
+            ensureSession(document);
+            if (observedCandidate && observedCandidate.source.currentText === text) {
+                // We saw a plausible lineage but could not prove it strongly enough
+                // (for example, the lifecycle signal expired). Prefer a clean target
+                // baseline over falsely presenting the whole copied file as inserted.
+                marks = store.resetOrigin(key, text);
+            } else {
+                marks = store.save(key, text);
+            }
+        }
+        saveAsCandidates.delete(key);
+        recentlyCreated.delete(key);
         paintDocument(document, marks);
     }
 
     function onDidClose(document: any) {
         if (!document) return;
         const key = uriKey(document);
+        const currentText = safeGetText(document);
+        if (key && currentText != null && store.get(key)) {
+            store.applyCurrent(key, currentText);
+            const snapshot = store.snapshot(key);
+            if (snapshot) {
+                recentlyClosedSource = { key, currentText, snapshot, capturedAt: now() };
+            }
+        }
         const t = timers.get(key);
         if (t) {
             clearTimeout(t);
             timers.delete(key);
         }
         store.close(key);
+        saveAsCandidates.delete(key);
         for (const editor of vscode.window.visibleTextEditors || []) {
             if (uriKey(editor?.document) === key && key) {
                 renderer.clear(editor);
@@ -339,7 +490,19 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         }));
         sub(vscode.workspace.onDidSaveTextDocument((doc: any) => onDidSave(doc)));
         sub(vscode.workspace.onDidCloseTextDocument((doc: any) => onDidClose(doc)));
+        if (typeof vscode.workspace.onDidCreateFiles === 'function') {
+            sub(vscode.workspace.onDidCreateFiles((e: any) => {
+                const timestamp = now();
+                for (const uri of e?.files || []) {
+                    const key = keyFromUri(uri);
+                    if (key) recentlyCreated.set(key, timestamp);
+                }
+            }));
+        }
         sub(vscode.window.onDidChangeVisibleTextEditors(() => refreshVisible()));
+        if (typeof vscode.window.onDidChangeActiveTextEditor === 'function') {
+            sub(vscode.window.onDidChangeActiveTextEditor((editor: any) => onDidChangeActiveEditor(editor)));
+        }
         // Gutter SVG fills are concrete hex from the active theme palette — rebuild on theme switch.
         if (typeof vscode.window.onDidChangeActiveColorTheme === 'function') {
             sub(vscode.window.onDidChangeActiveColorTheme(() => rebuildRenderer()));
@@ -366,6 +529,9 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
                 for (const t of timers.values()) clearTimeout(t);
                 timers.clear();
                 store.clearAll();
+                recentlyCreated.clear();
+                saveAsCandidates.clear();
+                recentlyClosedSource = null;
                 try {
                     renderer.dispose();
                 } catch { /* ignore */ }

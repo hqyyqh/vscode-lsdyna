@@ -6,6 +6,10 @@ const {
 } = require('../../../out/core/references/curvePlotRenderer');
 
 describe('curvePlotRenderer', () => {
+    function decodeSvg(dataUri) {
+        return Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
+    }
+
     it('renders a safe svg data uri for numeric curve points', () => {
         const dataUri = renderCurveSvgDataUri({
             title: 'A < B',
@@ -33,6 +37,25 @@ describe('curvePlotRenderer', () => {
 
         assert.ok(markdown.includes('| x | y |'));
         assert.ok(markdown.includes('`&a`'));
+    });
+
+    it('renders distinct curve colors for all four VS Code theme kinds', () => {
+        const definition = {
+            points: [
+                { x: 0, y: 0 },
+                { x: 1, y: 1 },
+            ],
+        };
+        const expectedAccent = new Map([
+            [1, '#0066b8'],
+            [2, '#4fc3f7'],
+            [3, '#00ffff'],
+            [4, '#005fb8'],
+        ]);
+        for (const [themeKind, accent] of expectedAccent) {
+            const svg = decodeSvg(renderCurveSvgDataUri(definition, { themeKind }));
+            assert.ok(svg.includes(`stroke="${accent}"`), `theme ${themeKind}`);
+        }
     });
 
     it('renders a 3D table SVG data URI correctly', () => {

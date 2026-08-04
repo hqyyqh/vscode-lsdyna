@@ -52,6 +52,41 @@ describe('changeMarksSession', () => {
         assert.strictEqual(snap.savePointText, 'A\nB2');
     });
 
+    it('branches Save As state without mutating the source session', () => {
+        const store = createChangeMarksSessionStore();
+        store.open('file:///source.k', 'A\nB');
+        store.applyCurrent('file:///source.k', 'A\nB2');
+
+        const destination = store.branch('file:///source.k', 'file:///copy.k', 'A\nB2');
+
+        assert.ok(destination);
+        assert.strictEqual(destination.originText, 'A\nB');
+        assert.strictEqual(destination.savePointText, 'A\nB2');
+        assert.deepStrictEqual(destination.marks.unsavedModifiedLines, []);
+        assert.deepStrictEqual(destination.marks.savedModifiedLines, [1]);
+        assert.strictEqual(store.get('file:///source.k').savePointText, 'A\nB');
+    });
+
+    it('can branch from a snapshot after the source session has closed', () => {
+        const store = createChangeMarksSessionStore();
+        store.open('file:///source.k', 'A\nB\nC');
+        store.applyCurrent('file:///source.k', 'A\nC');
+        const snapshot = store.snapshot('file:///source.k');
+        store.close('file:///source.k');
+
+        const destination = store.branch(snapshot, 'file:///copy.k', 'A\nC');
+
+        assert.ok(destination);
+        assert.deepStrictEqual(destination.marks.savedDeletedLines, [1]);
+        assert.strictEqual(store.get('file:///source.k'), null);
+    });
+
+    it('does not branch from an unknown source', () => {
+        const store = createChangeMarksSessionStore();
+        assert.strictEqual(store.branch('file:///missing.k', 'file:///copy.k', 'A'), null);
+        assert.strictEqual(store.get('file:///copy.k'), null);
+    });
+
     it('close removes session; unknown uri returns null', () => {
         const store = createChangeMarksSessionStore();
         store.open('u3', 'x');

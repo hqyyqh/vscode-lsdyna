@@ -58,6 +58,7 @@ function createMockVscode(editor) {
     const cmdHandlers = new Map();
     const contentProviders = new Map();
     const createdTypes = [];
+    const lifecycle = {};
 
     return {
         Uri: {
@@ -99,6 +100,10 @@ function createMockVscode(editor) {
                 return t;
             },
             onDidChangeVisibleTextEditors() { return { dispose() {} }; },
+            onDidChangeActiveTextEditor(cb) {
+                lifecycle.activeEditor = cb;
+                return { dispose() {} };
+            },
             onDidChangeActiveColorTheme() { return { dispose() {} }; },
             showInformationMessage() { return Promise.resolve(); },
             showErrorMessage() { return Promise.resolve(); },
@@ -109,10 +114,26 @@ function createMockVscode(editor) {
                 contentProviders.set(scheme, provider);
                 return { dispose() {}, provider };
             },
-            onDidOpenTextDocument() { return { dispose() {} }; },
-            onDidChangeTextDocument() { return { dispose() {} }; },
-            onDidSaveTextDocument() { return { dispose() {} }; },
-            onDidCloseTextDocument() { return { dispose() {} }; },
+            onDidOpenTextDocument(cb) {
+                lifecycle.open = cb;
+                return { dispose() {} };
+            },
+            onDidChangeTextDocument(cb) {
+                lifecycle.change = cb;
+                return { dispose() {} };
+            },
+            onDidSaveTextDocument(cb) {
+                lifecycle.save = cb;
+                return { dispose() {} };
+            },
+            onDidCloseTextDocument(cb) {
+                lifecycle.close = cb;
+                return { dispose() {} };
+            },
+            onDidCreateFiles(cb) {
+                lifecycle.createFiles = cb;
+                return { dispose() {} };
+            },
             onDidChangeConfiguration(cb) {
                 configListeners.push(cb);
                 return { dispose() {} };
@@ -128,6 +149,7 @@ function createMockVscode(editor) {
         _cmdHandlers: cmdHandlers,
         _contentProviders: contentProviders,
         _configListeners: configListeners,
+        _lifecycle: lifecycle,
     };
 }
 
@@ -175,6 +197,246 @@ describe('changeMarksController', () => {
         assert.deepStrictEqual(after.unsavedModifiedLines, []);
         assert.deepStrictEqual(after.savedModifiedLines, [1]);
 
+        controller.dispose();
+    });
+
+    it('inherits the opened baseline when a populated Save As target is saved', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const sourceEditor = createMockEditor(source);
+        const vscode = createMockVscode(sourceEditor);
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 1_000,
+        });
+        controller.register({ subscriptions: [] });
+
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+        const target = createMockDocument('', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.open(target);
+        target._setText('A\nB2');
+        vscode._lifecycle.change({ document: target, contentChanges: [{}] });
+        vscode._lifecycle.save(target);
+
+        const marks = controller.getMarksForDocument(target);
+        assert.deepStrictEqual(marks.unsavedModifiedLines, []);
+        assert.deepStrictEqual(marks.savedModifiedLines, [1]);
+        assert.deepStrictEqual(controller.getMarksForDocument(source).unsavedModifiedLines, [1]);
+        controller.dispose();
+    });
+
+    it('keeps an unchanged Save As target clean', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 2_000,
+        });
+        controller.register({ subscriptions: [] });
+
+        const target = createMockDocument('', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.open(target);
+        target._setText('A\nB');
+        vscode._lifecycle.change({ document: target, contentChanges: [{}] });
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target), emptyChangeMarks());
+        controller.dispose();
+    });
+
+    it('uses file creation as Save As evidence when the target opens already populated', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 3_000,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+
+        const target = createMockDocument('A\nB2', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.createFiles({ files: [target.uri] });
+        vscode._lifecycle.open(target);
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target).savedModifiedLines, [1]);
+        controller.dispose();
+    });
+
+    it('preserves already-saved session history when Save As creates a populated target', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 3_500,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+        vscode._lifecycle.save(source);
+        assert.deepStrictEqual(controller.getMarksForDocument(source).savedModifiedLines, [1]);
+
+        const target = createMockDocument('A\nB2', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.createFiles({ files: [target.uri] });
+        vscode._lifecycle.open(target);
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target).savedModifiedLines, [1]);
+        controller.dispose();
+    });
+
+    it('keeps true untitled-document semantics on the first Save As', () => {
+        const source = createMockDocument('', { uriString: 'untitled:Untitled-1' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 3_750,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB');
+        controller.recomputeNow(source);
+
+        const target = createMockDocument('', { uriString: 'file:///new.k' });
+        vscode._lifecycle.createFiles({ files: [target.uri] });
+        vscode._lifecycle.open(target);
+        target._setText('A\nB');
+        vscode._lifecycle.change({ document: target, contentChanges: [{}] });
+        vscode._lifecycle.save(target);
+
+        const marks = controller.getMarksForDocument(target);
+        assert.deepStrictEqual(
+            [...marks.savedModifiedLines, ...marks.savedInsertedLines].sort((a, b) => a - b),
+            [0, 1]
+        );
+        controller.dispose();
+    });
+
+    it('does not inherit between unrelated files merely because their contents match', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 4_000,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+
+        const unrelated = createMockDocument('A\nB2', { uriString: 'file:///unrelated.k' });
+        vscode._lifecycle.open(unrelated);
+        vscode._lifecycle.save(unrelated);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(unrelated), emptyChangeMarks());
+        controller.dispose();
+    });
+
+    it('does not inherit when switching to an already-open same-content file', () => {
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 4_500,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+
+        const unrelated = createMockDocument('A\nB2', { uriString: 'file:///unrelated.k' });
+        controller.getStore().open(unrelated.uri.toString(), unrelated.getText());
+        vscode._lifecycle.activeEditor(createMockEditor(unrelated));
+        vscode._lifecycle.save(unrelated);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(unrelated), emptyChangeMarks());
+        controller.dispose();
+    });
+
+    it('preserves an already-open target own saved history on editor switches', () => {
+        const source = createMockDocument('A\nB2', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 4_750,
+        });
+        controller.register({ subscriptions: [] });
+
+        const target = createMockDocument('A\nB', { uriString: 'file:///target.k' });
+        const store = controller.getStore();
+        store.open(target.uri.toString(), target.getText());
+        target._setText('A\nB2');
+        store.save(target.uri.toString(), target.getText());
+        assert.deepStrictEqual(controller.getMarksForDocument(target).savedModifiedLines, [1]);
+
+        vscode._lifecycle.activeEditor(createMockEditor(target));
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target).savedModifiedLines, [1]);
+        controller.dispose();
+    });
+
+    it('retains a source snapshot when VS Code closes it before opening the Save As target', () => {
+        const source = createMockDocument('A\nB\nC', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => 5_000,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nC');
+        controller.recomputeNow(source);
+        vscode._lifecycle.close(source);
+        vscode.window.activeTextEditor = null;
+        vscode._lifecycle.activeEditor(null);
+
+        const target = createMockDocument('', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.open(target);
+        target._setText('A\nC');
+        vscode._lifecycle.change({ document: target, contentChanges: [{}] });
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target).savedDeletedLines, [1]);
+        controller.dispose();
+    });
+
+    it('falls back to a clean target when a plausible Save As signal expires', () => {
+        let clock = 6_000;
+        const source = createMockDocument('A\nB', { uriString: 'file:///source.k' });
+        const vscode = createMockVscode(createMockEditor(source));
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+            now: () => clock,
+        });
+        controller.register({ subscriptions: [] });
+        source._setText('A\nB2');
+        controller.recomputeNow(source);
+
+        const target = createMockDocument('', { uriString: 'file:///copy.k' });
+        vscode._lifecycle.open(target);
+        target._setText('A\nB2');
+        clock += 20_000;
+        vscode._lifecycle.save(target);
+
+        assert.deepStrictEqual(controller.getMarksForDocument(target), emptyChangeMarks());
         controller.dispose();
     });
 

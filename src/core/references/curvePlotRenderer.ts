@@ -1,6 +1,10 @@
 'use strict';
 
 const i18n = require('../i18n');
+const {
+    resolveExtensionThemePalette,
+    themeKindFromRenderOptions,
+} = require('../theme/extensionTheme');
 
 const MAX_SVG_POINTS = 200;
 const MAX_TABLE_ROWS = 8;
@@ -52,10 +56,14 @@ function formatValue(val) {
     return parseFloat(val.toFixed(4)).toString();
 }
 
+function curvePaletteFromOptions(options = {}) {
+    return resolveExtensionThemePalette(themeKindFromRenderOptions(options)).curve;
+}
+
 function renderCurveSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
     const maxPoints = typeof renderOptions.maxPoints === 'number' ? renderOptions.maxPoints : MAX_SVG_POINTS;
-    const isDark = renderOptions.isDark !== false;
+    const curvePalette = curvePaletteFromOptions(renderOptions);
     
     const points = samplePoints(numericPoints(definition && definition.points), maxPoints);
     if (points.length < 2) {
@@ -89,9 +97,9 @@ function renderCurveSvgDataUri(definition, options = {}) {
     }).join(' ');
     const title = xmlEscape(definition.title || definition.keyword || 'curve');
 
-    const axisColor = isDark ? '#888888' : '#777777';
-    const curveColor = isDark ? '#5cceff' : '#007acc';
-    const textColor = isDark ? '#cccccc' : '#333333';
+    const axisColor = curvePalette.axis;
+    const curveColor = curvePalette.accent;
+    const textColor = curvePalette.text;
 
     const midX = minX + spanX / 2;
     const midY = minY + spanY / 2;
@@ -140,7 +148,9 @@ function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
 
 function renderTable3dSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
-    const isDark = renderOptions.isDark !== false;
+    const themeKind = themeKindFromRenderOptions(renderOptions);
+    const isDark = themeKind === 'dark' || themeKind === 'highContrast';
+    const curvePalette = resolveExtensionThemePalette(themeKind).curve;
     const maxCurves = Number.isFinite(renderOptions.maxCurves)
         ? Math.max(1, Math.floor(renderOptions.maxCurves))
         : MAX_TABLE_CURVES;
@@ -202,20 +212,15 @@ function renderTable3dSvgDataUri(definition, options = {}) {
         return { u, v };
     }
 
-    function getCurveColor(t, isDark) {
-        if (isDark) {
-            const hue = 180 - t * 140;
-            return `hsl(${hue}, 100%, 65%)`;
-        } else {
-            const hue = 240 - t * 240;
-            return `hsl(${hue}, 80%, 45%)`;
-        }
+    function getCurveColor(t, darkTheme) {
+        const hue = darkTheme ? 180 - t * 140 : 240 - t * 240;
+        return `hsl(${hue}, ${curvePalette.seriesSaturation}%, ${curvePalette.seriesLightness}%)`;
     }
 
-    const axisColor = isDark ? '#888888' : '#777777';
-    const gridColor = isDark ? '#444444' : '#dddddd';
-    const textColor = isDark ? '#cccccc' : '#333333';
-    const labelColor = isDark ? '#aaaaaa' : '#555555';
+    const axisColor = curvePalette.axis;
+    const gridColor = curvePalette.grid;
+    const textColor = curvePalette.text;
+    const labelColor = curvePalette.label;
 
     const svgElements = [];
     const title = xmlEscape(definition.title || definition.keyword || 'table');
@@ -318,6 +323,7 @@ module.exports = {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
+    curvePaletteFromOptions,
     xmlEscape,
     markdownCode,
 };

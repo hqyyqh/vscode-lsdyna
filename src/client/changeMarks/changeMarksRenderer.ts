@@ -6,6 +6,7 @@
  *
  * Visual strategy:
  * - Glyph margin: solid / hollow / triangle SVG (no left text border).
+ * - Unsaved glyphs carry a small status dot, so saved state is not color-only.
  * - Optional whole-line tint (isWholeLine) — reliable for short/long lines.
  * - Minimap + overview: separate dual-color whole-line layers.
  */
@@ -34,36 +35,47 @@ export type ChangeMarksRendererOpts = {
 
 /** Encode #rrggbb as %23rrggbb for use inside an unescaped SVG data URI. */
 function pctHash(hex: string): string {
-    return String(hex || '#ffffff').replace(/^#/, '%23');
+    return String(hex || '').replace(/^#/, '%23');
 }
 
 function svgDataUriRaw(svgWithPctColors: string): string {
     return `data:image/svg+xml;utf8,${svgWithPctColors}`;
 }
 
+type ChangeMarkSaveState = 'saved' | 'unsaved';
+
+function unsavedStatusCue(color: string, state: ChangeMarkSaveState): string {
+    return state === 'unsaved'
+        ? `<circle data-change-state="unsaved" cx="13" cy="3" r="1.7" fill="${color}"/>`
+        : '';
+}
+
 /** Filled vertical bar — modified. */
-export function solidBarSvg(hex: string): string {
+export function solidBarSvg(hex: string, state: ChangeMarkSaveState = 'saved'): string {
     const c = pctHash(hex);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">`
         + `<rect x="5" y="1" width="6" height="14" rx="1" fill="${c}"/>`
+        + unsavedStatusCue(c, state)
         + `</svg>`;
     return svgDataUriRaw(svg);
 }
 
 /** Hollow outline bar — inserted. */
-export function hollowBarSvg(hex: string): string {
+export function hollowBarSvg(hex: string, state: ChangeMarkSaveState = 'saved'): string {
     const c = pctHash(hex);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">`
         + `<rect x="5.5" y="1.5" width="5" height="13" rx="1" fill="none" stroke="${c}" stroke-width="1.6"/>`
+        + unsavedStatusCue(c, state)
         + `</svg>`;
     return svgDataUriRaw(svg);
 }
 
 /** Filled triangle — deleted-line neighbor anchor. */
-export function deleteTriangleSvg(hex: string): string {
+export function deleteTriangleSvg(hex: string, state: ChangeMarkSaveState = 'saved'): string {
     const c = pctHash(hex);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">`
         + `<polygon points="3,4 13,8 3,12" fill="${c}"/>`
+        + unsavedStatusCue(c, state)
         + `</svg>`;
     return svgDataUriRaw(svg);
 }
@@ -97,12 +109,12 @@ export function createChangeMarksRenderer(
         }
     }
 
-    const orangeSolid = parseIcon(solidBarSvg(orangeHex));
-    const orangeHollow = parseIcon(hollowBarSvg(orangeHex));
-    const orangeTriangle = parseIcon(deleteTriangleSvg(orangeHex));
-    const greenSolid = parseIcon(solidBarSvg(greenHex));
-    const greenHollow = parseIcon(hollowBarSvg(greenHex));
-    const greenTriangle = parseIcon(deleteTriangleSvg(greenHex));
+    const orangeSolid = parseIcon(solidBarSvg(orangeHex, 'unsaved'));
+    const orangeHollow = parseIcon(hollowBarSvg(orangeHex, 'unsaved'));
+    const orangeTriangle = parseIcon(deleteTriangleSvg(orangeHex, 'unsaved'));
+    const greenSolid = parseIcon(solidBarSvg(greenHex, 'saved'));
+    const greenHollow = parseIcon(hollowBarSvg(greenHex, 'saved'));
+    const greenTriangle = parseIcon(deleteTriangleSvg(greenHex, 'saved'));
 
     function themeColor(id: string): any {
         return ThemeColor ? new ThemeColor(id) : id;

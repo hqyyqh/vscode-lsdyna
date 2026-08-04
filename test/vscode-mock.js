@@ -159,7 +159,9 @@ module.exports = {
     Diagnostic: class Diagnostic { constructor(r, m, s) { this.range = r; this.message = m; this.severity = s; } },
     DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
     SymbolKind: { Property: 6 },
-    ThemeColor: class ThemeColor {},
+    ThemeColor: class ThemeColor {
+        constructor(id) { this.id = id; }
+    },
     ThemeIcon: class ThemeIcon {},
     TreeItem: class TreeItem { constructor(l, s) { this.label = l; this.collapsibleState = s; } },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },

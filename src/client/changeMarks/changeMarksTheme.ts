@@ -8,6 +8,12 @@
  * @module client/changeMarks/changeMarksTheme
  */
 
+const {
+    EXTENSION_THEME_PALETTES,
+    themeKindFromVscode,
+    resolveExtensionThemePalette,
+} = require('../../core/theme/extensionTheme');
+
 export type ChangeMarksThemeKind = 'light' | 'dark' | 'highContrast' | 'highContrastLight';
 
 export type ChangeMarksPalette = {
@@ -31,47 +37,18 @@ export const COLOR_SAVED = 'lsdyna.changeMarks.saved';
  * Dark: brighter marks for contrast on dark chrome.
  * HC: high-signal yellow/lime.
  */
-export const PALETTES: Record<ChangeMarksThemeKind, Omit<ChangeMarksPalette, 'kind'>> = {
-    light: {
-        unsaved: '#b8860b',
-        saved: '#2e7d32',
-        unsavedBackground: 'rgba(184, 134, 11, 0.10)',
-        savedBackground: 'rgba(46, 125, 50, 0.10)',
-    },
-    dark: {
-        unsaved: '#e2a03a',
-        saved: '#89d185',
-        unsavedBackground: 'rgba(226, 160, 58, 0.14)',
-        savedBackground: 'rgba(137, 209, 133, 0.14)',
-    },
-    highContrast: {
-        unsaved: '#ffcc00',
-        saved: '#3ddc84',
-        unsavedBackground: 'rgba(255, 204, 0, 0.16)',
-        savedBackground: 'rgba(61, 220, 132, 0.16)',
-    },
-    highContrastLight: {
-        unsaved: '#8b6914',
-        saved: '#0b6a0b',
-        unsavedBackground: 'rgba(139, 105, 20, 0.12)',
-        savedBackground: 'rgba(11, 106, 11, 0.12)',
-    },
-};
+export const PALETTES: Record<ChangeMarksThemeKind, Omit<ChangeMarksPalette, 'kind'>> =
+    Object.fromEntries(
+        Object.entries(EXTENSION_THEME_PALETTES).map(([kind, palette]: [string, any]) => [
+            kind,
+            { ...palette.changeMarks },
+        ])
+    ) as Record<ChangeMarksThemeKind, Omit<ChangeMarksPalette, 'kind'>>;
 
 /**
  * Map VS Code ColorThemeKind (or kind number) to our palette bucket.
  * Light=1, Dark=2, HighContrast=3, HighContrastLight=4
  */
-export function themeKindFromVscode(kind: unknown): ChangeMarksThemeKind {
-    const n = Number(kind);
-    if (n === 1) return 'light';
-    if (n === 4) return 'highContrastLight';
-    if (n === 3) return 'highContrast';
-    if (n === 2) return 'dark';
-    // Unknown / missing: prefer dark (common for CAE night work)
-    return 'dark';
-}
-
 export function resolveChangeMarksPalette(vscodeApi: any): ChangeMarksPalette {
     let kind: ChangeMarksThemeKind = 'dark';
     try {
@@ -79,7 +56,7 @@ export function resolveChangeMarksPalette(vscodeApi: any): ChangeMarksPalette {
     } catch {
         kind = 'dark';
     }
-    return { kind, ...PALETTES[kind] };
+    return { kind, ...resolveExtensionThemePalette(kind).changeMarks };
 }
 
 /**
