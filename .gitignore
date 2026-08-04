@@ -4,6 +4,14 @@ keywords/feeders*
 node_modules/
 out/
 .worktrees/
+/.artifacts/
+/docs/plans/
+/docs/reports/
+/docs/translation/
+/docs/superpowers/
+/.github/doc/
+/AGENTS.md
+/GEMINI.md
 /.antigravity
 
 # Ensure bundled SumatraPDF binary is tracked
