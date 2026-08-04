@@ -13,6 +13,7 @@ import argparse
 import copy
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,9 @@ def load_json(path: Path) -> Any:
 
 
 def write_json(path: Path, data: Any) -> None:
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, separators=(",", ":"))
+    with open(path, "w", encoding="utf-8", newline="\n") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+        file.write("\n")
 
 
 def _format_path(path: str) -> str:
@@ -58,6 +60,48 @@ def compare_field_data_structure(english: dict[str, Any], localized: dict[str, A
 
 def contains_han_text(value: Any) -> bool:
     return any(HAN_RANGE_START <= char <= HAN_RANGE_END for char in str(value or ""))
+
+
+def is_valid_localized_help(english_help: str, localized_help: str) -> bool:
+    """Accept an English fallback or English followed by a Chinese translation."""
+    if localized_help == english_help:
+        return True
+    if not english_help:
+        return False
+    prefix = f"{english_help}\n"
+    return localized_help.startswith(prefix) and contains_han_text(localized_help[len(prefix):])
+
+
+def find_invalid_bilingual_help(english: Any, localized: Any, path: str = "") -> list[str]:
+    """Return help paths that violate the English-prefix bilingual contract."""
+    errors: list[str] = []
+    if isinstance(english, dict):
+        localized_dict = localized if isinstance(localized, dict) else {}
+        english_help = str(english.get("h") or "")
+        localized_help = str(localized_dict.get("h") or "")
+        if "h" in english and not is_valid_localized_help(english_help, localized_help):
+            field_name = english.get("n")
+            suffix = f" ({field_name})" if field_name else ""
+            errors.append(
+                f"{_format_path(path)}.h{suffix}: expected exact English fallback or "
+                "English source followed by a newline and Chinese translation"
+            )
+
+        for key, english_value in english.items():
+            if key == "h":
+                continue
+            next_path = f"{path}.{key}" if path else key
+            errors.extend(find_invalid_bilingual_help(english_value, localized_dict.get(key), next_path))
+        return errors
+
+    if isinstance(english, list):
+        localized_list = localized if isinstance(localized, list) else []
+        for index, english_item in enumerate(english):
+            localized_item = localized_list[index] if index < len(localized_list) else None
+            errors.extend(find_invalid_bilingual_help(english_item, localized_item, f"{path}[{index}]"))
+        return errors
+
+    return errors
 
 
 def find_untranslated_help(english: Any, localized: Any, path: str = "") -> list[str]:
@@ -124,25 +168,109 @@ def _compare_node(english: Any, localized: Any, path: str, errors: list[str]) ->
         errors.append(f"{_format_path(path)}: expected {english!r}, got {localized!r}")
 
 
-def sync_translation_data(english: Any, localized: Any) -> Any:
-    """Return English data with localized text copied where structure still aligns."""
+def _collect_translation_memory(
+    previous_english: Any,
+    localized: Any,
+    memory: dict[str, set[str]],
+) -> None:
+    if isinstance(previous_english, dict):
+        localized_dict = localized if isinstance(localized, dict) else {}
+        for key, previous_value in previous_english.items():
+            localized_value = localized_dict.get(key)
+            if (
+                key in TRANSLATABLE_KEYS
+                and isinstance(previous_value, str)
+                and isinstance(localized_value, str)
+            ):
+                memory[previous_value].add(localized_value)
+            else:
+                _collect_translation_memory(previous_value, localized_value, memory)
+        return
+
+    if isinstance(previous_english, list):
+        localized_list = localized if isinstance(localized, list) else []
+        for index, previous_item in enumerate(previous_english):
+            localized_item = localized_list[index] if index < len(localized_list) else None
+            _collect_translation_memory(previous_item, localized_item, memory)
+
+
+def _select_localized_text(
+    english_value: str,
+    previous_english_value: Any,
+    localized_value: Any,
+    memory: dict[str, set[str]],
+) -> str:
+    if isinstance(previous_english_value, str) and previous_english_value == english_value:
+        if isinstance(localized_value, str) and is_valid_localized_help(english_value, localized_value):
+            return copy.deepcopy(localized_value)
+
+    candidates = {
+        candidate
+        for candidate in memory.get(english_value, set())
+        if is_valid_localized_help(english_value, candidate)
+    }
+    if len(candidates) == 1:
+        return copy.deepcopy(next(iter(candidates)))
+
+    return copy.deepcopy(english_value)
+
+
+def sync_translation_data(
+    english: Any,
+    localized: Any,
+    previous_english: Any | None = None,
+) -> Any:
+    """Return a structural English mirror with only source-matched translations retained."""
+    translation_memory: dict[str, set[str]] = defaultdict(set)
+    if previous_english is not None:
+        _collect_translation_memory(previous_english, localized, translation_memory)
+    return _sync_translation_data(english, localized, previous_english, translation_memory)
+
+
+def _sync_translation_data(
+    english: Any,
+    localized: Any,
+    previous_english: Any,
+    translation_memory: dict[str, set[str]],
+) -> Any:
     if isinstance(english, dict):
         result: dict[str, Any] = {}
         localized_dict = localized if isinstance(localized, dict) else {}
+        previous_dict = previous_english if isinstance(previous_english, dict) else {}
         for key, english_value in english.items():
             localized_value = localized_dict.get(key)
-            if key in TRANSLATABLE_KEYS and key in localized_dict:
-                result[key] = copy.deepcopy(localized_value)
+            previous_value = previous_dict.get(key)
+            if key in TRANSLATABLE_KEYS and isinstance(english_value, str):
+                result[key] = _select_localized_text(
+                    english_value,
+                    previous_value,
+                    localized_value,
+                    translation_memory,
+                )
             else:
-                result[key] = sync_translation_data(english_value, localized_value)
+                result[key] = _sync_translation_data(
+                    english_value,
+                    localized_value,
+                    previous_value,
+                    translation_memory,
+                )
         return result
 
     if isinstance(english, list):
         localized_list = localized if isinstance(localized, list) else []
+        previous_list = previous_english if isinstance(previous_english, list) else []
         result = []
         for index, english_item in enumerate(english):
             localized_item = localized_list[index] if index < len(localized_list) else None
-            result.append(sync_translation_data(english_item, localized_item))
+            previous_item = previous_list[index] if index < len(previous_list) else None
+            result.append(
+                _sync_translation_data(
+                    english_item,
+                    localized_item,
+                    previous_item,
+                    translation_memory,
+                )
+            )
         return result
 
     return copy.deepcopy(english)
@@ -151,12 +279,21 @@ def sync_translation_data(english: Any, localized: Any) -> Any:
 def sync_translation_file(
     english_path: Path = DEFAULT_ENGLISH_PATH,
     localized_path: Path = DEFAULT_LOCALIZED_PATH,
+    previous_english_path: Path | None = None,
 ) -> list[str]:
     english = load_json(english_path)
     localized = load_json(localized_path) if localized_path.exists() else {}
-    synced = sync_translation_data(english, localized)
+    previous_english = (
+        load_json(previous_english_path)
+        if previous_english_path is not None
+        else None
+    )
+    synced = sync_translation_data(english, localized, previous_english)
     write_json(localized_path, synced)
-    return compare_field_data_structure(english, synced)
+    return [
+        *compare_field_data_structure(english, synced),
+        *find_invalid_bilingual_help(english, synced),
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -164,15 +301,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--english", type=Path, default=DEFAULT_ENGLISH_PATH)
     parser.add_argument("--localized", type=Path, default=DEFAULT_LOCALIZED_PATH)
     parser.add_argument("--sync", action="store_true", help="Update localized JSON with English structural fallback.")
+    parser.add_argument(
+        "--previous-english",
+        type=Path,
+        help=(
+            "Pre-update English schema. Only localized text whose English source still "
+            "matches is retained; unmatched text safely falls back to current English."
+        ),
+    )
     parser.add_argument("--check-content", action="store_true", help="Require localized help text to contain Chinese text.")
     args = parser.parse_args(argv)
 
     if args.sync:
-        errors = sync_translation_file(args.english, args.localized)
+        errors = sync_translation_file(
+            args.english,
+            args.localized,
+            args.previous_english,
+        )
     else:
         english = load_json(args.english)
         localized = load_json(args.localized)
         errors = compare_field_data_structure(english, localized)
+        errors.extend(find_invalid_bilingual_help(english, localized))
         if args.check_content:
             errors.extend(find_untranslated_help(english, localized))
 

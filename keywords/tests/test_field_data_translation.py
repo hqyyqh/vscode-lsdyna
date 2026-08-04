@@ -1,5 +1,7 @@
 import copy
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,9 +13,11 @@ sys.path.insert(0, str(KEYWORDS_DIR))
 
 from validate_field_data_translation import (  # noqa: E402
     compare_field_data_structure,
+    find_invalid_bilingual_help,
     find_untranslated_help,
     load_json,
     sync_translation_data,
+    sync_translation_file,
 )
 
 
@@ -54,8 +58,8 @@ class FieldDataTranslationTest(unittest.TestCase):
     def test_structure_allows_help_text_translation(self):
         english = sample_field_data()
         localized = copy.deepcopy(english)
-        localized["MAT_001"]["c"][0][0]["h"] = "translated material id"
-        localized["MAT_001"]["o"][0]["c"][0][0]["h"] = "translated title"
+        localized["MAT_001"]["c"][0][0]["h"] = "Material ID\n材料 ID"
+        localized["MAT_001"]["o"][0]["c"][0][0]["h"] = "Additional title line\n附加标题行"
 
         errors = compare_field_data_structure(english, localized)
 
@@ -76,16 +80,64 @@ class FieldDataTranslationTest(unittest.TestCase):
         english = sample_field_data()
         localized = {
             "MAT_001": {
-                "c": [[{"n": "MID", "p": 0, "w": 10, "h": "translated material id", "t": "integer"}]],
+                "c": [[{"n": "MID", "p": 0, "w": 10, "h": "Material ID\n材料 ID", "t": "integer"}]],
             }
         }
 
-        synced = sync_translation_data(english, localized)
+        synced = sync_translation_data(english, localized, english)
 
-        self.assertEqual("translated material id", synced["MAT_001"]["c"][0][0]["h"])
+        self.assertEqual("Material ID\n材料 ID", synced["MAT_001"]["c"][0][0]["h"])
         self.assertEqual(0, synced["MAT_001"]["c"][0][0]["d"])
         self.assertIn("SET_NODE", synced)
         self.assertEqual([], compare_field_data_structure(english, synced))
+
+    def test_sync_preserves_translation_only_when_previous_english_matches(self):
+        previous_english = sample_field_data()
+        english = sample_field_data()
+        localized = copy.deepcopy(previous_english)
+        localized["MAT_001"]["c"][0][0]["h"] = "Material ID\n材料 ID"
+        localized["SET_NODE"]["c"][0][0]["h"] = "Set ID\n集合 ID"
+
+        english["MAT_001"]["c"][0][0]["h"] = "Updated material identifier"
+        synced = sync_translation_data(english, localized, previous_english)
+
+        self.assertEqual(
+            "Updated material identifier",
+            synced["MAT_001"]["c"][0][0]["h"],
+        )
+        self.assertEqual("Set ID\n集合 ID", synced["SET_NODE"]["c"][0][0]["h"])
+        self.assertEqual([], compare_field_data_structure(english, synced))
+
+    def test_sync_file_writes_indented_utf8_json(self):
+        english = sample_field_data()
+        previous_english = sample_field_data()
+        localized = copy.deepcopy(previous_english)
+        localized["MAT_001"]["c"][0][0]["h"] = "Material ID\n材料 ID"
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            english_path = temporary_path / "field_data.json"
+            previous_english_path = temporary_path / "field_data.previous.json"
+            localized_path = temporary_path / "field_data_zh.json"
+            for path, data in (
+                (english_path, english),
+                (previous_english_path, previous_english),
+                (localized_path, localized),
+            ):
+                path.write_text(json.dumps(data), encoding="utf-8")
+
+            errors = sync_translation_file(
+                english_path,
+                localized_path,
+                previous_english_path,
+            )
+
+            self.assertEqual([], errors)
+            written_bytes = localized_path.read_bytes()
+            written = written_bytes.decode("utf-8")
+            self.assertNotIn(b"\r", written_bytes)
+            self.assertIn('\n  "MAT_001":', written)
+            self.assertTrue(written.endswith("\n"))
 
     def test_content_reports_help_without_chinese_text(self):
         english = sample_field_data()
@@ -98,13 +150,49 @@ class FieldDataTranslationTest(unittest.TestCase):
         self.assertTrue(any("MAT_001.c[0][0].h (MID)" in error for error in errors))
         self.assertFalse(any("SET_NODE.c[0][0].h" in error for error in errors))
 
-    def test_repository_localized_help_is_fully_translated(self):
+    def test_bilingual_contract_rejects_chinese_only_and_mismatched_english(self):
+        english = sample_field_data()
+        localized = copy.deepcopy(english)
+        localized["MAT_001"]["c"][0][0]["h"] = "材料 ID"
+        localized["SET_NODE"]["c"][0][0]["h"] = "Old set help\n集合 ID"
+
+        errors = find_invalid_bilingual_help(english, localized)
+
+        self.assertTrue(any("MAT_001.c[0][0].h (MID)" in error for error in errors))
+        self.assertTrue(any("SET_NODE.c[0][0].h (SID)" in error for error in errors))
+
+    def test_sync_discards_legacy_chinese_only_translation(self):
+        english = sample_field_data()
+        localized = copy.deepcopy(english)
+        localized["MAT_001"]["c"][0][0]["h"] = "材料 ID"
+
+        synced = sync_translation_data(english, localized, english)
+
+        self.assertEqual("Material ID", synced["MAT_001"]["c"][0][0]["h"])
+
+    def test_empty_english_help_rejects_and_discards_stale_localized_help(self):
+        previous_english = sample_field_data()
+        english = sample_field_data()
+        localized = copy.deepcopy(previous_english)
+        english["MAT_001"]["c"][0][0]["h"] = ""
+        localized["MAT_001"]["c"][0][0]["h"] = "Old material help\n旧材料帮助"
+
+        errors = find_invalid_bilingual_help(english, localized)
+        synced = sync_translation_data(english, localized, previous_english)
+
+        self.assertTrue(any("MAT_001.c[0][0].h (MID)" in error for error in errors))
+        self.assertEqual("", synced["MAT_001"]["c"][0][0]["h"])
+
+    def test_repository_localized_schema_mirrors_english(self):
         english = load_json(KEYWORDS_DIR / "field_data.json")
         localized = load_json(KEYWORDS_DIR / "field_data_zh.json")
 
-        errors = find_untranslated_help(english, localized)
+        errors = [
+            *compare_field_data_structure(english, localized),
+            *find_invalid_bilingual_help(english, localized),
+        ]
 
-        self.assertEqual([], errors[:50])
+        self.assertEqual([], errors)
 
 
 if __name__ == "__main__":
