@@ -20,6 +20,296 @@ LOCAL_ALIASES = {
 }
 MANUAL_KEYWORD_CLASSES_DIR = Path("src") / "ansys" / "dyna" / "core" / "keywords" / "keyword_classes" / "manual"
 
+# Last-card row loops proven by LS-DYNA Keyword Manual Vol I
+# (PDF under LSDYNA_Manual_Build/data/pdf + precise MD).
+# Only keywords with absolute "include as many cards" / equivalent wording for
+# the final data card. See docs/reports/vol-i-row-loop-evidence.md.
+# Do NOT add keys without a manual quote + line reference in that report.
+#
+# Excluded (not last-card r):
+# - SET_2D_SEGMENT*: manual says repeat pairs of Cards 1+2 (multi-card-set).
+# - SET_POROUS_*: no full Card-2 list wording in Vol I keyword section.
+# - SET_POINT_LIST*: no dedicated Vol I list-card section found.
+# - DEFINE_HEX_SPOTWELD_ASSEMBLY: max 16 EIDs / optional fixed second list card.
+# - ELEMENT_MASS: Vol I section has no "as many cards" phrase (single-card
+#   expand is handled separately in keywordSchema / one-card heuristic).
+MANUAL_LAST_CARD_REPEAT_KEYWORDS: frozenset[str] = frozenset(
+    {
+        # *SET_NODE_{OPTION1}_{OPTION2} (+ ADD / INTERSECT)
+        "SET_NODE",
+        "SET_NODE_TITLE",
+        "SET_NODE_LIST",
+        "SET_NODE_LIST_TITLE",
+        "SET_NODE_LIST_COLLECT",
+        "SET_NODE_LIST_COLLECT_TITLE",
+        "SET_NODE_LIST_SMOOTH",
+        "SET_NODE_LIST_SMOOTH_TITLE",
+        "SET_NODE_LIST_SMOOTH_COLLECT",
+        "SET_NODE_LIST_SMOOTH_COLLECT_TITLE",
+        "SET_NODE_COLUMN",
+        "SET_NODE_COLUMN_TITLE",
+        "SET_NODE_COLUMN_COLLECT",
+        "SET_NODE_COLUMN_COLLECT_TITLE",
+        "SET_NODE_LIST_GENERATE",
+        "SET_NODE_LIST_GENERATE_TITLE",
+        "SET_NODE_LIST_GENERATE_COLLECT",
+        "SET_NODE_LIST_GENERATE_COLLECT_TITLE",
+        "SET_NODE_LIST_GENERATE_INCREMENT",
+        "SET_NODE_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_NODE_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_NODE_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_NODE_GENERAL",
+        "SET_NODE_GENERAL_TITLE",
+        "SET_NODE_GENERAL_COLLECT",
+        "SET_NODE_GENERAL_COLLECT_TITLE",
+        "SET_NODE_ADD",
+        "SET_NODE_ADD_TITLE",
+        "SET_NODE_ADD_ADVANCED",
+        "SET_NODE_ADD_ADVANCED_TITLE",
+        "SET_NODE_INTERSECT",
+        "SET_NODE_INTERSECT_TITLE",
+        # *SET_SOLID_{OPTION1}_{OPTION2} (+ ADD / INTERSECT)
+        "SET_SOLID",
+        "SET_SOLID_TITLE",
+        "SET_SOLID_COLLECT",
+        "SET_SOLID_COLLECT_TITLE",
+        "SET_SOLID_GENERATE",
+        "SET_SOLID_GENERATE_TITLE",
+        "SET_SOLID_GENERATE_COLLECT",
+        "SET_SOLID_GENERATE_COLLECT_TITLE",
+        "SET_SOLID_GENERATE_INCREMENT",
+        "SET_SOLID_GENERATE_INCREMENT_TITLE",
+        "SET_SOLID_GENERATE_INCREMENT_COLLECT",
+        "SET_SOLID_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_SOLID_GENERAL",
+        "SET_SOLID_GENERAL_TITLE",
+        "SET_SOLID_GENERAL_COLLECT",
+        "SET_SOLID_GENERAL_COLLECT_TITLE",
+        "SET_SOLID_ADD",
+        "SET_SOLID_ADD_TITLE",
+        # *SET_DISCRETE_{OPTION1}_{OPTION2} (+ ADD)
+        "SET_DISCRETE",
+        "SET_DISCRETE_TITLE",
+        "SET_DISCRETE_COLLECT",
+        "SET_DISCRETE_COLLECT_TITLE",
+        "SET_DISCRETE_GENERATE",
+        "SET_DISCRETE_GENERATE_TITLE",
+        "SET_DISCRETE_GENERATE_COLLECT",
+        "SET_DISCRETE_GENERATE_COLLECT_TITLE",
+        "SET_DISCRETE_GENERAL",
+        "SET_DISCRETE_GENERAL_TITLE",
+        "SET_DISCRETE_GENERAL_COLLECT",
+        "SET_DISCRETE_GENERAL_COLLECT_TITLE",
+        "SET_DISCRETE_ADD",
+        "SET_DISCRETE_ADD_TITLE",
+        # *SET_BEAM_{OPTION1}_{OPTION2} (+ ADD / INTERSECT)
+        "SET_BEAM",
+        "SET_BEAM_TITLE",
+        "SET_BEAM_COLLECT",
+        "SET_BEAM_COLLECT_TITLE",
+        "SET_BEAM_GENERATE",
+        "SET_BEAM_GENERATE_TITLE",
+        "SET_BEAM_GENERATE_COLLECT",
+        "SET_BEAM_GENERATE_COLLECT_TITLE",
+        "SET_BEAM_GENERATE_INCREMENT",
+        "SET_BEAM_GENERATE_INCREMENT_TITLE",
+        "SET_BEAM_GENERATE_INCREMENT_COLLECT",
+        "SET_BEAM_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_BEAM_GENERAL",
+        "SET_BEAM_GENERAL_TITLE",
+        "SET_BEAM_GENERAL_COLLECT",
+        "SET_BEAM_GENERAL_COLLECT_TITLE",
+        "SET_BEAM_ADD",
+        "SET_BEAM_ADD_TITLE",
+        "SET_BEAM_INTERSECT",
+        "SET_BEAM_INTERSECT_TITLE",
+        # *SET_SHELL list/column/generate/general (+ ADD / INTERSECT)
+        "SET_SHELL_LIST",
+        "SET_SHELL_LIST_TITLE",
+        "SET_SHELL_LIST_COLLECT",
+        "SET_SHELL_LIST_COLLECT_TITLE",
+        "SET_SHELL_COLUMN",
+        "SET_SHELL_COLUMN_TITLE",
+        "SET_SHELL_COLUMN_COLLECT",
+        "SET_SHELL_COLUMN_COLLECT_TITLE",
+        "SET_SHELL_LIST_GENERATE",
+        "SET_SHELL_LIST_GENERATE_TITLE",
+        "SET_SHELL_LIST_GENERATE_COLLECT",
+        "SET_SHELL_LIST_GENERATE_COLLECT_TITLE",
+        "SET_SHELL_LIST_GENERATE_INCREMENT",
+        "SET_SHELL_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_SHELL_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_SHELL_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_SHELL_GENERAL",
+        "SET_SHELL_GENERAL_TITLE",
+        "SET_SHELL_GENERAL_COLLECT",
+        "SET_SHELL_GENERAL_COLLECT_TITLE",
+        "SET_SHELL_ADD",
+        "SET_SHELL_ADD_TITLE",
+        "SET_SHELL_INTERSECT",
+        "SET_SHELL_INTERSECT_TITLE",
+        # *SET_PART_{OPTION1}_{OPTION2} (+ TREE / ADD)
+        "SET_PART",
+        "SET_PART_TITLE",
+        "SET_PART_LIST",
+        "SET_PART_LIST_TITLE",
+        "SET_PART_LIST_COLLECT",
+        "SET_PART_LIST_COLLECT_TITLE",
+        "SET_PART_COLLECT",
+        "SET_PART_COLLECT_TITLE",
+        "SET_PART_COLUMN",
+        "SET_PART_COLUMN_TITLE",
+        "SET_PART_COLUMN_COLLECT",
+        "SET_PART_COLUMN_COLLECT_TITLE",
+        "SET_PART_LIST_GENERATE",
+        "SET_PART_LIST_GENERATE_TITLE",
+        "SET_PART_LIST_GENERATE_COLLECT",
+        "SET_PART_LIST_GENERATE_COLLECT_TITLE",
+        "SET_PART_LIST_GENERATE_INCREMENT",
+        "SET_PART_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_PART_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_PART_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_PART_ADD",
+        "SET_PART_ADD_TITLE",
+        "SET_PART_TREE",
+        "SET_PART_TREE_TITLE",
+        # *SET_SEGMENT_{OPTION1}_{OPTION2} (+ ADD / INTERSECT)
+        "SET_SEGMENT",
+        "SET_SEGMENT_TITLE",
+        "SET_SEGMENT_COLLECT",
+        "SET_SEGMENT_COLLECT_TITLE",
+        "SET_SEGMENT_GENERAL",
+        "SET_SEGMENT_GENERAL_TITLE",
+        "SET_SEGMENT_GENERAL_COLLECT",
+        "SET_SEGMENT_GENERAL_COLLECT_TITLE",
+        "SET_SEGMENT_ADD",
+        "SET_SEGMENT_ADD_TITLE",
+        "SET_SEGMENT_INTERSECT",
+        "SET_SEGMENT_INTERSECT_TITLE",
+        # *SET_BOX
+        "SET_BOX",
+        "SET_BOX_TITLE",
+        # *SET_MODE_{OPTION1}_{OPTION2}
+        "SET_MODE",
+        "SET_MODE_TITLE",
+        "SET_MODE_LIST",
+        "SET_MODE_LIST_TITLE",
+        "SET_MODE_LIST_GENERATE",
+        "SET_MODE_LIST_GENERATE_TITLE",
+        # *SET_MULTI-MATERIAL_GROUP_LIST
+        "SET_MULTI-MATERIAL_GROUP_LIST",
+        "SET_MULTI-MATERIAL_GROUP_LIST_TITLE",
+        "SET_MULTI_MATERIAL_GROUP_LIST_GPNAME",
+        "SET_MULTI_MATERIAL_GROUP_LIST_GPNAME_TITLE",
+        # *SET_PERI_LAMINATE
+        "SET_PERI_LAMINATE",
+        "SET_PERI_LAMINATE_TITLE",
+        # *SET_IGA_EDGE/FACE/POINT_* LIST / GENERATE / COLLECT
+        "SET_IGA_EDGE_UVW",
+        "SET_IGA_EDGE_UVW_TITLE",
+        "SET_IGA_EDGE_UVW_COLLECT",
+        "SET_IGA_EDGE_UVW_COLLECT_TITLE",
+        "SET_IGA_EDGE_UVW_LIST",
+        "SET_IGA_EDGE_UVW_LIST_TITLE",
+        "SET_IGA_EDGE_UVW_LIST_COLLECT",
+        "SET_IGA_EDGE_UVW_LIST_COLLECT_TITLE",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_TITLE",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_COLLECT",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_COLLECT_TITLE",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_INCREMENT",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_IGA_EDGE_UVW_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_IGA_EDGE_XYZ",
+        "SET_IGA_EDGE_XYZ_TITLE",
+        "SET_IGA_EDGE_XYZ_COLLECT",
+        "SET_IGA_EDGE_XYZ_COLLECT_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST",
+        "SET_IGA_EDGE_XYZ_LIST_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST_COLLECT",
+        "SET_IGA_EDGE_XYZ_LIST_COLLECT_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_COLLECT",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_COLLECT_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_INCREMENT",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_IGA_EDGE_XYZ_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_IGA_FACE_UVW",
+        "SET_IGA_FACE_UVW_TITLE",
+        "SET_IGA_FACE_UVW_COLLECT",
+        "SET_IGA_FACE_UVW_COLLECT_TITLE",
+        "SET_IGA_FACE_UVW_LIST",
+        "SET_IGA_FACE_UVW_LIST_TITLE",
+        "SET_IGA_FACE_UVW_LIST_COLLECT",
+        "SET_IGA_FACE_UVW_LIST_COLLECT_TITLE",
+        "SET_IGA_FACE_UVW_LIST_GENERATE",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_TITLE",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_COLLECT",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_COLLECT_TITLE",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_INCREMENT",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_IGA_FACE_UVW_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_IGA_FACE_XYZ",
+        "SET_IGA_FACE_XYZ_TITLE",
+        "SET_IGA_FACE_XYZ_COLLECT",
+        "SET_IGA_FACE_XYZ_COLLECT_TITLE",
+        "SET_IGA_FACE_XYZ_LIST",
+        "SET_IGA_FACE_XYZ_LIST_TITLE",
+        "SET_IGA_FACE_XYZ_LIST_COLLECT",
+        "SET_IGA_FACE_XYZ_LIST_COLLECT_TITLE",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_TITLE",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_COLLECT",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_COLLECT_TITLE",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_INCREMENT",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_IGA_FACE_XYZ_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        "SET_IGA_POINT_UVW",
+        "SET_IGA_POINT_UVW_TITLE",
+        "SET_IGA_POINT_UVW_COLLECT",
+        "SET_IGA_POINT_UVW_COLLECT_TITLE",
+        "SET_IGA_POINT_UVW_LIST",
+        "SET_IGA_POINT_UVW_LIST_TITLE",
+        "SET_IGA_POINT_UVW_LIST_COLLECT",
+        "SET_IGA_POINT_UVW_LIST_COLLECT_TITLE",
+        "SET_IGA_POINT_UVW_LIST_GENERATE",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_TITLE",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_COLLECT",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_COLLECT_TITLE",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_INCREMENT",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_INCREMENT_TITLE",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_INCREMENT_COLLECT",
+        "SET_IGA_POINT_UVW_LIST_GENERATE_INCREMENT_COLLECT_TITLE",
+        # *NODE family (single-card tables; manual "include as many cards")
+        "NODE",
+        "NODE_MERGE",
+        "NODE_MERGE_SET",
+        "NODE_RIGID_SURFACE",
+        "NODE_SCALAR",
+        "NODE_SCALAR_VALUE",
+        "NODE_TRANSFORM",
+    }
+)
+
+
+def apply_manual_last_card_repeat_flags(field_data: dict[str, dict[str, Any]]) -> int:
+    """Force entry.r=1 for Vol I–proven last-card list keywords. Returns count set."""
+    count = 0
+    for name in MANUAL_LAST_CARD_REPEAT_KEYWORDS:
+        entry = field_data.get(name)
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("r") == 1:
+            continue
+        entry["r"] = 1
+        count += 1
+    return count
+
 
 @dataclass
 class GeneratedSchema:
@@ -285,6 +575,26 @@ def _serialize_cards(cards: list[Any]) -> list[list[dict[str, Any]]]:
                 serialized.append(_serialize_single_card(sub_card, inherited_active=active))
             continue
         serialized.append(_serialize_single_card(card, inherited_active=active))
+    return serialized
+
+
+def _serialize_text_cards(cards: list[Any], text_card_enabled: bool) -> list[dict[str, Any]]:
+    if not text_card_enabled:
+        return []
+
+    serialized: list[dict[str, Any]] = []
+    for card in cards:
+        metadata = card.get("text") if hasattr(card, "get") else None
+        if not metadata:
+            continue
+        name = metadata.name if hasattr(metadata, "name") else metadata.get("name")
+        if not name:
+            continue
+        fields = _serialize_single_card(card)
+        serialized.append({
+            "name": str(name),
+            "f": [{"n": field["n"], "p": field["p"], "w": field["w"], "t": field["t"]} for field in fields],
+        })
     return serialized
 
 
@@ -637,9 +947,13 @@ def _add_alias_title_variants(
 
 
 def _entry_from_keyword_data(keyword_data: Any, generation_options: dict[str, Any]) -> dict[str, Any]:
+    base_cards = _base_cards(keyword_data)
     entry: dict[str, Any] = {
-        "c": _serialize_cards(_base_cards(keyword_data)),
+        "c": _serialize_cards(base_cards),
     }
+    text_cards = _serialize_text_cards(base_cards, bool(getattr(keyword_data, "text_card", False)))
+    if text_cards:
+        entry["tc"] = text_cards
 
     if _is_repeating(keyword_data, generation_options):
         entry["r"] = 1
@@ -647,6 +961,11 @@ def _entry_from_keyword_data(keyword_data: Any, generation_options: dict[str, An
     options = _serialize_options(_all_options(keyword_data))
     if options:
         entry["o"] = options
+
+    # One-card keywords without option cards are almost always row-repeating tables
+    # (e.g. *ELEMENT_MASS). pydyna often omits table/variable flags for these.
+    if "r" not in entry and len(entry.get("c") or []) == 1 and not options:
+        entry["r"] = 1
 
     return entry
 
@@ -963,6 +1282,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
         _add_alias_title_variants(canonical_name, alias_name, field_data, snippets)
 
     manual_overrides = _apply_manual_schema_overrides(codegen_dir, field_data, snippets)
+    manual_row_loops = apply_manual_last_card_repeat_flags(field_data)
     option_enabled = sum(1 for entry in field_data.values() if entry.get("o"))
     variant_count = sum(len(entry.get("v", {})) for entry in field_data.values())
     alias_count = len(config.get_aliases())
@@ -976,6 +1296,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
             "skipped": skipped,
             "aliases": alias_count,
             "manual_overrides": manual_overrides,
+            "manual_row_loops": manual_row_loops,
             "option_enabled": option_enabled,
             "title_variants": variant_count,
             "field_entries": len(field_data),

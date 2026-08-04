@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+snippets/lsdyna.json text eol=lf
+keywords/field_data.json text eol=lf
+keywords/field_data_zh.json text eol=lf
+keywords/field_reference_index.json text eol=lf
+keywords/pydyna-source.json text eol=lf

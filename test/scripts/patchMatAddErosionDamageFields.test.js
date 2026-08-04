@@ -31,6 +31,20 @@ function fieldNames(schema, keyword) {
     return schema[keyword].c[2].map(field => field.n);
 }
 
+function withoutHelp(value) {
+    if (Array.isArray(value)) {
+        return value.map(withoutHelp);
+    }
+    if (!value || typeof value !== 'object') {
+        return value;
+    }
+    return Object.fromEntries(
+        Object.entries(value)
+            .filter(([key]) => key !== 'h')
+            .map(([key, child]) => [key, withoutHelp(child)])
+    );
+}
+
 function makeSnippets() {
     return {
         '*MAT_ADD_EROSION': {
@@ -121,24 +135,31 @@ describe('patchMatAddErosionDamageFields', () => {
         assert.equal(second.changedSnippets, 0);
     });
 
-    it('keeps repository field_data and snippet files patched', () => {
+    it('keeps canonical upstream field structure in the Chinese fallback baseline', () => {
         const repoRoot = path.resolve(__dirname, '..', '..');
         const english = JSON.parse(fs.readFileSync(path.join(repoRoot, 'keywords', 'field_data.json'), 'utf8'));
         const localized = JSON.parse(fs.readFileSync(path.join(repoRoot, 'keywords', 'field_data_zh.json'), 'utf8'));
         const snippets = JSON.parse(fs.readFileSync(path.join(repoRoot, 'snippets', 'lsdyna.json'), 'utf8'));
 
         assert.deepEqual(fieldNames(english, 'MAT_ADD_EROSION'), [
-            'IDAM', 'DMGTYP', 'LCSDG', 'ECRIT', 'DMGEXP', 'DCRIT', 'FADEXP', 'LCREGD',
+            'IDAM', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'LCREGD',
         ]);
         assert.deepEqual(fieldNames(localized, 'MAT_ADD_EROSION_TITLE'), [
-            'IDAM', 'DMGTYP', 'LCSDG', 'ECRIT', 'DMGEXP', 'DCRIT', 'FADEXP', 'LCREGD',
+            'IDAM', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'UNUSED', 'LCREGD',
         ]);
-        assert.ok(localized.MAT_ADD_EROSION.c[2][1].h.includes('对于 GISSMO 损伤类型'));
+        assert.deepEqual(
+            withoutHelp(localized.MAT_ADD_EROSION),
+            withoutHelp(english.MAT_ADD_EROSION),
+        );
+        assert.equal(
+            localized.MAT_ADD_EROSION.c[2][1].h,
+            english.MAT_ADD_EROSION.c[2][1].h,
+        );
         assert.ok(snippets['*MAT_ADD_EROSION'].body.includes(
-            '$#    idam    dmgtyp     lcsdg     ecrit    dmgexp     dcrit    fadexp    lcregd'
+            '$#    idam    unused    unused    unused    unused    unused    unused    lcregd'
         ));
         assert.ok(snippets['*MAT_ADD_EROSION_TITLE'].body.includes(
-            '$#    idam    dmgtyp     lcsdg     ecrit    dmgexp     dcrit    fadexp    lcregd'
+            '$#    idam    unused    unused    unused    unused    unused    unused    lcregd'
         ));
     });
 });

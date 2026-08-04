@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -9,7 +10,38 @@ CODEGEN_DIR = REPO_ROOT / "pydyna" / "codegen"
 
 sys.path.insert(0, str(KEYWORDS_DIR))
 
-from pydyna_schema_adapter import build_schema  # noqa: E402
+from pydyna_schema_adapter import (  # noqa: E402
+    MANUAL_LAST_CARD_REPEAT_KEYWORDS,
+    _entry_from_keyword_data,
+    apply_manual_last_card_repeat_flags,
+    build_schema,
+)
+
+
+class TextCardSchemaAdapterTest(unittest.TestCase):
+    def test_serializes_text_card_metadata_with_field_signature(self):
+        keyword_data = SimpleNamespace(
+            cards=[{
+                "fields": [{
+                    "name": "comment",
+                    "position": 0,
+                    "width": 80,
+                    "type": "str",
+                    "help": "Any comment line.",
+                }],
+                "text": SimpleNamespace(name="comment"),
+            }],
+            card_sets=None,
+            options=[],
+            text_card=True,
+        )
+
+        entry = _entry_from_keyword_data(keyword_data, {})
+
+        self.assertEqual(
+            [{"name": "comment", "f": [{"n": "COMMENT", "p": 0, "w": 80, "t": "string"}]}],
+            entry["tc"],
+        )
 
 
 class PydynaSchemaAdapterTest(unittest.TestCase):
@@ -171,6 +203,51 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         self.assertEqual("*DEFINE_FUNCTION_TITLE", snippet["body"][0])
         self.assertIn("title", snippet["body"][1].lower())
         self.assertIn("fid", "\n".join(snippet["body"]).lower())
+
+    def test_manual_last_card_repeat_whitelist_covers_vol_i_set_families(self):
+        self.assertGreaterEqual(len(MANUAL_LAST_CARD_REPEAT_KEYWORDS), 200)
+        # Absolute Vol I evidence families only — see docs/reports/vol-i-row-loop-evidence.md
+        for name in MANUAL_LAST_CARD_REPEAT_KEYWORDS:
+            self.assertTrue(
+                name.startswith("SET_") or name.startswith("NODE"),
+                f"unexpected whitelist key {name}",
+            )
+        for required in (
+            "SET_SOLID",
+            "SET_SOLID_COLLECT",
+            "SET_NODE_LIST_COLLECT",
+            "SET_NODE_GENERAL",
+            "SET_PART_TREE",
+            "NODE",
+        ):
+            self.assertIn(required, MANUAL_LAST_CARD_REPEAT_KEYWORDS)
+        # Explicit exclusions (pair-of-cards / no list wording / no schema)
+        for excluded in (
+            "SET_2D_SEGMENT",
+            "SET_POINT_LIST",
+            "SET_POROUS_ALE",
+            "DEFINE_HEX_SPOTWELD_ASSEMBLY",
+            "ELEMENT_MASS",
+        ):
+            self.assertNotIn(excluded, MANUAL_LAST_CARD_REPEAT_KEYWORDS)
+
+    def test_build_schema_applies_manual_row_loop_flags(self):
+        self.assertGreaterEqual(self.generated.stats.get("manual_row_loops", 0), 0)
+        for name in ("SET_SOLID", "SET_NODE_LIST_COLLECT", "SET_DISCRETE"):
+            if name in self.field_data:
+                self.assertEqual(1, self.field_data[name].get("r"), name)
+
+    def test_apply_manual_last_card_repeat_flags_is_idempotent(self):
+        sample = {
+            "SET_SOLID": {"c": [[{"n": "SID"}], [{"n": "K1"}]]},
+            "SET_2D_SEGMENT": {"c": [[{"n": "SID"}], [{"n": "PID"}]]},
+        }
+        n1 = apply_manual_last_card_repeat_flags(sample)
+        n2 = apply_manual_last_card_repeat_flags(sample)
+        self.assertEqual(1, n1)
+        self.assertEqual(0, n2)
+        self.assertEqual(1, sample["SET_SOLID"]["r"])
+        self.assertNotIn("r", sample["SET_2D_SEGMENT"])
 
 
 if __name__ == "__main__":

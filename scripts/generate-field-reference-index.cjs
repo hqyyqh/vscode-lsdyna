@@ -1,5 +1,6 @@
 'use strict';
 
+const { parseArgs } = require('util');
 const fs = require('fs');
 const path = require('path');
 
@@ -77,6 +78,148 @@ function helpMentionsSignedSwitch(field) {
         /\|[^|]+\|\s+is\s+(?:either\s+)?(?:a\s+)?(?:load\s+curve|curve|table)\s+id/i.test(help);
 }
 
+function explicitDefineTargets(field) {
+    const help = String(field.h || '');
+    const fieldName = normalizeFieldName(field.n);
+    return [...new Set(
+        [...help.matchAll(/\*DEFINE_([A-Z0-9_]+)/gi)]
+            .filter(match => {
+                const start = Math.max(0, match.index - 160);
+                const end = Math.min(help.length, match.index + match[0].length + 160);
+                const context = help.slice(start, end);
+                return /(?:^|_)ID(?:\d+)?$/.test(fieldName) ||
+                    /\b(?:id|identifier|reference|references|referenced)\b/i.test(context);
+            })
+            .map(match => `DEFINE_${match[1].toUpperCase()}`)
+            .filter(target => !/^DEFINE_(?:CURVE|TABLE)/.test(target))
+    )];
+}
+
+function definitionTargetWords(target) {
+    const ignored = new Set(['CPG', 'CPM', 'DE', 'ISPG', 'PBLAST', 'TO']);
+    const aliases = {
+        AIRGEO: ['GEOMETRY'],
+        TRANSFORMATION: ['TRANSFORM'],
+    };
+    return normalizeKeywordName(target)
+        .replace(/^DEFINE_/, '')
+        .split('_')
+        .filter(word => word.length >= 3 && !ignored.has(word))
+        .flatMap(word => [word, ...(aliases[word] || [])]);
+}
+
+function genericIdFieldScore(field, target) {
+    if (normalizeFieldType(field) !== 'integer') {
+        return 0;
+    }
+    const name = normalizeFieldName(field.n);
+    const help = String(field.h || '').trim();
+    if (name === 'ID') {
+        return 100;
+    }
+    if (/^(?:ID_.+|.+_ID)$/.test(name)) {
+        return 90;
+    }
+    if (/\b(?:unique\s+(?:number|id)|identification\s+number|unique\s+id)\b/i.test(help)) {
+        return 80;
+    }
+
+    const normalizedHelp = help.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = definitionTargetWords(target);
+    const phrase = words.join(' ');
+    if (phrase && new RegExp(`^(?:the\\s+)?${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+ID\\b`, 'i').test(normalizedHelp)) {
+        return 75;
+    }
+    if (words.some(word => new RegExp(`^(?:the\\s+)?${word}\\b.{0,40}\\bID\\b`, 'i').test(normalizedHelp))) {
+        return 70;
+    }
+    if (words.some(word => new RegExp(`^ID\\s+of\\s+(?:an?\\s+)?${word}\\b`, 'i').test(normalizedHelp))) {
+        return 70;
+    }
+    return 0;
+}
+
+function selectGenericIdField(target, renderedCards) {
+    const candidates = [];
+    for (const [cardOffset, card] of renderedCards.entries()) {
+        for (const [fieldIndex, field] of (card || []).entries()) {
+            const score = genericIdFieldScore(field, target);
+            if (score > 0) {
+                candidates.push({
+                    score,
+                    cardIndex: cardOffset + 1,
+                    fieldIndex,
+                    fieldName: normalizeFieldName(field.n),
+                    fieldType: field.t,
+                    position: field.p,
+                    width: field.w,
+                });
+            }
+        }
+    }
+    if (candidates.length === 0) {
+        return { descriptor: null, candidates: [] };
+    }
+    candidates.sort((left, right) => right.score - left.score || left.cardIndex - right.cardIndex || left.fieldIndex - right.fieldIndex);
+    const bestScore = candidates[0].score;
+    const best = candidates.filter(candidate => candidate.score === bestScore);
+    return {
+        descriptor: best.length === 1 ? best[0] : null,
+        candidates,
+    };
+}
+
+function collectGenericDefinitionKeywords(schema, references) {
+    const requestedTargets = [...new Set(
+        Object.values(references)
+            .flatMap(rules => Object.values(rules))
+            .flatMap(rule => rule.targetDefinitions || [])
+    )].sort();
+    const generic = {};
+    const ambiguousIdFields = [];
+
+    for (const target of requestedTargets) {
+        if (!Object.hasOwn(schema, target)) {
+            ambiguousIdFields.push({ target, reason: 'missing-schema-entry', candidates: [] });
+            continue;
+        }
+
+        let targetHasDescriptor = false;
+        for (const [keyword, entry] of Object.entries(schema)) {
+            const canonical = normalizeKeywordName(entry && entry.x || keyword);
+            if (canonical !== target) {
+                continue;
+            }
+            const canonicalEntry = schema[canonical] || entry;
+            const renderedCards = getRenderedCards(canonicalEntry, entry.active || []);
+            const selection = selectGenericIdField(target, renderedCards);
+            if (!selection.descriptor) {
+                ambiguousIdFields.push({
+                    target,
+                    keyword: normalizeKeywordName(keyword),
+                    reason: selection.candidates.length > 0 ? 'ambiguous-id-field' : 'missing-id-field',
+                    candidates: selection.candidates,
+                });
+                continue;
+            }
+            generic[normalizeKeywordName(keyword)] = {
+                target,
+                ...selection.descriptor,
+            };
+            targetHasDescriptor = true;
+        }
+
+        if (!targetHasDescriptor && !ambiguousIdFields.some(item => item.target === target)) {
+            ambiguousIdFields.push({ target, reason: 'missing-id-field', candidates: [] });
+        }
+    }
+
+    return {
+        generic: Object.fromEntries(Object.entries(generic).sort(([left], [right]) => left.localeCompare(right))),
+        ambiguousIdFields,
+    };
+}
+
 function inferReference(field) {
     const fieldType = normalizeFieldType(field);
     if (!field || !['integer', 'real'].includes(fieldType)) {
@@ -89,7 +232,8 @@ function inferReference(field) {
     if (helpMentionsTable(field)) {
         targetKinds.push('table');
     }
-    if (targetKinds.length === 0) {
+    const targetDefinitions = explicitDefineTargets(field);
+    if (targetKinds.length === 0 && targetDefinitions.length === 0) {
         return null;
     }
     return {
@@ -98,10 +242,11 @@ function inferReference(field) {
         source: 'schema-help',
         allowSignedSwitch: true,
         requiresSignedSwitch: fieldType === 'real' && helpMentionsSignedSwitch(field),
+        ...(targetDefinitions.length > 0 ? { targetDefinitions } : {}),
     };
 }
 
-function collectDefinitionKeywords(schema) {
+function collectDefinitionKeywords(schema, references) {
     const scanned = Object.keys(schema)
         .filter(keyword => /^DEFINE_(CURVE|TABLE)/.test(keyword))
         .sort();
@@ -110,7 +255,29 @@ function collectDefinitionKeywords(schema) {
         /^DEFINE_TABLE(_TITLE|_2D|_2D_TITLE|_3D|_3D_TITLE|_4D|_4D_TITLE)?$/.test(keyword)
     );
     const indexOnly = scanned.filter(keyword => !drawable.includes(keyword));
-    return { scanned, drawable, indexOnly };
+    return { scanned, drawable, indexOnly, ...collectGenericDefinitionKeywords(schema, references) };
+}
+
+function filterUnsafeGenericReferences(references, definitionKeywords) {
+    const allowedTargets = new Set(
+        Object.values(definitionKeywords.generic || {}).map(descriptor => descriptor.target)
+    );
+    for (const [keyword, rules] of Object.entries(references)) {
+        for (const [key, rule] of Object.entries(rules)) {
+            if (rule.targetDefinitions) {
+                rule.targetDefinitions = rule.targetDefinitions.filter(target => allowedTargets.has(target));
+                if (rule.targetDefinitions.length === 0) {
+                    delete rule.targetDefinitions;
+                }
+            }
+            if ((rule.targetKinds || []).length === 0 && !rule.targetDefinitions) {
+                delete rules[key];
+            }
+        }
+        if (Object.keys(rules).length === 0) {
+            delete references[keyword];
+        }
+    }
 }
 
 function buildIndex(schema) {
@@ -151,6 +318,7 @@ function buildIndex(schema) {
                     position: field.p,
                     width: field.w,
                     targetKinds: normalizeTargetKinds(inferred.targetKinds),
+                    ...(inferred.targetDefinitions ? { targetDefinitions: inferred.targetDefinitions } : {}),
                     confidence: inferred.confidence,
                     source: inferred.source,
                     allowSignedSwitch: inferred.allowSignedSwitch !== false,
@@ -164,21 +332,34 @@ function buildIndex(schema) {
         }
     }
 
+    const sortedReferences = Object.fromEntries(Object.entries(references).sort(([a], [b]) => a.localeCompare(b)));
+    const definitionKeywords = collectDefinitionKeywords(schema, sortedReferences);
+    filterUnsafeGenericReferences(sortedReferences, definitionKeywords);
+
     return {
         schemaVersion: 1,
         generatedFrom: {
             fieldData: 'keywords/field_data.json',
         },
-        definitionKeywords: collectDefinitionKeywords(schema),
-        references: Object.fromEntries(Object.entries(references).sort(([a], [b]) => a.localeCompare(b))),
+        definitionKeywords,
+        references: sortedReferences,
     };
 }
 
 function main() {
-    const schema = JSON.parse(fs.readFileSync(fieldDataPath, 'utf8'));
+    const { values } = parseArgs({
+        options: {
+            'field-data': { type: 'string' },
+            output: { type: 'string' },
+        },
+    });
+    const inputPath = values['field-data'] ? path.resolve(values['field-data']) : fieldDataPath;
+    const destinationPath = values.output ? path.resolve(values.output) : outputPath;
+    const schema = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
     const index = buildIndex(schema);
-    fs.writeFileSync(outputPath, JSON.stringify(index, null, 2) + '\n', 'utf8');
-    console.log(`Wrote ${outputPath}`);
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.writeFileSync(destinationPath, JSON.stringify(index, null, 2) + '\n', 'utf8');
+    console.log(`Wrote ${destinationPath}`);
     console.log(`Indexed ${Object.keys(index.references).length} keywords with curve/table field references.`);
     console.log(`Scanned ${index.definitionKeywords.scanned.length} DEFINE_CURVE/DEFINE_TABLE keyword schema entries.`);
 }
@@ -190,4 +371,6 @@ if (require.main === module) {
 module.exports = {
     buildIndex,
     inferReference,
+    explicitDefineTargets,
+    collectGenericDefinitionKeywords,
 };

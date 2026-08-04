@@ -1,11 +1,11 @@
 'use strict';
 
+const { parseArgs } = require('util');
 const fs = require('fs');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 const englishPath = path.join(repoRoot, 'keywords', 'field_data.json');
-const localizedPath = path.join(repoRoot, 'keywords', 'field_data_zh.json');
 const snippetsPath = path.join(repoRoot, 'snippets', 'lsdyna.json');
 
 const TARGET_KEYWORDS = [
@@ -286,13 +286,19 @@ function patchSnippetsFile(filePath) {
 }
 
 function main() {
-    const english = patchFile(englishPath, 'en');
-    const localized = patchFile(localizedPath, 'zh');
-    const snippets = patchSnippetsFile(snippetsPath);
+    const { values } = parseArgs({
+        options: {
+            'field-data': { type: 'string' },
+            snippets: { type: 'string' },
+        },
+    });
+    const selectedEnglishPath = values['field-data'] ? path.resolve(values['field-data']) : englishPath;
+    const selectedSnippetsPath = values.snippets ? path.resolve(values.snippets) : snippetsPath;
+    const english = patchFile(selectedEnglishPath, 'en');
+    const snippets = patchSnippetsFile(selectedSnippetsPath);
 
-    console.log(`Patched ${path.relative(repoRoot, englishPath)} (${english.changedFields} fields changed).`);
-    console.log(`Patched ${path.relative(repoRoot, localizedPath)} (${localized.changedFields} fields changed).`);
-    console.log(`Patched ${path.relative(repoRoot, snippetsPath)} (${snippets.changedSnippets} snippets changed).`);
+    console.log(`Patched ${path.relative(repoRoot, selectedEnglishPath)} (${english.changedFields} fields changed).`);
+    console.log(`Patched ${path.relative(repoRoot, selectedSnippetsPath)} (${snippets.changedSnippets} snippets changed).`);
 }
 
 if (require.main === module) {
