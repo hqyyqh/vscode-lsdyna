@@ -94,19 +94,21 @@ describe('manual reader build and package contract', () => {
         expect(app).not.toMatch(/reader-back-to-top[^>]*>\s*↑/);
     });
 
-    it('keeps the migration guide and standalone prototype aligned with the final reader UX', () => {
-        const guide = fs.readFileSync(path.join(repository, 'docs/manual-reader-react-migration.md'), 'utf8');
-        const prototype = fs.readFileSync(path.join(repository, 'docs/prototypes/manual-reader-react.html'), 'utf8');
+    it('keeps the final reader UX contract in production sources', () => {
+        const readingPosition = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/useReadingPosition.ts'), 'utf8');
+        const toolbarHeight = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/useToolbarHeight.ts'), 'utf8');
+        const markdown = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/MarkdownDocument.tsx'), 'utf8');
+        const lightbox = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/ImageLightbox.tsx'), 'utf8');
+        const search = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/SearchPopover.tsx'), 'utf8');
+        const toolbar = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/ReaderToolbar.tsx'), 'utf8');
 
-        for (const marker of ['scrollRatio', 'ResizeObserver', 'IntersectionObserver', '5000', 'pinned translation', 'image lightbox']) {
-            expect(guide).toContain(marker);
-        }
-        for (const marker of ['id="search-popover"', 'class="progress"', 'id="lightbox"', 'id="back-top"', 'data-pinned', 'tabindex="0"']) {
-            expect(prototype).toContain(marker);
-        }
-        expect(prototype).toMatch(/@media\s*\(max-width:\s*760px\)/);
-        expect(prototype).toMatch(/@media\s*\(max-width:\s*480px\)/);
-        expect(prototype).toMatch(/@media\s*\(forced-colors:\s*active\)/);
-        expect(prototype).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+        expect(readingPosition).toContain('scrollRatio');
+        expect(readingPosition).toContain('IntersectionObserver');
+        expect(toolbarHeight).toContain('ResizeObserver');
+        expect(lightbox).toContain('reader-lightbox');
+        expect(markdown).toContain('preview.pinned');
+        expect(markdown).toContain('tabIndex={0}');
+        expect(search).toContain('reader-search-popover');
+        expect(toolbar).toContain('reader-progress');
     });
 });

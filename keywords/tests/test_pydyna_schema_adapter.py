@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -6,7 +7,9 @@ from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 KEYWORDS_DIR = REPO_ROOT / "keywords"
-CODEGEN_DIR = REPO_ROOT / "pydyna" / "codegen"
+CODEGEN_DIR = Path(
+    os.environ.get("PYDYNA_CODEGEN_DIR", REPO_ROOT / "pydyna" / "codegen")
+).resolve()
 
 sys.path.insert(0, str(KEYWORDS_DIR))
 
@@ -55,7 +58,8 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
         mat = self.field_data["MAT_001"]
         title = next(option for option in mat["o"] if option["n"] == "TITLE")
 
-        self.assertEqual(1, len(mat["c"]))
+        self.assertEqual(2, len(mat["c"]))
+        self.assertEqual(["EFUNC", "CNVT", "ITERLM"], [field["n"] for field in mat["c"][1]])
         self.assertEqual("pre/1", title["co"])
         self.assertEqual(1, title["to"])
         self.assertIn("MAT_001_TITLE", mat["v"])

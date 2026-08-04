@@ -25,6 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Checkout pinned PyDYNA schema source
+        uses: actions/checkout@v7
+        with:
+          repository: ansys/pydyna
+          ref: 367fea6c13ca7c8d2e28bd290d943395d84e77a3
+          path: pydyna
+          persist-credentials: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:

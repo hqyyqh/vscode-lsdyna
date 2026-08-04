@@ -1764,7 +1764,7 @@
     "toolSha256": {
       "scripts/regenerate-keyword-artifacts.cjs": "5f9626dc26556de1278b3ebdf7479987f3fa271115b69fd5c48dfd5d15858e4e",
       "keywords/generate_from_pydyna.py": "1315be09de226951ae09cf047ea83fe251fac352145c4a5856ae5eb63184f217",
-      "keywords/pydyna_schema_adapter.py": "56294d8c0900b2688572980ed37f6cd2ce7c93b02d34745a30cd995caeb39e63",
+      "keywords/pydyna_schema_adapter.py": "32c496b59b54202859c202b473686a9f8aa669ac0bb26ef08b4bcdc45f45c40c",
       "scripts/patch-mat-add-erosion-damage-fields.cjs": "5b486e20735bcdc260b074c11af3d60d139af5b4328297ba7349024476fe3335",
       "scripts/generate-field-reference-index.cjs": "7bee1a7b5af094178deabc954e532d6092f0b8096d0a23273049f73cca4c8b4b"
     },

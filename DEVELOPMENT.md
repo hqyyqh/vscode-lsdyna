@@ -29,6 +29,11 @@ npm audit --omit=dev
 npm run check:package-contents
 ```
 
+The Python schema-adapter tests require the frozen PyDYNA checkout described
+below. Put it at the ignored local path `pydyna/`, or set
+`PYDYNA_CODEGEN_DIR` to that checkout's `codegen` directory. CI checks out the
+same pinned commit explicitly; it never follows the mutable branch head.
+
 The last three commands are release gates, not advisory reports. A non-zero exit
 means the branch is not ready for `dev` collaboration or `master` release.
 

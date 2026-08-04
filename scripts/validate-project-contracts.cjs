@@ -3,7 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');
+const crypto = require('crypto');
 const ts = require('typescript');
+
+const PINNED_PYDYNA_COMMIT = '367fea6c13ca7c8d2e28bd290d943395d84e77a3';
 
 const FORBIDDEN_TRACKED_PREFIXES = [
     '.github/analysis/',
@@ -57,6 +60,10 @@ const INTERNAL_COMMANDS = new Set([
 
 function decodeUtf8Strict(filePath) {
     return new TextDecoder('utf-8', { fatal: true }).decode(fs.readFileSync(filePath));
+}
+
+function sha256File(filePath) {
+    return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
 function collectFiles(rootDir, predicate) {
@@ -312,6 +319,15 @@ function validateWorkflowCoverage(root, errors) {
                 errors.push(`${workflowName} does not run required check: ${command}`);
             }
         }
+        for (const sourceLine of [
+            'repository: ansys/pydyna',
+            `ref: ${PINNED_PYDYNA_COMMIT}`,
+            'path: pydyna',
+        ]) {
+            if (!workflow.includes(sourceLine)) {
+                errors.push(`${workflowName} does not prepare pinned PyDYNA input: ${sourceLine}`);
+            }
+        }
     }
 }
 
@@ -362,6 +378,9 @@ function validatePydynaProvenance(root, errors) {
     if (!/^[0-9a-f]{40}$/.test(provenance.upstream?.commit || '')) {
         errors.push('pydyna-source.json must pin a full upstream commit');
     }
+    if (provenance.upstream?.commit !== PINNED_PYDYNA_COMMIT) {
+        errors.push(`pydyna-source.json must pin ${PINNED_PYDYNA_COMMIT}`);
+    }
     if (Object.hasOwn(provenance.upstream || {}, 'branch')) {
         errors.push('pydyna-source.json must not use a mutable branch as provenance');
     }
@@ -373,6 +392,8 @@ function validatePydynaProvenance(root, errors) {
     for (const toolPath of GENERATION_TOOL_PATHS) {
         if (!/^[0-9a-f]{64}$/.test(toolHashes[toolPath] || '')) {
             errors.push(`pydyna-source.json is missing generation tool hash: ${toolPath}`);
+        } else if (toolHashes[toolPath] !== sha256File(path.join(root, toolPath))) {
+            errors.push(`pydyna-source.json generation tool hash is stale: ${toolPath}`);
         }
     }
 }
