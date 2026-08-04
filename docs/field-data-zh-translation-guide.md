@@ -7,6 +7,7 @@
 - Runtime output: `out/runtime/field_help_zh.delta.json.gz`
 - Structure/content validator: `keywords/validate_field_data_translation.py`
 - Final quality gate: `keywords/audit_field_data_quality.py`
+- Reviewed compatibility source: `keywords/compatibility/mat_add_erosion_legacy_fields.json`
 
 The extension treats the English file as the schema authority. The Chinese file is
 a reviewable authoring mirror. Compilation produces a deterministic, hash-bound
@@ -85,7 +86,11 @@ non-empty translated count.
 
 1. Save the old `field_data.json` outside the repository.
 2. Regenerate the four English artifacts from the clean, pinned PyDYNA commit.
-3. Run the validator with `--sync --previous-english <snapshot>`.
+   The generator must apply and record all local compatibility overlays before
+   publishing the English schema, snippets, reference index, and provenance.
+3. Run the validator with `--sync --previous-english <snapshot>`. Synchronization
+   also applies the reviewed Chinese help stored in compatibility overlays after
+   the English source and field signature have been verified.
 4. Review every fallback created by new, changed, or ambiguous English text.
 5. Run all quality gates and rebuild the runtime delta.
 6. Commit the four PyDYNA outputs separately from the reviewed Chinese update when
@@ -94,6 +99,12 @@ non-empty translated count.
 Synchronization preserves a Chinese suffix only when its complete old English
 source still matches, including a unique translation-memory match after movement.
 It never authorizes an old translation for changed English.
+
+For `*MAT_ADD_EROSION`, the compatibility overlay retains the historical
+`DMGTYP`, `LCSDG`, `ECRIT`, `DMGEXP`, `DCRIT`, and `FADEXP` positions for legacy
+solver decks. If a future PyDYNA update supplies a different card shape or changes
+the English definition, regeneration must stop for review rather than silently
+reusing the old Chinese text.
 
 ## Repository hygiene
 

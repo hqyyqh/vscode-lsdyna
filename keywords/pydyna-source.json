@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "upstream": {
     "repository": "ansys/pydyna",
     "reference": "origin/feat/new-kwd",
@@ -16,7 +16,15 @@
     "command": "node scripts/regenerate-keyword-artifacts.cjs --codegen-dir <pydyna-root>/codegen --pydyna-commit 367fea6c13ca7c8d2e28bd290d943395d84e77a3",
     "orchestrator": "scripts/regenerate-keyword-artifacts.cjs",
     "generator": "keywords/generate_from_pydyna.py",
-    "matAddErosionSource": "upstream"
+    "matAddErosionSource": "compatibility-overlay",
+    "compatibilityOverlays": [
+      {
+        "id": "mat-add-erosion-legacy-damage-fields",
+        "version": 1,
+        "definition": "keywords/compatibility/mat_add_erosion_legacy_fields.json",
+        "state": "compatibility-overlay"
+      }
+    ]
   },
   "stats": {
     "kwdKeywords": 3685,
@@ -1762,16 +1770,16 @@
       "manualKeywordClasses": "223b046dc96b5b8ec411723406835973d0a9ef3237de91aaeab230b8ddd5c050"
     },
     "toolSha256": {
-      "scripts/regenerate-keyword-artifacts.cjs": "5f9626dc26556de1278b3ebdf7479987f3fa271115b69fd5c48dfd5d15858e4e",
-      "keywords/generate_from_pydyna.py": "1315be09de226951ae09cf047ea83fe251fac352145c4a5856ae5eb63184f217",
-      "keywords/pydyna_schema_adapter.py": "32c496b59b54202859c202b473686a9f8aa669ac0bb26ef08b4bcdc45f45c40c",
-      "scripts/patch-mat-add-erosion-damage-fields.cjs": "5b486e20735bcdc260b074c11af3d60d139af5b4328297ba7349024476fe3335",
-      "scripts/generate-field-reference-index.cjs": "7bee1a7b5af094178deabc954e532d6092f0b8096d0a23273049f73cca4c8b4b"
+      "scripts/regenerate-keyword-artifacts.cjs": "f86da678a015fc3314fd88d15e990bd3cdab61bc1b612a253ba98a790b3a0c0e",
+      "keywords/generate_from_pydyna.py": "ab16b325a99ecd7a9695b93ee3c8b4005809dd625e67838fabadc720212d4ca1",
+      "keywords/pydyna_schema_adapter.py": "fec4d1d960691b29ba8f3772d4c34e002790bbcfa218842b607421076d856d3f",
+      "keywords/compatibility/mat_add_erosion_legacy_fields.json": "5483611f1f9e20bdcc26310a1530a6d20fdb3837437afc0e5a20cc24ace1b319",
+      "scripts/generate-field-reference-index.cjs": "3390d4b27a42aaa314a9e4b3272fada4bc2fce02b6a9fcd8b414602e80ff4d5b"
     },
     "artifactSha256": {
-      "snippets/lsdyna.json": "e5504c62c9aed978e076a03fa132ebd2e093774139bb50cfb16f1b1b79fb7c06",
-      "keywords/field_data.json": "b4b59055504aa4f05b6131964e9e365b72a7e870ff616f68b06dacca03281082",
-      "keywords/field_reference_index.json": "50cfea4a69cb725d05ae1ba26f369f192716b6b04d7a6409edced88ba80fe0e2"
+      "snippets/lsdyna.json": "496e94df7729baa6e30e1f2805d0efcc7dd46efd901554f1666a05335d4a23a1",
+      "keywords/field_data.json": "50daa04755e19c4752b9b877d114472abe8c6514036f6ffd8247a352473b5e12",
+      "keywords/field_reference_index.json": "b5f601c289bb2d0d572e80c0b83894df0f8f880c59bf3af5681e58a2b18d25af"
     }
   }
 }

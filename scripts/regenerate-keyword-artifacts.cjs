@@ -11,6 +11,9 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const MANUAL_KEYWORD_CLASSES = path.join(
     'src', 'ansys', 'dyna', 'core', 'keywords', 'keyword_classes', 'manual'
 );
+const MAT_ADD_EROSION_OVERLAY = path.join(
+    'keywords', 'compatibility', 'mat_add_erosion_legacy_fields.json'
+);
 const ARTIFACTS = [
     { staging: 'lsdyna.json', destination: path.join('snippets', 'lsdyna.json') },
     { staging: 'field_data.json', destination: path.join('keywords', 'field_data.json') },
@@ -21,7 +24,7 @@ const GENERATION_TOOLS = [
     path.join('scripts', 'regenerate-keyword-artifacts.cjs'),
     path.join('keywords', 'generate_from_pydyna.py'),
     path.join('keywords', 'pydyna_schema_adapter.py'),
-    path.join('scripts', 'patch-mat-add-erosion-damage-fields.cjs'),
+    MAT_ADD_EROSION_OVERLAY,
     path.join('scripts', 'generate-field-reference-index.cjs'),
 ];
 const NPM_COMMAND = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -49,6 +52,11 @@ const COMPATIBILITY_ALIASES = {
 
 function sha256File(filePath) {
     return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function sha256CanonicalTextFile(filePath) {
+    const text = fs.readFileSync(filePath, 'utf8').replace(/\r\n?/g, '\n');
+    return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 function sha256Directory(directory) {
@@ -381,14 +389,15 @@ function inputHashes(codegenDir) {
 function generationToolHashes(repoRoot) {
     return Object.fromEntries(GENERATION_TOOLS.map(relativePath => [
         relativePath.split(path.sep).join('/'),
-        sha256File(path.join(repoRoot, relativePath)),
+        sha256CanonicalTextFile(path.join(repoRoot, relativePath)),
     ]));
 }
 
 function buildProvenance(options, sourceHashes, toolHashes, environment, stats, schema, snippets, referenceIndex, matAddErosionSource) {
     const compatibilityAliases = validateCompatibilityAliases(schema);
+    const matAddErosionOverlay = readJson(path.join(options.repoRoot, MAT_ADD_EROSION_OVERLAY));
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         upstream: {
             repository: 'ansys/pydyna',
             reference: 'origin/feat/new-kwd',
@@ -406,6 +415,12 @@ function buildProvenance(options, sourceHashes, toolHashes, environment, stats, 
             orchestrator: 'scripts/regenerate-keyword-artifacts.cjs',
             generator: 'keywords/generate_from_pydyna.py',
             matAddErosionSource,
+            compatibilityOverlays: [{
+                id: matAddErosionOverlay.id,
+                version: matAddErosionOverlay.version,
+                definition: MAT_ADD_EROSION_OVERLAY.split(path.sep).join('/'),
+                state: matAddErosionSource,
+            }],
         },
         stats: {
             kwdKeywords: stats.kwd_keywords,
@@ -477,16 +492,12 @@ function runPipeline(options, dependencies, stagingDir) {
         '--stats-file', files.stats,
     ], options.repoRoot);
 
-    const rawSchema = readJson(files.fields);
-    const matAddErosionSource = Object.hasOwn(rawSchema, 'MAT_ADD_EROSION')
-        ? 'upstream'
-        : 'compatibility-patch';
-    if (matAddErosionSource === 'compatibility-patch') {
-        run(dependencies.patchCommand || process.execPath, [
-            ...(dependencies.patchCommand ? [] : [path.join(options.repoRoot, 'scripts', 'patch-mat-add-erosion-damage-fields.cjs')]),
-            '--field-data', files.fields,
-            '--snippets', files.snippets,
-        ], options.repoRoot);
+    const generationStats = readJson(files.stats);
+    const matAddErosionSource = generationStats.mat_add_erosion_compatibility;
+    if (!['compatibility-overlay', 'upstream-complete'].includes(matAddErosionSource)) {
+        throw new Error(
+            `Unexpected MAT_ADD_EROSION compatibility state: ${matAddErosionSource}`
+        );
     }
 
     run(

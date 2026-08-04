@@ -42,7 +42,7 @@ const GENERATION_TOOL_PATHS = [
     'scripts/regenerate-keyword-artifacts.cjs',
     'keywords/generate_from_pydyna.py',
     'keywords/pydyna_schema_adapter.py',
-    'scripts/patch-mat-add-erosion-damage-fields.cjs',
+    'keywords/compatibility/mat_add_erosion_legacy_fields.json',
     'scripts/generate-field-reference-index.cjs',
 ];
 
@@ -64,6 +64,11 @@ function decodeUtf8Strict(filePath) {
 
 function sha256File(filePath) {
     return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function sha256CanonicalTextFile(filePath) {
+    const text = decodeUtf8Strict(filePath).replace(/\r\n?/g, '\n');
+    return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 function collectFiles(rootDir, predicate) {
@@ -369,8 +374,8 @@ function validateTrackedSourceBoundaries(root, errors) {
 function validatePydynaProvenance(root, errors) {
     const provenancePath = path.join(root, 'keywords', 'pydyna-source.json');
     const provenance = JSON.parse(decodeUtf8Strict(provenancePath));
-    if (provenance.schemaVersion !== 2) {
-        errors.push('pydyna-source.json must use provenance schemaVersion 2');
+    if (provenance.schemaVersion !== 3) {
+        errors.push('pydyna-source.json must use provenance schemaVersion 3');
     }
     if (provenance.upstream?.repository !== 'ansys/pydyna') {
         errors.push('pydyna-source.json must identify ansys/pydyna');
@@ -392,9 +397,16 @@ function validatePydynaProvenance(root, errors) {
     for (const toolPath of GENERATION_TOOL_PATHS) {
         if (!/^[0-9a-f]{64}$/.test(toolHashes[toolPath] || '')) {
             errors.push(`pydyna-source.json is missing generation tool hash: ${toolPath}`);
-        } else if (toolHashes[toolPath] !== sha256File(path.join(root, toolPath))) {
+        } else if (toolHashes[toolPath] !== sha256CanonicalTextFile(path.join(root, toolPath))) {
             errors.push(`pydyna-source.json generation tool hash is stale: ${toolPath}`);
         }
+    }
+    const overlays = provenance.generation?.compatibilityOverlays || [];
+    const matOverlay = overlays.find(item => item?.id === 'mat-add-erosion-legacy-damage-fields');
+    if (!matOverlay) {
+        errors.push('pydyna-source.json is missing the MAT_ADD_EROSION compatibility overlay');
+    } else if (!['compatibility-overlay', 'upstream-complete'].includes(matOverlay.state)) {
+        errors.push('pydyna-source.json has an invalid MAT_ADD_EROSION compatibility state');
     }
 }
 

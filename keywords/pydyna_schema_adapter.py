@@ -7,6 +7,7 @@ import copy
 from dataclasses import dataclass
 import importlib
 import itertools
+import json
 import logging
 from pathlib import Path
 import sys
@@ -19,6 +20,11 @@ LOCAL_ALIASES = {
     "SET_PART_LIST": "SET_PART",
 }
 MANUAL_KEYWORD_CLASSES_DIR = Path("src") / "ansys" / "dyna" / "core" / "keywords" / "keyword_classes" / "manual"
+MAT_ADD_EROSION_OVERLAY_PATH = (
+    Path(__file__).resolve().parent
+    / "compatibility"
+    / "mat_add_erosion_legacy_fields.json"
+)
 
 # Last-card row loops proven by LS-DYNA Keyword Manual Vol I. Only keywords
 # whose final data card explicitly permits "as many cards" (or equivalent)
@@ -314,7 +320,7 @@ def apply_manual_last_card_repeat_flags(field_data: dict[str, dict[str, Any]]) -
 class GeneratedSchema:
     field_data: dict[str, dict[str, Any]]
     snippets: dict[str, dict[str, Any]]
-    stats: dict[str, int]
+    stats: dict[str, Any]
 
 
 def keyword_name(key: str) -> str:
@@ -1190,6 +1196,90 @@ def _render_entry_snippet_cards(entry: dict[str, Any], active_options: list[str]
     return _render_cards(entry["c"], selected_options)
 
 
+def _load_mat_add_erosion_overlay(
+    overlay_path: Path = MAT_ADD_EROSION_OVERLAY_PATH,
+) -> dict[str, Any]:
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    if overlay.get("schemaVersion") != 1:
+        raise ValueError("MAT_ADD_EROSION compatibility overlay must use schemaVersion 1")
+    if overlay.get("id") != "mat-add-erosion-legacy-damage-fields":
+        raise ValueError("Unexpected MAT_ADD_EROSION compatibility overlay id")
+    if len(overlay.get("fields", [])) != 6:
+        raise ValueError("MAT_ADD_EROSION compatibility overlay must define six fields")
+    return overlay
+
+
+def _damage_card(entry: dict[str, Any], keyword: str) -> list[dict[str, Any]]:
+    cards = entry.get("c") if isinstance(entry, dict) else None
+    if not isinstance(cards, list):
+        raise ValueError(f"{keyword} is missing cards")
+    candidates = [
+        card
+        for card in cards
+        if isinstance(card, list)
+        and len(card) == 8
+        and str(card[0].get("n", "")).upper() == "IDAM"
+        and str(card[-1].get("n", "")).upper() == "LCREGD"
+    ]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"{keyword} must contain exactly one eight-field IDAM...LCREGD card"
+        )
+    return candidates[0]
+
+
+def apply_mat_add_erosion_compatibility_overlay(
+    field_data: dict[str, dict[str, Any]],
+    snippets: dict[str, dict[str, Any]],
+    overlay_path: Path = MAT_ADD_EROSION_OVERLAY_PATH,
+) -> str:
+    """Restore the historical damage fields when upstream exposes UNUSED slots.
+
+    Returns ``compatibility-overlay`` when at least one keyword was repaired and
+    ``upstream-complete`` when both upstream entries already expose the reviewed
+    field signature. Any other layout is intentionally fatal so a PyDYNA update
+    cannot silently overwrite a new card definition.
+    """
+    overlay = _load_mat_add_erosion_overlay(overlay_path)
+    gap_signature = overlay["gapSignature"]
+    restored_signature = overlay["restoredSignature"]
+    applied = 0
+
+    for keyword in overlay["keywords"]:
+        entry = field_data.get(keyword)
+        if not isinstance(entry, dict):
+            raise ValueError(f"{keyword} is missing; compatibility overlay cannot be applied")
+        card = _damage_card(entry, keyword)
+        signature = [str(field.get("n", "")).upper() for field in card]
+        if signature == restored_signature:
+            continue
+        if signature != gap_signature:
+            raise ValueError(
+                f"{keyword} has an unknown IDAM...LCREGD signature: {signature}"
+            )
+
+        for offset, definition in enumerate(overlay["fields"], start=1):
+            current = card[offset]
+            card[offset] = {
+                "n": definition["name"],
+                "p": current["p"],
+                "w": current["w"],
+                "h": definition["english"],
+                "t": definition["type"],
+            }
+        snippets[f"*{keyword}"] = _build_snippet(
+            keyword,
+            _render_entry_snippet_cards(entry, entry.get("active")),
+        )
+        applied += 1
+
+    if applied not in (0, len(overlay["keywords"])):
+        raise ValueError(
+            "MAT_ADD_EROSION and MAT_ADD_EROSION_TITLE compatibility states differ"
+        )
+    return "compatibility-overlay" if applied else "upstream-complete"
+
+
 def _apply_manual_schema_overrides(
     codegen_dir: Path,
     field_data: dict[str, dict[str, Any]],
@@ -1281,6 +1371,10 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
         _add_alias_title_variants(canonical_name, alias_name, field_data, snippets)
 
     manual_overrides = _apply_manual_schema_overrides(codegen_dir, field_data, snippets)
+    mat_add_erosion_compatibility = apply_mat_add_erosion_compatibility_overlay(
+        field_data,
+        snippets,
+    )
     manual_row_loops = apply_manual_last_card_repeat_flags(field_data)
     option_enabled = sum(1 for entry in field_data.values() if entry.get("o"))
     variant_count = sum(len(entry.get("v", {})) for entry in field_data.values())
@@ -1295,6 +1389,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
             "skipped": skipped,
             "aliases": alias_count,
             "manual_overrides": manual_overrides,
+            "mat_add_erosion_compatibility": mat_add_erosion_compatibility,
             "manual_row_loops": manual_row_loops,
             "option_enabled": option_enabled,
             "title_variants": variant_count,

@@ -21,6 +21,9 @@ from typing import Any
 KEYWORDS_DIR = Path(__file__).resolve().parent
 DEFAULT_ENGLISH_PATH = KEYWORDS_DIR / "field_data.json"
 DEFAULT_LOCALIZED_PATH = KEYWORDS_DIR / "field_data_zh.json"
+MAT_ADD_EROSION_OVERLAY_PATH = (
+    KEYWORDS_DIR / "compatibility" / "mat_add_erosion_legacy_fields.json"
+)
 TRANSLATABLE_KEYS = {"h", "description", "desc", "summary"}
 HAN_RANGE_START = "\u3400"
 HAN_RANGE_END = "\u9fff"
@@ -35,6 +38,74 @@ def write_json(path: Path, data: Any) -> None:
     with open(path, "w", encoding="utf-8", newline="\n") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
         file.write("\n")
+
+
+def _mat_add_erosion_damage_card(entry: Any, keyword: str) -> list[dict[str, Any]]:
+    cards = entry.get("c") if isinstance(entry, dict) else None
+    candidates = [
+        card
+        for card in cards or []
+        if isinstance(card, list)
+        and len(card) == 8
+        and str(card[0].get("n", "")).upper() == "IDAM"
+        and str(card[-1].get("n", "")).upper() == "LCREGD"
+    ]
+    if len(candidates) != 1:
+        raise ValueError(f"{keyword} must contain exactly one IDAM...LCREGD card")
+    return candidates[0]
+
+
+def apply_reviewed_compatibility_localizations(
+    english: dict[str, Any],
+    localized: dict[str, Any],
+    overlay_path: Path = MAT_ADD_EROSION_OVERLAY_PATH,
+) -> int:
+    """Apply the reviewed bilingual help for local compatibility overlays."""
+    overlay = load_json(overlay_path)
+    present = [keyword in english for keyword in overlay["keywords"]]
+    if not any(present):
+        return 0
+    if not all(present):
+        raise ValueError("MAT_ADD_EROSION compatibility keyword pair is incomplete")
+    changed = 0
+    for keyword in overlay["keywords"]:
+        english_card = _mat_add_erosion_damage_card(english.get(keyword), keyword)
+        localized_card = _mat_add_erosion_damage_card(localized.get(keyword), keyword)
+        english_signature = [field.get("n") for field in english_card]
+        localized_signature = [field.get("n") for field in localized_card]
+        if english_signature != overlay["restoredSignature"]:
+            raise ValueError(
+                f"{keyword} English compatibility signature is not restored: {english_signature}"
+            )
+        if localized_signature != english_signature:
+            raise ValueError(
+                f"{keyword} localized compatibility signature differs: {localized_signature}"
+            )
+        for offset, definition in enumerate(overlay["fields"], start=1):
+            if english_card[offset].get("h") != definition["english"]:
+                raise ValueError(
+                    f"{keyword}.{definition['name']} English help changed; review the compatibility translation"
+                )
+            reviewed = f"{definition['english']}\n{definition['chinese']}"
+            if localized_card[offset].get("h") != reviewed:
+                localized_card[offset]["h"] = reviewed
+                changed += 1
+    return changed
+
+
+def find_compatibility_localization_errors(
+    english: dict[str, Any], localized: dict[str, Any]
+) -> list[str]:
+    candidate = copy.deepcopy(localized)
+    try:
+        changed = apply_reviewed_compatibility_localizations(english, candidate)
+    except (KeyError, TypeError, ValueError) as error:
+        return [f"MAT_ADD_EROSION compatibility localization: {error}"]
+    if changed:
+        return [
+            f"MAT_ADD_EROSION compatibility localization is stale in {changed} field occurrences"
+        ]
+    return []
 
 
 def _format_path(path: str) -> str:
@@ -289,10 +360,12 @@ def sync_translation_file(
         else None
     )
     synced = sync_translation_data(english, localized, previous_english)
+    apply_reviewed_compatibility_localizations(english, synced)
     write_json(localized_path, synced)
     return [
         *compare_field_data_structure(english, synced),
         *find_invalid_bilingual_help(english, synced),
+        *find_compatibility_localization_errors(english, synced),
     ]
 
 
@@ -323,6 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         localized = load_json(args.localized)
         errors = compare_field_data_structure(english, localized)
         errors.extend(find_invalid_bilingual_help(english, localized))
+        errors.extend(find_compatibility_localization_errors(english, localized))
         if args.check_content:
             errors.extend(find_untranslated_help(english, localized))
 

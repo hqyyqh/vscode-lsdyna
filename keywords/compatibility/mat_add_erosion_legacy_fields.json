@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "id": "mat-add-erosion-legacy-damage-fields",
+  "version": 1,
+  "scope": "Legacy LS-DYNA decks that use the historical MAT_ADD_EROSION damage-field layout.",
+  "keywords": [
+    "MAT_ADD_EROSION",
+    "MAT_ADD_EROSION_TITLE"
+  ],
+  "gapSignature": [
+    "IDAM",
+    "UNUSED",
+    "UNUSED",
+    "UNUSED",
+    "UNUSED",
+    "UNUSED",
+    "UNUSED",
+    "LCREGD"
+  ],
+  "restoredSignature": [
+    "IDAM",
+    "DMGTYP",
+    "LCSDG",
+    "ECRIT",
+    "DMGEXP",
+    "DCRIT",
+    "FADEXP",
+    "LCREGD"
+  ],
+  "fields": [
+    {
+      "name": "DMGTYP",
+      "type": "integer",
+      "english": "For GISSMO damage type the following applies.\n\nDMGTYP is interpreted digit-wise as follows:\nDMGTYP = [NM] = M + 10 x N\n\nM.EQ.0: Damage is accumulated, no coupling to flow stress, no failure.\nM.EQ.1: Damage is accumulated, element failure occurs for D = 1. Coupling of damage to flow stress depending on parameters, see remarks below.\nN.EQ.0: Equivalent plastic strain is the driving quantity for the damage. To be more precise, it is the history variable that LS-PrePost labels as plastic strain. What this history variable actually represents depends on the material model.\nN.GT.0: The Nth additional history variable is the driving quantity for damage. These additional history variables are the same ones flagged by the *DATABASE_EXTENT_BINARY keyword NEIPS and NEIPH fields. For example, for solid elements with *MAT_187, setting N = 6 chooses volumetric plastic strain as the driving quantity for the GISSMO damage.\n\nFor IDAM.LT.0 the following applies.\nEQ.0: No action is taken.\nEQ.1: Damage history is initiated based on values of initial plastic strains and initial strain tensor; this is to be used in multistage analyses.",
+      "chinese": "对于 GISSMO 损伤类型，适用以下规则。\n\nDMGTYP 按位解释如下：\nDMGTYP = [NM] = M + 10 x N\n\nM.EQ.0: 累积损伤，不耦合到流动应力，不发生失效。\nM.EQ.1: 累积损伤，当 D = 1 时单元失效。损伤到流动应力的耦合取决于相关参数，见下方备注。\nN.EQ.0: 等效塑性应变是损伤的驱动量。更准确地说，它是 LS-PrePost 标记为“塑性应变”的历史变量。该历史变量实际代表什么取决于材料模型。\nN.GT.0: 第 N 个附加历史变量是损伤的驱动量。这些附加历史变量与 *DATABASE_EXTENT_BINARY 关键字的 NEIPS 和 NEIPH 字段标记的变量相同。例如，对于使用 *MAT_187 的实体单元，设置 N = 6 会选择体积塑性应变作为 GISSMO 损伤的驱动量。\n\n对于 IDAM.LT.0，适用以下规则。\nEQ.0: 不执行操作。\nEQ.1: 根据初始塑性应变和初始应变张量的值初始化损伤历史；用于多阶段分析。"
+    },
+    {
+      "name": "LCSDG",
+      "type": "integer",
+      "english": "Load curve ID or Table ID. Load curve defines equivalent plastic strain to failure vs. triaxiality. Table defines for each Lode parameter value (between -1 and 1) a load curve ID giving the equivalent plastic strain to failure vs. triaxiality for that Lode parameter value.",
+      "chinese": "载荷曲线 ID 或表 ID。载荷曲线定义失效等效塑性应变随三轴度的关系。表针对每个 Lode 参数值（介于 -1 和 1 之间）定义一条载荷曲线 ID，该曲线给出该 Lode 参数值下失效等效塑性应变随三轴度的关系。"
+    },
+    {
+      "name": "ECRIT",
+      "type": "real",
+      "english": "Critical plastic strain (material instability), see below.\n\nLT.0.0: |ECRIT| is either a load curve ID defining critical equivalent plastic strain versus triaxiality or a table ID defining critical equivalent plastic strain as a function of triaxiality and Lode parameter (as in LCSDG).\nEQ.0.0: Fixed value DCRIT defining critical damage is read (see below).\nGT.0.0: Fixed value for stress-state independent critical equivalent plastic strain.",
+      "chinese": "临界塑性应变（材料不稳定性），见下文。\n\nLT.0.0: |ECRIT| 是定义临界等效塑性应变随三轴度变化的载荷曲线 ID，或是定义临界等效塑性应变作为三轴度和 Lode 参数函数的表 ID（同 LCSDG）。\nEQ.0.0: 读取定义临界损伤的固定值 DCRIT（见下文）。\nGT.0.0: 与应力状态无关的临界等效塑性应变固定值。"
+    },
+    {
+      "name": "DMGEXP",
+      "type": "real",
+      "english": "Exponent for nonlinear damage accumulation, see remarks.",
+      "chinese": "非线性损伤累积指数，见备注。"
+    },
+    {
+      "name": "DCRIT",
+      "type": "real",
+      "english": "Damage threshold value (critical damage). If a Load curve of critical plastic strain or fixed value is given by ECRIT, input is ignored.",
+      "chinese": "损伤阈值（临界损伤）。如果 ECRIT 给出了临界塑性应变的载荷曲线或固定值，则忽略该输入。"
+    },
+    {
+      "name": "FADEXP",
+      "type": "real",
+      "english": "Exponent for damage-related stress fadeout.\n\nLT.0.0: |FADEXP| is load curve ID defining element-size dependent fading exponent.\nGT.0.0: Constant fading exponent.",
+      "chinese": "损伤相关应力渐隐指数。\n\nLT.0.0: |FADEXP| 是定义单元尺寸相关渐隐指数的载荷曲线 ID。\nGT.0.0: 常数渐隐指数。"
+    }
+  ]
+}

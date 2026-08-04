@@ -19,7 +19,11 @@ const FORBIDDEN_FILES = new Set([
     'keywords/pydyna-source.json',
 ]);
 const FORBIDDEN_PREFIXES = [
+    '.artifacts/',
     '.github/',
+    '.pytest_cache/',
+    '.uv-cache/',
+    'dist/',
     'docs/',
     'scripts/',
     'src/',
@@ -42,7 +46,9 @@ function validatePackageFiles(rawFiles) {
         errors.push('VSIX is missing the built manual-reader CSS asset');
     }
     for (const file of files) {
-        if (FORBIDDEN_FILES.has(file) || FORBIDDEN_PREFIXES.some(prefix => file.startsWith(prefix))) {
+        if (FORBIDDEN_FILES.has(file) ||
+            FORBIDDEN_PREFIXES.some(prefix => file.startsWith(prefix)) ||
+            file.split('/').includes('__pycache__')) {
             errors.push(`VSIX contains forbidden authoring/process file: ${file}`);
         }
     }

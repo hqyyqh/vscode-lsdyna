@@ -15,6 +15,11 @@ conversation-*.txt
 .antigravity
 .zcode
 .worktrees
+.artifacts/
+.pytest_cache/
+.uv-cache/
+dist/
+**/__pycache__/
 webview/
 docs
 LS-DYNA Manuals

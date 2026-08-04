@@ -115622,6 +115622,37 @@
         "allowSignedSwitch": true,
         "requiresSignedSwitch": true
       },
+      "3:ECRIT": {
+        "keyword": "MAT_ADD_EROSION",
+        "cardIndex": 3,
+        "fieldName": "ECRIT",
+        "fieldType": "real",
+        "position": 30,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
+      "3:FADEXP": {
+        "keyword": "MAT_ADD_EROSION",
+        "cardIndex": 3,
+        "fieldName": "FADEXP",
+        "fieldType": "real",
+        "position": 60,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "3:LCREGD": {
         "keyword": "MAT_ADD_EROSION",
         "cardIndex": 3,
@@ -115631,6 +115662,21 @@
         "width": 10,
         "targetKinds": [
           "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
+      },
+      "3:LCSDG": {
+        "keyword": "MAT_ADD_EROSION",
+        "cardIndex": 3,
+        "fieldName": "LCSDG",
+        "fieldType": "integer",
+        "position": 20,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -115980,6 +116026,37 @@
         "allowSignedSwitch": true,
         "requiresSignedSwitch": true
       },
+      "4:ECRIT": {
+        "keyword": "MAT_ADD_EROSION_TITLE",
+        "cardIndex": 4,
+        "fieldName": "ECRIT",
+        "fieldType": "real",
+        "position": 30,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
+      "4:FADEXP": {
+        "keyword": "MAT_ADD_EROSION_TITLE",
+        "cardIndex": 4,
+        "fieldName": "FADEXP",
+        "fieldType": "real",
+        "position": 60,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "4:LCREGD": {
         "keyword": "MAT_ADD_EROSION_TITLE",
         "cardIndex": 4,
@@ -115989,6 +116066,21 @@
         "width": 10,
         "targetKinds": [
           "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
+      },
+      "4:LCSDG": {
+        "keyword": "MAT_ADD_EROSION_TITLE",
+        "cardIndex": 4,
+        "fieldName": "LCSDG",
+        "fieldType": "integer",
+        "position": 20,
+        "width": 10,
+        "targetKinds": [
+          "curve",
+          "table"
         ],
         "confidence": "high",
         "source": "schema-help",

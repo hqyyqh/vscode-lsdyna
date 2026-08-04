@@ -87,6 +87,27 @@ publishes exactly four tracked outputs:
 - `keywords/field_reference_index.json`
 - `keywords/pydyna-source.json`
 
+### Local compatibility overlays
+
+Generated PyDYNA data remains the schema authority, followed by reviewed local
+compatibility overlays needed for older solver decks. The tracked overlay
+`keywords/compatibility/mat_add_erosion_legacy_fields.json` restores the historical
+`DMGTYP`, `LCSDG`, `ECRIT`, `DMGEXP`, `DCRIT`, and `FADEXP` fields in
+`*MAT_ADD_EROSION` and `*MAT_ADD_EROSION_TITLE` when PyDYNA exposes those six card
+positions as `UNUSED`.
+
+The schema generator applies the overlay before it writes `field_data.json` and
+`lsdyna.json`, and before the reference index and provenance are built. It accepts
+only two source states:
+
+- the exact `IDAM, UNUSED x6, LCREGD` gap, which is repaired;
+- the complete reviewed field signature, which is left under upstream control.
+
+Any other card shape stops regeneration for manual review. Do not edit generated
+JSON to restore these fields. Update the overlay definition, its tests, and the
+stable documentation instead. `pydyna-source.json` records the overlay id, version,
+state, and canonical cross-platform hash.
+
 Run the publish command a second time and require identical hashes. Provenance
 must contain the upstream commit, input hashes, output hashes, and generation-tool
 hashes, but never a local absolute path.
@@ -110,6 +131,8 @@ Copy-Item keywords\field_data.json $previousEnglish
 python keywords\validate_field_data_translation.py `
   --sync `
   --previous-english $previousEnglish
+
+# The sync command also applies the reviewed Chinese compatibility-overlay help.
 
 python keywords\validate_field_data_translation.py --check-content
 python keywords\audit_field_data_quality.py
