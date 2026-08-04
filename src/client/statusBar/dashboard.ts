@@ -2,7 +2,6 @@
 
 /**
  * @fileoverview LS-DYNA status bar as a deck-edit context HUD (not an env dashboard).
- * Design: docs/superpowers/specs/2026-07-22-status-bar-deck-context-design.md
  * @module client/statusBar/dashboard
  */
 

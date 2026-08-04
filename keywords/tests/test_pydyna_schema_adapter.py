@@ -206,7 +206,7 @@ class PydynaSchemaAdapterTest(unittest.TestCase):
 
     def test_manual_last_card_repeat_whitelist_covers_vol_i_set_families(self):
         self.assertGreaterEqual(len(MANUAL_LAST_CARD_REPEAT_KEYWORDS), 200)
-        # Absolute Vol I evidence families only — see docs/reports/vol-i-row-loop-evidence.md
+        # Only families backed by explicit Vol I repeat-card wording belong here.
         for name in MANUAL_LAST_CARD_REPEAT_KEYWORDS:
             self.assertTrue(
                 name.startswith("SET_") or name.startswith("NODE"),

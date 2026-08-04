@@ -20,11 +20,10 @@ LOCAL_ALIASES = {
 }
 MANUAL_KEYWORD_CLASSES_DIR = Path("src") / "ansys" / "dyna" / "core" / "keywords" / "keyword_classes" / "manual"
 
-# Last-card row loops proven by LS-DYNA Keyword Manual Vol I
-# (PDF under LSDYNA_Manual_Build/data/pdf + precise MD).
-# Only keywords with absolute "include as many cards" / equivalent wording for
-# the final data card. See docs/reports/vol-i-row-loop-evidence.md.
-# Do NOT add keys without a manual quote + line reference in that report.
+# Last-card row loops proven by LS-DYNA Keyword Manual Vol I. Only keywords
+# whose final data card explicitly permits "as many cards" (or equivalent)
+# belong here. Keep the supporting manual citation in the reviewing commit or
+# pull request; do not add entries from shape similarity alone.
 #
 # Excluded (not last-card r):
 # - SET_2D_SEGMENT*: manual says repeat pairs of Cards 1+2 (multi-card-set).

@@ -68,6 +68,8 @@
         "compile": "tsc -p . && npm run build:field-help-delta",
         "build:field-help-delta": "node scripts/generate-field-help-zh-delta.cjs",
         "check:contracts": "node scripts/validate-project-contracts.cjs",
+        "check:field-data-zh": "python keywords/validate_field_data_translation.py --check-content && python keywords/audit_field_data_quality.py",
+        "check:package-contents": "node scripts/validate-package-contents.cjs",
         "build:webview": "vite build --config webview/manual-reader/vite.config.ts",
         "typecheck:webview": "tsc --noEmit -p webview/manual-reader/tsconfig.json",
         "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts",
@@ -79,7 +81,7 @@
         "test:editor-safety:vehicles": "npm run compile && node scripts/run-editor-safety-vehicle-host.cjs",
         "test:editor-safety:large-files": "npm run compile && node scripts/run-editor-safety-large-file-host.cjs",
         "test:scanner-benchmark": "npm run compile && mocha --require test/register-out.js test/core/scanner/scannerBenchmark.test.js",
-        "package": "npm run vscode:prepublish && vsce package",
+        "package": "npm run vscode:prepublish && npm run check:package-contents && vsce package",
         "vscode:prepublish": "npm run build:webview && npm run typecheck:webview && npm run compile"
     },
     "devDependencies": {

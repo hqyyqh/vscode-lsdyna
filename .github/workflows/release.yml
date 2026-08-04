@@ -42,8 +42,16 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Validate project contracts
+        run: npm run check:contracts
 
       - name: Validate release metadata
         id: metadata
@@ -105,11 +113,25 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Run Webview tests
+        run: npm run test:webview
+
+      - name: Run keyword schema tests
+        run: python -m unittest discover -s keywords/tests -p "test_*.py" -v
+
+      - name: Validate final Chinese field data
+        run: python keywords/validate_field_data_translation.py --check-content
+
+      - name: Audit final Chinese field data quality
+        run: python keywords/audit_field_data_quality.py
+
       - name: Audit production dependencies
         run: npm audit --omit=dev
 
       - name: Package extension
-        run: npx --no-install vsce package --out "${{ steps.metadata.outputs.vsix }}"
+        run: |
+          npm run check:package-contents
+          npx --no-install vsce package --out "${{ steps.metadata.outputs.vsix }}"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
@@ -154,8 +176,6 @@ jobs:
           name: DynaSense ${{ steps.metadata.outputs.version }}
           files: ${{ steps.metadata.outputs.vsix }}
           generate_release_notes: true
-          append_body: true
-          body_path: .github/release-appendix.md
 
       - name: Create marketplace release verification issue
         if: steps.metadata.outputs.publish == 'true'

@@ -4,7 +4,6 @@
  * @fileoverview Fixed-width card field "cell" editing math (pure, no VS Code).
  * @module core/edit/cardCellModel
  *
- * Design: docs/superpowers/specs/2026-07-22-card-field-cell-editing-design.md
  * Clear/overwrite always rewrites logical [p, p+w); neighbors never shift.
  */
 

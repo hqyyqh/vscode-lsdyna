@@ -1,68 +1,125 @@
-# VS Code LS-DYNA Extension Development Guide
+# DynaSense Development Guide
 
-This guide describes how to set up the development environment, run tests, compile/package the extension, and configure local manuals.
+## Environment
 
-## 1. Environment Setup
+- Node.js 22
+- Python 3.12 or newer
+- VS Code for Extension Development Host tests
 
-- **Node.js**: Recommended version >= 16.x.
-- **VS Code**: Required for testing and local run/debug.
+Install exactly the locked dependencies:
 
-To install dependencies:
 ```bash
-npm install
+npm ci
 ```
 
-## 2. Development & Testing
+Use `dev` as the normal integration branch. `master` is the stable release branch
+and should receive only reviewed, fully green changes from `dev`. Feature branches
+and worktrees are temporary and should be deleted after merge.
 
-### Running the Extension Locally
-1. Open this project folder in VS Code.
-2. Press `F5` (or go to Run and Debug -> click "Run Extension"). This will launch a new VS Code window (Extension Development Host) with the local version of this extension loaded.
+## Local checks
 
-### Running Unit Tests
-We use the official VS Code Extension Testing library.
-Run the tests:
 ```bash
+npm run check:contracts
 npm test
+npm run test:webview
+python -m unittest discover -s keywords/tests -p "test_*.py" -v
+python keywords/validate_field_data_translation.py --check-content
+python keywords/audit_field_data_quality.py
+npm audit --omit=dev
+npm run check:package-contents
 ```
-*Note: This command will download a test VS Code instance if it is not already cached, and execute all tests located in the `test/` directory.*
 
-## 3. Compilation & Packaging
+The last three commands are release gates, not advisory reports. A non-zero exit
+means the branch is not ready for `dev` collaboration or `master` release.
 
-To compile and package the extension into a `.vsix` file for installation:
-```bash
-npx -y @vscode/vsce package --no-git-tag-version --no-update-package-json
-```
-This generates a file named `lsdyna-custom-<version>.vsix` in the root directory.
-
-## 4. PDF Manual & SumatraPDF Integration Configuration
-
-For manual lookups and exact page jumps to function correctly:
-1. **Manuals Directory**: Configure the absolute or workspace-relative path in VS Code settings under `lsdyna.manualsDir`.
-2. **SumatraPDF.exe (Windows)**:
-   - On Windows, copy `SumatraPDF.exe` directly into the manuals directory configured above.
-   - The extension will read PDF manual structures, build bookmark caches, and monitor changes in this directory.
-   - If `SumatraPDF.exe` is missing from the manuals directory, the extension will gracefully fall back to the system default PDF reader (without page navigation).
-
-## 5. LS-DYNA Keyword Schema Generation
-
-The snippet and hover schema are generated from the pydyna codegen metadata:
+Build the installable extension with:
 
 ```bash
-python keywords/generate_from_pydyna.py pydyna/codegen/kwd.json
-python keywords/validate_field_data_translation.py
-npm test
+npm run package
 ```
 
-Current generation scale:
+## PyDYNA keyword artifacts
 
-- raw kwd keywords: 3168
-- manifest/codegen items: 3173
-- skipped items: 23
-- aliases: 21
-- option-enabled keywords: 1328
-- title variants: 1560
-- field data entries: 4712
-- snippets: 5510
-- field_data.json size: about 19753 KB
+The English keyword schema is generated from a clean external checkout of
+`ansys/pydyna`. Do not vendor that checkout into this repository.
 
-`generate_from_pydyna.py` writes `snippets/lsdyna.json` and `keywords/field_data.json`, then synchronizes `keywords/field_data_zh.json` with English structural fallback while preserving existing localized help text where possible.
+Current frozen source:
+
+- commit: `367fea6c13ca7c8d2e28bd290d943395d84e77a3`
+- reference at freeze time: `origin/feat/new-kwd`
+- describe: `v0.3.2-921-g367fea6c`
+
+The authoritative source metadata and hashes are stored in
+`keywords/pydyna-source.json`. The inputs are:
+
+- `<pydyna-root>/codegen/kwd.json`
+- `<pydyna-root>/codegen/manifest.json`
+- `<pydyna-root>/codegen/additional-cards.json`
+- `<pydyna-root>/src/ansys/dyna/core/keywords/keyword_classes/manual/**`
+
+Set a local root without writing it into tracked files:
+
+```powershell
+$pydynaRoot = 'C:\path\to\clean-pydyna-checkout'
+$pydynaCommit = '367fea6c13ca7c8d2e28bd290d943395d84e77a3'
+
+node scripts\regenerate-keyword-artifacts.cjs `
+  --codegen-dir (Join-Path $pydynaRoot 'codegen') `
+  --pydyna-commit $pydynaCommit `
+  --verify-determinism
+
+node scripts\regenerate-keyword-artifacts.cjs `
+  --codegen-dir (Join-Path $pydynaRoot 'codegen') `
+  --pydyna-commit $pydynaCommit
+```
+
+The source checkout must have the requested HEAD, a clean worktree, and an
+`ansys/pydyna` origin. The command validates in a staging directory and atomically
+publishes exactly four tracked outputs:
+
+- `snippets/lsdyna.json`
+- `keywords/field_data.json`
+- `keywords/field_reference_index.json`
+- `keywords/pydyna-source.json`
+
+Run the publish command a second time and require identical hashes. Provenance
+must contain the upstream commit, input hashes, output hashes, and generation-tool
+hashes, but never a local absolute path.
+
+## Chinese field help after a PyDYNA update
+
+The authoring inputs are `keywords/field_data.json` and
+`keywords/field_data_zh.json`. The generated runtime output is
+`out/runtime/field_help_zh.delta.json.gz`.
+
+Before regenerating English artifacts, save the previous English JSON outside the
+repository. After generation, synchronize only translations whose complete English
+source is unchanged:
+
+```powershell
+$previousEnglish = Join-Path $env:TEMP 'field_data.before-update.json'
+Copy-Item keywords\field_data.json $previousEnglish
+
+# Run the two PyDYNA commands from the previous section.
+
+python keywords\validate_field_data_translation.py `
+  --sync `
+  --previous-english $previousEnglish
+
+python keywords\validate_field_data_translation.py --check-content
+python keywords\audit_field_data_quality.py
+npm run build:field-help-delta
+```
+
+New, changed, or ambiguous English text deliberately falls back to English and
+must be reviewed before the quality gates can pass. The full Chinese authoring JSON
+is not included in the VSIX; the hash-bound compressed delta is generated during
+compile/package. See `docs/field-data-zh-translation-guide.md` for the data and
+quality contract.
+
+## Tracked-source policy
+
+Do not commit plans, reports, agent instructions, review batches, dashboards,
+queues, dry runs, local absolute paths, caches, or other process artifacts. Keep
+only product source, tests, reproducible generators, final authoring data, and
+stable maintenance documentation.

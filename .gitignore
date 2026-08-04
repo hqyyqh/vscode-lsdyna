@@ -9,10 +9,14 @@ out/
 /docs/reports/
 /docs/translation/
 /docs/superpowers/
+/.github/analysis/
 /.github/doc/
+/.github/release-appendix.md
 /AGENTS.md
 /GEMINI.md
 /.antigravity
+__pycache__/
+*.py[cod]
 
 # Ensure bundled SumatraPDF binary is tracked
 !bin/SumatraPDF.exe
