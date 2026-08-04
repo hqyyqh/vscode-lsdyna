@@ -14,8 +14,6 @@
 import type { ChangeMarksDiffResult, ChangeMarkVisualKind } from './types';
 const { emptyChangeMarks } = require('./types');
 const {
-    COLOR_UNSAVED,
-    COLOR_SAVED,
     resolveChangeMarksPalette,
 } = require('./changeMarksTheme');
 
@@ -26,6 +24,9 @@ export type ChangeMarksRenderer = {
 };
 
 export type ChangeMarksRendererOpts = {
+    colorScheme?: string;
+    customUnsavedColor?: string;
+    customSavedColor?: string;
     showOverviewRuler?: boolean;
     showLineBackground?: boolean;
     /** Dual-color minimap (unsaved/saved only). Default true. */
@@ -93,11 +94,14 @@ export function createChangeMarksRenderer(
     const showMinimap = opts.showMinimap !== false;
     const Uri = vscodeApi.Uri;
     const windowApi = vscodeApi.window;
-    const ThemeColor = vscodeApi.ThemeColor;
     const OverviewRulerLane = vscodeApi.OverviewRulerLane;
     const MinimapPosition = vscodeApi.MinimapPosition;
 
-    const palette = resolveChangeMarksPalette(vscodeApi);
+    const palette = resolveChangeMarksPalette(vscodeApi, {
+        colorScheme: opts.colorScheme,
+        customUnsavedColor: opts.customUnsavedColor,
+        customSavedColor: opts.customSavedColor,
+    });
     const orangeHex = String(palette.unsaved);
     const greenHex = String(palette.saved);
 
@@ -116,10 +120,6 @@ export function createChangeMarksRenderer(
     const greenHollow = parseIcon(hollowBarSvg(greenHex, 'saved'));
     const greenTriangle = parseIcon(deleteTriangleSvg(greenHex, 'saved'));
 
-    function themeColor(id: string): any {
-        return ThemeColor ? new ThemeColor(id) : id;
-    }
-
     /**
      * Glyph + optional whole-line tint. No border. No minimap (separate layer).
      */
@@ -136,12 +136,12 @@ export function createChangeMarksRenderer(
         return windowApi.createTextEditorDecorationType(o);
     }
 
-    function makeMapType(colorId: string) {
+    function makeMapType(accentHex: string) {
         const o: any = {
             isWholeLine: true,
         };
         if (showOverview && OverviewRulerLane) {
-            o.overviewRulerColor = themeColor(colorId);
+            o.overviewRulerColor = accentHex;
             o.overviewRulerLane = OverviewRulerLane.Left;
         }
         if (showMinimap) {
@@ -149,25 +149,11 @@ export function createChangeMarksRenderer(
                 ? MinimapPosition.Gutter
                 : (MinimapPosition && MinimapPosition.Inline != null ? MinimapPosition.Inline : 1);
             o.minimap = {
-                color: themeColor(colorId),
+                color: accentHex,
                 position: gutterPos,
             };
         }
         return windowApi.createTextEditorDecorationType(o);
-    }
-
-    function makeMapHexType(accentHex: string) {
-        if (!showMinimap) return null;
-        const gutterPos = MinimapPosition && MinimapPosition.Gutter != null
-            ? MinimapPosition.Gutter
-            : (MinimapPosition && MinimapPosition.Inline != null ? MinimapPosition.Inline : 1);
-        return windowApi.createTextEditorDecorationType({
-            isWholeLine: true,
-            minimap: {
-                color: accentHex,
-                position: gutterPos,
-            },
-        });
     }
 
     const gutterTypes: Record<ChangeMarkVisualKind, any> = {
@@ -179,10 +165,8 @@ export function createChangeMarksRenderer(
         savedDeleted: makeGutterType(greenTriangle, palette.savedBackground),
     };
 
-    const mapUnsavedTheme = (showMinimap || showOverview) ? makeMapType(COLOR_UNSAVED) : null;
-    const mapSavedTheme = (showMinimap || showOverview) ? makeMapType(COLOR_SAVED) : null;
-    const mapUnsavedHex = makeMapHexType(orangeHex);
-    const mapSavedHex = makeMapHexType(greenHex);
+    const mapUnsaved = (showMinimap || showOverview) ? makeMapType(orangeHex) : null;
+    const mapSaved = (showMinimap || showOverview) ? makeMapType(greenHex) : null;
 
     const defaultHovers: Record<ChangeMarkVisualKind, string> = {
         unsavedModified: 'Unsaved · modified (vs last save)',
@@ -273,10 +257,8 @@ export function createChangeMarksRenderer(
         const unsavedOpts = optionsForMap(doc, unsavedLines);
         const savedOpts = optionsForMap(doc, savedLines);
 
-        if (mapUnsavedTheme) editor.setDecorations(mapUnsavedTheme, unsavedOpts);
-        if (mapSavedTheme) editor.setDecorations(mapSavedTheme, savedOpts);
-        if (mapUnsavedHex) editor.setDecorations(mapUnsavedHex, unsavedOpts);
-        if (mapSavedHex) editor.setDecorations(mapSavedHex, savedOpts);
+        if (mapUnsaved) editor.setDecorations(mapUnsaved, unsavedOpts);
+        if (mapSaved) editor.setDecorations(mapSaved, savedOpts);
     }
 
     function clear(editor: any): void {
@@ -287,7 +269,7 @@ export function createChangeMarksRenderer(
         for (const t of Object.values(gutterTypes)) {
             if (t && typeof t.dispose === 'function') t.dispose();
         }
-        for (const t of [mapUnsavedTheme, mapSavedTheme, mapUnsavedHex, mapSavedHex]) {
+        for (const t of [mapUnsaved, mapSaved]) {
             if (t && typeof t.dispose === 'function') t.dispose();
         }
     }

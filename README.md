@@ -77,7 +77,7 @@ See [Manual setup](#manual-setup) for the current downloads. The pack must be fu
 
 ### Track this editing session
 
-- Session change marks work without Git: orange/amber means unsaved, and green means saved since the file was opened. Different marker shapes distinguish modified, inserted, and deleted lines.
+- Session change marks work without Git. The default amber/green colors automatically switch for light, dark, and high-contrast themes; you can instead choose an orange/blue, red/blue, high-contrast, or custom scheme in VS Code Settings. Different marker shapes distinguish modified, inserted, and deleted lines.
 - Commands are available for next/previous mark, comparison with the opened or saved version, and resetting the baseline.
 - Very large decks use limited scanning and can skip change marks to keep editing responsive. Enable a full scan only when complete indexing is needed and the additional load time is acceptable.
 
@@ -133,6 +133,9 @@ The complete settings index is kept here for release checks and advanced use; no
 | Setting | Default | Purpose |
 | :--- | :--- | :--- |
 | `lsdyna.changeMarks.enabled` | `true` | Show changes made during this editing session. |
+| `lsdyna.changeMarks.colorScheme` | `"adaptive"` | Pick one adaptive preset, or choose `custom`; all preset colors switch with the active light/dark theme. |
+| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | Unsaved color used only by the custom scheme (`#RRGGBB`). |
+| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | Saved-since-open color used only by the custom scheme (`#RRGGBB`). |
 | `lsdyna.changeMarks.maxLineCount` | `100000` | Skip session marks above this file size. |
 | `lsdyna.changeMarks.debounceMs` | `250` | Wait this many milliseconds after editing before refreshing marks. |
 | `lsdyna.changeMarks.showOverviewRuler` | `true` | Show marks on the editor overview ruler. |
@@ -150,7 +153,7 @@ The complete settings index is kept here for release checks and advanced use; no
 | `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | Confirmed keywords that should not be reported as unknown. |
 | `lsdyna.warnLowercaseKeyword` | `false` | Warn when a keyword is not uppercase. |
 
-For a custom suffix, also use VS Code's `files.associations`, for example `"*.my_ext": "lsdyna"`. Session marks and other extension elements follow the active VS Code theme; their colors can be overridden with `lsdyna.changeMarks.unsaved` and `lsdyna.changeMarks.saved` under `workbench.colorCustomizations`.
+For a custom suffix, also use VS Code's `files.associations`, for example `"*.my_ext": "lsdyna"`. The color-scheme setting is the recommended way to customize every change-mark layer consistently. Existing `lsdyna.changeMarks.unsaved` and `.saved` entries under `workbench.colorCustomizations` remain compatible in adaptive mode.
 
 </details>
 

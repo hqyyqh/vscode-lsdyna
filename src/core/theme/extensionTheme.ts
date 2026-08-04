@@ -107,6 +107,33 @@ export const EXTENSION_THEME_PALETTES: Record<ExtensionThemeKind, PaletteDefault
     },
 };
 
+/** Additional selectable change-mark schemes, centralized with all concrete runtime colors. */
+export const CHANGE_MARKS_COLOR_SCHEME_PALETTES = {
+    orangeBlue: {
+        light: { unsaved: '#b45309', saved: '#0369a1' },
+        dark: { unsaved: '#fb923c', saved: '#38bdf8' },
+        highContrast: { unsaved: '#ffb000', saved: '#00d7ff' },
+        highContrastLight: { unsaved: '#8a3b00', saved: '#005ea8' },
+    },
+    redBlue: {
+        light: { unsaved: '#b91c1c', saved: '#1d4ed8' },
+        dark: { unsaved: '#f87171', saved: '#60a5fa' },
+        highContrast: { unsaved: '#ff6b6b', saved: '#00b7ff' },
+        highContrastLight: { unsaved: '#a40000', saved: '#0046a8' },
+    },
+    highContrast: {
+        light: { unsaved: '#7a3e00', saved: '#005a9c' },
+        dark: { unsaved: '#ffd700', saved: '#00d7ff' },
+        highContrast: { unsaved: '#ffff00', saved: '#00ffff' },
+        highContrastLight: { unsaved: '#6b3f00', saved: '#003f8f' },
+    },
+};
+
+export const DEFAULT_CHANGE_MARKS_CUSTOM_COLORS = {
+    unsaved: EXTENSION_THEME_PALETTES.dark.changeMarks.unsaved,
+    saved: EXTENSION_THEME_PALETTES.dark.changeMarks.saved,
+};
+
 /** VS Code ColorThemeKind: Light=1, Dark=2, HC=3, HC Light=4. */
 export function themeKindFromVscode(kind: unknown): ExtensionThemeKind {
     const numericKind = Number(kind);
@@ -136,6 +163,8 @@ export function resolveExtensionThemePalette(kind: unknown): ExtensionThemePalet
 
 module.exports = {
     EXTENSION_THEME_PALETTES,
+    CHANGE_MARKS_COLOR_SCHEME_PALETTES,
+    DEFAULT_CHANGE_MARKS_CUSTOM_COLORS,
     themeKindFromVscode,
     themeKindFromRenderOptions,
     resolveExtensionThemePalette,

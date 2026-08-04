@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const {
     EXTENSION_THEME_PALETTES,
+    CHANGE_MARKS_COLOR_SCHEME_PALETTES,
+    DEFAULT_CHANGE_MARKS_CUSTOM_COLORS,
     themeKindFromVscode,
     themeKindFromRenderOptions,
     resolveExtensionThemePalette,
@@ -107,5 +109,23 @@ describe('extensionTheme', () => {
             assert.equal(unsaved[manifestKey], EXTENSION_THEME_PALETTES[paletteKey].changeMarks.unsaved);
             assert.equal(saved[manifestKey], EXTENSION_THEME_PALETTES[paletteKey].changeMarks.saved);
         }
+    });
+
+    it('keeps selectable schemes and custom defaults synchronized with the manifest', () => {
+        const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8'));
+        const settings = manifest.contributes.configuration.properties;
+        assert.deepEqual(settings['lsdyna.changeMarks.colorScheme'].enum, [
+            'adaptive',
+            ...Object.keys(CHANGE_MARKS_COLOR_SCHEME_PALETTES),
+            'custom',
+        ]);
+        assert.equal(
+            settings['lsdyna.changeMarks.customUnsavedColor'].default,
+            DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved,
+        );
+        assert.equal(
+            settings['lsdyna.changeMarks.customSavedColor'].default,
+            DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved,
+        );
     });
 });

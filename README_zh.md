@@ -77,7 +77,7 @@
 
 ### 查看本次编辑的修改
 
-- 无需使用 Git，也能查看本次编辑的变化：橙色或琥珀色表示尚未保存，绿色表示打开文件后已保存；不同形状用于区分修改、插入和删除的行。
+- 无需使用 Git，也能查看本次编辑的变化。默认的琥珀色/绿色会自动适配浅色、深色和高对比度主题；也可以在 VS Code 设置中选择橙色/蓝色、红色/蓝色、高对比度或自定义配色。不同形状用于区分修改、插入和删除的行。
 - 可跳到上一个或下一个修改位置，对比打开时版本或当前未保存内容，也可以重设比较起点。
 - 为保持编辑流畅，超大文件会限制扫描范围，并可自动跳过修改标记。只有确实需要完整索引时，才建议开启大文件完整扫描并接受更长的加载时间。
 
@@ -133,6 +133,9 @@
 | 设置 | 默认值 | 用途 |
 | :--- | :--- | :--- |
 | `lsdyna.changeMarks.enabled` | `true` | 显示本次编辑产生的修改。 |
+| `lsdyna.changeMarks.colorScheme` | `"adaptive"` | 选择一套自动适配主题的预设，或选择 `custom`；所有预设都会随浅色/深色主题切换。 |
+| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | 仅供自定义方案使用的未保存颜色（`#RRGGBB`）。 |
+| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | 仅供自定义方案使用的打开文件后已保存颜色（`#RRGGBB`）。 |
 | `lsdyna.changeMarks.maxLineCount` | `100000` | 文件超过此行数时跳过修改标记。 |
 | `lsdyna.changeMarks.debounceMs` | `250` | 编辑后等待相应毫秒数再刷新标记。 |
 | `lsdyna.changeMarks.showOverviewRuler` | `true` | 在编辑器右侧概览尺显示修改。 |
@@ -150,7 +153,7 @@
 | `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | 不应被报告为未知的已确认关键字。 |
 | `lsdyna.warnLowercaseKeyword` | `false` | 关键字不是大写时发出提示。 |
 
-自定义扩展名还应配置 VS Code 的 `files.associations`，例如 `"*.my_ext": "lsdyna"`。本次修改标记和其他界面元素会跟随 VS Code 主题；可在 `workbench.colorCustomizations` 中使用 `lsdyna.changeMarks.unsaved` 和 `lsdyna.changeMarks.saved` 覆盖修改标记颜色。
+自定义扩展名还应配置 VS Code 的 `files.associations`，例如 `"*.my_ext": "lsdyna"`。推荐使用配色方案设置统一修改所有变更标记；已有的 `workbench.colorCustomizations` 中 `lsdyna.changeMarks.unsaved` 和 `.saved` 配置在自动模式下仍然兼容。
 
 </details>
 

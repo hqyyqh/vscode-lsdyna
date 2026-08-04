@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Change-mark color schemes:** Session marks now offer one adaptive theme-aware default plus orange/blue, red/blue, high-contrast, and custom choices. Presets switch automatically across light, dark, high-contrast, and high-contrast-light themes; custom colors are applied consistently to gutter shapes, line tints, the overview ruler, and the minimap.
+
 ### Fixed
 - **Session change marks after Save As:** A copied deck now inherits the source editing baseline, so only the lines actually changed since the source was opened become saved-green. Unrelated same-content files are not linked, and uncertain lifecycle cases fall back to a clean target instead of marking the whole file as inserted.
 - **Include and change-mark indicators:** Resolved includes now rely on their native clickable link underline, while unresolved includes show one trailing local-missing warning icon. Include status no longer occupies the editor glyph margin or hides line change marks.

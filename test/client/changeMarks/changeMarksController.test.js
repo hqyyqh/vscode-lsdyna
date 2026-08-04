@@ -7,6 +7,9 @@ const { emptyChangeMarks } = require('../../../src/client/changeMarks/types');
 function fullConfig(overrides = {}) {
     return {
         enabled: true,
+        colorScheme: 'adaptive',
+        customUnsavedColor: '#e2a03a',
+        customSavedColor: '#89d185',
         maxLineCount: 100000,
         debounceMs: 0,
         showOverviewRuler: true,
@@ -104,7 +107,10 @@ function createMockVscode(editor) {
                 lifecycle.activeEditor = cb;
                 return { dispose() {} };
             },
-            onDidChangeActiveColorTheme() { return { dispose() {} }; },
+            onDidChangeActiveColorTheme(cb) {
+                lifecycle.theme = cb;
+                return { dispose() {} };
+            },
             showInformationMessage() { return Promise.resolve(); },
             showErrorMessage() { return Promise.resolve(); },
         },
@@ -565,6 +571,32 @@ describe('changeMarksController', () => {
             }
             assert.ok(!t.opts.borderColor && !t.opts.borderStyle, 'no content border');
         }
+        controller.dispose();
+    });
+
+    it('rebuilds colors immediately after scheme, legacy color, or active-theme changes', () => {
+        const doc = createMockDocument('A');
+        const editor = createMockEditor(doc);
+        const vscode = createMockVscode(editor);
+        const controller = createChangeMarksController({
+            vscode,
+            isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(),
+        });
+        controller.register({ subscriptions: [] });
+        const initialCount = vscode._createdTypes.length;
+
+        for (const setting of [
+            'lsdyna.changeMarks.colorScheme',
+            'workbench.colorCustomizations',
+        ]) {
+            vscode._configListeners[0]({
+                affectsConfiguration: key => key === setting,
+            });
+        }
+        vscode._lifecycle.theme({ kind: 1 });
+
+        assert.strictEqual(vscode._createdTypes.length, initialCount * 4);
         controller.dispose();
     });
 

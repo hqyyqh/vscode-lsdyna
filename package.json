@@ -507,6 +507,37 @@
                     "default": true,
                     "description": "%config.changeMarks.enabled.description%"
                 },
+                "lsdyna.changeMarks.colorScheme": {
+                    "type": "string",
+                    "enum": [
+                        "adaptive",
+                        "orangeBlue",
+                        "redBlue",
+                        "highContrast",
+                        "custom"
+                    ],
+                    "default": "adaptive",
+                    "enumDescriptions": [
+                        "%config.changeMarks.colorScheme.enumDescriptions.adaptive%",
+                        "%config.changeMarks.colorScheme.enumDescriptions.orangeBlue%",
+                        "%config.changeMarks.colorScheme.enumDescriptions.redBlue%",
+                        "%config.changeMarks.colorScheme.enumDescriptions.highContrast%",
+                        "%config.changeMarks.colorScheme.enumDescriptions.custom%"
+                    ],
+                    "description": "%config.changeMarks.colorScheme.description%"
+                },
+                "lsdyna.changeMarks.customUnsavedColor": {
+                    "type": "string",
+                    "default": "#e2a03a",
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "description": "%config.changeMarks.customUnsavedColor.description%"
+                },
+                "lsdyna.changeMarks.customSavedColor": {
+                    "type": "string",
+                    "default": "#89d185",
+                    "pattern": "^#[0-9a-fA-F]{6}$",
+                    "description": "%config.changeMarks.customSavedColor.description%"
+                },
                 "lsdyna.changeMarks.maxLineCount": {
                     "type": "number",
                     "default": 100000,

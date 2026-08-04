@@ -10,7 +10,7 @@ export type LineChangeKind = 'modified' | 'inserted' | 'deleted';
 
 /**
  * Six-way mark sets for current document lines (0-based).
- * Unsaved (orange) beats saved (green) for the same line.
+ * Unsaved beats saved for the same line; colors come from the selected scheme.
  * Within a save-state: modified > inserted > deleted.
  *
  * Deleted marks are anchors on a surviving neighbor line (the gap has no current index).
@@ -49,6 +49,9 @@ export function emptyChangeMarks(): ChangeMarksDiffResult {
 
 export type ChangeMarksConfig = {
     enabled: boolean;
+    colorScheme: 'adaptive' | 'orangeBlue' | 'redBlue' | 'highContrast' | 'custom';
+    customUnsavedColor: string;
+    customSavedColor: string;
     maxLineCount: number;
     debounceMs: number;
     showOverviewRuler: boolean;

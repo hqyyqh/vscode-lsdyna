@@ -8,8 +8,6 @@ const {
     deleteTriangleSvg,
 } = require('../../../src/client/changeMarks/changeMarksRenderer');
 const {
-    COLOR_UNSAVED,
-    COLOR_SAVED,
     PALETTES,
 } = require('../../../src/client/changeMarks/changeMarksTheme');
 
@@ -83,8 +81,8 @@ describe('changeMarksRenderer', () => {
             showLineBackground: true,
             showMinimap: true,
         });
-        // 6 gutter + 2 theme map + 2 hex map
-        assert.strictEqual(vscode._created.length, 10);
+        // 6 gutter states + 2 unified map states (no duplicate minimap layer)
+        assert.strictEqual(vscode._created.length, 8);
 
         const gutterTypes = vscode._created.filter(t => t.opts.gutterIconPath);
         assert.strictEqual(gutterTypes.length, 6);
@@ -96,17 +94,39 @@ describe('changeMarksRenderer', () => {
         }
 
         const mapTypes = vscode._created.filter(t => t.opts.minimap);
-        assert.ok(mapTypes.length >= 2);
+        assert.strictEqual(mapTypes.length, 2);
         for (const t of mapTypes) {
             assert.strictEqual(t.opts.isWholeLine, true);
             const color = t.opts.minimap.color;
-            const ok =
-                color === PALETTES.dark.unsaved
-                || color === PALETTES.dark.saved
-                || (color && (color.id === COLOR_UNSAVED || color.id === COLOR_SAVED));
+            const ok = color === PALETTES.dark.unsaved || color === PALETTES.dark.saved;
             assert.ok(ok, `unexpected minimap color ${color}`);
+            assert.strictEqual(t.opts.overviewRulerColor, color);
         }
         renderer.dispose();
+    });
+
+    it('applies custom colors consistently to gutter, background, minimap, and overview ruler', () => {
+        const vscode = createMockVscode(2);
+        createChangeMarksRenderer(vscode, {
+            colorScheme: 'custom',
+            customUnsavedColor: '#123456',
+            customSavedColor: '#abcdef',
+            showOverviewRuler: true,
+            showLineBackground: true,
+            showMinimap: true,
+        });
+
+        assert.strictEqual(vscode._created.length, 8);
+        const gutterTypes = vscode._created.filter(t => t.opts.gutterIconPath);
+        assert.strictEqual(gutterTypes.length, 6);
+        assert.ok(String(gutterTypes[0].opts.gutterIconPath).includes('123456'));
+        assert.ok(String(gutterTypes[3].opts.gutterIconPath).includes('abcdef'));
+        assert.strictEqual(gutterTypes[0].opts.backgroundColor, 'rgba(18, 52, 86, 0.14)');
+        assert.strictEqual(gutterTypes[3].opts.backgroundColor, 'rgba(171, 205, 239, 0.14)');
+
+        const maps = vscode._created.filter(t => t.opts.minimap);
+        assert.deepStrictEqual(maps.map(t => t.opts.minimap.color), ['#123456', '#abcdef']);
+        assert.deepStrictEqual(maps.map(t => t.opts.overviewRulerColor), ['#123456', '#abcdef']);
     });
 
     it('omits background when showLineBackground is false', () => {
@@ -153,7 +173,7 @@ describe('changeMarksRenderer', () => {
             savedInsertedLines: [5],
             savedDeletedLines: [1],
         });
-        assert.strictEqual(calls.length, 10);
+        assert.strictEqual(calls.length, 8);
 
         const gutterCalls = calls.filter(c => c.type.opts && c.type.opts.gutterIconPath);
         assert.strictEqual(gutterCalls.length, 6);

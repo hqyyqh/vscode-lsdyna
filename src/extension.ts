@@ -32,6 +32,7 @@ const { createCardCellEditGuard } = require('./client/services/cardCellEditGuard
 const cardCellModel = require('./core/edit/cardCellModel');
 const { createJumpPulseController } = require('./client/services/jumpPulse');
 const { createChangeMarksController } = require('./client/changeMarks/changeMarksController');
+const { DEFAULT_CHANGE_MARKS_CUSTOM_COLORS } = require('./core/theme/extensionTheme');
 const {
     normalizeCustomKeywordEntry,
     addCustomValidKeyword,
@@ -6467,6 +6468,9 @@ async function activate(context) {
         isLsdynaDocument: isLsdynaFile,
         getConfig: (resource) => ({
             enabled: getLsdynaConfigurationValue('changeMarks.enabled', true, resource) !== false,
+            colorScheme: getLsdynaConfigurationValue('changeMarks.colorScheme', 'adaptive', resource),
+            customUnsavedColor: getLsdynaConfigurationValue('changeMarks.customUnsavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved, resource),
+            customSavedColor: getLsdynaConfigurationValue('changeMarks.customSavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved, resource),
             maxLineCount: Number(getLsdynaConfigurationValue('changeMarks.maxLineCount', 100000, resource)) || 100000,
             debounceMs: Number(getLsdynaConfigurationValue('changeMarks.debounceMs', 250, resource)) || 250,
             showOverviewRuler: getLsdynaConfigurationValue('changeMarks.showOverviewRuler', true, resource) !== false,

@@ -9,6 +9,7 @@ const { createChangeMarksSessionStore } = require('./changeMarksSession');
 const { createChangeMarksRenderer } = require('./changeMarksRenderer');
 const { orderedMarkLines } = require('./changeMarksDiff');
 const { emptyChangeMarks } = require('./types');
+const { DEFAULT_CHANGE_MARKS_CUSTOM_COLORS } = require('../../core/theme/extensionTheme');
 import type {
     ChangeMarksConfig,
     ChangeMarksDiffResult,
@@ -75,6 +76,9 @@ const HOVER_I18N_KEYS: Record<ChangeMarkVisualKind, string> = {
 function defaultConfig(): ChangeMarksConfig {
     return {
         enabled: true,
+        colorScheme: 'adaptive',
+        customUnsavedColor: DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved,
+        customSavedColor: DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved,
         maxLineCount: 100000,
         debounceMs: 250,
         showOverviewRuler: true,
@@ -97,6 +101,9 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
     function buildRenderer() {
         const c = cfg();
         return createChangeMarksRenderer(vscode, {
+            colorScheme: c.colorScheme,
+            customUnsavedColor: c.customUnsavedColor,
+            customSavedColor: c.customSavedColor,
             showOverviewRuler: c.showOverviewRuler,
             showLineBackground: c.showLineBackground,
             showMinimap: c.showMinimap,
@@ -515,10 +522,14 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
             if (
                 e.affectsConfiguration('lsdyna.changeMarks')
                 || e.affectsConfiguration('lsdyna.changeMarks.enabled')
+                || e.affectsConfiguration('lsdyna.changeMarks.colorScheme')
+                || e.affectsConfiguration('lsdyna.changeMarks.customUnsavedColor')
+                || e.affectsConfiguration('lsdyna.changeMarks.customSavedColor')
                 || e.affectsConfiguration('lsdyna.changeMarks.maxLineCount')
                 || e.affectsConfiguration('lsdyna.changeMarks.showOverviewRuler')
                 || e.affectsConfiguration('lsdyna.changeMarks.showLineBackground')
                 || e.affectsConfiguration('lsdyna.changeMarks.showMinimap')
+                || e.affectsConfiguration('workbench.colorCustomizations')
             ) {
                 rebuildRenderer();
             }
