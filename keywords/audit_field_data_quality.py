@@ -11,7 +11,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-from text_sanitization import forbidden_help_characters
+from text_sanitization import (
+    forbidden_help_characters,
+    unapproved_question_mark_count,
+)
 
 
 KEYWORDS_DIR = Path(__file__).resolve().parent
@@ -53,6 +56,17 @@ OPTION_RANGE_RE = re.compile(
     re.IGNORECASE,
 )
 LITERAL_ESCAPE_RE = re.compile(r"\\[nrt]")
+SOURCE_TEXT_ARTIFACT_RE = re.compile(
+    r"Error\s*!\s*Reference\s+source\s+not\s+found|Remark\?{2,}|"
+    r"Blast source ID \(see \*LOAD_BLAST_ENHANCED\)D\.|"
+    r"\*DEFINE_(?:COORDI_NATE|COOR_DINATE)_VECTOR|"
+    r"\*DEFINE__COORDINATE_VECTOR|\*DEFINE_TRANSFOR-MATION|"
+    r"MAT_OPTION TROPIC_ELASTIC|"
+    r"(?-i:\*CONTROL_IMPlICIT_SOLVER)|"
+    r"the relevant (?:remarks?|figures?|tables?|equations?)"
+    r"(?:\.\s+(?:in|of)\b|\.\)|\.,|,\s+for\b)",
+    re.IGNORECASE,
+)
 MIXED_TERM_RULES = {
     "low_regime_machine_translation": re.compile(r"低制度弹簧"),
     "high_regime_machine_translation": re.compile(r"高制度弹簧"),
@@ -647,6 +661,9 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
     referenced_identifier_omissions: list[dict[str, Any]] = []
     condition_omissions: list[dict[str, Any]] = []
     unicode_violations: list[dict[str, Any]] = []
+    question_mark_artifacts: list[dict[str, Any]] = []
+    field_label_mismatches: list[dict[str, Any]] = []
+    source_text_artifacts: list[dict[str, Any]] = []
     literal_escape_violations: list[str] = []
     option_label_omissions: list[dict[str, Any]] = []
     option_value_mismatches: list[dict[str, Any]] = []
@@ -656,6 +673,7 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
     terminology_residue: Counter[str] = Counter()
     mixed_term_residue: Counter[str] = Counter()
     by_source: defaultdict[tuple[str, str], list[tuple[str, str]]] = defaultdict(list)
+    field_names = dict(iter_help_field_names(english))
 
     for path, source, suffix, raw in rows:
         source_forbidden = forbidden_help_characters(source)
@@ -668,6 +686,32 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
                     "localized": dict(localized_forbidden),
                 }
             )
+        source_question_marks = unapproved_question_mark_count(source)
+        suffix_question_marks = unapproved_question_mark_count(suffix)
+        if source_question_marks or suffix_question_marks:
+            question_mark_artifacts.append(
+                {
+                    "path": path,
+                    "english": source_question_marks,
+                    "localized": suffix_question_marks,
+                }
+            )
+        source_artifact = SOURCE_TEXT_ARTIFACT_RE.search(source)
+        if source_artifact:
+            source_text_artifacts.append(
+                {"path": path, "artifact": source_artifact.group(0)}
+            )
+        field_name = field_names.get(path, "")
+        if re.fullmatch(r"N[1-8]", field_name):
+            leading_label = re.match(r"^[ \t]*节点[ \t]*N?([1-8])\b", suffix)
+            if leading_label and leading_label.group(1) != field_name[1:]:
+                field_label_mismatches.append(
+                    {
+                        "path": path,
+                        "field": field_name,
+                        "localized_label": leading_label.group(0).strip(),
+                    }
+                )
         if LITERAL_ESCAPE_RE.search(source) or LITERAL_ESCAPE_RE.search(raw):
             literal_escape_violations.append(path)
 
@@ -795,6 +839,9 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
         "referenced_identifier_omissions": len(referenced_identifier_omissions),
         "condition_pair_omissions": len(condition_omissions),
         "unicode_violations": len(unicode_violations),
+        "question_mark_artifact_occurrences": len(question_mark_artifacts),
+        "field_label_mismatch_occurrences": len(field_label_mismatches),
+        "source_text_artifact_occurrences": len(source_text_artifacts),
         "literal_escape_violations": len(literal_escape_violations),
         "option_label_omissions": len(option_label_omissions),
         "option_value_mismatches": len(option_value_mismatches),
@@ -832,6 +879,9 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
             "referenced_identifier_omissions": referenced_identifier_omissions[:100],
             "condition_pair_omissions": condition_omissions[:100],
             "unicode_violations": unicode_violations[:100],
+            "question_mark_artifacts": question_mark_artifacts[:100],
+            "field_label_mismatches": field_label_mismatches[:100],
+            "source_text_artifacts": source_text_artifacts[:100],
             "literal_escape_paths": literal_escape_violations[:100],
             "option_label_omissions": option_label_omissions[:100],
             "option_value_mismatches": option_value_mismatches[:100],

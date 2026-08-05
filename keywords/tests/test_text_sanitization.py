@@ -55,6 +55,90 @@ class TextSanitizationTests(unittest.TestCase):
             ),
         )
 
+    def test_repairs_reviewed_literal_question_mark_artifacts(self):
+        value = (
+            "Use *DEFINE_?FUNCTION when SEII0 ? 0.0; "
+            "set C_3? and divide R_2?R_1; units J?kg?^(-1)."
+        )
+        self.assertEqual(
+            "Use *DEFINE_FUNCTION when SEII0 != 0.0; "
+            "set C_3epsilon and divide R_2/R_1; units J*kg^(-1).",
+            sanitize_help_text(value),
+        )
+        self.assertEqual(
+            "Blast source ID (see *LOAD_BLAST_ENHANCED).",
+            sanitize_help_text("Blast source ID (see *LOAD_BLAST_ENHANCED)D."),
+        )
+        self.assertEqual(
+            "See the relevant figure and the relevant equation.",
+            sanitize_help_text(
+                "See Figure Error! Reference source not found. and "
+                "Equation Error! Reference source not found.."
+            ),
+        )
+        self.assertEqual(
+            "See the relevant figure. When active, see the relevant remark in *MAT_SAMPLE.",
+            sanitize_help_text(
+                "See Figure Error!Reference source not found..When active, see "
+                "Remark Error!Reference source not found.of *MAT_SAMPLE."
+            ),
+        )
+        self.assertEqual(
+            "See the relevant figure.",
+            sanitize_help_text("See Figure Error !Reference source not found."),
+        )
+        self.assertEqual(
+            "Used (see the relevant remark in *EFV_MAT).",
+            sanitize_help_text(
+                "Used.(see Remark Error! Reference source not found. in *EFV_MAT)..."
+            ),
+        )
+        self.assertEqual(
+            "See the relevant equation in *MAT_107 and the relevant figure for details.",
+            sanitize_help_text(
+                "See Equation Error!Reference source not found.in *MAT_107 and "
+                "Figure Error! Reference source not found, for details."
+            ),
+        )
+        self.assertEqual(
+            "Use *DEFINE_COORDINATE_VECTOR and *CONTROL_IMPLICIT_SOLVER.",
+            sanitize_help_text(
+                "Use *DEFINE_COOR_DINATE_VECTOR and *CONTROL_IMPlICIT_SOLVER."
+            ),
+        )
+        self.assertEqual(
+            "See *DEFINE_TRANSFORMATION and *DEFINE_COORDINATE_VECTOR.",
+            sanitize_help_text(
+                "See *DEFINE_TRANSFOR-MATION and *DEFINE__COORDINATE_VECTOR."
+            ),
+        )
+
+    def test_allows_only_reviewed_question_mark_wildcards(self):
+        self.assertEqual(
+            "Use *CONTACT_?_MPP and em_[?].dat.",
+            sanitize_help_text("Use *CONTACT_?_MPP and em_[?].dat."),
+        )
+        with self.assertRaises(HelpTextSanitizationError):
+            sanitize_help_text("Unknown formula A ? B")
+
+    def test_allows_ordinary_sentence_ending_question_mark(self):
+        self.assertEqual(
+            "Should the calculation terminate? EQ.0: No.",
+            sanitize_help_text("Should the calculation terminate? EQ.0: No."),
+        )
+
+    def test_repairs_segment_node_help_from_field_name(self):
+        tree = {
+            "n": "N3",
+            "h": "Nodal point ??, see manual Fig 19.25 of *ELEMENT_SHELL "
+            "for numbering sequence.",
+        }
+        self.assertEqual(
+            "Nodal point 3. See Figure 19-26 of *ELEMENT_SHELL for the "
+            "numbering sequence.",
+            sanitize_help_tree(tree)["h"],
+        )
+
     def test_removes_format_controls_and_normalizes_line_endings(self):
         self.assertEqual("a    b\nc", sanitize_help_text("a\t\u200cb\r\nc"))
         self.assertEqual("a\nb", sanitize_help_text("a\\nb"))

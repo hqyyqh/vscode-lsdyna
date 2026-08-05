@@ -87,8 +87,19 @@ Release requires zero values for every audit failure category:
 - mixed-term and mechanical-spacing residue;
 - copied source prose;
 - missing named option labels or changed numeric option values;
-- forbidden Unicode and literal escape sequences;
+- forbidden Unicode, literal escape sequences, and unapproved literal `?`
+  artifacts in keyword names, formulas, units, or variable notation;
+- known source-extraction residue such as broken cross-reference text or
+  trailing characters left next to a repaired keyword name;
+- mismatches between sequential field names and the leading localized label,
+  such as field `N2` being described as node `N1`;
 - safely repairable duplicate inconsistency.
+
+The two reviewed literal-question-mark forms are `*CONTACT_?_MPP` and
+`em_[?].dat`; ordinary sentence-ending English punctuation is also accepted.
+Any other `?` must be resolved at the generation boundary from the official PDF
+manual or rejected as ambiguous. Do not remove it blindly or infer a symbol from
+adjacent characters.
 
 Both Python tools return non-zero on failure. Normal maintenance and CI print a
 summary only; they do not create tracked reports. Use `--output <temporary-path>`

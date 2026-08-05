@@ -52,10 +52,15 @@ describe('field reference index', () => {
         const { getRenderedCards, lookupKeywordSchema } = require('../../../out/core/keywordSchema');
         const generic = index.definitionKeywords.generic;
 
-        assert.equal(Object.keys(index.references).length, 2298);
+        assert.equal(Object.keys(index.references).length, 2299);
         assert.equal(Object.keys(generic).length, 58);
         assert.equal(new Set(Object.values(generic).map(descriptor => descriptor.target)).size, 29);
-        assert.equal(index.definitionKeywords.ambiguousIdFields.length, 11);
+        assert.equal(index.definitionKeywords.ambiguousIdFields.length, 6);
+        assert.ok(!index.definitionKeywords.ambiguousIdFields.some(item =>
+            item.target === 'DEFINE_FUNCTIONS' ||
+            item.target === 'DEFINE_COORDI_NATE_VECTOR' ||
+            item.target === 'DEFINE_COOR_DINATE_VECTOR'
+        ));
 
         for (const [keyword, descriptor] of Object.entries(generic)) {
             const lookup = lookupKeywordSchema(keyword, schema);

@@ -738,21 +738,6 @@
         "candidates": []
       },
       {
-        "target": "DEFINE_COORDI_NATE_VECTOR",
-        "reason": "missing-schema-entry",
-        "candidates": []
-      },
-      {
-        "target": "DEFINE_COOR_DINATE_VECTOR",
-        "reason": "missing-schema-entry",
-        "candidates": []
-      },
-      {
-        "target": "DEFINE_FUNCTIONS",
-        "reason": "missing-schema-entry",
-        "candidates": []
-      },
-      {
         "target": "DEFINE_TARGET_BOUNDARY",
         "keyword": "DEFINE_TARGET_BOUNDARY",
         "reason": "missing-id-field",
@@ -762,16 +747,6 @@
         "target": "DEFINE_TARGET_BOUNDARY",
         "keyword": "DEFINE_TARGET_BOUNDARY_TITLE",
         "reason": "missing-id-field",
-        "candidates": []
-      },
-      {
-        "target": "DEFINE_TRANSFOR",
-        "reason": "missing-schema-entry",
-        "candidates": []
-      },
-      {
-        "target": "DEFINE__COORDINATE_VECTOR",
-        "reason": "missing-schema-entry",
         "candidates": []
       }
     ]
@@ -81423,51 +81398,6 @@
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
-      },
-      "2:DFX": {
-        "keyword": "EM_CONTROL_COUPLING",
-        "cardIndex": 2,
-        "fieldName": "DFX",
-        "fieldType": "integer",
-        "position": 10,
-        "width": 10,
-        "targetKinds": [],
-        "targetDefinitions": [
-          "DEFINE_FUNCTION"
-        ],
-        "confidence": "high",
-        "source": "schema-help",
-        "allowSignedSwitch": true
-      },
-      "2:DFY": {
-        "keyword": "EM_CONTROL_COUPLING",
-        "cardIndex": 2,
-        "fieldName": "DFY",
-        "fieldType": "integer",
-        "position": 20,
-        "width": 10,
-        "targetKinds": [],
-        "targetDefinitions": [
-          "DEFINE_FUNCTION"
-        ],
-        "confidence": "high",
-        "source": "schema-help",
-        "allowSignedSwitch": true
-      },
-      "2:DFZ": {
-        "keyword": "EM_CONTROL_COUPLING",
-        "cardIndex": 2,
-        "fieldName": "DFZ",
-        "fieldType": "integer",
-        "position": 30,
-        "width": 10,
-        "targetKinds": [],
-        "targetDefinitions": [
-          "DEFINE_FUNCTION"
-        ],
-        "confidence": "high",
-        "source": "schema-help",
-        "allowSignedSwitch": true
       }
     },
     "EM_CONTROL_SOLUTION": {
@@ -86364,6 +86294,9 @@
         "targetKinds": [
           "curve"
         ],
+        "targetDefinitions": [
+          "DEFINE_FUNCTION"
+        ],
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
@@ -86379,6 +86312,9 @@
         "width": 10,
         "targetKinds": [
           "curve"
+        ],
+        "targetDefinitions": [
+          "DEFINE_FUNCTION"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -91316,7 +91252,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -91349,7 +91286,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -91988,7 +91926,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -92067,7 +92006,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -92226,7 +92166,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -92385,7 +92326,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -96762,7 +96704,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -96781,7 +96724,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97305,7 +97249,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97338,7 +97283,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97599,7 +97545,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97633,7 +97580,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97776,7 +97724,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97795,7 +97744,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97814,7 +97764,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -97833,7 +97784,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99076,7 +99028,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99094,7 +99047,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99112,7 +99066,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99186,7 +99141,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99758,7 +99714,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99777,7 +99734,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -99902,7 +99860,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100027,7 +99986,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100106,7 +100066,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100125,7 +100086,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100144,7 +100106,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100178,7 +100141,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100212,7 +100176,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100246,7 +100211,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100280,7 +100246,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -100299,7 +100266,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -101676,7 +101644,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -101695,7 +101664,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -102450,7 +102420,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -102469,7 +102440,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -103812,7 +103784,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -103859,7 +103832,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -104008,7 +103982,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -104027,7 +104002,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106268,7 +106244,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106301,7 +106278,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106334,7 +106312,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106367,7 +106346,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106570,7 +106550,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106589,7 +106570,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106608,7 +106590,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -106627,7 +106610,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -107823,7 +107807,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -107976,7 +107961,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -108082,7 +108068,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -108189,7 +108176,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -109226,7 +109214,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -109399,7 +109388,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -109578,7 +109568,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -109597,7 +109588,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -110844,7 +110836,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -110933,7 +110926,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -111317,7 +111311,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -111623,7 +111618,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -113230,7 +113226,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -113249,7 +113246,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114242,7 +114240,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114321,7 +114320,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114400,7 +114400,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114479,7 +114480,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114692,7 +114694,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -114771,7 +114774,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117372,7 +117376,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117405,7 +117410,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117656,7 +117662,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117781,7 +117788,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117946,7 +117954,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -117979,7 +117988,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -119908,7 +119918,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -119927,7 +119938,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -119946,7 +119958,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -119965,7 +119978,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -120688,7 +120702,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -120707,7 +120722,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -121818,7 +121834,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -121977,7 +121994,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -122616,7 +122634,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -122663,7 +122682,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -125854,7 +125874,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -125873,7 +125894,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -125891,7 +125913,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -125965,7 +125988,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -126039,7 +126063,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -126071,7 +126096,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -126178,7 +126204,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -126285,7 +126312,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127395,7 +127423,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127548,7 +127577,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127580,7 +127610,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127613,7 +127644,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127646,7 +127678,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -127679,7 +127712,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -129333,7 +129367,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -129669,7 +129704,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -130774,7 +130810,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -130793,7 +130830,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -132142,7 +132180,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -132231,7 +132270,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -132320,7 +132360,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -132409,7 +132450,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -134111,7 +134153,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -134145,7 +134188,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -134376,7 +134420,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -134395,7 +134440,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137428,7 +137474,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137447,7 +137494,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137560,7 +137608,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137579,7 +137628,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137688,7 +137738,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -137861,7 +137912,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -138040,7 +138092,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -138059,7 +138112,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -138078,7 +138132,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -138097,7 +138152,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -140186,7 +140242,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -140205,7 +140262,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -145390,7 +145448,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -145409,7 +145468,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146542,7 +146602,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146576,7 +146637,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146610,7 +146672,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146644,7 +146707,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146678,7 +146742,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146697,7 +146762,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146864,7 +146930,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -146883,7 +146950,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -147225,7 +147293,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -147244,7 +147313,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -147263,7 +147333,8 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
@@ -147311,12 +147382,30 @@
         "targetKinds": [],
         "targetDefinitions": [
           "DEFINE_COORDINATE_NODES",
-          "DEFINE_COORDINATE_SYSTEM"
+          "DEFINE_COORDINATE_SYSTEM",
+          "DEFINE_COORDINATE_VECTOR"
         ],
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true,
         "requiresSignedSwitch": true
+      }
+    },
+    "NODE_TRANSFORM": {
+      "1:TRSID": {
+        "keyword": "NODE_TRANSFORM",
+        "cardIndex": 1,
+        "fieldName": "TRSID",
+        "fieldType": "integer",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [],
+        "targetDefinitions": [
+          "DEFINE_TRANSFORMATION"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true
       }
     },
     "PART": {

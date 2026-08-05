@@ -549,7 +549,11 @@ def _serialize_field(field: Any, active: str | None = None) -> dict[str, Any]:
         "n": field_name,
         "p": field.get("position", 0),
         "w": field.get("width", 10),
-        "h": sanitize_help_text(field.get("help", "") or "", path=field_name),
+        "h": sanitize_help_text(
+            field.get("help", "") or "",
+            path=field_name,
+            field_name=field_name,
+        ),
         "t": _field_type(field),
     }
 

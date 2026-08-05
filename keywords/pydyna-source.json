@@ -39,7 +39,7 @@
     "snippets": 8610,
     "textCards": 2,
     "overlappingFixedWidthFields": 231,
-    "referenceKeywords": 2298
+    "referenceKeywords": 2299
   },
   "compatibilityAliases": {
     "retained": [],
@@ -1772,15 +1772,15 @@
     "toolSha256": {
       "scripts/regenerate-keyword-artifacts.cjs": "d5f9f8d8cd02bce57479a24c2348436eeea992b6a564ce5171d22f714e3104a0",
       "keywords/generate_from_pydyna.py": "ab16b325a99ecd7a9695b93ee3c8b4005809dd625e67838fabadc720212d4ca1",
-      "keywords/pydyna_schema_adapter.py": "5c2d25b0801da235200204d89971b071e49624497ee690fcc13abdf7b5a37e8b",
-      "keywords/text_sanitization.py": "53a4ea0f9dae25a649861eb46b63fc48c9681f1ee9b6a30b9978aaa15cd74c6d",
+      "keywords/pydyna_schema_adapter.py": "46416d5f0b20949335e254906da3eb45f0a6c0a414a186cb2ed64261d612ed9f",
+      "keywords/text_sanitization.py": "5c99c7d6b92a25529f30be64cc9117de39573d492d01c4bdd6cc29e09406777e",
       "keywords/compatibility/mat_add_erosion_legacy_fields.json": "8f38e05ce43ad53e6c5e623d65b86dae34038bb909767bfc7f78c78b07a15c75",
       "scripts/generate-field-reference-index.cjs": "3390d4b27a42aaa314a9e4b3272fada4bc2fce02b6a9fcd8b414602e80ff4d5b"
     },
     "artifactSha256": {
       "snippets/lsdyna.json": "496e94df7729baa6e30e1f2805d0efcc7dd46efd901554f1666a05335d4a23a1",
-      "keywords/field_data.json": "fae9a035bc1539dbbd4acfa32d12b527557e720bb6c65f088e69a074fd45ec11",
-      "keywords/field_reference_index.json": "ab255205231d6ab496ed74e17da811867474cbab072060d2cb60bbf63820c3bf"
+      "keywords/field_data.json": "552b9475eefb50c2649114371b44ed287f5b656ce40d9eb52c741ebf46cd4fac",
+      "keywords/field_reference_index.json": "9e8a1cceda914162606a3a6dce7f374125c08baba2fbf60f364ccaf95bdaa0d4"
     }
   }
 }

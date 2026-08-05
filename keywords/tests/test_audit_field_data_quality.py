@@ -116,18 +116,84 @@ class FieldDataQualityAuditTest(unittest.TestCase):
 
         self.assertEqual(0, report["terminology_residue_occurrences"])
 
-    def test_normalizes_legacy_keyword_spelling_and_ignores_formula_stars(self):
-        source = "Use x*2 with *DEFINE_?FUNCTION and *CONTROL_TEST."
+    def test_accepts_reviewed_wildcard_keyword_and_ignores_formula_stars(self):
+        source = "Use x*2 with *CONTACT_?_MPP and *CONTROL_TEST."
         english = sample(source)
         localized = copy.deepcopy(english)
         localized["CONTROL_TEST"]["c"][0][0]["h"] = (
-            f"{source}\n使用公式 x×2，并使用 *DEFINE_FUNCTION 和 *CONTROL_TEST。"
+            f"{source}\n使用公式 x×2，并使用 *CONTACT_?_MPP 和 *CONTROL_TEST。"
         )
 
         report = build_report(english, localized)
 
         self.assertEqual("pass", report["quality_gate"]["status"])
         self.assertEqual(0, report["protected_token_omissions"])
+
+    def test_rejects_unreviewed_literal_question_mark_artifacts(self):
+        source = "Use *DEFINE_?FUNCTION for A ? B."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n使用 *DEFINE_?FUNCTION 计算 A 与 B 的关系。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["question_mark_artifact_occurrences"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_known_source_extraction_artifacts(self):
+        source = "Blast source ID (see *LOAD_BLAST_ENHANCED)D."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n爆炸源 ID（参见 *LOAD_BLAST_ENHANCED）。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["source_text_artifact_occurrences"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_broken_reference_repair_grammar(self):
+        source = "See the relevant equation. in *MAT_107."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n参见 *MAT_107 中的相应公式。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["source_text_artifact_occurrences"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_malformed_keyword_reference_names(self):
+        source = "Use *DEFINE_COORDI_NATE_VECTOR."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n使用 *DEFINE_COORDINATE_VECTOR。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["source_text_artifact_occurrences"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_mismatched_sequential_node_label(self):
+        source = "Nodal point 2."
+        english = sample(source)
+        english["CONTROL_TEST"]["c"][0][0]["n"] = "N2"
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n节点 N1。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["field_label_mismatch_occurrences"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
 
     def test_rejects_missing_explicit_condition_pair(self):
         source = "Scale factor when SOFT = 0 or SOFT = 2."
