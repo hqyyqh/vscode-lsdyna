@@ -13,6 +13,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from text_sanitization import sanitize_help_text, sanitize_help_tree
+
 
 WIDE_FIELD_THRESHOLD = 40
 TITLE_VARIANT_LIMIT = 32
@@ -542,11 +544,12 @@ def _card_active(card: Any) -> str | None:
 
 
 def _serialize_field(field: Any, active: str | None = None) -> dict[str, Any]:
+    field_name = _field_display_name(field)
     serialized: dict[str, Any] = {
-        "n": _field_display_name(field),
+        "n": field_name,
         "p": field.get("position", 0),
         "w": field.get("width", 10),
-        "h": field.get("help", "") or "",
+        "h": sanitize_help_text(field.get("help", "") or "", path=field_name),
         "t": _field_type(field),
     }
 
@@ -1375,6 +1378,7 @@ def build_schema(codegen_dir: Path, kwd_file: Path | None = None) -> GeneratedSc
         field_data,
         snippets,
     )
+    field_data = sanitize_help_tree(field_data)
     manual_row_loops = apply_manual_last_card_repeat_flags(field_data)
     option_enabled = sum(1 for entry in field_data.values() if entry.get("o"))
     variant_count = sum(len(entry.get("v", {})) for entry in field_data.values())

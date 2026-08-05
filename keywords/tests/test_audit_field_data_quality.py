@@ -155,6 +155,196 @@ class FieldDataQualityAuditTest(unittest.TestCase):
         self.assertEqual(0, report["condition_pair_omissions"])
         self.assertEqual(0, report["mixed_term_residue_occurrences"])
 
+    def test_rejects_missing_named_option_label(self):
+        source = "OPTION.EQ.PART: Part option."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nOPTION.EQ.部件：部件选项。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["option_label_omissions"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_missing_cross_field_identifier(self):
+        source = "History-variable index HISVN used for erosion."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n用于侵蚀的历史变量索引。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["referenced_identifier_omissions"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_allows_equivalent_formula_identifier_notation(self):
+        source = "The value is computed as B10 + A."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n该值按 B × 10 + A 计算。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["referenced_identifier_omissions"])
+
+    def test_rejects_changed_numeric_option_value(self):
+        source = "EM dimension type: EQ.2 or EQ.3."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nEM 维度类型：EQ.3 或 EQ.4。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["option_value_mismatches"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_missing_values_in_long_option_table(self):
+        source = "Options:\n" + "\n".join(
+            f"EQ.{value}: Option {value}." for value in range(1, 13)
+        )
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        translated = "选项：\n" + "\n".join(
+            f"EQ.{value}：选项 {value}。" for value in range(1, 12)
+        )
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = f"{source}\n{translated}"
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["option_value_mismatches"])
+        self.assertEqual(
+            ["EQ.12"], report["examples"]["option_value_mismatches"][0]["missing"]
+        )
+
+    def test_accepts_compact_option_ranges_and_pairs(self):
+        source = (
+            "Options:\nEQ.1: A.\nEQ.2: B.\nEQ.3: C.\n"
+            "EQ.10: D.\nEQ.11: E.\nEQ.12: F."
+        )
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n选项：EQ.1～EQ.3：前三项；EQ.10～EQ.12：后三项。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["option_value_mismatches"])
+
+    def test_accepts_unicode_not_equal_as_equivalent_relation(self):
+        source = "Use the scale parameter when MPBN != 0."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nMPBN ≠ 0 时使用比例参数。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["condition_pair_omissions"])
+
+    def test_rejects_changed_comparison_operator(self):
+        source = "If CMO>0 use global constraints; if CM0<0 use a local system."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nCMO = +1.0 时使用全局约束；CM0 = -1.0 时使用局部坐标系。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["condition_pair_omissions"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_unbalanced_or_incomplete_translation(self):
+        source = "Parameter dimension and final description."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n参数量纲为 [L/T，并沿与["
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["punctuation_balance_violations"])
+        self.assertEqual(1, report["incomplete_suffix_occurrences"])
+
+    def test_rejects_bare_option_and_short_english_prose(self):
+        source = "Rotational constraint. EQ.323: rotate about z, x, and z."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nRotational constraint：\nEQ.323。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertGreater(report["terminology_residue_occurrences"], 0)
+        self.assertEqual(1, report["incomplete_suffix_occurrences"])
+
+    def test_rejects_malformed_punctuation_and_short_mixed_phrase(self):
+        source = "Last parametric point ID in block."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n最后 parametric point ID 在 block。。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertGreater(report["mixed_term_residue_occurrences"], 0)
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_non_engineering_terminology_calques(self):
+        source = "Kinematic hardening and hourglass control."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n运动硬化与小时玻璃控制。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertGreater(report["mixed_term_residue_occurrences"], 0)
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_inconsistent_translations_of_identical_source(self):
+        source = "Node ID."
+        english = {
+            "A": sample(source)["CONTROL_TEST"],
+            "B": sample(source)["CONTROL_TEST"],
+        }
+        localized = copy.deepcopy(english)
+        localized["A"]["c"][0][0]["h"] = f"{source}\n节点 ID。"
+        localized["B"]["c"][0][0]["h"] = f"{source}\n节点标识。"
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["duplicate_source_variant_units"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_rejects_forbidden_unicode_and_literal_escape(self):
+        source = "Node ID."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n节点\ufffd ID\\n。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["unicode_violations"])
+        self.assertEqual(1, report["literal_escape_violations"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
     def test_cli_returns_nonzero_and_writes_only_when_requested(self):
         source = "Node ID."
         english = sample(source)

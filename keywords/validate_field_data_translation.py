@@ -12,10 +12,13 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from text_sanitization import forbidden_help_characters
 
 
 KEYWORDS_DIR = Path(__file__).resolve().parent
@@ -27,6 +30,7 @@ MAT_ADD_EROSION_OVERLAY_PATH = (
 TRANSLATABLE_KEYS = {"h", "description", "desc", "summary"}
 HAN_RANGE_START = "\u3400"
 HAN_RANGE_END = "\u9fff"
+LITERAL_ESCAPE_RE = re.compile(r"\\[nrt]")
 
 
 def load_json(path: Path) -> Any:
@@ -133,6 +137,17 @@ def contains_han_text(value: Any) -> bool:
     return any(HAN_RANGE_START <= char <= HAN_RANGE_END for char in str(value or ""))
 
 
+def is_symbol_only_help(value: str) -> bool:
+    """Return whether a help value contains only punctuation/symbols.
+
+    A few solver schemas use a lone marker (currently ``&``) as an intentional
+    placeholder.  Such markers do not have prose to translate and are valid
+    when the localized file preserves them exactly.
+    """
+
+    return not any(character.isalnum() for character in value)
+
+
 def is_valid_localized_help(english_help: str, localized_help: str) -> bool:
     """Accept an English fallback or English followed by a Chinese translation."""
     if localized_help == english_help:
@@ -150,7 +165,11 @@ def find_invalid_bilingual_help(english: Any, localized: Any, path: str = "") ->
         localized_dict = localized if isinstance(localized, dict) else {}
         english_help = str(english.get("h") or "")
         localized_help = str(localized_dict.get("h") or "")
-        if "h" in english and not is_valid_localized_help(english_help, localized_help):
+        if (
+            "h" in english
+            and not is_valid_localized_help(english_help, localized_help)
+            and not (is_symbol_only_help(english_help) and localized_help == english_help)
+        ):
             field_name = english.get("n")
             suffix = f" ({field_name})" if field_name else ""
             errors.append(
@@ -182,7 +201,11 @@ def find_untranslated_help(english: Any, localized: Any, path: str = "") -> list
         localized_dict = localized if isinstance(localized, dict) else {}
         english_help = str(english.get("h") or "")
         localized_help = str(localized_dict.get("h") or "")
-        if english_help and not contains_han_text(localized_help):
+        if (
+            english_help
+            and not is_symbol_only_help(english_help)
+            and not contains_han_text(localized_help)
+        ):
             field_name = english.get("n")
             suffix = f" ({field_name})" if field_name else ""
             errors.append(f"{_format_path(path)}.h{suffix}: missing Chinese help text")
@@ -201,6 +224,61 @@ def find_untranslated_help(english: Any, localized: Any, path: str = "") -> list
             errors.extend(find_untranslated_help(english_item, localized_item, f"{path}[{index}]"))
         return errors
 
+    return errors
+
+
+def find_help_text_character_errors(
+    english: Any, localized: Any, path: str = ""
+) -> list[str]:
+    """Return forbidden Unicode and literal-escape occurrences in help text.
+
+    The check intentionally covers both the English source and the complete
+    localized value.  English prefixes are generated input too, so an invalid
+    code point must not be hidden by an otherwise valid Chinese suffix.
+    """
+
+    errors: list[str] = []
+    if isinstance(english, dict):
+        localized_dict = localized if isinstance(localized, dict) else {}
+        source_help = english.get("h")
+        localized_help = localized_dict.get("h")
+        for label, value in (("English", source_help), ("localized", localized_help)):
+            if not isinstance(value, str):
+                continue
+            value_path = f"{_format_path(path)}.h"
+            forbidden = forbidden_help_characters(value)
+            if forbidden:
+                details = ", ".join(
+                    f"{codepoint} x{count}" for codepoint, count in forbidden.items()
+                )
+                errors.append(f"{value_path}: {label} help contains forbidden Unicode ({details})")
+            escapes = sorted(set(LITERAL_ESCAPE_RE.findall(value)))
+            if escapes:
+                errors.append(
+                    f"{value_path}: {label} help contains literal escape sequences "
+                    + ", ".join(escapes)
+                )
+
+        for key, english_value in english.items():
+            if key == "h":
+                continue
+            next_path = f"{path}.{key}" if path else key
+            errors.extend(
+                find_help_text_character_errors(
+                    english_value, localized_dict.get(key), next_path
+                )
+            )
+        return errors
+
+    if isinstance(english, list):
+        localized_list = localized if isinstance(localized, list) else []
+        for index, english_item in enumerate(english):
+            localized_item = localized_list[index] if index < len(localized_list) else None
+            errors.extend(
+                find_help_text_character_errors(
+                    english_item, localized_item, f"{path}[{index}]"
+                )
+            )
     return errors
 
 
@@ -365,6 +443,7 @@ def sync_translation_file(
     return [
         *compare_field_data_structure(english, synced),
         *find_invalid_bilingual_help(english, synced),
+        *find_help_text_character_errors(english, synced),
         *find_compatibility_localization_errors(english, synced),
     ]
 
@@ -391,11 +470,16 @@ def main(argv: list[str] | None = None) -> int:
             args.localized,
             args.previous_english,
         )
+        english = load_json(args.english)
+        localized = load_json(args.localized)
+        if args.check_content:
+            errors.extend(find_untranslated_help(english, localized))
     else:
         english = load_json(args.english)
         localized = load_json(args.localized)
         errors = compare_field_data_structure(english, localized)
         errors.extend(find_invalid_bilingual_help(english, localized))
+        errors.extend(find_help_text_character_errors(english, localized))
         errors.extend(find_compatibility_localization_errors(english, localized))
         if args.check_content:
             errors.extend(find_untranslated_help(english, localized))

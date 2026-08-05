@@ -14,6 +14,7 @@ sys.path.insert(0, str(KEYWORDS_DIR))
 from validate_field_data_translation import (  # noqa: E402
     compare_field_data_structure,
     find_invalid_bilingual_help,
+    find_help_text_character_errors,
     find_untranslated_help,
     load_json,
     sync_translation_data,
@@ -149,6 +150,28 @@ class FieldDataTranslationTest(unittest.TestCase):
 
         self.assertTrue(any("MAT_001.c[0][0].h (MID)" in error for error in errors))
         self.assertFalse(any("SET_NODE.c[0][0].h" in error for error in errors))
+
+    def test_symbol_only_help_is_a_valid_preserved_marker(self):
+        english = sample_field_data()
+        english["MAT_001"]["c"][0][0]["h"] = "&"
+        localized = copy.deepcopy(english)
+
+        self.assertEqual([], find_invalid_bilingual_help(english, localized))
+        self.assertFalse(
+            any("MAT_001.c[0][0].h" in error for error in find_untranslated_help(english, localized))
+        )
+
+    def test_help_character_gate_rejects_unicode_artifacts_and_literal_escapes(self):
+        english = sample_field_data()
+        localized = copy.deepcopy(english)
+        english["MAT_001"]["c"][0][0]["h"] = "Material\ufffd ID\\n"
+        localized["MAT_001"]["c"][0][0]["h"] = "Material\ufffd ID\\n\n材料 ID"
+
+        errors = find_help_text_character_errors(english, localized)
+
+        self.assertTrue(any("English help contains forbidden Unicode" in error for error in errors))
+        self.assertTrue(any("localized help contains forbidden Unicode" in error for error in errors))
+        self.assertTrue(any("literal escape sequences" in error for error in errors))
 
     def test_bilingual_contract_rejects_chinese_only_and_mismatched_english(self):
         english = sample_field_data()

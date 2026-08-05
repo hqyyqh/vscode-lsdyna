@@ -106816,6 +106816,21 @@
         "source": "schema-help",
         "allowSignedSwitch": true
       },
+      "4:G3C_0": {
+        "keyword": "MAT_240_3MODES",
+        "cardIndex": 4,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "4:LCG3C": {
         "keyword": "MAT_240_3MODES",
         "cardIndex": 4,
@@ -106918,6 +106933,21 @@
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
+      },
+      "5:G3C_0": {
+        "keyword": "MAT_240_3MODES_TITLE",
+        "cardIndex": 5,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
       },
       "5:LCG3C": {
         "keyword": "MAT_240_3MODES_TITLE",
@@ -107350,6 +107380,21 @@
         "source": "schema-help",
         "allowSignedSwitch": true
       },
+      "4:G3C_0": {
+        "keyword": "MAT_240_THERMAL_3MODES",
+        "cardIndex": 4,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "4:LCG3C": {
         "keyword": "MAT_240_THERMAL_3MODES",
         "cardIndex": 4,
@@ -107452,6 +107497,21 @@
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
+      },
+      "5:G3C_0": {
+        "keyword": "MAT_240_THERMAL_3MODES_TITLE",
+        "cardIndex": 5,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
       },
       "5:LCG3C": {
         "keyword": "MAT_240_THERMAL_3MODES_TITLE",
@@ -118914,6 +118974,21 @@
         "source": "schema-help",
         "allowSignedSwitch": true
       },
+      "4:G3C_0": {
+        "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_3MODES",
+        "cardIndex": 4,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "4:LCG3C": {
         "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_3MODES",
         "cardIndex": 4,
@@ -119016,6 +119091,21 @@
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
+      },
+      "5:G3C_0": {
+        "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_3MODES_TITLE",
+        "cardIndex": 5,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
       },
       "5:LCG3C": {
         "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_3MODES_TITLE",
@@ -119448,6 +119538,21 @@
         "source": "schema-help",
         "allowSignedSwitch": true
       },
+      "4:G3C_0": {
+        "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_THERMAL_3MODES",
+        "cardIndex": 4,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
+      },
       "4:LCG3C": {
         "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_THERMAL_3MODES",
         "cardIndex": 4,
@@ -119550,6 +119655,21 @@
         "confidence": "high",
         "source": "schema-help",
         "allowSignedSwitch": true
+      },
+      "5:G3C_0": {
+        "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_THERMAL_3MODES_TITLE",
+        "cardIndex": 5,
+        "fieldName": "G3C_0",
+        "fieldType": "real",
+        "position": 0,
+        "width": 10,
+        "targetKinds": [
+          "curve"
+        ],
+        "confidence": "high",
+        "source": "schema-help",
+        "allowSignedSwitch": true,
+        "requiresSignedSwitch": true
       },
       "5:LCG3C": {
         "keyword": "MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_THERMAL_3MODES_TITLE",

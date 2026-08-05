@@ -1770,16 +1770,17 @@
       "manualKeywordClasses": "223b046dc96b5b8ec411723406835973d0a9ef3237de91aaeab230b8ddd5c050"
     },
     "toolSha256": {
-      "scripts/regenerate-keyword-artifacts.cjs": "f86da678a015fc3314fd88d15e990bd3cdab61bc1b612a253ba98a790b3a0c0e",
+      "scripts/regenerate-keyword-artifacts.cjs": "d5f9f8d8cd02bce57479a24c2348436eeea992b6a564ce5171d22f714e3104a0",
       "keywords/generate_from_pydyna.py": "ab16b325a99ecd7a9695b93ee3c8b4005809dd625e67838fabadc720212d4ca1",
-      "keywords/pydyna_schema_adapter.py": "fec4d1d960691b29ba8f3772d4c34e002790bbcfa218842b607421076d856d3f",
-      "keywords/compatibility/mat_add_erosion_legacy_fields.json": "5483611f1f9e20bdcc26310a1530a6d20fdb3837437afc0e5a20cc24ace1b319",
+      "keywords/pydyna_schema_adapter.py": "5c2d25b0801da235200204d89971b071e49624497ee690fcc13abdf7b5a37e8b",
+      "keywords/text_sanitization.py": "53a4ea0f9dae25a649861eb46b63fc48c9681f1ee9b6a30b9978aaa15cd74c6d",
+      "keywords/compatibility/mat_add_erosion_legacy_fields.json": "8f38e05ce43ad53e6c5e623d65b86dae34038bb909767bfc7f78c78b07a15c75",
       "scripts/generate-field-reference-index.cjs": "3390d4b27a42aaa314a9e4b3272fada4bc2fce02b6a9fcd8b414602e80ff4d5b"
     },
     "artifactSha256": {
       "snippets/lsdyna.json": "496e94df7729baa6e30e1f2805d0efcc7dd46efd901554f1666a05335d4a23a1",
-      "keywords/field_data.json": "50daa04755e19c4752b9b877d114472abe8c6514036f6ffd8247a352473b5e12",
-      "keywords/field_reference_index.json": "b5f601c289bb2d0d572e80c0b83894df0f8f880c59bf3af5681e58a2b18d25af"
+      "keywords/field_data.json": "fae9a035bc1539dbbd4acfa32d12b527557e720bb6c65f088e69a074fd45ec11",
+      "keywords/field_reference_index.json": "ab255205231d6ab496ed74e17da811867474cbab072060d2cb60bbf63820c3bf"
     }
   }
 }

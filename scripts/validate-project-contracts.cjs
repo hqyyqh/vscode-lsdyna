@@ -43,6 +43,7 @@ const GENERATION_TOOL_PATHS = [
     'scripts/regenerate-keyword-artifacts.cjs',
     'keywords/generate_from_pydyna.py',
     'keywords/pydyna_schema_adapter.py',
+    'keywords/text_sanitization.py',
     'keywords/compatibility/mat_add_erosion_legacy_fields.json',
     'scripts/generate-field-reference-index.cjs',
 ];

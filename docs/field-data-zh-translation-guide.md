@@ -7,6 +7,9 @@
 - Runtime output: `out/runtime/field_help_zh.delta.json.gz`
 - Structure/content validator: `keywords/validate_field_data_translation.py`
 - Final quality gate: `keywords/audit_field_data_quality.py`
+- Generation boundary and Unicode sanitizer: `keywords/text_sanitization.py`
+- PyDYNA adapter/generator: `keywords/pydyna_schema_adapter.py`,
+  `keywords/generate_from_pydyna.py`
 - Reviewed compatibility source: `keywords/compatibility/mat_add_erosion_legacy_fields.json`
 
 The extension treats the English file as the schema authority. The Chinese file is
@@ -32,6 +35,15 @@ empty. Chinese-only values and stale or shortened English prefixes are invalid.
 
 The JSON format is UTF-8, two-space indentation, LF line endings, original key
 order, and one final newline.
+
+Help text is normalized to NFC and may contain LF line breaks, engineering
+symbols, Greek letters, mathematical notation, and units. It must not contain
+U+FFFD, invisible or bidi-format characters, Unicode noncharacters, C0/C1
+control characters, or literal escape sequences such as `\\n`, `\\r`, and `\\t`.
+The same rule is applied to the English source and the complete bilingual value;
+removing an invalid code point from only the Chinese suffix is insufficient.
+The generation sanitizer repairs only deterministic historical extractor
+artifacts and fails on any remaining ambiguous character.
 
 ## Translation requirements
 
@@ -72,6 +84,10 @@ Release requires zero values for every audit failure category:
 - protected-token omission;
 - obvious English prose residue;
 - frozen terminology residue;
+- mixed-term and mechanical-spacing residue;
+- copied source prose;
+- missing named option labels or changed numeric option values;
+- forbidden Unicode and literal escape sequences;
 - safely repairable duplicate inconsistency.
 
 Both Python tools return non-zero on failure. Normal maintenance and CI print a
@@ -99,6 +115,38 @@ non-empty translated count.
 Synchronization preserves a Chinese suffix only when its complete old English
 source still matches, including a unique translation-memory match after movement.
 It never authorizes an old translation for changed English.
+
+The current PyDYNA source freeze is commit
+`367fea6c13ca7c8d2e28bd290d943395d84e77a3`. The frozen codegen directory is an
+external input, not a repository artifact. It must contain `kwd.json`,
+`manifest.json`, `additional-cards.json`, and the matching
+`src/ansys/dyna/core/keywords/keyword_classes/manual` tree. The reproducible
+generation command is:
+
+```bash
+python keywords/generate_from_pydyna.py \
+  --codegen-dir <frozen-pydyna>/codegen --dry-run
+```
+
+The generator reads those files plus the compatibility overlay and writes only
+the final English schema `keywords/field_data.json`, snippets
+`snippets/lsdyna.json`, and an optional statistics file. The orchestrator then
+derives `keywords/field_reference_index.json` and records the source/tool and
+artifact hashes in `keywords/pydyna-source.json`. It does not generate or track
+a Chinese candidate, review report, or intermediate package. After a source
+update, record the new commit and input hashes in the provenance file, compare
+keyword/field statistics, regenerate the English artifacts, then run the
+bilingual validator, audit, tests, and runtime-delta build before reviewing new
+or changed Chinese suffixes.
+
+The minimum Unicode/content check sequence is:
+
+```bash
+python keywords/generate_from_pydyna.py --codegen-dir <frozen-pydyna>/codegen --dry-run
+python keywords/validate_field_data_translation.py --check-content
+python keywords/audit_field_data_quality.py
+python -m unittest discover -s keywords/tests -p "test_*.py"
+```
 
 For `*MAT_ADD_EROSION`, the compatibility overlay retains the historical
 `DMGTYP`, `LCSDG`, `ECRIT`, `DMGEXP`, `DCRIT`, and `FADEXP` positions for legacy

@@ -24,6 +24,7 @@ const GENERATION_TOOLS = [
     path.join('scripts', 'regenerate-keyword-artifacts.cjs'),
     path.join('keywords', 'generate_from_pydyna.py'),
     path.join('keywords', 'pydyna_schema_adapter.py'),
+    path.join('keywords', 'text_sanitization.py'),
     MAT_ADD_EROSION_OVERLAY,
     path.join('scripts', 'generate-field-reference-index.cjs'),
 ];

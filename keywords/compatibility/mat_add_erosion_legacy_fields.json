@@ -44,7 +44,7 @@
       "name": "ECRIT",
       "type": "real",
       "english": "Critical plastic strain (material instability), see below.\n\nLT.0.0: |ECRIT| is either a load curve ID defining critical equivalent plastic strain versus triaxiality or a table ID defining critical equivalent plastic strain as a function of triaxiality and Lode parameter (as in LCSDG).\nEQ.0.0: Fixed value DCRIT defining critical damage is read (see below).\nGT.0.0: Fixed value for stress-state independent critical equivalent plastic strain.",
-      "chinese": "临界塑性应变（材料不稳定性），见下文。\n\nLT.0.0: |ECRIT| 是定义临界等效塑性应变随三轴度变化的载荷曲线 ID，或是定义临界等效塑性应变作为三轴度和 Lode 参数函数的表 ID（同 LCSDG）。\nEQ.0.0: 读取定义临界损伤的固定值 DCRIT（见下文）。\nGT.0.0: 与应力状态无关的临界等效塑性应变固定值。"
+      "chinese": "临界塑性应变（材料不稳定性），见下文。\n\nLT.0.0: |ECRIT| 是定义临界等效塑性应变随三轴度变化的载荷曲线 ID，或是定义临界等效塑性应变随三轴度和 Lode 参数变化的表 ID（同 LCSDG）。\nEQ.0.0: 读取定义临界损伤的固定值 DCRIT（见下文）。\nGT.0.0: 与应力状态无关的临界等效塑性应变固定值。"
     },
     {
       "name": "DMGEXP",
@@ -56,7 +56,7 @@
       "name": "DCRIT",
       "type": "real",
       "english": "Damage threshold value (critical damage). If a Load curve of critical plastic strain or fixed value is given by ECRIT, input is ignored.",
-      "chinese": "损伤阈值（临界损伤）。如果 ECRIT 给出了临界塑性应变的载荷曲线或固定值，则忽略该输入。"
+      "chinese": "损伤阈值（临界损伤）。若 ECRIT 给出临界塑性应变载荷曲线或固定值，则忽略此输入。"
     },
     {
       "name": "FADEXP",
