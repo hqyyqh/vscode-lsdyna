@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.5] - 2026-08-06
+
 ### Added
 - **Change-mark color schemes:** Session marks now offer one adaptive theme-aware default plus orange/blue, red/blue, high-contrast, and custom choices. Presets switch automatically across light, dark, high-contrast, and high-contrast-light themes; custom colors are applied consistently to gutter shapes, line tints, the overview ruler, and the minimap.
 
 ### Fixed
+- **Keyword-schema CI:** Linux CI and release jobs now install the frozen PyDYNA code-generation dependencies before running schema-adapter tests.
+- **Release packaging:** Local temporary worktree administration and scratch-worktree directories are excluded from VSIX contents and enforced by the package contract.
 - **Chinese field help:** Published the reviewed Chinese field-help set with exact English-source binding, protected LS-DYNA identifiers and numeric branches, and the reviewed legacy `*MAT_ADD_EROSION` compatibility descriptions.
 - **Session change marks after Save As:** A copied deck now inherits the source editing baseline, so only the lines actually changed since the source was opened become saved-green. Unrelated same-content files are not linked, and uncertain lifecycle cases fall back to a clean target instead of marking the whole file as inserted.
 - **Include paths and change-mark indicators:** Every schema-backed Include filename/path card—including structured variants such as `*INCLUDE_TRANSFORM`, `*INCLUDE_STAMPED_PART`, and `*INCLUDE_MULTISCALE`—now keeps numeric prefixes, underscores, separators, and extensions in one path-string highlight without recoloring later numeric cards. Resolved includes rely on their native clickable link underline, while unresolved includes show one trailing warning-triangle icon. Include status no longer occupies the editor glyph margin or hides line change marks.

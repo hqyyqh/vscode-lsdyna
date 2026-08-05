@@ -69,6 +69,7 @@ Use established terms consistently, for example 节点、单元、部件、集�
 Run all of the following against the same English and Chinese files:
 
 ```bash
+python -m pip install -r keywords/requirements-codegen.txt
 python keywords/validate_field_data_translation.py --check-content
 python keywords/audit_field_data_quality.py
 python -m unittest discover -s keywords/tests -p "test_*.py" -v

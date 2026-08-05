@@ -10,6 +10,7 @@ Install exactly the locked dependencies:
 
 ```bash
 npm ci
+python -m pip install -r keywords/requirements-codegen.txt
 ```
 
 Use `dev` as the normal integration branch. `master` is the stable release branch

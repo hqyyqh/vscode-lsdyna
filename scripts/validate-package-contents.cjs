@@ -22,6 +22,8 @@ const FORBIDDEN_PREFIXES = [
     '.artifacts/',
     '.github/',
     '.pytest_cache/',
+    '.tmp-worktree-admin/',
+    '.tmp-worktrees/',
     '.uv-cache/',
     'dist/',
     'docs/',

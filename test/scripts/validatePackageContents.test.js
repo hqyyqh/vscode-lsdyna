@@ -24,6 +24,8 @@ describe('VSIX content contract', () => {
             ...completeFiles(),
             '.artifacts/push-preparation/plan.md',
             '.pytest_cache/v/cache/nodeids',
+            '.tmp-worktree-admin/state.json',
+            '.tmp-worktrees/local-task/process.md',
             '.uv-cache/CACHEDIR.TAG',
             'dist/dynasense.vsix',
             'keywords/field_data_zh.json',
@@ -33,6 +35,8 @@ describe('VSIX content contract', () => {
         assert.deepEqual(errors, [
             'VSIX contains forbidden authoring/process file: .artifacts/push-preparation/plan.md',
             'VSIX contains forbidden authoring/process file: .pytest_cache/v/cache/nodeids',
+            'VSIX contains forbidden authoring/process file: .tmp-worktree-admin/state.json',
+            'VSIX contains forbidden authoring/process file: .tmp-worktrees/local-task/process.md',
             'VSIX contains forbidden authoring/process file: .uv-cache/CACHEDIR.TAG',
             'VSIX contains forbidden authoring/process file: dist/dynasense.vsix',
             'VSIX contains forbidden authoring/process file: docs/plans/release.md',
