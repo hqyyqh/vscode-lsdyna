@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Change-mark color schemes:** Session marks now offer one adaptive theme-aware default plus orange/blue, red/blue, high-contrast, and custom choices. Presets switch automatically across light, dark, high-contrast, and high-contrast-light themes; custom colors are applied consistently to gutter shapes, line tints, the overview ruler, and the minimap.
 
 ### Fixed
+- **Chinese field help:** Published the reviewed Chinese field-help set with exact English-source binding, protected LS-DYNA identifiers and numeric branches, and the reviewed legacy `*MAT_ADD_EROSION` compatibility descriptions.
 - **Session change marks after Save As:** A copied deck now inherits the source editing baseline, so only the lines actually changed since the source was opened become saved-green. Unrelated same-content files are not linked, and uncertain lifecycle cases fall back to a clean target instead of marking the whole file as inserted.
-- **Include and change-mark indicators:** Resolved includes now rely on their native clickable link underline, while unresolved includes show one trailing local-missing warning icon. Include status no longer occupies the editor glyph margin or hides line change marks.
+- **Include paths and change-mark indicators:** Plain `*INCLUDE` and `*INCLUDE_PATH` entries now keep numeric prefixes, underscores, separators, and extensions in one path-string highlight. Resolved includes rely on their native clickable link underline, while unresolved includes show one trailing warning-triangle icon. Include status no longer occupies the editor glyph margin or hides line change marks.
 - **Reference Hover:** Known current-file curve, table, and generic-definition candidates can be inspected before a project scan while the binding remains explicitly uncertain. Candidate links and previews no longer imply a unique resolved definition.
 - **Table references:** Child curve/table rows retain exact, ambiguous, uncertain, or missing state. Ambiguous and uncertain children are never selected implicitly or used to build a combined 3D preview.
 - **Parameter Hover:** Current-file source definitions are labeled separately from occurrence-aware effective values in the selected or unique main-deck context.
@@ -20,9 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Theme-aware visual system:** Syntax highlighting remains controlled by standard TextMate scopes, editor/tree warnings now use VS Code semantic theme colors, rulers inherit `editorRuler.foreground`, and SVG/animated fallbacks share one audited palette for light, dark, high-contrast, and high-contrast-light themes. Change marks also use a non-color unsaved status dot.
 - **Include status clarity:** Existing include paths rely on their native underlined document link; missing paths use a trailing theme-aware exclamation indicator. Resolved files no longer borrow Git untracked colors in the Include Tree.
+- **Keyword data:** Regenerated snippets, field help, and reference metadata from the frozen PyDYNA source recorded in `keywords/pydyna-source.json`. The reproducible build retains reviewed legacy `*MAT_ADD_EROSION` fields used by older solver decks.
 - **Chinese field help packaging:** The full localized schema remains the review source but is compiled into a hash-bound runtime delta. The extension now loads one authoritative English schema and applies Chinese help lazily, reducing package size and avoiding a second complete schema in memory.
 - **Keyword actions:** Select Cards, Format, and (when supported) Configure Options now live in the keyword Hover action area instead of occupying editor lines by default. `lsdyna.codeLens.showOnAllKeywords` remains available for users who want these CodeLens actions above every keyword.
 - **English and Chinese copy:** Revised commands, settings, status messages, manual-reader controls, and README terminology for clearer LS-DYNA workflows. Added localization contracts for manifest text, locale keys, and placeholders.
+- **Manual setup documentation:** Updated both READMEs with the current English-original and bilingual manual-pack downloads, the Windows-only SumatraPDF requirement, and the notice that only the bundled PDF manuals are the official authoritative reference.
+- **Release page guidance:** Automated GitHub releases now append maintained English and Chinese instructions for VSIX installation, window reloads, and manual-pack setup instead of the obsolete manual-pack text.
 
 ## [3.1.1] - 2026-07-24
 

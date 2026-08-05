@@ -3,6 +3,7 @@
 	"name": "LS-Dyna",
 	"scopeName": "source.lsdyna",
 	"patterns": [
+		{"include": "#include_path_blocks"},
 		{"include": "#comments"},
 		{"include": "#dyna_numeric"},
 		{"include": "#parameter_expression_block"},
@@ -15,6 +16,26 @@
 		{"include": "#phrase"}
 	],
 	"repository": {
+		"include_path_blocks": {
+			"patterns": [
+				{
+					"comment": "Plain INCLUDE filenames and INCLUDE_PATH directories are path strings",
+					"begin": "^([ \\t]*)((?i:\\*INCLUDE(?:_PATH(?:_RELATIVE)?)?))[ \\t]*\\r?$",
+					"beginCaptures": {
+						"2": { "name": "keyword.control.lsdyna" }
+					},
+					"end": "(?=^[ \\t]*\\*)",
+					"patterns": [
+						{ "include": "#comments" },
+						{
+							"comment": "Keep numeric prefixes, underscores, separators, and extensions in one path scope",
+							"name": "string.unquoted.path.lsdyna",
+							"match": "^(?![ \\t]*[$*])(?=.*\\S)[^\\r\\n]+$"
+						}
+					]
+				}
+			]
+		},
 		"comments": {
 			"patterns": [
 				{

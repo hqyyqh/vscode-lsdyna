@@ -33,6 +33,19 @@ describe('theme contracts', () => {
         }
     });
 
+    it('keeps plain INCLUDE paths in one string scope before numeric tokenization', () => {
+        const grammar = readJson('syntaxes/lsdyna.tmLanguage.json');
+        assert.equal(grammar.patterns[0].include, '#include_path_blocks');
+
+        const block = grammar.repository.include_path_blocks.patterns[0];
+        assert.ok(block.begin.includes('INCLUDE(?:_PATH(?:_RELATIVE)?)?'));
+        assert.equal(block.beginCaptures['2'].name, 'keyword.control.lsdyna');
+
+        const pathPattern = block.patterns.find(pattern => pattern.name === 'string.unquoted.path.lsdyna');
+        assert.ok(pathPattern, 'INCLUDE path string pattern');
+        assert.ok(pathPattern.match.includes('[^\\r\\n]+$'));
+    });
+
     it('lets editor rulers inherit editorRuler.foreground instead of forcing colors', () => {
         const manifest = readJson('package.json');
         assert.deepEqual(

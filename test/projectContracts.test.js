@@ -80,13 +80,14 @@ describe('project contracts', () => {
             'docs/reports/field-data-zh/final.json',
             '.github/analysis/2026-05-18-include-tree-analysis.md',
             '.github/release-appendix.md',
+            '.github/release-draft.md',
             '.github/workflows/ci.yml',
             'keywords/field_data_translation_review.py',
         ], errors);
         assert.deepEqual(errors, [
             'process artifact must not be tracked: docs/reports/field-data-zh/final.json',
             'process artifact must not be tracked: .github/analysis/2026-05-18-include-tree-analysis.md',
-            'process artifact must not be tracked: .github/release-appendix.md',
+            'process artifact must not be tracked: .github/release-draft.md',
             'process artifact must not be tracked: keywords/field_data_translation_review.py',
         ]);
     });

@@ -2475,7 +2475,7 @@ describe('large document guards', () => {
         for (const type of created) {
             assert.equal(type.options.gutterIconPath, undefined);
         }
-        assert.equal(types.missingIndicatorDecoration.options.after.contentText, ' !');
+        assert.equal(types.missingIndicatorDecoration.options.after.contentText, ' \u26A0\uFE0E');
         assert.equal(types.missingIndicatorDecoration.options.after.color.id, 'editorWarning.foreground');
         assert.equal(types.missingIndicatorDecoration.options.after.margin, '0 0 0 0.35em');
         assert.equal(types.missingPathDecoration.options.fontStyle, 'italic');

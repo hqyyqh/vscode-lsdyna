@@ -955,7 +955,9 @@ function createIncludeDecorationTypes(vscodeApi) {
         }),
         missingIndicatorDecoration: vscodeApi.window.createTextEditorDecorationType({
             after: {
-                contentText: ' !',
+                // U+FE0E keeps the warning sign as a monochrome text glyph so
+                // editorWarning.foreground remains authoritative across themes.
+                contentText: ' \u26A0\uFE0E',
                 color: warningColor,
                 fontWeight: 'bold',
                 margin: '0 0 0 0.35em',

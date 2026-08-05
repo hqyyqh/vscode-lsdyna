@@ -17,6 +17,7 @@ const FORBIDDEN_TRACKED_PREFIXES = [
     'docs/superpowers/',
 ];
 const ALLOWED_GITHUB_TRACKED_FILES = new Set([
+    '.github/release-appendix.md',
     '.github/scripts/marketplace-release.cjs',
     '.github/workflows/ci.yml',
     '.github/workflows/release.yml',
@@ -332,6 +333,38 @@ function validateWorkflowCoverage(root, errors) {
             if (!workflow.includes(sourceLine)) {
                 errors.push(`${workflowName} does not prepare pinned PyDYNA input: ${sourceLine}`);
             }
+        }
+    }
+
+    const releaseWorkflow = decodeUtf8Strict(path.join(root, '.github', 'workflows', 'release.yml'));
+    for (const releaseSetting of [
+        'generate_release_notes: true',
+        'append_body: true',
+        'body_path: .github/release-appendix.md',
+    ]) {
+        if (!releaseWorkflow.includes(releaseSetting)) {
+            errors.push(`release.yml does not publish stable usage guidance: ${releaseSetting}`);
+        }
+    }
+
+    const releaseAppendixPath = path.join(root, '.github', 'release-appendix.md');
+    if (!fs.existsSync(releaseAppendixPath)) {
+        errors.push('release usage guidance is missing: .github/release-appendix.md');
+        return;
+    }
+    const releaseAppendix = decodeUtf8Strict(releaseAppendixPath);
+    for (const requiredText of [
+        'Install from VSIX',
+        'Developer: Reload Window',
+        'lsdyna-manual-pack-en_20260804.zip',
+        'lsdyna-manual-pack-bilingual_20260804.zip',
+        'SumatraPDF is Windows-only',
+        'Only the PDF manuals are the official, authoritative reference',
+        '从 VSIX 安装',
+        '只有 PDF 手册是官方权威资料',
+    ]) {
+        if (!releaseAppendix.includes(requiredText)) {
+            errors.push(`release usage guidance is missing required text: ${requiredText}`);
         }
     }
 }

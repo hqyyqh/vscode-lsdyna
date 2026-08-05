@@ -184,6 +184,8 @@ jobs:
           name: DynaSense ${{ steps.metadata.outputs.version }}
           files: ${{ steps.metadata.outputs.vsix }}
           generate_release_notes: true
+          append_body: true
+          body_path: .github/release-appendix.md
 
       - name: Create marketplace release verification issue
         if: steps.metadata.outputs.publish == 'true'
