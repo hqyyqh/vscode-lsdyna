@@ -27,6 +27,26 @@ ENGLISH_RESIDUE_RE = re.compile(
 # whitespace is a mechanical translation artefact (for example ``参数 说明``).
 MECHANICAL_SPACING_RE = re.compile(r"[\u3400-\u9fff][^\S\r\n]+[\u3400-\u9fff]")
 LATIN_WORD_RE = re.compile(r"[A-Za-z]+(?:[-'][A-Za-z]+)*")
+CONDITION_PAIR_RE = re.compile(
+    r"\b([A-Z][A-Z0-9_]*)[ \t]*=[ \t]*([-+]?(?:\d+(?:\.\d+)?|\.\d+))\b"
+)
+MIXED_TERM_RULES = {
+    "low_regime_machine_translation": re.compile(r"低制度弹簧"),
+    "high_regime_machine_translation": re.compile(r"高制度弹簧"),
+    "general_remarks_residue": re.compile(r"\bGeneral Remarks\b"),
+    "normal_format_machine_translation": re.compile(r"法向格式"),
+    "new_legends_residue": re.compile(r"\bNew Legends\b"),
+    "lowercase_segment_residue": re.compile(r"(?<![A-Za-z_])segment\b"),
+    "lowercase_card_residue": re.compile(r"(?<![A-Za-z_])cards?\b"),
+    "lowercase_rank_residue": re.compile(r"(?<![A-Za-z_])rank\b"),
+    "lowercase_ascii_residue": re.compile(r"(?<![A-Za-z_])ascii\b"),
+    "time_birth_residue": re.compile(r"\btime\s*=\s*BIRTH\b"),
+    "joint_label_residue": re.compile(
+        r"\b(?:Gears|Rack and Pinion|Pulley|Screw|Motors|Harmonic)\b"
+    ),
+    # Final user-facing translations must not contain audit/process notes.
+    "process_annotation_residue": re.compile(r"英文源|独立盲审译文|翻译记录|候选译文"),
+}
 PROTECTED_SOURCE_TOKEN_RE = re.compile(
     r"(?:\*[A-Z0-9_?+-]+|\b(?:EQ|NE|GT|GE|LT|LE)\.|"
     r"\b(?:AND|OR|IF|MPP|SMP|ICFD|SPH|ALE|FSI|NURBS|ID|PID|SID|CID|DOF|SEI|AMMG)\b|"
@@ -218,6 +238,57 @@ def protected_token_present(token: str, suffix: str) -> bool:
     return token in suffix or normalized_token in normalized_suffix
 
 
+def source_condition_pairs(source: str) -> list[tuple[str, str]]:
+    """Return explicit solver condition pairs whose loss changes semantics."""
+    return list(dict.fromkeys(CONDITION_PAIR_RE.findall(source)))
+
+
+def condition_pair_present(name: str, value: str, suffix: str) -> bool:
+    # Keep the solver variable/value pair even when the Chinese prose uses
+    # natural wording such as ``PFORM 设为 0`` or ``TBEG 默认值为 0.0``.
+    suffix = suffix.replace("−", "-").replace("–", "-")
+    try:
+        from decimal import Decimal
+
+        canonical_value = format(Decimal(value), "f").rstrip("0").rstrip(".")
+        if canonical_value in {"", "-0"}:
+            canonical_value = "0"
+    except Exception:
+        canonical_value = value
+    numeric_variants = {value, canonical_value}
+    name_variants = {name}
+    name_variants.update({
+        "OPTION": "选项",
+        "TYPE": "类型",
+        "EQ": "EQ",
+    }.get(name, ""))
+    name_variants.discard("")
+    relation = r"(?:=|设为|设置为|取值为|取|等于|为|是)"
+    for name_variant in name_variants:
+        for value_variant in numeric_variants:
+            direct = re.compile(
+                r"\b" + re.escape(name_variant) + r"\s*=\s*"
+                + re.escape(value_variant) + r"(?![0-9A-Za-z])"
+            )
+            dotted = re.compile(
+                r"\b" + re.escape(name_variant) + r"\s*[.:]\s*"
+                + re.escape(value_variant) + r"(?![0-9A-Za-z])"
+            )
+            natural = re.compile(
+                r"\b" + re.escape(name_variant) + r"[^。；;\n]{0,24}"
+                + relation + r"[^。；;\n]{0,12}" + re.escape(value_variant)
+            )
+            if direct.search(suffix) or dotted.search(suffix) or natural.search(suffix):
+                return True
+        # A negative-limit description such as ``MULO 为负（如 -1）`` is a
+        # faithful rendering of the source condition ``MULO = -1``.
+        if value.startswith("-") and re.search(
+            r"\b" + re.escape(name_variant) + r"[^。；;\n]{0,24}为负", suffix
+        ):
+            return True
+    return False
+
+
 def _latin_words(value: str) -> list[str]:
     masked = PROTECTED_LATIN_RE.sub(" ", value)
     return [
@@ -280,8 +351,10 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
     copied_source_prose: list[dict[str, Any]] = []
     review_queue: list[str] = []
     protected_omissions: list[dict[str, Any]] = []
+    condition_omissions: list[dict[str, Any]] = []
     marker_counts: Counter[str] = Counter()
     terminology_residue: Counter[str] = Counter()
+    mixed_term_residue: Counter[str] = Counter()
     by_source: defaultdict[str, list[tuple[str, str]]] = defaultdict(list)
 
     for path, source, suffix, raw in rows:
@@ -314,7 +387,18 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
         if missing:
             protected_omissions.append({"path": path, "tokens": missing})
 
+        missing_conditions = [
+            f"{name} = {value}"
+            for name, value in source_condition_pairs(source)
+            if not condition_pair_present(name, value, suffix)
+        ]
+        if missing_conditions:
+            condition_omissions.append({"path": path, "conditions": missing_conditions})
+
         terminology_residue.update(_term_residue(source, suffix))
+        for rule_name, rule in MIXED_TERM_RULES.items():
+            if rule.search(suffix):
+                mixed_term_residue[rule_name] += 1
         by_source[source].append((path, suffix))
 
     duplicate_groups: list[dict[str, Any]] = []
@@ -346,20 +430,23 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
         "mechanical_marker_occurrences": sum(marker_counts.values()),
         "generic_template_occurrences": len(templates),
         "protected_token_omissions": len(protected_omissions),
+        "condition_pair_omissions": len(condition_omissions),
         "english_residue_occurrences": len(english_residue),
         "mechanical_spacing_occurrences": len(mechanical_spacing),
         "copied_source_prose_occurrences": len(copied_source_prose),
         "terminology_residue_occurrences": sum(terminology_residue.values()),
+        "mixed_term_residue_occurrences": sum(mixed_term_residue.values()),
         "duplicate_consensus_repairable_occurrences": consensus_repairable,
     }
     status = "pass" if all(value == 0 for value in failures.values()) else "fail"
 
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "occurrence_count": len(rows),
         **failures,
         "mechanical_marker_counts": dict(marker_counts),
         "terminology_residue_counts": dict(terminology_residue),
+        "mixed_term_residue_counts": dict(mixed_term_residue),
         "source_phrase_residue_occurrences": len(source_phrase_residue),
         "duplicate_source_units_with_variants": len(duplicate_groups),
         "examples": {
@@ -372,6 +459,7 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
             "copied_source_prose_paths": copied_source_prose[:100],
             "review_queue_paths": review_queue[:100],
             "protected_token_omissions": protected_omissions[:100],
+            "condition_pair_omissions": condition_omissions[:100],
             "duplicate_variants": sorted(
                 duplicate_groups,
                 key=lambda item: (-item["consensus_repairable"], -item["variant_count"]),

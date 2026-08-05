@@ -129,6 +129,32 @@ class FieldDataQualityAuditTest(unittest.TestCase):
         self.assertEqual("pass", report["quality_gate"]["status"])
         self.assertEqual(0, report["protected_token_omissions"])
 
+    def test_rejects_missing_explicit_condition_pair(self):
+        source = "Scale factor when SOFT = 0 or SOFT = 2."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n或 SOFT = 2 时的比例因子。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["condition_pair_omissions"])
+        self.assertEqual("fail", report["quality_gate"]["status"])
+
+    def test_accepts_natural_chinese_condition_and_rejects_mixed_terms(self):
+        source = "OPTION = 2 uses the segment card."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n选项设为 2 时使用该段卡片。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["condition_pair_omissions"])
+        self.assertEqual(0, report["mixed_term_residue_occurrences"])
+
     def test_cli_returns_nonzero_and_writes_only_when_requested(self):
         source = "Node ID."
         english = sample(source)
