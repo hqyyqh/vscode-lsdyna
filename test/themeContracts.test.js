@@ -33,17 +33,55 @@ describe('theme contracts', () => {
         }
     });
 
-    it('keeps plain INCLUDE paths in one string scope before numeric tokenization', () => {
+    it('covers every schema-backed INCLUDE path card before numeric tokenization', () => {
         const grammar = readJson('syntaxes/lsdyna.tmLanguage.json');
         assert.equal(grammar.patterns[0].include, '#include_path_blocks');
 
-        const block = grammar.repository.include_path_blocks.patterns[0];
-        assert.ok(block.begin.includes('INCLUDE(?:_PATH(?:_RELATIVE)?)?'));
-        assert.equal(block.beginCaptures['2'].name, 'keyword.control.lsdyna');
+        const blocks = grammar.repository.include_path_blocks.patterns;
+        const [repeatableBlock, firstCardBlock, secondCardBlock] = blocks;
+        for (const block of blocks) {
+            assert.equal(block.beginCaptures['2'].name, 'keyword.control.lsdyna');
+        }
 
-        const pathPattern = block.patterns.find(pattern => pattern.name === 'string.unquoted.path.lsdyna');
-        assert.ok(pathPattern, 'INCLUDE path string pattern');
-        assert.ok(pathPattern.match.includes('[^\\r\\n]+$'));
+        const compileBegin = pattern => new RegExp(pattern.replaceAll('(?i:', '(?:'), 'i');
+        const repeatableKeyword = compileBegin(repeatableBlock.begin);
+        const firstCardKeyword = compileBegin(firstCardBlock.begin);
+        const secondCardKeyword = compileBegin(secondCardBlock.begin);
+        const fieldData = readJson('keywords/field_data.json');
+        const covered = [];
+
+        for (const [name, schema] of Object.entries(fieldData)) {
+            if (!name.startsWith('INCLUDE') || !Array.isArray(schema.c)) continue;
+            const filenameCardIndex = schema.c.findIndex(card =>
+                Array.isArray(card) && card.some(field =>
+                    field?.t === 'string' && (field.n === 'FILENAME' || field.n === 'PATH')
+                )
+            );
+            if (filenameCardIndex < 0) continue;
+
+            const keywordLine = `*${name}`;
+            const matches = [
+                repeatableKeyword.test(keywordLine),
+                firstCardKeyword.test(keywordLine),
+                secondCardKeyword.test(keywordLine),
+            ];
+            assert.equal(matches.filter(Boolean).length, 1, `${keywordLine}: one grammar path-card rule`);
+            if (schema.r === 1) {
+                assert.equal(matches[0], true, `${keywordLine}: repeatable path cards`);
+            } else if (filenameCardIndex === 0) {
+                assert.equal(matches[1], true, `${keywordLine}: filename on card 1`);
+            } else if (filenameCardIndex === 1) {
+                assert.equal(matches[2], true, `${keywordLine}: filename on card 2`);
+            } else {
+                assert.fail(`${keywordLine}: unsupported filename card ${filenameCardIndex + 1}`);
+            }
+            covered.push(name);
+        }
+
+        assert.ok(covered.includes('INCLUDE_TRANSFORM'));
+        assert.ok(covered.includes('INCLUDE_TRANSFORM_BINARY'));
+        assert.ok(covered.includes('INCLUDE_MULTISCALE'));
+        assert.ok(covered.length >= 40, 'expected the complete frozen INCLUDE path-keyword family');
     });
 
     it('lets editor rulers inherit editorRuler.foreground instead of forcing colors', () => {

@@ -19,8 +19,8 @@
 		"include_path_blocks": {
 			"patterns": [
 				{
-					"comment": "Plain INCLUDE filenames and INCLUDE_PATH directories are path strings",
-					"begin": "^([ \\t]*)((?i:\\*INCLUDE(?:_PATH(?:_RELATIVE)?)?))[ \\t]*\\r?$",
+					"comment": "Repeatable INCLUDE filename and INCLUDE_PATH cards",
+					"begin": "^([ \\t]*)((?i:\\*INCLUDE(?:_(?:AUTO_OFFSET|BINARY|COMPENSATION_(?:BEFORE_SPRINGBACK|BLANK_(?:AFTER|BEFORE)_SPRINGBACK|COMPENSATED_SHAPE|COMPENSATED_SHAP_ENEXT_STEP|CURRENT_TOOLS|CURVE|DESIRED_BLANK_SHAPE|NEW_RIGID_TOOL|ORIGINAL_(?:DYNAIN|RIGID_TOOL|TOOL)|SPRINGBACK_INPUTE|TANGENT_CONSTRAINT|TRIM_(?:CURVE|NODE)|UPDATED_(?:BLANK_SHAPE|RIGID_TOOL))|COSIM|EFV|ISPG|PATH(?:_RELATIVE)?|TRIM|WD_(?:FINIAL_PART|INITIAL_BLANK|WELDLINE_CURVE)))?))[ \\t]*\\r?$",
 					"beginCaptures": {
 						"2": { "name": "keyword.control.lsdyna" }
 					},
@@ -31,6 +31,55 @@
 							"comment": "Keep numeric prefixes, underscores, separators, and extensions in one path scope",
 							"name": "string.unquoted.path.lsdyna",
 							"match": "^(?![ \\t]*[$*])(?=.*\\S)[^\\r\\n]+$"
+						}
+					]
+				},
+				{
+					"comment": "Structured INCLUDE variants whose first data card is a filename",
+					"begin": "^([ \\t]*)((?i:\\*INCLUDE_(?:AUTO_OFFSET_USER|NASTRAN|STAMPED_(?:PART(?:_MATRIX(?:_INVERSE)?|_SET|_SOLID_TO_SOLID(?:_GENERAL|_SET_LIST)?)?|SET(?:_MATRIX(?:_INVERSE)?)?)|TRANSFORM(?:_BINARY)?|UNITCELL)))[ \\t]*\\r?$",
+					"beginCaptures": {
+						"2": { "name": "keyword.control.lsdyna" }
+					},
+					"end": "(?=^[ \\t]*\\*)|^((?![ \\t]*[$*])(?=.*\\S)(?!.* \\+[ \\t]*\\r?$)[^\\r\\n]+)$",
+					"endCaptures": {
+						"1": { "name": "string.unquoted.path.lsdyna" }
+					},
+					"patterns": [
+						{ "include": "#comments" },
+						{
+							"comment": "Filename continuation before the final filename segment",
+							"name": "string.unquoted.path.lsdyna",
+							"match": "^(?![ \\t]*[$*])(?=.*\\S)[^\\r\\n]+$"
+						}
+					]
+				},
+				{
+					"comment": "MULTISCALE variants use card 1 for ID and card 2 for filename",
+					"begin": "^([ \\t]*)((?i:\\*INCLUDE_MULTISCALE(?:_SPOTWELD)?))[ \\t]*\\r?$",
+					"beginCaptures": {
+						"2": { "name": "keyword.control.lsdyna" }
+					},
+					"end": "(?=^[ \\t]*\\*)",
+					"patterns": [
+						{ "include": "#comments" },
+						{
+							"comment": "Enter the filename card after the numeric or parameterized ID card",
+							"begin": "^([ \\t]*)(?:([&][A-Za-z_][A-Za-z0-9_-]{0,8})|([+\\-]?\\d+))([ \\t]*,?[ \\t]*)\\r?$",
+							"beginCaptures": {
+								"2": { "name": "variable.parameter.lsdyna" },
+								"3": { "name": "constant.numeric.integer.lsdyna" }
+							},
+							"end": "(?=^[ \\t]*\\*)|^((?![ \\t]*[$*])(?=.*\\S)(?!.* \\+[ \\t]*\\r?$)[^\\r\\n]+)$",
+							"endCaptures": {
+								"1": { "name": "string.unquoted.path.lsdyna" }
+							},
+							"patterns": [
+								{ "include": "#comments" },
+								{
+									"name": "string.unquoted.path.lsdyna",
+									"match": "^(?![ \\t]*[$*])(?=.*\\S)[^\\r\\n]+$"
+								}
+							]
 						}
 					]
 				}
