@@ -23,6 +23,10 @@ ENGLISH_RESIDUE_RE = re.compile(
     r"\b(?:the|with|for|from|must|option|define|specify|when|please|except|"
     r"automatically|determined|through|beginning|existing|respectively|thus)\b"
 )
+# A line break between two Chinese sentences is legitimate.  Only horizontal
+# whitespace is a mechanical translation artefact (for example ``参数 说明``).
+MECHANICAL_SPACING_RE = re.compile(r"[\u3400-\u9fff][^\S\r\n]+[\u3400-\u9fff]")
+LATIN_WORD_RE = re.compile(r"[A-Za-z]+(?:[-'][A-Za-z]+)*")
 PROTECTED_SOURCE_TOKEN_RE = re.compile(
     r"(?:\*[A-Z0-9_?+-]+|\b(?:EQ|NE|GT|GE|LT|LE)\.|"
     r"\b(?:AND|OR|IF|MPP|SMP|ICFD|SPH|ALE|FSI|NURBS|ID|PID|SID|CID|DOF|SEI|AMMG)\b|"
@@ -86,6 +90,66 @@ REQUIRED_TERMS = {
     "volume fraction": "体积分数",
 }
 
+# These tokens are removed before looking for copied English prose.  They are
+# identifiers, keyword names, formulas, or solver-facing abbreviations rather
+# than translatable sentences.
+PROTECTED_LATIN_RE = re.compile(
+    r"`[^`]*`|\*[A-Z0-9_?+\-]+|&[A-Za-z_][A-Za-z0-9_-]*|"
+    r"\b[A-Z][A-Z0-9_]{1,}\b"
+)
+NON_CRITICAL_PROTECTED_TOKENS = {
+    "ALE", "AMMG", "AND", "CID", "DOF", "EQ", "FSI", "GE", "GT", "ICFD",
+    "IF", "LE", "LT", "MPP", "NE", "NOT", "NURBS", "OFF", "ON", "OR",
+    "PID", "SEI", "SID", "SMP", "SPH",
+}
+IGNORED_LATIN_WORDS = {
+    "abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh",
+    "aint", "cm", "cos", "cosh", "csc", "ctn", "deg", "dm", "exp",
+    "false", "ft", "ghz", "gpa", "hz", "inch", "kg", "khz", "kn",
+    "km", "kpa", "lb", "lbf", "ln", "log", "log10", "max", "mg",
+    "mhz", "min", "mm", "mod", "mpa", "ms", "msec", "nint", "ns",
+    "nt", "pa", "pres", "psi", "rad", "rpm", "sec", "sign", "sin",
+    "sinh", "slug", "sqrt", "tan", "tanh", "temp", "true", "v", "vx",
+    "vy", "vz",
+}
+
+# Four-word overlap is useful for finding copied English prose, but many
+# solver formulas and file/keyword identifiers naturally repeat English words
+# (for example "vx vy vz temp" or "Gauss Legendre"). These terms are
+# ignored when deciding whether an overlap is prose rather than notation.
+TECHNICAL_OVERLAP_WORDS = {
+    "acos", "acosh", "alfa", "anint", "asin", "asinh", "atan", "atan2",
+    "atanh", "axis", "beam", "calcium", "centroid", "circuit", "circuitsource",
+    "component", "contact", "cosh", "csc", "ctn", "current", "dat", "ddx",
+    "ddy", "ddz", "density", "depth", "drag", "dynain", "elout", "elastic",
+    "element", "energy", "enstrophy", "exchanger", "flux", "ft", "gauss",
+    "geometry", "heat", "inch", "initial", "internal", "ke", "kn", "lb",
+    "legendre", "lbf", "lifepo", "material", "matsum", "max", "miller",
+    "min", "momentum", "ms", "msec", "nt", "one", "option", "part", "plot",
+    "pres", "pressure", "psi", "qr", "rms", "sec", "segment", "settings",
+    "sign", "sliding", "slug", "source", "surface", "system", "tdc", "temp",
+    "tiebreak", "time", "total", "transform", "velocity", "var", "vorticity",
+    "volume", "way", "wear", "x", "y", "z", "ctof", "ftoc", "ftok", "ktof",
+    "ktoc", "ctok", "vx", "vy", "vz", "bx", "by", "bz", "ex", "ey", "ez",
+    "fx", "fy", "fz", "coupling", "commands", "reference", "level", "rigid",
+    "offset", "before", "inc", "tied", "edge", "nodes", "recommended", "triangular",
+    "shell", "area", "weighted", "remark", "axisymmetric", "solid", "symmetry",
+    "stretch", "integrated", "fully", "thickness", "kirchhoff", "plane", "stress",
+    "strain", "belytschko", "hughes", "liu", "leviathan", "pian", "sumihara",
+}
+PROSE_OVERLAP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "before", "being", "by", "can",
+    "computed", "defined", "denotes", "during", "excluded", "for", "from",
+    "given", "if", "included", "into", "is", "must", "not", "of", "only",
+    "provided", "represents", "respectively", "see", "set", "should", "the",
+    "these", "this", "those", "to", "used", "using", "when", "where", "with",
+    "without",
+}
+PROSE_SIGNAL_WORDS = PROSE_OVERLAP_WORDS - {
+    "a", "an", "and", "as", "at", "by", "for", "from", "if", "into", "is",
+    "of", "only", "the", "to", "when", "where", "with", "without",
+}
+
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -124,12 +188,82 @@ def protected_source_tokens(source: str) -> list[str]:
     return list(dict.fromkeys(PROTECTED_SOURCE_TOKEN_RE.findall(source)))
 
 
+def critical_source_tokens(source: str) -> list[str]:
+    """Return solver names whose loss can change the meaning of a translation."""
+    critical: list[str] = []
+    for token in protected_source_tokens(source):
+        if token.startswith("*"):
+            body = token[1:]
+            # Formula multiplication (``*2``, ``*K``, ``*PI``) and variable
+            # prefixes ending in an underscore are not complete keyword names.
+            # Keep actual keyword-like names, including the historical source
+            # spellings containing ``?`` or an internal hyphen.
+            if len(body) >= 5 and "_" in body and not body.endswith("_"):
+                critical.append(token)
+            continue
+        if (
+            re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", token)
+            and token not in NON_CRITICAL_PROTECTED_TOKENS
+        ):
+            critical.append(token)
+    return critical
+
+
+def protected_token_present(token: str, suffix: str) -> bool:
+    """Match minor legacy spelling differences in keyword names."""
+    if not token.startswith("*"):
+        return token in suffix
+    normalized_token = token.replace("?", "").replace("-", "").replace("_", "")
+    normalized_suffix = suffix.replace("?", "").replace("-", "").replace("_", "")
+    return token in suffix or normalized_token in normalized_suffix
+
+
+def _latin_words(value: str) -> list[str]:
+    masked = PROTECTED_LATIN_RE.sub(" ", value)
+    return [
+        word.lower()
+        for word in LATIN_WORD_RE.findall(masked)
+        if len(word) > 1 and word.lower() not in IGNORED_LATIN_WORDS
+    ]
+
+
+def _source_phrase_residue(source: str, suffix: str, phrase_size: int = 4) -> list[str]:
+    source_words = _latin_words(source)
+    suffix_words = _latin_words(suffix)
+    if len(source_words) < phrase_size or len(suffix_words) < phrase_size:
+        return []
+    source_phrases = {
+        " ".join(source_words[index:index + phrase_size])
+        for index in range(len(source_words) - phrase_size + 1)
+    }
+    suffix_phrases = {
+        " ".join(suffix_words[index:index + phrase_size])
+        for index in range(len(suffix_words) - phrase_size + 1)
+    }
+    return sorted(source_phrases & suffix_phrases)
+
+
+def _copied_source_prose(source: str, suffix: str) -> list[str]:
+    """Return source overlaps that look like copied natural-language prose."""
+    phrases = _source_phrase_residue(source, suffix)
+    copied: list[str] = []
+    for phrase in phrases:
+        words = set(phrase.split())
+        if words & PROSE_SIGNAL_WORDS and not words <= TECHNICAL_OVERLAP_WORDS:
+            copied.append(phrase)
+    return copied
+
+
 def _term_residue(source: str, suffix: str) -> list[str]:
+    # Solver-facing identifiers such as ``OPTION.EQ.PART`` are intentionally
+    # kept in English.  Mask those identifiers before checking for copied
+    # prose terms so the gate only reports lower-case natural-language residue.
+    suffix_for_terms = PROTECTED_LATIN_RE.sub(" ", suffix)
     residue: list[str] = []
     for term in REQUIRED_TERMS:
         boundary = r"(?<![A-Za-z0-9_*])" + re.escape(term) + r"(?![A-Za-z0-9_])"
         if re.search(boundary, source, re.IGNORECASE) and re.search(
-            boundary, suffix, re.IGNORECASE
+            boundary, suffix_for_terms, re.IGNORECASE
         ):
             residue.append(term)
     return residue
@@ -141,6 +275,10 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
     invalid_bilingual: list[str] = []
     templates: list[str] = []
     english_residue: list[str] = []
+    mechanical_spacing: list[str] = []
+    source_phrase_residue: list[dict[str, Any]] = []
+    copied_source_prose: list[dict[str, Any]] = []
+    review_queue: list[str] = []
     protected_omissions: list[dict[str, Any]] = []
     marker_counts: Counter[str] = Counter()
     terminology_residue: Counter[str] = Counter()
@@ -156,10 +294,23 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
             templates.append(path)
         if ENGLISH_RESIDUE_RE.search(suffix):
             english_residue.append(path)
+        if MECHANICAL_SPACING_RE.search(suffix):
+            mechanical_spacing.append(path)
+        phrases = _source_phrase_residue(source, suffix)
+        if phrases:
+            source_phrase_residue.append({"path": path, "phrases": phrases})
+        copied_phrases = _copied_source_prose(source, suffix)
+        if copied_phrases:
+            copied_source_prose.append({"path": path, "phrases": copied_phrases})
+        if len(_latin_words(suffix)) >= 6:
+            review_queue.append(path)
         for marker in MECHANICAL_MARKERS:
             marker_counts[marker] += suffix.count(marker)
 
-        missing = [token for token in protected_source_tokens(source) if token not in suffix]
+        missing = [
+            token for token in critical_source_tokens(source)
+            if not protected_token_present(token, suffix)
+        ]
         if missing:
             protected_omissions.append({"path": path, "tokens": missing})
 
@@ -196,23 +347,30 @@ def build_report(english: Any, localized: Any) -> dict[str, Any]:
         "generic_template_occurrences": len(templates),
         "protected_token_omissions": len(protected_omissions),
         "english_residue_occurrences": len(english_residue),
+        "mechanical_spacing_occurrences": len(mechanical_spacing),
+        "copied_source_prose_occurrences": len(copied_source_prose),
         "terminology_residue_occurrences": sum(terminology_residue.values()),
         "duplicate_consensus_repairable_occurrences": consensus_repairable,
     }
     status = "pass" if all(value == 0 for value in failures.values()) else "fail"
 
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "occurrence_count": len(rows),
         **failures,
         "mechanical_marker_counts": dict(marker_counts),
         "terminology_residue_counts": dict(terminology_residue),
+        "source_phrase_residue_occurrences": len(source_phrase_residue),
         "duplicate_source_units_with_variants": len(duplicate_groups),
         "examples": {
             "fallback_paths": fallbacks[:100],
             "invalid_bilingual_paths": invalid_bilingual[:100],
             "generic_template_paths": templates[:100],
             "english_residue_paths": english_residue[:100],
+            "mechanical_spacing_paths": mechanical_spacing[:100],
+            "source_phrase_residue_paths": source_phrase_residue[:100],
+            "copied_source_prose_paths": copied_source_prose[:100],
+            "review_queue_paths": review_queue[:100],
             "protected_token_omissions": protected_omissions[:100],
             "duplicate_variants": sorted(
                 duplicate_groups,

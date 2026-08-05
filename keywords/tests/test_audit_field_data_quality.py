@@ -52,6 +52,83 @@ class FieldDataQualityAuditTest(unittest.TestCase):
         self.assertGreater(report["protected_token_omissions"], 0)
         self.assertEqual(1, report["terminology_residue_occurrences"])
 
+    def test_rejects_mechanical_chinese_spacing_and_copied_source_phrase(self):
+        source = (
+            "Viscous damping coefficient in percent of critical for explicit contact."
+        )
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nViscous damping 系数 在 percent 的 critical 接触。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual("fail", report["quality_gate"]["status"])
+        self.assertEqual(1, report["mechanical_spacing_occurrences"])
+
+    def test_rejects_copied_english_prose_but_keeps_formula_overlap(self):
+        source = "The damping coefficient is used for explicit contact."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nThe damping coefficient is used for 接触。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(1, report["copied_source_prose_occurrences"])
+
+    def test_keeps_formula_and_protected_solver_tokens_out_of_phrase_gate(self):
+        source = "The value is given by zeta=(VDC/100)*zedacrit."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n该值由公式 `zeta=(VDC/100)*zedacrit` 给出。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["mechanical_spacing_occurrences"])
+        self.assertEqual(0, report["source_phrase_residue_occurrences"])
+
+    def test_allows_sentence_breaks_between_chinese_lines(self):
+        source = "First option. Second option."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n第一项。\n第二项。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["mechanical_spacing_occurrences"])
+
+    def test_ignores_uppercase_solver_identifiers_in_terminology_gate(self):
+        source = "OPTION.EQ.PART: Part ID is included in the set."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\nOPTION.EQ.PART：部件标识已加入集合。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual(0, report["terminology_residue_occurrences"])
+
+    def test_normalizes_legacy_keyword_spelling_and_ignores_formula_stars(self):
+        source = "Use x*2 with *DEFINE_?FUNCTION and *CONTROL_TEST."
+        english = sample(source)
+        localized = copy.deepcopy(english)
+        localized["CONTROL_TEST"]["c"][0][0]["h"] = (
+            f"{source}\n使用公式 x×2，并使用 *DEFINE_FUNCTION 和 *CONTROL_TEST。"
+        )
+
+        report = build_report(english, localized)
+
+        self.assertEqual("pass", report["quality_gate"]["status"])
+        self.assertEqual(0, report["protected_token_omissions"])
+
     def test_cli_returns_nonzero_and_writes_only_when_requested(self):
         source = "Node ID."
         english = sample(source)
