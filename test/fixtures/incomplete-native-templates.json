@@ -1,0 +1,91 @@
+{
+  "source": "3942ee62b:snippets/lsdyna.json",
+  "templates": {
+    "*MAT_DAMAGE_1_TITLE": [
+      "*MAT_DAMAGE_1_TITLE",
+      "$# title                                                                        ",
+      "${1:TITLE}",
+      "$#     mid        ro         e        pr      sigy      lcss      lcds",
+      "${2:       MID}${3:        RO}${4:         E}${5:        PR}${6:      SIGY}${7:      LCSS}${8:      LCDS}",
+      "$#      q1        c1        q2        c2      epsd    espr/s        dc      flag",
+      "${9:        Q1}${10:        C1}${11:        Q2}${12:        C2}${13:      EPSD}${14:    ESPR/S}${15:       0.5}${16:         0}",
+      "$#      vk        vm     r00/f     r45/g     r90/h         l         m         n",
+      "${17:        VK}${18:        VM}${19:     R00/F}${20:     R45/G}${21:     R90/H}${22:       1.5}${23:       1.5}${24:       1.5}",
+      "$#    aopt    unused    unused      macf",
+      "${25:      AOPT}${26:    UNUSED}${27:    UNUSED}${28:         1}",
+      "$#      xp        yp        zp        a1        a2        a3",
+      "${29:        XP}${30:        YP}${31:        ZP}${32:        A1}${33:        A2}${34:        A3}",
+      "$#      v1        v2        v3        d1        d2        d3      beta",
+      "${35:        V1}${36:        V2}${37:        V3}${38:        D1}${39:        D2}${40:        D3}${41:      BETA}",
+      "$0"
+    ],
+    "*MAT_DAMAGE_1": [
+      "*MAT_DAMAGE_1",
+      "$#     mid        ro         e        pr      sigy      lcss      lcds",
+      "${1:       MID}${2:        RO}${3:         E}${4:        PR}${5:      SIGY}${6:      LCSS}${7:      LCDS}",
+      "$#      q1        c1        q2        c2      epsd    espr/s        dc      flag",
+      "${8:        Q1}${9:        C1}${10:        Q2}${11:        C2}${12:      EPSD}${13:    ESPR/S}${14:       0.5}${15:         0}",
+      "$#      vk        vm     r00/f     r45/g     r90/h         l         m         n",
+      "${16:        VK}${17:        VM}${18:     R00/F}${19:     R45/G}${20:     R90/H}${21:       1.5}${22:       1.5}${23:       1.5}",
+      "$#    aopt    unused    unused      macf",
+      "${24:      AOPT}${25:    UNUSED}${26:    UNUSED}${27:         1}",
+      "$#      xp        yp        zp        a1        a2        a3",
+      "${28:        XP}${29:        YP}${30:        ZP}${31:        A1}${32:        A2}${33:        A3}",
+      "$#      v1        v2        v3        d1        d2        d3      beta",
+      "${34:        V1}${35:        V2}${36:        V3}${37:        D1}${38:        D2}${39:        D3}${40:      BETA}",
+      "$0"
+    ],
+    "*MAT_104_TITLE": [
+      "*MAT_104_TITLE",
+      "$# title                                                                        ",
+      "${1:TITLE}",
+      "$#     mid        ro         e        pr      sigy      lcss      lcds",
+      "${2:       MID}${3:        RO}${4:         E}${5:        PR}${6:      SIGY}${7:      LCSS}${8:      LCDS}",
+      "$#      q1        c1        q2        c2      epsd    espr/s        dc      flag",
+      "${9:        Q1}${10:        C1}${11:        Q2}${12:        C2}${13:      EPSD}${14:    ESPR/S}${15:       0.5}${16:         0}",
+      "$#      vk        vm     r00/f     r45/g     r90/h         l         m         n",
+      "${17:        VK}${18:        VM}${19:     R00/F}${20:     R45/G}${21:     R90/H}${22:       1.5}${23:       1.5}${24:       1.5}",
+      "$#    aopt    unused    unused      macf",
+      "${25:      AOPT}${26:    UNUSED}${27:    UNUSED}${28:         1}",
+      "$#      xp        yp        zp        a1        a2        a3",
+      "${29:        XP}${30:        YP}${31:        ZP}${32:        A1}${33:        A2}${34:        A3}",
+      "$#      v1        v2        v3        d1        d2        d3      beta",
+      "${35:        V1}${36:        V2}${37:        V3}${38:        D1}${39:        D2}${40:        D3}${41:      BETA}",
+      "$0"
+    ],
+    "*MAT_104": [
+      "*MAT_104",
+      "$#     mid        ro         e        pr      sigy      lcss      lcds",
+      "${1:       MID}${2:        RO}${3:         E}${4:        PR}${5:      SIGY}${6:      LCSS}${7:      LCDS}",
+      "$#      q1        c1        q2        c2      epsd    espr/s        dc      flag",
+      "${8:        Q1}${9:        C1}${10:        Q2}${11:        C2}${12:      EPSD}${13:    ESPR/S}${14:       0.5}${15:         0}",
+      "$#      vk        vm     r00/f     r45/g     r90/h         l         m         n",
+      "${16:        VK}${17:        VM}${18:     R00/F}${19:     R45/G}${20:     R90/H}${21:       1.5}${22:       1.5}${23:       1.5}",
+      "$#    aopt    unused    unused      macf",
+      "${24:      AOPT}${25:    UNUSED}${26:    UNUSED}${27:         1}",
+      "$#      xp        yp        zp        a1        a2        a3",
+      "${28:        XP}${29:        YP}${30:        ZP}${31:        A1}${32:        A2}${33:        A3}",
+      "$#      v1        v2        v3        d1        d2        d3      beta",
+      "${34:        V1}${35:        V2}${36:        V3}${37:        D1}${38:        D2}${39:        D3}${40:      BETA}",
+      "$0"
+    ],
+    "*MAT_PLASTIC_KINEMATIC_TITLE": [
+      "*MAT_PLASTIC_KINEMATIC_TITLE",
+      "$# title                                                                        ",
+      "${1:TITLE}",
+      "$#     mid        ro         e        pr      sigy      etan      beta",
+      "${2:       MID}${3:        RO}${4:         E}${5:        PR}${6:      SIGY}${7:      ETAN}${8:      BETA}",
+      "$#     src       srp        fs        vp",
+      "${9:       SRC}${10:       SRP}${11:        FS}${12:       0.0}",
+      "$0"
+    ],
+    "*MAT_PLASTIC_KINEMATIC": [
+      "*MAT_PLASTIC_KINEMATIC",
+      "$#     mid        ro         e        pr      sigy      etan      beta",
+      "${1:       MID}${2:        RO}${3:         E}${4:        PR}${5:      SIGY}${6:      ETAN}${7:      BETA}",
+      "$#     src       srp        fs        vp",
+      "${8:       SRC}${9:       SRP}${10:        FS}${11:       0.0}",
+      "$0"
+    ]
+  }
+}

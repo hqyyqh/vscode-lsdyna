@@ -34,7 +34,7 @@ describe('parameterDefinitionScanner', () => {
         );
     });
 
-    it('keeps expressions and non-integer parameter types unknown', () => {
+    it('keeps expressions unknown and retains real literals without treating them as integer IDs', () => {
         const expression = scanParameterDefinitionBlock(
             { keyword: '*PARAMETER_EXPRESSION_LOCAL', startLine: 3 },
             '*PARAMETER_EXPRESSION_LOCAL\nICID      BASE+1'
@@ -48,8 +48,10 @@ describe('parameterDefinitionScanner', () => {
         assert.equal(expression[0].valueState, 'unknown');
         assert.equal(expression[0].reason, 'parameter-expression-unresolved');
         assert.equal(real[0].name, 'FACTOR');
-        assert.equal(real[0].valueState, 'unknown');
-        assert.equal(real[0].reason, 'unsupported-parameter-type');
+        assert.equal(real[0].valueState, 'real');
+        assert.equal(real[0].value, 1.5);
+        const { resolveIntegerParameter } = require('../../../out/core/references/parameterEnvironment');
+        assert.equal(resolveIntegerParameter(new Map([['FACTOR', real[0]]]), 'FACTOR').resolved, false);
     });
 
     it('records duplication and unsupported scope controls in input order', async () => {
@@ -136,6 +138,33 @@ describe('parameterDefinitionScanner', () => {
         assert.equal(events[0].name, 'GLOBAL_1');
         assert.equal(events[0].value, 42);
         assert.equal(events[0].format, 'long-fixed');
+    });
+
+    it('uses LONG=K for long events and LONG=S for standard events', async () => {
+        const longCard = 'ILONG_K'.padEnd(20) + '42'.padStart(20);
+        const overrideCard = 'IOVERRIDE'.padEnd(10) + '7'.padStart(10);
+        const standardCard = 'ISTANDARD'.padEnd(10) + '8'.padStart(10);
+        const blocks = [
+            { keyword: '*KEYWORD', startLine: 0, text: '*KEYWORD LONG=K' },
+            { keyword: '*PARAMETER', startLine: 1, text: `*PARAMETER\n${longCard}` },
+            { keyword: '*PARAMETER -', startLine: 3, text: `*PARAMETER -\n${overrideCard}` },
+            { keyword: '*KEYWORD', startLine: 5, text: '*KEYWORD LONG=S' },
+            { keyword: '*PARAMETER', startLine: 6, text: `*PARAMETER\n${standardCard}` },
+        ];
+        const events = await scanParameterEventsFromFileIndex(
+            { keywordBlocks: blocks },
+            block => Promise.resolve(block.text)
+        );
+
+        assert.equal(events.length, 3);
+        assert.equal(events[0].name, 'LONG_K');
+        assert.equal(events[0].format, 'long-fixed');
+        assert.equal(events[1].name, 'OVERRIDE');
+        assert.equal(events[1].format, 'fixed');
+        assert.equal(events[1].value, 7);
+        assert.equal(events[2].name, 'STANDARD');
+        assert.equal(events[2].format, 'fixed');
+        assert.equal(events[2].value, 8);
     });
 
     it('uses DFLAG 1 for an empty first duplication card and ignores unknown keyword suffixes', async () => {

@@ -1,5 +1,13 @@
 import { classifyKeywordLine } from './keywordLine';
 import {
+    globalInputFormatFromKeywordLine,
+    type KeywordInputFormatMode,
+} from './inputFormat';
+import {
+    classifyOpaqueCommentDirective,
+    isColumnZeroKeywordBoundary,
+} from './opaqueCommentRange';
+import {
     ParsedParameterDefinition,
     ParsedParameterReference,
     ParameterKeywordClassification,
@@ -34,12 +42,6 @@ function addDefinition(
     definitionList.push(definition);
 }
 
-function isGlobalLongFormatHeader(text: string): boolean {
-    const classification = classifyKeywordLine(text);
-    return classification.normalizedKeyword === '*KEYWORD' &&
-        /\bLONG\s*=\s*[YS]\b/i.test(text);
-}
-
 export function scanParameterSymbols(
     lineCount: number,
     readLine: (lineIndex: number) => string,
@@ -50,15 +52,28 @@ export function scanParameterSymbols(
     const expressionSegments = [];
     let currentKeyword: ParameterKeywordClassification | null = null;
     let currentExpressionDefinition: ParameterDefinition | null = null;
-    let globalLongFormat = false;
+    let globalInputFormat: KeywordInputFormatMode = 'standard';
+    let opaqueActive = false;
 
     for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
         const text = String(readLine(lineIndex) || '');
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(text)) continue;
+            opaqueActive = false;
+        }
+        if (classifyOpaqueCommentDirective(text)) {
+            currentKeyword = null;
+            currentExpressionDefinition = null;
+            opaqueActive = true;
+            continue;
+        }
         if (text.trimStart().startsWith('$')) continue;
 
         const classification = classifyKeywordLine(text);
         if (classification.isKeyword) {
-            if (isGlobalLongFormatHeader(text)) globalLongFormat = true;
+            if (classification.normalizedKeyword === '*KEYWORD') {
+                globalInputFormat = globalInputFormatFromKeywordLine(text, globalInputFormat);
+            }
             const parameterKeyword = classifyParameterKeyword(text);
             currentKeyword = parameterKeyword &&
                 (parameterKeyword.kind === 'definition' || parameterKeyword.kind === 'parameter-type')
@@ -72,7 +87,12 @@ export function scanParameterSymbols(
         expressionSegments.push(...inlineExpressionSegments(text, lineIndex));
         if (!currentKeyword) continue;
 
-        const parsed = parseParameterDataLine(text, lineIndex, currentKeyword, globalLongFormat);
+        const parsed = parseParameterDataLine(
+            text,
+            lineIndex,
+            currentKeyword,
+            globalInputFormat === 'long',
+        );
         if (parsed.isContinuation) {
             if (currentExpressionDefinition && parsed.expressionSegments[0]) {
                 currentExpressionDefinition.value += `\n${parsed.expressionSegments[0].text}`;

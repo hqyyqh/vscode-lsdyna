@@ -3,13 +3,13 @@
     --reader-border: var(--vscode-widget-border, var(--vscode-panel-border));
     --reader-surface: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     --reader-shadow: 0 8px 28px rgba(0, 0, 0, .22);
-    /* Stable single-row toolbar; ResizeObserver overwrites with measured height. */
-    --reader-toolbar-height: 44px;
-    /* Horizontal inset for full-bleed content (tracks panel width; no fixed column max). */
+    /* Measured toolbar height is used only for anchors and overlays. */
+    --reader-toolbar-height: 52px;
+    /* Tables use available width; prose has an independent reading measure. */
     --reader-content-pad-inline: 32px;
     --reader-toolbar-control: 32px;
-    --reader-toolbar-icon: 20px;
-    --reader-toolbar-radius: 8px;
+    --reader-toolbar-icon: 16px;
+    --reader-toolbar-radius: 4px;
     /* Content-only font scale (toolbar chrome stays on --vscode-font-size). */
     --reader-font-scale: 1;
 }
@@ -29,24 +29,21 @@ body {
     overflow-x: hidden;
 }
 button, input, select { font: inherit; }
-button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--vscode-focusBorder);
     outline-offset: 2px;
 }
 
-/* ── Sticky chrome: single row, no wrap thrash ── */
+/* Explicit row sizes avoid ResizeObserver feedback across responsive breakpoints. */
 .reader-toolbar {
     align-items: center;
-    backdrop-filter: blur(14px) saturate(1.15);
-    background: color-mix(in srgb, var(--vscode-editor-background) 88%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--reader-border) 85%, transparent);
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 10px;
-    height: var(--reader-toolbar-height);
-    min-height: var(--reader-toolbar-height);
-    /* Match content inset so chrome aligns with full-width reading column. */
-    padding: 0 max(12px, var(--reader-content-pad-inline));
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--reader-border);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    min-height: 52px;
+    padding: 6px 16px;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -76,100 +73,47 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     gap: 6px;
 }
 
-/* Segmented icon groups — 32px faces, 20px glyphs */
 .reader-toolbar__cluster {
-    align-items: stretch;
-    background: color-mix(in srgb, var(--vscode-editor-foreground) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--reader-border) 90%, transparent);
-    border-radius: var(--reader-toolbar-radius);
     display: flex;
-    flex: 0 0 auto;
+    align-items: center;
     gap: 0;
     height: var(--reader-toolbar-control);
-    padding: 0;
 }
-.reader-toolbar__cluster .reader-toolbar__button {
-    background: transparent;
-    border-radius: 0;
-    color: var(--vscode-editor-foreground);
-    height: 100%;
-    min-height: 0;
-    min-width: var(--reader-toolbar-control);
-    opacity: .95;
-    padding: 0;
-    width: var(--reader-toolbar-control);
+.reader-toolbar__navigation .reader-toolbar__cluster + .reader-toolbar__cluster {
+    border-left: 1px solid var(--reader-border);
+    padding-left: 6px;
 }
-.reader-toolbar__cluster .reader-toolbar__button + .reader-toolbar__button {
-    border-left: 1px solid color-mix(in srgb, var(--reader-border) 70%, transparent);
-}
-.reader-toolbar__cluster .reader-toolbar__button:first-child {
-    border-radius: calc(var(--reader-toolbar-radius) - 1px) 0 0 calc(var(--reader-toolbar-radius) - 1px);
-}
-.reader-toolbar__cluster .reader-toolbar__button:last-child {
-    border-radius: 0 calc(var(--reader-toolbar-radius) - 1px) calc(var(--reader-toolbar-radius) - 1px) 0;
-}
-.reader-toolbar__cluster .reader-toolbar__button:only-child {
-    border-radius: calc(var(--reader-toolbar-radius) - 1px);
-}
-.reader-toolbar__cluster .reader-toolbar__button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--vscode-editor-foreground) 10%, transparent);
-    opacity: 1;
-}
-.reader-toolbar__cluster .reader-toolbar__button:disabled {
-    opacity: .3;
-}
-
-/*
- * Single-line identity between nav and actions.
- * - Title keeps intrinsic width (prefer full section name).
- * - Crumb absorbs leftover width and ellipsizes only when needed.
- * - Avoid title { flex:1 } + crumb { max-width:46% }: short titles left a
- *   large empty flex band while the path was truncated early.
- */
 .reader-toolbar__identity {
-    align-items: center;
     display: flex;
-    flex: 1 1 auto;
-    gap: 6px;
-    justify-content: flex-start;
+    flex-direction: column;
+    gap: 2px;
     min-width: 0;
-    overflow: hidden;
-    padding: 0 4px;
-    white-space: nowrap;
 }
-.reader-toolbar__crumb {
-    color: var(--vscode-descriptionForeground);
-    flex: 1 1 auto;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1.2;
-    min-width: 0;
+.reader-toolbar__crumb, .reader-toolbar__title {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-.reader-toolbar__sep {
-    color: var(--vscode-descriptionForeground);
-    flex: 0 0 auto;
-    font-size: 12px;
-    line-height: 1;
-    opacity: .55;
-    user-select: none;
-}
-.reader-toolbar__title {
-    color: var(--vscode-editor-foreground);
-    flex: 0 1 auto;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: -.01em;
-    line-height: 1.2;
-    margin: 0;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
-
+.reader-toolbar__crumb { color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 15px; }
+.reader-toolbar__title { order: -1; font-size: 13px; font-weight: 600; line-height: 18px; }
+.reader-settings { position: relative; }
+.reader-settings summary { list-style: none; font-size: 13px; line-height: 1; }
+.reader-settings summary::-webkit-details-marker { display: none; }
+.reader-settings[open] > summary { background: var(--vscode-toolbar-activeBackground, var(--vscode-list-hoverBackground)); }
+.reader-settings__panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--reader-surface);
+    border: 1px solid var(--reader-border);
+    border-radius: 4px;
+    box-shadow: var(--reader-shadow);
+    padding: 12px;
+    width: max-content;
+    max-width: calc(100vw - 24px);
+}
+.reader-settings__label { display: block; color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 6px; }
 /* Icon-only = fixed square; text/lang grow width only */
 .reader-toolbar__button {
     align-items: center;
@@ -208,61 +152,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     cursor: default;
     opacity: .38;
 }
-.reader-toolbar__button--text {
-    border-color: color-mix(in srgb, var(--reader-border) 90%, transparent);
-    color: var(--vscode-descriptionForeground);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: .04em;
-    line-height: 1;
-    min-width: auto;
-    padding: 0 10px 0 8px;
-    width: auto;
-}
-.reader-toolbar__button--text:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--vscode-editor-foreground) 22%, transparent);
-    color: var(--vscode-editor-foreground);
-}
-.reader-toolbar__btn-label {
-    line-height: 1;
-}
-.reader-toolbar__button--lang {
-    height: var(--reader-toolbar-control);
-    min-width: auto;
-    padding: 0;
-    width: auto;
-}
-.reader-toolbar__lang-pill {
-    align-items: center;
-    background: color-mix(in srgb, var(--vscode-badge-background, var(--vscode-button-secondaryBackground)) 88%, transparent);
-    border-radius: 999px;
-    color: var(--vscode-badge-foreground, var(--vscode-button-secondaryForeground));
-    display: inline-flex;
-    font-size: 11px;
-    font-weight: 600;
-    height: calc(var(--reader-toolbar-control) - 6px);
-    justify-content: center;
-    letter-spacing: .03em;
-    line-height: 1;
-    min-width: 2.4em;
-    padding: 0 10px;
-    text-align: center;
-}
-.reader-toolbar__button--lang:hover:not(:disabled) {
-    background: transparent;
-}
-.reader-toolbar__button--lang:hover:not(:disabled) .reader-toolbar__lang-pill {
-    filter: brightness(1.08);
-}
-.reader-toolbar__button--search {
-    background: color-mix(in srgb, var(--vscode-button-secondaryBackground) 70%, transparent);
-    border-color: color-mix(in srgb, var(--reader-border) 80%, transparent);
-    color: var(--vscode-editor-foreground);
-}
-.reader-toolbar__button--search:hover:not(:disabled) {
-    background: var(--vscode-button-secondaryHoverBackground, color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent));
-    border-color: transparent;
-}
+.reader-toolbar__btn-label { display: none; }
+.reader-toolbar__lang-pill { font-size: 12px; font-weight: 600; line-height: 1; }
 
 .reader-search-popover {
     background: var(--reader-surface);
@@ -271,6 +162,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     box-shadow: var(--reader-shadow);
     left: 50%;
     max-height: min(480px, calc(100vh - var(--reader-toolbar-height) - 20px));
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
     padding: 8px;
     position: fixed;
@@ -338,11 +231,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 }
 .reader-search-controls > button:hover, .reader-request-banner button:hover, .reader-loading button:hover { background: var(--vscode-button-hoverBackground); }
 .reader-search-summary { color: var(--vscode-descriptionForeground); font-size: 12px; min-height: 26px; padding: 8px 4px 4px; }
-.reader-search-results { max-height: 380px; overflow: auto; }
+.reader-search-results { min-height: 0; max-height: 380px; overflow: auto; }
 .reader-search-results button { background: transparent; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; display: block; padding: 8px 10px; text-align: left; width: 100%; }
 .reader-search-results button[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); color: var(--vscode-list-activeSelectionForeground); }
 .reader-search-results strong, .reader-search-results small { display: block; }
-.reader-search-results small { color: var(--vscode-descriptionForeground); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-search-results small { color: var(--vscode-descriptionForeground); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.reader-search-results strong { overflow-wrap: anywhere; }
 .reader-search-results mark { background: var(--vscode-editor-findMatchHighlightBackground); color: inherit; }
 
 /* Full panel width: no fixed max-width column; only horizontal padding. */
@@ -358,7 +252,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     font-size: calc(var(--vscode-font-size) * var(--reader-font-scale));
     min-height: calc(100vh - 120px);
     padding-bottom: 48px;
-    padding-top: 28px;
+    padding-top: 20px;
 }
 .reader-footer {
     border-top: 1px solid var(--reader-border);
@@ -440,15 +334,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     line-height: 1.78;
     overflow-wrap: break-word;
 }
+.markdown-body > p, .markdown-body > ul, .markdown-body > ol, .markdown-body > blockquote { max-width: 860px; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body :is(h1, h2, h3, h4) code, .markdown-body th code { background: transparent; padding: 0; border-radius: 0; }
 .markdown-body a {
     color: var(--vscode-textLink-foreground);
 }
 .markdown-body a:hover {
     color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
 }
-.markdown-body h1 { font-size: clamp(1.75em, 4vw, 2.2em); letter-spacing: -.02em; }
-.markdown-body h2 { border-bottom-color: var(--reader-border); font-size: 1.55em; margin-top: 2.2em; }
-.markdown-body h3 { font-size: 1.25em; margin-top: 1.8em; }
+.markdown-body h1 { font-size: 1.6em; letter-spacing: -.01em; }
+.markdown-body h2 { border-bottom-color: var(--reader-border); font-size: 1.35em; margin-top: 1.8em; }
+.markdown-body h3 { font-size: 1.15em; margin-top: 1.5em; }
 /* KaTeX inherits text color; keep display math readable on themed backgrounds */
 .markdown-body .katex,
 .markdown-body .katex-display {
@@ -485,7 +382,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     vertical-align: top;
     word-break: normal;
 }
-.markdown-body .reader-table-scroll th code,
+.markdown-body .reader-table-scroll th code { white-space: nowrap; overflow-wrap: normal; }
 .markdown-body .reader-table-scroll td code {
     overflow-wrap: anywhere;
     white-space: normal;
@@ -639,31 +536,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
     width: var(--reader-fab-icon, var(--reader-toolbar-icon)) !important;
 }
 
-/* Keep a single row at all widths — never wrap identity under nav (that caused jump). */
 @media (max-width: 760px) {
     :root { --reader-content-pad-inline: 18px; }
-    .reader-toolbar { gap: 8px; padding-inline: 10px; }
-    .reader-toolbar__btn-label { display: none; }
-    .reader-toolbar__button--text {
-        min-width: var(--reader-toolbar-control);
-        padding: 0;
-        width: var(--reader-toolbar-control);
-    }
-    .reader-search-popover { border-left: 0; border-radius: 0; border-right: 0; left: 0; right: 0; transform: none; width: 100%; }
+    .reader-search-popover { width: calc(100vw - 16px); }
 }
-
-@media (max-width: 560px) {
-    /* Drop crumb first; keep section title on the same row. */
-    .reader-toolbar__crumb,
-    .reader-toolbar__sep { display: none; }
+@media (max-width: 600px) {
+    .reader-toolbar { grid-template-columns: 1fr auto; gap: 6px; padding: 8px 12px; }
+    .reader-toolbar__identity { grid-row: 1; grid-column: 1 / -1; }
+    .reader-toolbar__navigation { grid-row: 2; grid-column: 1; }
+    .reader-toolbar__actions { grid-row: 2; grid-column: 2; }
 }
-
 @media (max-width: 480px) {
     :root { --reader-content-pad-inline: 12px; }
-    .reader-toolbar { gap: 6px; padding-inline: 8px; }
-    .reader-toolbar__identity { display: none; }
-    .reader-toolbar__actions { margin-left: auto; }
-    .reader-content { padding-top: 18px; }
+    .reader-toolbar { gap: 4px; padding-inline: 8px; }
+    .reader-toolbar__actions, .reader-toolbar__navigation { gap: 2px; }
+    .reader-toolbar__navigation .reader-toolbar__cluster + .reader-toolbar__cluster { padding-left: 2px; }
 }
 
 @media (forced-colors: active) {

@@ -36,11 +36,11 @@ function transport() {
 
 describe('ReaderApp', () => {
     const searchResults: ReaderViewModel['search']['results'] = [
-        { location: { manualId: 'vol', sectionId: 'material', anchorId: null }, titleEn: 'Material Model', titleZh: '材料模型', preview: 'Selected material model.', matchedLanguages: ['en'], score: 3500 },
+        { location: { manualId: 'vol', sectionId: 'material', anchorId: null }, volumeTitle: 'Volume II', titleEn: 'Material Model', titleZh: '材料模型', preview: 'Selected material model.', matchedLanguages: ['en'], score: 3500 },
         { location: { manualId: 'vol', sectionId: 'node', anchorId: null }, titleEn: 'Node Example', titleZh: '节点示例', preview: 'A material example.', matchedLanguages: ['en'], score: 1600 },
     ];
 
-    it('renders a single-row crumb / title identity in the toolbar', () => {
+    it('retains chapter identity and separate navigation groups', () => {
         render(<ReaderApp initialState={state} transport={transport()} />);
         expect(screen.getByText('Volume I · Control')).toBeInTheDocument();
         const title = document.querySelector('.reader-toolbar__title');
@@ -48,8 +48,6 @@ describe('ReaderApp', () => {
         expect(title).toHaveTextContent('Control');
         const identity = document.querySelector('.reader-toolbar__identity');
         expect(identity).toBeTruthy();
-        // Crumb and title share one horizontal identity row (not stacked).
-        expect(getComputedStyle(identity as Element).flexDirection).not.toBe('column');
         // Path crumb precedes title so free space fills under the path, not after a short title.
         const crumb = document.querySelector('.reader-toolbar__crumb');
         expect(crumb).toBeTruthy();
@@ -57,7 +55,7 @@ describe('ReaderApp', () => {
         expect(crumb!.compareDocumentPosition(title as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(screen.getByRole('group', { name: 'History' })).toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'Sections' })).toBeInTheDocument();
-        expect(screen.getByRole('group', { name: 'Text size' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Reading settings')).toBeInTheDocument();
         expect(document.title).toBe('DynaSense Manuals');
     });
 
@@ -65,6 +63,7 @@ describe('ReaderApp', () => {
         const user = userEvent.setup();
         render(<ReaderApp initialState={state} transport={transport()} />);
 
+        await user.click(screen.getByLabelText('Reading settings'));
         expect(document.documentElement.style.getPropertyValue('--reader-font-scale')).toBe('1');
         expect(screen.getByText('100%')).toBeInTheDocument();
 
@@ -81,6 +80,36 @@ describe('ReaderApp', () => {
 
         fireEvent.wheel(window, { deltaY: -100, ctrlKey: true, bubbles: true });
         expect(document.documentElement.style.getPropertyValue('--reader-font-scale')).toBe('1');
+    });
+
+    it('closes reading settings on Escape, outside click and keyboard focus exit', async () => {
+        const user = userEvent.setup();
+        render(<ReaderApp initialState={state} transport={transport()} />);
+        const trigger = screen.getByLabelText('Reading settings');
+        const details = trigger.closest('details')!;
+        await user.click(trigger);
+        expect(details.open).toBe(true);
+        await user.click(screen.getByRole('button', { name: 'Increase text size' }));
+        await user.click(screen.getByRole('button', { name: /Reset text size/ }));
+        await user.keyboard('{Escape}');
+        expect(details.open).toBe(false);
+        expect(trigger).toHaveFocus();
+        await user.click(trigger);
+        await user.click(screen.getByRole('main'));
+        expect(details.open).toBe(false);
+        await user.click(trigger);
+        fireEvent.blur(details, { relatedTarget: screen.getByRole('button', { name: 'Back' }) });
+        expect(details.open).toBe(false);
+    });
+
+    it('shows the result volume alongside the title and excerpt', async () => {
+        const user = userEvent.setup();
+        render(<ReaderApp initialState={{ ...state, search: { ...state.search, query: 'material', results: searchResults } }} transport={transport()} />);
+        await user.click(screen.getByRole('button', { name: 'Search manuals' }));
+        const option = screen.getAllByRole('option')[0];
+        expect(option).toHaveTextContent('Volume II');
+        expect(option).toHaveTextContent('材料模型');
+        expect(option).toHaveTextContent('Selected material model.');
     });
 
     it('does not change font scale with Ctrl+wheel while a modal is open', async () => {

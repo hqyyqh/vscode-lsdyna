@@ -54,5 +54,8 @@ describe('createCacheManifestStore', () => {
             entryCount: 2,
             totalBytes: 32,
         });
+        assert.equal(manifestStore.clear(), 2);
+        assert.deepEqual(manifestStore.list(), []);
+        assert.deepEqual(manifestStore.getStats(), { entryCount: 0, totalBytes: 0 });
     });
 });

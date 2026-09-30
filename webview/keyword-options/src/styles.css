@@ -1,0 +1,186 @@
+:root {
+    color-scheme: light dark;
+    --manager-border: var(--vscode-widget-border, var(--vscode-panel-border));
+    --manager-surface: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    --manager-subtle: color-mix(in srgb, var(--vscode-editor-foreground) 5%, transparent);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+main { min-width: 0; height: 100%; display: flex; flex-direction: column; overflow-y: auto; padding: 0 12px; }
+.formScroll { flex: 1 1 auto; min-height: 10rem; overflow-x: hidden; overflow-y: auto; padding-bottom: 12px; }
+header { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 12px; margin: 0 -12px; padding: 10px 12px 8px; border-bottom: 1px solid var(--manager-border); background: var(--vscode-editor-background); }
+.headerIdentity { min-width: 0; flex: 1 1 auto; }
+.instanceIdentity { margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); font-size: .92em; }
+.keyword { font-family: var(--vscode-editor-font-family); overflow-wrap: anywhere; font-weight: 600; line-height: 1.35; }
+.headerContext { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.sourceLocation { display: inline-flex; align-items: baseline; flex: 1 1 10rem; min-width: 0; max-width: 100%; padding: 4px 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground); font-size: .9em; text-align: left; }
+.sourceLocation span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sourceLocation span:last-child { flex-shrink: 0; }
+.sourceLocation:hover { text-decoration: underline; }
+.headerActions { display: flex; flex: 0 0 auto; margin-left: auto; align-items: center; gap: 4px; }
+.headerButton { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 28px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--vscode-foreground); padding: 3px 6px; white-space: nowrap; }
+.headerButton svg { flex-shrink: 0; }
+.headerButton:hover { background: var(--manager-subtle); }
+.pinButton.selected { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.instanceTrigger { color: var(--vscode-editor-foreground); border: 1px solid var(--manager-border); padding-inline: 8px; }
+section { margin-top: 14px; }
+.options, .dynamicCards { padding-bottom: 0; }
+.controlsGrid { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; align-items: flex-end; padding-bottom: 2px; }
+.controlsGrid .dimension { flex: 0 1 16rem; min-width: 0; max-width: 100%; margin-top: 0 !important; }
+.controlsGrid .dimensionLabel { display: block; color: var(--vscode-descriptionForeground); font-size: .82em; font-weight: 500; margin-bottom: 3px; white-space: normal; overflow-wrap: anywhere; user-select: none; }
+.controlsGrid select { width: 100%; min-height: 28px; padding: 2px 6px; font-size: .9em; text-align: left; }
+.controlsGrid .dynamicToggle { min-height: 26px; height: 26px; display: flex; align-items: center; gap: 4px; font-size: .86em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dimension + .dimension { margin-top: 12px; }
+.dimensionLabel { display: block; color: var(--vscode-descriptionForeground); font-size: .9em; margin-bottom: 4px; white-space: normal; overflow-wrap: anywhere; }
+select, input[type=search], .field input { width: 100%; min-height: 28px; border: 1px solid var(--vscode-input-border, var(--manager-border)); border-radius: 2px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 4px 7px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.checks label { white-space: nowrap; }
+.disabled { opacity: .55; }
+.instanceList { overflow: auto; margin-top: 6px; border: 1px solid var(--vscode-widget-border); }
+.instanceList button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 8px; overflow-wrap: anywhere; }
+.instanceList button:hover, .instanceList button.selected { background: var(--vscode-list-hoverBackground); }
+.instanceList button.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.emptyList { margin: 8px; color: var(--vscode-descriptionForeground); }
+.dynamicToggle { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.dynamicCards p { margin: 7px 0 0; color: var(--vscode-descriptionForeground); line-height: 1.4; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.editorLayout { min-width: 0; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+.cards { min-width: calc(80ch + 32px); font-family: var(--vscode-editor-font-family); font-size: .92rem; }
+.card + .card { margin-top: 6px; }
+.cardRow { display: flex; align-items: stretch; width: 100%; border: 1px solid var(--manager-border); }
+.cardGutter { flex: 0 0 32px; width: 32px; display: flex; align-items: center; justify-content: center; background: var(--manager-subtle); border-right: 1px solid var(--manager-border); font-family: var(--vscode-editor-font-family); font-size: .84em; font-weight: 600; color: var(--vscode-descriptionForeground); user-select: none; text-align: center; }
+.cardGutter:hover { color: var(--vscode-editor-foreground); background: color-mix(in srgb, var(--vscode-editor-foreground) 8%, transparent); }
+.cardTitle { padding: 4px 8px; border-left: 2px solid var(--vscode-focusBorder); border-bottom: 1px solid var(--manager-border); background: var(--manager-subtle); color: var(--vscode-editor-foreground); font-weight: 600; font-size: .94em; }
+.cardReason { margin: 7px 0; color: var(--vscode-descriptionForeground); }
+.cardScroller { width: 100%; overflow: visible; padding: 0; flex: 1 1 auto; min-width: 0; }
+.fieldGrid { display: grid; grid-template-columns: repeat(80, minmax(0, 1fr)); width: 100%; }
+.field { min-width: 0; display: flex; flex-direction: column; }
+.field > span { min-height: 1.6em; overflow: hidden; padding: 1px 3px; border: 0; border-bottom: 1px solid var(--manager-border); background: var(--manager-subtle); color: var(--vscode-descriptionForeground); text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: .93em; line-height: 1.5; text-align: center; }
+.field + .field > span { border-left: 1px solid var(--manager-border); }
+.fieldEditor { display: flex; min-width: 0; border-left: 2px solid transparent; }
+.fieldEditor.changed { border-left-color: var(--vscode-editorWarning-foreground); }
+.fieldEditor > input, .fieldEditor > select { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 1.95em; padding: 1px 2px; border-radius: 0; border: 0; border-bottom: 1px solid var(--vscode-input-border, var(--manager-border)); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-family: var(--vscode-editor-font-family); font-size: 1em; text-align: center; }
+.field + .field .fieldEditor > input, .field + .field .fieldEditor > select { border-left: 1px solid var(--manager-border); }
+.fieldHelp { min-width: 0; margin-top: 0; padding: 10px 12px; color: var(--vscode-editor-foreground); line-height: 1.5; font-size: .95em; overflow-wrap: anywhere; }
+.fieldHelpHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fieldHelpTitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.fieldHelpTitle strong { font-family: var(--vscode-editor-font-family); }
+.fieldHelpBadge { padding: 1px 5px; border-radius: 3px; font-size: .8em; background: var(--manager-subtle); color: var(--vscode-descriptionForeground); }
+.fieldHelpBody { margin-top: 8px; }
+.fullValue code { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.draftBadge { color: var(--vscode-editorWarning-foreground); }
+.helpActions { display: flex; flex: 0 0 auto; }
+.fieldHelpBody p { margin: 0 0 6px; white-space: pre-wrap; }
+.fieldHelp details { margin-top: 6px; }
+.fieldHelp summary { cursor: pointer; color: var(--vscode-textLink-foreground); }
+.fieldHelp details p { margin-top: 4px; }
+.helpMeta { color: var(--vscode-descriptionForeground); }
+.field.helpSelected > span { color: var(--vscode-editor-foreground); background: color-mix(in srgb, var(--vscode-focusBorder) 12%, var(--manager-surface)); box-shadow: inset 0 -1px var(--vscode-focusBorder); }
+button, .field > span { transition: background-color 100ms ease, color 100ms ease; }
+.fieldHelpBody:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) {
+    button, .field > span { transition: none; }
+}
+dialog { color: var(--vscode-editor-foreground); }
+dialog::backdrop { background: rgba(0, 0, 0, .4); }
+dialog:not([open]) { display: none; }
+.instanceDialog, .reviewDialog { width: min(680px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); display: flex; flex-direction: column; padding: 12px; border: 1px solid var(--manager-border); background: var(--manager-surface); box-shadow: 0 8px 30px var(--vscode-widget-shadow); }
+.dialogHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.closeButton, .iconButton { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; padding: 4px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: inherit; }
+.iconButton:hover, .closeButton:hover { background: var(--manager-subtle); }
+.iconButton svg { flex-shrink: 0; }
+.scopeSegments { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
+.scopeSegments button { min-height: 30px; border: 1px solid var(--vscode-widget-border); background: transparent; }
+.scopeSegments button + button { border-left: 0; }
+.scopeSegments button.selected { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.scopeMessage { color: var(--vscode-descriptionForeground); margin: 0 0 8px; }
+.instanceList { flex: 1 1 auto; max-height: 440px; }
+.instanceList button { display: flex; flex-direction: column; gap: 2px; }
+.instanceList small { color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+.instanceList button.selected small { color: inherit; opacity: .8; }
+.message, .emptyMessage { color: var(--vscode-descriptionForeground); line-height: 1.5; }
+.message { margin: 10px 0 0; padding: 6px 8px; border-left: 2px solid var(--vscode-focusBorder); background: var(--manager-subtle); }
+.message.error, .message.stale, .danger { color: var(--vscode-errorForeground); }
+footer { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; min-height: 54px; margin: 0 -12px; padding: 9px 12px; border-top: 1px solid color-mix(in srgb, var(--manager-border) 85%, transparent); background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);  }
+.reviewSummary { min-width: 0; color: var(--vscode-descriptionForeground); }
+.field > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
+.reviewSummary > span { display: block; line-height: 28px; }
+.detailGroup { margin-top: 7px; }
+.detailGroup ul { margin: 3px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
+.footerActions, .dialogActions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+footer button, .dialogActions button { min-height: 30px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; padding: 4px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+footer .primary, .dialogActions .primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+@media (max-width: 360px) {
+    footer { align-items: stretch; flex-direction: column; }
+    header { grid-template-columns: minmax(0, 1fr); }
+    .instanceTrigger { justify-self: start; }
+    .footerActions { justify-content: flex-end; }
+    .manualButton span { display: none; }
+}
+
+.reviewDialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
+.dialogHeader, .dialogActions { flex: 0 0 auto; }
+.reviewBody { flex: 1 1 auto; min-height: 0; overflow: auto; overflow-wrap: anywhere; }
+.dialogActions { border-top: 1px solid var(--manager-border); margin-top: 12px; padding-top: 12px; }
+.detailGroup li { white-space: pre-wrap; }
+@media (max-width: 600px) {
+    footer { flex-direction: column; align-items: stretch; gap: 6px; }
+}
+@media (forced-colors: active) {
+    dialog, .cardRow, .fieldHelp, footer { border-color: CanvasText; }
+    .iconButton.selected, .fieldEditor.changed { outline: 1px solid Highlight; }
+}
+
+/* Hints never participate in the card grid's sizing. */
+.fieldEditor.hasHint > input { background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #c99b37) 8%, var(--vscode-input-background)); }
+.fieldHint { position: fixed; z-index: 1000; max-width: 280px; padding: 5px 8px; pointer-events: none; background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background)); color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground)); border: 1px solid var(--vscode-editorHoverWidget-border, var(--manager-border)); font-size: 12px; }
+.detailsDock { flex: 0 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 0 -12px; border-top: 1px solid var(--manager-border); background: var(--manager-surface); }
+.detailsToolbar { flex: 0 0 auto; display: flex; align-items: flex-start; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--manager-border); }
+.detailTopics { display: flex; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; gap: 2px 8px; }
+.detailTopics button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 30px; max-width: 100%; padding: 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); text-align: left; }
+.detailTopics button.selected { color: var(--vscode-editor-foreground); border-bottom-color: var(--vscode-focusBorder); }
+.detailTopics button:hover { background: var(--manager-subtle); }
+.detailViewport { flex: 0 1 auto; min-height: 0; max-height: min(32vh, 18rem); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.detailEmpty { margin: 0; padding: 12px; color: var(--vscode-descriptionForeground); }
+.conditionCount, .conditionStatus { font-size: .86em; border: 1px solid var(--manager-border); border-radius: 3px; padding: 1px 5px; overflow-wrap: anywhere; }
+.conditionCount.pending, .conditionStatus.pending { color: var(--vscode-editorWarning-foreground); }
+.fieldContext { flex-basis: 100%; color: var(--vscode-descriptionForeground); font-size: .9em; }
+.fieldValues { margin: 0 0 10px; display: grid; gap: 5px; }
+.fieldValues > div { display: grid; grid-template-columns: minmax(4.5em, auto) minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.fieldValues dt { color: var(--vscode-descriptionForeground); }
+.fieldValues dd { margin: 0; min-width: 0; }
+.fieldValues code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); }
+.field.disabled { opacity: 1; }
+.field.disabled .fieldEditor > input { background: var(--manager-subtle); }
+.manualConditions { margin: 0; padding: 10px 12px; font-size: .95em; line-height: 1.5; overflow-wrap: anywhere; }
+.conditionOverview { color: var(--vscode-editor-foreground); font-size: .9em; }
+.conditionContext { color: var(--vscode-descriptionForeground); margin: 6px 0 10px; }
+.helpActions .resetField { width: auto; height: auto; min-height: 28px; padding: 2px 6px; color: var(--vscode-textLink-foreground); font-size: .9em; text-align: left; }
+.conditionItem { margin: 0; padding: 10px 0; border-top: 1px solid var(--manager-border); }
+.conditionItem p { margin: 6px 0; }
+.conditionHeading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.conditionHeading strong { font-family: var(--vscode-editor-font-family); }
+.conditionStatus.not-applicable, .conditionCards span { color: var(--vscode-descriptionForeground); }
+.conditionExplanation summary { cursor: pointer; }
+.conditionActions { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.conditionActions:empty { display: none; }
+.conditionActions button { min-height: 28px; padding: 2px 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground); text-align: left; }
+.conditionActions button:hover { text-decoration: underline; }
+@media (forced-colors: active) {
+    .detailTopics button.selected { border-bottom-color: Highlight; }
+    .conditionCount, .conditionStatus, .detailsDock, .conditionItem { border-color: CanvasText; }
+    .field.disabled .fieldEditor > input { outline: 1px dashed GrayText; outline-offset: -1px; }
+}
+.fieldEditor { min-width: 0; }
+.layoutDiagnosticLocation { color: var(--vscode-textLink-foreground); }
+.unresolvedRecords { max-height: 20rem; overflow: auto; }
+.unresolvedRecords pre { white-space: pre; margin: 0; }
+.layoutControl { margin: 0.2rem; }

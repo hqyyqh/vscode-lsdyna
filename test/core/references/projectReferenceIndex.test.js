@@ -10,6 +10,44 @@ const {
 } = require('../../../out/core/references/projectReferenceIndex');
 
 describe('projectReferenceIndex', () => {
+    it('does not load relation coverage while importing the extension', () => {
+        require('node:child_process').execFileSync(process.execPath, ['-e', `
+            require('./test/register-out');
+            const registry = require('./out/core/references/definitionRegistry');
+            registry.getDefinitionRegistryCatalog = () => { throw Error('eager relation catalog'); };
+            require('./out/extension');
+        `], { cwd: path.resolve(__dirname, '../../..') });
+    });
+    it('annotates approved definition occurrences without replacing the existing index', () => {
+        const filePath = path.resolve('model', 'approved.k');
+        const index = buildProjectReferenceIndex({
+            rootFile: filePath,
+            files: [filePath],
+            fileIndexes: new Map([[filePath, {
+                referenceDefinitions: {
+                    curves: [],
+                    tables: [{
+                        kind: 'table', id: 73, filePath, keyword: '*DEFINE_TABLE_3D',
+                        startLine: 4, endLine: 6, rows: [],
+                    }],
+                    genericDefinitions: [{
+                        kind: 'generic', id: 42, filePath, keyword: '*PART',
+                        targetKeyword: 'PART', targetKind: 'part',
+                        ruleId: 'rule:da4aa6b06d895cb13ae9120b', startLine: 1, endLine: 2,
+                    }],
+                },
+            }]]),
+        });
+
+        const part = resolveReferenceDefinitions(index, 42, ['part'], ['PART'])[0];
+        const table = resolveReferenceDefinitions(index, 73, ['table'])[0];
+        assert.equal(part.definitionRegistry.approved, true);
+        assert.equal(part.definitionRegistry.sourceRuleId, 'rule:da4aa6b06d895cb13ae9120b');
+        assert.equal(part.definitionRegistry.retainedReviewState, 'coverage-gap');
+        assert.equal(table.definitionRegistry.approved, true);
+        assert.match(table.definitionRegistry.authoringRelationId, /^authoring-relation:[0-9a-f]{24}$/);
+    });
+
     it('resolves curve and table ids from project file indexes', () => {
         const rootFile = path.resolve('model', 'main.k');
         const childFile = path.resolve('model', 'curves.k');
@@ -272,6 +310,14 @@ describe('projectReferenceIndex', () => {
             analyzeReference(exactIndex, { kind: 'numeric', id: 9999, raw: '9999' }, ['curve']).state,
             'missing'
         );
+        const exactKeywordCoverage = analyzeReference(
+            exactIndex,
+            { kind: 'numeric', id: 9999, raw: '9999' },
+            ['curve'],
+            { targetDefinitions: ['DEFINE_CURVE'] },
+        );
+        assert.equal(exactKeywordCoverage.state, 'missing');
+        assert.ok(!exactKeywordCoverage.reasons.includes('target-definition-unindexed'));
 
         const ambiguousIndex = buildProjectReferenceIndex(makeSnapshot([
             ...oneOccurrence,
@@ -911,6 +957,105 @@ describe('projectReferenceIndex', () => {
         assert.equal(analysis.state, 'uncertain');
         assert.ok(analysis.reasons.includes('project-scan-unavailable'));
         assert.equal(analysis.definitions.length, 1);
+    });
+
+    it('keeps every namespace uncertain when an Include is outside the indexed closure', () => {
+        const rootFile = path.resolve('model', 'main-with-missing-include.k');
+        const index = buildProjectReferenceIndex({
+            rootFile,
+            files: [rootFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:missing',
+                    fromFile: rootFile,
+                    filePath: path.resolve('model', 'not-indexed.k'),
+                    fileName: 'not-indexed.k',
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                    missing: true,
+                }],
+            },
+            fileIndexes: new Map([[
+                rootFile,
+                {
+                    parameterEvents: [],
+                    referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                },
+            ]]),
+        });
+
+        const curve = analyzeReference(
+            index,
+            { kind: 'numeric', id: 1001, raw: '1001' },
+            ['curve'],
+            { projectScoped: true },
+        );
+        const generic = analyzeReference(
+            index,
+            { kind: 'numeric', id: 7, raw: '7' },
+            [],
+            {
+                projectScoped: true,
+                targetDefinitions: ['MAT_ELASTIC'],
+            },
+        );
+
+        assert.equal(curve.state, 'uncertain');
+        assert.equal(generic.state, 'uncertain');
+        assert.ok(curve.reasons.includes('missing-include'));
+        assert.ok(generic.reasons.includes('missing-include'));
+        assert.ok(!curve.reasons.includes('project-scan-unavailable'));
+        assert.ok(!generic.reasons.includes('project-scan-unavailable'));
+    });
+
+    it('carries *INCLUDE +/- input-format modes into occurrence contexts', () => {
+        const rootFile = path.resolve('model', 'format-main.k');
+        const nodeFile = path.resolve('model', 'format-nodes.k');
+        const index = buildProjectReferenceIndex({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [
+                    {
+                        occurrenceId: 'root:long',
+                        fromFile: rootFile,
+                        filePath: nodeFile,
+                        fileName: 'format-nodes.k',
+                        lineIndex: 1,
+                        keyword: '*INCLUDE',
+                        inputFormatOverride: 'long',
+                    },
+                    {
+                        occurrenceId: 'root:standard',
+                        fromFile: rootFile,
+                        filePath: nodeFile,
+                        fileName: 'format-nodes.k',
+                        lineIndex: 2,
+                        keyword: '*INCLUDE',
+                        inputFormatOverride: 'standard',
+                    },
+                ],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                }],
+                [nodeFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                }],
+            ]),
+        });
+
+        assert.deepEqual(
+            index.parameterContextsByFile.get(nodeFile)
+                .map(context => [context.occurrenceId, context.inputFormatMode]),
+            [
+                ['root:long', 'long'],
+                ['root:standard', 'standard'],
+            ],
+        );
     });
 });
 

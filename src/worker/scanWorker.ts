@@ -39,6 +39,7 @@ if (workerData && workerData.fileScanCacheDirectory) {
     try {
         persistentFileScanCache = createFileScanCacheStore({
             cacheDirectory: workerData.fileScanCacheDirectory,
+            ...(workerData.fileScanCacheOptions || {}),
         });
     } catch (_error) {
         // Best-effort: run without persistent cache
@@ -48,18 +49,35 @@ if (workerData && workerData.fileScanCacheDirectory) {
 // Create indexer with persistent cache support
 const indexer = createProjectIndexer({
     persistentFileScanCache,
+    maxFileScanCacheBytes: workerData?.fileScanMemoryCacheBytes,
 });
 const { buildProjectIndex } = indexer;
+const requestCancellationTokens = new Map();
 
 // Bind message listener on parent port to process requests.
 parentPort.on('message', async (message) => {
-    if (!message || message.type !== 'buildProjectIndex') return;
+    if (!message) return;
+    if (message.type === 'cancelRequest') {
+        const token = requestCancellationTokens.get(message.requestId);
+        if (token) token.isCancellationRequested = true;
+        return;
+    }
+    if (message.type !== 'buildProjectIndex') return;
+
+    const cancellationToken = { isCancellationRequested: false };
+    requestCancellationTokens.set(message.requestId, cancellationToken);
 
     try {
-        const snapshot = await buildProjectIndex(message.rootFile, message.options || {}, (partialSnapshot) => {
+        const snapshot = await buildProjectIndex(message.rootFile, {
+            ...(message.options || {}),
+            cancellationToken,
+        }, (partialSnapshot) => {
             parentPort.postMessage({
                 requestId: message.requestId,
-                snapshot: serializeProjectSnapshot(partialSnapshot),
+                event: partialSnapshot.type === 'structureReady'
+                    ? { ...partialSnapshot, snapshot: serializeProjectSnapshot(partialSnapshot.snapshot) }
+                    : partialSnapshot.type === 'progress' ? partialSnapshot : undefined,
+                ...(partialSnapshot.type ? {} : { snapshot: serializeProjectSnapshot(partialSnapshot) }),
                 type: 'progress',
             });
         });
@@ -75,6 +93,8 @@ parentPort.on('message', async (message) => {
             requestId: message.requestId,
             type: 'error',
         });
+    } finally {
+        requestCancellationTokens.delete(message.requestId);
     }
 });
 

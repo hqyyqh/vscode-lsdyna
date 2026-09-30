@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "kind": "dynasense-family-definition-scanner-runtime-approval",
+  "source": {
+    "handoffSha256": "cd9a54d6f9e1cfb2a3d6e413ebe5d5da5dddc92ffc3489f53b43c0dba689b614",
+    "handoffContentSha256": "f5cdb08a3ae0c7c24bbf234f7eaa4f32bc497a3953d37065153e3365baa75c9e",
+    "exactHandoffSha256": "4c29bb3ed6546f95ee0a56f947dc1b57b122fae64125703daaca54be80cd7364",
+    "exactHandoffContentSha256": "6f4a79956f099197b0cbfbcb23bdef466c2c45b4e10f519690a96873bcf073aa",
+    "implementationCommit": "95bdb9881e259cd255bce3fa25cbb726756edfa6",
+    "implementationFiles": [
+      {"path":"src/core/references/onDemandDefinitionScanner.ts","sha256":"5650bfa6e4cf28fc2bf3eb5219ba6e3698246c6a2ca1e1293d0cc13c70bf3c5e"},
+      {"path":"src/core/references/familyDefinitionScannerCatalog.ts","sha256":"557a7782498ac9e3c40cfa27797f79fb60a02d973ef8b4d715d8f11832ed2a34"},
+      {"path":"src/core/references/projectReferenceIndex.ts","sha256":"d51456ab93dfc2f056c1246800dbec16feaf8cd5f9072c7b6c8719e2f7e695c3"},
+      {"path":"src/core/references/registryReferenceNetwork.ts","sha256":"24bfd2cdc01dd27dbe82faf545f393d9507962dfba8e0753b7cdafc32edfeb11"},
+      {"path":"src/core/references/entityIdentity.ts","sha256":"2af35ac1f9d23e7d2c4a0cce831ab75ec9099b973bb1f43ac9628ace0c8d5f1d"},
+      {"path":"src/core/references/referenceNavigation.ts","sha256":"ef2e5348aa783a1e0c1ad5f9bae6ae128cb1f905c66d0f126e37bc83d1931572"},
+      {"path":"src/core/references/indexedEntityQuery.ts","sha256":"2ea28a6f8f8394696a6ed1ed16b75c3e11aa6632d1112d07b4ca02c27b61ed12"},
+      {"path":"src/core/project/projectIndexer.ts","sha256":"03af901fdff8a9caea5228146775c9302141b62cd670dc7db3ed60061e6123a1"},
+      {"path":"src/client/services/indexClient.ts","sha256":"c01d8504f2f5ae51c2a8655ebdd0907db0109e1b34480e9aab15b72629dc15fa"},
+      {"path":"src/client/providers/entityReferenceProvider.ts","sha256":"fe4da14d1e218a30fbc016633ff3c14a979eb5c7cb9ff236828210026b6cfd48"},
+      {"path":"src/client/providers/includeTreeProvider.ts","sha256":"05d4217ca3cebbcad6d67bdab5522e2e5c6c9ec524747f5940150ac2c8761eae"},
+      {"path":"src/extension.ts","sha256":"3e4182ed113f79e61627a157d8ead794ea367b398c0a124c937dfada2a5dbec5"},
+      {"path":"test/core/references/familyDefinitionScannerGenerated.test.js","sha256":"9d13b1a2d3a807b29f18021b9d1bccea15cd7cee7017671c019700fae5241cc4"},
+      {"path":"test/core/references/onDemandDefinitionScanner.test.js","sha256":"81e8a1e0fdea322c8630fe0d1cd4cd01811da1f616e831b4451d098edfa482fd"},
+      {"path":"test/core/references/familyDefinitionScannerCatalog.test.js","sha256":"2b4dccdb87c3809dd59707b4f3b5b540a61d7f8936ecc155e50dd58d71453fda"},
+      {"path":"test/core/references/registryReferenceNetwork.test.js","sha256":"5f685b07d50e3566dfdda0a721a1b221783aaf0e96dc8b3e3a387420cda45118"},
+      {"path":"test/core/references/indexedEntityQuery.test.js","sha256":"a45f0dee51c6940ce84df11d191295dc8859b8d7c90b3b7c75a3098adf35a9b3"},
+      {"path":"test/core/project/projectIndexer.test.js","sha256":"b617647cec80041d9071339d5117ae0a35a25d01013e0d588035e2fd48215f77"},
+      {"path":"test/client/services/indexClient.test.js","sha256":"82dc8df4cc7ac5fe436dfc4c04af1181cf6a35db6f92d3156dd41aa70a8ecf1e"},
+      {"path":"test/client/providers/entityReferenceProvider.test.js","sha256":"a55a66942be84d1e8c4113706be8a59a92f1ae436e7c49ef15b88cd3cf5c3a1f"},
+      {"path":"test/extension.test.js","sha256":"3241e59e60b82bcaf55d8e804866f0408fe39750d05f2f88699d1cc7d8fd53df"},
+      {"path":"test/core/references/exactDefinitionScannerGenerated.test.js","sha256":"658d0dda1d2fb8d56d8541a351cd1fcc872a4423d9ff7b9477f343817eaf4036"},
+      {"path":"scripts/generate-family-definition-scanner-runtime.cjs","sha256":"c9a36360357cdb44d0468258a11542556f06750867d0e5e6a5032649bca8000b"}
+    ]
+  },
+  "proof": {
+    "descriptors": 1673,
+    "numericPositive": 6692,
+    "labelPositive": 6636,
+    "integerOnlyLabelRejected": 56,
+    "laterCardRejected": 1673,
+    "blankOrdinalShiftRejected": 1673,
+    "namespacePopulation": {"MAT":1488,"MAT_THERMAL":25,"EOS":106,"SECTION":40,"SET_NODE":14},
+    "definitionOriginNumericPositive": 6692,
+    "definitionOriginLabelPositive": 6636,
+    "definitionOriginIntegerOnlyLabelRejected": 56,
+    "definitionOriginLaterCardRejected": 1673,
+    "definitionOriginBlankOrdinalShiftRejected": 1673,
+    "forwardNavigationNumericPassed": 6692,
+    "forwardNavigationLabelPassed": 6636,
+    "reverseNetworkIntegrationPassed": 1,
+    "productionPermissionClosedPassed": 1
+    ,"exactDescriptors": 5
+    ,"exactNumericPositive": 20
+    ,"exactIntegerOnlyLabelRejected": 20
+    ,"exactLaterCardRejected": 5
+    ,"exactBlankOrdinalShiftRejected": 5
+  },
+  "permissions": {
+    "catalogLoadPermission": true,
+    "scannerExecutionPermission": true,
+    "definitionProviderPermission": true,
+    "referenceProviderPermission": true,
+    "definitionRegistryPermission": true,
+    "completenessClaimPermission": false
+  },
+  "capacity": {"maxCompressedBytes":65536,"maxUncompressedBytes":1572864,"maxDescriptors":1678}
+}

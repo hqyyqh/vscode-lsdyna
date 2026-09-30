@@ -3,6 +3,8 @@ const {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
+    TABLE_3D_VIEWS,
+    normalizeTable3dView,
 } = require('../../../out/core/references/curvePlotRenderer');
 
 describe('curvePlotRenderer', () => {
@@ -87,6 +89,37 @@ describe('curvePlotRenderer', () => {
         assert.ok(svg.includes('<line'));
         // Verify ticks and HSL interpolation
         assert.ok(svg.includes('hsl('));
+    });
+
+    it('renders four distinct auto-fitted 3D table viewpoints', () => {
+        const definition = {
+            title: 'View Test',
+            rows: [
+                { value: 0, points: [{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 2, y: 1 }] },
+                { value: 1, points: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 2 }] },
+            ],
+        };
+        const rendered = new Map(TABLE_3D_VIEWS.map(view => [
+            view,
+            decodeSvg(renderTable3dSvgDataUri(definition, { view, themeKind: 2 })),
+        ]));
+
+        assert.equal(rendered.size, 4);
+        assert.equal(new Set(rendered.values()).size, 4);
+        for (const view of TABLE_3D_VIEWS) {
+            const svg = rendered.get(view);
+            assert.ok(svg.includes(`data-table-view="${view}"`));
+            assert.ok(svg.includes('<polyline'));
+        }
+        assert.ok(rendered.get('front').includes('X (curve var)'));
+        assert.ok(rendered.get('front').includes('Z (value)'));
+        assert.ok(!rendered.get('front').includes('Y (table var)'));
+        assert.ok(rendered.get('side').includes('Y (table var)'));
+        assert.ok(rendered.get('side').includes('Z (value)'));
+        assert.ok(!rendered.get('side').includes('X (curve var)'));
+
+        assert.equal(normalizeTable3dView('side'), 'side');
+        assert.equal(normalizeTable3dView('unknown'), 'isometric');
     });
 
     it('samples large 3D table previews to a hover-safe SVG size', () => {

@@ -22,8 +22,12 @@
 import type { ChangeMarksDiffResult } from './types';
 const { emptyChangeMarks } = require('./types');
 
-/** Soft cap for O(n*m) DP; beyond this use index-wise fallback. */
-const ALIGN_MAX = 4000;
+// ponytail: large changed regions use positional marks; use a bounded diff algorithm
+// if exact alignment of large rewrites becomes necessary. Never raise these for file size.
+const ALIGN_MAX_CELLS = 65_536;
+const ALIGN_MAX_CHAR_COMPARISONS = 8_000_000;
+
+export type AlignmentWork = { tables: number; cells: number; characterComparisons: number; fallbacks: number };
 
 /**
  * Split document text into lines. CRLF/LF normalized.
@@ -65,23 +69,23 @@ export function computeChangeMarks(
     originText: string,
     savePointText: string,
     currentText: string,
+    work?: AlignmentWork,
 ): ChangeMarksDiffResult {
+    if (currentText === savePointText && currentText === originText) return emptyChangeMarks();
     const origin = splitLines(originText);
-    const save = splitLines(savePointText);
-    const current = splitLines(currentText);
+    const save = savePointText === originText ? origin : splitLines(savePointText);
+    const current = currentText === savePointText ? save
+        : currentText === originText ? origin : splitLines(currentText);
 
     if (currentText === savePointText) {
-        if (currentText === originText) {
-            return emptyChangeMarks();
-        }
-        return classifyCleanVsOrigin(origin, current);
+        return classifyCleanVsOrigin(origin, current, work);
     }
 
     if (origin.length === current.length && save.length === current.length) {
         return classifyIndexWise(origin, save, current);
     }
 
-    return classifyWithAlignment(origin, save, current);
+    return classifyWithAlignment(origin, save, current, work);
 }
 
 /** Equal lengths: only modified (no inserts/deletes). */
@@ -111,6 +115,7 @@ function classifyIndexWise(
 function classifyCleanVsOrigin(
     origin: string[],
     current: string[],
+    work?: AlignmentWork,
 ): ChangeMarksDiffResult {
     const out = emptyChangeMarks();
     if (origin.length === current.length) {
@@ -121,16 +126,16 @@ function classifyCleanVsOrigin(
         }
         return out;
     }
-    const aligned = alignLines(origin, current);
-    for (const row of aligned) {
-        if (row.currentIndex < 0) continue;
-        if (row.originIndex < 0) {
-            out.savedInsertedLines.push(row.currentIndex);
-        } else if (current[row.currentIndex] !== origin[row.originIndex]) {
-            out.savedModifiedLines.push(row.currentIndex);
+    const aligned = alignPair(origin, current, work);
+    for (let i = 0; i < current.length; i++) {
+        const oi = aligned.origins[i];
+        if (oi < 0) {
+            out.savedInsertedLines.push(i);
+        } else if (current[i] !== origin[oi]) {
+            out.savedModifiedLines.push(i);
         }
     }
-    for (const anchor of computeDeleteAnchors(origin, current)) {
+    for (const anchor of aligned.deletions) {
         out.savedDeletedLines.push(anchor);
     }
     return finalize(out);
@@ -142,59 +147,37 @@ function classifyWithAlignment(
     origin: string[],
     save: string[],
     current: string[],
+    work?: AlignmentWork,
 ): ChangeMarksDiffResult {
-    const vsSave = alignLines(save, current);
-    const vsOrigin = alignLines(origin, current);
-
-    const originByCurrent = new Map<number, number>();
-    const originInsert = new Set<number>();
-    for (const row of vsOrigin) {
-        if (row.currentIndex < 0) continue;
-        if (row.originIndex < 0) {
-            originInsert.add(row.currentIndex);
-        } else {
-            originByCurrent.set(row.currentIndex, row.originIndex);
-        }
-    }
-
+    const vsSave = alignPair(save, current, work);
+    const vsOrigin = origin === save ? vsSave : alignPair(origin, current, work);
     const out = emptyChangeMarks();
-    const covered = new Set<number>();
-
-    for (const row of vsSave) {
-        if (row.currentIndex < 0) continue;
-        const ci = row.currentIndex;
-        covered.add(ci);
+    for (let ci = 0; ci < current.length; ci++) {
         const c = current[ci];
-
-        if (row.originIndex < 0) {
+        const si = vsSave.origins[ci];
+        if (si < 0) {
             out.unsavedInsertedLines.push(ci);
             continue;
         }
-        const s = save[row.originIndex];
+        const s = save[si];
         if (c !== s) {
             out.unsavedModifiedLines.push(ci);
             continue;
         }
-        if (originInsert.has(ci) || !originByCurrent.has(ci)) {
+        const oi = vsOrigin.origins[ci];
+        if (oi < 0) {
             out.savedInsertedLines.push(ci);
         } else {
-            const oi = originByCurrent.get(ci)!;
             if (c !== origin[oi]) {
                 out.savedModifiedLines.push(ci);
             }
         }
     }
 
-    for (let i = 0; i < current.length; i++) {
-        if (!covered.has(i)) {
-            out.unsavedInsertedLines.push(i);
-        }
-    }
-
-    for (const anchor of computeDeleteAnchors(save, current)) {
+    for (const anchor of vsSave.deletions) {
         out.unsavedDeletedLines.push(anchor);
     }
-    for (const anchor of computeDeleteAnchors(origin, current)) {
+    for (const anchor of vsOrigin.deletions) {
         out.savedDeletedLines.push(anchor);
     }
 
@@ -222,141 +205,84 @@ function finalize(out: ChangeMarksDiffResult): ChangeMarksDiffResult {
     };
 }
 
-/** Build DP table: match 0 / sub (1,2] / ins 1 / del 1. */
-function buildEditDp(left: string[], right: string[]): number[][] {
-    const n = left.length;
-    const m = right.length;
-    const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+/** One alignment supplies both matched rows and deletion anchors. */
+function alignPair(left: string[], right: string[], work?: AlignmentWork) {
+    const origins = new Int32Array(right.length).fill(-1);
+    let start = 0;
+    while (start < left.length && start < right.length && left[start] === right[start]) {
+        origins[start] = start;
+        start++;
+    }
+    let leftEnd = left.length, rightEnd = right.length;
+    while (leftEnd > start && rightEnd > start && left[leftEnd - 1] === right[rightEnd - 1]) {
+        origins[--rightEnd] = --leftEnd;
+    }
+    const n = leftEnd - start, m = rightEnd - start;
+    const deletions = new Set<number>();
+    const anchor = (offset: number) => {
+        if (right.length) deletions.add(Math.min(start + offset, right.length - 1));
+    };
+    if (n === 0 || m === 0) {
+        if (n > 0) anchor(0);
+        return { origins, deletions: [...deletions] };
+    }
+    const cells = (n + 1) * (m + 1);
+    let maxLeft = 0, maxRight = 0;
+    for (let i = start; i < leftEnd; i++) maxLeft = Math.max(maxLeft, left[i].length);
+    for (let j = start; j < rightEnd; j++) maxRight = Math.max(maxRight, right[j].length);
+    // Include traceback comparisons in the upper bound.
+    const characterComparisons = (n * m + n + m) * Math.max(maxLeft, maxRight);
+    if (cells > ALIGN_MAX_CELLS || characterComparisons > ALIGN_MAX_CHAR_COMPARISONS) {
+        if (work) work.fallbacks++;
+        for (let j = 0; j < Math.min(n, m); j++) origins[start + j] = start + j;
+        if (n > m) anchor(m);
+        return { origins, deletions: [...deletions] };
+    }
+    if (work) {
+        work.tables++;
+        work.cells += cells;
+        work.characterComparisons += characterComparisons;
+    }
+    const dp = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
     for (let i = 1; i <= n; i++) dp[i][0] = i;
     for (let j = 1; j <= m; j++) dp[0][j] = j;
     for (let i = 1; i <= n; i++) {
         for (let j = 1; j <= m; j++) {
-            const diag = dp[i - 1][j - 1] + subCost(left[i - 1], right[j - 1]);
-            const del = dp[i - 1][j] + 1;
-            const ins = dp[i][j - 1] + 1;
-            dp[i][j] = Math.min(diag, del, ins);
+            dp[i][j] = Math.min(
+                dp[i - 1][j - 1] + subCost(left[start + i - 1], right[start + j - 1]),
+                dp[i - 1][j] + 1, dp[i][j - 1] + 1,
+            );
         }
     }
-    return dp;
+    let i = n, j = m;
+    const eq = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && eq(dp[i][j], dp[i - 1][j - 1] +
+            subCost(left[start + i - 1], right[start + j - 1]))) {
+            origins[start + --j] = start + --i;
+        } else if (i > 0 && eq(dp[i][j], dp[i - 1][j] + 1)) {
+            anchor(j);
+            i--;
+        } else if (j > 0 && eq(dp[i][j], dp[i][j - 1] + 1)) {
+            j--;
+        } else if (i > 0 && j > 0) {
+            origins[start + --j] = start + --i;
+        } else if (i > 0) {
+            anchor(j);
+            i--;
+        } else {
+            j--;
+        }
+    }
+    return { origins, deletions: uniqueSorted([...deletions]) };
 }
 
-/**
- * Align left↔right. Substitutions keep modified lines solid; unpaired right = insert.
- * Pure deletes omitted (see computeDeleteAnchors).
- */
 export function alignLines(left: string[], right: string[]): AlignRow[] {
-    const n = left.length;
-    const m = right.length;
-    if (m === 0) return [];
-    if (n > ALIGN_MAX || m > ALIGN_MAX) {
-        return fallbackAlign(left, right);
-    }
-
-    const dp = buildEditDp(left, right);
-    const rev: AlignRow[] = [];
-    let i = n;
-    let j = m;
-    // Float eps for cost compare after weighted sub
-    const eq = (a: number, b: number) => Math.abs(a - b) < 1e-9;
-
-    while (i > 0 || j > 0) {
-        if (i > 0 && j > 0) {
-            const sc = subCost(left[i - 1], right[j - 1]);
-            if (eq(dp[i][j], dp[i - 1][j - 1] + sc)) {
-                rev.push({ originIndex: i - 1, currentIndex: j - 1 });
-                i--;
-                j--;
-                continue;
-            }
-        }
-        // Prefer delete over insert on remaining ties so inserts stay on the right side.
-        if (i > 0 && eq(dp[i][j], dp[i - 1][j] + 1)) {
-            i--;
-            continue;
-        }
-        if (j > 0 && eq(dp[i][j], dp[i][j - 1] + 1)) {
-            rev.push({ originIndex: -1, currentIndex: j - 1 });
-            j--;
-            continue;
-        }
-        // Fallback
-        if (i > 0 && j > 0) {
-            rev.push({ originIndex: i - 1, currentIndex: j - 1 });
-            i--;
-            j--;
-        } else if (i > 0) {
-            i--;
-        } else {
-            rev.push({ originIndex: -1, currentIndex: j - 1 });
-            j--;
-        }
-    }
-    rev.reverse();
-    return rev;
+    return Array.from(alignPair(left, right).origins, (originIndex, currentIndex) => ({ originIndex, currentIndex }));
 }
 
-/**
- * Neighbor anchors for pure deletes under the same DP.
- * Anchor on the first right line after the delete, else last right line.
- */
 export function computeDeleteAnchors(left: string[], right: string[]): number[] {
-    const n = left.length;
-    const m = right.length;
-    if (m === 0 || n === 0) return [];
-    if (n > ALIGN_MAX || m > ALIGN_MAX) {
-        if (n > m) return [m - 1];
-        return [];
-    }
-
-    const dp = buildEditDp(left, right);
-    const anchors = new Set<number>();
-    let i = n;
-    let j = m;
-    const eq = (a: number, b: number) => Math.abs(a - b) < 1e-9;
-
-    while (i > 0 || j > 0) {
-        if (i > 0 && j > 0) {
-            const sc = subCost(left[i - 1], right[j - 1]);
-            if (eq(dp[i][j], dp[i - 1][j - 1] + sc)) {
-                i--;
-                j--;
-                continue;
-            }
-        }
-        if (i > 0 && eq(dp[i][j], dp[i - 1][j] + 1)) {
-            anchors.add(j < m ? j : m - 1);
-            i--;
-            continue;
-        }
-        if (j > 0 && eq(dp[i][j], dp[i][j - 1] + 1)) {
-            j--;
-            continue;
-        }
-        if (i > 0 && j > 0) {
-            i--;
-            j--;
-        } else if (i > 0) {
-            anchors.add(j < m ? j : m - 1);
-            i--;
-        } else {
-            j--;
-        }
-    }
-    return uniqueSorted([...anchors]);
-}
-
-function fallbackAlign(left: string[], right: string[]): AlignRow[] {
-    const rows: AlignRow[] = [];
-    const len = Math.max(left.length, right.length);
-    for (let k = 0; k < len; k++) {
-        if (k < right.length) {
-            rows.push({
-                originIndex: k < left.length ? k : -1,
-                currentIndex: k,
-            });
-        }
-    }
-    return rows;
+    return alignPair(left, right).deletions;
 }
 
 function uniqueSorted(nums: number[]): number[] {

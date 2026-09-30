@@ -29,12 +29,16 @@ type IncludeSearchEntry = {
 type KeywordUsage = {
     filePath: string;
     lineIndex: number;
+    displayName?: string;
+    keyword?: string;
+    category?: string;
 };
 
 type KeywordSearchEntry = {
     keyword: string;
     usages: KeywordUsage[];
     treeItem: any;
+    searchText?: string;
 };
 
 type IncludeSearchPickOptions = {
@@ -117,7 +121,14 @@ function filterKeywordEntries(entries, query, limit = DEFAULT_RESULT_LIMIT) {
     }
     const scored = [];
     for (const entry of list) {
-        const score = scoreKeywordName(rawQuery, entry.keyword);
+        const score = Math.max(
+            scoreKeywordName(rawQuery, entry.keyword),
+            scorePathFields(rawQuery, {
+                label: entry.keyword,
+                description: entry.searchText || '',
+                filePath: (entry.usages || []).map(usage => usage.filePath || '').join(' '),
+            }),
+        );
         if (score > 0) {
             scored.push({ entry, score });
         }
@@ -408,8 +419,10 @@ async function showKeywordSearchPick(options) {
     }
 
     const usageItems = usages.map(usage => ({
-        label: `${path.basename(usage.filePath)}:${usage.lineIndex + 1}`,
-        description: path.dirname(usage.filePath),
+        label: usage.displayName
+            ? `${usage.displayName} — ${path.basename(usage.filePath)}:${usage.lineIndex + 1}`
+            : `${path.basename(usage.filePath)}:${usage.lineIndex + 1}`,
+        description: [usage.keyword, usage.category].filter(Boolean).join(' · ') || path.dirname(usage.filePath),
         detail: usage.filePath,
         usage,
     }));

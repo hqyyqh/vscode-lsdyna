@@ -9,6 +9,29 @@ const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAs
 const { SCANNER_VERSION } = require('../../../src/core/scanner/scannerContracts');
 
 describe('projectIndexer', () => {
+    it('builds an explicit single-file snapshot without traversing Include cards', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-single-file-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const childFile = path.join(tempRoot, 'child.k');
+        fs.writeFileSync(rootFile, '*INCLUDE\nchild.k\n*PART\n         1\n', 'utf8');
+        fs.writeFileSync(childFile, '*MAT_ELASTIC\n         1\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile, { singleFileOnly: true });
+
+            assert.equal(snapshot.scope, 'single-file');
+            assert.deepEqual(snapshot.files, [rootFile]);
+            assert.equal(snapshot.fileIndexes.has(rootFile), true);
+            assert.equal(snapshot.fileIndexes.has(childFile), false);
+            assert.equal(snapshot.fileIndexes.get(rootFile).includeEntries.length, 1);
+            assert.deepEqual(snapshot.graph.includeOccurrences, []);
+            assert.deepEqual(snapshot.missingFiles, []);
+            assert.equal(snapshot.stats.scannedFileCount, 1);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
     it('loads each file index once and derives keywords plus includes from that result', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-file-index-'));
         const rootFile = path.join(tempRoot, 'main.k');
@@ -174,6 +197,53 @@ describe('projectIndexer', () => {
             assert.deepEqual(
                 occurrences.map(item => item.lineIndex),
                 [1, 7]
+            );
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('carries real *INCLUDE +/- input modes from the scanner into graph occurrences', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-include-format-'));
+        const rootFile = path.join(tempRoot, 'main.k');
+        const longFile = path.join(tempRoot, 'long-nodes.k');
+        const standardFile = path.join(tempRoot, 'standard-nodes.k');
+
+        fs.writeFileSync(rootFile, [
+            '*KEYWORD',
+            '*INCLUDE +',
+            'long-nodes.k',
+            '*INCLUDE-',
+            'standard-nodes.k',
+            '*END',
+        ].join('\n'), 'utf8');
+        fs.writeFileSync(longFile, '*NODE\n                  17\n*END\n', 'utf8');
+        fs.writeFileSync(standardFile, '*NODE\n      17\n*END\n', 'utf8');
+
+        try {
+            const snapshot = await buildProjectIndex(rootFile);
+            const occurrences = snapshot.graph.includeOccurrences.filter(item =>
+                item.fromFile === rootFile && !item.missing
+            );
+
+            assert.deepEqual(
+                occurrences.map(item => ({
+                    filePath: item.filePath,
+                    keyword: item.keyword,
+                    inputFormatOverride: item.inputFormatOverride,
+                })),
+                [
+                    {
+                        filePath: longFile,
+                        keyword: '*INCLUDE',
+                        inputFormatOverride: 'long',
+                    },
+                    {
+                        filePath: standardFile,
+                        keyword: '*INCLUDE',
+                        inputFormatOverride: 'standard',
+                    },
+                ]
             );
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -520,6 +590,91 @@ describe('projectIndexer', () => {
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
+    });
+});
+
+describe('projectIndexer bounded memory cache', () => {
+    function createFileIndex(filePath) {
+        return {
+            filePath,
+            scannerVersion: SCANNER_VERSION,
+            keywordBlocks: [{ keyword: '*KEYWORD', filePath, startLine: 0, endLine: 0 }],
+            includeEntries: [],
+            searchPaths: [path.dirname(filePath)],
+            pathEntries: [],
+        };
+    }
+
+    it('evicts least-recently-used per-file scan results by estimated bytes', async () => {
+        const roots = ['a.k', 'b.k', 'c.k'].map(name => path.resolve('memory-cache', name));
+        const loads = new Map();
+        const indexer = createProjectIndexer({
+            loadFileIndex: async filePath => {
+                loads.set(filePath, (loads.get(filePath) || 0) + 1);
+                return createFileIndex(filePath);
+            },
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            estimateFileScanSize: () => 10,
+            maxFileScanCacheBytes: 20,
+        });
+
+        await indexer.buildProjectIndex(roots[0]);
+        await indexer.buildProjectIndex(roots[1]);
+        await indexer.buildProjectIndex(roots[0]);
+        await indexer.buildProjectIndex(roots[2]);
+
+        assert.deepEqual(indexer.getMemoryCacheStats(), { entryCount: 2, totalBytes: 20 });
+        await indexer.buildProjectIndex(roots[1]);
+        assert.equal(loads.get(roots[0]), 1);
+        assert.equal(loads.get(roots[1]), 2);
+        assert.deepEqual(indexer.clearMemoryCache(), { entryCount: 2, totalBytes: 20 });
+        assert.deepEqual(indexer.getMemoryCacheStats(), { entryCount: 0, totalBytes: 0 });
+    });
+
+    it('does not retain one per-file scan result larger than the hard budget', async () => {
+        const rootFile = path.resolve('memory-cache', 'oversize.k');
+        let loads = 0;
+        const indexer = createProjectIndexer({
+            loadFileIndex: async filePath => {
+                loads += 1;
+                return createFileIndex(filePath);
+            },
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            estimateFileScanSize: () => 10,
+            maxFileScanCacheBytes: 5,
+        });
+
+        await indexer.buildProjectIndex(rootFile);
+        await indexer.buildProjectIndex(rootFile);
+        assert.equal(loads, 2);
+        assert.deepEqual(indexer.getMemoryCacheStats(), { entryCount: 0, totalBytes: 0 });
+    });
+
+    it('propagates cancellation from the persistent file cache without starting a fresh scan', async () => {
+        const rootFile = path.resolve('memory-cache', 'cancelled.k');
+        const cancellationToken = { isCancellationRequested: false };
+        let scanCount = 0;
+        const indexer = createProjectIndexer({
+            loadFileIndex: async filePath => {
+                scanCount += 1;
+                return createFileIndex(filePath);
+            },
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            persistentFileScanCache: {
+                async get() {
+                    cancellationToken.isCancellationRequested = true;
+                    return null;
+                },
+                async set() {},
+            },
+        });
+
+        await assert.rejects(
+            indexer.buildProjectIndex(rootFile, { cancellationToken }),
+            error => error?.name === 'CancellationError',
+        );
+        assert.equal(scanCount, 0);
+        assert.deepEqual(indexer.getMemoryCacheStats(), { entryCount: 0, totalBytes: 0 });
     });
 });
 

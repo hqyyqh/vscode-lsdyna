@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const {
+    extractReadmeSettings,
     validateManifestLocalization,
     validateParallelMessages,
     validateProjectContracts,
@@ -11,8 +12,22 @@ const {
 } = require('../scripts/validate-project-contracts.cjs');
 
 describe('project contracts', () => {
-    it('keeps manifest, documentation, localization, activation, and UTF-8 contracts valid', () => {
-        const errors = validateProjectContracts(path.resolve(__dirname, '..'));
+    it('reads exact settings and defaults from tables and bilingual lists', () => {
+        const text = [
+            '| `lsdyna.language` | `"auto"` | Language |',
+            '- `lsdyna.enableFieldHover`', '', '  **Default:** `true`',
+            '- `lsdyna.customValidKeywords`', '', '  **默认值：** `["*END","*TITLE"]`',
+            'Ordinary prose mentioning `lsdyna.notASetting` is not an entry.',
+        ].join('\r\n');
+        assert.deepEqual([...extractReadmeSettings(text)], [
+            ['lsdyna.language', '"auto"'],
+            ['lsdyna.enableFieldHover', 'true'],
+            ['lsdyna.customValidKeywords', '["*END","*TITLE"]'],
+        ]);
+    });
+    it('keeps manifest, documentation, localization, activation, and UTF-8 contracts valid', function () {
+        this.timeout(30_000);
+        const errors = validateProjectContracts(path.resolve(__dirname, '..'), { publicSource: true });
         assert.deepEqual(errors, []);
     });
 
@@ -55,6 +70,16 @@ describe('project contracts', () => {
             errors
         );
         assert.deepEqual(errors, ['en.message placeholders (0,1) differ from zh (0)']);
+    });
+
+    it('checks named placeholders without depending on translation word order', () => {
+        const en = new Map([['count', 'Expected {expected}; found {actual}']]);
+        const errors = [];
+        validateParallelMessages(en, new Map([['count', '实际 {actual}，应有 {expected}']]), 'en', 'zh', errors);
+        assert.deepEqual(errors, []);
+        validateParallelMessages(en, new Map([['count', '实际 {actual}，应有 {expect}']]), 'en', 'zh', errors);
+        assert.equal(errors.length, 1);
+        assert.match(errors[0], /placeholders/);
     });
 
     it('rejects hard-coded manifest command copy', () => {

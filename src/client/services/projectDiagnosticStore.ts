@@ -104,7 +104,7 @@ export function createProjectDiagnosticStore(
         republish(uriKeys, fallbackPaths);
     }
 
-    function dispose(): void {
+    function clearAll(): void {
         const uriKeys = new Set<string>();
         const fallbackPaths = new Map<string, string>();
         for (const projectDiagnostics of projects.values()) {
@@ -118,5 +118,9 @@ export function createProjectDiagnosticStore(
         republish(uriKeys, fallbackPaths);
     }
 
-    return { publish, clear, refresh, dispose };
+    function dispose(): void {
+        clearAll();
+    }
+
+    return { publish, clear, clearAll, refresh, dispose };
 }

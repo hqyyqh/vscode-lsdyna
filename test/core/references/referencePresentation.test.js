@@ -25,6 +25,8 @@ describe('referencePresentation', () => {
         assert.equal(presentation.bindingState, 'exact');
         assert.equal(presentation.candidates[0].origin, 'current-file');
         assert.equal(presentation.candidates[0].relation, 'confirmed-match');
+        assert.equal(presentation.previewAllowed, true);
+        assert.equal(presentation.candidates[0].previewAllowed, true);
         assert.equal(presentation.candidates[0].previewMode, 'visual');
         assert.equal(presentation.candidates[0].navigable, true);
     });
@@ -41,8 +43,30 @@ describe('referencePresentation', () => {
 
         assert.equal(presentation.candidates[0].origin, 'current-file');
         assert.equal(presentation.candidates[0].relation, 'possible-match');
+        assert.equal(presentation.candidates[0].previewAllowed, true);
         assert.equal(presentation.showProjectScanAction, true);
         assert.equal(presentation.projectCoverageAvailable, false);
+    });
+
+    it('blocks previews for every candidate when a reference has multiple definitions', () => {
+        const definitions = ['a.k', 'b.k'].map(filePath => ({
+            kind: 'curve',
+            filePath: path.resolve('model', filePath),
+            startLine: 4,
+            points: [{ x: 0, y: 1 }, { x: 1, y: 2 }],
+        }));
+        const presentation = buildReferencePresentation({
+            state: 'ambiguous',
+            definitions,
+            reasons: [],
+        }, { documentPath: currentFile });
+
+        assert.equal(presentation.previewAllowed, false);
+        assert.ok(presentation.candidates.every(candidate => candidate.previewAllowed === false));
+        assert.ok(presentation.candidates.every(candidate => candidate.previewMode === 'visual'));
+        assert.equal(presentation.provisional, true);
+        assert.ok(presentation.provisionalPrimary);
+        assert.equal(presentation.provisionalAlternatives.length, 1);
     });
 
     it('uses summary mode for incomplete and function curves', () => {

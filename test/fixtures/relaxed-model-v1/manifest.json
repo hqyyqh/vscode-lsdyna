@@ -1,0 +1,189 @@
+{
+  "builder": {
+    "sha256": "a0ae9ba4fce0f1cbf580328df395910888e387f1c8aa7824031bd8bf8bc1e84c",
+    "size": 11407
+  },
+  "fieldShards": [
+    {
+      "path": "fields/0.json.gz",
+      "prefix": "0",
+      "records": 1478,
+      "sha256": "a9f18b95e3d0009a3331dd667c42876cf54eed01aa7b997ba7e051b6233ed7e2"
+    },
+    {
+      "path": "fields/1.json.gz",
+      "prefix": "1",
+      "records": 1535,
+      "sha256": "86decf4c9f7eab2ddc42ecd7d9b846fd1e2a4e593caf105baa12985961683891"
+    },
+    {
+      "path": "fields/2.json.gz",
+      "prefix": "2",
+      "records": 1549,
+      "sha256": "2d2725ae45de19ea0aadb3d8d33714649fe197616e514b550d9746d07c631d9b"
+    },
+    {
+      "path": "fields/3.json.gz",
+      "prefix": "3",
+      "records": 1508,
+      "sha256": "837dec14f7416b1324f3dfd554720200ea01d7279bba259e41c3c3251b7e5660"
+    },
+    {
+      "path": "fields/4.json.gz",
+      "prefix": "4",
+      "records": 1513,
+      "sha256": "88f8361cac8fed30eafc3a4772a7a61c963043459ae4220d48e3f5fd5eb5673d"
+    },
+    {
+      "path": "fields/5.json.gz",
+      "prefix": "5",
+      "records": 1555,
+      "sha256": "35b949d2842803beb4dbd41c0437c05afd9e25ecadc082946110104be39d163b"
+    },
+    {
+      "path": "fields/6.json.gz",
+      "prefix": "6",
+      "records": 1515,
+      "sha256": "824ef881110c4db243b47e0cc0d0dc0ae7264887d94c13cdb3b3521f480bf268"
+    },
+    {
+      "path": "fields/7.json.gz",
+      "prefix": "7",
+      "records": 1503,
+      "sha256": "33e564edd268737a1625eba47c284c263fe52022a67324f26a6f4d8b92471b77"
+    },
+    {
+      "path": "fields/8.json.gz",
+      "prefix": "8",
+      "records": 1530,
+      "sha256": "57f1f0b5b749cd04804ad31ee002f6d4544f8a6aaf8f93b027e128d912bd2b77"
+    },
+    {
+      "path": "fields/9.json.gz",
+      "prefix": "9",
+      "records": 1507,
+      "sha256": "75da797f1a504cd694e7e7c8adcf26d1a8e5e8fe84c9210cdacefb9bb46aa736"
+    },
+    {
+      "path": "fields/a.json.gz",
+      "prefix": "a",
+      "records": 1554,
+      "sha256": "b42704ffd3bd6b77e55a0a9aa86cc4465b487b86205154663b00cc40b4a0f8d7"
+    },
+    {
+      "path": "fields/b.json.gz",
+      "prefix": "b",
+      "records": 1519,
+      "sha256": "f6722bdcac8016e0b606f351ab856152551ef3b6faa7d32f553603a534dd69c3"
+    },
+    {
+      "path": "fields/c.json.gz",
+      "prefix": "c",
+      "records": 1518,
+      "sha256": "215b5a06e88baf1b404d05383d237021f29a8f5452462bbfd00fb3a3b7d16704"
+    },
+    {
+      "path": "fields/d.json.gz",
+      "prefix": "d",
+      "records": 1450,
+      "sha256": "e866da03581d797245504ba495cee4147c741f7bc889455a9d004f5e45df8d6d"
+    },
+    {
+      "path": "fields/e.json.gz",
+      "prefix": "e",
+      "records": 1547,
+      "sha256": "331280f99054758442263573bd50a0599e8d60476936e8ff370123d30d78285e"
+    },
+    {
+      "path": "fields/f.json.gz",
+      "prefix": "f",
+      "records": 1503,
+      "sha256": "8611e5d1f0a95a414f23b79b272c3afb83a9743bef2db429cb00d1ff68559e2b"
+    }
+  ],
+  "kind": "dynasense-public-relaxed-model-fixture-v1",
+  "policy": {
+    "approvedBindingConsolidationPermission": true,
+    "completenessClaimPermission": false,
+    "definitionRegistryPermission": false,
+    "f12Permission": false,
+    "humanFieldReviewRequired": false,
+    "independentVerificationRequired": false,
+    "optionMigrationPermission": false,
+    "pluginRuntimePermission": false,
+    "relaxedModelApprovalAccepted": true,
+    "semanticClassificationPermission": false,
+    "signedValueDomainPermission": false
+  },
+  "schemaVersion": 1,
+  "source": {
+    "approval": {
+      "contentSha256": "15348d178a606f00a3ab0c4b86f97a2139fd405cafce8a2adf919f2ff51b13c1",
+      "sha256": "e6a09b5b6ff7ca9743cdf530d66b9b8e0d837c2d761c3238998336216afbc68a",
+      "size": 3172
+    },
+    "approvalFile": {
+      "records": 1,
+      "sha256": "54578bfc1fb924a4fc1354b51eb9009bc4df05c500ae32b602717cd30b730e57",
+      "size": 2765
+    },
+    "baseline": {
+      "contentSha256": "70c722bfa503e028d8715b7fffc5032ca2e6ba8ae9c56a9eaed149d0481f2693",
+      "sha256": "7ae62fa429b7be4b5d248e16210e74161b7caed420c72c79a0f6dc65af461c29",
+      "size": 9847
+    },
+    "config": {
+      "sha256": "182ad0977bf352bd5b3df0fe851069d3569635f054db04874632a350c8772995",
+      "size": 1537
+    }
+  },
+  "summary": {
+    "approvalSetOverlaps": 0,
+    "approvedDescriptionFields": 22116,
+    "approvedRelaxedModelV1Fields": 1,
+    "approvedStage102Fields": 8,
+    "approvedStage103Fields": 1,
+    "approvedStage113Fields": 2,
+    "approvedStage114Fields": 1,
+    "approvedStage115Fields": 16,
+    "approvedStage116Fields": 31,
+    "approvedStage117Fields": 6,
+    "approvedStage118Fields": 3,
+    "approvedStage119Fields": 3,
+    "approvedStage120Fields": 16,
+    "approvedStage121Fields": 5,
+    "approvedStage122Fields": 2,
+    "approvedStage123Fields": 4,
+    "approvedStage124Fields": 11,
+    "approvedStage125Fields": 1,
+    "approvedStage126Fields": 1,
+    "approvedStage127Fields": 1,
+    "approvedStage128Fields": 2,
+    "approvedStage129Fields": 4,
+    "approvedStage130Fields": 4,
+    "approvedStage131Fields": 5,
+    "approvedStage132Fields": 9,
+    "approvedStage133Fields": 2,
+    "approvedStage134Fields": 2,
+    "approvedStage135Fields": 1,
+    "approvedStage136Fields": 1,
+    "approvedStage137Fields": 1,
+    "approvedStage138Fields": 1,
+    "approvedStage139Fields": 20,
+    "approvedStage140Fields": 1,
+    "finalPhysicalFields": 24284,
+    "remainingDescriptionFields": 2168,
+    "remainingNoLabeledRowFields": 58,
+    "remainingNoLexicalCandidateFields": 1602,
+    "runtimeEligibleFields": 0,
+    "semanticClassifiedFields": 0,
+    "sourceApprovedDescriptionFields": 22115,
+    "sourceNoLabeledRowFields": 58,
+    "sourceNoLexicalCandidateFields": 1603,
+    "sourceRemainingDescriptionFields": 2169,
+    "unclassifiedFields": 0
+  },
+  "contentSha256": "feb7cb8e625b52b7d48a4e1ce6b933c1d116d5ed7dbd43ab8647e9bb336efa6e",
+  "originManifestSha256": "5e8ce24861e232dbdd9905d1b1ccd367d876e2d2b0cdb49b6135743af3c915d1",
+  "originContentSha256": "dba272469eabbb8c91a59b33a3e23933194081d6879ea404ebb6271fe62a06e7"
+}

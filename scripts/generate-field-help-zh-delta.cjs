@@ -55,12 +55,19 @@ function collectHelpDelta(english, localized) {
             }
             const englishKeys = Object.keys(englishNode);
             const localizedKeys = Object.keys(localizedNode);
-            if (englishKeys.length !== localizedKeys.length
-                || englishKeys.some((key, index) => localizedKeys[index] !== key)) {
+            const localizedMatchesEnglishPrefix = localizedKeys.length <= englishKeys.length
+                && localizedKeys.every((key, index) => englishKeys[index] === key);
+            const omittedKeys = englishKeys.slice(localizedKeys.length);
+            const omittedKeysAreTrailingNulls = omittedKeys.every((key) => englishNode[key] === null);
+            if (!localizedMatchesEnglishPrefix
+                || (localizedKeys.length < englishKeys.length && !omittedKeysAreTrailingNulls)) {
                 throw new Error(`${displayPath(parts)}: localized object keys or key order differ from English`);
             }
 
             for (const key of englishKeys) {
+                if (!(key in localizedNode)) {
+                    continue;
+                }
                 const englishValue = englishNode[key];
                 const localizedValue = localizedNode[key];
                 const nextParts = parts.concat(key);

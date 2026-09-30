@@ -78,13 +78,28 @@ describe('editor safety: complete card-layout inventory', () => {
 
     it('locks the complete generated-schema inventory used by this safety pass', () => {
         assert.strictEqual(Object.keys(fieldData).length, 5362);
-        assert.strictEqual(cards.length, 20780);
-        assert.strictEqual(nonEmptyCards.length, 20726);
+        assert.strictEqual(cards.length, 20783);
+        assert.strictEqual(nonEmptyCards.length, 20729);
         assert.strictEqual(
             nonEmptyCards.reduce((sum, { card }) => sum + card.length, 0),
-            117738,
+            117745,
         );
-        assert.strictEqual(distinctLayouts.size, 495);
+        assert.strictEqual(distinctLayouts.size, 469);
+    });
+
+    it('accepts the LS-PrePost offset-encoded MAT_331 family as fixed 10-column cards', () => {
+        for (const keyword of [
+            'MAT_331', 'MAT_331_TITLE',
+            'MAT_IMPACT_ORTHOTROPIC', 'MAT_IMPACT_ORTHOTROPIC_TITLE',
+        ]) {
+            for (const [cardIndex, card] of fieldData[keyword].c.entries()) {
+                assert.strictEqual(geometryIssue(card), null, `${keyword}.c[${cardIndex}]`);
+                for (const [fieldIndex, field] of card.entries()) {
+                    assert.strictEqual(field.p, fieldIndex * 10, `${keyword}.c[${cardIndex}][${fieldIndex}].p`);
+                    assert.strictEqual(field.w, 10, `${keyword}.c[${cardIndex}][${fieldIndex}].w`);
+                }
+            }
+        }
     });
 
     it('fails closed for every overlapping or otherwise invalid schema geometry', () => {

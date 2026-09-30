@@ -2,3 +2,6 @@
 Jinja2==3.1.6
 beartype==0.22.9
 jsonschema==4.26.0
+capstone==5.0.9
+unicorn==2.1.4
+Pillow==12.2.0

@@ -1,0 +1,522 @@
+{
+  "schemaVersion": 3,
+  "id": "runtime-semantic-relation-source-locked-corrections-v3",
+  "policy": "exact-record-and-direct-pdf-relation-correction-only-v3",
+  "documents": [
+    {
+      "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+      "pdfSha256": "5538d1b8e32d5e6e743496a4c48575549ddb1854d424de559ed3f19fa772ccf3",
+      "pdfSize": 14842989,
+      "pages": [
+        { "physicalPage": 390, "textSha256": "ee80663c4055507f5fa06a3a7238f3ddf735dda5633f9ed5f87735c0ea1f7f6f", "renderSha256": "c4fead8a6d9ca2be3f56f4ae448a0de5bff42524f2fe5cc2bcb9a87590022587", "renderByteLength": 184918 },
+        { "physicalPage": 392, "textSha256": "c7135f3715d2621f0a2b96adfebdd02dd55ff04548cf236dc92551cdbca88b1a", "renderSha256": "565cd213bb64e6b9a833bd43bc7880598a1dc651f7222109c7ef7b25f204e34a", "renderByteLength": 325432 },
+        { "physicalPage": 393, "textSha256": "316f0bc9c6c5b715bcde10638a8a9ab935500cf82cb998a518ee61012d01674f", "renderSha256": "013ec4d4142589a7e4bbb80e3dd07ee94a94b75c654c0c914865e0571437feed", "renderByteLength": 292023 },
+        { "physicalPage": 1854, "textSha256": "f1e07a08520b2a1e46a32a43dc1d68f1656f88a6c95deefbed6e54f799983671", "renderSha256": "f91e3aa494e34351507e6fd26adfcac5d764777493a227b52411ffa649fcd544", "renderByteLength": 238282 }
+      ]
+    },
+    {
+      "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+      "pdfSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+      "pdfSize": 34763447,
+      "pages": [
+        { "physicalPage": 1005, "textSha256": "a957f483230a8002779525df521b3f262f19e4d143f54cd7d5e2201756758b19", "renderSha256": "b5003cdd95e61afe56dc4fbf84b5dd26e575020ee3584aff117c09f93da0ec89", "renderByteLength": 253777 },
+        { "physicalPage": 1011, "textSha256": "7dabebb1279d29d7c26658b00079999b53f681eacd3897c749462790417be4b4", "renderSha256": "4ec15bc21f5bc01717f7dd3df2fffda4b2669a728e3fd7cc605b9fce3021da66", "renderByteLength": 283424 },
+        { "physicalPage": 1012, "textSha256": "f0271b6f81119d834c00016710895f340fcd2c4345596e6841a5aca5fb06b899", "renderSha256": "9a0f75a802969d7b68221466c1b6ea17915a3de515141bbbdea8350264e0cdf2", "renderByteLength": 252903 },
+        { "physicalPage": 1015, "textSha256": "fe24bccfe70a8d99967f5f05857054cbe36089fca1dc6cb69b95b8ac67760dd5", "renderSha256": "9dbc5c0c3c15b8298c68684cc2edebb9ded23173ecc6b6b540e0a5561357c40f", "renderByteLength": 196930 },
+        { "physicalPage": 1016, "textSha256": "73c4a6d701616336753ad22558f547f045cba2c20f9f4381d505020bb9b09257", "renderSha256": "184852eebfce8a9d7a1e60c98b778cd20693e7ca20a5d192d21b8bc9af8d47f8", "renderByteLength": 240463 },
+        { "physicalPage": 2695, "textSha256": "d1a4c991fa42c23e77bec32af8ec4042b83bf3815bf4ea3876de72226cc45f0a", "renderSha256": "fa3b7845651fbccfbebf84e98b46f79006e41aade619e933b87d85027b3e0243", "renderByteLength": 267916 },
+        { "physicalPage": 3638, "textSha256": "55e4e780f29e28c1e0e46eb18d607a8042eef87b99c37b0729b20b8c948e450d", "renderSha256": "0f45d0ca83768fb410a5db6a85360a53caa2aec769790067d3379233c87591a5", "renderByteLength": 224422 },
+        { "physicalPage": 3639, "textSha256": "6a77ac96d05e4dfc577e31f53145e710889f54a29fd7f57282bbc23e1cd4a0b5", "renderSha256": "714f0f98182b98e84982e0c90957424ce456ecdeb8e3ee50d76faf0f3cb1feb7", "renderByteLength": 238158 },
+        { "physicalPage": 811, "textSha256": "3b492a39dbb16c58b927fd4d5e8675ed9003f238b73c43ae4187ea4568ebdcd5", "renderSha256": "bf79faa7cfa9bb4181f0fc78753c2a14a8fd36a203da90a4560e76bf10bde732", "renderByteLength": 197877 },
+        { "physicalPage": 1074, "textSha256": "055576ffa5a6079cbfa779025a7652cd8baa35c4843e26686a51175519616533", "renderSha256": "e221e100a4e20dfb92aa1b9336e426c68770042d45ea2bbbca5ec3d49f4a1b39", "renderByteLength": 174484 },
+        { "physicalPage": 1306, "textSha256": "ce4e8674cb4fa5a6b6107a20d1eb3005ff923047a0cbfa0c5e747409a92a365a", "renderSha256": "ffbfb94cd094f718673080c34fce72d423333dcfb1c921cd46b7b3f1bcd93931", "renderByteLength": 209169 },
+        { "physicalPage": 2098, "textSha256": "26d2816ed77a26d49d8bc418d824b235a699e17c889433e78f2823b0b53f3434", "renderSha256": "3a257b27ab0d5eb44d0e0adb891189216baa834af4054cc9f9707532b4a920ea", "renderByteLength": 195698 },
+        { "physicalPage": 3187, "textSha256": "31cbf1ffaf5d269941bdd8152a02c3998b8dfd8cb264711d68d0994072371d2e", "renderSha256": "55aa72f4859e41c18126f9faf46e636916065dd50915db820abe0cb8bb23ef4b", "renderByteLength": 134062 },
+        { "physicalPage": 3188, "textSha256": "597aecc6ca2f7da9651fb4d17bf8d2d2ab736376bd139a0951db8be0315f0fe8", "renderSha256": "2187da231b8e2482bb6dff541d89021231fb8dc9c0c6eee9bd8f436915f6d3fd", "renderByteLength": 289776 },
+        { "physicalPage": 3688, "textSha256": "8ffe7816036d805fc467178bae143f2ad90520aae13dbfd7afb2cf827399c6e2", "renderSha256": "2afb80dec4fd8f652c2c165512b533e587660bc9f36a2a06c73fe2f31e05ac2c", "renderByteLength": 254718 },
+        { "physicalPage": 918, "textSha256": "84804b5b716dbd52b4649f6d67ce2746f0102c776df0a426360eedc55674239f", "renderSha256": "9c894e28d89332cfc35144ff3cda45426a1e3807e61e88938f9e144775eafb99", "renderByteLength": 234388 }
+      ]
+    }
+  ],
+  "capture": {
+    "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "renderDpi": 144,
+    "toolVersion": "24.03.0"
+  },
+  "correctionGroups": [
+    {
+      "id": "runtime-semantic-relation-correction-group:mat262-eb-sign",
+      "operation": "replace-reference-predicate-op",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models", "physicalPages": [1854] },
+      "keyword": "*MAT_LAMINATED_FRACTURE_DAIMLER_CAMANHO",
+      "coordinateId": "field-coordinate:a814445148b8a6f133ca8728",
+      "field": { "cardIndex": 1, "fieldIndex": 3, "fieldName": "EB", "fieldType": "float", "position": 30, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:d6c92e656c844733ccc7bd68",
+      "physicalFieldId": "global-manual-physical-field:23da04d09e0dd547361b4637",
+      "replacePredicate": { "from": { "op": "gt", "value": 0 }, "to": { "op": "lt", "value": 0 }, "role": "reference", "idTransform": "negate" },
+      "records": [
+        { "authoringRelationId": "authoring-relation:9715b2de9a22b78858927bfc", "sourceRuleId": "rule:ee37db8445e2b3dfc11d5243", "manualRelationId": "manual-relation:964351962263277ab559ec7a", "evidenceId": "evidence:035a3b9a9b7e4bd599c3aa08", "quoteSha256": "ef1889b8c21bdddf8913f141f633a473eab9d63075c645e7d872abf725421ec0", "originalRelationSha256": "1b473d528ca398b46c19ee6c0c6749a8271ea34bbd7f9138ae9ce5765e6ca82d" },
+        { "authoringRelationId": "authoring-relation:c60dfe2e1ef06c6df299528a", "sourceRuleId": "rule:2a10c42fcb2006281ab32129", "manualRelationId": "manual-relation:3ee4359e232715166af289e8", "evidenceId": "evidence:b257b32051ea5f15e0a1e057", "quoteSha256": "ef1889b8c21bdddf8913f141f633a473eab9d63075c645e7d872abf725421ec0", "originalRelationSha256": "8b8f5d731ace12a0ce904ed9695787061ed2bcb6df7dc78a093de6109e5dede7" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:mat030-sig-ass-deduplicate",
+      "operation": "deduplicate-identical-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models", "physicalPages": [390, 392] },
+      "keyword": "*MAT_SHAPE_MEMORY",
+      "coordinateId": "field-coordinate:6f568417246176e52f88f345",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "SIG_ASS", "fieldType": "float", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:ebae3d6b8c031ae44dddee6e",
+      "physicalFieldId": "global-manual-physical-field:50855f597aac71363ab52f53",
+      "records": [
+        { "authoringRelationId": "authoring-relation:ac9a1aceaf78ceaee7694ee7", "sourceRuleId": "rule:cd378c2c3f78ee29c6e972a2", "manualRelationId": "manual-relation:86656194cdac15353319a2b3", "evidenceId": "evidence:4e82689a883dd789a125d93c", "quoteSha256": "15f79c0d183488f74b8383bebcdb412fc9704ca96c66c7116c8db07833e13bfa", "originalRelationSha256": "5fad74f12275b6fb4c55a312dbeb1b18b8acd11beffd89cb8fcb019a8840790e" },
+        { "authoringRelationId": "authoring-relation:d4a1dc91178e575a279a10f0", "sourceRuleId": "rule:569fb39a6dbbe58761474643", "manualRelationId": "manual-relation:40a309ff806ba184dfa3b8bf", "evidenceId": "evidence:8b5b4a040a234daf5d8c8d31", "quoteSha256": "15f79c0d183488f74b8383bebcdb412fc9704ca96c66c7116c8db07833e13bfa", "originalRelationSha256": "7d4ddc465f0adf3e0b112bae93f305f4d861d716a89ff7869cde7bbcb61590b7" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:mat030-sig-asf-deduplicate",
+      "operation": "deduplicate-identical-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models", "physicalPages": [390, 392] },
+      "keyword": "*MAT_SHAPE_MEMORY",
+      "coordinateId": "field-coordinate:7b3e882d27c87fc863ec4a05",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "SIG_ASF", "fieldType": "float", "position": 10, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:ebae3d6b8c031ae44dddee6e",
+      "physicalFieldId": "global-manual-physical-field:96f9f93e53996208844b2f3a",
+      "records": [
+        { "authoringRelationId": "authoring-relation:6c03e3ee4f5c4b59ea0f93a4", "sourceRuleId": "rule:21981759faf6658c4cc455ba", "manualRelationId": "manual-relation:e9a999841bc937b522224cb6", "evidenceId": "evidence:5677b61f8ae79abdb6358ca0", "quoteSha256": "104a1f4acef0fe33d6e543e52b686c3a14f027617c827687a7c2a7db6d38c356", "originalRelationSha256": "7d4ddc465f0adf3e0b112bae93f305f4d861d716a89ff7869cde7bbcb61590b7" },
+        { "authoringRelationId": "authoring-relation:f7c8691e3f8131a3946a3da8", "sourceRuleId": "rule:316ce66a5bdbb2619714a6df", "manualRelationId": "manual-relation:cade6a43ab3596fc97e77597", "evidenceId": "evidence:53e894e5dabb8905a44be905", "quoteSha256": "104a1f4acef0fe33d6e543e52b686c3a14f027617c827687a7c2a7db6d38c356", "originalRelationSha256": "5fad74f12275b6fb4c55a312dbeb1b18b8acd11beffd89cb8fcb019a8840790e" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:mat030-sig-sas-deduplicate",
+      "operation": "deduplicate-identical-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models", "physicalPages": [390, 392, 393] },
+      "keyword": "*MAT_SHAPE_MEMORY",
+      "coordinateId": "field-coordinate:9824752e8884cb08a8a044ef",
+      "field": { "cardIndex": 1, "fieldIndex": 2, "fieldName": "SIG_SAS", "fieldType": "float", "position": 20, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:ebae3d6b8c031ae44dddee6e",
+      "physicalFieldId": "global-manual-physical-field:f4be25d823fad44f7a8e084d",
+      "records": [
+        { "authoringRelationId": "authoring-relation:0b5fdb384b7ba3ce49a48b28", "sourceRuleId": "rule:c0b01ef373b45bf6a86ee8c6", "manualRelationId": "manual-relation:7b39f78619dd7d98d29281dc", "evidenceId": "evidence:ee70e54f6057929d7e33e263", "quoteSha256": "882046fe74099f2f3ddb0760be56a993b85d854322ff7ebadcb4c50bd6b72208", "originalRelationSha256": "5fad74f12275b6fb4c55a312dbeb1b18b8acd11beffd89cb8fcb019a8840790e" },
+        { "authoringRelationId": "authoring-relation:5851ac6e239785a512f94e36", "sourceRuleId": "rule:01bf3548ca46edd5cd6158f0", "manualRelationId": "manual-relation:fed065a392d79b987c12954a", "evidenceId": "evidence:bd2fb7bd83b61a10e3b0ad7e", "quoteSha256": "882046fe74099f2f3ddb0760be56a993b85d854322ff7ebadcb4c50bd6b72208", "originalRelationSha256": "7d4ddc465f0adf3e0b112bae93f305f4d861d716a89ff7869cde7bbcb61590b7" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:mat030-sig-saf-deduplicate",
+      "operation": "deduplicate-identical-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models", "physicalPages": [390, 393] },
+      "keyword": "*MAT_SHAPE_MEMORY",
+      "coordinateId": "field-coordinate:23ef98ae6d3b89c4c9239aba",
+      "field": { "cardIndex": 1, "fieldIndex": 3, "fieldName": "SIG_SAF", "fieldType": "float", "position": 30, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:ebae3d6b8c031ae44dddee6e",
+      "physicalFieldId": "global-manual-physical-field:3554b5103db00f9036e35c35",
+      "records": [
+        { "authoringRelationId": "authoring-relation:89e79ea7bc2aa101dd5edcbc", "sourceRuleId": "rule:d8de740856e113216dc521ed", "manualRelationId": "manual-relation:0545b684b685a763aba2401e", "evidenceId": "evidence:f8cbfd00c89d911d03d797e0", "quoteSha256": "4421cc089bafd46ff20f6c55fdaecbd8a25e71b4dcb93deb6db4b0f79791d779", "originalRelationSha256": "5fad74f12275b6fb4c55a312dbeb1b18b8acd11beffd89cb8fcb019a8840790e" },
+        { "authoringRelationId": "authoring-relation:abc98a143bb534cbe1a5c50d", "sourceRuleId": "rule:fd1403025ceb3a86fd6a52e2", "manualRelationId": "manual-relation:ccfcef5fd35dcced80852559", "evidenceId": "evidence:8a8884b58ade20d31aa77546", "quoteSha256": "4421cc089bafd46ff20f6c55fdaecbd8a25e71b4dcb93deb6db4b0f79791d779", "originalRelationSha256": "7d4ddc465f0adf3e0b112bae93f305f4d861d716a89ff7869cde7bbcb61590b7" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:clis-lcidpor-conservative",
+      "operation": "retain-existing-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [1005, 1011, 1012] },
+      "keyword": "*CONSTRAINED_LAGRANGE_IN_SOLID",
+      "coordinateId": "field-coordinate:73cc14a029801793e4b0f92c",
+      "field": { "cardIndex": 1, "fieldIndex": 5, "fieldName": "LCIDPOR", "fieldType": "integer", "position": 50, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:f547e7dc55f56de5f55b4234",
+      "physicalFieldId": "global-manual-physical-field:2101159d836f287954299416",
+      "retainedBranches": [{ "role": "reference", "targetKinds": ["curve"], "when": { "op": "gt", "value": 0 }, "idTransform": "identity" }],
+      "contextualReferenceBranch": {
+        "branch": { "role": "reference", "targetKinds": ["curve"], "when": { "op": "lt", "value": 0 }, "idTransform": "abs" },
+        "all": [
+          {
+            "fieldName": "CTYPE",
+            "cardIndex": 2,
+            "fieldType": "integer",
+            "defaultValue": 2,
+            "predicate": { "op": "in", "values": [11, 12] },
+            "formats": {
+              "standard": { "mode": "fixed", "position": 50, "width": 10 },
+              "i10": { "mode": "fixed", "position": 50, "width": 10 },
+              "long": { "mode": "fixed", "position": 100, "width": 20 },
+              "comma": { "mode": "comma", "fieldIndex": 5 }
+            }
+          },
+          {
+            "fieldName": "POREINI",
+            "cardIndex": 6,
+            "fieldType": "float",
+            "defaultValue": 0,
+            "predicate": { "any": [{ "op": "eq", "value": 0 }, { "op": "gt", "value": 0 }] },
+            "formats": {
+              "standard": { "mode": "fixed", "position": 70, "width": 10 },
+              "i10": { "mode": "fixed", "position": 70, "width": 10 },
+              "long": { "mode": "fixed", "position": 140, "width": 20 },
+              "comma": { "mode": "comma", "fieldIndex": 7 }
+            }
+          }
+        ]
+      },
+      "records": [
+        { "authoringRelationId": "authoring-relation:13110e4b84f3d40113f168d1", "sourceRuleId": "rule:81ab8671c8eff4a5e4028a3e", "manualRelationId": "manual-relation:e6f9f21bb3a9f363e08f2d9a", "evidenceId": "evidence:06d7f1fe66fdd0db54cc484c", "quoteSha256": "03cc79615d440656fe371b3436ddad8c81ca88c56310c8e414d5ec8bc326ff65", "originalRelationSha256": "fd95923ef48ba138e8abd6dba6bd926577e63657a74dd97ea687b5a6eb86a97c" },
+        { "authoringRelationId": "authoring-relation:429eafa1d5a53f2adcd0c79e", "sourceRuleId": "rule:5be060f4d9258d1b20ab37f3", "manualRelationId": "manual-relation:fa35d318b2fa053df279cdda", "evidenceId": "evidence:adbdd82bf8ee685742fb46e0", "quoteSha256": "03cc79615d440656fe371b3436ddad8c81ca88c56310c8e414d5ec8bc326ff65", "originalRelationSha256": "e757536fa026fb20f891a9df48fb1a4963b85243d53c4ce42d73968c4081e4b7" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:clis-a1-conservative",
+      "operation": "retain-existing-branches",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [1015, 1016] },
+      "keyword": "*CONSTRAINED_LAGRANGE_IN_SOLID",
+      "coordinateId": "field-coordinate:1b27a74bdc5347d0c57f74ed",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "A1", "fieldType": "float", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:9af31e8e61bf42f69c5f1121",
+      "physicalFieldId": "global-manual-physical-field:185193a71831cd0486b3c4e1",
+      "retainedBranchesByKind": {
+        "entity-reference": [{ "role": "reference", "targetKinds": ["curve"], "when": { "op": "lt", "value": 0 }, "idTransform": "abs" }],
+        "value-branch": [{ "role": "enum", "when": { "op": "gt", "value": 0 } }, { "role": "reference", "targetKinds": ["curve"], "when": { "op": "lt", "value": 0 }, "idTransform": "abs" }]
+      },
+      "records": [
+        { "authoringRelationId": "authoring-relation:635fc4e96fd89ea13f40fbd5", "sourceRuleId": "rule:25581d3c722488b7711fb307", "manualRelationId": "manual-relation:89dd9da392e8df84ba7e3c8f", "evidenceId": "evidence:e83381aee29e0de930ab788f", "quoteSha256": "d5f8550cc3b84f7e7272b3e9f3a0921a83ded70021982f305d05aac1135f7a8f", "originalRelationSha256": "4fb71a3b615b186b8b706f03457274955303eacc43d5670a1b2c20158760116e" },
+        { "authoringRelationId": "authoring-relation:c9d5ae4ae3694197c99e6e78", "sourceRuleId": "rule:4d5fe1d94f0520ef223d621d", "manualRelationId": "manual-relation:22fe3aec6f43b56d016d58b2", "evidenceId": "evidence:5544c346e2f4656cea05662b", "quoteSha256": "d5f8550cc3b84f7e7272b3e9f3a0921a83ded70021982f305d05aac1135f7a8f", "originalRelationSha256": "e51116ed2e2ea67d3218f33f9c617513b6e09e534f07051ca0d0303c6e127e0d" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:part-move-xmov-non-reference",
+      "operation": "suppress-non-reference-extraction",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3638, 3639] },
+      "keyword": "*PART_MOVE",
+      "coordinateId": "field-coordinate:46c2fa0702893adbd03c3bcb",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "XMOV", "fieldType": "float", "position": 10, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:7209087dc69c2164cd2ec459",
+      "physicalFieldId": "global-manual-physical-field:40122042be1ec8caeb64a5a9",
+      "records": [
+        { "authoringRelationId": "authoring-relation:92dd670efe562ea356f42dd0", "sourceRuleId": "rule:ef253b5066d943782940e427", "manualRelationId": "manual-relation:2180d84ef5e42fb84520630e", "evidenceId": "evidence:515113251713772e786ca8b8", "quoteSha256": "799c9d9fec5530fb5a8e087966d0ca88faab3a15b6db26900d40e1413564a2a3", "originalRelationSha256": "ffd75f1b30dd49a4b05e66f203abd51e3857f66a09b7fe3639bb770336078a2a" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:part-move-ymov-non-reference",
+      "operation": "suppress-non-reference-extraction",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3638, 3639] },
+      "keyword": "*PART_MOVE",
+      "coordinateId": "field-coordinate:e0e6fb7f885a676ac356bc98",
+      "field": { "cardIndex": 1, "fieldIndex": 2, "fieldName": "YMOV", "fieldType": "float", "position": 20, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:7209087dc69c2164cd2ec459",
+      "physicalFieldId": "global-manual-physical-field:76fe9c1eac68cb54cc513c71",
+      "records": [
+        { "authoringRelationId": "authoring-relation:5a95f8291d82c5a365398ebb", "sourceRuleId": "rule:b037fe06ffc8118b5ce11193", "manualRelationId": "manual-relation:aeb688c71b4c57cc4a9aff07", "evidenceId": "evidence:1134c0bbb1fe00038b70f376", "quoteSha256": "2ebb7b14e12e221f2370f82ebf91d811e032b56d7c41bf3cb29b479f26e4de03", "originalRelationSha256": "ffd75f1b30dd49a4b05e66f203abd51e3857f66a09b7fe3639bb770336078a2a" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:part-move-zmov-non-reference",
+      "operation": "suppress-non-reference-extraction",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3638, 3639] },
+      "keyword": "*PART_MOVE",
+      "coordinateId": "field-coordinate:6481e4fbef6881ea45f1d6d2",
+      "field": { "cardIndex": 1, "fieldIndex": 3, "fieldName": "ZMOV", "fieldType": "float", "position": 30, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:7209087dc69c2164cd2ec459",
+      "physicalFieldId": "global-manual-physical-field:eb4c495c0b478c3d2434028d",
+      "records": [
+        { "authoringRelationId": "authoring-relation:53b9967b47e7ce3c8bc330c2", "sourceRuleId": "rule:28e65a2051496537f3baec96", "manualRelationId": "manual-relation:03442f79ed2cee354471782c", "evidenceId": "evidence:2eeee0a97c29873569c54119", "quoteSha256": "3586676fd73ac7ecc50d836b701e940b0c7178b5f90e5fa7fe4eb83e64b14d7a", "originalRelationSha256": "ffd75f1b30dd49a4b05e66f203abd51e3857f66a09b7fe3639bb770336078a2a" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:element-mass-part-finmass-non-reference",
+      "operation": "suppress-non-reference-extraction",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [2695] },
+      "keyword": "*ELEMENT_MASS_PART",
+      "coordinateId": "field-coordinate:de1d5410a59207b00aaa42b6",
+      "field": { "cardIndex": 1, "fieldIndex": 3, "fieldName": "FINMASS", "fieldType": "float", "position": 30, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:0fd9d96e495b9e6d381d6f35",
+      "physicalFieldId": "global-manual-physical-field:c1b592858821b042e81649b9",
+      "records": [
+        { "authoringRelationId": "authoring-relation:9fc7aa433921e74f857a667f", "sourceRuleId": "rule:6011fa5f9812b1c860002923", "manualRelationId": "manual-relation:56aa985fa7ccf8ca0995c39b", "evidenceId": "evidence:072cc36760cf20e3d10e22fd", "quoteSha256": "a05d2d24cd8b41289c66e282a5c665811bc48fc4124affc78bf1fa7eb8ce5d20", "originalRelationSha256": "b40bf83c9c1c9af77a971b9c06eea665b3e0ba9f052897f10ee24365c14a53eb" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-boundary-sliding-plane",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [811] },
+      "keyword": "*BOUNDARY_SLIDING_PLANE",
+      "coordinateId": "field-coordinate:5ed7f5db5040a9d1b0f4db9c",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:645877eb78b6886fbb503f24",
+      "physicalFieldId": "global-manual-physical-field:c81a87b69c8e2c4c3ac691c2",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:8880a36cf0c5194d20a5a470", "sourceRuleId": "rule:098beab8f6c1e34474599e14", "manualRelationId": "manual-relation:a198d4b24ce7f247f24ddbe6", "evidenceId": "evidence:76aa78ff0d005d9c90d06a53", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-constrained-shell-to-solid",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [1074] },
+      "keyword": "*CONSTRAINED_SHELL_TO_SOLID",
+      "coordinateId": "field-coordinate:55ce8f6b5201c462501c8fea",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "NSID", "fieldType": "integer", "position": 10, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:d8092931470668b2fcd17d89",
+      "physicalFieldId": "global-manual-physical-field:ef752b1e17a57757dc9e27e9",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:657687e5686aab601e3fda4a", "sourceRuleId": "rule:a1cab01d0fe1acb51849a9b9", "manualRelationId": "manual-relation:03fa4879ab1eba4f8603bb2c", "evidenceId": "evidence:6f5a1ed727af4825aa7246cb", "quoteSha256": "367a731b9496d712b803cd92d93c5a39ca82a0c9d045d2219d8e1e922a9adec1", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-contact-1d",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [1306] },
+      "keyword": "*CONTACT_1D",
+      "coordinateId": "field-coordinate:9c8213df077a56247de324ff",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSIDR", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:e4067b0492febff26f2bf2f3",
+      "physicalFieldId": "global-manual-physical-field:0523ab9ac1b2f3fde30e8751",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:3e0def960fb6bed1a5859a33", "sourceRuleId": "rule:965d41185196bcb4a8bcc4a0", "manualRelationId": "manual-relation:b093cc48b8feff8191535a33", "evidenceId": "evidence:394b4867b6177154f58b4583", "quoteSha256": "621fcffdd84b5133c342ef7fb7767607d21f18f3bfb5785b58eea6c0a508e564", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-contact-1d-concrete",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [1306] },
+      "keyword": "*CONTACT_1D",
+      "coordinateId": "field-coordinate:cd3237dffc28bd8676013458",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "NSIDC", "fieldType": "integer", "position": 10, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:e4067b0492febff26f2bf2f3",
+      "physicalFieldId": "global-manual-physical-field:322c4b40c26666230dfb9532",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:931fe26414f3d9f1f81bd345", "sourceRuleId": "rule:c404bcac44789d2f0850fdca", "manualRelationId": "manual-relation:43a6dded759c3a19288d26a8", "evidenceId": "evidence:9bdece289f92a99c4b465f38", "quoteSha256": "7c95a2b70601cba91f5e6470d207b9ed8823abde263b5c34da317bab99c0b662", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-database-nodal-force-group",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [2098] },
+      "keyword": "*DATABASE_NODAL_FORCE_GROUP",
+      "coordinateId": "field-coordinate:1f973646f09beb9dff035b10",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:bbb17697c490974e7409eccb",
+      "physicalFieldId": "global-manual-physical-field:c22c3aec6b9631711a8c15e3",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:e897c13d3b07be478ceb9764", "sourceRuleId": "rule:333f2e0e4f1978dd7bb760bc", "manualRelationId": "manual-relation:29229a3937bd172b427104db", "evidenceId": "evidence:f701f9277f2628981b65553e", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-initial-velocity",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3187, 3188] },
+      "keyword": "*INITIAL_VELOCITY",
+      "coordinateId": "field-coordinate:ef8acb88b930c8a6a435c58c",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:3ce8b3701036915101c9f03f",
+      "physicalFieldId": "global-manual-physical-field:441b8df35d50bc209538b787",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:3aaea8bdac8a9494342dd36d", "sourceRuleId": "rule:ff2e2ace56c4d6570d6844e2", "manualRelationId": "manual-relation:45f95c24fb61e8cbc1c95ec6", "evidenceId": "evidence:1917da163f8abf887dfc58c3", "quoteSha256": "c055f82654c74d1b048bcf7fb96f2181aae5256838c176b9943ef7f9a3e5c717", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-initial-velocity-exempt",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3188] },
+      "keyword": "*INITIAL_VELOCITY",
+      "coordinateId": "field-coordinate:51a261abfc26aad27e02c505",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "NSIDEX", "fieldType": "integer", "position": 10, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:3ce8b3701036915101c9f03f",
+      "physicalFieldId": "global-manual-physical-field:f53042c1f20bf052da8dcef5",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:c058f73542da24882c486d40", "sourceRuleId": "rule:d7c220422105a8efd0f5d828", "manualRelationId": "manual-relation:232cb0bf5f606cf24bac3fd4", "evidenceId": "evidence:840152485aa6945e4f831c95", "quoteSha256": "15c5d05f607a96c7bc61093aa76d4a5cc6d331872ecb80bf2708ce1c90677efa", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-rigidwall-planar",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3688] },
+      "keyword": "*RIGIDWALL_PLANAR",
+      "coordinateId": "field-coordinate:f99c702ba5e7939e20ce0e7c",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "card-signature:e08f389c8c87a7bbc65afe944fa095230ccf691d3bb6d30728f9272d7d14caae",
+      "physicalFieldId": "field-coordinate:f99c702ba5e7939e20ce0e7c",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:479ef7325cf1b06e0d3991df", "sourceRuleId": "rule:de8bafe8ef2a9444fc290f0a", "manualRelationId": "manual-relation:72070ef935ec8294138c8750", "evidenceId": "evidence:766046f28af2eca34769936c", "quoteSha256": "2803c15d788177e7482073201ba9350c915eff01ae13f9bb211b0b0339b4011c", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-rigidwall-planar-exempt",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [3688] },
+      "keyword": "*RIGIDWALL_PLANAR",
+      "coordinateId": "field-coordinate:892a11b9bf5408f2caebf6af",
+      "field": { "cardIndex": 1, "fieldIndex": 1, "fieldName": "NSIDEX", "fieldType": "integer", "position": 10, "width": 10 },
+      "physicalTableId": "card-signature:e08f389c8c87a7bbc65afe944fa095230ccf691d3bb6d30728f9272d7d14caae",
+      "physicalFieldId": "field-coordinate:892a11b9bf5408f2caebf6af",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:ec84b1798381a83a32c7fd11", "sourceRuleId": "rule:d1925b422971f32a66cc893d", "manualRelationId": "manual-relation:b65555e38ed8673f60b168ca", "evidenceId": "evidence:5a5739319bae1638064c41ba", "quoteSha256": "e5f337b090b9d82d2fbd5506aac3f38182eaca069700f99c5e5f9f87d12767ab", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-butt",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_BUTT",
+      "coordinateId": "field-coordinate:44ddb92969d6d11c3d69e748",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:67cb22f5499f6c0c25b2a516", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:8c1e17f3eb9384067052237b", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-butt-id",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_BUTT_ID",
+      "coordinateId": "field-coordinate:474268dc40c4a3e92d0986e1",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:9a456a41af0e9c8b3769e2c3", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:19dc17794df000a9db424b4f", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-combined",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_COMBINED",
+      "coordinateId": "field-coordinate:4cdc716d3fef23d068adf0fe",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:a760e88d1cc5197e0912ded8", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:68bd4c973bb845c1ea27ec1d", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-combined-id",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_COMBINED_ID",
+      "coordinateId": "field-coordinate:16f794dde1ebc556e66d452e",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:2e4268b01c2fbb9f2a53fc90", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:30291b714f4be3cdb71be0ca", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-cross-fillet",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_CROSS_FILLET",
+      "coordinateId": "field-coordinate:1127011d08951c3d10ff5f76",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:80df24f7091fe64d8e05f3d2", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:93f17dd94ea7155e297d77ef", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-cross-fillet-id",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_CROSS_FILLET_ID",
+      "coordinateId": "field-coordinate:32da26521b26c904e03b6c69",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:008d22b8eeafe45b44ecd510", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:22649e8147895be192e5ecc1", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-fillet",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_FILLET",
+      "coordinateId": "field-coordinate:4c6da5a45e7c6be4da90c237",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:742488c9a13d78a0c06e9642", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:dcbdf7fff9deda7f66e5a476", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-fillet-id",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_FILLET_ID",
+      "coordinateId": "field-coordinate:c203d27d727823ccb0114b8f",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:de61ff751d87065de119b76b", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:811d9f0c54b6a1ddadd8096d", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-spot",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_SPOT",
+      "coordinateId": "field-coordinate:95ae787676cc4dd0af34b636",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:313fb853745b96953289ab2d", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:03736982acbd497bcd470bf3", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    },
+    {
+      "id": "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-spot-id",
+      "operation": "replace-reference-target-kind",
+      "source": { "manualId": "ls-dyna-dev-keyword-manual-vol-i", "physicalPages": [918] },
+      "keyword": "*CONSTRAINED_GENERALIZED_WELD_SPOT_ID",
+      "coordinateId": "field-coordinate:bf8bc70023d6fbb9343e9119",
+      "field": { "cardIndex": 1, "fieldIndex": 0, "fieldName": "NSID", "fieldType": "integer", "position": 0, "width": 10 },
+      "physicalTableId": "global-manual-card-grid:911d208105543714b6d0dd10",
+      "physicalFieldId": "global-manual-physical-field:5b857d9947befefa82299ad1",
+      "targetKindReplacement": { "from": ["set"], "to": ["node-set"], "targetKeywords": ["*SET_NODE"] },
+      "records": [
+        { "authoringRelationId": "authoring-relation:17425029dc32265327e04887", "sourceRuleId": "rule:351bf6a1c468a7db7df6111d", "manualRelationId": "manual-relation:159c4dadb1a3d6a638162a41", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" },
+        { "authoringRelationId": "authoring-relation:5f70c772f8496c6471511c93", "sourceRuleId": "rule:97396ae9e2820a8ddf58ba1b", "manualRelationId": "manual-relation:565fe78334bad24f9aebccfa", "evidenceId": "evidence:d0a1b4e90f41e9e9978085c2", "quoteSha256": "323ded07db1eca14265131cfab12067eec5942cc98393d31a6869d2147b91d40", "originalRelationSha256": "6401e8e03e4e893b9bf858363afe49e0babd537b59bfdac25b05d8f593db888f" }
+      ]
+    }
+  ],
+  "permissions": {
+    "exactRelationCorrection": true,
+    "newRelationApproval": false,
+    "targetNamespaceExpansion": false,
+    "fieldLayoutMutation": false,
+    "automaticPredicateMutation": false,
+    "contextFreeNegativeLcidporApproval": false,
+    "sourceLockedReferenceSuppression": true,
+    "sourceLockedTargetNamespaceCorrection": true
+  }
+}

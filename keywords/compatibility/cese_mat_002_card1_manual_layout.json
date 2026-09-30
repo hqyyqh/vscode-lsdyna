@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "id": "cese-mat-002-card1-manual-layout",
+  "version": 1,
+  "policy": "official-pdf-required-card1-layout-v1",
+  "scope": "Restore the reviewed Card 1 layout of CESE_MAT_002 when upstream compresses the six manual fields into the legacy three-field shape.",
+  "keywords": [
+    "CESE_MAT_002"
+  ],
+  "upstreamGap": {
+    "expectedCardCount": 1,
+    "expectedFieldCount": 3,
+    "prefixSignatureSha256": "7abb52784da12c56917ea0178b981fece3e49d3922ce0ebcf7d8bba6cde0f441"
+  },
+  "alternateUpstreamGaps": [
+    {
+      "expectedCardCount": 1,
+      "expectedFieldCount": 6,
+      "prefixSignatureSha256": "b848ac8753c75b883b9b9e6782d4dd6b892221c227786cc090673f0c365f0a92"
+    }
+  ],
+  "card": {
+    "physicalCardIndex": 0,
+    "fields": [
+      {
+        "name": "MID",
+        "position": 0,
+        "width": 10,
+        "type": "integer",
+        "english": "Material identifier.",
+        "chinese": "材料标识符。",
+        "default": null
+      },
+      {
+        "name": "MU0",
+        "position": 10,
+        "width": 10,
+        "type": "real",
+        "english": "Reference dynamic viscosity coefficient in the Sutherland-law gas model.",
+        "chinese": "Sutherland 气体模型中的参考动力黏度系数。",
+        "default": 1.716e-5
+      },
+      {
+        "name": "SMU",
+        "position": 20,
+        "width": 10,
+        "type": "real",
+        "english": "Sutherland constant for the dynamic-viscosity relation.",
+        "chinese": "动力黏度关系式中的 Sutherland 常数。",
+        "default": 111.0
+      },
+      {
+        "name": "K0",
+        "position": 30,
+        "width": 10,
+        "type": "real",
+        "english": "Reference thermal conductivity coefficient in the Sutherland-law gas model.",
+        "chinese": "Sutherland 气体模型中的参考热导率系数。",
+        "default": 0.0241
+      },
+      {
+        "name": "SK",
+        "position": 40,
+        "width": 10,
+        "type": "real",
+        "english": "Sutherland constant for the thermal-conductivity relation.",
+        "chinese": "热导率关系式中的 Sutherland 常数。",
+        "default": 194.0
+      },
+      {
+        "name": "T0",
+        "position": 50,
+        "width": 10,
+        "type": "real",
+        "english": "Reference temperature T0; default 273.0 for air.",
+        "chinese": "参考温度 T0；空气的默认值为 273.0。",
+        "default": 273.0
+      }
+    ]
+  },
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+    "pdfSha256": "3f17ea1c4511030dbc24981af6e4ecd718d700b2b519021fa82c5d1a0ad0ef77",
+    "pdfSize": 4460313,
+    "toolVersion": "24.03.0",
+    "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "pages": [
+      {
+        "physicalPage": 130,
+        "textSha256": "4519387a05fff360aeca1d8c32470e343492230da01165120c7053d7afb34a03",
+        "renderSha256": "779b8cb4f474fe274f262888323fbf65af957ad6d9f9097b8ee5cd34f7cc0616"
+      },
+      {
+        "physicalPage": 131,
+        "textSha256": "193ed09fe79bdd6109e0c35a2bd5a0bc1d03d021881b0bce926b45dcb863a894",
+        "renderSha256": "60cfbd742c0a3be5980a31b045d4ade5c746c1f7a7a3e20dd3eaf48ed7c0ada0"
+      }
+    ]
+  },
+  "evidence": {
+    "requiredCardNumbers": [1],
+    "card1FieldNames": ["MID", "MU0", "SMU", "K0", "SK", "T0"],
+    "card1Description": "Define the fluid (gas) properties in a viscous flow for the CESE solver.",
+    "directFieldLayout": true,
+    "optionEvidence": false,
+    "inferenceUsed": false
+  },
+  "permissions": {
+    "schemaCardAddition": false,
+    "schemaTypeCorrection": true,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

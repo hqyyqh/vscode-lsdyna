@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { ManualLanguage, ManualLocation, ReaderChromeIdentity, ReaderViewModel } from '../../../src/manual/readerProtocol';
 import type { ReaderMessages } from './readerI18n';
 import {
@@ -62,10 +62,7 @@ interface ReaderToolbarProps {
     onResetFontScale: () => void;
 }
 
-/**
- * Always single-row chrome: nav clusters · identity (ellipsis) · actions.
- * Avoids ≤760px wrapping that caused height thrash / content jump.
- */
+/** Responsive chrome; measured height keeps anchors and overlays below both rows. */
 export function ReaderToolbar({
     view, messages, searchButtonRef, onOpenSearch, onNavigate, onRequest, onOpenPdf,
     displayLanguage, onToggleLanguage, progress,
@@ -74,6 +71,15 @@ export function ReaderToolbar({
 }: ReaderToolbarProps): React.JSX.Element {
     const toolbarRef = useRef<HTMLElement>(null);
     useToolbarHeight(toolbarRef);
+    const settingsRef = useRef<HTMLDetailsElement>(null);
+    useEffect(() => {
+        const closeOutside = (event: PointerEvent) => {
+            const settings = settingsRef.current;
+            if (settings?.open && event.target instanceof Node && !settings.contains(event.target)) settings.open = false;
+        };
+        document.addEventListener('pointerdown', closeOutside, true);
+        return () => document.removeEventListener('pointerdown', closeOutside, true);
+    }, []);
     // Toggle follows pack capability only — not VS Code UI locale.
     const showLanguageToggle = view.canToggleLanguage !== false;
     const sectionTitle = view.location.title || view.location.sectionId;
@@ -105,7 +111,6 @@ export function ReaderToolbar({
 
         <div className="reader-toolbar__identity" title={identityTooltip}>
             {crumb ? <span className="reader-toolbar__crumb">{crumb}</span> : null}
-            {crumb ? <span className="reader-toolbar__sep" aria-hidden="true">/</span> : null}
             <span className="reader-toolbar__title">{sectionTitle}</span>
         </div>
 
@@ -128,31 +133,47 @@ export function ReaderToolbar({
                 <IconPdf />
                 <span className="reader-toolbar__btn-label">PDF</span>
             </ToolbarButton>
-            <div className="reader-toolbar__cluster reader-toolbar__cluster--font-scale" role="group" aria-label={messages.fontScaleGroup}>
-                <ToolbarButton
-                    label={messages.fontScaleDecrease}
-                    disabled={!canDecreaseFontScale}
-                    onClick={onDecreaseFontScale}
-                >
-                    <span aria-hidden="true">A−</span>
-                </ToolbarButton>
-                <ToolbarButton
-                    className="reader-toolbar__button--font-scale-label"
-                    label={`${messages.fontScaleReset} (${fontScalePercentLabel})`}
-                    title={`${messages.fontScaleReset} · ${fontScalePercentLabel}`}
-                    onClick={onResetFontScale}
-                >
-                    {/* span (not output): avoid implicit role=status clashing with search status. */}
-                    <span aria-live="polite">{fontScalePercentLabel}</span>
-                </ToolbarButton>
-                <ToolbarButton
-                    label={messages.fontScaleIncrease}
-                    disabled={!canIncreaseFontScale}
-                    onClick={onIncreaseFontScale}
-                >
-                    <span aria-hidden="true">A+</span>
-                </ToolbarButton>
-            </div>
+            <details ref={settingsRef} className="reader-settings"
+                onKeyDown={event => {
+                    if (event.key !== 'Escape') return;
+                    event.preventDefault();
+                    event.currentTarget.open = false;
+                    event.currentTarget.querySelector('summary')?.focus();
+                }}
+                onBlur={event => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) event.currentTarget.open = false;
+                }}
+            >
+                <summary className="reader-toolbar__button" title={messages.readingSettings} aria-label={messages.readingSettings}>Aa</summary>
+                <div className="reader-settings__panel">
+                    <span className="reader-settings__label">{messages.fontScaleGroup}</span>
+                    <div className="reader-toolbar__cluster reader-toolbar__cluster--font-scale" role="group" aria-label={messages.fontScaleGroup}>
+                        <ToolbarButton
+                            label={messages.fontScaleDecrease}
+                            disabled={!canDecreaseFontScale}
+                            onClick={onDecreaseFontScale}
+                        >
+                            <span aria-hidden="true">A−</span>
+                        </ToolbarButton>
+                        <ToolbarButton
+                            className="reader-toolbar__button--font-scale-label"
+                            label={`${messages.fontScaleReset} (${fontScalePercentLabel})`}
+                            title={`${messages.fontScaleReset} · ${fontScalePercentLabel}`}
+                            onClick={onResetFontScale}
+                        >
+                            {/* span (not output): avoid implicit role=status clashing with search status. */}
+                            <span aria-live="polite">{fontScalePercentLabel}</span>
+                        </ToolbarButton>
+                        <ToolbarButton
+                            label={messages.fontScaleIncrease}
+                            disabled={!canIncreaseFontScale}
+                            onClick={onIncreaseFontScale}
+                        >
+                            <span aria-hidden="true">A+</span>
+                        </ToolbarButton>
+                    </div>
+                </div>
+            </details>
             <ToolbarButton
                 className="reader-toolbar__button--search"
                 label={messages.searchManuals}

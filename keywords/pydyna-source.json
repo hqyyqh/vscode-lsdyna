@@ -17,14 +17,72 @@
     "orchestrator": "scripts/regenerate-keyword-artifacts.cjs",
     "generator": "keywords/generate_from_pydyna.py",
     "matAddErosionSource": "compatibility-overlay",
+    "componentJointDidSource": "compatibility-overlay",
+    "mat072Card8Source": "compatibility-overlay",
+    "ceseMat002Source": "compatibility-overlay",
+    "defineControlVolumeFlowAreaSource": "compatibility-overlay",
+    "emSolverFembemMonolithicSource": "compatibility-overlay",
+    "icfdControlDemCouplingCard2Source": "compatibility-overlay",
+    "constrainedSoilPileCard2Source": "compatibility-overlay",
     "compatibilityOverlays": [
       {
         "id": "mat-add-erosion-legacy-damage-fields",
         "version": 1,
         "definition": "keywords/compatibility/mat_add_erosion_legacy_fields.json",
         "state": "compatibility-overlay"
+      },
+      {
+        "id": "component-joint-did-official-float",
+        "version": 1,
+        "definition": "keywords/compatibility/component_joint_did_official_float.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "mat-072-card8-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/mat_072_card8_manual_layout.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "cese-mat-002-card1-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/cese_mat_002_card1_manual_layout.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "define-control-volume-flow-area-card1-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/define_control_volume_flow_area_card1_manual_layout.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "em-solver-fembem-monolithic-card2-3-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/em_solver_fembem_monolithic_card2_3_manual_layout.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "icfd-control-dem-coupling-card2-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/icfd_control_dem_coupling_card2_manual_layout.json",
+        "state": "compatibility-overlay"
+      },
+      {
+        "id": "constrained-soil-pile-card2-manual-layout",
+        "version": 1,
+        "definition": "keywords/compatibility/constrained_soil_pile_card2_manual_layout.json",
+        "state": "compatibility-overlay"
       }
-    ]
+    ],
+    "blankTemplateMigration": {
+      "command": "python scripts/migrate-blank-template-placeholders.py --input <baseline-snippets.json> --output snippets/lsdyna.json",
+      "baselineCommit": "ed97a420",
+      "inputSha256": "4089e4b099c259c2004974a65205311050d737a363b0ac3e58dfebbba90dc512",
+      "schemaSha256": "e6a439dcbaa6660fd9e70c77cea3c8eb23da3bdedc4dc1aaae0253c1c03dd1ca",
+      "outputSha256": "02f25673f66c3a9ed5477c9ed5ae2c9d0a6fcf3801bc90eedb8e6d9a24d0e42c",
+      "scriptSha256": "fb8f349f631c3be2c2df20e1bc073d367c0f5126295c469fe48a2e25d7f1316f",
+      "changedRecords": 35955
+    }
   },
   "stats": {
     "kwdKeywords": 3685,
@@ -38,8 +96,10 @@
     "fieldEntries": 5362,
     "snippets": 8610,
     "textCards": 2,
-    "overlappingFixedWidthFields": 231,
-    "referenceKeywords": 2299
+    "overlappingFixedWidthFields": 0,
+    "referenceKeywords": 1764,
+    "definitionLayouts": 1070,
+    "onDemandDefinitionLayouts": 13
   },
   "compatibilityAliases": {
     "retained": [],
@@ -1767,20 +1827,49 @@
       "kwd": "bd22209b0af6bca917cdedd6fb4ac1365a6f895e731e831fcfa04397de8b3362",
       "manifest": "ff76ed64608ecbab68747283db3b2b2c3dece75bab6d8f8d39f4dcdca2298bc9",
       "additionalCards": "711aced7ed4113962f397b3676573b2c7d94cfa385959a43a5c504c47470c306",
-      "manualKeywordClasses": "223b046dc96b5b8ec411723406835973d0a9ef3237de91aaeab230b8ddd5c050"
+      "manualKeywordClasses": "223b046dc96b5b8ec411723406835973d0a9ef3237de91aaeab230b8ddd5c050",
+      "manualSemanticManifest": "8a28e481ed630da2894628ceb2a9051f1f1d3c9210823519bd5b8975f820dddf",
+      "lsppReferenceHandoff": "0b6a33c8b495b27faaa8550d9c3d9cdf3e9f4cb52c0259fe3d6a97cb0654d7b1"
     },
     "toolSha256": {
-      "scripts/regenerate-keyword-artifacts.cjs": "d5f9f8d8cd02bce57479a24c2348436eeea992b6a564ce5171d22f714e3104a0",
+      "scripts/generate-native-keyword-templates.cjs": "de7abb5118be0e0b56c6a4551b3f8461447dde9858827f9cc0350431d6fd7ccb",
+      "src/core/completion/nativeKeywordTemplate.ts": "6ae0d61b077e5076186d5ea4c5df67dffaf929020cc7823d3926029bdbd9ddbf",
+      "src/core/completion/recordTemplate.ts": "eee07daa7c13ec02d53f9c6685094fd181dabc01bcb8a686534635ede2b44aff",
+      "src/core/completion/fieldComment.ts": "82f653f78adc0ade96fe4552f0986ddbb7617968c85500f475a5571ee2094b05",
+      "src/core/semantics/nativeFileReadContext.ts": "47851f444972bc49555335936c3877b5c98f5daaf9e0d88c28c15d010b91d60d",
+      "src/core/semantics/lsppNativeFileLayout.ts": "609faf6f8fd5275568ee6fab7daaff4735fdad89cff00a63e0cddce85160e282",
+      "src/core/semantics/nativeFieldResolution.ts": "ffb7f9c483fb1b91c7aa2e469fafb48c84e19b8245fa1f20930c7b5fcecc4de7",
+      "src/core/semantics/lsppInputFormCatalogV4.ts": "398c892d8ba5965026734ee7bb4b8fa4fad6eea151742c8b401e0c1a6c8b96a9",
+      "src/core/semantics/nativeDescriptorHelp.ts": "811c5a709d04ce44d28821875f3694ceaa6a7309303d39840826f98fb6547cee",
+      "src/core/edit/keywordRecordSerializer.ts": "b05e5792312f2fbf354e57435af4093bfa7aabba69e9234cf685909a4645e317",
+      "keywords/lspp-field-help/manifest.json": "01517b9f718eb1c2f6bd7089accd0cea6f481d2c20e3ac55f11d4c43dd439b63",
+      "keywords/lspp-input-form/manifest.json": "9aa4655816c6b4f904f722b903af58479375847d9e7e5d7462daba51681a5a7b",
+      "keywords/lspp-section-fixed-readers.json": "321d8a98469322e15f0edfb2d2fdd1b7d8be8efcc2df2f059b87b01bfeb2061a",
+      "keywords/lspp-generic-file-readers.json": "b30ccc26dbd2238780d21ba1a84e05542befebabdc6ae4ef1bf78e62f91f7e1f",
+      "keywords/lspp-ordinal-file-readers.json": "1f6c4e3bf7ffac0b3bd2e73a15bc14d39b2841677ef923ff4955150f81518431",
+      "keywords/lspp-ordinal-conditional-readers.json": "e4510c2be7ce74a123d39fbc6a6c2a36be0d5fbd0f323d9d185f0b981099cc68",
+      "keywords/lspp-optional-tail-readers.json": "d659a04455893818b2ab3c0153b65db648e8133d3c87cda7fb4cb91d62866838",
+      "keywords/lspp-eos-special-readers.json": "f210c0a670622627706552bc8edfa9ba0a4c95fa69fa1f6e185ff6d60f4cec31",
+      "scripts/regenerate-keyword-artifacts.cjs": "5f8ba73a19f86bbd5c7b31453826f7cf34dd4f71c3bd239d2059ce6aa32bc58a",
       "keywords/generate_from_pydyna.py": "ab16b325a99ecd7a9695b93ee3c8b4005809dd625e67838fabadc720212d4ca1",
-      "keywords/pydyna_schema_adapter.py": "46416d5f0b20949335e254906da3eb45f0a6c0a414a186cb2ed64261d612ed9f",
+      "keywords/pydyna_schema_adapter.py": "031a20ad80424cbea0831fa38a538cd96e0a867723a8f95e7f21fa165494f870",
       "keywords/text_sanitization.py": "5c99c7d6b92a25529f30be64cc9117de39573d492d01c4bdd6cc29e09406777e",
       "keywords/compatibility/mat_add_erosion_legacy_fields.json": "8f38e05ce43ad53e6c5e623d65b86dae34038bb909767bfc7f78c78b07a15c75",
-      "scripts/generate-field-reference-index.cjs": "3390d4b27a42aaa314a9e4b3272fada4bc2fce02b6a9fcd8b414602e80ff4d5b"
+      "keywords/compatibility/component_joint_did_official_float.json": "b999368c142d82ec1900787261a6338289d1e5d05d40ea388c59c680d3949fe4",
+      "keywords/compatibility/mat_072_card8_manual_layout.json": "e319b1e64c9480f106fff3dd058d46fb3a51b2d3d290b1e9d8faa93c3c3dd5e7",
+      "keywords/compatibility/cese_mat_002_card1_manual_layout.json": "2e832f5a26db8433d43cdec91e9b0f4e932e7b9bafd22f06e08c753d9691a4a2",
+      "keywords/compatibility/define_control_volume_flow_area_card1_manual_layout.json": "272918639cd66c9ac883850eb221e60940bf85f37666480a501e9978fe384ea4",
+      "keywords/compatibility/em_solver_fembem_monolithic_card2_3_manual_layout.json": "cb34fc4e3d20d62467b379c5251ff1139c95aabb786320936648b1f338984ca9",
+      "keywords/compatibility/icfd_control_dem_coupling_card2_manual_layout.json": "63717dc6b00650a8f393e2f8eba0d602d2217b274f9493c7e86859b9a44c911a",
+      "keywords/compatibility/constrained_soil_pile_card2_manual_layout.json": "1c3002b3e57c53fd3d09614437d0fe516052bd99f3c530a98f836bd0d6cd74c1",
+      "scripts/generate-lspp-reference-handoff.cjs": "6b52f63f6d6fe2c86e7d6f5fc1a2b14a4d94253c08453537566106e96449a40c",
+      "scripts/generate-field-reference-index.cjs": "16be8fdf54e85e2ecaf88cdad0f395003ce3ec517a59ea287e98b72daf698c6a"
     },
     "artifactSha256": {
-      "snippets/lsdyna.json": "496e94df7729baa6e30e1f2805d0efcc7dd46efd901554f1666a05335d4a23a1",
-      "keywords/field_data.json": "552b9475eefb50c2649114371b44ed287f5b656ce40d9eb52c741ebf46cd4fac",
-      "keywords/field_reference_index.json": "9e8a1cceda914162606a3a6dce7f374125c08baba2fbf60f364ccaf95bdaa0d4"
+      "snippets/lsdyna.json": "02f25673f66c3a9ed5477c9ed5ae2c9d0a6fcf3801bc90eedb8e6d9a24d0e42c",
+      "keywords/field_data.json": "e6a439dcbaa6660fd9e70c77cea3c8eb23da3bdedc4dc1aaae0253c1c03dd1ca",
+      "keywords/field_reference_index.json": "128b705ec0a24e64263bac4d1e1f23d9705d6d840b473612b0582f82df1d14cb",
+      "keywords/lspp_reference_blockers.runtime.json.gz": "71372ece394043e9c305e8978e0e4740554f2a2f10f2ae6b4038bf729b23e11f"
     }
   }
 }

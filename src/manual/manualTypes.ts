@@ -55,6 +55,8 @@ export interface ManualKeywordEntry extends ManualLocation {
 }
 
 export interface ManualSearchResult {
+    /** Display title from the pack manifest, never a filesystem path. */
+    volumeTitle?: string;
     location: ManualLocation;
     titleEn: string;
     titleZh?: string;

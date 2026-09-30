@@ -1,0 +1,252 @@
+{
+  "descriptors": [
+    {
+      "dataRecordOrdinal": 0,
+      "definitionRegistryPermission": false,
+      "f12Permission": false,
+      "fieldIndex": 0,
+      "fieldName": "CID",
+      "fieldType": "integer",
+      "formatContracts": [
+        {
+          "mode": "standard-fixed",
+          "width": 10
+        },
+        {
+          "mode": "i10-fixed",
+          "width": 10
+        },
+        {
+          "mode": "long-fixed",
+          "width": 20
+        },
+        {
+          "mode": "comma-delimited",
+          "width": null
+        }
+      ],
+      "handoffId": "exact-definition-scanner-handoff:62950d47f6e0c08b0ff969cf",
+      "keyword": "DEFINE_COORDINATE_SYSTEM",
+      "pluginRuntimePermission": false,
+      "position": 0,
+      "recordMode": "exact-data-record-ordinal",
+      "scannerPermission": false,
+      "targetKind": "coordinate-system",
+      "targetToken": "*DEFINE_COORDINATE_SYSTEM",
+      "titleCardCount": 0,
+      "valueDomain": {
+        "commaDelimited": true,
+        "i10Width": 10,
+        "kind": "positive-integer",
+        "longWidth": 20,
+        "numericSinglePrecisionMaximum": 2147483647,
+        "officialFieldType": "I",
+        "standardWidth": 10
+      },
+      "width": 10
+    },
+    {
+      "dataRecordOrdinal": 0,
+      "definitionRegistryPermission": false,
+      "f12Permission": false,
+      "fieldIndex": 0,
+      "fieldName": "GID",
+      "fieldType": "integer",
+      "formatContracts": [
+        {
+          "mode": "standard-fixed",
+          "width": 10
+        },
+        {
+          "mode": "i10-fixed",
+          "width": 10
+        },
+        {
+          "mode": "long-fixed",
+          "width": 20
+        },
+        {
+          "mode": "comma-delimited",
+          "width": null
+        }
+      ],
+      "handoffId": "exact-definition-scanner-handoff:ea27e2f6336c77d3eb6c5556",
+      "keyword": "DEFINE_PBLAST_AIRGEO",
+      "pluginRuntimePermission": false,
+      "position": 0,
+      "recordMode": "exact-data-record-ordinal",
+      "scannerPermission": false,
+      "targetKind": "pblast-air-geometry",
+      "targetToken": "*DEFINE_PBLAST_AIRGEO",
+      "titleCardCount": 0,
+      "valueDomain": {
+        "commaDelimited": true,
+        "i10Width": 10,
+        "kind": "positive-integer",
+        "longWidth": 20,
+        "numericSinglePrecisionMaximum": 2147483647,
+        "officialFieldType": "I",
+        "standardWidth": 10
+      },
+      "width": 10
+    },
+    {
+      "dataRecordOrdinal": 0,
+      "definitionRegistryPermission": false,
+      "f12Permission": false,
+      "fieldIndex": 0,
+      "fieldName": "PID",
+      "fieldType": "integer",
+      "formatContracts": [
+        {
+          "mode": "standard-fixed",
+          "width": 10
+        },
+        {
+          "mode": "i10-fixed",
+          "width": 10
+        },
+        {
+          "mode": "long-fixed",
+          "width": 20
+        },
+        {
+          "mode": "comma-delimited",
+          "width": null
+        }
+      ],
+      "handoffId": "exact-definition-scanner-handoff:33c876c237524c1281c6884b",
+      "keyword": "DUALCESE_MESH_PART",
+      "pluginRuntimePermission": false,
+      "position": 0,
+      "recordMode": "exact-data-record-ordinal",
+      "scannerPermission": false,
+      "targetKind": "part",
+      "targetToken": "*DUALCESE_MESH_PART",
+      "titleCardCount": 0,
+      "valueDomain": {
+        "commaDelimited": true,
+        "i10Width": 10,
+        "kind": "positive-integer",
+        "longWidth": 20,
+        "numericSinglePrecisionMaximum": 2147483647,
+        "officialFieldType": "I",
+        "standardWidth": 10
+      },
+      "width": 10
+    },
+    {
+      "dataRecordOrdinal": 0,
+      "definitionRegistryPermission": false,
+      "f12Permission": false,
+      "fieldIndex": 0,
+      "fieldName": "HGID",
+      "fieldType": "integer",
+      "formatContracts": [
+        {
+          "mode": "standard-fixed",
+          "width": 10
+        },
+        {
+          "mode": "i10-fixed",
+          "width": 10
+        },
+        {
+          "mode": "long-fixed",
+          "width": 20
+        },
+        {
+          "mode": "comma-delimited",
+          "width": null
+        }
+      ],
+      "handoffId": "exact-definition-scanner-handoff:be3eeaebc0ecfbd4cd0cfa0e",
+      "keyword": "HOURGLASS",
+      "pluginRuntimePermission": false,
+      "position": 0,
+      "recordMode": "exact-data-record-ordinal",
+      "scannerPermission": false,
+      "targetKind": "hourglass",
+      "targetToken": "*HOURGLASS",
+      "titleCardCount": 0,
+      "valueDomain": {
+        "commaDelimited": true,
+        "i10Width": 10,
+        "kind": "positive-integer",
+        "longWidth": 20,
+        "numericSinglePrecisionMaximum": 2147483647,
+        "officialFieldType": "I",
+        "standardWidth": 10
+      },
+      "width": 10
+    },
+    {
+      "dataRecordOrdinal": 0,
+      "definitionRegistryPermission": false,
+      "f12Permission": false,
+      "fieldIndex": 0,
+      "fieldName": "AMMSID",
+      "fieldType": "integer",
+      "formatContracts": [
+        {
+          "mode": "standard-fixed",
+          "width": 10
+        },
+        {
+          "mode": "i10-fixed",
+          "width": 10
+        },
+        {
+          "mode": "long-fixed",
+          "width": 20
+        },
+        {
+          "mode": "comma-delimited",
+          "width": null
+        }
+      ],
+      "handoffId": "exact-definition-scanner-handoff:457950a0f19e44e9826bbace",
+      "keyword": "SET_MULTI",
+      "pluginRuntimePermission": false,
+      "position": 0,
+      "recordMode": "exact-data-record-ordinal",
+      "scannerPermission": false,
+      "targetKind": "ale-multi-material-set",
+      "targetToken": "*SET_MULTI",
+      "titleCardCount": 0,
+      "valueDomain": {
+        "commaDelimited": true,
+        "i10Width": 10,
+        "kind": "positive-integer",
+        "longWidth": 20,
+        "numericSinglePrecisionMaximum": 2147483647,
+        "officialFieldType": "I",
+        "standardWidth": 10
+      },
+      "width": 10
+    }
+  ],
+  "kind": "dynasense-exact-definition-scanner-handoff",
+  "permissions": {
+    "completenessClaimPermission": false,
+    "definitionRegistryPermission": false,
+    "f12Permission": false,
+    "pluginRuntimePermission": false,
+    "referenceProviderPermission": false,
+    "scannerPermission": false
+  },
+  "schemaVersion": 1,
+  "source": {
+    "authorityLockSha256": "54c97313a989aa69c56c7fce818f90315fd78826f2a1194f4ee87dc30efa8a31",
+    "contentSha256": "e1f880048b7b13d852baf71e7d26b79ecb471f251a17c7406d18f0f4feb62f09",
+    "manifestSha256": "8fe9538107207bac67d995110f0b3de983bcc31587b1dae1ffec42a3c1aba05a",
+    "standaloneCommit": "a8c1b356b57edce44b88eed638668ef5ab837eec"
+  },
+  "summary": {
+    "descriptors": 5,
+    "integerOnlyDescriptors": 5,
+    "numericFixtureObligations": 20,
+    "scannerEligibleDescriptors": 0
+  },
+  "contentSha256": "6f4a79956f099197b0cbfbcb23bdef466c2c45b4e10f519690a96873bcf073aa"
+}

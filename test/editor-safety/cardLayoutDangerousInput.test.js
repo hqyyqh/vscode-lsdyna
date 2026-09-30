@@ -12,7 +12,7 @@ const {
 const { isLongFormatKeyword } = require('../../src/core/keywordSchema');
 
 // Helpers mirror test/editor-safety/cardLayoutSafety.test.js (the canonical
-// 495-layout iteration that locks the 20,780 / 20,726 / 117,738 / 495 inventory).
+// 469-layout iteration that locks the 20,783 / 20,729 / 117,745 / 469 inventory).
 // Keep these in sync if the generated schema iteration changes.
 function collectCards(schema) {
     const cards = [];
@@ -77,7 +77,7 @@ function withCommaAt(line, col) {
     return line.slice(0, col) + ',' + line.slice(col + 1);
 }
 
-describe('editor safety: card-layout dangerous-input fail-closed (495 layouts)', () => {
+describe('editor safety: card-layout dangerous-input fail-closed (469 layouts)', () => {
     const cards = collectCards(fieldData);
     const nonEmptyCards = cards.filter(({ card }) => card.length > 0);
     const distinctLayouts = new Map();
@@ -88,9 +88,9 @@ describe('editor safety: card-layout dangerous-input fail-closed (495 layouts)',
     }
     const safeLayouts = [...distinctLayouts.values()].filter(({ card }) => !geometryIssue(card));
 
-    it('locks the same 495-layout inventory as the canonical pass', () => {
-        assert.strictEqual(nonEmptyCards.length, 20726);
-        assert.strictEqual(distinctLayouts.size, 495);
+    it('locks the same 469-layout inventory as the canonical pass', () => {
+        assert.strictEqual(nonEmptyCards.length, 20729);
+        assert.strictEqual(distinctLayouts.size, 469);
         assert.ok(safeLayouts.length > 0, 'at least one safe distinct layout must exist');
     });
 
@@ -264,15 +264,18 @@ describe('editor safety: collapsed free-format tokens close editing', () => {
 });
 
 describe('editor safety: long-format keywords are excluded from fixed-column editing', () => {
-    // Official Vol I physical pages 397-398 / printed pages 2-31-2-32: long format
-    // doubles field widths (I8->I16, I10->I20). The schema hard-codes short-format
-    // widths, so a long-format keyword must bail out of column-based cell editing
-    // rather than rewrite the line against the wrong widths.
-    it('flags per-keyword long format (+) and global LONG=Y/S', () => {
+    // Official Vol I physical pages 397-398 / printed pages 2-31-2-32: *NODE+
+    // uses I20 while standard *NODE uses I8, and LONG=S selects standard input.
+    // The schema hard-codes standard widths, so non-standard layouts must bail
+    // out of column-based editing rather than rewrite the wrong columns.
+    it('flags per-keyword non-standard formats and global LONG=Y/K', () => {
         assert.strictEqual(isLongFormatKeyword('*NODE+'), true);
         assert.strictEqual(isLongFormatKeyword('*ELEMENT_SHELL+'), true);
+        assert.strictEqual(isLongFormatKeyword('*NODE %'), true);
+        assert.strictEqual(isLongFormatKeyword('*NODE%'), true);
         assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=Y'), true);
-        assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=S'), true);
+        assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=K'), true);
+        assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=S'), false);
         assert.strictEqual(isLongFormatKeyword('*KEYWORD long=y'), true);
         assert.strictEqual(isLongFormatKeyword('*KEYWORD,LONG=Y'), true);
     });
@@ -281,6 +284,7 @@ describe('editor safety: long-format keywords are excluded from fixed-column edi
         assert.strictEqual(isLongFormatKeyword('*NODE'), false);
         assert.strictEqual(isLongFormatKeyword('*KEYWORD'), false);
         assert.strictEqual(isLongFormatKeyword('*ELEMENT_SHELL'), false);
+        assert.strictEqual(isLongFormatKeyword('*NODE-'), false);
         assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=N'), false);
         assert.strictEqual(isLongFormatKeyword('not a keyword'), false);
         assert.strictEqual(isLongFormatKeyword(''), false);

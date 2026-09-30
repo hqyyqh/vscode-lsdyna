@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -25,7 +26,70 @@ function createPack() {
     return root;
 }
 
+function addAuthority(root) {
+    const pdfDir = path.join(root, 'pdf');
+    fs.mkdirSync(pdfDir);
+    const pdfFile = 'pdf/vol.pdf';
+    const pdfBytes = Buffer.from('pdf');
+    fs.writeFileSync(path.join(root, pdfFile), pdfBytes);
+    const sourceDocumentId = 'a'.repeat(64);
+    const sourceProfileId = 'b'.repeat(64);
+    const authority = {
+        schema: 'lsdyna.pdf.authority-index.v1',
+        schemaVersion: 1,
+        flavor: 'en',
+        sourceProfileId,
+        documents: [{
+            manualId: 'vol',
+            sourceDocumentId,
+            revision: 'master@abc123def (01/02/26)',
+            pages: 1,
+            artifactSha256: crypto.createHash('sha256').update(pdfBytes).digest('hex'),
+            artifactBytes: pdfBytes.length,
+            pdfFile,
+        }],
+    };
+    const indexBytes = Buffer.from(JSON.stringify(authority));
+    fs.writeFileSync(path.join(root, 'indexes', 'pdf-authority.json'), indexBytes);
+    fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({
+        schema: 'lsdyna.manual.package.v2',
+        schemaVersion: 2,
+        generatedAt: 'authority',
+        flavor: 'en',
+        documents: [{
+            slug: 'vol',
+            title: 'Volume',
+            order: 1,
+            pdfFile,
+            pdfAuthoritySourceDocumentId: sourceDocumentId,
+        }],
+        indexes: { pdfAuthority: 'indexes/pdf-authority.json' },
+        pdfAuthority: {
+            index: 'indexes/pdf-authority.json',
+            indexSha256: crypto.createHash('sha256').update(indexBytes).digest('hex'),
+            sourceProfileId,
+            schemaVersion: 1,
+        },
+    }));
+    return sourceProfileId;
+}
+
 describe('ManualPackManager', () => {
+    it('loads one authority snapshot with the repository and peeks it without another read', () => {
+        const root = createPack();
+        const sourceProfileId = addAuthority(root);
+        const manager = new ManualPackManager({ globalState: {} });
+        try {
+            manager.getRepository(root);
+            assert.equal(manager.peekCurrentAuthority().sourceProfileId, sourceProfileId);
+            assert.equal(manager.peekAuthority(root).documents[0].manualId, 'vol');
+            manager.invalidate();
+            assert.equal(manager.peekCurrentAuthority(), null);
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
+    });
+
     it('stores and restores the latest valid global state for a pack', () => {
         const root = createPack();
         const values = new Map();
@@ -44,4 +108,15 @@ describe('ManualPackManager', () => {
             fs.rmSync(root, { recursive: true, force: true });
         }
     });
+});
+
+it('notifies structural checks when manual authority is loaded or invalidated', () => {
+    const root = createPack(); let calls = 0;
+    try {
+        const manager = new ManualPackManager({}, () => { calls++; });
+        manager.getRepository(root); assert.equal(calls, 1);
+        manager.getRepository(root); assert.equal(calls, 1);
+        manager.invalidate(); assert.equal(calls, 2);
+        manager.getRepository(root); assert.equal(calls, 3);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

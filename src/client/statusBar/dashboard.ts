@@ -152,10 +152,10 @@ const DEFAULT_DASHBOARD_LABELS: DashboardLabels = {
     manageCustomValidKeywordsLabel: '$(list-unordered) Manage Custom Valid Keywords',
     manageCustomValidKeywordsDescription: 'Custom valid keywords',
     manageCustomValidKeywordsDetail: 'Add, edit, or remove keywords accepted by validation.',
-    mainDeckContextLabel: '$(root-folder) Main deck context',
+    mainDeckContextLabel: '$(root-folder) Main deck',
     mainDeckContextSelectedDescription: 'Selected: {0}',
-    mainDeckContextAmbiguousDescription: 'Shared file: choose a load case',
-    mainDeckContextDetail: 'Choose which already-scanned main deck interprets this shared file for this session.',
+    mainDeckContextAmbiguousDescription: 'Shared file: choose a main deck',
+    mainDeckContextDetail: 'Choose a scanned main deck to use when analyzing this shared file. This choice applies only to this session.',
     barManualSetup: 'Manual setup',
     tooltipCurrentFile: 'Current file: {0}',
     tooltipNoProblems: 'no problems',
@@ -166,7 +166,7 @@ const DEFAULT_DASHBOARD_LABELS: DashboardLabels = {
     tooltipScan: 'Include Tree scan: {0}',
     tooltipNotScanned: 'not scanned',
     tooltipMainDeck: 'Main deck context: {0}',
-    tooltipMainDeckAmbiguous: 'Main deck context: choose one for this shared file',
+    tooltipMainDeckAmbiguous: 'This file is included by multiple main decks. No main deck has been selected for analysis.',
     tooltipClick: 'Click: quick actions',
 };
 

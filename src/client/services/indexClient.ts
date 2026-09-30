@@ -16,11 +16,17 @@ const fs = require('fs');
 const path = require('path');
 
 const { createCacheManifestStore } = require('../../core/cache/cacheManifestStore');
-const { hydrateProjectSnapshot } = require('../../core/cache/snapshotSerializer');
+const { hydrateProjectSnapshot, receiveSnapshotChunk, restoreSnapshotChunks } = require('../../core/cache/snapshotSerializer');
+const {
+    createCancellationError,
+    throwIfCancellationRequested,
+} = require('../../core/scanner/scannerContracts');
 const protocol = require('../../shared/protocol');
 
+const DEFAULT_MAX_SNAPSHOT_BYTES = 48 * 1024 * 1024;
+
 type IndexClientOptions = {
-    buildProjectIndex?: (rootFile: string, options?: object, onProgress?: ((snapshot: any) => void) | null) => Promise<any>;
+    buildProjectIndex?: (rootFile: string, options?: object, onProgress?: ((snapshot: any) => void) | null, cancellationToken?: any) => Promise<any>;
     getFileSignature?: (filePath: string) => Promise<any>;
     estimateSnapshotSize?: (snapshot: any) => number;
     maxSnapshotBytes?: number;
@@ -54,6 +60,36 @@ function getRootCacheKey(rootFile) {
     return process.platform === 'win32'
         ? resolvedRootFile.toLowerCase()
         : resolvedRootFile;
+}
+
+function waitForPromiseWithCancellation(promise, cancellationToken) {
+    if (cancellationToken?.isCancellationRequested) {
+        // The shared operation may still reject after this already-cancelled waiter leaves.
+        void Promise.resolve(promise).catch(() => undefined);
+        throwIfCancellationRequested(cancellationToken);
+    }
+    if (!cancellationToken || typeof cancellationToken.onCancellationRequested !== 'function') {
+        return promise;
+    }
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let registration = null;
+        const finish = (callback, value) => {
+            if (settled) return;
+            settled = true;
+            registration?.dispose?.();
+            callback(value);
+        };
+        registration = cancellationToken.onCancellationRequested(() => {
+            finish(reject, createCancellationError());
+        });
+        Promise.resolve(promise).then(
+            value => finish(resolve, value),
+            error => finish(reject, error),
+        );
+        if (settled) registration?.dispose?.();
+    });
 }
 
 /**
@@ -104,18 +140,28 @@ async function readFileSignature(filePath) {
  * @param {function(string): Promise<import('../../core/cache/diskSnapshotStore').FileSignature>} getFileSignature - Signature function.
  * @returns {Promise<import('../../core/cache/diskSnapshotStore').TrackedFileEntry[]>} Tracked files with signatures.
  */
-async function captureTrackedFiles(snapshot, getFileSignature) {
+async function captureTrackedFiles(snapshot, getFileSignature, cancellationToken = null) {
     const trackedFiles = [];
     const seen = new Set();
 
     for (const filePath of getTrackedSnapshotFiles(snapshot)) {
+        throwIfCancellationRequested(cancellationToken);
         const resolvedFilePath = resolveRootFile(filePath);
         const fileCacheKey = getRootCacheKey(resolvedFilePath);
         if (seen.has(fileCacheKey)) continue;
         seen.add(fileCacheKey);
+        const signature = await getFileSignature(resolvedFilePath);
+        throwIfCancellationRequested(cancellationToken);
+        const scanned = snapshot.fileIndexes?.get?.(resolvedFilePath);
+        if (scanned && Number.isFinite(scanned.size) && Number.isFinite(scanned.mtimeMs) &&
+            !areFileSignaturesEqual(scanned, signature)) {
+            const error = new Error('File changed before snapshot publication: ' + resolvedFilePath);
+            error.name = 'ScanChangedError';
+            throw error;
+        }
         trackedFiles.push({
             filePath: resolvedFilePath,
-            signature: await getFileSignature(resolvedFilePath),
+            signature,
         });
     }
 
@@ -156,7 +202,7 @@ async function isSnapshotValid(entry, getFileSignature) {
  * @returns {number} Byte count.
  */
 function estimateSnapshotSize(snapshot) {
-    return Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
+    return require('../../core/cache/memorySize').estimateMemorySize(snapshot, DEFAULT_MAX_SNAPSHOT_BYTES);
 }
 
 /**
@@ -200,14 +246,15 @@ function getSnapshotCacheStats(snapshots) {
  *   loadProjectSnapshot: function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>,
  *   invalidate: function(string): void,
  *   getManifestEntries: function(): Promise<import('../../core/cache/cacheManifestStore').ManifestEntry[]>,
- *   getCacheStats: function(): Promise<{cachedSnapshotCount: number, totalSnapshotBytes: number}>
+ *   getCacheStats: function(): Promise<{cachedSnapshotCount: number, totalSnapshotBytes: number}>,
+ *   clearCaches: function(): Promise<Object>
  * }} Client API.
  */
 function createIndexClient({
     buildProjectIndex,
     getFileSignature = readFileSignature,
     estimateSnapshotSize: getSnapshotSize = estimateSnapshotSize,
-    maxSnapshotBytes = Number.POSITIVE_INFINITY,
+    maxSnapshotBytes = DEFAULT_MAX_SNAPSHOT_BYTES,
     manifestStore = createCacheManifestStore(),
     persistentCache = null,
     languageClient = null,
@@ -216,16 +263,40 @@ function createIndexClient({
         if (typeof languageClient.sendRequest !== 'function' || typeof languageClient.sendNotification !== 'function') {
             throw new TypeError('createIndexClient requires a languageClient supporting sendRequest and sendNotification');
         }
-        let progressCallback = null;
+        let requestSequence = 0;
+        let lastSnapshot = null;
+        const requests = new Map();
         
         // Delay binding the notification until the client is fully initialized
         const bindNotification = async () => {
             while (true) {
                 try {
                     languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
-                        if (progressCallback) {
-                            progressCallback(hydrateProjectSnapshot(params));
+                        const request = requests.get(params?.requestId);
+                        if (request && !request.cancellationToken?.isCancellationRequested && params.event &&
+                            typeof params.event.rootFile === 'string' &&
+                            getRootCacheKey(params.event.rootFile) === request.rootKey) {
+                            const event = params.event;
+                            request.onProgress?.(event.type === 'structureReady'
+                                ? { ...event, snapshot: hydrateProjectSnapshot(event.snapshot) } : event);
+                            return;
                         }
+                        if (!request || request.cancellationToken?.isCancellationRequested ||
+                            typeof params.snapshot?.rootFile !== 'string' ||
+                            getRootCacheKey(params.snapshot?.rootFile) !== request.rootKey) return;
+                        request.onProgress?.(hydrateProjectSnapshot(params.snapshot));
+                    });
+                    languageClient.onNotification(protocol.SNAPSHOT_REFERENCES_NOTIFICATION, (params) => {
+                        const request = requests.get(params?.requestId);
+                        if (!request || request.cancellationToken?.isCancellationRequested || request.error) return;
+                        try {
+                            receiveSnapshotChunk(request.chunks, params);
+                            if (params.field !== 'keywordBlocks') {
+                                const records = request.chunks.get(JSON.stringify([params.filePath, params.field]));
+                                for (let i = params.offset; i < records.length; i++) request.intern(records[i]);
+                            }
+                        } catch (error) { request.error = error; }
+
                     });
                     break; // Successfully bound
                 } catch (e) {
@@ -242,20 +313,41 @@ function createIndexClient({
             bindNotification();
         }
         return {
-            async loadProjectSnapshot(rootFile, options = {}, onProgress = null) {
+            async loadProjectSnapshot(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+                throwIfCancellationRequested(cancellationToken);
                 if (typeof languageClient.onReady === 'function') {
                     await languageClient.onReady();
                 }
-                progressCallback = onProgress;
                 const resolvedRootFile = resolveRootFile(rootFile);
+                const previous = lastSnapshot;
+                const requestId = String(++requestSequence);
+                const request = { onProgress, cancellationToken, rootKey: getRootCacheKey(resolvedRootFile),
+                    chunks: new Map(), error: null,
+                    intern: require('../../core/references/referenceMetadata').createReferenceMetadataInterner() };
+                requests.set(requestId, request);
                 try {
                     const serialized = await languageClient.sendRequest(
                         protocol.LOAD_PROJECT_SNAPSHOT_REQUEST,
-                        { rootFile: resolvedRootFile, options }
+                        { rootFile: resolvedRootFile, options, requestId,
+                            ...(previous?.rootFile === resolvedRootFile ? { reuseSnapshotId: previous.id } : {}) },
+                        cancellationToken || undefined,
                     );
-                    return hydrateProjectSnapshot(serialized);
+                    throwIfCancellationRequested(cancellationToken);
+                    if (typeof serialized?.rootFile !== 'string' ||
+                        getRootCacheKey(serialized.rootFile) !== request.rootKey) {
+                        throw new Error('Project snapshot root does not match its request');
+                    }
+                    if (request.error) throw request.error;
+                    if (serialized.snapshotUnchanged) {
+                        if (!previous || previous.id !== serialized.snapshotId) throw new Error('Unknown reused project snapshot');
+                        return previous.snapshot;
+                    }
+                    restoreSnapshotChunks(serialized, request.chunks);
+                    const snapshot = hydrateProjectSnapshot(serialized);
+                    if (serialized.snapshotId) lastSnapshot = { rootFile: resolvedRootFile, id: serialized.snapshotId, snapshot };
+                    return snapshot;
                 } finally {
-                    progressCallback = null;
+                    requests.delete(requestId);
                 }
             },
             async invalidate(rootFile) {
@@ -279,6 +371,12 @@ function createIndexClient({
                     await languageClient.onReady();
                 }
                 return await languageClient.sendRequest(protocol.GET_CACHE_STATS_REQUEST);
+            },
+            async clearCaches() {
+                if (typeof languageClient.onReady === 'function') {
+                    await languageClient.onReady();
+                }
+                return await languageClient.sendRequest(protocol.CLEAR_CACHES_REQUEST);
             },
         };
     }
@@ -305,6 +403,7 @@ function createIndexClient({
     const snapshots = new Map();
     const generations = new Map();
     let accessSequence = 0;
+    let cacheEpoch = 0;
 
     function getGeneration(rootCacheKey) {
         return generations.get(rootCacheKey) || 0;
@@ -333,6 +432,11 @@ function createIndexClient({
     }
 
     function evictSnapshotsIfNeeded(protectedRootCacheKey) {
+        const protectedEntry = snapshots.get(protectedRootCacheKey);
+        if (protectedEntry?.byteSize > maxSnapshotBytes) {
+            snapshots.delete(protectedRootCacheKey);
+            return;
+        }
         let cacheStats = getSnapshotCacheStats(snapshots);
         while (cacheStats.totalSnapshotBytes > maxSnapshotBytes) {
             const evictionCandidates = [...snapshots.entries()]
@@ -344,22 +448,51 @@ function createIndexClient({
                 ))
                 .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt);
 
-            if (evictionCandidates.length === 0) break;
+            if (evictionCandidates.length === 0) {
+                const protectedEntry = snapshots.get(protectedRootCacheKey);
+                if (!protectedEntry?.snapshot) break;
+                manifestStore.remove(protectedEntry.snapshot.rootFile);
+                snapshots.delete(protectedRootCacheKey);
+                break;
+            }
             manifestStore.remove(evictionCandidates[0][1].snapshot.rootFile);
             snapshots.delete(evictionCandidates[0][0]);
             cacheStats = getSnapshotCacheStats(snapshots);
         }
     }
 
-    async function loadProjectSnapshot(rootFile, options = {}, onProgress = null) {
+    async function loadProjectSnapshot(rootFile, options: any = {}, onProgress = null, cancellationToken = null) {
+        throwIfCancellationRequested(cancellationToken);
         const resolvedRootFile = resolveRootFile(rootFile);
+
+        // Single-file semantic queries reuse the worker's per-file L1/L1.5 caches, but must not
+        // enter project snapshot memory, manifest, or persistent caches: they do not represent an
+        // Include closure and therefore cannot be reused as a project-scoped snapshot.
+        if (options?.singleFileOnly === true) {
+            return buildProjectIndex(
+                resolvedRootFile,
+                { ...options, singleFileOnly: true },
+                onProgress,
+                cancellationToken,
+            );
+        }
         const rootCacheKey = getRootCacheKey(rootFile);
+        const optionsKey = JSON.stringify(Object.keys(options)
+            .filter(key => options[key] !== undefined &&
+                !(options[key] === false && ['fullScanLargeFiles', 'singleFileOnly'].includes(key)))
+            .sort().map(key => [key, options[key]]));
 
         while (snapshots.has(rootCacheKey)) {
             const cachedEntry = snapshots.get(rootCacheKey);
-            if (cachedEntry.promise) return cachedEntry.promise;
+            if (cachedEntry.optionsKey !== optionsKey) { invalidate(resolvedRootFile); continue; }
+            if (cachedEntry.promise) {
+                cachedEntry.subscribers.add({ onProgress, cancellationToken });
+                if (cachedEntry.structureEvent) onProgress?.(cachedEntry.structureEvent);
+                return waitForPromiseWithCancellation(cachedEntry.promise, cancellationToken);
+            }
 
             const valid = await isSnapshotValid(cachedEntry, getFileSignature);
+            throwIfCancellationRequested(cancellationToken);
             const currentEntry = snapshots.get(rootCacheKey);
             if (currentEntry !== cachedEntry) continue;
             if (valid) {
@@ -371,15 +504,46 @@ function createIndexClient({
         }
 
         const generation = getGeneration(rootCacheKey);
+        const loadEpoch = cacheEpoch;
+        const callerToken = cancellationToken;
+        const subscribers = new Set([{ onProgress, cancellationToken: callerToken }]);
+        const sharedToken = {
+            get isCancellationRequested() {
+                return cacheEpoch !== loadEpoch || getGeneration(rootCacheKey) !== generation ||
+                    [...subscribers].every(subscriber => subscriber.cancellationToken?.isCancellationRequested);
+            },
+            onCancellationRequested(listener) {
+                const timer = setInterval(() => {
+                    if (sharedToken.isCancellationRequested) { clearInterval(timer); listener(); }
+                }, 25);
+                timer.unref?.();
+                return { dispose: () => clearInterval(timer) };
+            },
+        };
+        cancellationToken = sharedToken;
+        const publish = (event) => {
+            if (sharedToken.isCancellationRequested) return;
+            const entry = snapshots.get(rootCacheKey);
+            if (entry?.subscribers === subscribers) {
+                if (event?.type === 'structureReady') entry.structureEvent = event;
+                if (event?.phase === 'restarting') entry.structureEvent = null;
+            }
+            for (const subscriber of subscribers) {
+                if (!subscriber.cancellationToken?.isCancellationRequested) subscriber.onProgress?.(event);
+            }
+        };
         const promise = (async () => {
             if (persistentCache) {
                 try {
                     const restored = await persistentCache.restore(resolvedRootFile);
-                    if (restored) {
+                    throwIfCancellationRequested(cancellationToken);
+                    if (restored && (restored.snapshot.scanOptionsKey || '[]') === optionsKey) {
                         const currentEntry = snapshots.get(rootCacheKey);
-                        if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
+                        if (cacheEpoch === loadEpoch && getGeneration(rootCacheKey) === generation
+                            && currentEntry && currentEntry.promise === promise) {
                             const entry = {
                                 snapshot: restored.snapshot,
+                                optionsKey,
                                 trackedFiles: restored.trackedFiles,
                                 byteSize: getSnapshotSize(restored.snapshot),
                             };
@@ -389,24 +553,37 @@ function createIndexClient({
                         }
                         return restored.snapshot;
                     }
-                } catch (_error) {
+                } catch (error) {
+                    if (error?.name === 'CancellationError') throw error;
+                    throwIfCancellationRequested(cancellationToken);
                     // Best-effort L2 restore: fall back to building the index if recovery fails.
                 }
             }
 
-            const snapshot = await buildProjectIndex(resolvedRootFile, options, onProgress);
+            const snapshot = await buildProjectIndex(
+                resolvedRootFile,
+                options,
+                publish,
+                cancellationToken,
+            );
+            snapshot.scanOptionsKey = optionsKey;
+            throwIfCancellationRequested(cancellationToken);
             let trackedFiles = null;
             try {
-                trackedFiles = await captureTrackedFiles(snapshot, getFileSignature);
-            } catch (_error) {
+                trackedFiles = await captureTrackedFiles(snapshot, getFileSignature, cancellationToken);
+            } catch (error) {
+                if (error?.name === 'CancellationError' || error?.name === 'ScanChangedError') throw error;
+                throwIfCancellationRequested(cancellationToken);
                 trackedFiles = null;
             }
 
             const currentEntry = snapshots.get(rootCacheKey);
-            if (getGeneration(rootCacheKey) === generation && currentEntry && currentEntry.promise === promise) {
+            if (cacheEpoch === loadEpoch && getGeneration(rootCacheKey) === generation
+                && currentEntry && currentEntry.promise === promise) {
                 if (trackedFiles) {
                     const entry = {
                         snapshot,
+                        optionsKey,
                         trackedFiles,
                         byteSize: getSnapshotSize(snapshot),
                     };
@@ -414,8 +591,12 @@ function createIndexClient({
                     snapshots.set(rootCacheKey, entry);
                     evictSnapshotsIfNeeded(rootCacheKey);
                     if (persistentCache) {
+                        const persistenceEpoch = cacheEpoch;
                         Promise.resolve()
-                            .then(() => persistentCache.persist({ snapshot, trackedFiles }))
+                            .then(() => {
+                                if (cacheEpoch !== persistenceEpoch) return undefined;
+                                return persistentCache.persist({ snapshot, trackedFiles });
+                            })
                             .catch(() => {
                                 // Best-effort persistence: disk cache failures must not break primary indexing.
                             });
@@ -435,8 +616,8 @@ function createIndexClient({
             throw error;
         });
 
-        snapshots.set(rootCacheKey, { promise });
-        return promise;
+        snapshots.set(rootCacheKey, { promise, optionsKey, subscribers, structureEvent: null });
+        return waitForPromiseWithCancellation(promise, callerToken);
     }
 
     /**
@@ -452,7 +633,26 @@ function createIndexClient({
         snapshots.delete(rootCacheKey);
     }
 
+    async function clearCaches() {
+        cacheEpoch += 1;
+        const memory = getSnapshotCacheStats(snapshots);
+        snapshots.clear();
+        generations.clear();
+        if (typeof manifestStore.clear === 'function') {
+            manifestStore.clear();
+        } else {
+            for (const entry of manifestStore.list()) manifestStore.remove(entry.rootFile);
+        }
+
+        let projectSnapshotDisk = { entryCount: 0, totalBytes: 0 };
+        if (persistentCache && typeof persistentCache.clear === 'function') {
+            projectSnapshotDisk = await persistentCache.clear();
+        }
+        return { memory, projectSnapshotDisk };
+    }
+
     return {
+        clearCaches,
         getCacheStats() {
             return getSnapshotCacheStats(snapshots);
         },
@@ -466,6 +666,7 @@ function createIndexClient({
 
 module.exports = {
     createIndexClient,
+    DEFAULT_MAX_SNAPSHOT_BYTES,
 };
 
 export {};

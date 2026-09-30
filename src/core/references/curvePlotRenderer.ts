@@ -10,6 +10,51 @@ const MAX_SVG_POINTS = 200;
 const MAX_TABLE_ROWS = 8;
 const MAX_TABLE_CURVES = 16;
 const MAX_TABLE_POINTS_PER_CURVE = 32;
+const TABLE_3D_VIEWS = Object.freeze([
+    'isometric',
+    'reverse-isometric',
+    'front',
+    'side',
+]);
+const TABLE_3D_VIEW_PRESETS = Object.freeze({
+    isometric: {
+        x: [160, 20],
+        y: [90, -45],
+        z: [0, -100],
+        gridPlanes: ['xy', 'yz'],
+        reverseCurves: false,
+        visibleAxes: ['x', 'y', 'z'],
+    },
+    'reverse-isometric': {
+        x: [-160, 20],
+        y: [-90, -45],
+        z: [0, -100],
+        gridPlanes: ['xy', 'yz'],
+        reverseCurves: true,
+        visibleAxes: ['x', 'y', 'z'],
+    },
+    front: {
+        x: [180, 0],
+        y: [0, 0],
+        z: [0, -120],
+        gridPlanes: ['xz'],
+        reverseCurves: false,
+        visibleAxes: ['x', 'z'],
+    },
+    side: {
+        x: [0, 0],
+        y: [180, 0],
+        z: [0, -120],
+        gridPlanes: ['yz'],
+        reverseCurves: false,
+        visibleAxes: ['y', 'z'],
+    },
+});
+
+function normalizeTable3dView(view) {
+    const value = String(view || '');
+    return TABLE_3D_VIEWS.includes(value) ? value : 'isometric';
+}
 
 function xmlEscape(value) {
     return String(value || '')
@@ -20,7 +65,11 @@ function xmlEscape(value) {
 }
 
 function markdownCode(value) {
-    return `\`${String(value ?? '').replace(/`/g, '\\`')}\``;
+    const text = String(value ?? '').replace(/\r?\n/g, ' ');
+    const longest = Math.max(0, ...(text.match(/`+/g) || []).map(run => run.length));
+    const fence = '`'.repeat(longest + 1);
+    const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
+    return `${fence}${pad}${text}${pad}${fence}`;
 }
 
 function numericPoints(points) {
@@ -151,6 +200,8 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     const themeKind = themeKindFromRenderOptions(renderOptions);
     const isDark = themeKind === 'dark' || themeKind === 'highContrast';
     const curvePalette = resolveExtensionThemePalette(themeKind).curve;
+    const view = normalizeTable3dView(renderOptions.view);
+    const viewPreset = TABLE_3D_VIEW_PRESETS[view];
     const maxCurves = Number.isFinite(renderOptions.maxCurves)
         ? Math.max(1, Math.floor(renderOptions.maxCurves))
         : MAX_TABLE_CURVES;
@@ -159,18 +210,13 @@ function renderTable3dSvgDataUri(definition, options = {}) {
         : MAX_TABLE_POINTS_PER_CURVE;
     const width = 380;
     const height = 220;
-    
-    const u0 = 70;
-    const v0 = 165;
-    
-    const dxX = 160;
-    const dyX = 20;
-    
-    const dxY = 90;
-    const dyY = -45;
-    
-    const dxZ = 0;
-    const dyZ = -100;
+    const reverseHorizontalMargins = view === 'reverse-isometric';
+    const plotBounds = {
+        left: reverseHorizontalMargins ? 18 : 66,
+        right: width - (reverseHorizontalMargins ? 66 : 18),
+        top: 26,
+        bottom: height - 48,
+    };
 
     const curves = [];
     const ys = [];
@@ -179,6 +225,7 @@ function renderTable3dSvgDataUri(definition, options = {}) {
 
     const sampledRows = sampleItems(definition.rows || [], maxCurves);
     for (const row of sampledRows) {
+        if (!Number.isFinite(row.value)) continue;
         const pts = samplePoints(numericPoints(row.points), maxPointsPerCurve);
         if (pts.length < 2) continue;
         ys.push(row.value);
@@ -203,13 +250,44 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     const spanY = maxY === minY ? 1 : maxY - minY;
     const spanZ = maxZ === minZ ? 1 : maxZ - minZ;
 
+    function projectRaw(xn, yn, zn) {
+        return {
+            u: xn * viewPreset.x[0] + yn * viewPreset.y[0] + zn * viewPreset.z[0],
+            v: xn * viewPreset.x[1] + yn * viewPreset.y[1] + zn * viewPreset.z[1],
+        };
+    }
+
+    const projectedCorners = [];
+    for (const xn of [0, 1]) {
+        for (const yn of [0, 1]) {
+            for (const zn of [0, 1]) {
+                projectedCorners.push(projectRaw(xn, yn, zn));
+            }
+        }
+    }
+    const minProjectedU = Math.min(...projectedCorners.map(point => point.u));
+    const maxProjectedU = Math.max(...projectedCorners.map(point => point.u));
+    const minProjectedV = Math.min(...projectedCorners.map(point => point.v));
+    const maxProjectedV = Math.max(...projectedCorners.map(point => point.v));
+    const projectedSpanU = Math.max(1, maxProjectedU - minProjectedU);
+    const projectedSpanV = Math.max(1, maxProjectedV - minProjectedV);
+    const innerWidth = plotBounds.right - plotBounds.left;
+    const innerHeight = plotBounds.bottom - plotBounds.top;
+    const projectionScale = Math.min(innerWidth / projectedSpanU, innerHeight / projectedSpanV);
+    const projectedWidth = projectedSpanU * projectionScale;
+    const projectedHeight = projectedSpanV * projectionScale;
+    const offsetU = plotBounds.left + (innerWidth - projectedWidth) / 2 - minProjectedU * projectionScale;
+    const offsetV = plotBounds.top + (innerHeight - projectedHeight) / 2 - minProjectedV * projectionScale;
+
     function project(x, y, z) {
         const xn = maxX === minX ? 0.5 : (x - minX) / (maxX - minX);
         const yn = maxY === minY ? 0.5 : (y - minY) / (maxY - minY);
         const zn = maxZ === minZ ? 0.5 : (z - minZ) / (maxZ - minZ);
-        const u = u0 + xn * dxX + yn * dxY;
-        const v = v0 + xn * dyX + yn * dyY + zn * dyZ;
-        return { u, v };
+        const raw = projectRaw(xn, yn, zn);
+        return {
+            u: offsetU + raw.u * projectionScale,
+            v: offsetV + raw.v * projectionScale,
+        };
     }
 
     function getCurveColor(t, darkTheme) {
@@ -224,49 +302,51 @@ function renderTable3dSvgDataUri(definition, options = {}) {
 
     const svgElements = [];
     const title = xmlEscape(definition.title || definition.keyword || 'table');
-    svgElements.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`);
+    svgElements.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}" data-table-view="${view}">`);
     svgElements.push(`<text x="${width / 2}" y="16" fill="${textColor}" font-size="11" font-family="sans-serif" font-weight="bold" text-anchor="middle">${title}</text>`);
 
-    // Floor & Wall Grid lines (Z = minZ, X = minX)
+    function gridLine(start, end) {
+        const p1 = project(start[0], start[1], start[2]);
+        const p2 = project(end[0], end[1], end[2]);
+        svgElements.push(`<line x1="${p1.u.toFixed(1)}" y1="${p1.v.toFixed(1)}" x2="${p2.u.toFixed(1)}" y2="${p2.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+    }
+
+    // Draw only the useful reference planes for the selected camera preset.
     const gridDivs = 4;
     for (let i = 0; i <= gridDivs; i++) {
         const t = i / gridDivs;
-        const p1 = project(minX + t * spanX, minY, minZ);
-        const p2 = project(minX + t * spanX, maxY, minZ);
-        svgElements.push(`<line x1="${p1.u.toFixed(1)}" y1="${p1.v.toFixed(1)}" x2="${p2.u.toFixed(1)}" y2="${p2.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
-        const p3 = project(minX, minY + t * spanY, minZ);
-        const p4 = project(maxX, minY + t * spanY, minZ);
-        svgElements.push(`<line x1="${p3.u.toFixed(1)}" y1="${p3.v.toFixed(1)}" x2="${p4.u.toFixed(1)}" y2="${p4.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
-        const w1 = project(minX, minY + t * spanY, minZ);
-        const w2 = project(minX, minY + t * spanY, maxZ);
-        svgElements.push(`<line x1="${w1.u.toFixed(1)}" y1="${w1.v.toFixed(1)}" x2="${w2.u.toFixed(1)}" y2="${w2.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
-        const w3 = project(minX, minY, minZ + t * spanZ);
-        const w4 = project(minX, maxY, minZ + t * spanZ);
-        svgElements.push(`<line x1="${w3.u.toFixed(1)}" y1="${w3.v.toFixed(1)}" x2="${w4.u.toFixed(1)}" y2="${w4.v.toFixed(1)}" stroke="${gridColor}" stroke-width="1" stroke-dasharray="2,2"/>`);
+        const x = minX + t * spanX;
+        const y = minY + t * spanY;
+        const z = minZ + t * spanZ;
+        if (viewPreset.gridPlanes.includes('xy')) {
+            gridLine([x, minY, minZ], [x, maxY, minZ]);
+            gridLine([minX, y, minZ], [maxX, y, minZ]);
+        }
+        if (viewPreset.gridPlanes.includes('xz')) {
+            gridLine([x, minY, minZ], [x, minY, maxZ]);
+            gridLine([minX, minY, z], [maxX, minY, z]);
+        }
+        if (viewPreset.gridPlanes.includes('yz')) {
+            gridLine([minX, y, minZ], [minX, y, maxZ]);
+            gridLine([minX, minY, z], [minX, maxY, z]);
+        }
     }
-
-    // Draw Axes
-    const zOrigin = project(minX, minY, minZ);
-    const zMax = project(minX, minY, maxZ);
-    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${zMax.u.toFixed(1)}" y2="${zMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
-    const xMax = project(maxX, minY, minZ);
-    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${xMax.u.toFixed(1)}" y2="${xMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
-    const yMax = project(minX, maxY, minZ);
-    svgElements.push(`<line x1="${zOrigin.u.toFixed(1)}" y1="${zOrigin.v.toFixed(1)}" x2="${yMax.u.toFixed(1)}" y2="${yMax.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
 
     // Draw Curves & connecting wireframe lines
     const numCurves = curves.length;
-    for (let j = 0; j < numCurves; j++) {
-        const curve = curves[j];
-        const color = getCurveColor(numCurves > 1 ? j / (numCurves - 1) : 0.5, isDark);
+    const orderedCurves = curves.map((curve, seriesIndex) => ({ ...curve, seriesIndex }));
+    if (viewPreset.reverseCurves) orderedCurves.reverse();
+    for (let j = 0; j < orderedCurves.length; j++) {
+        const curve = orderedCurves[j];
+        const color = getCurveColor(numCurves > 1 ? curve.seriesIndex / (numCurves - 1) : 0.5, isDark);
         const polyPoints = curve.points.map(pt => {
             const p = project(pt.x, curve.y, pt.y);
             return `${p.u.toFixed(1)},${p.v.toFixed(1)}`;
         }).join(' ');
         svgElements.push(`<polyline points="${polyPoints}" fill="none" stroke="${color}" stroke-width="2"/>`);
 
-        if (j < numCurves - 1 && curves[j+1].points.length === curve.points.length) {
-            const nextCurve = curves[j+1];
+        if (j < orderedCurves.length - 1 && orderedCurves[j + 1].points.length === curve.points.length) {
+            const nextCurve = orderedCurves[j + 1];
             for (let k = 0; k < curve.points.length; k++) {
                 const pCurr = project(curve.points[k].x, curve.y, curve.points[k].y);
                 const pNext = project(nextCurve.points[k].x, nextCurve.y, nextCurve.points[k].y);
@@ -275,45 +355,77 @@ function renderTable3dSvgDataUri(definition, options = {}) {
         }
     }
 
-    // Draw 5 ticks/labels along Z-axis
-    for (let i = 0; i <= 4; i++) {
-        const t = i / 4;
-        const zVal = minZ + t * (maxZ - minZ);
-        const p = project(minX, minY, zVal);
-        const tickX = p.u - 4;
-        const tickY = p.v;
-        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
-        svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${tickY.toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(zVal)}</text>`);
-    }
-    // Add Z-axis title
-    svgElements.push(`<text x="${zMax.u.toFixed(1)}" y="${(zMax.v - 15).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">Z (value)</text>`);
+    const plotCenter = {
+        u: (plotBounds.left + plotBounds.right) / 2,
+        v: (plotBounds.top + plotBounds.bottom) / 2,
+    };
+    const axes = [
+        {
+            id: 'x',
+            min: minX,
+            max: maxX,
+            title: 'X (curve var)',
+            point: t => project(minX + t * (maxX - minX), minY, minZ),
+        },
+        {
+            id: 'y',
+            min: minY,
+            max: maxY,
+            title: 'Y (table var)',
+            point: t => project(minX, minY + t * (maxY - minY), minZ),
+        },
+        {
+            id: 'z',
+            min: minZ,
+            max: maxZ,
+            title: 'Z (value)',
+            point: t => project(minX, minY, minZ + t * (maxZ - minZ)),
+        },
+    ];
 
-    // Draw 5 ticks/labels along X-axis
-    for (let i = 0; i <= 4; i++) {
-        const t = i / 4;
-        const xVal = minX + t * (maxX - minX);
-        const p = project(xVal, minY, minZ);
-        const tickX = p.u;
-        const tickY = p.v + 4;
-        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
-        svgElements.push(`<text x="${tickX.toFixed(1)}" y="${(tickY + 8).toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="middle">${formatValue(xVal)}</text>`);
-    }
-    // Add X-axis title
-    const xMid = project(minX + spanX / 2, minY, minZ);
-    svgElements.push(`<text x="${(xMid.u + 15).toFixed(1)}" y="${(xMid.v + 28).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="middle">X (curve var)</text>`);
+    for (const axis of axes) {
+        if (!viewPreset.visibleAxes.includes(axis.id)) continue;
+        const start = axis.point(0);
+        const end = axis.point(1);
+        const du = end.u - start.u;
+        const dv = end.v - start.v;
+        const length = Math.hypot(du, dv);
+        if (length < 0.5) continue;
+        svgElements.push(`<line x1="${start.u.toFixed(1)}" y1="${start.v.toFixed(1)}" x2="${end.u.toFixed(1)}" y2="${end.v.toFixed(1)}" stroke="${axisColor}" stroke-width="1.5"/>`);
 
-    // Draw 5 ticks/labels along Y-axis
-    for (let i = 0; i <= 4; i++) {
-        const t = i / 4;
-        const yVal = minY + t * (maxY - minY);
-        const p = project(minX, yVal, minZ);
-        const tickX = p.u - 4;
-        const tickY = p.v + 2;
-        svgElements.push(`<line x1="${p.u.toFixed(1)}" y1="${p.v.toFixed(1)}" x2="${tickX.toFixed(1)}" y2="${tickY.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
-        svgElements.push(`<text x="${(tickX - 4).toFixed(1)}" y="${(tickY + 2).toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(yVal)}</text>`);
+        let normalU = dv / length;
+        let normalV = -du / length;
+        const middle = axis.point(0.5);
+        const pointsTowardCenter = normalU * (plotCenter.u - middle.u) +
+            normalV * (plotCenter.v - middle.v) > 0;
+        if (pointsTowardCenter) {
+            normalU *= -1;
+            normalV *= -1;
+        }
+        const textAnchor = normalU > 0.25 ? 'start' : normalU < -0.25 ? 'end' : 'middle';
+        const tickValues = axis.max === axis.min
+            ? [{ t: 0.5, value: axis.min }]
+            : Array.from({ length: 5 }, (_, index) => ({
+                t: index / 4,
+                value: axis.min + index / 4 * (axis.max - axis.min),
+            }));
+        for (const tick of tickValues) {
+            const point = axis.point(tick.t);
+            const tickU = point.u + normalU * 4;
+            const tickV = point.v + normalV * 4;
+            const labelU = point.u + normalU * 10;
+            const labelV = point.v + normalV * 10;
+            svgElements.push(`<line x1="${point.u.toFixed(1)}" y1="${point.v.toFixed(1)}" x2="${tickU.toFixed(1)}" y2="${tickV.toFixed(1)}" stroke="${axisColor}" stroke-width="1"/>`);
+            svgElements.push(`<text x="${labelU.toFixed(1)}" y="${labelV.toFixed(1)}" fill="${labelColor}" font-size="8" font-family="sans-serif" text-anchor="${textAnchor}" dominant-baseline="middle">${formatValue(tick.value)}</text>`);
+        }
+        const titleU = middle.u + normalU * 30;
+        const titleV = middle.v + normalV * 30;
+        const titleRotation = Math.abs(dv) > Math.abs(du) * 1.5
+            ? ` transform="rotate(-90 ${titleU.toFixed(1)} ${titleV.toFixed(1)})"`
+            : '';
+        const titleAnchor = titleRotation ? 'middle' : textAnchor;
+        svgElements.push(`<text x="${titleU.toFixed(1)}" y="${titleV.toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="${titleAnchor}" dominant-baseline="middle"${titleRotation}>${axis.title}</text>`);
     }
-    // Add Y-axis title
-    svgElements.push(`<text x="${(yMax.u - 15).toFixed(1)}" y="${(yMax.v - 15).toFixed(1)}" fill="${textColor}" font-size="9" font-family="sans-serif" font-weight="bold" text-anchor="end">Y (table var)</text>`);
 
     svgElements.push('</svg>');
     return `data:image/svg+xml;base64,${Buffer.from(svgElements.join(''), 'utf8').toString('base64')}`;
@@ -323,10 +435,11 @@ module.exports = {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
+    TABLE_3D_VIEWS,
+    normalizeTable3dView,
     curvePaletteFromOptions,
     xmlEscape,
     markdownCode,
 };
 
 export {};
-

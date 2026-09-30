@@ -132,6 +132,7 @@ function createMainDeckContextSelector() {
 module.exports = {
     createMainDeckContextSelector,
     normalizeMainDeckContextKey,
+    projectRootFile,
 };
 
 export {};

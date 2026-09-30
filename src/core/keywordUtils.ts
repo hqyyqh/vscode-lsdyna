@@ -56,6 +56,21 @@ function loadGeneratedAliases() {
                 addAliasPair(GENERATED_ALIASES, canonical, String(keyword).toUpperCase());
             }
         }
+        const spellingAliases = require('./keywordSpellingAliases.json');
+        for (const item of spellingAliases.aliases || []) {
+            const canonical = String(item.schemaKeyword || '').toUpperCase();
+            const alias = String(item.manualKeyword || '').toUpperCase();
+            const card = schema[canonical]?.c?.[Number(item.cardIndex) - 1];
+            const expected = item.card || [];
+            const layoutMatches = Array.isArray(card) && card.length === expected.length &&
+                card.every((field, index) => {
+                    const target = expected[index];
+                    return String(field.n || '').toUpperCase() === String(target.name || '').toUpperCase() &&
+                        String(field.t || '').toLowerCase() === String(target.type || '').toLowerCase() &&
+                        field.p === target.position && field.w === target.width;
+                });
+            if (layoutMatches) addAliasPair(GENERATED_ALIASES, canonical, alias);
+        }
     } catch {
         GENERATED_ALIASES = {};
     }

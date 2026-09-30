@@ -20,6 +20,7 @@ describe('snapshotSerializer', () => {
             endChar: 9,
             keyword: '*INCLUDE_TRANSFORM',
             keywordLine: 3,
+            inputFormatOverride: 'long',
             transform: {
                 keyword: '*INCLUDE_TRANSFORM',
                 keywordLine: 3,
@@ -78,6 +79,7 @@ describe('snapshotSerializer', () => {
         assert.equal(hydrated.fileIndexes.get(childFile).referenceDefinitions.curves[0].id, 1001);
         assert.equal(hydrated.graph.includeOccurrences.length, 2);
         assert.equal(hydrated.graph.includeOccurrences[0].lineIndex, 4);
+        assert.equal(hydrated.graph.includeOccurrences[0].inputFormatOverride, 'long');
         assert.equal(hydrated.graph.includeOccurrences[0].transform.offsets.idfoff.value, 0);
         assert.equal(hydrated.graph.includeOccurrences[0].transform.rawCards[0].raw, '0 0 0 0 0 0 0');
         assert.deepEqual(hydrated.graph.toTree(rootFile), {
@@ -162,5 +164,22 @@ describe('snapshotSerializer', () => {
         const hydrated = hydrateProjectSnapshot(serialized);
         assert.ok(hydrated.effectiveSearchPathsByFile instanceof Map);
         assert.equal(hydrated.effectiveSearchPathsByFile.size, 0);
+    });
+});
+
+
+describe('reference transport templates', () => {
+    const { encodeReferenceBatch, decodeReferenceBatch } = require('../../../out/core/cache/snapshotSerializer');
+    it('preserves all values and locations while sharing repeated metadata', () => {
+        const records = [1, 2].map(id => ({ filePath: 'main.k', keyword: '*PART', cardIndex: 1,
+            operationalProjection: { direct: true }, lineIndex: id, rawValue: String(id),
+            semantic: { id, state: 'reference' } }));
+        const encoded = JSON.parse(JSON.stringify(encodeReferenceBatch(records, 'referenceOccurrences')));
+        assert.equal(encoded.templates.length, 1);
+        const restored = decodeReferenceBatch(encoded.items, encoded.templates);
+        assert.deepEqual(restored, records);
+        assert.strictEqual(restored[0].operationalProjection, restored[1].operationalProjection);
+        assert.throws(() => decodeReferenceBatch([{ __referenceTemplate: 9 }], [{}]), /Invalid/);
+        assert.throws(() => decodeReferenceBatch([{ __referenceTemplate: 0 }], [{ unexpected: 1 }]), /Invalid/);
     });
 });

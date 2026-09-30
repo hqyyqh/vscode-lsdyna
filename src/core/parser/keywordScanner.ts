@@ -12,6 +12,10 @@
  */
 
 const { classifyKeywordLine } = require('./keywordLine');
+const {
+    classifyOpaqueCommentDirective,
+    isColumnZeroKeywordBoundary,
+} = require('./opaqueCommentRange');
 const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScanner');
 
 type LargeFileScanOptions = {
@@ -35,8 +39,16 @@ type LargeFileScanOptions = {
  */
 function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
     const keywords = [];
+    let opaqueActive = false;
     for (let i = 0; i < lineCount; i++) {
-        const classification = classifyKeywordLine(getLine(i));
+        const text = getLine(i);
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(text)) continue;
+            opaqueActive = false;
+        }
+        const opaqueDirective = classifyOpaqueCommentDirective(text);
+        if (opaqueDirective) opaqueActive = true;
+        const classification = classifyKeywordLine(text);
         if (!classification.isKeyword) continue;
         const keyword = classification.normalizedKeyword.slice(1);
         if (!keyword) continue;

@@ -17,6 +17,7 @@ const {
     classifySelection,
     alignLineInPlace,
     clearCellsIntersecting,
+    planMergeCellLeft,
     applyInCellDelete,
     applyInCellInsert,
     navSelectionRange,
@@ -452,6 +453,71 @@ describe('cardCellModel', () => {
             assert.strictEqual(fieldIndexAt('', CARD3, 0), 0);
             assert.strictEqual(fieldIndexAt('', CARD3, 10), 1);
             assert.strictEqual(fieldIndexAt('', CARD3, 25), 2);
+        });
+    });
+
+    describe('planMergeCellLeft', () => {
+        const INTEGER_CARD = CARD3.map(field => ({ ...field, t: 'integer' }));
+
+        it('concatenates adjacent integer fields without moving later columns', () => {
+            let line = '';
+            line = writeCellR1(line, INTEGER_CARD, 0, '92201301');
+            line = writeCellR1(line, INTEGER_CARD, 1, '95200');
+            line = writeCellR1(line, INTEGER_CARD, 2, '501');
+
+            const result = planMergeCellLeft(line, INTEGER_CARD, 2);
+
+            assert.ok(result);
+            assert.strictEqual(result.leftValue, '95200');
+            assert.strictEqual(result.rightValue, '501');
+            assert.strictEqual(result.mergedValue, '95200501');
+            assert.strictEqual(readCellValue(result.line, INTEGER_CARD, 0), '92201301');
+            assert.strictEqual(readCellValue(result.line, INTEGER_CARD, 1), '95200501');
+            assert.strictEqual(readCellValue(result.line, INTEGER_CARD, 2), '');
+            assert.strictEqual(result.caretCol, 20);
+        });
+
+        it('inserts between right-aligned digits without shifting the next field', () => {
+            let line = writeCellR1(buildLine('', '', '143'), CARD3, 1, '45');
+            const caretBetweenDigits = 19;
+            const beforeNext = line.slice(20);
+            const result = applyInCellInsert(line, CARD3, 1, caretBetweenDigits, 'X');
+            assert.ok(result);
+            assert.strictEqual(readCellValue(result.line, CARD3, 1), '4X5');
+            assert.strictEqual(result.line.slice(20), beforeNext);
+            assert.strictEqual(result.caretCol, 19);
+
+            const continued = applyInCellInsert(result.line, CARD3, 1, result.caretCol, 'Y');
+            assert.ok(continued);
+            assert.strictEqual(readCellValue(continued.line, CARD3, 1), '4XY5');
+            assert.strictEqual(continued.line.slice(20), beforeNext);
+            assert.strictEqual(continued.caretCol, 19);
+        });
+
+        it('keeps a full field unchanged when an insertion would exceed its width', () => {
+            const line = writeCellR1(buildLine('', '', '143'), CARD3, 1, '1234567890');
+            const result = applyInCellInsert(line, CARD3, 1, 15, 'X');
+            assert.strictEqual(result, null);
+            assert.strictEqual(readCellValue(line, CARD3, 2), '143');
+        });
+
+        it('rejects overflow, incompatible types, and invalid merged numbers', () => {
+            assert.strictEqual(
+                planMergeCellLeft(buildLine('1', '123456789', '99'), INTEGER_CARD, 2),
+                null,
+            );
+
+            const mixed = [
+                { n: 'A', p: 0, w: 10, t: 'integer' },
+                { n: 'B', p: 10, w: 10, t: 'real' },
+            ];
+            let mixedLine = writeCellR1('', mixed, 0, '12');
+            mixedLine = writeCellR1(mixedLine, mixed, 1, '3');
+            assert.strictEqual(planMergeCellLeft(mixedLine, mixed, 1), null);
+
+            let invalid = writeCellR1('', INTEGER_CARD, 1, '12-');
+            invalid = writeCellR1(invalid, INTEGER_CARD, 2, '3');
+            assert.strictEqual(planMergeCellLeft(invalid, INTEGER_CARD, 2), null);
         });
     });
 

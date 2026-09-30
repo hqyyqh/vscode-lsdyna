@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "component-joint-did-official-float",
+  "version": 1,
+  "policy": "official-pdf-exact-variable-row-type-correction-v1",
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+    "pdfSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+    "pdfSize": 34763447,
+    "toolVersion": "24.03.0",
+    "pages": [
+      {
+        "physicalPage": 884,
+        "textSha256": "1716cd73c2110bb5626b843cd773543d4ff95b73247eb7d1cf856fddf6f5cb49",
+        "renderSha256": "7fd774c8db67a4f9aee81647886e66bca9bb333a4d1b7628abec5be4f1a64887"
+      },
+      {
+        "physicalPage": 890,
+        "textSha256": "f0aa9faea4d776470a6c7308f5e8c7902683a3898b94276a157194091d82fb69",
+        "renderSha256": "719c93c912a086f083566e977419859dda1ebec5b49771e48db14aa08786c7b2"
+      }
+    ]
+  },
+  "field": {
+    "physicalCardIndex": 1,
+    "fieldIndex": 0,
+    "name": "DID",
+    "position": 0,
+    "width": 10,
+    "upstreamType": "integer",
+    "officialType": "real",
+    "manualTypeCode": "F"
+  },
+  "requiredSchemaKeywords": [
+    "COMPONENT_GEBOD_JOINT_LEFT_ANKLE",
+    "COMPONENT_GEBOD_JOINT_LEFT_ELBOW",
+    "COMPONENT_GEBOD_JOINT_LEFT_HIP",
+    "COMPONENT_GEBOD_JOINT_LEFT_KNEE",
+    "COMPONENT_GEBOD_JOINT_LEFT_SHOULDER",
+    "COMPONENT_GEBOD_JOINT_LOWER_NECK",
+    "COMPONENT_GEBOD_JOINT_PELVIS",
+    "COMPONENT_GEBOD_JOINT_RIGHT_ANKLE",
+    "COMPONENT_GEBOD_JOINT_RIGHT_ELBOW",
+    "COMPONENT_GEBOD_JOINT_RIGHT_HIP",
+    "COMPONENT_GEBOD_JOINT_RIGHT_KNEE",
+    "COMPONENT_GEBOD_JOINT_RIGHT_SHOULDER",
+    "COMPONENT_GEBOD_JOINT_UPPER_NECK",
+    "COMPONENT_GEBOD_JOINT_WAIST",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_ANKLE",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_ELBOW",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_HIP",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_KNEE",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_SHOULDER",
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_WRIST",
+    "COMPONENT_HYBRIDIII_JOINT_LOWER_NECK",
+    "COMPONENT_HYBRIDIII_JOINT_LUMBAR",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_ANKLE",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_ELBOW",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_HIP",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_KNEE",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_SHOULDER",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_WRIST",
+    "COMPONENT_HYBRIDIII_JOINT_UPPER_NECK"
+  ],
+  "manualOptionKeywordsWithoutUpstreamSchema": [
+    "COMPONENT_HYBRIDIII_JOINT_LEFT_KNEE_SLIDER",
+    "COMPONENT_HYBRIDIII_JOINT_RIGHT_KNEE_SLIDER",
+    "COMPONENT_HYBRIDIII_JOINT_STERNUM"
+  ],
+  "lsprepostOnlySchemaKeywordsWithoutManualOptionEvidence": [
+    {
+      "keyword": "COMPONENT_HYBRIDIII_JOINT_RIBCAGE",
+      "cards": 4,
+      "fields": 29,
+      "layoutSignatureSha256": "6620bd2ba4da2633e5911450d2416007c4948367c105ea26f4b9c676dc9efc65",
+      "disposition": "retain-pinned-lsprepost-layout-without-manual-type-correction"
+    }
+  ],
+  "permissions": {
+    "schemaTypeCorrection": true,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

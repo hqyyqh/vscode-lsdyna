@@ -85,7 +85,9 @@ const CompletionItemKind = {
     File: 17,
     Folder: 19,
     Snippet: 27,
-    Field: 5
+    Field: 5,
+    Value: 12,
+    EnumMember: 20
 };
 
 class SnippetString {
@@ -132,6 +134,21 @@ const CodeActionKind = {
 };
 
 module.exports = {
+    CancellationTokenSource: class CancellationTokenSource {
+        constructor() {
+            this.listeners = new Set();
+            this.token = { isCancellationRequested: false, onCancellationRequested: listener => {
+                this.listeners.add(listener);
+                return { dispose: () => this.listeners.delete(listener) };
+            } };
+        }
+        cancel() {
+            if (this.token.isCancellationRequested) return;
+            this.token.isCancellationRequested = true;
+            for (const listener of this.listeners) listener();
+        }
+        dispose() { this.listeners.clear(); }
+    },
     Position,
     Range,
     Selection,
@@ -239,7 +256,7 @@ module.exports = {
             get: (key, defaultValue) => key === 'language' ? 'en' : defaultValue
         }),
     },
-    languages: { registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider: () => ({ dispose() {} }), registerDocumentRangeFormattingEditProvider: () => ({ dispose() {} }), registerCodeLensProvider: () => ({}), registerCodeActionsProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); }, getDiagnostics: () => [], onDidChangeDiagnostics: () => ({ dispose() {} }) },
+    languages: { _documentFormattingRegistrations: [], _documentRangeFormattingRegistrations: [], registerFoldingRangeProvider: () => ({}), registerDocumentSymbolProvider: () => ({}), registerDocumentLinkProvider: () => ({}), registerHoverProvider: () => ({}), registerDocumentFormattingEditProvider(selector, provider) { this._documentFormattingRegistrations.push({ selector, provider }); return { dispose() {} }; }, registerDocumentRangeFormattingEditProvider(selector, provider) { this._documentRangeFormattingRegistrations.push({ selector, provider }); return { dispose() {} }; }, registerCodeLensProvider: () => ({}), registerCodeActionsProvider: () => ({}), registerInlayHintsProvider: () => ({}), registerDefinitionProvider: () => ({}), registerReferenceProvider: () => ({}), registerRenameProvider: () => ({}), registerCompletionItemProvider: () => ({}), createDiagnosticCollection: () => ({ set: () => {}, delete: () => {}, clear: () => {}, dispose: () => {} }), setTextDocumentLanguage: (doc, langId) => { doc.languageId = langId; return Promise.resolve(doc); }, getDiagnostics: () => [], onDidChangeDiagnostics: () => ({ dispose() {} }) },
     commands: { registerCommand: () => ({}), executeCommand: () => {} },
     env: { language: 'en', clipboard: { writeText: () => Promise.resolve() } },
     StatusBarAlignment: { Left: 1, Right: 2 },
@@ -248,3 +265,5 @@ module.exports = {
     MinimapPosition: { Inline: 1, Gutter: 2 },
     OverviewRulerLane: { Left: 1, Center: 2, Right: 4, Full: 7 },
 };
+
+module.exports.CompletionTriggerKind = { Invoke: 0, TriggerCharacter: 1, TriggerForIncompleteCompletions: 2 };

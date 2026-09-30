@@ -13,8 +13,10 @@
  */
 
 const { getActiveSession } = require('./sessionManager');
-const { serializeProjectSnapshot } = require('../core/cache/snapshotSerializer');
+const { serializeProjectSnapshot, serializeProjectSnapshotForClient } = require('../core/cache/snapshotSerializer');
 const protocol = require('../shared/protocol');
+const snapshotIds = new WeakMap();
+let snapshotSequence = 0;
 
 /**
  * Routes and handles incoming custom LSP JSON-RPC requests.
@@ -22,10 +24,11 @@ const protocol = require('../shared/protocol');
  * @param {string} method - Protocol request method string.
  * @param {Object} params - Method parameters payload.
  * @param {import('vscode-languageserver').Connection} [connection] - Language server connection.
+ * @param {import('vscode-languageserver').CancellationToken} [cancellationToken] - Request cancellation token.
  * @returns {Promise<any>} Response JSON data.
  * @throws {Error} If no active session exists or request method is unsupported.
  */
-async function handleRequest(method, params, connection = null) {
+async function handleRequest(method, params, connection = null, cancellationToken = null) {
     const session = getActiveSession();
     if (!session) {
         throw new Error('No active server session initialized');
@@ -33,15 +36,32 @@ async function handleRequest(method, params, connection = null) {
 
     switch (method) {
         case protocol.LOAD_PROJECT_SNAPSHOT_REQUEST: {
-            const { rootFile, options } = params;
+            const { rootFile, options, requestId, reuseSnapshotId } = params;
             const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, options || {}, (partialSnapshot) => {
-                if (connection) {
-                    connection.sendNotification(
-                        protocol.SCAN_PROGRESS_NOTIFICATION, 
-                        serializeProjectSnapshot(partialSnapshot)
-                    );
+                if (connection && requestId && partialSnapshot.type) {
+                    if (!cancellationToken?.isCancellationRequested) {
+                        const event = partialSnapshot.type === 'structureReady'
+                            ? { ...partialSnapshot, snapshot: serializeProjectSnapshot(partialSnapshot.snapshot) }
+                            : partialSnapshot;
+                        void connection.sendNotification(protocol.SCAN_PROGRESS_NOTIFICATION, { requestId, event });
+                    }
+                } else if (connection && requestId) {
+                    void serializeProjectSnapshotForClient(partialSnapshot).then(snapshot => {
+                        if (!cancellationToken?.isCancellationRequested) {
+                            return connection.sendNotification(protocol.SCAN_PROGRESS_NOTIFICATION, { requestId, snapshot });
+                        }
+                    }).catch(error => console.warn('[lsdyna] Scan progress delivery failed:', error));
                 }
-            });
+            }, cancellationToken);
+            if (connection && requestId) {
+                let snapshotId = snapshotIds.get(snapshot);
+                if (!snapshotId) { snapshotId = String(++snapshotSequence); snapshotIds.set(snapshot, snapshotId); }
+                if (reuseSnapshotId === snapshotId) return { rootFile: snapshot.rootFile, snapshotId, snapshotUnchanged: true };
+                const result = await serializeProjectSnapshotForClient(snapshot, chunk =>
+                    connection.sendNotification(protocol.SNAPSHOT_REFERENCES_NOTIFICATION, { requestId, ...chunk }),
+                    cancellationToken);
+                return { ...result, snapshotId };
+            }
             return serializeProjectSnapshot(snapshot);
         }
         case protocol.GET_MANIFEST_ENTRIES_REQUEST: {
@@ -49,6 +69,9 @@ async function handleRequest(method, params, connection = null) {
         }
         case protocol.GET_CACHE_STATS_REQUEST: {
             return session.indexClient.getCacheStats();
+        }
+        case protocol.CLEAR_CACHES_REQUEST: {
+            return session.clearCaches();
         }
         default:
             throw new Error(`Unsupported custom request method: ${method}`);

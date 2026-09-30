@@ -1,0 +1,743 @@
+{
+  "sourceCommit": "2a9a588b",
+  "cases": [
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nrow 1: 17 changed"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nrow 1: 17 changed",
+        "row 0: 0\nnew data\nrow 1: 17 changed"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          1
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          2
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nrow 1: 17 changed",
+        "row 0: 0"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          0
+        ],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nrow 1: 17",
+        "row 0: 0\nnew data\nrow 1: 17 changed"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          2
+        ],
+        "unsavedInsertedLines": [
+          1
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nnew data\nrow 2: 34\nrow 3: 51"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          2
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          2
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51",
+        "row 0: 0\nrow 1: 17 changed\nnew data\nrow 2: 34\nrow 3: 51"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          2
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nnew data\nrow 3: 51\nrow 4: 68\nrow 5: 85"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          3
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          4
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nnew data\nrow 3: 51\nrow 4: 68\nrow 5: 85"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          3
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nnew data\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          4
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          6
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nnew data\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          4
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nnew data\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          5
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          8
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nnew data\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          5
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nnew data\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          6
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          10
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nnew data\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          6
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nnew data\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          7
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          12
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nnew data\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          7
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nnew data\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          8
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          14
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nnew data\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          8
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nnew data\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          9
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          16
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nnew data\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          9
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nnew data\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [
+          10
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [],
+        "unsavedInsertedLines": [],
+        "unsavedDeletedLines": [
+          18
+        ],
+        "savedModifiedLines": [
+          1
+        ],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    },
+    {
+      "snapshots": [
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323",
+        "row 0: 0\nrow 1: 17 changed\nrow 2: 34\nrow 3: 51\nrow 4: 68\nrow 5: 85\nrow 6: 102\nrow 7: 119\nrow 8: 136\nrow 9: 153\nnew data\nrow 10: 170\nrow 11: 187\nrow 12: 204\nrow 13: 221\nrow 14: 238\nrow 15: 255\nrow 16: 272\nrow 17: 289\nrow 18: 306\nrow 19: 323"
+      ],
+      "expected": {
+        "unsavedModifiedLines": [
+          1
+        ],
+        "unsavedInsertedLines": [
+          10
+        ],
+        "unsavedDeletedLines": [],
+        "savedModifiedLines": [],
+        "savedInsertedLines": [],
+        "savedDeletedLines": []
+      }
+    }
+  ]
+}

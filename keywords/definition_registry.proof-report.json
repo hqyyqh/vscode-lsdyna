@@ -1,0 +1,2129 @@
+{
+  "exactNavigationProofGroups": [
+    {
+      "descriptorHandoffId": "exact-definition-scanner-handoff:ea27e2f6336c77d3eb6c5556",
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:9977ea6041d84cff617ea8f1",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:85a32229d4be352637e4e4a4",
+        "authoring-relation:e8590d67a6a665a7efc5f66e"
+      ],
+      "targetToken": "*DEFINE_PBLAST_AIRGEO"
+    },
+    {
+      "descriptorHandoffId": "exact-definition-scanner-handoff:33c876c237524c1281c6884b",
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:3bb0143a9dcfc6ec3c84c1a7",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:53344ba0ed20e7f8a31922e3"
+      ],
+      "targetToken": "*DUALCESE_MESH_PART"
+    },
+    {
+      "descriptorHandoffId": "exact-definition-scanner-handoff:be3eeaebc0ecfbd4cd0cfa0e",
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:2bd29724bf598a5eb443543c",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:16423dfb599a10d920773e63"
+      ],
+      "targetToken": "*HOURGLASS"
+    },
+    {
+      "descriptorHandoffId": "exact-definition-scanner-handoff:457950a0f19e44e9826bbace",
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:32aa9ebfa7e6abc7b07080bc",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:e94f5f55e9d493ed1a855d3a"
+      ],
+      "targetToken": "*SET_MULTI"
+    }
+  ],
+  "familyNavigationProofGroups": [
+    {
+      "descriptorPopulation": 1488,
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:81aa0ed1bfb4c6c22995a5c1",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:b0e090397b38874daa5b5544"
+      ],
+      "targetToken": "*MAT"
+    },
+    {
+      "descriptorPopulation": 25,
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:68b5ab137d3ecab9201244c9",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:771a1fd8ac998b9e390023ca"
+      ],
+      "targetToken": "*MAT_THERMAL"
+    },
+    {
+      "descriptorPopulation": 106,
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:e6e0bb45a647c754b9eec9b9",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:4a887e549e6e938c79ff9e0a"
+      ],
+      "targetToken": "*EOS"
+    },
+    {
+      "descriptorPopulation": 40,
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:75576e1c43570a36f60dcb68",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:2ccf5482e6cb5e01637a0382"
+      ],
+      "targetToken": "*SECTION"
+    },
+    {
+      "descriptorPopulation": 14,
+      "familyRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+      "proofGroupId": "registry-navigation-proof-group:1652d5e125a7d64fd0285162",
+      "referenceAuthoringRelationIds": [
+        "authoring-relation:479ef7325cf1b06e0d3991df",
+        "authoring-relation:ec84b1798381a83a32c7fd11"
+      ],
+      "targetToken": "*SET_NODE"
+    }
+  ],
+  "kind": "dynasense-definition-registry-proof-report",
+  "navigationProofs": [
+    {
+      "authoringRelationId": "authoring-relation:04093df5fa1d86ebf5bf6a07",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:d4c21d06d740f4c1fa6e233a",
+      "manualRelationId": "manual-relation:9be72431219a22244db171c5",
+      "navigationProofId": "registry-navigation-proof:02c640b0bb4175375c9c44f9",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:07db60b24753e2d52a948b64",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:7e8d6e4b2934460b31e14be9",
+      "manualRelationId": "manual-relation:cf1720f23838abb8926ac1f3",
+      "navigationProofId": "registry-navigation-proof:828d69005bc900c227be0eee",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:08f9f155358506330dece5db",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:7d8cc4c97e5e760af4a7df72",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:f0c48973228563e769ff5481",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:0a63d6843f112d3accfb70bb",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:11f0c27e7f791a6e746281f4",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:25e99f35488996d3e4297475",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:0e5d184429499df273c7a386",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:9678bc46bfd6063c99358f8c",
+      "manualRelationId": "manual-relation:ccbffc1730b3dec805c4e39b",
+      "navigationProofId": "registry-navigation-proof:db87221f2adeb7c6024e1506",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1028019ad9d8a0b24ac18855",
+      "coordinateId": "field-coordinate:3f4f40ed4a2e781caff20bbc",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:41543adac66b88b296f43c7b",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:118cd7ef09b2c3e19a36ecfc",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:d4c21d06d740f4c1fa6e233a",
+      "manualRelationId": "manual-relation:39c5ebadc86c042aff9158d4",
+      "navigationProofId": "registry-navigation-proof:95862e935ed6b1bf8879f443",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:12bb8f727cec4023ec251520",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:f410c3fe40acb3c516c72977",
+      "manualRelationId": "manual-relation:cbbddd3af9f67fca2e44aace",
+      "navigationProofId": "registry-navigation-proof:434b15a4bc794b02f9957c8e",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:16423dfb599a10d920773e63",
+      "coordinateId": "field-coordinate:212e6ab4d1e818edf3298a3f",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1,
+      "counterpartRuntimeTargetToken": "*HOURGLASS",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:f1d14429f965b5babd40e0e8",
+      "navigationProofId": "registry-navigation-proof:eac09a207ecbb10939fbc593",
+      "proofGroupId": "registry-navigation-proof-group:2bd29724bf598a5eb443543c",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:17bb3704631a1907d95281b0",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:8e27b4c91ae8379e892622d0",
+      "manualRelationId": "manual-relation:4b353e5a97e06aab720f595a",
+      "navigationProofId": "registry-navigation-proof:a0ca7ba127d50b282b2a3adb",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:18a9885f41b76a1c877ad4cb",
+      "coordinateId": "field-coordinate:a02f42abb0b1da29ceb32789",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:c3e7dc962595bb994c36d16e",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1c1f273f59b8880593367013",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:bd5afdf147e358c8e992daa3",
+      "manualRelationId": "manual-relation:0707312816a62ca34de7ff4c",
+      "navigationProofId": "registry-navigation-proof:b0adbbdbdc7c0652e94b7c80",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1f3cba0074552255e36944a5",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:88021e8caedef44c94e54451",
+      "manualRelationId": "manual-relation:daf742bfd532cdd18c7ced4c",
+      "navigationProofId": "registry-navigation-proof:7b283f51f1cd4cf0cd107b90",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2510f7b551a0eb282d0f0678",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:1ccc7cfb0001e0416a3967e3",
+      "manualRelationId": "manual-relation:b7126d6dad329e51ffefbb9d",
+      "navigationProofId": "registry-navigation-proof:d4f99e34c54dc21bbacf511c",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:257c1a95175f73fe680b8468",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:969f21de2f4aa017e0359437",
+      "manualRelationId": "manual-relation:6f305a47fa28555929044857",
+      "navigationProofId": "registry-navigation-proof:cec816ab51778c2be33e2fef",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:287dcaa20e1e6bd504f42fe2",
+      "coordinateId": "field-coordinate:65cbdea5ef2b21718ce58de5",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:9826f52728aa64ab32f70c64",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2ccb1a2dfa7ed89205bfeafa",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:7fb1f2114a03e345c9ae6581",
+      "manualRelationId": "manual-relation:22e61490a8922c33a16e1fc9",
+      "navigationProofId": "registry-navigation-proof:57e46c85cbf0bff3e8f34ab2",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2ccf5482e6cb5e01637a0382",
+      "coordinateId": "field-coordinate:5256dda594e273473d4aac22",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 40,
+      "counterpartRuntimeTargetToken": "*SECTION",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:5a0dfefce7dc9b27f58e60d7",
+      "navigationProofId": "registry-navigation-proof:5d489faa05f85a5b88da0195",
+      "proofGroupId": "registry-navigation-proof-group:75576e1c43570a36f60dcb68",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2e5ccc6480ddcd506148fcaf",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:cdd80b417e4062ea2c84a0f4",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:7af4cc43e8775433565f1f68",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:307c8a029fc5d210ebe3d9a1",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:d999b7bce7ae9cad866e6956",
+      "manualRelationId": "manual-relation:f7c6059c46eb217059fbe556",
+      "navigationProofId": "registry-navigation-proof:5ecb0649ec75872cc0cd9276",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:30c8582ce23498790f308c5e",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:5767a0734d29703a28b41af4",
+      "manualRelationId": "manual-relation:5a622a8cb7437d4f129e0f64",
+      "navigationProofId": "registry-navigation-proof:4bb6febca079f23d8ea84801",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:39c8b1c2b7e3032807bbfc7c",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:473215e4d6ecd7e9916711fc",
+      "manualRelationId": "manual-relation:857c9e92b3f1e4d76e9fdc4e",
+      "navigationProofId": "registry-navigation-proof:9a0f2f4f937411d149949e9a",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:3b9f61e3ca457c037b8ac4e8",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:1ddbde15f029a61df71be69d",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:620dc23637a2793931dbe0cc",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:3bb46ae51da67bd1b3086850",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:bf4d182e5959c537d09a88f0",
+      "manualRelationId": "manual-relation:7592f0c413bc764cdb7793f4",
+      "navigationProofId": "registry-navigation-proof:3aa5cf9152843a1cfee53aec",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:40fda42fc21e590d72b54bb7",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:7dff8e60783f97031dd6a02c",
+      "manualRelationId": "manual-relation:4b083348241275fab2f037ea",
+      "navigationProofId": "registry-navigation-proof:cf512d916f749be422cef103",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:44c880a44a95b52dfd7dfab7",
+      "coordinateId": "field-coordinate:1fff80218e75a8eb224fb88c",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:5c1ede587c40c7d7893f425b",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:460b5bf63066a391654c9b42",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:7dede0c19b7d815296d3d129",
+      "manualRelationId": "manual-relation:3e1fd9f34037d9cb4f3a54b8",
+      "navigationProofId": "registry-navigation-proof:f799f76b6a44b8f9d81e5d63",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4634a76c9a6a04205a6ff1e7",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:cef25d61d6eaee5724d1344e",
+      "manualRelationId": "manual-relation:262747624ce086ff4cccfc7e",
+      "navigationProofId": "registry-navigation-proof:87478a7869bf40d48d822eec",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4673e893c73276f44642eb11",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:b9bfd5d175d280f5f7e24985",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:8cb7f9ef7d7758862ae70f74",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:479ef7325cf1b06e0d3991df",
+      "coordinateId": "field-coordinate:f99c702ba5e7939e20ce0e7c",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 14,
+      "counterpartRuntimeTargetToken": "*SET_NODE",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:72070ef935ec8294138c8750",
+      "navigationProofId": "registry-navigation-proof:c83a5e20a93f7d45b80c3ff4",
+      "proofGroupId": "registry-navigation-proof-group:1652d5e125a7d64fd0285162",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:48e0c15f9ef0200bd50c4ffd",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:59ed8c61c517413b77b7e38a",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:815f23d45d2980b3795f93c7",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4a887e549e6e938c79ff9e0a",
+      "coordinateId": "field-coordinate:e3b67b5a784a9eeb2c520267",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 106,
+      "counterpartRuntimeTargetToken": "*EOS",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:ade02e1cf3926542bd2d63f9",
+      "navigationProofId": "registry-navigation-proof:03d348c579b7d9fda3ca94b9",
+      "proofGroupId": "registry-navigation-proof-group:e6e0bb45a647c754b9eec9b9",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4bab74ac16f2781a38819a57",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:562f013b97cb543530eca7e2",
+      "manualRelationId": "manual-relation:359269398b8a4d5742a62e63",
+      "navigationProofId": "registry-navigation-proof:a642fef4c8f94ad3d044a4f4",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:50f4c05de013df5af3e0f1e0",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:0fb48b982b60bda1358935ed",
+      "manualRelationId": "manual-relation:0f5dcf951ca9719306305745",
+      "navigationProofId": "registry-navigation-proof:b567f25b9fc9f9024c0e7c0e",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:5278b62aa59da7e83c599849",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:2c5502821fcd8d3eaf7ab00b",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:ba98aa1ce201faa466368505",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:53344ba0ed20e7f8a31922e3",
+      "coordinateId": "field-coordinate:60cd49064730719963adf46b",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1,
+      "counterpartRuntimeTargetToken": "*DUALCESE_MESH_PART",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:d596940a145a103d3ec84235",
+      "navigationProofId": "registry-navigation-proof:5b0785abf49695c6ad1beda0",
+      "proofGroupId": "registry-navigation-proof-group:3bb0143a9dcfc6ec3c84c1a7",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:57170fd11b1954bdd5336ee5",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:47d437fa4d5f77eb0c6c8136",
+      "manualRelationId": "manual-relation:d022dac7497a662ae2d9c97c",
+      "navigationProofId": "registry-navigation-proof:eaab39714cb83fcb20aa8c9e",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:585652100b6452cca77aa04b",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:71da340fc93f68c77db8648e",
+      "manualRelationId": "manual-relation:fce72c58e61f4d7cb28b0d81",
+      "navigationProofId": "registry-navigation-proof:52c9666143e4897c47781449",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:5a92c8502ed2a3f34bea33fe",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:cf193c20150424a81a7909d9",
+      "manualRelationId": "manual-relation:842cd785136bcd4b23f69fb9",
+      "navigationProofId": "registry-navigation-proof:61dd6336c763a7308c8a3a49",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:6b4dc4071d8a099603168586",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:56542c2fec8c6074854cf125",
+      "manualRelationId": "manual-relation:166af8ec8accebe3b761186c",
+      "navigationProofId": "registry-navigation-proof:105d3a0ed1360b66405b2e5c",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:6ca5520f07494385548e3e7a",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:84840e4dbcdd157149da5a1a",
+      "manualRelationId": "manual-relation:4c88a4f39295ef2a3df3e50d",
+      "navigationProofId": "registry-navigation-proof:b4c05a505cf432dc46709fa0",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7065b0da3bac4ed5d03a5dea",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:63a36b9a55e7031a9786ad18",
+      "manualRelationId": "manual-relation:775bf26f487f28f31dd20b30",
+      "navigationProofId": "registry-navigation-proof:eddba16eda7368f434c9c264",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:771a1fd8ac998b9e390023ca",
+      "coordinateId": "field-coordinate:580f383af542e2ca0536b15f",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 25,
+      "counterpartRuntimeTargetToken": "*MAT_THERMAL",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:50b4536fab495389db678265",
+      "navigationProofId": "registry-navigation-proof:880fc0d2eef7e4c52e06cd34",
+      "proofGroupId": "registry-navigation-proof-group:68b5ab137d3ecab9201244c9",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:78ca5c037ce44d917e85215d",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:f13e4308a7e5e98af3288932",
+      "manualRelationId": "manual-relation:e3ae9906c16fb974c22034a4",
+      "navigationProofId": "registry-navigation-proof:dceb44396674f64ed0506a22",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7b3e46b40d51c5c13ef47d00",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:7d8ef12c8b78098d818d3824",
+      "manualRelationId": "manual-relation:e46963b2454233b814363d47",
+      "navigationProofId": "registry-navigation-proof:0a514ecee4798fe1b6019190",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7cd430517db611036ddffe26",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:9a4a6e1bccc879eda2b67036",
+      "manualRelationId": "manual-relation:571bc22520d9280188516619",
+      "navigationProofId": "registry-navigation-proof:6c41b607e4511ad981952260",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:85a32229d4be352637e4e4a4",
+      "coordinateId": "field-coordinate:b47e1fc441f6c4e97348247a",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1,
+      "counterpartRuntimeTargetToken": "*DEFINE_PBLAST_AIRGEO",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:b13885f7b4d83c7d07ea8df5",
+      "navigationProofId": "registry-navigation-proof:7dcd6b82be746f7058d68ddd",
+      "proofGroupId": "registry-navigation-proof-group:9977ea6041d84cff617ea8f1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:894864b2515dbedb7aaba076",
+      "coordinateId": "field-coordinate:9fc0b55544d010ac20580716",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:a401d4bfa1703dd94b019d5c"
+      ],
+      "directions": [
+        "shift-f12"
+      ],
+      "manualRelationId": "manual-relation:472d57affbf5f53701ae1307",
+      "navigationProofId": "registry-navigation-proof:c08cd329bdfa77c6a894f67f",
+      "proofGroupId": "registry-navigation-proof-group:446a1da9f6d6c6638acf4e07",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:8a421851a3e49e0dfb278163",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:56542c2fec8c6074854cf125",
+      "manualRelationId": "manual-relation:3a79df3653b3ea705b966300",
+      "navigationProofId": "registry-navigation-proof:a35eb6bc8ceae9556239794d",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:8ef98f1fea42d46dc8f53165",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:b20b0d2a3caac1a088009169",
+      "manualRelationId": "manual-relation:bed776faca339363c5cba78e",
+      "navigationProofId": "registry-navigation-proof:b10b5174a75c86bf8e5c2ede",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:903037073f280b030298affe",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:3cf6f221d0af5e6e7ed0ab77",
+      "manualRelationId": "manual-relation:1477e55b14a264e6f8dca156",
+      "navigationProofId": "registry-navigation-proof:0bffe7f3a68876695d47aa26",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:9873401b6fc56c29ea69ece4",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:235507c4ba8127515b77c0f8",
+      "manualRelationId": "manual-relation:74ffc60fa6dc515b43c565d4",
+      "navigationProofId": "registry-navigation-proof:fbf96834fa45cc25cbe064a6",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a0d26a2fe4e91aff48bcd74e",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:3b0bc639bc348569fb8cc14b",
+      "manualRelationId": "manual-relation:1038af5f233e65a64b47c611",
+      "navigationProofId": "registry-navigation-proof:8f887695517c8bfefbb96099",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a3167dbef9c7e3c2cd087e4b",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:483f2efc9d3dde9a069ab4ce",
+      "manualRelationId": "manual-relation:2fe2d7b147276965147facd9",
+      "navigationProofId": "registry-navigation-proof:2f3ff6c14e0e50f91fb594d9",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a32a463ad34f15843f81958a",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:9823f702b5159e6c0d773a1b",
+      "manualRelationId": "manual-relation:97604bbaf5c5f348e6bdf0b0",
+      "navigationProofId": "registry-navigation-proof:653d8b55c6b11fb76e1424dd",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a401d4bfa1703dd94b019d5c",
+      "coordinateId": "field-coordinate:6c84e0c5c13e778603400ef4",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:894864b2515dbedb7aaba076"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:43c164ebb93abe2cc1af377b",
+      "navigationProofId": "registry-navigation-proof:99c0404663553eb3b9f5a595",
+      "proofGroupId": "registry-navigation-proof-group:446a1da9f6d6c6638acf4e07",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a5ba2678de42881d19d8fa2c",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:4184bbaf8e48973ff4ee0ba4",
+      "manualRelationId": "manual-relation:956087875abe5a0746f17d13",
+      "navigationProofId": "registry-navigation-proof:10c64d71c176f09190d3d3ab",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a730f600338a275a57b3aec0",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:07f586f4b6870154727e3529",
+      "manualRelationId": "manual-relation:a93b144aba75eca763151ea4",
+      "navigationProofId": "registry-navigation-proof:5b9d9fe0d10741b44e411ada",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:aa70bd62a8f3e1900f64f6e7",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:f494af50bb8221e8994124bd",
+      "manualRelationId": "manual-relation:5c3bdd50f17a22390bcf9d51",
+      "navigationProofId": "registry-navigation-proof:8760a75b9cb9a7bb67b5b06f",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ac07f25b41c732335210e283",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:8b243046a76ed77f54550f51",
+      "manualRelationId": "manual-relation:63c052695311b6ec1d8a9676",
+      "navigationProofId": "registry-navigation-proof:ce70de318fa74c0ec4c6b97c",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ac9dc2baf9d2281b60366498",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:6445fde1d85749a45e2fc178",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:027c9740830c2c01476cd5b4",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:afe672c507ad55488b92b75b",
+      "blockerKinds": [
+        "exact-approved-reference-counterpart-missing"
+      ],
+      "coordinateId": "field-coordinate:c77807fc466fae5d9c564314",
+      "manualRelationId": "manual-relation:90848fdb6f2aaa97a7b9895a",
+      "navigationProofId": "registry-navigation-proof:44394a682cd85400118354ea",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:b0e090397b38874daa5b5544",
+      "coordinateId": "field-coordinate:dba3a0d357518ee6519fe38c",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1488,
+      "counterpartRuntimeTargetToken": "*MAT",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:4c6ed641cc9cf944e4396234",
+      "navigationProofId": "registry-navigation-proof:73fd19a14c5d0f150825d034",
+      "proofGroupId": "registry-navigation-proof-group:81aa0ed1bfb4c6c22995a5c1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c277fdfed745426da2e2e828",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:1a9be28478624dfe85ee9cec",
+      "manualRelationId": "manual-relation:88f433df2dc19350f5ecb0ac",
+      "navigationProofId": "registry-navigation-proof:352b9d6d13704a284dd8c051",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c2974dee2aa2f0526e825826",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:0e58c4099a2ab1e95394467f",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:07c4344b7ab687924554eb6d",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c5243c2d2e8a944a18f0b64c",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:46ab4cf2b731165be43f3585",
+      "manualRelationId": "manual-relation:d78df2b56ece61e520b5ce08",
+      "navigationProofId": "registry-navigation-proof:eef703ddfcfd115a1319dfde",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c5afac05cbe1cb36d377dda3",
+      "coordinateId": "field-coordinate:c3ee4a901d454f6beb08b31f",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:7c39eaa7512074388fa1aca4",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c6e4e92da4bb83a1723c009a",
+      "coordinateId": "field-coordinate:6318b61beb4f651684fee3a4",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:d72c928b747c0ff55c37c08d",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:cb910e1adf920adf95947189",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:9cc6cd0e32a14f06842ba739",
+      "manualRelationId": "manual-relation:4ae34aa1a73fd9140ebdd50d",
+      "navigationProofId": "registry-navigation-proof:6dc55fec3587e8fae5a0da19",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d1d28944825adc1bb913776a",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:abda61d50ca01e7fa9bedf71",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:2170d3b76ed70ac5f8641ee2",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d2fc15e3d1ad28dda3bccb64",
+      "coordinateId": "field-coordinate:b3c4d67f1e3b445f842e4f5b",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:f9baff822de7bddcb581ebac"
+      ],
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "navigationProofId": "registry-navigation-proof:a2c75e49b4751cdc68eddb59",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d8fb9c1f26f98932a71213f1",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:00ed27e11565bdcf2d99d6ca",
+      "manualRelationId": "manual-relation:c5e1ca2aab66fa58826af98d",
+      "navigationProofId": "registry-navigation-proof:bae1698db2ffe8a55248c377",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:db499386d717d1266eb6d06a",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:51b4047e6cab77f3325f4ada",
+      "manualRelationId": "manual-relation:fbdb2faf506ace645202bd2b",
+      "navigationProofId": "registry-navigation-proof:2e7417d26f99b6eb509c7b1a",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:dcf6814f35cda62ea32b254b",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:f1ee209ebf9f856645db367a",
+      "manualRelationId": "manual-relation:8c8ff5b2230abe959cc6ecd7",
+      "navigationProofId": "registry-navigation-proof:aecc32838bf08a1592fcbbe0",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:df63419901de7297779a1ae6",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:ebc9cca02f652c84a06bee54",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:a1e7b48441eeec05be867c6a",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e1a97fe5d42691b84e3c82b4",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:20beddbb9f41c04775fae35d",
+      "manualRelationId": "manual-relation:ee775593f9d4ffbe7ff01649",
+      "navigationProofId": "registry-navigation-proof:82792c3c105b527a72c8cb1b",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e595439b7500e7fb99c3196f",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:9b589977177167e66bf81ec5",
+      "manualRelationId": "manual-relation:7c77879f560102a9aa15c49d",
+      "navigationProofId": "registry-navigation-proof:b712d3a238a7b82a668f5b10",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e8590d67a6a665a7efc5f66e",
+      "coordinateId": "field-coordinate:b47e1fc441f6c4e97348247a",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1,
+      "counterpartRuntimeTargetToken": "*DEFINE_PBLAST_AIRGEO",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:9a25bf47873813028df2ce34",
+      "navigationProofId": "registry-navigation-proof:2ac6dc7b1c3e1207facfec9b",
+      "proofGroupId": "registry-navigation-proof-group:9977ea6041d84cff617ea8f1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e94f5f55e9d493ed1a855d3a",
+      "coordinateId": "field-coordinate:8fc89023d1c5c23f1b2dcdc6",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 1,
+      "counterpartRuntimeTargetToken": "*SET_MULTI",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:efcba49ce38f7112aaa45155",
+      "navigationProofId": "registry-navigation-proof:ab56a7f67456e2c56059f3fd",
+      "proofGroupId": "registry-navigation-proof-group:32aa9ebfa7e6abc7b07080bc",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ec84b1798381a83a32c7fd11",
+      "coordinateId": "field-coordinate:892a11b9bf5408f2caebf6af",
+      "counterpartAuthoringRelationIds": [],
+      "counterpartRuntimeDescriptorPopulation": 14,
+      "counterpartRuntimeTargetToken": "*SET_NODE",
+      "directions": [
+        "ctrl-click",
+        "f12"
+      ],
+      "manualRelationId": "manual-relation:b65555e38ed8673f60b168ca",
+      "navigationProofId": "registry-navigation-proof:85e2901dec1cab6c0b8d6021",
+      "proofGroupId": "registry-navigation-proof-group:1652d5e125a7d64fd0285162",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f030bafdad2568dc9eb7fe38",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:d9112cf0acd588f5367b2e53",
+      "manualRelationId": "manual-relation:f2adc92144c9c3c555b4e92f",
+      "navigationProofId": "registry-navigation-proof:316a59b635db0295aef3a6b1",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f1dfb8443b99b3c759cbb6a5",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:986fd11d03062daacea6361e",
+      "manualRelationId": "manual-relation:10f0dd7448a0734967ec039f",
+      "navigationProofId": "registry-navigation-proof:316a1dfa8b7da197df6b192c",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f205c0a053f68bc26a9d44d8",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:bada6ea123009d84435f3387",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:6e101d6df39131de7d3fb526",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f6902ed86765ae02f4a404d3",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:f1d66907bff7124dcce481e7",
+      "manualRelationId": "manual-relation:fe24d3246098675c49558532",
+      "navigationProofId": "registry-navigation-proof:a34585a3046da7078c3d20b6",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f6af51260fe0083d5fb389f6",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:54175f1bcf58fd9f7ac318a1",
+      "manualRelationId": "manual-relation:42baae6e62b3a684f90fde27",
+      "navigationProofId": "registry-navigation-proof:93ded8ac3388e4c1fd556506",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f88c8e6fe8626d61619d5a19",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:00ed27e11565bdcf2d99d6ca",
+      "manualRelationId": "manual-relation:3ec44b54b04f71d70afc436c",
+      "navigationProofId": "registry-navigation-proof:de4436a72ed3faddced9d48f",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f8a57d707477cdb1ace37546",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:d9112cf0acd588f5367b2e53",
+      "manualRelationId": "manual-relation:16bdc6284e5bfffd4012d704",
+      "navigationProofId": "registry-navigation-proof:2a1741b519ae7bf77c0e4c2f",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f9baff822de7bddcb581ebac",
+      "coordinateId": "field-coordinate:47f70ba098f901dc1a2fa4ed",
+      "counterpartAuthoringRelationIds": [
+        "authoring-relation:1028019ad9d8a0b24ac18855",
+        "authoring-relation:18a9885f41b76a1c877ad4cb",
+        "authoring-relation:287dcaa20e1e6bd504f42fe2",
+        "authoring-relation:44c880a44a95b52dfd7dfab7",
+        "authoring-relation:c5afac05cbe1cb36d377dda3",
+        "authoring-relation:c6e4e92da4bb83a1723c009a",
+        "authoring-relation:d2fc15e3d1ad28dda3bccb64"
+      ],
+      "directions": [
+        "shift-f12"
+      ],
+      "manualRelationId": "manual-relation:f35ad9e88a33fb00242317dc",
+      "navigationProofId": "registry-navigation-proof:c0b54f8fd660f81355c057ae",
+      "proofGroupId": "registry-navigation-proof-group:61b55f799604e4ced2192ede",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fc0e0a101a2f008d2907a992",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:b48db3d9fee816584e9190ba",
+      "manualRelationId": "manual-relation:5439fb43b37fb77a3b5188a4",
+      "navigationProofId": "registry-navigation-proof:07831a85aea1278e475e8020",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fc0eec1f061e6c002b206ef0",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:b37fc3da89791526b3c65a9a",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "navigationProofId": "registry-navigation-proof:c73944be6b6238e368e991e2",
+      "status": "blocked"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fd7536de8192615858f01f99",
+      "blockerKinds": [
+        "definition-target-missing"
+      ],
+      "coordinateId": "field-coordinate:f06bc3e74b57af51e0d9e7d6",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "navigationProofId": "registry-navigation-proof:f07ff5ba8868d7782e076071",
+      "status": "blocked"
+    }
+  ],
+  "policy": {
+    "navigationProofRequiresBidirectionalProviderContract": true,
+    "navigationProofRequiresExactOfficialCounterpart": true,
+    "runtimePackagingPermission": false,
+    "scannerProofPerAuthoringRelation": true,
+    "targetKindOnlyPermission": false
+  },
+  "scannerProofs": [
+    {
+      "authoringRelationId": "authoring-relation:04093df5fa1d86ebf5bf6a07",
+      "coordinateId": "field-coordinate:d4c21d06d740f4c1fa6e233a",
+      "manualRelationId": "manual-relation:9be72431219a22244db171c5",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:04093df5fa1d86ebf5bf6a07",
+      "scannerProofId": "registry-scanner-proof:13667fd13d5aa0b91ad3e7d6",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:07db60b24753e2d52a948b64",
+      "coordinateId": "field-coordinate:7e8d6e4b2934460b31e14be9",
+      "manualRelationId": "manual-relation:cf1720f23838abb8926ac1f3",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:07db60b24753e2d52a948b64",
+      "scannerProofId": "registry-scanner-proof:d0fbd0d8f762befd3a95176d",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:08f9f155358506330dece5db",
+      "coordinateId": "field-coordinate:7d8cc4c97e5e760af4a7df72",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:08f9f155358506330dece5db",
+      "scannerProofId": "registry-scanner-proof:d375b3a783146fdd9fbe3205",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:0a63d6843f112d3accfb70bb",
+      "coordinateId": "field-coordinate:11f0c27e7f791a6e746281f4",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:0a63d6843f112d3accfb70bb",
+      "scannerProofId": "registry-scanner-proof:431f6f3b9300df28eecd7448",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:0e5d184429499df273c7a386",
+      "coordinateId": "field-coordinate:9678bc46bfd6063c99358f8c",
+      "manualRelationId": "manual-relation:ccbffc1730b3dec805c4e39b",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:0e5d184429499df273c7a386",
+      "scannerProofId": "registry-scanner-proof:931ea6676404a8a21fa69fc9",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1028019ad9d8a0b24ac18855",
+      "coordinateId": "field-coordinate:3f4f40ed4a2e781caff20bbc",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:1028019ad9d8a0b24ac18855",
+      "scannerProofId": "registry-scanner-proof:a58ebf0de9c12f2c9cc8d604",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:118cd7ef09b2c3e19a36ecfc",
+      "coordinateId": "field-coordinate:d4c21d06d740f4c1fa6e233a",
+      "manualRelationId": "manual-relation:39c5ebadc86c042aff9158d4",
+      "mode": "co-located-reference-branch-equivalent",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:04093df5fa1d86ebf5bf6a07",
+      "scannerProofId": "registry-scanner-proof:fe1922351d1108bdc2c8d09b",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:12bb8f727cec4023ec251520",
+      "coordinateId": "field-coordinate:f410c3fe40acb3c516c72977",
+      "manualRelationId": "manual-relation:cbbddd3af9f67fca2e44aace",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:12bb8f727cec4023ec251520",
+      "scannerProofId": "registry-scanner-proof:eed006f58692131c9f6334e0",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:16423dfb599a10d920773e63",
+      "coordinateId": "field-coordinate:212e6ab4d1e818edf3298a3f",
+      "manualRelationId": "manual-relation:f1d14429f965b5babd40e0e8",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:16423dfb599a10d920773e63",
+      "scannerProofId": "registry-scanner-proof:4af80b1b51d7afe02e6ee5b5",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:17bb3704631a1907d95281b0",
+      "coordinateId": "field-coordinate:8e27b4c91ae8379e892622d0",
+      "manualRelationId": "manual-relation:4b353e5a97e06aab720f595a",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:17bb3704631a1907d95281b0",
+      "scannerProofId": "registry-scanner-proof:20bbdb4ea2147a69f3a2fb96",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:18a9885f41b76a1c877ad4cb",
+      "coordinateId": "field-coordinate:a02f42abb0b1da29ceb32789",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:18a9885f41b76a1c877ad4cb",
+      "scannerProofId": "registry-scanner-proof:fcd8378dbe03ec74794bd96e",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1c1f273f59b8880593367013",
+      "coordinateId": "field-coordinate:bd5afdf147e358c8e992daa3",
+      "manualRelationId": "manual-relation:0707312816a62ca34de7ff4c",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:1c1f273f59b8880593367013",
+      "scannerProofId": "registry-scanner-proof:ee9249220660f750d5fc10a8",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:1f3cba0074552255e36944a5",
+      "coordinateId": "field-coordinate:88021e8caedef44c94e54451",
+      "manualRelationId": "manual-relation:daf742bfd532cdd18c7ced4c",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:1f3cba0074552255e36944a5",
+      "scannerProofId": "registry-scanner-proof:b2836177ef0e36f664c745ba",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2510f7b551a0eb282d0f0678",
+      "coordinateId": "field-coordinate:1ccc7cfb0001e0416a3967e3",
+      "manualRelationId": "manual-relation:b7126d6dad329e51ffefbb9d",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:2510f7b551a0eb282d0f0678",
+      "scannerProofId": "registry-scanner-proof:f58ac44d9866169ef911c488",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:257c1a95175f73fe680b8468",
+      "coordinateId": "field-coordinate:969f21de2f4aa017e0359437",
+      "manualRelationId": "manual-relation:6f305a47fa28555929044857",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:257c1a95175f73fe680b8468",
+      "scannerProofId": "registry-scanner-proof:d47c3411712d0e09cabbfa33",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:287dcaa20e1e6bd504f42fe2",
+      "coordinateId": "field-coordinate:65cbdea5ef2b21718ce58de5",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:287dcaa20e1e6bd504f42fe2",
+      "scannerProofId": "registry-scanner-proof:195ce913397618d0ce4d5dca",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2ccb1a2dfa7ed89205bfeafa",
+      "coordinateId": "field-coordinate:7fb1f2114a03e345c9ae6581",
+      "manualRelationId": "manual-relation:22e61490a8922c33a16e1fc9",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:2ccb1a2dfa7ed89205bfeafa",
+      "scannerProofId": "registry-scanner-proof:900f2be1b0d7ce3da0540a05",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2ccf5482e6cb5e01637a0382",
+      "coordinateId": "field-coordinate:5256dda594e273473d4aac22",
+      "manualRelationId": "manual-relation:5a0dfefce7dc9b27f58e60d7",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:2ccf5482e6cb5e01637a0382",
+      "scannerProofId": "registry-scanner-proof:69164eb37528b7afaee5e190",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:2e5ccc6480ddcd506148fcaf",
+      "coordinateId": "field-coordinate:cdd80b417e4062ea2c84a0f4",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:2e5ccc6480ddcd506148fcaf",
+      "scannerProofId": "registry-scanner-proof:ff34091a63228eb78cb758fd",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:307c8a029fc5d210ebe3d9a1",
+      "coordinateId": "field-coordinate:d999b7bce7ae9cad866e6956",
+      "manualRelationId": "manual-relation:f7c6059c46eb217059fbe556",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:307c8a029fc5d210ebe3d9a1",
+      "scannerProofId": "registry-scanner-proof:b7b60d213180de4e2e9f6f0f",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:30c8582ce23498790f308c5e",
+      "coordinateId": "field-coordinate:5767a0734d29703a28b41af4",
+      "manualRelationId": "manual-relation:5a622a8cb7437d4f129e0f64",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:30c8582ce23498790f308c5e",
+      "scannerProofId": "registry-scanner-proof:f63b073c1af3502ac21d2235",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:39c8b1c2b7e3032807bbfc7c",
+      "coordinateId": "field-coordinate:473215e4d6ecd7e9916711fc",
+      "manualRelationId": "manual-relation:857c9e92b3f1e4d76e9fdc4e",
+      "mode": "generic-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:39c8b1c2b7e3032807bbfc7c",
+      "scannerProofId": "registry-scanner-proof:fb524967650b1f0410137421",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:3b9f61e3ca457c037b8ac4e8",
+      "coordinateId": "field-coordinate:1ddbde15f029a61df71be69d",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:3b9f61e3ca457c037b8ac4e8",
+      "scannerProofId": "registry-scanner-proof:c4867062b1f0b5ab783ce926",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:3bb46ae51da67bd1b3086850",
+      "coordinateId": "field-coordinate:bf4d182e5959c537d09a88f0",
+      "manualRelationId": "manual-relation:7592f0c413bc764cdb7793f4",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:3bb46ae51da67bd1b3086850",
+      "scannerProofId": "registry-scanner-proof:7e075389468b3832ceef009f",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:40fda42fc21e590d72b54bb7",
+      "coordinateId": "field-coordinate:7dff8e60783f97031dd6a02c",
+      "manualRelationId": "manual-relation:4b083348241275fab2f037ea",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:40fda42fc21e590d72b54bb7",
+      "scannerProofId": "registry-scanner-proof:806b8cd97c8eabff97ec0420",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:44c880a44a95b52dfd7dfab7",
+      "coordinateId": "field-coordinate:1fff80218e75a8eb224fb88c",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:44c880a44a95b52dfd7dfab7",
+      "scannerProofId": "registry-scanner-proof:82ee96b954bed6b2f1ce3f34",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:460b5bf63066a391654c9b42",
+      "coordinateId": "field-coordinate:7dede0c19b7d815296d3d129",
+      "manualRelationId": "manual-relation:3e1fd9f34037d9cb4f3a54b8",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:460b5bf63066a391654c9b42",
+      "scannerProofId": "registry-scanner-proof:3238ea7cc448ee90dc39945d",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4634a76c9a6a04205a6ff1e7",
+      "coordinateId": "field-coordinate:cef25d61d6eaee5724d1344e",
+      "manualRelationId": "manual-relation:262747624ce086ff4cccfc7e",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:4634a76c9a6a04205a6ff1e7",
+      "scannerProofId": "registry-scanner-proof:59c129d204ff1c519df3b946",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4673e893c73276f44642eb11",
+      "coordinateId": "field-coordinate:b9bfd5d175d280f5f7e24985",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:4673e893c73276f44642eb11",
+      "scannerProofId": "registry-scanner-proof:a2b6c364df6467568dd0ae09",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:479ef7325cf1b06e0d3991df",
+      "coordinateId": "field-coordinate:f99c702ba5e7939e20ce0e7c",
+      "manualRelationId": "manual-relation:72070ef935ec8294138c8750",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:479ef7325cf1b06e0d3991df",
+      "scannerProofId": "registry-scanner-proof:f5ee85212973ff6f8bdecb18",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:48e0c15f9ef0200bd50c4ffd",
+      "coordinateId": "field-coordinate:59ed8c61c517413b77b7e38a",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:48e0c15f9ef0200bd50c4ffd",
+      "scannerProofId": "registry-scanner-proof:f7db8fbea49163a1cf597ce5",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4a887e549e6e938c79ff9e0a",
+      "coordinateId": "field-coordinate:e3b67b5a784a9eeb2c520267",
+      "manualRelationId": "manual-relation:ade02e1cf3926542bd2d63f9",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:4a887e549e6e938c79ff9e0a",
+      "scannerProofId": "registry-scanner-proof:496fd4354edf0b9d71382509",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:4bab74ac16f2781a38819a57",
+      "coordinateId": "field-coordinate:562f013b97cb543530eca7e2",
+      "manualRelationId": "manual-relation:359269398b8a4d5742a62e63",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:4bab74ac16f2781a38819a57",
+      "scannerProofId": "registry-scanner-proof:9489c8ed6e702ce0b6832aac",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:50f4c05de013df5af3e0f1e0",
+      "coordinateId": "field-coordinate:0fb48b982b60bda1358935ed",
+      "manualRelationId": "manual-relation:0f5dcf951ca9719306305745",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:50f4c05de013df5af3e0f1e0",
+      "scannerProofId": "registry-scanner-proof:ccf442b22334bc06aa554db9",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:5278b62aa59da7e83c599849",
+      "coordinateId": "field-coordinate:2c5502821fcd8d3eaf7ab00b",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:5278b62aa59da7e83c599849",
+      "scannerProofId": "registry-scanner-proof:c0d7f0425b7b4232db616338",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:53344ba0ed20e7f8a31922e3",
+      "coordinateId": "field-coordinate:60cd49064730719963adf46b",
+      "manualRelationId": "manual-relation:d596940a145a103d3ec84235",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:53344ba0ed20e7f8a31922e3",
+      "scannerProofId": "registry-scanner-proof:8746089795fc8e4e5d0d92b8",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:57170fd11b1954bdd5336ee5",
+      "coordinateId": "field-coordinate:47d437fa4d5f77eb0c6c8136",
+      "manualRelationId": "manual-relation:d022dac7497a662ae2d9c97c",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:57170fd11b1954bdd5336ee5",
+      "scannerProofId": "registry-scanner-proof:00c3b02d0d8df142e5074b38",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:585652100b6452cca77aa04b",
+      "coordinateId": "field-coordinate:71da340fc93f68c77db8648e",
+      "manualRelationId": "manual-relation:fce72c58e61f4d7cb28b0d81",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:585652100b6452cca77aa04b",
+      "scannerProofId": "registry-scanner-proof:cea874a4ff9e25e39105abbe",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:5a92c8502ed2a3f34bea33fe",
+      "coordinateId": "field-coordinate:cf193c20150424a81a7909d9",
+      "manualRelationId": "manual-relation:842cd785136bcd4b23f69fb9",
+      "mode": "generic-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:5a92c8502ed2a3f34bea33fe",
+      "scannerProofId": "registry-scanner-proof:927c3d2d97e1084266e0f3a2",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:6b4dc4071d8a099603168586",
+      "coordinateId": "field-coordinate:56542c2fec8c6074854cf125",
+      "manualRelationId": "manual-relation:166af8ec8accebe3b761186c",
+      "mode": "co-located-reference-branch-equivalent",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:8a421851a3e49e0dfb278163",
+      "scannerProofId": "registry-scanner-proof:94b4dd05a28f9c167de1ea08",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:6ca5520f07494385548e3e7a",
+      "coordinateId": "field-coordinate:84840e4dbcdd157149da5a1a",
+      "manualRelationId": "manual-relation:4c88a4f39295ef2a3df3e50d",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:6ca5520f07494385548e3e7a",
+      "scannerProofId": "registry-scanner-proof:d3be3512fbb70b08f9ffa3e6",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7065b0da3bac4ed5d03a5dea",
+      "coordinateId": "field-coordinate:63a36b9a55e7031a9786ad18",
+      "manualRelationId": "manual-relation:775bf26f487f28f31dd20b30",
+      "mode": "generic-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:7065b0da3bac4ed5d03a5dea",
+      "scannerProofId": "registry-scanner-proof:db2eb47b2a35b3a21fdc951f",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:771a1fd8ac998b9e390023ca",
+      "coordinateId": "field-coordinate:580f383af542e2ca0536b15f",
+      "manualRelationId": "manual-relation:50b4536fab495389db678265",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:771a1fd8ac998b9e390023ca",
+      "scannerProofId": "registry-scanner-proof:d706764a48989603ce16d198",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:78ca5c037ce44d917e85215d",
+      "coordinateId": "field-coordinate:f13e4308a7e5e98af3288932",
+      "manualRelationId": "manual-relation:e3ae9906c16fb974c22034a4",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:78ca5c037ce44d917e85215d",
+      "scannerProofId": "registry-scanner-proof:fe6aecd6bf2a5770e2cc6f3a",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7b3e46b40d51c5c13ef47d00",
+      "coordinateId": "field-coordinate:7d8ef12c8b78098d818d3824",
+      "manualRelationId": "manual-relation:e46963b2454233b814363d47",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:7b3e46b40d51c5c13ef47d00",
+      "scannerProofId": "registry-scanner-proof:b32fec6541ed374c36565ca5",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:7cd430517db611036ddffe26",
+      "coordinateId": "field-coordinate:9a4a6e1bccc879eda2b67036",
+      "manualRelationId": "manual-relation:571bc22520d9280188516619",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:7cd430517db611036ddffe26",
+      "scannerProofId": "registry-scanner-proof:40a991f77842bceef1c2381c",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:85a32229d4be352637e4e4a4",
+      "coordinateId": "field-coordinate:b47e1fc441f6c4e97348247a",
+      "manualRelationId": "manual-relation:b13885f7b4d83c7d07ea8df5",
+      "mode": "co-located-reference-branch-equivalent",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:e8590d67a6a665a7efc5f66e",
+      "scannerProofId": "registry-scanner-proof:fb3f2d8ac2f9595c2884ea96",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:894864b2515dbedb7aaba076",
+      "coordinateId": "field-coordinate:9fc0b55544d010ac20580716",
+      "manualRelationId": "manual-relation:472d57affbf5f53701ae1307",
+      "mode": "registry-overlay-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:894864b2515dbedb7aaba076",
+      "scannerProofId": "registry-scanner-proof:79ab45110cdf071dba3a17e4",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:8a421851a3e49e0dfb278163",
+      "coordinateId": "field-coordinate:56542c2fec8c6074854cf125",
+      "manualRelationId": "manual-relation:3a79df3653b3ea705b966300",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:8a421851a3e49e0dfb278163",
+      "scannerProofId": "registry-scanner-proof:1f9ea1e5adde9270aa0252dc",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:8ef98f1fea42d46dc8f53165",
+      "coordinateId": "field-coordinate:b20b0d2a3caac1a088009169",
+      "manualRelationId": "manual-relation:bed776faca339363c5cba78e",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:8ef98f1fea42d46dc8f53165",
+      "scannerProofId": "registry-scanner-proof:3a30aeff960a36f2719b81b2",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:903037073f280b030298affe",
+      "coordinateId": "field-coordinate:3cf6f221d0af5e6e7ed0ab77",
+      "manualRelationId": "manual-relation:1477e55b14a264e6f8dca156",
+      "mode": "generic-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:903037073f280b030298affe",
+      "scannerProofId": "registry-scanner-proof:5f69c46bcb2cb0b2b60519bf",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:9873401b6fc56c29ea69ece4",
+      "coordinateId": "field-coordinate:235507c4ba8127515b77c0f8",
+      "manualRelationId": "manual-relation:74ffc60fa6dc515b43c565d4",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:9873401b6fc56c29ea69ece4",
+      "scannerProofId": "registry-scanner-proof:181d163e31aed67725b08eda",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a0d26a2fe4e91aff48bcd74e",
+      "coordinateId": "field-coordinate:3b0bc639bc348569fb8cc14b",
+      "manualRelationId": "manual-relation:1038af5f233e65a64b47c611",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a0d26a2fe4e91aff48bcd74e",
+      "scannerProofId": "registry-scanner-proof:0e1a5a7e946d8d44c600d7fa",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a3167dbef9c7e3c2cd087e4b",
+      "coordinateId": "field-coordinate:483f2efc9d3dde9a069ab4ce",
+      "manualRelationId": "manual-relation:2fe2d7b147276965147facd9",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a3167dbef9c7e3c2cd087e4b",
+      "scannerProofId": "registry-scanner-proof:34220df3eee4c2218ed5dc6b",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a32a463ad34f15843f81958a",
+      "coordinateId": "field-coordinate:9823f702b5159e6c0d773a1b",
+      "manualRelationId": "manual-relation:97604bbaf5c5f348e6bdf0b0",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a32a463ad34f15843f81958a",
+      "scannerProofId": "registry-scanner-proof:2e96da0b241360290576ceb1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a401d4bfa1703dd94b019d5c",
+      "coordinateId": "field-coordinate:6c84e0c5c13e778603400ef4",
+      "manualRelationId": "manual-relation:43c164ebb93abe2cc1af377b",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a401d4bfa1703dd94b019d5c",
+      "scannerProofId": "registry-scanner-proof:861e111366626365fe01dc5f",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a5ba2678de42881d19d8fa2c",
+      "coordinateId": "field-coordinate:4184bbaf8e48973ff4ee0ba4",
+      "manualRelationId": "manual-relation:956087875abe5a0746f17d13",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a5ba2678de42881d19d8fa2c",
+      "scannerProofId": "registry-scanner-proof:fabadb9ee3a9a1f8187f5809",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:a730f600338a275a57b3aec0",
+      "coordinateId": "field-coordinate:07f586f4b6870154727e3529",
+      "manualRelationId": "manual-relation:a93b144aba75eca763151ea4",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:a730f600338a275a57b3aec0",
+      "scannerProofId": "registry-scanner-proof:ef252a90c03db9baa6c13854",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:aa70bd62a8f3e1900f64f6e7",
+      "coordinateId": "field-coordinate:f494af50bb8221e8994124bd",
+      "manualRelationId": "manual-relation:5c3bdd50f17a22390bcf9d51",
+      "mode": "generic-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:aa70bd62a8f3e1900f64f6e7",
+      "scannerProofId": "registry-scanner-proof:987fb293c2befe7e9e7d5c09",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ac07f25b41c732335210e283",
+      "coordinateId": "field-coordinate:8b243046a76ed77f54550f51",
+      "manualRelationId": "manual-relation:63c052695311b6ec1d8a9676",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:ac07f25b41c732335210e283",
+      "scannerProofId": "registry-scanner-proof:830a7c3b4f5de9cb07a35016",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ac9dc2baf9d2281b60366498",
+      "coordinateId": "field-coordinate:6445fde1d85749a45e2fc178",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:ac9dc2baf9d2281b60366498",
+      "scannerProofId": "registry-scanner-proof:4219f1ac9898a3e70731533d",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:afe672c507ad55488b92b75b",
+      "coordinateId": "field-coordinate:c77807fc466fae5d9c564314",
+      "manualRelationId": "manual-relation:90848fdb6f2aaa97a7b9895a",
+      "mode": "specialized-table",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:afe672c507ad55488b92b75b",
+      "scannerProofId": "registry-scanner-proof:690ea17e14eaae8226336067",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:b0e090397b38874daa5b5544",
+      "coordinateId": "field-coordinate:dba3a0d357518ee6519fe38c",
+      "manualRelationId": "manual-relation:4c6ed641cc9cf944e4396234",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:b0e090397b38874daa5b5544",
+      "scannerProofId": "registry-scanner-proof:6595989656f636b85a0ee2b7",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c277fdfed745426da2e2e828",
+      "coordinateId": "field-coordinate:1a9be28478624dfe85ee9cec",
+      "manualRelationId": "manual-relation:88f433df2dc19350f5ecb0ac",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:c277fdfed745426da2e2e828",
+      "scannerProofId": "registry-scanner-proof:f9ae7cf41ea4006472ed2544",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c2974dee2aa2f0526e825826",
+      "coordinateId": "field-coordinate:0e58c4099a2ab1e95394467f",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:c2974dee2aa2f0526e825826",
+      "scannerProofId": "registry-scanner-proof:1f74ba981916b18c86adea32",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c5243c2d2e8a944a18f0b64c",
+      "coordinateId": "field-coordinate:46ab4cf2b731165be43f3585",
+      "manualRelationId": "manual-relation:d78df2b56ece61e520b5ce08",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:c5243c2d2e8a944a18f0b64c",
+      "scannerProofId": "registry-scanner-proof:e26510bb26c57e71b4ca92c1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c5afac05cbe1cb36d377dda3",
+      "coordinateId": "field-coordinate:c3ee4a901d454f6beb08b31f",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:c5afac05cbe1cb36d377dda3",
+      "scannerProofId": "registry-scanner-proof:8fd54b9569d9f3c3590ddaff",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:c6e4e92da4bb83a1723c009a",
+      "coordinateId": "field-coordinate:6318b61beb4f651684fee3a4",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:c6e4e92da4bb83a1723c009a",
+      "scannerProofId": "registry-scanner-proof:2f3daf53d6e8cd22ca217df1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:cb910e1adf920adf95947189",
+      "coordinateId": "field-coordinate:9cc6cd0e32a14f06842ba739",
+      "manualRelationId": "manual-relation:4ae34aa1a73fd9140ebdd50d",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:cb910e1adf920adf95947189",
+      "scannerProofId": "registry-scanner-proof:c0c88687702ece34338e01bd",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d1d28944825adc1bb913776a",
+      "coordinateId": "field-coordinate:abda61d50ca01e7fa9bedf71",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:d1d28944825adc1bb913776a",
+      "scannerProofId": "registry-scanner-proof:a30f6459048e40b673096f71",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d2fc15e3d1ad28dda3bccb64",
+      "coordinateId": "field-coordinate:b3c4d67f1e3b445f842e4f5b",
+      "manualRelationId": "manual-relation:fe76c59e4e03fa0792ede4d0",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:d2fc15e3d1ad28dda3bccb64",
+      "scannerProofId": "registry-scanner-proof:bd57099be021faab34e55ee8",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:d8fb9c1f26f98932a71213f1",
+      "coordinateId": "field-coordinate:00ed27e11565bdcf2d99d6ca",
+      "manualRelationId": "manual-relation:c5e1ca2aab66fa58826af98d",
+      "mode": "co-located-reference-branch-equivalent",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f88c8e6fe8626d61619d5a19",
+      "scannerProofId": "registry-scanner-proof:359273f85293db3784c3d87b",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:db499386d717d1266eb6d06a",
+      "coordinateId": "field-coordinate:51b4047e6cab77f3325f4ada",
+      "manualRelationId": "manual-relation:fbdb2faf506ace645202bd2b",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:db499386d717d1266eb6d06a",
+      "scannerProofId": "registry-scanner-proof:7e561a0c318bb1986d9944dc",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:dcf6814f35cda62ea32b254b",
+      "coordinateId": "field-coordinate:f1ee209ebf9f856645db367a",
+      "manualRelationId": "manual-relation:8c8ff5b2230abe959cc6ecd7",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:dcf6814f35cda62ea32b254b",
+      "scannerProofId": "registry-scanner-proof:77e45cd57321b8ec78e2c806",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:df63419901de7297779a1ae6",
+      "coordinateId": "field-coordinate:ebc9cca02f652c84a06bee54",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:df63419901de7297779a1ae6",
+      "scannerProofId": "registry-scanner-proof:1bd0070b9e6fbbc9211211c6",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e1a97fe5d42691b84e3c82b4",
+      "coordinateId": "field-coordinate:20beddbb9f41c04775fae35d",
+      "manualRelationId": "manual-relation:ee775593f9d4ffbe7ff01649",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:e1a97fe5d42691b84e3c82b4",
+      "scannerProofId": "registry-scanner-proof:6bae7288bbe10bd4571c6404",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e595439b7500e7fb99c3196f",
+      "coordinateId": "field-coordinate:9b589977177167e66bf81ec5",
+      "manualRelationId": "manual-relation:7c77879f560102a9aa15c49d",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:e595439b7500e7fb99c3196f",
+      "scannerProofId": "registry-scanner-proof:1f793531ab024273a2885b4b",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e8590d67a6a665a7efc5f66e",
+      "coordinateId": "field-coordinate:b47e1fc441f6c4e97348247a",
+      "manualRelationId": "manual-relation:9a25bf47873813028df2ce34",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:e8590d67a6a665a7efc5f66e",
+      "scannerProofId": "registry-scanner-proof:1c223fe66d46861577d43bb6",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:e94f5f55e9d493ed1a855d3a",
+      "coordinateId": "field-coordinate:8fc89023d1c5c23f1b2dcdc6",
+      "manualRelationId": "manual-relation:efcba49ce38f7112aaa45155",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:e94f5f55e9d493ed1a855d3a",
+      "scannerProofId": "registry-scanner-proof:bb4608942bdb6d20749b4c7c",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:ec84b1798381a83a32c7fd11",
+      "coordinateId": "field-coordinate:892a11b9bf5408f2caebf6af",
+      "manualRelationId": "manual-relation:b65555e38ed8673f60b168ca",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:ec84b1798381a83a32c7fd11",
+      "scannerProofId": "registry-scanner-proof:71b775e0088e7c76923a80eb",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f030bafdad2568dc9eb7fe38",
+      "coordinateId": "field-coordinate:d9112cf0acd588f5367b2e53",
+      "manualRelationId": "manual-relation:f2adc92144c9c3c555b4e92f",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f030bafdad2568dc9eb7fe38",
+      "scannerProofId": "registry-scanner-proof:ac4cde59c16d376429cd5624",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f1dfb8443b99b3c759cbb6a5",
+      "coordinateId": "field-coordinate:986fd11d03062daacea6361e",
+      "manualRelationId": "manual-relation:10f0dd7448a0734967ec039f",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f1dfb8443b99b3c759cbb6a5",
+      "scannerProofId": "registry-scanner-proof:07f7f88e8095e67070adf3f1",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f205c0a053f68bc26a9d44d8",
+      "coordinateId": "field-coordinate:bada6ea123009d84435f3387",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f205c0a053f68bc26a9d44d8",
+      "scannerProofId": "registry-scanner-proof:3f1fcb81532e6d79190186e8",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f6902ed86765ae02f4a404d3",
+      "coordinateId": "field-coordinate:f1d66907bff7124dcce481e7",
+      "manualRelationId": "manual-relation:fe24d3246098675c49558532",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f6902ed86765ae02f4a404d3",
+      "scannerProofId": "registry-scanner-proof:159239664abc78d77a752577",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f6af51260fe0083d5fb389f6",
+      "coordinateId": "field-coordinate:54175f1bcf58fd9f7ac318a1",
+      "manualRelationId": "manual-relation:42baae6e62b3a684f90fde27",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f6af51260fe0083d5fb389f6",
+      "scannerProofId": "registry-scanner-proof:3bf9d651a66a6bde6661bdaf",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f88c8e6fe8626d61619d5a19",
+      "coordinateId": "field-coordinate:00ed27e11565bdcf2d99d6ca",
+      "manualRelationId": "manual-relation:3ec44b54b04f71d70afc436c",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f88c8e6fe8626d61619d5a19",
+      "scannerProofId": "registry-scanner-proof:c371290caeb0718b2a423986",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f8a57d707477cdb1ace37546",
+      "coordinateId": "field-coordinate:d9112cf0acd588f5367b2e53",
+      "manualRelationId": "manual-relation:16bdc6284e5bfffd4012d704",
+      "mode": "co-located-reference-branch-equivalent",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f030bafdad2568dc9eb7fe38",
+      "scannerProofId": "registry-scanner-proof:c758f8384db95e3ecfc3c071",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:f9baff822de7bddcb581ebac",
+      "coordinateId": "field-coordinate:47f70ba098f901dc1a2fa4ed",
+      "manualRelationId": "manual-relation:f35ad9e88a33fb00242317dc",
+      "mode": "specialized-curve",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:f9baff822de7bddcb581ebac",
+      "scannerProofId": "registry-scanner-proof:694778e395821b92cd3caa7d",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fc0e0a101a2f008d2907a992",
+      "coordinateId": "field-coordinate:b48db3d9fee816584e9190ba",
+      "manualRelationId": "manual-relation:5439fb43b37fb77a3b5188a4",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:fc0e0a101a2f008d2907a992",
+      "scannerProofId": "registry-scanner-proof:dda0fba879023be510094d18",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fc0eec1f061e6c002b206ef0",
+      "coordinateId": "field-coordinate:b37fc3da89791526b3c65a9a",
+      "manualRelationId": "manual-relation:b9209d083455c5b90995c394",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:fc0eec1f061e6c002b206ef0",
+      "scannerProofId": "registry-scanner-proof:0892ef6b07f4bd3698dd67ba",
+      "status": "passed"
+    },
+    {
+      "authoringRelationId": "authoring-relation:fd7536de8192615858f01f99",
+      "coordinateId": "field-coordinate:f06bc3e74b57af51e0d9e7d6",
+      "manualRelationId": "manual-relation:b2adb71ccf86e3e1a11e8698",
+      "mode": "reference-exact-selector",
+      "runtimePrimaryAuthoringRelationId": "authoring-relation:fd7536de8192615858f01f99",
+      "scannerProofId": "registry-scanner-proof:28d8474f19815cb198766c39",
+      "status": "passed"
+    }
+  ],
+  "schemaVersion": 1,
+  "source": {
+    "authoringHandoffContentSha256": "bb864e9eabc5753c0f32686d2bdf8c15eaf98753737563220e3e25558461a2cd",
+    "authoringHandoffManifestSha256": "cc011ade8dc97433685d9ce01875b90dbdfc5c30d1ff020375db5c09ff2e3f6d",
+    "authorityLockSha256": "b6560b2ef289f1dd7fadae536d809ac5965bbbff60f399a54565d5d2a6996ffb",
+    "familyDefinitionRuntimeApprovalSha256": "7907a32c17738bbc1be1a23c39a2e8cb8cb90a6de7b0f3721fdacfb42f5eeaf5",
+    "familyDefinitionRuntimeContentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+    "familyDefinitionRuntimeSha256": "04c9f15771aa50731771905d37f0b02d8bbec8b248f23183295837bf0258926e",
+    "implementationCommit": "703aa056ab983758ffe2e43d9d0d8423e727328e",
+    "registryContentSha256": "dd62fcbc459f495dbbf38ac1e5b3d95af76708d03af0404ad2a24df4c7556205",
+    "registrySha256": "ae5ae890c442f2ab55e9ecacd46ad075c68ca6d9238502e1374bce59cf3f2df4",
+    "standaloneCommit": "ee4581f890de13d9bb86bf1646b869af46703ce3"
+  },
+  "sourceFiles": [
+    {
+      "path": "keywords/definition_registry.authority-lock.json",
+      "sha256": "b6560b2ef289f1dd7fadae536d809ac5965bbbff60f399a54565d5d2a6996ffb",
+      "size": 1071
+    },
+    {
+      "path": "keywords/definition_registry.build-report.json",
+      "sha256": "a61159aa0c9552a110fdd505438f3e29cc06d6beae7e6bfa151b9f82d2e169d5",
+      "size": 1525
+    },
+    {
+      "path": "keywords/definition_registry.json",
+      "sha256": "ae5ae890c442f2ab55e9ecacd46ad075c68ca6d9238502e1374bce59cf3f2df4",
+      "size": 234499
+    },
+    {
+      "path": "keywords/field_reference_index.json",
+      "sha256": "128b705ec0a24e64263bac4d1e1f23d9705d6d840b473612b0582f82df1d14cb",
+      "size": 7336159
+    },
+    {
+      "path": "keywords/family_definition_scanner.runtime-approval.json",
+      "sha256": "7907a32c17738bbc1be1a23c39a2e8cb8cb90a6de7b0f3721fdacfb42f5eeaf5",
+      "size": 5126
+    },
+    {
+      "path": "keywords/family_definition_scanner.runtime-report.json",
+      "sha256": "06a4a14ece1a43e3c33bb88ed0da2a12fdc040d6d4c1894050cc8c75de5847e8",
+      "size": 1300
+    },
+    {
+      "path": "keywords/family_definition_scanner.runtime.json.gz",
+      "sha256": "04c9f15771aa50731771905d37f0b02d8bbec8b248f23183295837bf0258926e",
+      "size": 56701
+    },
+    {
+      "path": "scripts/generate-definition-registry-proof.cjs",
+      "sha256": "26825bf1210662acac2dddc8501cf3ce8d03c670a9423037d4b125d09ede4135",
+      "size": 26834
+    },
+    {
+      "path": "scripts/validate-project-contracts.cjs",
+      "sha256": "1245d4cf84db5082fe10731c8ed478eb8ab2ff1595adb95d604de21a5d1fe324",
+      "size": 56500
+    },
+    {
+      "path": "src/core/references/curveTableDefinitionScanner.ts",
+      "sha256": "d01aab0817b837ffd4ce286b5e7106c65ea09d18c3b6db11758525ae3aa941b9",
+      "size": 20154
+    },
+    {
+      "path": "src/core/references/definitionRegistry.ts",
+      "sha256": "af55492425e45b0f479c2acda8dcb7040a424c6eb25ff84c08376ebc0ddbebc3",
+      "size": 38487
+    },
+    {
+      "path": "src/core/references/fieldReferenceClassifier.ts",
+      "sha256": "7a300267997b57d863cb6d6ad950e1e4117e24c3a9053e1e288b2995410c61ae",
+      "size": 89306
+    },
+    {
+      "path": "src/core/references/familyDefinitionScannerCatalog.ts",
+      "sha256": "b7a31003506e741723e64e7474b73de752a9a40ce45087b7d4b5d4adaf953dc7",
+      "size": 4216
+    },
+    {
+      "path": "src/core/references/indexedEntityQuery.ts",
+      "sha256": "ae2e681f1d45d005b5900db8f290856e5984bbfc343bc82a9643cca48d623d46",
+      "size": 8878
+    },
+    {
+      "path": "src/core/references/onDemandDefinitionScanner.ts",
+      "sha256": "5c398d3851d893d636824b139696d3b714ef20f4df475dd948e708e9de6dcc95",
+      "size": 32651
+    },
+    {
+      "path": "src/core/references/projectReferenceIndex.ts",
+      "sha256": "c391e115a5c3da2ea38d435ba07015390c17a6b0f45083ec657a2bb2021cf90c",
+      "size": 49182
+    },
+    {
+      "path": "src/core/references/registryReferenceNetwork.ts",
+      "sha256": "c60f2cb99c8aa0bef1e4b1c502491a1d12c131020d1b98e3038660e405afe629",
+      "size": 14801
+    },
+    {
+      "path": "src/core/references/registryReferenceScanner.ts",
+      "sha256": "3a9b8ac93fa9daf226dce831c5ffd52f6395ed80c2ed2dedf7dd122a5dc8a37b",
+      "size": 30928
+    },
+    {
+      "path": "src/core/project/projectIndexer.ts",
+      "sha256": "6eecc1d4de403cb3799d5dfd7e7882401493a0a9047b6c8cc63246534fb7673b",
+      "size": 31751
+    },
+    {
+      "path": "src/client/services/indexClient.ts",
+      "sha256": "1ccee9d9cbea35c69fa955424619e307b920a7413d863235e08fcc953fc1f129",
+      "size": 29272
+    },
+    {
+      "path": "src/client/providers/entityReferenceProvider.ts",
+      "sha256": "01daca104cdfe891046ad99a38781d212fe27a16ca5903f2f15309c5a4aff74e",
+      "size": 14715
+    },
+    {
+      "path": "src/client/providers/includeTreeProvider.ts",
+      "sha256": "5a3f430b2c22daee2d6596526d7f3a5c4488a5b8d55d3ff2ce91fd34e0aedb67",
+      "size": 34559
+    },
+    {
+      "path": "src/extension.ts",
+      "sha256": "fafcf82e57298e66c518bd0a1859121c786457d3a8875fe09af86e8d22c2736f",
+      "size": 670875
+    },
+    {
+      "path": "test/core/references/definitionRegistry.test.js",
+      "sha256": "7b1d5a6ae8871943d2c9aa598d3a65c696e77585af84beab3c6f821fdd3ac736",
+      "size": 8957
+    },
+    {
+      "path": "test/core/references/familyDefinitionScannerGenerated.test.js",
+      "sha256": "cbb98fd90f7b0a512c54aa795adc657ab67a55fcb85e9128f62a23f39bd7236d",
+      "size": 8207
+    },
+    {
+      "path": "test/core/references/indexedEntityQuery.test.js",
+      "sha256": "5c520b32124c2aada2fe3e3cf6f55557a11d9ef9fbfe118c999de28086c2a001",
+      "size": 8484
+    },
+    {
+      "path": "test/core/references/registryReferenceNetwork.test.js",
+      "sha256": "c095d12affc8143a0cf2d1ff102700b55001efc94fa0782209aacef53e820d64",
+      "size": 32342
+    },
+    {
+      "path": "test/core/references/registryReferenceScanner.test.js",
+      "sha256": "e0cec0b555597337c61ad9b0e598ea496326e27d11d42817c5bef01a0d4ec179",
+      "size": 33672
+    },
+    {
+      "path": "test/core/project/projectIndexer.test.js",
+      "sha256": "7768d6fc1d3b1071c81fbc1232003030c55b9ae056d44ad9996155121bc2ee87",
+      "size": 33042
+    },
+    {
+      "path": "test/client/services/indexClient.test.js",
+      "sha256": "9d13f2bb07a4c214e208b9cfb215182bf5bbd8d510a2442dc789430abd94944f",
+      "size": 33979
+    },
+    {
+      "path": "test/client/providers/entityReferenceProvider.test.js",
+      "sha256": "bfcadb7361a1e78744bc8d44ca461eba58e7fef56eb6193655813e5095f85faa",
+      "size": 8991
+    },
+    {
+      "path": "test/extension.test.js",
+      "sha256": "0de4a4c2d9ced35dc1987211f90c38e73d40a67edaa725d0e983440f145c8775",
+      "size": 488348
+    },
+    {
+      "path": "test/scripts/definitionRegistryProofGenerator.test.js",
+      "sha256": "0116e1249e098e9a83c1c605440472f09183ae6b7fe9106c4dfb2979865c8e5b",
+      "size": 2060
+    }
+  ],
+  "summary": {
+    "bidirectionalProofGroups": 11,
+    "coordinates": 86,
+    "navigationBlocked": 70,
+    "navigationPassed": 21,
+    "relations": 91,
+    "scannerMissing": 0,
+    "scannerPassed": 91
+  },
+  "contentSha256": "42a2ea82ee03c3534d2b85fdcd3efd9659fcc5f57d7c89946a7cd7350ac124bf"
+}

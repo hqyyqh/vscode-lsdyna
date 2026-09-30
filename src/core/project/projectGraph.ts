@@ -65,6 +65,7 @@ interface IncludeEntryNode {
     keywordLine?: number;
     transform?: any;
     parameterizedFileName?: boolean;
+    inputFormatOverride?: 'long' | 'standard';
 }
 
 interface MissingFileRecord {
@@ -79,6 +80,7 @@ interface MissingFileRecord {
     keywordLine?: number;
     transform?: any;
     parameterizedFileName?: boolean;
+    inputFormatOverride?: 'long' | 'standard';
 }
 
 interface CycleRecord {
@@ -233,6 +235,7 @@ class ProjectGraph {
                 keywordLine: record.keywordLine,
                 transform: record.transform,
                 parameterizedFileName: record.parameterizedFileName,
+                inputFormatOverride: record.inputFormatOverride,
             };
             this.addIncludeEntry(record.fromFile, entry);
             this.addIncludeOccurrence(record.fromFile, entry);

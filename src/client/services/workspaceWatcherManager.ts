@@ -1,4 +1,4 @@
-const BUILT_IN_EXTENSIONS = ['.k', '.key', '.dyna', '.asc'];
+const BUILT_IN_EXTENSIONS = ['.k', '.key', '.dyna'];
 const VALID_EXTENSION = /^\.[a-z0-9][a-z0-9._-]*$/i;
 const FORBIDDEN_GLOB_CHARACTERS = /[\\/*?\[\]{}]/;
 

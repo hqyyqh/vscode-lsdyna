@@ -3,6 +3,10 @@ const i18n = require('../i18n');
 const { getAliases } = require('../keywordUtils');
 const keywordSchema = require('../keywordSchema');
 const { classifyKeywordLine } = require('./keywordLine');
+const {
+    classifyOpaqueCommentDirective,
+    isColumnZeroKeywordBoundary,
+} = require('./opaqueCommentRange');
 
 let validKeywords = new Set();
 let isInitialized = false;
@@ -61,8 +65,15 @@ function builtInKeywordMatches(keyword, schema) {
  */
 function findEndDirectiveLine(document) {
     if (!document || typeof document.lineCount !== 'number') return 0;
+    let opaqueActive = false;
     for (let i = 0; i < document.lineCount; i++) {
-        const classification = classifyKeywordLine(document.lineAt(i).text);
+        const text = document.lineAt(i).text;
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(text)) continue;
+            opaqueActive = false;
+        }
+        if (classifyOpaqueCommentDirective(text)) opaqueActive = true;
+        const classification = classifyKeywordLine(text);
         if (classification.isKeyword && classification.indent === 0
             && classification.normalizedKeyword === '*END') {
             return i;
@@ -131,8 +142,14 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
     // not beyond, so that content never produces unknown-keyword false positives.
     const scanUpperBound = Math.min(document.lineCount, findEndDirectiveLine(document) + 1);
 
+    let opaqueActive = false;
     for (let i = 0; i < scanUpperBound; i++) {
         const line = document.lineAt(i);
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(line.text)) continue;
+            opaqueActive = false;
+        }
+        if (classifyOpaqueCommentDirective(line.text)) opaqueActive = true;
         const classification = classifyKeywordLine(line.text);
         if (!classification.isKeyword) continue;
         

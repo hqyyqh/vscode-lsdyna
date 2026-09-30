@@ -6,6 +6,11 @@ export interface KeywordLineClassification {
     hasLowercase?: boolean;
 }
 
+
+export function isKeywordCommentLine(text: string): boolean {
+    return /^ *\$/.test(text);
+}
+
 export function classifyKeywordLine(text: string): KeywordLineClassification {
     let index = 0;
     while (index < text.length && (text[index] === ' ' || text[index] === '\t')) {

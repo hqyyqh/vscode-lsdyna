@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Sidebar following:** Keyword Index and Entity References start with cursor following off on every extension launch. Hidden views defer their work; explicit queries and refresh remain available.
+- **Entity references:** Clearer notices for ambiguous, incomplete and interrupted queries, with recovery actions and fewer repeated details. Internal diagnostic names are no longer shown as ordinary help.
+- **Repeated records:** Keyword Manager editing now supports verified standard-format records in `*LOAD_POINT_UVW`, `*LOAD_POINT_UVW_SET`, `*INTERFACE_COMPENSATION_3D_FLANGE`, `*ELEMENT_SEATBELT` and `*ELEMENT_TSHELL`. This does not extend those rules to LONG, I10 or comma formats.
+- **Editor responsiveness:** Initial field preparation runs asynchronously, and change-mark comparisons focus on edited regions. Extensive rewrites may use approximate line marks; file contents, Save and Undo are unchanged.
+- **Documentation:** English and Chinese workflows use current action names, explain language settings and editing limits, and separate everyday guidance from implementation details.
+
+These changes are not a publication or release-acceptance announcement.
+
+## [3.2.0] - Local release candidate
+
+### Added
+- Native field layouts and source-bound semantic data, project reference queries, manual evidence and structural checks.
+- Keyword Manager with native forms, separate drafts, shared-byte previews and explicit application.
+- Read-only large-file windows, search, ID queries, paged keyword layouts and cursor following.
+
+### Fixed
+- COMMENT boundaries, standard/LONG/I10 handling, empty fields and conditional/repeated records.
+- Automatic edit guards for OS read-only files, stale versions, closed/replaced documents and invalid drafts.
+- Hover command trust, asynchronous scan identity, scanner-version drift and oversized IPC messages.
+- Closed-manager background work, bounded cache admission, runtime manifest size and temporary-file packaging leaks.
+- Six dependency advisories through a separate lockfile update.
+
+### Release status
+- This version is a local candidate. No marketplace publication, Git tag or master merge is implied.
+- See `SUPPORT.md` for read/navigation/edit boundaries. Platform and package acceptance are recorded separately.
+
 ## [3.1.5] - 2026-08-06
 
 ### Added

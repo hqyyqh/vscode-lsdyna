@@ -100,7 +100,7 @@ MIXED_TERM_RULES = {
         r"有效相变应力|合力法向力|作用力合力|插入件 1|"
         r"节点发射逻辑|实体力学求解器|引导刚体|充电状态（SOC）|"
         r"电流沿电荷方向流动|干燥颗粒|覆盖真实厚度|"
-        r"x 轴（x 轴）|I 型模态阻尼力"
+        r"x 轴（x 轴）|I 型模态阻尼力|系泊约束"
     ),
     # Final user-facing translations must not contain audit/process notes.
     "process_annotation_residue": re.compile(

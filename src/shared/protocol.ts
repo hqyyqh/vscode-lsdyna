@@ -35,17 +35,25 @@ const GET_MANIFEST_ENTRIES_REQUEST = 'lsdyna/getManifestEntries';
 const GET_CACHE_STATS_REQUEST = 'lsdyna/getCacheStats';
 
 /**
+ * Explicit request to clear memory, project-snapshot, and per-file scan caches.
+ */
+const CLEAR_CACHES_REQUEST = 'lsdyna/clearCaches';
+
+/**
  * Notification informing the client about partial scan progress during project loading.
  * @type {string}
  */
 const SCAN_PROGRESS_NOTIFICATION = 'lsdyna/scanProgress';
+const SNAPSHOT_REFERENCES_NOTIFICATION = 'lsdyna/snapshotReferences';
 
 module.exports = {
     LOAD_PROJECT_SNAPSHOT_REQUEST,
     INVALIDATE_NOTIFICATION,
     GET_MANIFEST_ENTRIES_REQUEST,
     GET_CACHE_STATS_REQUEST,
+    CLEAR_CACHES_REQUEST,
     SCAN_PROGRESS_NOTIFICATION,
+    SNAPSHOT_REFERENCES_NOTIFICATION,
 };
 
 export {};

@@ -1,0 +1,30 @@
+{
+  "kind": "dynasense-exact-definition-scanner-handoff-build-report",
+  "output": {
+    "bytes": 6912,
+    "contentSha256": "6f4a79956f099197b0cbfbcb23bdef466c2c45b4e10f519690a96873bcf073aa",
+    "path": "keywords/exact_definition_scanner_handoff.json",
+    "sha256": "4c29bb3ed6546f95ee0a56f947dc1b57b122fae64125703daaca54be80cd7364"
+  },
+  "permissions": {
+    "completenessClaimPermission": false,
+    "definitionRegistryPermission": false,
+    "f12Permission": false,
+    "pluginRuntimePermission": false,
+    "referenceProviderPermission": false,
+    "scannerPermission": false
+  },
+  "schemaVersion": 1,
+  "source": {
+    "authorityLockSha256": "54c97313a989aa69c56c7fce818f90315fd78826f2a1194f4ee87dc30efa8a31",
+    "contentSha256": "e1f880048b7b13d852baf71e7d26b79ecb471f251a17c7406d18f0f4feb62f09",
+    "manifestSha256": "8fe9538107207bac67d995110f0b3de983bcc31587b1dae1ffec42a3c1aba05a",
+    "standaloneCommit": "a8c1b356b57edce44b88eed638668ef5ab837eec"
+  },
+  "summary": {
+    "descriptors": 5,
+    "integerOnlyDescriptors": 5,
+    "numericFixtureObligations": 20,
+    "scannerEligibleDescriptors": 0
+  }
+}

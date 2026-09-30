@@ -800,7 +800,7 @@ describe('cardCellEditGuard', () => {
         }]), null);
     });
 
-    it('A+D: empty space-wall row Delete plans line removal to prev last field', () => {
+    it('collapses an empty space-wall row to a real blank line', () => {
         const prev = buildLine('1', '2', '3');
         const empty = buildLine('', '', '');
         const document = fakeDoc(['*SET_SEGMENT', prev, empty]);
@@ -822,17 +822,15 @@ describe('cardCellEditGuard', () => {
             'right',
         );
         assert.ok(plan);
-        assert.strictEqual(plan.deleteLine, true);
+        assert.ok(!plan.deleteLine);
         assert.strictEqual(plan.lineNum, 2);
-        assert.strictEqual(plan.targetLine, 1);
-        assert.ok(plan.markA);
-        assert.strictEqual(plan.markA.fieldIndex, 2);
-        // Last field of CARD3 is [20, 30); keep-separator starts at 21 when prev field has value
-        assert.strictEqual(plan.selEnd, 30);
-        assert.ok(plan.selStart === 20 || plan.selStart === 21);
+        assert.strictEqual(plan.newText, '');
+        assert.strictEqual(plan.selStart, 0);
+        assert.strictEqual(plan.selEnd, 0);
+        assert.strictEqual(plan.clearNav, true);
     });
 
-    it('A+D: empty row Backspace also deletes the line', () => {
+    it('collapses a space-wall row on Backspace without deleting another card', () => {
         const prev = buildLine('10', '20', '30');
         const empty = '                              '; // space wall
         const document = fakeDoc(['*NODE', prev, empty]);
@@ -852,9 +850,12 @@ describe('cardCellEditGuard', () => {
             'left',
         );
         assert.ok(plan);
-        assert.strictEqual(plan.deleteLine, true);
-        assert.strictEqual(plan.targetLine, 1);
-        assert.strictEqual(plan.markA.fieldIndex, 2);
+        assert.ok(!plan.deleteLine);
+        assert.strictEqual(plan.lineNum, 2);
+        assert.strictEqual(plan.newText, '');
+        assert.strictEqual(plan.selStart, 0);
+        assert.strictEqual(plan.selEnd, 0);
+        assert.strictEqual(plan.clearNav, true);
     });
 
     it('A+D: whole-line selection falls through (null plan)', () => {
@@ -903,7 +904,7 @@ describe('cardCellEditGuard', () => {
         assert.strictEqual(readCellValue(plan.newText, CARD3, 2), '3');
     });
 
-    it('A+D: empty first data line deletes with caret to line 0 start', () => {
+    it('collapses an empty first data row instead of navigating invisible fields', () => {
         const empty = buildLine('', '', '');
         const document = fakeDoc([empty]);
         const guard = createCardCellEditGuard({
@@ -918,8 +919,224 @@ describe('cardCellEditGuard', () => {
             'right',
         );
         assert.ok(plan);
-        assert.strictEqual(plan.deleteLine, true);
-        assert.strictEqual(plan.targetLine, 0);
+        assert.ok(!plan.deleteLine);
+        assert.strictEqual(plan.lineNum, 0);
+        assert.strictEqual(plan.newText, '');
+        assert.strictEqual(plan.clearNav, true);
+    });
+
+    it('hands a physical zero-length line to native Backspace/Delete', () => {
+        const document = fakeDoc(['*NODE', '']);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => CARD3,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+        const selection = {
+            start: { line: 1, character: 0 },
+            end: { line: 1, character: 0 },
+            isEmpty: true,
+        };
+
+        assert.strictEqual(guard.planDelete(document, selection, 'left'), null);
+        assert.strictEqual(guard.planDelete(document, selection, 'right'), null);
+        assert.strictEqual(guard.shouldCellEditActive({
+            document,
+            selection,
+            selections: [selection],
+        }), false);
+    });
+
+    it('does not let Delete jump across leading padding to a distant value', () => {
+        const line = buildLine('123', '2', '3');
+        const document = fakeDoc(['*NODE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => CARD3,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+        const plan = guard.planDelete(
+            document,
+            {
+                start: { line: 1, character: 0 },
+                end: { line: 1, character: 0 },
+                isEmpty: true,
+            },
+            'right',
+        );
+
+        assert.ok(plan);
+        assert.strictEqual(plan.newText, line);
+        assert.strictEqual(readCellValue(plan.newText, CARD3, 0), '123');
+        assert.strictEqual(plan.selStart, 0);
+    });
+
+    it('recognizes direct typing in filled and empty fixed-width fields', () => {
+        const line = buildLine('1', '2', '');
+        const document = fakeDoc(['*NODE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => CARD3,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+
+        const target = guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 20 },
+            end: { line: 1, character: 20 },
+            isEmpty: true,
+        });
+        assert.deepStrictEqual(target, { lineNum: 1, fieldIndex: 2, caretCol: 20 });
+
+        const ambiguous = guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 20 },
+            end: { line: 1, character: 20 },
+            isEmpty: true,
+        }, '7');
+        assert.deepStrictEqual(ambiguous, {
+            lineNum: 1,
+            fieldIndex: 2,
+            caretCol: 20,
+            ambiguousPreviousFieldIndex: 1,
+        });
+
+        assert.deepStrictEqual(guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 10 },
+            end: { line: 1, character: 10 },
+            isEmpty: true,
+        }), { lineNum: 1, fieldIndex: 1, caretCol: 10 }, 'filled field stays in its physical cell');
+
+        assert.deepStrictEqual(guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 12 },
+            end: { line: 1, character: 12 },
+            isEmpty: true,
+        }), { lineNum: 1, fieldIndex: 1, caretCol: 12 }, 'mid-cell caret stays in the current field');
+
+        assert.deepStrictEqual(guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 11 },
+            end: { line: 1, character: 13 },
+            isEmpty: false,
+        }), { lineNum: 1, fieldIndex: 1, caretCol: 13 }, 'single-cell selection stays in the current field');
+
+        assert.strictEqual(guard.getEmptyCellTypeTarget(document, {
+            start: { line: 1, character: 19 },
+            end: { line: 1, character: 21 },
+            isEmpty: false,
+        }), null, 'a cross-field selection must stay with native editing');
+    });
+
+    it('offers one semantic merge when Backspace reaches the leading pad of a filled field', () => {
+        const integerCard = CARD3.map(field => ({ ...field, t: 'integer' }));
+        let line = '';
+        line = writeCellR1(line, integerCard, 0, '95200301');
+        line = writeCellR1(line, integerCard, 1, '95200');
+        line = writeCellR1(line, integerCard, 2, '501');
+        const document = fakeDoc(['*SET_PART_LIST_TITLE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => integerCard,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+
+        const valueStart = 27;
+        const plan = guard.planDelete(
+            document,
+            {
+                start: { line: 1, character: valueStart },
+                end: { line: 1, character: valueStart },
+                isEmpty: true,
+            },
+            'left',
+        );
+
+        assert.ok(plan?.mergeLeft);
+        assert.strictEqual(plan.mergeLeft.mergedValue, '95200501');
+        assert.strictEqual(readCellValue(plan.mergeLeft.line, integerCard, 0), '95200301');
+        assert.strictEqual(readCellValue(plan.mergeLeft.line, integerCard, 1), '95200501');
+        assert.strictEqual(readCellValue(plan.mergeLeft.line, integerCard, 2), '');
+    });
+
+    it('offers the same merge when only the leading padding is selected', () => {
+        const integerCard = CARD3.map(field => ({ ...field, t: 'integer' }));
+        let line = '';
+        line = writeCellR1(line, integerCard, 0, '1');
+        line = writeCellR1(line, integerCard, 1, '95200');
+        line = writeCellR1(line, integerCard, 2, '501');
+        const document = fakeDoc(['*SET_PART_LIST_TITLE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => integerCard,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+
+        const plan = guard.planDelete(
+            document,
+            {
+                start: { line: 1, character: 20 },
+                end: { line: 1, character: 27 },
+                isEmpty: false,
+            },
+            'left',
+        );
+
+        assert.ok(plan?.mergeLeft);
+        assert.strictEqual(plan.mergeLeft.mergedValue, '95200501');
+    });
+
+    it('keeps the protective boundary behavior when adjacent values cannot merge', () => {
+        const integerCard = CARD3.map(field => ({ ...field, t: 'integer' }));
+        let line = '';
+        line = writeCellR1(line, integerCard, 0, '1');
+        line = writeCellR1(line, integerCard, 1, '123456789');
+        line = writeCellR1(line, integerCard, 2, '99');
+        const document = fakeDoc(['*SET_PART_LIST_TITLE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => integerCard,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+
+        const plan = guard.planDelete(
+            document,
+            {
+                start: { line: 1, character: 28 },
+                end: { line: 1, character: 28 },
+                isEmpty: true,
+            },
+            'left',
+        );
+
+        assert.ok(plan);
+        assert.ok(!plan.mergeLeft);
+        assert.strictEqual(plan.newText, line);
+    });
+
+    it('turns deletion of the final remaining value into a real blank line', () => {
+        const line = buildLine('1', '', '');
+        const document = fakeDoc(['*NODE', line]);
+        const guard = createCardCellEditGuard({
+            getCardFieldsForLine: () => CARD3,
+            isLsdynaDocument: () => true,
+            isKeywordLineText: (t) => /^\s*\*/.test(t),
+            isProtectEnabled: () => true,
+        });
+        const plan = guard.planDelete(
+            document,
+            {
+                start: { line: 1, character: 10 },
+                end: { line: 1, character: 10 },
+                isEmpty: true,
+            },
+            'left',
+        );
+
+        assert.ok(plan);
+        assert.strictEqual(plan.newText, '');
         assert.strictEqual(plan.clearNav, true);
     });
 

@@ -192,7 +192,7 @@ describe('ManualSidebarProvider', () => {
         assert.ok(/#toc\.hidden\s*\{[^}]*display\s*:\s*none/.test(html), 'hidden toc must not leave a flex gap');
     });
 
-    it('follows the extension language setting and reserves room for full search-mode labels', () => {
+    it('uses localized compact search labels with descriptive tooltips', () => {
         const originalGetConfiguration = vscode.workspace.getConfiguration;
         let language = 'en';
         vscode.workspace.getConfiguration = () => ({
@@ -208,17 +208,19 @@ describe('ManualSidebarProvider', () => {
             provider.refresh(repository);
 
             assert.ok(view.webview.html.includes('<html lang="en">'));
-            assert.ok(view.webview.html.includes('>Keyword</button>'));
+            assert.ok(view.webview.html.includes('>Keyword</option>'));
             assert.ok(view.webview.html.includes('Full text'));
+            assert.ok(view.webview.html.includes('Search keywords and titles only'));
+            assert.ok(view.webview.html.includes('aria-label="Search scope"'));
             assert.ok(!view.webview.html.includes('>KW</button>'));
-            assert.match(view.webview.html, /\.search-bar input\s*\{[^}]*padding:\s*4px 84px 4px 8px/s);
-            assert.match(view.webview.html, /\.search-mode-toggle\s*\{[^}]*width:\s*76px/s);
+            assert.match(view.webview.html, /\.search-bar input\s*\{[^}]*padding:\s*2px 6px/s);
+            assert.match(view.webview.html, /\.search-mode-toggle\s*\{[^}]*max-width:\s*100%/s);
 
             language = 'zh-cn';
             i18n.updateLanguage();
             provider.refreshUiLanguage();
             assert.ok(view.webview.html.includes('<html lang="zh-CN">'));
-            assert.ok(view.webview.html.includes('>关键字</button>'));
+            assert.ok(view.webview.html.includes('>关键字</option>'));
             assert.ok(view.webview.html.includes('搜索手册正文'));
         } finally {
             vscode.workspace.getConfiguration = originalGetConfiguration;

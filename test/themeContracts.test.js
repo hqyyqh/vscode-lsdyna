@@ -35,7 +35,8 @@ describe('theme contracts', () => {
 
     it('covers every schema-backed INCLUDE path card before numeric tokenization', () => {
         const grammar = readJson('syntaxes/lsdyna.tmLanguage.json');
-        assert.equal(grammar.patterns[0].include, '#include_path_blocks');
+        assert.equal(grammar.patterns[0].include, '#opaque_comment_blocks');
+        assert.equal(grammar.patterns[1].include, '#include_path_blocks');
 
         const blocks = grammar.repository.include_path_blocks.patterns;
         const [repeatableBlock, firstCardBlock, secondCardBlock] = blocks;
@@ -82,6 +83,21 @@ describe('theme contracts', () => {
         assert.ok(covered.includes('INCLUDE_TRANSFORM_BINARY'));
         assert.ok(covered.includes('INCLUDE_MULTISCALE'));
         assert.ok(covered.length >= 40, 'expected the complete frozen INCLUDE path-keyword family');
+    });
+
+    it('gives column-zero COMMENT ranges first priority with keyword and block-comment scopes', () => {
+        const grammar = readJson('syntaxes/lsdyna.tmLanguage.json');
+        const block = grammar.repository.opaque_comment_blocks.patterns[0];
+
+        assert.equal(grammar.patterns[0].include, '#opaque_comment_blocks');
+        assert.equal(block.beginCaptures['1'].name, 'keyword.control.lsdyna');
+        assert.equal(block.contentName, 'comment.block.lsdyna');
+        assert.match(block.begin, /^\^/);
+        assert.match(block.begin, /COMMENT/);
+        assert.match(block.begin, /NOECHO/);
+        assert.match(block.end, /\^\\\*/);
+        assert.ok(!block.end.includes('[ \\t]*'), 'only a column-zero asterisk may terminate COMMENT');
+        assert.deepEqual(block.patterns, undefined, 'opaque bodies must not retokenize nested syntax');
     });
 
     it('lets editor rulers inherit editorRuler.foreground instead of forcing colors', () => {

@@ -11,7 +11,7 @@
         "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
     "icon": "images/extension-icon.png",
-    "version": "3.1.5",
+    "version": "3.2.0",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -31,6 +31,8 @@
         "onCommand:extension.searchIncludeTree",
         "onCommand:extension.searchKeywordIndex",
         "onCommand:extension.keywordIndexSetLocal",
+        "onCommand:extension.keywordIndexChooseScope",
+        "onCommand:extension.keywordIndexRefresh",
         "onCommand:extension.addCustomValidKeyword",
         "onCommand:extension.manageCustomValidKeywords",
         "onCommand:extension.addAllUnknownKeywordsInFile",
@@ -58,21 +60,46 @@
         "onCommand:extension.changeMarks.previous",
         "onCommand:extension.changeMarks.resetOrigin",
         "onCommand:extension.changeMarks.diffSinceOpened",
-        "onCommand:extension.changeMarks.diffUnsaved"
+        "onCommand:extension.changeMarks.diffUnsaved",
+        "onCommand:extension.searchLsdynaReferenceInWorkspace",
+        "onCommand:extension.queryLsdynaEntityId",
+        "onCommand:extension.entityReferences.refresh",
+        "onCommand:extension.entityReferences.pin",
+        "onCommand:extension.entityReferences.unpin",
+        "onCommand:extension.entityReferences.remove",
+        "onCommand:extension.entityReferences.clear",
+        "onCommand:extension.entityReferences.next",
+        "onCommand:extension.entityReferences.previous",
+        "onCommand:extension.entityReferences.openSide",
+        "onCommand:extension.entityReferences.openCurrent",
+        "onCommand:extension.clearProjectIndexCaches",
+        "onCommand:extension.checkKeywordStructure",
+        "onCommand:extension.addVerifiedConditionalCards",
+        "onCommand:extension.pickOfficialFieldValue",
+        "onCommand:extension.keywordIndexChooseLayout",
+        "onCommand:extension.keywordIndexToggleFollow",
+        "onCommand:extension.openLsdynaLargeFileViewer",
+        "onCustomEditor:lsdyna.largeFileViewer",
+        "onCommand:extension.keywordOptions.apply",
+        "onCommand:extension.keywordOptions.reset",
+        "onCommand:extension.keywordOptions.refresh",
+        "onCommand:extension.keywordOptions.openEvidence"
     ],
-    "main": "./out/extension.js",
+    "main": "./out/client/bootstrap.js",
     "categories": [
         "Programming Languages"
     ],
     "scripts": {
-        "compile": "tsc -p . && npm run build:field-help-delta",
+        "compile": "tsc -p . && npm run build:runtime-data",
         "build:field-help-delta": "node scripts/generate-field-help-zh-delta.cjs",
-        "check:contracts": "node scripts/validate-project-contracts.cjs",
+        "check:contracts": "node scripts/validate-public-source-contracts.cjs",
         "check:field-data-zh": "python keywords/validate_field_data_translation.py --check-content && python keywords/audit_field_data_quality.py",
-        "check:package-contents": "node scripts/validate-package-contents.cjs",
-        "build:webview": "vite build --config webview/manual-reader/vite.config.ts",
-        "typecheck:webview": "tsc --noEmit -p webview/manual-reader/tsconfig.json",
-        "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts",
+        "check:native-help-zh": "python keywords/validate_native_help_translation.py",
+        "check:manual-semantics-zh": "python keywords/validate_manual_semantics_translation.py",
+        "check:package-contents": "node scripts/package-hover-release.cjs out/package-content-check.vsix",
+        "build:webview": "vite build --config webview/manual-reader/vite.config.ts && vite build --config webview/entity-references/vite.config.ts && vite build --config webview/keyword-options/vite.config.ts && vite build --config webview/large-file-viewer/vite.config.ts",
+        "typecheck:webview": "tsc --noEmit -p webview/manual-reader/tsconfig.json && tsc --noEmit -p webview/entity-references/tsconfig.json && tsc --noEmit -p webview/keyword-options/tsconfig.json && tsc --noEmit -p webview/large-file-viewer/tsconfig.json",
+        "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts && vitest run --config webview/entity-references/vitest.config.ts && vitest run --config webview/keyword-options/vitest.config.ts && vitest run --config webview/large-file-viewer/vitest.config.ts",
         "pretest": "npm run build:webview",
         "watch": "tsc -watch -p .",
         "test": "npm run compile && mocha --require test/register-out.js test/**/*.test.js",
@@ -81,8 +108,12 @@
         "test:editor-safety:vehicles": "npm run compile && node scripts/run-editor-safety-vehicle-host.cjs",
         "test:editor-safety:large-files": "npm run compile && node scripts/run-editor-safety-large-file-host.cjs",
         "test:scanner-benchmark": "npm run compile && mocha --require test/register-out.js test/core/scanner/scannerBenchmark.test.js",
-        "package": "npm run vscode:prepublish && npm run check:package-contents && vsce package",
-        "vscode:prepublish": "npm run build:webview && npm run typecheck:webview && npm run compile"
+        "package": "npm run vscode:prepublish && node scripts/package-hover-release.cjs",
+        "vscode:prepublish": "npm run build:webview && npm run typecheck:webview && npm run compile",
+        "build:field-schema-runtime": "node scripts/generate-field-schema-runtime.cjs",
+        "build:field-help-runtime": "node scripts/generate-field-help-runtime.cjs",
+        "build:runtime-data": "node scripts/build-public-runtime-data.cjs",
+        "build": "npm run vscode:prepublish"
     },
     "devDependencies": {
         "@testing-library/jest-dom": "^6.9.1",
@@ -97,6 +128,7 @@
         "@vscode-elements/elements": "^2.5.1",
         "@vscode/test-electron": "^2.5.2",
         "@vscode/vsce": "^3.9.2",
+        "esbuild": "0.28.2",
         "github-markdown-css": "^5.9.0",
         "jsdom": "^29.1.1",
         "katex": "^0.16.47",
@@ -159,6 +191,11 @@
                     "type": "webview",
                     "id": "lsdynaManuals",
                     "name": "%views.lsdynaManuals.name%"
+                },
+                {
+                    "type": "webview",
+                    "id": "lsdynaEntityReferences",
+                    "name": "%views.lsdynaEntityReferences.name%"
                 }
             ]
         },
@@ -188,7 +225,16 @@
                 "editor.renderWhitespace": "all",
                 "editor.insertSpaces": true,
                 "editor.detectIndentation": false,
-                "editor.rulers": [10, 20, 30, 40, 50, 60, 70, 80]
+                "editor.rulers": [
+                    10,
+                    20,
+                    30,
+                    40,
+                    50,
+                    60,
+                    70,
+                    80
+                ]
             }
         },
         "languages": [
@@ -243,22 +289,6 @@
                 "title": "%commands.selectKeyword.title%"
             },
             {
-                "command": "extension.lsdynaShiftTab",
-                "title": "%commands.lsdynaShiftTab.title%"
-            },
-            {
-                "command": "extension.lsdynaSelectCell",
-                "title": "%commands.lsdynaSelectCell.title%"
-            },
-            {
-                "command": "extension.lsdynaLineComment",
-                "title": "%commands.lsdynaLineComment.title%"
-            },
-            {
-                "command": "extension.lsdynaFormatSelection",
-                "title": "%commands.lsdynaFormatSelection.title%"
-            },
-            {
                 "command": "extension.jumpToNextKeyword",
                 "title": "%commands.jumpToNextKeyword.title%",
                 "icon": "$(arrow-down)"
@@ -287,6 +317,16 @@
                 "command": "extension.searchKeywordIndex",
                 "title": "%commands.searchKeywordIndex.title%",
                 "icon": "$(search)"
+            },
+            {
+                "command": "extension.keywordIndexChooseScope",
+                "title": "%commands.keywordIndexChooseScope.title%",
+                "icon": "$(scope)"
+            },
+            {
+                "command": "extension.keywordIndexRefresh",
+                "title": "%commands.keywordIndexRefresh.title%",
+                "icon": "$(refresh)"
             },
             {
                 "command": "extension.keywordIndexSetLocal",
@@ -349,11 +389,6 @@
                 "category": "LS-DYNA"
             },
             {
-                "command": "extension.lsdynaChooseKeywordOptions",
-                "title": "%commands.lsdynaChooseKeywordOptions.title%",
-                "category": "LS-DYNA"
-            },
-            {
                 "command": "extension.configureManualsDir",
                 "title": "%commands.configureManualsDir.title%",
                 "category": "LS-DYNA"
@@ -389,18 +424,6 @@
                 "category": "LS-DYNA"
             },
             {
-                "command": "extension.lsdynaTab",
-                "title": "%commands.lsdynaTab.title%"
-            },
-            {
-                "command": "extension.lsdynaCellDeleteRight",
-                "title": "%commands.lsdynaCellDeleteRight.title%"
-            },
-            {
-                "command": "extension.lsdynaCellDeleteLeft",
-                "title": "%commands.lsdynaCellDeleteLeft.title%"
-            },
-            {
                 "command": "extension.changeMarks.next",
                 "title": "%commands.changeMarks.next.title%",
                 "category": "LS-DYNA"
@@ -424,6 +447,156 @@
                 "command": "extension.changeMarks.diffUnsaved",
                 "title": "%commands.changeMarks.diffUnsaved.title%",
                 "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.searchLsdynaReferenceInWorkspace",
+                "title": "%commands.searchLsdynaReferenceInWorkspace.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna"
+            },
+            {
+                "command": "extension.queryLsdynaEntityId",
+                "title": "%commands.queryLsdynaEntityId.title%",
+                "category": "LS-DYNA",
+                "icon": "$(search)"
+            },
+            {
+                "command": "extension.entityReferences.refresh",
+                "title": "%commands.entityReferences.refresh.title%",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "extension.entityReferences.pin",
+                "title": "%commands.entityReferences.pin.title%",
+                "icon": "$(pin)"
+            },
+            {
+                "command": "extension.entityReferences.unpin",
+                "title": "%commands.entityReferences.unpin.title%",
+                "icon": "$(pinned-dirty)"
+            },
+            {
+                "command": "extension.entityReferences.remove",
+                "title": "%commands.entityReferences.remove.title%",
+                "icon": "$(close)"
+            },
+            {
+                "command": "extension.entityReferences.clear",
+                "title": "%commands.entityReferences.clear.title%",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "extension.entityReferences.next",
+                "title": "%commands.entityReferences.next.title%",
+                "icon": "$(arrow-down)"
+            },
+            {
+                "command": "extension.entityReferences.previous",
+                "title": "%commands.entityReferences.previous.title%",
+                "icon": "$(arrow-up)"
+            },
+            {
+                "command": "extension.entityReferences.openSide",
+                "title": "%commands.entityReferences.openSide.title%",
+                "icon": "$(split-horizontal)"
+            },
+            {
+                "command": "extension.entityReferences.openCurrent",
+                "title": "%commands.entityReferences.openCurrent.title%",
+                "icon": "$(go-to-file)"
+            },
+            {
+                "command": "extension.clearProjectIndexCaches",
+                "title": "%commands.clearProjectIndexCaches.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.checkKeywordStructure",
+                "title": "%commands.checkKeywordStructure.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna"
+            },
+            {
+                "command": "extension.lsdynaShiftTab",
+                "title": "%commands.lsdynaShiftTab.title%"
+            },
+            {
+                "command": "extension.lsdynaSelectCell",
+                "title": "%commands.lsdynaSelectCell.title%"
+            },
+            {
+                "command": "extension.lsdynaLineComment",
+                "title": "%commands.lsdynaLineComment.title%"
+            },
+            {
+                "command": "extension.lsdynaFormatSelection",
+                "title": "%commands.lsdynaFormatSelection.title%",
+                "enablement": "editorLangId == 'lsdyna'"
+            },
+            {
+                "command": "extension.addVerifiedConditionalCards",
+                "title": "%commands.addVerifiedConditionalCards.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna"
+            },
+            {
+                "command": "extension.pickOfficialFieldValue",
+                "title": "%commands.pickOfficialFieldValue.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna"
+            },
+            {
+                "command": "extension.lsdynaTab",
+                "title": "%commands.lsdynaTab.title%"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteRight",
+                "title": "%commands.lsdynaCellDeleteRight.title%"
+            },
+            {
+                "command": "extension.lsdynaCellDeleteLeft",
+                "title": "%commands.lsdynaCellDeleteLeft.title%"
+            },
+            {
+                "command": "extension.lsdynaChooseKeywordOptions",
+                "title": "%commands.lsdynaChooseKeywordOptions.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.keywordIndexChooseLayout",
+                "title": "%commands.keywordIndexChooseLayout.title%",
+                "icon": "$(list-selection)"
+            },
+            {
+                "command": "extension.keywordIndexToggleFollow",
+                "title": "%commands.keywordIndexToggleFollow.title%",
+                "icon": "$(target)"
+            },
+            {
+                "command": "extension.openLsdynaLargeFileViewer",
+                "title": "%commands.openLsdynaLargeFileViewer.title%",
+                "category": "LS-DYNA",
+                "icon": "$(open-preview)"
+            },
+            {
+                "command": "extension.keywordOptions.apply",
+                "title": "%commands.keywordOptions.apply.title%",
+                "icon": "$(check)"
+            },
+            {
+                "command": "extension.keywordOptions.reset",
+                "title": "%commands.keywordOptions.reset.title%",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "extension.keywordOptions.refresh",
+                "title": "%commands.keywordOptions.refresh.title%",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "extension.keywordOptions.openEvidence",
+                "title": "%commands.keywordOptions.openEvidence.title%",
+                "icon": "$(book)"
             }
         ],
         "keybindings": [
@@ -438,14 +611,24 @@
                 "when": "editorLangId == 'lsdyna'"
             },
             {
+                "command": "extension.changeMarks.next",
+                "key": "alt+f5",
+                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+            },
+            {
+                "command": "extension.changeMarks.previous",
+                "key": "shift+alt+f5",
+                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+            },
+            {
                 "command": "extension.lsdynaTab",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !editorHasMultipleSelections && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaShiftTab",
                 "key": "shift+tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !editorHasMultipleSelections && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaSelectCell",
@@ -455,22 +638,42 @@
             {
                 "command": "extension.lsdynaCellDeleteRight",
                 "key": "delete",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
             },
             {
                 "command": "extension.lsdynaCellDeleteLeft",
                 "key": "backspace",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
             },
             {
-                "command": "extension.changeMarks.next",
-                "key": "alt+f5",
-                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+                "command": "selectNextSuggestion",
+                "key": "tab",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
             },
             {
-                "command": "extension.changeMarks.previous",
-                "key": "shift+alt+f5",
-                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+                "command": "selectPrevSuggestion",
+                "key": "shift+tab",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
+            },
+            {
+                "command": "acceptSelectedSuggestion",
+                "key": "enter",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
+            },
+            {
+                "command": "extension.lsdynaCancelInlineEditChoice",
+                "key": "delete",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
+            },
+            {
+                "command": "extension.lsdynaCancelInlineEditChoice",
+                "key": "backspace",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
+            },
+            {
+                "command": "extension.lsdynaCancelInlineEditChoice",
+                "key": "escape",
+                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
             },
             {
                 "command": "extension.lsdynaLineComment",
@@ -648,8 +851,7 @@
                     "default": [
                         ".k",
                         ".key",
-                        ".dyna",
-                        ".asc"
+                        ".dyna"
                     ],
                     "description": "%config.additionalExtensions.description%"
                 },
@@ -715,6 +917,51 @@
                         "%config.include.pathCaseCheck.enumDescriptions.strict%"
                     ],
                     "description": "%config.include.pathCaseCheck.description%"
+                },
+                "lsdyna.cache.memoryMaxMiB": {
+                    "type": "number",
+                    "default": 48,
+                    "minimum": 16,
+                    "maximum": 64,
+                    "description": "%config.cache.memoryMaxMiB.description%"
+                },
+                "lsdyna.cache.projectSnapshotDiskMaxMiB": {
+                    "type": "number",
+                    "default": 256,
+                    "minimum": 32,
+                    "maximum": 256,
+                    "description": "%config.cache.projectSnapshotDiskMaxMiB.description%"
+                },
+                "lsdyna.cache.fileScanDiskMaxMiB": {
+                    "type": "number",
+                    "default": 256,
+                    "minimum": 32,
+                    "maximum": 256,
+                    "description": "%config.cache.fileScanDiskMaxMiB.description%"
+                },
+                "lsdyna.cache.fileScanMemoryMaxMiB": {
+                    "type": "number",
+                    "default": 16,
+                    "minimum": 4,
+                    "maximum": 16,
+                    "description": "%config.cache.fileScanMemoryMaxMiB.description%"
+                },
+                "lsdyna.cache.maxAgeDays": {
+                    "type": "number",
+                    "default": 30,
+                    "minimum": 1,
+                    "maximum": 30,
+                    "description": "%config.cache.maxAgeDays.description%"
+                },
+                "lsdyna.clearAutoIndentOnEnter": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.clearAutoIndentOnEnter.description%"
+                },
+                "lsdyna.keywordManager.allowUnauditedCatalog": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.keywordManager.allowUnauditedCatalog.description%"
                 }
             }
         },
@@ -736,27 +983,32 @@
                     "group": "navigation@1"
                 },
                 {
-                    "command": "extension.scanKeywordIndex",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'local'",
+                    "command": "extension.keywordIndexChooseScope",
+                    "when": "view == lsdynaKeywordIndex",
                     "group": "navigation@2"
                 },
                 {
-                    "command": "extension.keywordIndexSetLocal",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'recursive'",
-                    "group": "navigation@2"
+                    "command": "extension.keywordIndexRefresh",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "extension.entityReferences.refresh",
+                    "when": "view == lsdynaEntityReferences",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "extension.keywordIndexChooseLayout",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "1_layout@1"
+                },
+                {
+                    "command": "extension.keywordIndexToggleFollow",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "navigation@4"
                 }
             ],
             "editor/context": [
-                {
-                    "command": "extension.lsdynaLineComment",
-                    "when": "editorLangId == 'lsdyna'",
-                    "group": "lsdyna@0"
-                },
-                {
-                    "command": "extension.lsdynaFormatSelection",
-                    "when": "editorLangId == 'lsdyna'",
-                    "group": "lsdyna@1"
-                },
                 {
                     "command": "extension.selectKeyword",
                     "when": "editorLangId == 'lsdyna'",
@@ -771,6 +1023,31 @@
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
                     "group": "lsdyna@4"
+                },
+                {
+                    "command": "extension.queryLsdynaEntityId",
+                    "when": "editorLangId == 'lsdyna' || resourceExtname == '.k' || resourceExtname == '.key' || resourceExtname == '.dyna'",
+                    "group": "lsdyna@0.75"
+                },
+                {
+                    "command": "extension.entityReferences.refresh",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "lsdyna@0.8"
+                },
+                {
+                    "command": "extension.lsdynaLineComment",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "lsdyna@0"
+                },
+                {
+                    "command": "extension.pickOfficialFieldValue",
+                    "when": "editorLangId == 'lsdyna' && lsdyna.hasOfficialFieldChoices",
+                    "group": "lsdyna@0.5"
+                },
+                {
+                    "command": "extension.lsdynaFormatSelection",
+                    "when": "editorLangId == 'lsdyna'",
+                    "group": "lsdyna@1"
                 }
             ],
             "editor/title": [
@@ -794,7 +1071,7 @@
                 {
                     "command": "extension.revealInExplorer",
                     "when": "view == lsdynaIncludeTree && viewItem == file || view == lsdynaKeywordIndex && viewItem == file",
-                    "group": "inline"
+                    "group": "navigation"
                 },
                 {
                     "command": "extension.copyIncludeTreeItem",
@@ -802,7 +1079,25 @@
                     "group": "1_copy@1"
                 }
             ]
-        }
+        },
+        "customEditors": [
+            {
+                "viewType": "lsdyna.largeFileViewer",
+                "displayName": "%customEditors.largeFileViewer.displayName%",
+                "selector": [
+                    {
+                        "filenamePattern": "*.key"
+                    },
+                    {
+                        "filenamePattern": "*.k"
+                    },
+                    {
+                        "filenamePattern": "*.dyna"
+                    }
+                ],
+                "priority": "option"
+            }
+        ]
     },
     "dependencies": {
         "vscode-languageclient": "^10.1.0",

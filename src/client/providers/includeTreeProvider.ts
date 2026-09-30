@@ -25,7 +25,7 @@ const {
 
 type IncludeTreeProviderOptions = {
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
-    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
 };
 
@@ -89,13 +89,13 @@ function formatShortBytes(bytes) {
 }
 
 /**
- * Formats a size in bytes into a detailed description string prefixing a block visual character.
+ * Formats a size in bytes into a detailed description string using standard units.
  * 
  * @param {number} bytes - Byte count.
- * @returns {string} Visual description string (e.g. "█ 12.3 MB").
+ * @returns {string} Visual description string (e.g. "12.3 MB").
  */
 function formatVividBytes(bytes) {
-    if (bytes === 0) return '▏ 0 B';
+    if (bytes === 0) return '0 B';
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let val = bytes;
@@ -103,13 +103,7 @@ function formatVividBytes(bytes) {
         val /= 1024;
         i++;
     }
-    let block = '▌';
-    if (bytes < 10 * 1024) {
-        block = '▏';
-    } else if (bytes >= 1024 * 1024) {
-        block = '█';
-    }
-    return `${block} ${val.toFixed(1)} ${sizes[i]}`;
+    return `${val.toFixed(1)} ${sizes[i]}`;
 }
 
 /**
@@ -274,7 +268,7 @@ function getActiveUri() {
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc']) || ['.k', '.key', '.dyna', '.asc'];
+    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna']) || ['.k', '.key', '.dyna'];
     const normalizedExtensions = configExtensions.map(e => {
         const trimmed = e.trim().toLowerCase();
         return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
@@ -299,7 +293,7 @@ function isLsdynaFile(document) {
  */
 class LsdynaIncludeTreeProvider {
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
-    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void) => Promise<any>;
+    loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
     _onDidChangeTreeData: any;
     onDidChangeTreeData: any;
@@ -338,8 +332,36 @@ class LsdynaIncludeTreeProvider {
         this.missingPaths = new Set();
     }
 
+    private treeView: any;
+
+    attachTreeView(treeView) {
+        this.treeView = treeView;
+        this.updateTreeDescription();
+    }
+
+    private updateTreeDescription() {
+        if (!this.treeView) return;
+        const source = this.root ? `${i18n.get('sidebarMainFile')}: ${path.basename(this.root.filePath)}` : '';
+        const status = this.scanPhase === 'structure' || this.scanPhase === 'references'
+            ? i18n.get('sidebarScanning')
+            : this.scanPhase === 'incomplete' ? i18n.get('sidebarIncomplete')
+            : !this.root ? i18n.get(getActiveUri() && isLsdynaUri(getActiveUri()) ? 'sidebarNotScanned' : 'sidebarOpenFile')
+            : !this.root.children?.length ? i18n.get('sidebarNoIncludes') : '';
+        this.treeView.message = [source, status].filter(Boolean).join('\n');
+    }
+
     refresh() {
+        this.updateTreeDescription();
         this._onDidChangeTreeData.fire(undefined);
+    }
+
+    clearProjectSnapshot() {
+        this.scanGeneration++;
+        this.scanPhase = "idle";
+        this.root = null;
+        this.resolvedPaths.clear();
+        this.missingPaths.clear();
+        this.refresh();
     }
 
     /**
@@ -347,6 +369,42 @@ class LsdynaIncludeTreeProvider {
      * 
      * @returns {Promise<void>}
      */
+    scanGeneration = 0;
+    scanPhase = 'idle';
+    structureRoot: any = null;
+    structureDescription: any = '';
+
+    markReferencesIncomplete() {
+        this.scanPhase = 'incomplete';
+        this.updateTreeDescription();
+        if (this.root && this.root === this.structureRoot) {
+            this.root.description = `${this.structureDescription} · ${i18n.get('scanReferencesIncomplete')}`;
+            this.refresh();
+        }
+    }
+
+    acceptStructure(snapshot, rootFile) {
+        const root = this._buildRootFromSnapshot(snapshot, rootFile);
+        if (!root) return;
+        const resolved = new Map();
+        const missing = new Set<string>();
+        const visit = (item) => {
+            const key = normalizePathKey(item.filePath);
+            if (isMissingIncludeItem(item)) missing.add(key);
+            else resolved.set(key, formatShortBytes(item.fileSizeVal || 0));
+            for (const child of item.children || []) visit(child);
+        };
+        visit(root);
+        root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+        this.structureDescription = root.description || '';
+        root.description = `${this.structureDescription} · ${i18n.get('scanReferencesPending')}`;
+        this.structureRoot = root;
+        this.root = root;
+        this.resolvedPaths = resolved;
+        this.missingPaths = missing;
+        this.refresh();
+    }
+
     async scan() {
         const uri = getActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
@@ -362,77 +420,128 @@ class LsdynaIncludeTreeProvider {
             vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
             return;
         }
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: i18n.get('scanningIncludes'), cancellable: false },
-            async (progress) => {
-                this.resolvedPaths.clear();
-                this.missingPaths.clear();
-                if (this.invalidateProjectSnapshot) {
-                    await this.invalidateProjectSnapshot(uri.fsPath);
-                }
-                if (this.loadProjectSnapshot) {
-                    const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
-                    const snapshot = await this.loadProjectSnapshot(uri.fsPath, options, (partialSnapshot) => {
-                        this.root = this._buildRootFromSnapshot(partialSnapshot, uri.fsPath);
-                        this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-                        
-                        let scannedCount = 0;
-                        if (partialSnapshot && partialSnapshot.files) {
-                            scannedCount = partialSnapshot.files.length;
-                        }
-                        console.log(`[lsdyna progress] Scanned ${scannedCount} files...`);
-                        progress.report({ message: i18n.get('scannedFilesProgress', scannedCount) });
-                        this._onDidChangeTreeData.fire(undefined);
-                    });
-                    this.root = this._buildRootFromSnapshot(snapshot, uri.fsPath);
-                    const collectPaths = (node) => {
-                        const key = normalizePathKey(node.filePath);
-                        if (node.missing) {
-                            this.missingPaths.add(key);
-                        } else {
-                            let shortSize = '';
-                            try {
-                                if (fs.existsSync(node.filePath)) {
-                                    const stats = fs.statSync(node.filePath);
-                                    shortSize = formatShortBytes(stats.size);
-                                }
-                            } catch (e) {}
-                            this.resolvedPaths.set(key, shortSize);
-                        }
-                        if (node.children) {
-                            node.children.forEach(collectPaths);
-                        }
+        const generation = ++this.scanGeneration;
+        const document = vscode.window.activeTextEditor?.document;
+        const version = document?.version;
+        const isCurrent = () => generation === this.scanGeneration &&
+            (!document || (!document.isClosed && document.version === version));
+        this.scanPhase = 'structure';
+        this.updateTreeDescription();
+        let activeCancellationToken: any = null;
+        let completedSnapshot = null;
+        try {
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Window, title: i18n.get('scanningIncludes'), cancellable: true },
+                async (progress, cancellationToken) => {
+                    const scanToken = {
+                        get isCancellationRequested() { return !isCurrent() || cancellationToken?.isCancellationRequested; },
+                        onCancellationRequested(listener) {
+                            const timer = setInterval(() => {
+                                if (scanToken.isCancellationRequested) { clearInterval(timer); listener(); }
+                            }, 25);
+                            timer.unref?.();
+                            return { dispose: () => clearInterval(timer) };
+                        },
                     };
-                    if (snapshot && snapshot.graph) {
-                        collectPaths(snapshot.graph.toTree(uri.fsPath));
+                    activeCancellationToken = scanToken;
+
+                    let nextRoot = null;
+                    const nextResolvedPaths = new Map<string, string>();
+                    const nextMissingPaths = new Set<string>();
+                    if (this.loadProjectSnapshot) {
+                        const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
+                        const snapshot = await this.loadProjectSnapshot(uri.fsPath, options, (event) => {
+                            if (!isCurrent() || cancellationToken?.isCancellationRequested) return;
+                            if (event?.type === 'structureReady') {
+                                this.acceptStructure(event.snapshot, uri.fsPath);
+                                this.scanPhase = 'references';
+                                progress.report({ message: i18n.get('scanReferencesProgress') });
+                            } else if (event?.type === 'progress') {
+                                if (event.phase === 'restarting') {
+                                    this.root = null;
+                                    this.resolvedPaths.clear(); this.missingPaths.clear();
+                                    this.refresh();
+                                }
+                                progress.report({ message: event.phase === 'references'
+                                    ? i18n.get('scanReferencesProgress') + (event.filePath ? ' ' + path.basename(event.filePath) : '')
+                                    : i18n.get('scannedFilesProgress', event.processedFiles || 0) });
+                            } else {
+                                progress.report({ message: i18n.get('scannedFilesProgress', event?.files?.length || 0) });
+                            }
+                        }, scanToken);
+                        if (!isCurrent()) return;
+                        if (cancellationToken?.isCancellationRequested) return;
+                        completedSnapshot = snapshot;
+                        nextRoot = this._buildRootFromSnapshot(snapshot, uri.fsPath);
+                        const collectPaths = (node) => {
+                            const key = normalizePathKey(node.filePath);
+                            if (node.missing) {
+                                nextMissingPaths.add(key);
+                            } else {
+                                let shortSize = '';
+                                try {
+                                    if (fs.existsSync(node.filePath)) {
+                                        const stats = fs.statSync(node.filePath);
+                                        shortSize = formatShortBytes(stats.size);
+                                    }
+                                } catch (e) {}
+                                nextResolvedPaths.set(key, shortSize);
+                            }
+                            if (node.children) node.children.forEach(collectPaths);
+                        };
+                        if (snapshot?.graph) collectPaths(snapshot.graph.toTree(uri.fsPath));
+                    } else {
+                        nextRoot = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
+                        if (cancellationToken?.isCancellationRequested) return;
+                        const collectTreePaths = (item) => {
+                            const key = normalizePathKey(item.filePath);
+                            if (item.contextValue === 'file-missing') {
+                                nextMissingPaths.add(key);
+                            } else {
+                                let shortSize = '';
+                                try {
+                                    if (fs.existsSync(item.filePath)) {
+                                        const stats = fs.statSync(item.filePath);
+                                        shortSize = formatShortBytes(stats.size);
+                                    }
+                                } catch (e) {}
+                                nextResolvedPaths.set(key, shortSize);
+                            }
+                            if (item.children) item.children.forEach(collectTreePaths);
+                        };
+                        collectTreePaths(nextRoot);
                     }
-                } else {
-                    this.root = await this._buildItem(uri.fsPath, new Set(), progress, uri.fsPath);
-                    
-                    const collectTreePaths = (item) => {
-                        const key = normalizePathKey(item.filePath);
-                        if (item.contextValue === 'file-missing') {
-                            this.missingPaths.add(key);
-                        } else {
-                            let shortSize = '';
-                            try {
-                                if (fs.existsSync(item.filePath)) {
-                                    const stats = fs.statSync(item.filePath);
-                                    shortSize = formatShortBytes(stats.size);
-                                }
-                            } catch (e) {}
-                            this.resolvedPaths.set(key, shortSize);
-                        }
-                        if (item.children) {
-                            item.children.forEach(collectTreePaths);
-                        }
-                    };
-                    collectTreePaths(this.root);
+
+                    if (!nextRoot || !isCurrent() || cancellationToken?.isCancellationRequested) return;
+                    this.scanPhase = 'complete';
+                    nextRoot.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+                    this.root = nextRoot;
+                    this.resolvedPaths = nextResolvedPaths;
+                    this.missingPaths = nextMissingPaths;
+                    this.refresh();
+                },
+            );
+        } catch (error) {
+            if (generation === this.scanGeneration) {
+                this.markReferencesIncomplete();
+                if (!isCurrent() || error?.name === 'ScanChangedError') {
+                    this.root = null; this.resolvedPaths.clear(); this.missingPaths.clear();
+                    this.refresh();
                 }
-                this.root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-                this._onDidChangeTreeData.fire(undefined);
             }
-        );
+            if (activeCancellationToken?.isCancellationRequested || error?.name === 'CancellationError') return;
+            throw error;
+        }
+        if (generation === this.scanGeneration && !isCurrent()) {
+            this.clearProjectSnapshot();
+            return null;
+        }
+        if (isCurrent() && activeCancellationToken?.isCancellationRequested) this.markReferencesIncomplete();
+        if (!isCurrent() || !this.root || (this.loadProjectSnapshot && !completedSnapshot)) return null;
+        return {
+            rootFile: this.root.filePath,
+            snapshot: completedSnapshot,
+        };
     }
 
     /**

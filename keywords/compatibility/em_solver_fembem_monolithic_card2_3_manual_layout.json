@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "id": "em-solver-fembem-monolithic-card2-3-manual-layout",
+  "version": 1,
+  "policy": "official-pdf-required-card2-3-layout-v1",
+  "scope": "Restore the reviewed Cards 2 and 3 of EM_SOLVER_FEMBEM_MONOLITHIC when upstream exposes only Card 1.",
+  "keywords": [
+    "EM_SOLVER_FEMBEM_MONOLITHIC"
+  ],
+  "upstreamGap": {
+    "expectedCardCount": 1,
+    "expectedFieldCount": 5,
+    "prefixSignatureSha256": "78adab195df6147e1ce1688648bf64ff0216c40446b3855d04e9cfd30e9e8994"
+  },
+  "alternateCompleteSignatures": [
+    "35d11c06049a3c0b7fece89dbe5aa8bcfd83de692015c7579a0cbc69b8b57f41"
+  ],
+  "cards": [
+    {
+      "physicalCardIndex": 1,
+      "fields": [
+        {
+          "name": "UNUSED",
+          "position": 0,
+          "width": 10,
+          "type": "integer",
+          "english": "",
+          "chinese": ""
+        },
+        {
+          "name": "NTSTOL",
+          "position": 10,
+          "width": 10,
+          "type": "real",
+          "english": "Solution change tolerance, absolute tolerance, and relative tolerance used during the nonlinear Newton step. They are only used when the EM model includes nonlinear magnetic materials).",
+          "chinese": "EM_SOLVER_FEMBEM_MONOLITHIC 中 Newton 非线性步使用的解变化容差、绝对容差和相对容差。仅当 EM 模型包含非线性磁性材料时使用。",
+          "default": 1e-05
+        },
+        {
+          "name": "NTATOL",
+          "position": 20,
+          "width": 10,
+          "type": "real",
+          "english": "Solution change tolerance, absolute tolerance, and relative tolerance used during the nonlinear Newton step. They are only used when the EM model includes nonlinear magnetic materials).",
+          "chinese": "EM_SOLVER_FEMBEM_MONOLITHIC 中 Newton 非线性步使用的解变化容差、绝对容差和相对容差。仅当 EM 模型包含非线性磁性材料时使用。"
+        },
+        {
+          "name": "NTRTOL",
+          "position": 30,
+          "width": 10,
+          "type": "real",
+          "english": "Solution change tolerance, absolute tolerance, and relative tolerance used during the nonlinear Newton step. They are only used when the EM model includes nonlinear magnetic materials).",
+          "chinese": "EM_SOLVER_FEMBEM_MONOLITHIC 中 Newton 非线性步使用的解变化容差、绝对容差和相对容差。仅当 EM 模型包含非线性磁性材料时使用。",
+          "default": 0.0001
+        },
+        {
+          "name": "NTMIT",
+          "position": 40,
+          "width": 10,
+          "type": "integer",
+          "english": "Maximum nonlinear iterations",
+          "chinese": "最大非线性迭代次数。",
+          "default": 20
+        }
+      ]
+    },
+    {
+      "physicalCardIndex": 2,
+      "fields": [
+        {
+          "name": "LS_ON",
+          "position": 0,
+          "width": 10,
+          "type": "integer",
+          "english": "Line search:\nEQ.0: Off\nEQ.1: On(only used for nonlinear magnetic materials)",
+          "chinese": "线搜索：\nEQ.0：关闭。\nEQ.1：开启；仅用于非线性磁性材料。",
+          "default": 0,
+          "options": [
+            "0",
+            "1"
+          ]
+        }
+      ]
+    }
+  ],
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+    "pdfSha256": "3f17ea1c4511030dbc24981af6e4ecd718d700b2b519021fa82c5d1a0ad0ef77",
+    "pdfSize": 4460313,
+    "toolVersion": "24.03.0",
+    "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "pages": [
+      {
+        "physicalPage": 583,
+        "textSha256": "36aab5e2dee25e9bbc35dbc36b363970ed3657e42b0b6a96e21b223527a6b74c",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 584,
+        "textSha256": "a9ad19e51078715267065fae0b7fd4e6c50bf2aea629ef0ae214b42a4ba27ef1",
+        "renderSha256": null
+      }
+    ]
+  },
+  "evidence": {
+    "requiredCardNumbers": [
+      1,
+      2,
+      3
+    ],
+    "card2FieldNames": [
+      "UNUSED",
+      "NTSTOL",
+      "NTATOL",
+      "NTRTOL",
+      "NTMIT"
+    ],
+    "card3FieldNames": [
+      "LS_ON"
+    ],
+    "card2Description": "Nonlinear Newton-step tolerances and iteration limit used only when the EM model includes nonlinear magnetic materials.",
+    "card3Description": "Enable or disable line search for nonlinear magnetic materials.",
+    "directFieldLayout": true,
+    "optionEvidence": false,
+    "inferenceUsed": false
+  },
+  "permissions": {
+    "schemaCardAddition": true,
+    "schemaTypeCorrection": false,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

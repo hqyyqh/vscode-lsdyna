@@ -126,9 +126,9 @@ function snapshotVisibleParameterBindings(state) {
     return bindings;
 }
 
-function resolveIntegerParameter(bindings, name, negated = false) {
+function resolveIntegerParameter(bindings, name, negated = false, allowRealInteger = false) {
     const binding = bindings && bindings.get(String(name || '').toUpperCase());
-    if (!binding || binding.valueState !== 'integer' || !Number.isSafeInteger(binding.value)) {
+    if (!binding || (binding.valueState !== 'integer' && !(allowRealInteger && binding.valueState === 'real')) || !Number.isSafeInteger(binding.value)) {
         return {
             resolved: false,
             binding: binding || null,
@@ -150,6 +150,15 @@ function resolveIntegerParameter(bindings, name, negated = false) {
     };
 }
 
+/** Layout values may be real; this does not relax integer reference IDs. */
+function resolveNumericParameter(bindings, name, negated = false) {
+    const binding = bindings && bindings.get(String(name || '').toUpperCase());
+    if (!binding || !['integer', 'real'].includes(binding.valueState) || !Number.isFinite(binding.value)) {
+        return { resolved: false, binding: binding || null, reason: binding?.reason || 'parameter-unresolved' };
+    }
+    return { resolved: true, binding, value: negated ? -binding.value : binding.value };
+}
+
 module.exports = {
     createParameterRuntimeState,
     enterParameterFile,
@@ -158,6 +167,7 @@ module.exports = {
     snapshotVisibleParameterBindings,
     getVisibleParameterBinding,
     resolveIntegerParameter,
+    resolveNumericParameter,
 };
 
 export {};

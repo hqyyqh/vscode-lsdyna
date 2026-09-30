@@ -46,6 +46,15 @@ describe('keyword aliases and default valid keywords', () => {
         assert.ok(getAliases('ALE_STRUCTURED_MULTI_MATERIAL_GROUP').includes('ALE_STRUCTURED_MULTI-MATERIAL_GROUP'));
     });
 
+    it('accepts exact manual spellings backed by the locked LS-PrePost card layout', () => {
+        const { getAliases } = require('../../src/core/keywordUtils');
+        const source = require('../../src/core/keywordSpellingAliases.json');
+        for (const item of source.aliases) {
+            assert.ok(getAliases(item.manualKeyword).includes(item.schemaKeyword), item.manualKeyword);
+            assert.ok(getAliases(item.schemaKeyword).includes(item.manualKeyword), item.schemaKeyword);
+        }
+    });
+
     it('supplies every retired hardcoded alias from generated schema metadata', () => {
         const { getAliases } = require('../../src/core/keywordUtils');
         const retiredPairs = [
@@ -275,7 +284,7 @@ describe('keyword aliases and default valid keywords', () => {
         }
     });
 
-    it('routes LS-DYNA cell navigation safely in snippets and with multiple selections', () => {
+    it('leaves Tab to snippets/inline suggestions and rejects multiple-cursor cell navigation', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
         const keybindings = packageJson.contributes.keybindings;
 
@@ -286,13 +295,35 @@ describe('keyword aliases and default valid keywords', () => {
         ]) {
             const binding = keybindings.find(item => item.command === command);
             assert.ok(binding, `${command} keybinding should exist`);
-            assert.ok(!binding.when.includes('!inSnippetMode'));
             assert.ok(binding.when.includes('lsdyna.shouldAlignTab'));
             if (command === 'extension.lsdynaSelectCell') {
+                assert.ok(!binding.when.includes('!inSnippetMode'));
                 assert.ok(!binding.when.includes('!editorHasMultipleSelections'));
             } else {
+                assert.ok(binding.when.includes('!inSnippetMode'));
+                assert.ok(binding.when.includes('!inlineSuggestionVisible'));
+                assert.ok(binding.when.includes('!inlineEditIsVisible'));
+                assert.ok(binding.when.includes('!isComposing'));
+                assert.ok(binding.when.includes('!editorTabMovesFocus'));
                 assert.ok(binding.when.includes('!editorHasMultipleSelections'));
             }
         }
+
+        for (const command of [
+            'extension.lsdynaCellDeleteLeft',
+            'extension.lsdynaCellDeleteRight',
+        ]) {
+            const binding = keybindings.find(item => item.command === command);
+            assert.ok(binding);
+            assert.ok(!binding.when.includes('!suggestWidgetVisible'));
+            assert.ok(binding.when.includes('!lsdyna.inlineEditChoiceActive'));
+        }
+
+        const choiceBindings = keybindings.filter(item =>
+            item.when && item.when.includes('lsdyna.inlineEditChoiceActive')
+        );
+        assert.ok(choiceBindings.some(item => item.key === 'enter' && item.command === 'acceptSelectedSuggestion'));
+        assert.ok(choiceBindings.some(item => item.key === 'tab' && item.command === 'selectNextSuggestion'));
+        assert.ok(choiceBindings.some(item => item.key === 'backspace' && item.command === 'extension.lsdynaCancelInlineEditChoice'));
     });
 });

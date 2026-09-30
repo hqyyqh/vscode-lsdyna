@@ -181,12 +181,14 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         sectionId: string;
         title: string;
         preview: string;
+        volumeTitle?: string;
     } {
         return {
             manualId: result.location.manualId,
             sectionId: result.location.sectionId,
             title: result.titleEn || result.location.sectionId,
             preview: result.preview || '',
+            volumeTitle: result.volumeTitle,
         };
     }
 
@@ -226,8 +228,11 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
 
         const chaptersHtml = groups.map(group => this.renderChapter(document.manualId, group, activeChapterKey)).join('');
         const openAttr = volumeOpen ? ' open' : '';
+        const title = document.title.replace(/^LS-DYNA\s+(?:dev\s+)?/i, '')
+            .replace(/^Keyword Manual (Vol [IVX]+)(?:\s*[–—-]\s*(.+))?$/,
+                (_, volume, subtitle) => `${volume} · ${subtitle || 'Keyword Manual'}`);
         return `<details class="volume" data-manual-id="${escapeHtml(document.manualId)}"${openAttr}>
-<summary class="volume__summary" title="${escapeHtml(document.title)}">${escapeHtml(document.title)}</summary>
+<summary class="volume__summary" title="${escapeHtml(document.title)}">${escapeHtml(title)}</summary>
 <div class="volume__body">${chaptersHtml}</div>
 </details>`;
     }
@@ -260,10 +265,8 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         const locale = uiLocale();
         const searchPlaceholder = escapeHtml(i18n.get('manualReaderSearchPlaceholder'));
         const searchLabel = escapeHtml(i18n.get('manualReaderSearch'));
-        const modeKeywordLabel = escapeHtml(i18n.get('manualSidebarSearchModeKeyword'));
-        const modeFulltextLabel = escapeHtml(i18n.get('manualSidebarSearchModeFulltext'));
-        const modeKeywordTitle = escapeHtml(i18n.get('manualSidebarSearchModeKeywordTitle'));
-        const modeFulltextTitle = escapeHtml(i18n.get('manualSidebarSearchModeFulltextTitle'));
+        const modeKeywordLabel = escapeHtml(i18n.get('manualReaderSearchModeKeyword'));
+        const modeFulltextLabel = escapeHtml(i18n.get('manualReaderSearchModeFulltext'));
         const noResultsText = i18n.get('manualSidebarSearchNoResults');
         const resultSingularText = i18n.get('manualSidebarSearchResultSingular');
         const resultPluralTemplate = i18n.get('manualSidebarSearchResultPlural');
@@ -271,7 +274,10 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
 <div class="search-bar">
   <div class="search-input-wrap">
     <input id="sidebar-search" type="search" placeholder="${searchPlaceholder}" aria-label="${searchLabel}" autocomplete="off" />
-    <button type="button" id="sidebar-search-mode" class="search-mode-toggle" aria-pressed="true" data-mode="keyword" title="${modeKeywordTitle}">${modeKeywordLabel}</button>
+    <select id="sidebar-search-mode" class="search-mode-toggle" aria-label="${escapeHtml(i18n.get('manualReaderSearchScope'))}">
+      <option value="keyword">${modeKeywordLabel}</option>
+      <option value="fulltext">${modeFulltextLabel}</option>
+    </select>
   </div>
 </div>
 <div id="search-panel" class="search-panel" hidden>
@@ -290,6 +296,7 @@ html, body {
 }
 body {
   color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background, transparent);
   display: flex;
   flex-direction: column;
   font-family: var(--vscode-font-family);
@@ -298,13 +305,14 @@ body {
   overflow: hidden;
   padding: 8px;
 }
-.volume { border-bottom: 1px solid var(--vscode-panel-border); margin: 0 0 2px; }
+.volume { margin: 0; }
 .volume:last-child { border-bottom: 0; }
 .volume__summary, .chapter__summary {
   cursor: pointer;
   list-style: none;
   overflow: hidden;
-  padding: 5px 4px;
+  padding: 2px 4px;
+  line-height: 22px;
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
@@ -318,7 +326,7 @@ body {
   width: 0.8em;
 }
 .volume[open] > .volume__summary::before, .chapter[open] > .chapter__summary::before { content: '▾'; }
-.volume__summary { font-weight: 600; }
+.volume__summary { font-weight: normal; }
 .volume__summary:hover, .chapter__summary:hover { background: var(--vscode-list-hoverBackground); }
 .volume__body { padding: 0 0 4px; }
 .chapter { margin: 0; }
@@ -349,54 +357,44 @@ body {
   width: 100%;
 }
 .section:hover { background: var(--vscode-list-hoverBackground); }
-.section.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.section.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; }
 .empty { color: var(--vscode-descriptionForeground); line-height: 1.5; padding: 8px; }
 .search-bar {
   background: var(--vscode-sideBar-background, transparent);
   flex: 0 0 auto;
-  margin: 0 0 8px;
-  padding-bottom: 4px;
+  margin: 0 0 6px;
 }
-.search-input-wrap { position: relative; width: 100%; }
+.search-input-wrap { display: flex; width: 100%; border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; background: var(--vscode-input-background); }
+.search-input-wrap:focus-within { border-color: var(--vscode-focusBorder); }
 .search-bar input {
   box-sizing: border-box;
-  width: 100%;
+  width: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
   color: var(--vscode-input-foreground);
   font: inherit;
-  padding: 4px 84px 4px 8px;
+  min-height: 30px;
+  padding: 2px 6px;
 }
 .search-mode-toggle {
-  position: absolute;
-  right: 3px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  box-sizing: border-box;
-  width: 76px;
-  padding: 1px 4px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 0 92px;
+  width: 92px;
+  min-height: 26px;
+  padding: 2px 6px;
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
   font: inherit;
-  font-size: 0.85em;
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
 }
-.search-mode-toggle:hover {
-  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
-  color: var(--vscode-foreground);
-}
-/* Weak selected: badge/list tokens — avoid primary button blue in dark themes */
-.search-mode-toggle[aria-pressed="true"] {
-  background: var(--vscode-badge-background, var(--vscode-list-inactiveSelectionBackground));
-  color: var(--vscode-badge-foreground, var(--vscode-foreground));
-  border-color: var(--vscode-list-inactiveSelectionBackground, transparent);
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 .search-panel {
   display: flex;
@@ -423,7 +421,7 @@ body {
   overflow: auto;
 }
 .search-result { background: transparent; border: 0; border-radius: 2px; color: inherit; cursor: pointer; display: block; font: inherit; line-height: 1.3; padding: 4px 6px; text-align: left; width: 100%; }
-.search-result:hover, .search-result:focus { background: var(--vscode-list-hoverBackground); outline: none; }
+.search-result:hover, .search-result:focus { background: var(--vscode-list-hoverBackground); }
 .search-result strong { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-result small { color: var(--vscode-descriptionForeground); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #toc {
@@ -445,8 +443,6 @@ const DEBOUNCE_MS = 250;
 const noResultsText = ${JSON.stringify(noResultsText)};
 const resultSingularText = ${JSON.stringify(resultSingularText)};
 const resultPluralTemplate = ${JSON.stringify(resultPluralTemplate)};
-const modeKeywordLabel = ${JSON.stringify(i18n.get('manualSidebarSearchModeKeyword'))};
-const modeFulltextLabel = ${JSON.stringify(i18n.get('manualSidebarSearchModeFulltext'))};
 const modeKeywordTitle = ${JSON.stringify(i18n.get('manualSidebarSearchModeKeywordTitle'))};
 const modeFulltextTitle = ${JSON.stringify(i18n.get('manualSidebarSearchModeFulltextTitle'))};
 const toc = document.getElementById('toc');
@@ -471,8 +467,7 @@ function syncSearchModeButton() {
   if (!searchModeBtn) return;
   const isKeyword = currentSearchMode() === 'keyword';
   searchModeBtn.dataset.mode = currentSearchMode();
-  searchModeBtn.setAttribute('aria-pressed', isKeyword ? 'true' : 'false');
-  searchModeBtn.textContent = isKeyword ? modeKeywordLabel : modeFulltextLabel;
+  searchModeBtn.value = currentSearchMode();
   searchModeBtn.title = isKeyword ? modeKeywordTitle : modeFulltextTitle;
 }
 
@@ -534,7 +529,9 @@ function renderResults(query, results) {
     strong.textContent = r.title || r.sectionId;
     const small = document.createElement('small');
     small.textContent = r.preview || '';
-    btn.append(strong, small);
+    const context = document.createElement('small');
+    context.textContent = r.volumeTitle || '';
+    btn.append(strong, context, small);
     searchResults.append(btn);
   }
 }
@@ -544,8 +541,8 @@ if (searchInput) {
 }
 if (searchModeBtn) {
   syncSearchModeButton();
-  searchModeBtn.addEventListener('click', () => {
-    searchMode = currentSearchMode() === 'keyword' ? 'fulltext' : 'keyword';
+  searchModeBtn.addEventListener('change', () => {
+    searchMode = searchModeBtn.value;
     syncSearchModeButton();
     scheduleSearch(true);
   });

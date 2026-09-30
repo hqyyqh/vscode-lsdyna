@@ -372,18 +372,21 @@ export function cellValueRange(
  */
 export function clearCellsIntersecting(line: string, card: CardField[], startChar: number, endChar: number): string {
     if (!card || card.length === 0) return String(line || '');
+    const original = String(line || '');
     const a = Math.min(startChar, endChar);
     const b = Math.max(startChar, endChar);
-    if (a === b) return String(line || '');
-    let out = padLineToCard(line, card);
+    if (a === b) return original;
+    let out = padLineToCard(original, card);
+    let changed = false;
     for (let i = 0; i < card.length; i++) {
         const range = cellValueRange(out, card, i);
         if (!range) continue;
         if (a < range.end && b > range.start) {
             out = clearCell(out, card, i);
+            changed = true;
         }
     }
-    return out;
+    return changed ? out : original;
 }
 
 export type InCellDeleteResult = {
@@ -395,6 +398,79 @@ export type InCellDeleteResult = {
      */
     hitBoundary?: 'left' | 'right';
 };
+
+export type MergeCellLeftResult = {
+    line: string;
+    caretCol: number;
+    leftFieldIndex: number;
+    rightFieldIndex: number;
+    leftValue: string;
+    rightValue: string;
+    mergedValue: string;
+};
+
+function normalizedFieldType(field: CardField): 'integer' | 'real' | 'string' | 'unknown' {
+    const type = String(field?.t || '').trim().toLowerCase();
+    if (['integer', 'int', 'i'].includes(type)) return 'integer';
+    if (['real', 'float', 'double', 'number', 'f'].includes(type)) return 'real';
+    if (['string', 'character', 'char', 'c'].includes(type)) return 'string';
+    return 'unknown';
+}
+
+function isValidMergedFieldValue(value: string, type: ReturnType<typeof normalizedFieldType>): boolean {
+    if (!value || /[\t\r\n\u0000-\u001f\u007f]/.test(value)) return false;
+    if (type === 'integer') return /^[+-]?\d+$/.test(value);
+    if (type === 'real') {
+        // LS-DYNA also accepts compact exponents such as 1.0-3 and 2.0+5.
+        return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:(?:[eEdD][+-]?\d+)|(?:[+-]\d+))?$/.test(value);
+    }
+    return true;
+}
+
+/**
+ * Plan an explicit semantic merge of field N into the field immediately to its
+ * left. Both physical slices stay in place: the concatenated value is written
+ * to N-1 and N is cleared, so later fields can never drift between columns.
+ */
+export function planMergeCellLeft(
+    line: string,
+    card: CardField[],
+    rightFieldIndex: number,
+): MergeCellLeftResult | null {
+    if (!isSafeCardGeometry(card)) return null;
+    if (rightFieldIndex <= 0 || rightFieldIndex >= card.length) return null;
+
+    const leftFieldIndex = rightFieldIndex - 1;
+    const leftField = card[leftFieldIndex];
+    const rightField = card[rightFieldIndex];
+    // A gap or overlap means these are not visually adjacent fixed-width cells.
+    if (leftField.p + leftField.w !== rightField.p) return null;
+
+    const leftType = normalizedFieldType(leftField);
+    const rightType = normalizedFieldType(rightField);
+    if (leftType !== rightType && leftType !== 'unknown' && rightType !== 'unknown') return null;
+
+    const leftValue = readCellValue(line, card, leftFieldIndex);
+    const rightValue = readCellValue(line, card, rightFieldIndex);
+    if (!leftValue || !rightValue) return null;
+
+    const mergedValue = leftValue + rightValue;
+    if (mergedValue.length > leftField.w) return null;
+    const validationType = leftType !== 'unknown' ? leftType : rightType;
+    if (!isValidMergedFieldValue(mergedValue, validationType)) return null;
+
+    let next = writeCellR1(line, card, leftFieldIndex, mergedValue);
+    next = clearCell(next, card, rightFieldIndex);
+    return {
+        line: next,
+        caretCol: caretAfterCellValue(next, card, leftFieldIndex),
+        leftFieldIndex,
+        rightFieldIndex,
+        leftValue,
+        rightValue,
+        mergedValue,
+    };
+}
 
 /**
  * Map document column → index into the trimmed cell value (0..val.length).
@@ -514,6 +590,7 @@ export function applyInCellInsert(
     if (!text) return null;
     const f = card[fieldIndex];
     let val = readCellValue(line, card, fieldIndex);
+    let insertionIndex = val.length;
     // P0 R1: append printable (Ap path). For mid-value insert, approximate by append if caret at end of value.
     const padded = padLineToCard(line, card);
     const valueEnd = caretAfterCellValue(padded, card, fieldIndex);
@@ -523,13 +600,19 @@ export function applyInCellInsert(
         const lead = slice.match(/^\s*/)?.[0].length || 0;
         const rel = Math.max(0, caretCol - f.p - lead);
         const i = Math.min(val.length, rel);
+        insertionIndex = i;
         val = val.slice(0, i) + text + val.slice(i);
     } else {
         val = val + text;
     }
-    if (val.length > f.w) val = val.slice(0, f.w);
+    // Never truncate an in-cell insertion: callers use null to preserve the
+    // original line and keep all following fixed-width fields byte-identical.
+    if (val.length > f.w) return null;
     const next = writeCellR1(line, card, fieldIndex, val);
-    return { line: next, caretCol: caretAfterCellValue(next, card, fieldIndex) };
+    return {
+        line: next,
+        caretCol: caretAtValueIndex(next, card, fieldIndex, insertionIndex + text.length),
+    };
 }
 
 /**
@@ -572,6 +655,7 @@ module.exports = {
     alignLineInPlace,
     cellValueRange,
     clearCellsIntersecting,
+    planMergeCellLeft,
     applyInCellDelete,
     applyInCellInsert,
     navSelectionRange,

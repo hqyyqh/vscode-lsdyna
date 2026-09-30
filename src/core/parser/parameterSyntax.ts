@@ -1,3 +1,5 @@
+import { keywordInputFormatOverride } from './inputFormat';
+
 export type ParameterValueType = 'R' | 'I' | 'C';
 export type ParameterCardFormat = 'fixed' | 'long-fixed' | 'comma' | 'whitespace';
 export type ParameterReferenceSyntax = 'ampersand' | 'bare';
@@ -14,6 +16,7 @@ export type ParameterKeywordClassification = {
     expression: boolean;
     options: ParameterDefinitionOptions;
     longFormat: boolean;
+    inputFormatOverride: 'standard' | 'long' | 'i10' | null;
 };
 
 export interface ParsedParameterDefinition {
@@ -133,32 +136,36 @@ const RESERVED_PARAMETER_NAMES = new Set(`
     RREMOVE RRENAME RSTAT RSYSTEM RUNLINK TELNET
 `.trim().split(/\s+/));
 
-function normalizeKeywordToken(value: string): { keyword: string; longFormat: boolean } {
+function normalizeKeywordToken(value: string): {
+    keyword: string;
+    longFormat: boolean;
+    inputFormatOverride: 'standard' | 'long' | 'i10' | null;
+} {
     let token = String(value || '').trim().toUpperCase().split(/[\s,$]/)[0];
     if (!token.startsWith('*')) token = `*${token}`;
-    const longFormat = token.endsWith('+');
-    if (longFormat) token = token.slice(0, -1);
-    return { keyword: token, longFormat };
+    const inputFormatOverride = keywordInputFormatOverride(value);
+    if (/[+%\-]$/.test(token)) token = token.slice(0, -1);
+    return { keyword: token, longFormat: inputFormatOverride === 'long', inputFormatOverride };
 }
 
 export function classifyParameterKeyword(value: string): ParameterKeywordClassification | null {
-    const { keyword, longFormat } = normalizeKeywordToken(value);
+    const { keyword, longFormat, inputFormatOverride } = normalizeKeywordToken(value);
     if (keyword === '*PARAMETER_DUPLICATION') {
         return {
             kind: 'duplication', keyword, expression: false,
-            options: { ...EMPTY_OPTIONS }, longFormat,
+            options: { ...EMPTY_OPTIONS }, longFormat, inputFormatOverride,
         };
     }
     if (keyword === '*PARAMETER_TYPE') {
         return {
             kind: 'parameter-type', keyword, expression: false,
-            options: { ...EMPTY_OPTIONS }, longFormat,
+            options: { ...EMPTY_OPTIONS }, longFormat, inputFormatOverride,
         };
     }
     if (keyword === '*PARAMETER_PUSH' || keyword === '*PARAMETER_POP') {
         return {
             kind: 'scope-control', keyword, expression: false,
-            options: { ...EMPTY_OPTIONS }, longFormat,
+            options: { ...EMPTY_OPTIONS }, longFormat, inputFormatOverride,
         };
     }
 
@@ -184,6 +191,7 @@ export function classifyParameterKeyword(value: string): ParameterKeywordClassif
             noecho: optionNames.includes('NOECHO'),
         },
         longFormat,
+        inputFormatOverride,
     };
 }
 
@@ -442,7 +450,8 @@ export function parseParameterDataLine(
     keyword: ParameterKeywordClassification,
     globalLongFormat = false,
 ): ParsedParameterLine {
-    const longFormat = keyword.longFormat || globalLongFormat;
+    const longFormat = keyword.inputFormatOverride === 'long' ||
+        (keyword.inputFormatOverride === null && globalLongFormat);
     const expressionWidth = longFormat ? 20 : 10;
     if (keyword.expression && line.slice(0, expressionWidth).trim() === '' && line.slice(expressionWidth).trim()) {
         const segment = trimRange(line, expressionWidth, line.length);

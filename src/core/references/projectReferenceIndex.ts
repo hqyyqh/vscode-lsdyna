@@ -10,12 +10,59 @@ const {
     getVisibleParameterBinding,
     resolveIntegerParameter,
 } = require('./parameterEnvironment');
+const { resolveReferenceValueSemantics } = require('./fieldReferenceClassifier');
+const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
+const definitionLayoutIndex = require('../../../keywords/field_reference_index.json');
+const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog');
+const { isEntityIdentity, isLabelIdentity } = require('./entityIdentity');
+
+function definitionCoverage() {
+    const generic = definitionLayoutIndex.definitionKeywords?.generic || {};
+    const onDemand = {
+        ...(definitionLayoutIndex.definitionKeywords?.onDemand || {}),
+        ...(familyDefinitionKeywords().onDemand || {}),
+    };
+    const indexedTargetKinds = new Set(['curve', 'table']);
+    const indexedTargetDefinitions = new Set();
+    const onDemandTargetKinds = new Set();
+    const onDemandTargetDefinitions = new Set();
+    for (const keyword of definitionLayoutIndex.definitionKeywords?.scanned || []) {
+        indexedTargetDefinitions.add(normalizeKeyword(keyword));
+    }
+    for (const descriptor of Object.values(generic) as any[]) {
+        if (descriptor.targetKind) indexedTargetKinds.add(descriptor.targetKind);
+        if (descriptor.target) indexedTargetDefinitions.add(normalizeKeyword(descriptor.target));
+    }
+    for (const descriptor of Object.values(onDemand) as any[]) {
+        const target = descriptor.target || descriptor.targetToken;
+        if (descriptor.targetKind && normalizeKeyword(target) !== normalizeKeyword(descriptor.keyword)) {
+            onDemandTargetKinds.add(descriptor.targetKind);
+        }
+        if (target) onDemandTargetDefinitions.add(normalizeKeyword(target));
+    }
+    for (const record of getDefinitionRegistryCatalog().definitionRecords()) {
+        const targetKind = record.relation?.targetKind;
+        if (typeof targetKind === 'string' && targetKind) indexedTargetKinds.add(targetKind);
+        const target = normalizeKeyword(record.field?.keywordForm || record.field?.keyword);
+        if (target) indexedTargetDefinitions.add(target);
+    }
+    return {
+        indexedTargetKinds,
+        indexedTargetDefinitions,
+        onDemandTargetKinds,
+        onDemandTargetDefinitions,
+    };
+}
+
+let defaultDefinitionCoverage;
 
 function normalizeKeyword(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
 }
 
 function emptyReferenceIndex(files = []) {
+    // Do not load the complete relation catalog merely by importing the extension.
+    const DEFAULT_DEFINITION_COVERAGE = defaultDefinitionCoverage ||= definitionCoverage();
     return {
         curvesById: new Map(),
         tablesById: new Map(),
@@ -23,10 +70,22 @@ function emptyReferenceIndex(files = []) {
         unresolvedTables: [],
         genericDefinitionsByKeyword: new Map(),
         unresolvedGenericDefinitionsByKeyword: new Map(),
+        entityDefinitionsByKind: new Map(),
+        unresolvedEntityDefinitionsByKind: new Map(),
+        indexedTargetKinds: new Set(DEFAULT_DEFINITION_COVERAGE.indexedTargetKinds),
+        indexedTargetDefinitions: new Set(DEFAULT_DEFINITION_COVERAGE.indexedTargetDefinitions),
+        onDemandTargetKinds: new Set(DEFAULT_DEFINITION_COVERAGE.onDemandTargetKinds),
+        onDemandTargetDefinitions: new Set(DEFAULT_DEFINITION_COVERAGE.onDemandTargetDefinitions),
         completenessReasons: [],
         files,
         occurrenceCount: 0,
         parameterContextsByFile: new Map(),
+        allDefinitionOccurrences: [],
+        registryReferenceOccurrences: [],
+        registryValueDomainOccurrences: [],
+        registryReferenceScanComplete: false,
+        registryReferenceScanReasons: [],
+        registryReferenceCoverageGaps: [],
         rootFile: null,
     };
 }
@@ -47,7 +106,7 @@ function normalizeFilePathKey(filePath) {
 }
 
 function addDefinition(targetMap, definition) {
-    if (!definition || !Number.isFinite(definition.id)) {
+    if (!definition || !isEntityIdentity(definition.id)) {
         return;
     }
     if (!targetMap.has(definition.id)) {
@@ -59,27 +118,42 @@ function addDefinition(targetMap, definition) {
 function definitionReason(definition) {
     const input = definition && definition.idInput;
     if (!input || input.kind === 'numeric') return null;
+    if (input.kind === 'label' && isLabelIdentity(definition.id) &&
+        ['MAT', 'MAT_THERMAL', 'EOS', 'SECTION'].includes(normalizeKeyword(
+            definition.targetKeyword || definition.keyword
+        ))) return null;
     if (definition.parameterResolution && definition.parameterResolution.resolved) return null;
     if (input.kind === 'parameter') return 'parameter-unresolved';
     if (input.kind === 'expression') return 'parameter-expression-unresolved';
     return 'reference-id-unresolved';
 }
 
-function targetCollection(index, kind, keyword) {
+function targetCollections(index, kind, keyword, targetKind = null) {
     if (kind === 'generic') {
         const target = normalizeKeyword(keyword);
         if (!index.genericDefinitionsByKeyword.has(target)) {
             index.genericDefinitionsByKeyword.set(target, new Map());
             index.unresolvedGenericDefinitionsByKeyword.set(target, []);
         }
-        return {
+        const collections = [{
             map: index.genericDefinitionsByKeyword.get(target),
             unresolved: index.unresolvedGenericDefinitionsByKeyword.get(target),
-        };
+        }];
+        if (targetKind) {
+            if (!index.entityDefinitionsByKind.has(targetKind)) {
+                index.entityDefinitionsByKind.set(targetKind, new Map());
+                index.unresolvedEntityDefinitionsByKind.set(targetKind, []);
+            }
+            collections.push({
+                map: index.entityDefinitionsByKind.get(targetKind),
+                unresolved: index.unresolvedEntityDefinitionsByKind.get(targetKind),
+            });
+        }
+        return collections;
     }
-    return kind === 'table'
+    return [kind === 'table'
         ? { map: index.tablesById, unresolved: index.unresolvedTables }
-        : { map: index.curvesById, unresolved: index.unresolvedCurves };
+        : { map: index.curvesById, unresolved: index.unresolvedCurves }];
 }
 
 function resolveParameterizedDefinition(definition, bindings) {
@@ -118,7 +192,20 @@ function addDefinitionOccurrence(
     parameterUncertaintyReasons = []
 ) {
     if (!definition) return;
-    const effectiveDefinition = resolveParameterizedDefinition(definition, bindings);
+    const registryRecord = getDefinitionRegistryCatalog().definitionRecordForOccurrence(definition);
+    const approvedDefinition = registryRecord ? {
+        ...definition,
+        definitionRegistry: {
+            approved: true,
+            authoringRelationId: registryRecord.authoringRelationId,
+            coordinateId: registryRecord.coordinateId,
+            sourceRuleId: registryRecord.sourceRuleId,
+            decisionId: registryRecord.review?.decisionId || registryRecord.authoringRelationId,
+            retainedReviewState: registryRecord.review?.retainedReviewState || 'operational-default',
+            operationalProjection: registryRecord.operationalProjection || null,
+        },
+    } : definition;
+    const effectiveDefinition = resolveParameterizedDefinition(approvedDefinition, bindings);
     const runtimeOccurrenceId = occurrenceContext.occurrencePath.join(' > ');
     const sourceId = effectiveDefinition.id;
     const idfoffOffset = occurrenceContext.idfoffOffset;
@@ -151,21 +238,25 @@ function addDefinitionOccurrence(
             candidate.id = effectiveId;
             candidate.effectiveId = effectiveId;
         }
+    } else if (isLabelIdentity(sourceId) && idfoffOffset !== 0) {
+        candidate.uncertaintyReasons.push('label-idfoff-unsupported');
     }
-    const target = targetCollection(
+    const targets = targetCollections(
         index,
         effectiveDefinition.kind,
-        effectiveDefinition.targetKeyword || effectiveDefinition.keyword
+        effectiveDefinition.targetKeyword || effectiveDefinition.keyword,
+        effectiveDefinition.targetKind
     );
     const idReason = definitionReason(effectiveDefinition);
     if (idReason) {
         candidate.uncertaintyReasons.push(idReason);
     }
     candidate.uncertaintyReasons = [...new Set(candidate.uncertaintyReasons)];
-    if (Number.isFinite(candidate.id) && candidate.uncertaintyReasons.length === 0) {
-        addDefinition(target.map, candidate);
+    index.allDefinitionOccurrences.push(candidate);
+    if (isEntityIdentity(candidate.id) && candidate.uncertaintyReasons.length === 0) {
+        for (const target of targets) addDefinition(target.map, candidate);
     } else {
-        target.unresolved.push(candidate);
+        for (const target of targets) target.unresolved.push(candidate);
     }
 }
 
@@ -317,6 +408,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             occurrencePath: [...context.occurrencePath],
             occurrencePathLabels: [...context.occurrencePathLabels],
             idfoffOffset: context.idfoffOffset,
+            inputFormatMode: context.inputFormatMode,
             timeline: [],
             initialBindings: null,
             initialUncertaintyReasons: [],
@@ -393,6 +485,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             }
             if (edge.missing) {
                 childReasons.push('missing-include');
+                index.completenessReasons.push('missing-include');
                 index.unresolvedCurves.push({
                     kind: 'unknownCurveDefinition',
                     occurrenceId: edge.occurrenceId,
@@ -448,6 +541,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                 relevantTransformCount: transformState.relevantTransformCount,
                 transformDepth: transformState.transformDepth,
                 idfoffOffset: transformState.idfoffOffset,
+                inputFormatMode: edge.inputFormatOverride || context.inputFormatMode,
             }, [...ancestry, childPath]);
             recordParameterPoint(
                 index,
@@ -470,6 +564,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         relevantTransformCount: 0,
         transformDepth: 0,
         idfoffOffset: 0,
+        inputFormatMode: 'standard',
     }, [snapshot.rootFile]);
 }
 
@@ -511,11 +606,63 @@ function buildProjectReferenceIndex(snapshot) {
         index.completenessReasons.push('project-scan-unavailable');
     }
 
+    let registryReferenceScanComplete = files.length > 0;
+    for (const filePath of files) {
+        const fileIndex = getFileIndex(fileIndexes, filePath);
+        const registryReferences = fileIndex?.registryReferences;
+        index.registryReferenceOccurrences.push(...(registryReferences?.referenceOccurrences || []).map(occurrence => ({
+            ...occurrence,
+            filePath: occurrence.filePath || filePath,
+        })));
+        index.registryValueDomainOccurrences.push(...(registryReferences?.valueDomainOccurrences || []).map(occurrence => ({
+            ...occurrence,
+            filePath: occurrence.filePath || filePath,
+        })));
+
+        let gaps;
+        if (registryReferences?.referenceCoverage &&
+            Array.isArray(registryReferences.referenceCoverage.gaps)) {
+            gaps = registryReferences.referenceCoverage.gaps;
+            if (registryReferences.referenceCoverage.complete !== true && gaps.length === 0) {
+                gaps = [{ reason: 'registry-reference-scan-unavailable', scope: 'all',
+                    targetKinds: [], targetDefinitions: [] }];
+            }
+        } else if (registryReferences?.complete === true) {
+            gaps = [];
+        } else {
+            const reasons = registryReferences?.reasons?.length > 0
+                ? registryReferences.reasons
+                : ['registry-reference-scan-unavailable'];
+            gaps = reasons.map(reason => ({ reason, scope: 'all', targetKinds: [], targetDefinitions: [] }));
+        }
+        for (const gap of gaps) {
+            const normalized = {
+                ...gap,
+                filePath,
+                scope: gap?.scope === 'namespaces' ? 'namespaces' : 'all',
+                targetKinds: Array.isArray(gap?.targetKinds) ? gap.targetKinds : [],
+                targetDefinitions: Array.isArray(gap?.targetDefinitions) ? gap.targetDefinitions : [],
+            };
+            index.registryReferenceCoverageGaps.push(normalized);
+            index.registryReferenceScanReasons.push(
+                `${filePath}:${Number.isInteger(gap?.startLine) ? `${gap.startLine + 1}:` : ''}${gap?.reason || 'registry-reference-scan-unavailable'}`,
+            );
+        }
+        if (gaps.length > 0) registryReferenceScanComplete = false;
+    }
+    index.registryReferenceScanComplete = registryReferenceScanComplete;
+    index.registryReferenceScanReasons = [...new Set(index.registryReferenceScanReasons)].sort();
+    index.registryReferenceCoverageGaps.sort((left, right) =>
+        normalizeFilePathKey(left.filePath).localeCompare(normalizeFilePathKey(right.filePath)) ||
+        (left.startLine ?? -1) - (right.startLine ?? -1) ||
+        String(left.reason || '').localeCompare(String(right.reason || ''))
+    );
+
     return index;
 }
 
 function resolveReferenceDefinitions(referenceIndex, id, targetKinds, targetDefinitions = []) {
-    if (!referenceIndex || !Number.isFinite(id)) {
+    if (!referenceIndex || !isEntityIdentity(id)) {
         return [];
     }
     const kinds = new Set(targetKinds || []);
@@ -532,6 +679,13 @@ function resolveReferenceDefinitions(referenceIndex, id, targetKinds, targetDefi
             definitions.push(...tables);
         }
     }
+    for (const kind of kinds) {
+        if (kind === 'curve' || kind === 'functionCurve' || kind === 'table') continue;
+        const definitionsById = referenceIndex.entityDefinitionsByKind &&
+            referenceIndex.entityDefinitionsByKind.get(kind);
+        const matches = definitionsById && definitionsById.get(id);
+        if (matches) definitions.push(...matches);
+    }
     for (const target of targetDefinitions) {
         const definitionsById = referenceIndex.genericDefinitionsByKeyword &&
             referenceIndex.genericDefinitionsByKeyword.get(normalizeKeyword(target));
@@ -540,7 +694,7 @@ function resolveReferenceDefinitions(referenceIndex, id, targetKinds, targetDefi
             definitions.push(...matches);
         }
     }
-    return definitions;
+    return [...new Set(definitions)];
 }
 
 function unresolvedForKinds(referenceIndex, targetKinds, targetDefinitions = []) {
@@ -552,6 +706,14 @@ function unresolvedForKinds(referenceIndex, targetKinds, targetDefinitions = [])
     if (kinds.has('table')) {
         unresolved.push(...(referenceIndex.unresolvedTables || []));
     }
+    for (const kind of kinds) {
+        if (kind === 'curve' || kind === 'functionCurve' || kind === 'table') continue;
+        unresolved.push(...(
+            referenceIndex.unresolvedEntityDefinitionsByKind &&
+            referenceIndex.unresolvedEntityDefinitionsByKind.get(kind) ||
+            []
+        ));
+    }
     for (const target of targetDefinitions) {
         unresolved.push(...(
             referenceIndex.unresolvedGenericDefinitionsByKeyword &&
@@ -559,7 +721,28 @@ function unresolvedForKinds(referenceIndex, targetKinds, targetDefinitions = [])
             []
         ));
     }
-    return unresolved;
+    return [...new Set(unresolved)];
+}
+
+function targetCoverageReasons(referenceIndex, targetKinds, targetDefinitions = []) {
+    if (!referenceIndex) return ['project-scan-unavailable'];
+    const reasons = [];
+    for (const kind of targetKinds || []) {
+        if (referenceIndex.onDemandTargetKinds?.has(kind)) {
+            reasons.push('target-kind-on-demand');
+        } else if (!referenceIndex.indexedTargetKinds?.has(kind)) {
+            reasons.push('target-kind-unindexed');
+        }
+    }
+    for (const target of targetDefinitions || []) {
+        const normalized = normalizeKeyword(target);
+        if (referenceIndex.onDemandTargetDefinitions?.has(normalized)) {
+            reasons.push('target-definition-on-demand');
+        } else if (!referenceIndex.indexedTargetDefinitions?.has(normalized)) {
+            reasons.push('target-definition-unindexed');
+        }
+    }
+    return [...new Set(reasons)];
 }
 
 function parameterBindingsAtLine(context, lineIndex) {
@@ -622,10 +805,11 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
         for (const reason of point.reasons || []) {
             reasons.add(reason);
         }
-        const result = resolveIntegerParameter(
+        const result = (options?.allowRealValue === true ? require('./parameterEnvironment').resolveNumericParameter : resolveIntegerParameter)(
             point.bindings,
             referenceValue.parameterName,
-            referenceValue.isSignedSwitch
+            referenceValue.isSignedSwitch,
+            options?.allowRealInteger === true
         );
         if (!result.resolved) {
             reasons.add(result.reason || 'parameter-unresolved');
@@ -653,7 +837,7 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
             reasons: ['parameter-occurrence-ambiguous'],
         };
     }
-    if (values[0] === 0) {
+    if (values[0] === 0 && options?.allowZero !== true) {
         return {
             resolved: false,
             results,
@@ -666,6 +850,23 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
         results,
         reasons: [],
     };
+}
+
+/** A layout controller is a value, not a reference ID: zero remains meaningful. */
+function analyzeIntegerParameterValueAtLocation(referenceIndex, rawValue, options) {
+    const parsed = require('./referenceInputValue').parseNumericInput(rawValue);
+    if (parsed.kind !== 'parameter') return { resolved: false, reasons: ['parameter-syntax-unresolved'] };
+    return resolveParameterReferenceAtLocation(referenceIndex, {
+        parameterName: parsed.name, isSignedSwitch: parsed.negated,
+    }, { ...options, allowZero: true, allowRealInteger: true });
+}
+
+function analyzeNumericParameterValueAtLocation(referenceIndex, rawValue, options) {
+    const parsed = require('./referenceInputValue').parseNumericInput(rawValue);
+    if (parsed.kind !== 'parameter') return { resolved: false, reasons: ['parameter-syntax-unresolved'] };
+    return resolveParameterReferenceAtLocation(referenceIndex, {
+        parameterName: parsed.name, isSignedSwitch: parsed.negated,
+    }, { ...options, allowZero: true, allowRealValue: true });
 }
 
 function analyzeParameterReferenceAtLocation(
@@ -750,6 +951,26 @@ function resolveReferenceTransformAtLocation(referenceIndex, sourceId, isSignedS
         };
     }
     const offset = offsets[0];
+    if (isLabelIdentity(sourceId)) {
+        if (isSignedSwitch || offset !== 0) {
+            return {
+                resolved: false,
+                sourceId,
+                offset,
+                results,
+                reasons: [offset !== 0 ? 'label-idfoff-unsupported' : 'label-signed-switch-unsupported'],
+            };
+        }
+        return {
+            resolved: true,
+            sourceId,
+            effectiveId: sourceId,
+            offset: 0,
+            evidenceRule: null,
+            results,
+            reasons: [],
+        };
+    }
     if (isSignedSwitch && offset !== 0) {
         return {
             resolved: false,
@@ -814,6 +1035,8 @@ function analyzeReference(
     }
 
     let effectiveReferenceValue = referenceValue;
+    let effectiveTargetKinds = referenceValue.targetKinds || targetKinds || [];
+    let effectiveTargetDefinitions = referenceValue.targetDefinitions || options.targetDefinitions || [];
     let parameterResolution = null;
     if (referenceValue.kind === 'parameter') {
         parameterResolution = resolveParameterReferenceAtLocation(
@@ -830,12 +1053,38 @@ function analyzeReference(
                 parameterResolution,
             };
         }
-        effectiveReferenceValue = {
-            kind: 'numeric',
-            id: Math.abs(parameterResolution.value),
-            raw: referenceValue.raw,
-            isSignedSwitch: parameterResolution.value < 0,
-        };
+        if (referenceValue.semanticRelation) {
+            const semantic = resolveReferenceValueSemantics(
+                referenceValue.semanticRelation,
+                parameterResolution.value
+            );
+            if (semantic.state !== 'reference') {
+                return {
+                    state: 'uncertain',
+                    definitions: [],
+                    reasons: [semantic.reason || 'reference-role-not-active'],
+                    raw: referenceValue.raw,
+                    parameterResolution,
+                    semanticResolution: semantic,
+                };
+            }
+            effectiveTargetKinds = semantic.targetKinds;
+            effectiveTargetDefinitions = semantic.targetDefinitions;
+            effectiveReferenceValue = {
+                kind: 'numeric',
+                id: semantic.id,
+                raw: referenceValue.raw,
+                isSignedSwitch: semantic.idTransform !== 'identity',
+                idTransform: semantic.idTransform,
+            };
+        } else {
+            effectiveReferenceValue = {
+                kind: 'numeric',
+                id: Math.abs(parameterResolution.value),
+                raw: referenceValue.raw,
+                isSignedSwitch: parameterResolution.value < 0,
+            };
+        }
     }
 
     const transformResolution = resolveReferenceTransformAtLocation(
@@ -854,18 +1103,19 @@ function analyzeReference(
     const definitions = resolveReferenceDefinitions(
         referenceIndex,
         effectiveReferenceValue.id,
-        targetKinds,
-        options.targetDefinitions
+        effectiveTargetKinds,
+        effectiveTargetDefinitions
     );
     const unresolved = unresolvedForKinds(
         referenceIndex,
-        targetKinds,
-        options.targetDefinitions
+        effectiveTargetKinds,
+        effectiveTargetDefinitions
     );
     const reasons = [...new Set([
         ...(referenceIndex.completenessReasons || []),
         ...unresolved.flatMap(candidate => candidate.uncertaintyReasons || []),
         ...(transformResolution.reasons || []),
+        ...targetCoverageReasons(referenceIndex, effectiveTargetKinds, effectiveTargetDefinitions),
     ])];
     if ((options as any).projectScoped === false) {
         reasons.push('project-scan-unavailable');
@@ -1017,6 +1267,9 @@ module.exports = {
     resolveReferenceDefinitions,
     analyzeReference,
     analyzeParameterReferenceAtLocation,
+    analyzeIntegerParameterValueAtLocation,
+    analyzeNumericParameterValueAtLocation,
+    parameterContextsForDocument: occurrenceContextsForDocument,
     attachResolvedTableChildren,
 };
 

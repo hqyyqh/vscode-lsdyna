@@ -126376,7 +126376,7 @@
         },
         {
           "n": "DIV",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Division of ALE element edges to create subcells, in which volumes (areas in 2D) inside Lagrangian elements are added up by MTH=2 to approximate the intersection volumes at the intersection between ALE and Lagrangian elements",
           "t": "integer"
@@ -133391,7 +133391,7 @@
         },
         {
           "n": "BESIMF",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Boundary element solution method for external fluid mass:\nEQ.0: LAPACK direct matrix solution\nEQ.1: Block low rank(BLR) direct solution without pivoting\nEQ.2: Pseudo - block GMRES iterative solution",
           "t": "integer",
@@ -148260,46 +148260,47 @@
           "n": "MID",
           "p": 0,
           "w": 10,
-          "h": "Material identifier",
-          "t": "integer"
+          "h": "Material identifier.",
+          "t": "integer",
+          "d": null
         },
         {
           "n": "MU0",
           "p": 10,
           "w": 10,
-          "h": "Two coefficients appearing in the equation derived by combining Sutherland's formula with the power law for dilute gases:\nu / u_0 = (T / T_0) ** (3/2)  (T_0 + S_u) / (T + S_u)   .\nu_0 is a reference value,and S_u is an effective temperature called the Sutherland constant, which is characteristic of the gas.For air at moderate temperatures,\nu_0 = 1.716x10 ** (-5)  N*s/m^2 ,S_u = 111 K",
+          "h": "Reference dynamic viscosity coefficient in the Sutherland-law gas model.",
           "t": "real",
-          "d": 0.001716
+          "d": 1.716e-05
         },
         {
           "n": "SMU",
-          "p": 10,
+          "p": 20,
           "w": 10,
-          "h": "Two coefficients appearing in the equation derived by combining Sutherland's formula with the power law for dilute gases:\nu / u_0 = (T / T_0) ** (3/2)  (T_0 + S_u) / (T + S_u)   .\nu_0 is a reference value,and S_u is an effective temperature called the Sutherland constant, which is characteristic of the gas.For air at moderate temperatures,\nu_0 = 1.716x10 ** (-5)  N*s/m^2 ,S_u = 111 K",
+          "h": "Sutherland constant for the dynamic-viscosity relation.",
           "t": "real",
           "d": 111.0
         },
         {
           "n": "K0",
-          "p": 10,
+          "p": 30,
           "w": 10,
-          "h": "Two coefficients appearing in the equation derived by combining Sutherland's formula with the power law for dilute gases:\nk / k_0 = (T / T_0) ** (3/2)  (T_0 + S_k) / (T + S_k)   .\nHere k is the thermal conductivity, k_0 is a reference value,and S_k is the Sutherland constant, which is characteristic of the gas.For air at moderate temperatures,\nk_0 = 0.0241  W/(m*K) ,S_k = 194 K",
+          "h": "Reference thermal conductivity coefficient in the Sutherland-law gas model.",
           "t": "real",
           "d": 0.0241
         },
         {
           "n": "SK",
-          "p": 10,
+          "p": 40,
           "w": 10,
-          "h": "Two coefficients appearing in the equation derived by combining Sutherland's formula with the power law for dilute gases:\nk / k_0 = (T / T_0) ** (3/2)  (T_0 + S_k) / (T + S_k)   .\nHere k is the thermal conductivity, k_0 is a reference value,and S_k is the Sutherland constant, which is characteristic of the gas.For air at moderate temperatures,\nk_0 = 0.0241  W/(m*K) ,S_k = 194 K",
+          "h": "Sutherland constant for the thermal-conductivity relation.",
           "t": "real",
           "d": 194.0
         },
         {
           "n": "T0",
-          "p": 10,
+          "p": 50,
           "w": 10,
-          "h": "Reference temperature, T_0. The default value (273.0) is for air, in degrees K.",
+          "h": "Reference temperature T0; default 273.0 for air.",
           "t": "real",
           "d": 273.0
         }
@@ -150784,7 +150785,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -150971,7 +150972,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -151158,7 +151159,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -151345,7 +151346,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -151532,7 +151533,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -151719,7 +151720,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -151906,7 +151907,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -152093,7 +152094,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -152280,7 +152281,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -152467,7 +152468,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -152654,7 +152655,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -152841,7 +152842,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -153028,7 +153029,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -153215,7 +153216,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_GEBOD_MALE, *COMPONENT_GEBOD_FEMALE, *COMPONENT_GEBOD_CHILD.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "LC1",
@@ -153620,7 +153621,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -153863,7 +153864,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -154106,7 +154107,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -154349,7 +154350,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -154592,7 +154593,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -154835,7 +154836,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -155078,7 +155079,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -155321,7 +155322,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -155807,7 +155808,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -156050,7 +156051,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -156293,7 +156294,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -156536,7 +156537,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -156779,7 +156780,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -157022,7 +157023,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -157265,7 +157266,7 @@
           "p": 0,
           "w": 10,
           "h": "Dummy ID, see *COMPONENT_HYBRIDIII.",
-          "t": "integer"
+          "t": "real"
         },
         {
           "n": "Q1",
@@ -178760,7 +178761,7 @@
           "n": "DAMP",
           "p": 0,
           "w": 10,
-          "h": "Optional damping coefficient for axial coupling (stress/velocity units). An additional axial coupling shear stress equal to DAMP times the axial velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for axial coupling.",
           "t": "real",
           "d": 0.0
         },
@@ -178768,7 +178769,7 @@
           "n": "LOCAL",
           "p": 10,
           "w": 10,
-          "h": "Flag to identify which free end of a pile is treated as the base:\nEQ.1: End with the most negative global Z - coordinate\nEQ.2: End which is Node 1 of the attached beam element topology.",
+          "h": "Flag identifying which free end of the pile is treated as the base.",
           "t": "integer",
           "d": 1,
           "e": [
@@ -178780,7 +178781,7 @@
           "n": "INSTRF",
           "p": 20,
           "w": 10,
-          "h": "Flag to control definition of soil stress for Cards 4a through 6a and Cards 4b through 6b:\nEQ.0: Use time - varying soil stress.TIMSTR is ignored.\nEQ.1: Use time - varying soil stress until time TIMSTR.Then use the soil stress that existed at time TIMSTR for the remainder of the analysis.",
+          "h": "Flag controlling whether soil stress is time-varying or frozen at TIMSTR.",
           "t": "integer",
           "d": 0,
           "e": [
@@ -178792,13 +178793,13 @@
           "n": "TIMSTR",
           "p": 30,
           "w": 10,
-          "h": "Time at which the effect of soil stress is frozen",
+          "h": "Time at which the effect of soil stress is frozen.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "ICD7A",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "If nonzero and OPTION1 is CONSTANTS, Card 7a will be read.",
           "t": "integer",
@@ -178806,22 +178807,22 @@
         },
         {
           "n": "DAMPH",
-          "p": 40,
+          "p": 50,
           "w": 10,
-          "h": "Optional damping coefficient for Perpendicular coupling (stress/velocity units). An additional perpendicular coupling shear stress equal to DAMPH times the perpendicular velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for perpendicular coupling.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "UNUSED",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 60,
+          "p": 70,
           "w": 10,
           "h": "",
           "t": "integer"
@@ -179179,7 +179180,7 @@
           "n": "DAMP",
           "p": 0,
           "w": 10,
-          "h": "Optional damping coefficient for axial coupling (stress/velocity units). An additional axial coupling shear stress equal to DAMP times the axial velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for axial coupling.",
           "t": "real",
           "d": 0.0
         },
@@ -179187,7 +179188,7 @@
           "n": "LOCAL",
           "p": 10,
           "w": 10,
-          "h": "Flag to identify which free end of a pile is treated as the base:\nEQ.1: End with the most negative global Z - coordinate\nEQ.2: End which is Node 1 of the attached beam element topology.",
+          "h": "Flag identifying which free end of the pile is treated as the base.",
           "t": "integer",
           "d": 1,
           "e": [
@@ -179199,7 +179200,7 @@
           "n": "INSTRF",
           "p": 20,
           "w": 10,
-          "h": "Flag to control definition of soil stress for Cards 4a through 6a and Cards 4b through 6b:\nEQ.0: Use time - varying soil stress.TIMSTR is ignored.\nEQ.1: Use time - varying soil stress until time TIMSTR.Then use the soil stress that existed at time TIMSTR for the remainder of the analysis.",
+          "h": "Flag controlling whether soil stress is time-varying or frozen at TIMSTR.",
           "t": "integer",
           "d": 0,
           "e": [
@@ -179211,13 +179212,13 @@
           "n": "TIMSTR",
           "p": 30,
           "w": 10,
-          "h": "Time at which the effect of soil stress is frozen",
+          "h": "Time at which the effect of soil stress is frozen.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "ICD7A",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "If nonzero and OPTION1 is CONSTANTS, Card 7a will be read.",
           "t": "integer",
@@ -179225,22 +179226,22 @@
         },
         {
           "n": "DAMPH",
-          "p": 40,
+          "p": 50,
           "w": 10,
-          "h": "Optional damping coefficient for Perpendicular coupling (stress/velocity units). An additional perpendicular coupling shear stress equal to DAMPH times the perpendicular velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for perpendicular coupling.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "UNUSED",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 60,
+          "p": 70,
           "w": 10,
           "h": "",
           "t": "integer"
@@ -179598,7 +179599,7 @@
           "n": "DAMP",
           "p": 0,
           "w": 10,
-          "h": "Optional damping coefficient for axial coupling (stress/velocity units). An additional axial coupling shear stress equal to DAMP times the axial velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for axial coupling.",
           "t": "real",
           "d": 0.0
         },
@@ -179606,7 +179607,7 @@
           "n": "LOCAL",
           "p": 10,
           "w": 10,
-          "h": "Flag to identify which free end of a pile is treated as the base:\nEQ.1: End with the most negative global Z - coordinate\nEQ.2: End which is Node 1 of the attached beam element topology.",
+          "h": "Flag identifying which free end of the pile is treated as the base.",
           "t": "integer",
           "d": 1,
           "e": [
@@ -179618,7 +179619,7 @@
           "n": "INSTRF",
           "p": 20,
           "w": 10,
-          "h": "Flag to control definition of soil stress for Cards 4a through 6a and Cards 4b through 6b:\nEQ.0: Use time - varying soil stress.TIMSTR is ignored.\nEQ.1: Use time - varying soil stress until time TIMSTR.Then use the soil stress that existed at time TIMSTR for the remainder of the analysis.",
+          "h": "Flag controlling whether soil stress is time-varying or frozen at TIMSTR.",
           "t": "integer",
           "d": 0,
           "e": [
@@ -179630,13 +179631,13 @@
           "n": "TIMSTR",
           "p": 30,
           "w": 10,
-          "h": "Time at which the effect of soil stress is frozen",
+          "h": "Time at which the effect of soil stress is frozen.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "ICD7A",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "If nonzero and OPTION1 is CONSTANTS, Card 7a will be read.",
           "t": "integer",
@@ -179644,22 +179645,22 @@
         },
         {
           "n": "DAMPH",
-          "p": 40,
+          "p": 50,
           "w": 10,
-          "h": "Optional damping coefficient for Perpendicular coupling (stress/velocity units). An additional perpendicular coupling shear stress equal to DAMPH times the perpendicular velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for perpendicular coupling.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "UNUSED",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 60,
+          "p": 70,
           "w": 10,
           "h": "",
           "t": "integer"
@@ -179872,7 +179873,7 @@
           "n": "DAMP",
           "p": 0,
           "w": 10,
-          "h": "Optional damping coefficient for axial coupling (stress/velocity units). An additional axial coupling shear stress equal to DAMP times the axial velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for axial coupling.",
           "t": "real",
           "d": 0.0
         },
@@ -179880,7 +179881,7 @@
           "n": "LOCAL",
           "p": 10,
           "w": 10,
-          "h": "Flag to identify which free end of a pile is treated as the base:\nEQ.1: End with the most negative global Z - coordinate\nEQ.2: End which is Node 1 of the attached beam element topology.",
+          "h": "Flag identifying which free end of the pile is treated as the base.",
           "t": "integer",
           "d": 1,
           "e": [
@@ -179892,7 +179893,7 @@
           "n": "INSTRF",
           "p": 20,
           "w": 10,
-          "h": "Flag to control definition of soil stress for Cards 4a through 6a and Cards 4b through 6b:\nEQ.0: Use time - varying soil stress.TIMSTR is ignored.\nEQ.1: Use time - varying soil stress until time TIMSTR.Then use the soil stress that existed at time TIMSTR for the remainder of the analysis.",
+          "h": "Flag controlling whether soil stress is time-varying or frozen at TIMSTR.",
           "t": "integer",
           "d": 0,
           "e": [
@@ -179904,13 +179905,13 @@
           "n": "TIMSTR",
           "p": 30,
           "w": 10,
-          "h": "Time at which the effect of soil stress is frozen",
+          "h": "Time at which the effect of soil stress is frozen.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "ICD7A",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "If nonzero and OPTION1 is CONSTANTS, Card 7a will be read.",
           "t": "integer",
@@ -179918,22 +179919,22 @@
         },
         {
           "n": "DAMPH",
-          "p": 40,
+          "p": 50,
           "w": 10,
-          "h": "Optional damping coefficient for Perpendicular coupling (stress/velocity units). An additional perpendicular coupling shear stress equal to DAMPH times the perpendicular velocity of the pile relative to the soil will be generated.",
+          "h": "Optional damping coefficient for perpendicular coupling.",
           "t": "real",
           "d": 0.0
         },
         {
           "n": "UNUSED",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 60,
+          "p": 70,
           "w": 10,
           "h": "",
           "t": "integer"
@@ -387313,7 +387314,7 @@
         },
         {
           "n": "CONP",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "Scaling factors for pressure conversion from the input deck units to the library units",
           "t": "real",
@@ -420985,7 +420986,7 @@
         },
         {
           "n": "SLDTHK",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Thickness for each solid layer.",
           "t": "real"
@@ -421088,7 +421089,7 @@
         },
         {
           "n": "SLDTHK",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Thickness for each solid layer.",
           "t": "real"
@@ -422889,14 +422890,14 @@
         },
         {
           "n": "FASID",
-          "p": 10,
+          "p": 20,
           "w": 10,
           "h": "Set ID giving the flow area",
           "t": "integer"
         },
         {
           "n": "STYPE",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "Type of set specifying flow area (see Remark 2):\nEQ.1:    Node set giving the perimeter of the area.The flow area will be automatically meshed.\nEQ.2 : Segment set covering the flow area",
           "t": "integer",
@@ -422953,14 +422954,14 @@
         },
         {
           "n": "FASID",
-          "p": 10,
+          "p": 20,
           "w": 10,
           "h": "Set ID giving the flow area",
           "t": "integer"
         },
         {
           "n": "STYPE",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "Type of set specifying flow area (see Remark 2):\nEQ.1:    Node set giving the perimeter of the area.The flow area will be automatically meshed.\nEQ.2 : Segment set covering the flow area",
           "t": "integer",
@@ -440948,14 +440949,14 @@
         },
         {
           "n": "SHR",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Shear stiffness of the fiber:\nGT.0: shear stiffness,\nLT.0: |SHR| is theload curve ID defining shear stiffness vs. shear strain.",
           "t": "real"
         },
         {
           "n": "HRGLS",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Hourglass coefficient for stiffness type hourglass control. Default=1.0.",
           "t": "real",
@@ -441103,14 +441104,14 @@
         },
         {
           "n": "SHR",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Shear stiffness of the fiber:\nGT.0: shear stiffness,\nLT.0: |SHR| is theload curve ID defining shear stiffness vs. shear strain.",
           "t": "real"
         },
         {
           "n": "HRGLS",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Hourglass coefficient for stiffness type hourglass control. Default=1.0.",
           "t": "real",
@@ -461658,7 +461659,7 @@
         },
         {
           "n": "SSID",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Segment set ID for the segment set created with *DUALCESE_SEGMENTSET or *DUALCESE_BLOCKMESH",
           "t": "integer"
@@ -471806,7 +471807,7 @@
         },
         {
           "n": "C",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Growth reaction ratio exponent, c",
           "t": "real"
@@ -474460,7 +474461,7 @@
         },
         {
           "n": "C",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Growth reaction ratio exponent, c",
           "t": "real"
@@ -504258,7 +504259,7 @@
         },
         {
           "n": "LCID",
-          "p": 3,
+          "p": 30,
           "w": 10,
           "h": "Load curve ID for defining the stimulation current as a function of time",
           "t": "integer"
@@ -507790,7 +507791,7 @@
         },
         {
           "n": "NTSTOL",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Solution change tolerance, absolute tolerance, and relative tolerance used during the nonlinear Newton step. They are only used when the EM model includes nonlinear magnetic materials).",
           "t": "real",
@@ -533442,7 +533443,7 @@
         },
         {
           "n": "RADEFF",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Radiation efficiency computation flag:\nEQ.0:Radiation efficiency computation is not requested, and classic ERP computation is performed.\nEQ.1: Radiation efficiency computation is requested and enhanced ERP computation using Rayleigh integrals is performed.\nEQ.2: Radiation efficiency computation is not requested and corrected ERP computation is performed.",
           "t": "integer",
@@ -536359,6 +536360,15 @@
             "1",
             "0"
           ]
+        }
+      ],
+      [
+        {
+          "n": "NITBS",
+          "p": 0,
+          "w": 10,
+          "h": "Number of time steps between particle searches. The default is 50 in explicit analysis and 1 in implicit. Increasing this number can reduce the computational time at the expense of possible less accurate particle tracking.",
+          "t": "integer"
         }
       ]
     ],
@@ -543693,7 +543703,7 @@
         {
           "n": "NRDS",
           "p": 20,
-          "w": 20,
+          "w": 10,
           "h": "Reduced degree in the s-direction:\nEQ.0: Full integration\nEQ.1: Reduced by 1\nEQ.2: Reduced by 2",
           "t": "integer",
           "d": 0,
@@ -543706,7 +543716,7 @@
         {
           "n": "NRDT",
           "p": 30,
-          "w": 20,
+          "w": 10,
           "h": "Reduced degree in the t-direction:\nEQ.0: Full integration\nEQ.1: Reduced by 1\nEQ.2: Reduced by 2",
           "t": "integer",
           "d": 0,
@@ -548733,7 +548743,7 @@
         },
         {
           "n": "BOXID",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "ID of a box (see *DEFINE_BOX). If used, the element center becomes a detonation point if it is both within the box and within the distance specified with DGEO relative to the detonation geometry.",
           "t": "integer"
@@ -555363,21 +555373,21 @@
         },
         {
           "n": "VX",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Vector components of the flanging steels (PID) moving direction.",
           "t": "real"
         },
         {
           "n": "VY",
-          "p": 0,
+          "p": 20,
           "w": 10,
           "h": "Vector components of the flanging steels (PID) moving direction.",
           "t": "real"
         },
         {
           "n": "VZ",
-          "p": 0,
+          "p": 30,
           "w": 10,
           "h": "Vector components of the flanging steels (PID) moving direction.",
           "t": "real"
@@ -564887,21 +564897,21 @@
         },
         {
           "n": "DOF",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Applicable degrees-of-freedom:\nEQ.1: x - direction of load action,\nEQ.2: y - direction of load action,\nEQ.3: z - direction of load action,\nEQ.5: Moment about the x - axis,\nEQ.6: Moment about the y - axis axis,\nEQ.7: Moment about the z - axis axis",
           "t": "integer"
         },
         {
           "n": "LCID",
-          "p": 10,
+          "p": 20,
           "w": 10,
           "h": "Load curve",
           "t": "integer"
         },
         {
           "n": "SF",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "Load curve scale factor",
           "t": "real",
@@ -564923,21 +564933,21 @@
         },
         {
           "n": "DOF",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Applicable degrees-of-freedom:\nEQ.1: x - direction of load action,\nEQ.2: y - direction of load action,\nEQ.3: z - direction of load action,\nEQ.5: Moment about the x - axis,\nEQ.6: Moment about the y - axis axis,\nEQ.7: Moment about the z - axis axis",
           "t": "integer"
         },
         {
           "n": "LCID",
-          "p": 10,
+          "p": 20,
           "w": 10,
           "h": "Load curve",
           "t": "integer"
         },
         {
           "n": "SF",
-          "p": 20,
+          "p": 30,
           "w": 10,
           "h": "Load curve scale factor",
           "t": "real",
@@ -569169,7 +569179,7 @@
         {
           "n": "TYPE",
           "p": 10,
-          "w": 20,
+          "w": 10,
           "h": "The kind of IDs in this set:\nEQ.SEG_SETS: Each ID is a segment set connected with SOLVER.\nEQ.CIRCUIT: Each ID is a circuit ID (from *EM cards)\nEQ.SURF_PARTS: Each ID is a surface part number (See*MESH_SURFACE_ELEMENT)\nEQ.VOL_PARTS: Each ID is a volume part number (See *MESH_VOLUME)\nEQ.SURF_ELES: Each ID is a surface element number (See *MESH_SURFACE_ELEMENT)",
           "t": "string",
           "d": "SEG_SETS",
@@ -569184,7 +569194,7 @@
         {
           "n": "SOLVER",
           "p": 20,
-          "w": 20,
+          "w": 10,
           "h": "Name of the solver (MECH, ICFD, CESE, EM,  ).",
           "t": "string",
           "d": "MECH",
@@ -602711,6 +602721,43 @@
           "h": "Tabulated scale factor.",
           "t": "real"
         }
+      ],
+      [
+        {
+          "n": "NU-9",
+          "p": 0,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-10",
+          "p": 10,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-11",
+          "p": 20,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-12",
+          "p": 30,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-13",
+          "p": 40,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        }
       ]
     ],
     "o": [
@@ -603051,6 +603098,43 @@
         {
           "n": "NU-8",
           "p": 70,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        }
+      ],
+      [
+        {
+          "n": "NU-9",
+          "p": 0,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-10",
+          "p": 10,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-11",
+          "p": 20,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-12",
+          "p": 30,
+          "w": 10,
+          "h": "Tabulated scale factor.",
+          "t": "real"
+        },
+        {
+          "n": "NU-13",
+          "p": 40,
           "w": 10,
           "h": "Tabulated scale factor.",
           "t": "real"
@@ -604864,7 +604948,7 @@
         },
         {
           "n": "MST",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Moisture, M. If the moisture is 0.0, the moisture option is disabled.\nGT.0.0: Specifies a curve ID giving moisture as a function of time.\nLT.0.0: Specifies the negative of a constant value of moisture",
           "t": "real"
@@ -605085,7 +605169,7 @@
         },
         {
           "n": "MST",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Moisture, M. If the moisture is 0.0, the moisture option is disabled.\nGT.0.0: Specifies a curve ID giving moisture as a function of time.\nLT.0.0: Specifies the negative of a constant value of moisture",
           "t": "real"
@@ -649087,14 +649171,14 @@
         },
         {
           "n": "PFAIL",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Maximum principal stress at failure. Must be sustained NUM ( > 0) timesteps to fail element. Default is no failure due to maximum principal stress",
           "t": "real"
         },
         {
           "n": "NUM",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Number of timesteps at or above PFAIL to trigger element failure",
           "t": "integer",
@@ -649224,14 +649308,14 @@
         },
         {
           "n": "PFAIL",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Maximum principal stress at failure. Must be sustained NUM ( > 0) timesteps to fail element. Default is no failure due to maximum principal stress",
           "t": "real"
         },
         {
           "n": "NUM",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Number of timesteps at or above PFAIL to trigger element failure",
           "t": "integer",
@@ -679475,13 +679559,6 @@
           "w": 10,
           "h": "Define components of the i th phase's vector a for AOPT = 2",
           "t": "real"
-        },
-        {
-          "n": "XP2",
-          "p": 0,
-          "w": 10,
-          "h": "Material identification. A unique number has to be chosen.",
-          "t": "real"
         }
       ],
       [
@@ -680131,13 +680208,6 @@
           "p": 50,
           "w": 10,
           "h": "Define components of the i th phase's vector a for AOPT = 2",
-          "t": "real"
-        },
-        {
-          "n": "XP2",
-          "p": 0,
-          "w": 10,
-          "h": "Material identification. A unique number has to be chosen.",
           "t": "real"
         }
       ],
@@ -698027,14 +698097,14 @@
         },
         {
           "n": "VG4",
-          "p": 40,
+          "p": 60,
           "w": 10,
           "h": "Relaxation modulus G_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
         },
         {
           "n": "VB4",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Decay constant beta_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
@@ -698573,14 +698643,14 @@
         },
         {
           "n": "VG4",
-          "p": 40,
+          "p": 60,
           "w": 10,
           "h": "Relaxation modulus G_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
         },
         {
           "n": "VB4",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Decay constant beta_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
@@ -710936,7 +711006,7 @@
         },
         {
           "n": "P23",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Initial compactness tensor Pij.",
           "t": "real"
@@ -711260,7 +711330,7 @@
         },
         {
           "n": "P23",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Initial compactness tensor Pij.",
           "t": "real"
@@ -728357,56 +728427,56 @@
         {
           "n": "GAB",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear modulus ab",
           "t": "real"
         },
         {
           "n": "GBC",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear modulus bc",
           "t": "real"
         },
         {
           "n": "GCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Shear modulus ca",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "AOPT",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Material axes option (see *MAT_OPTIONTROPIC_ELASTIC for a more complete description):\nEQ.0.0 : Locally orthotropic with material axes determined by element nodes 1,2,and 4,as with *DEFINE_COORDINATE_NODES.EQ.1.0 : Locally orthotropic with material axes determined by a point in space and the global location of the element center; this is the a-direction.\nEQ.2.0:    Globally orthotropic with material axes determined by vectors defined below, as with *DEFINE_COORDINATE_VECTOR.\nEQ.3.0:    Locally orthotropic material axes determined by a vector v and the normal vector to the plane of the element. The plane of a solid element is the midsurface between the inner surface and outer surface, defined by the first four nodes and the last four nodes of the connectivity of the element, respectively. Thus, for solid elements, AOPT = 3 is only available for hexahedra. a is determined by taking the cross product of v with the normal vector, b is determined by taking the cross product of the normal vector with a, and c is the normal vector. Then a and b are rotated about c by an angle. The angle may be set in the keyword input for the element as BETA or in the input for this keyword as MANGLE.\nEQ.4.0:    Locally orthotropic in cylindrical coordinate system with the material axes determined by a vector v, and an originating point, p, which define the centerline axis.\nLT.0.0:    The absolute value of AOPT is a coordinate system ID number (CID on *DEFINE_COORDINATE_NODES, *DEFINE_COORDINATE_SYSTEM or *DEFINE_COORDINATE_VECTOR).",
           "t": "real"
         },
         {
           "n": "2WAY",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Flag to turn on two-way fiber action (see Remark 2):\nEQ.0.0 : Unidirectional behavior, meaning fibers run only in a - direction.\nEQ.1.0 : Two - way fiber behavior, meaning fibers run in both the a - and b - directions.The meaning of the fields DFAILM,DFAILT,XT,and YT are altered if this flag is set.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728415,56 +728485,56 @@
         {
           "n": "XP",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "YP",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "ZP",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "A1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "MANGLE",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Material angle in degrees for AOPT = 3. MANGLE may be overridden on the element card; see BETA on *ELEMENT_SOLID_ORTHO.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728473,56 +728543,56 @@
         {
           "n": "V1",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V2",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V3",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "D1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "DFAILM",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Maximum strain for the matrix straining in tension. For unidirectional fibers, this is in the b- and c-directions, while for two-way fibers, this is in the c-direciton.",
           "t": "real"
         },
         {
           "n": "DFAILS",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Maximum shear strain in the ab-plane",
           "t": "real"
         }
@@ -728531,56 +728601,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
-          "h": "",
-          "t": "integer"
-        },
-        {
-          "n": "UNUSED",
-          "p": 0,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 10,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 40,
+          "p": 30,
+          "w": 10,
+          "h": "",
+          "t": "integer"
+        },
+        {
+          "n": "UNUSED",
+          "p": 40,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "DFAILT",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Maximum fiber strain under tension in the fiber longitudinal direction. A value of 1 is 100% tensile strain. If the two-way fiber flag is set, then DFAILT is the fiber tensile failure strain in the a- and b-directions; otherwise, it is only in the a-direction.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728589,56 +728659,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "XT",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Tensile strength of the fibers in the fiber longitudinal direction. For unidirectional fibers (TWOWAY = 0.0), this is along the a-direction, while for two-way fiber behavior (TWOWAY = 1.0), this is along the a- and b-directions.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "YT",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Tensile strength of the matrix transverse to the fibers. For unidirectional fibers (TWOWAY = 0.0), this is along the b- and c-directions, while for two-way fiber behavior (TWOWAY = 1.0), this is along the c-direction.",
           "t": "real"
         },
         {
           "n": "SC",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Shear strength in the ab-plane",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728647,56 +728717,56 @@
         {
           "n": "S_CA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear strength in the ca-plane",
           "t": "real"
         },
         {
           "n": "S_CB",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear strength in the cb-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Maximum shear strain in the ca-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCB",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Maximum shear strain in the cb-plane",
           "t": "real"
         },
         {
           "n": "FTYPE",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Post-failure option (see Remark 2):\nEQ.1.0 : Isotropic post - failure response.All the directions behave the same after failure; the failed elements can only carry bulk compressive stresses.\nEQ.2.0 : Orthotropic post - failure response.The three spatial directions behave differently after failure, requiring the definition of additional post - failure parameters.These parameters include the post - failure mode in each material direction and the residual shear strength of the failed material.",
           "t": "real"
         },
         {
           "n": "FMAA",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Failure mode in the failed a-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : aa only",
           "t": "real"
         },
         {
           "n": "FMBB",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Failure mode in the failed b-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : bb only",
           "t": "real"
         },
         {
           "n": "FMCC",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Failure mode in the failed c-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cc only",
           "t": "real"
         }
@@ -728705,56 +728775,56 @@
         {
           "n": "FMBA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Failure mode in the failed ba plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ba and aa only\nEQ.3.0 : ba and bb only\nEQ.4.0 : ba and cc only",
           "t": "real"
         },
         {
           "n": "FMCA",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Failure mode in the failed ca plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ca and aa only\nEQ.3.0 : ca and bb only\nEQ.4.0 : ca and cc only",
           "t": "real"
         },
         {
           "n": "FMCB",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Failure mode in the failed cb plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cb and aa only\nEQ.3.0 : cb and bb only\nEQ.4.0 : cb and cc only",
           "t": "real"
         },
         {
           "n": "FSHR",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Residual shear stiffness fraction; 0.0 ≤ FSHR ≤ 1.0. For the orthotropic post-failure response, the residual shear modulus is set to the specified value of FHSR times the intact shear modulus.",
           "t": "real"
         },
         {
           "n": "FSMAX",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Maximum residual shear stress, 0.0 ≤ FSMAX ≤ 1.0e20. For the orthotropic post-failure response, the maximum shear stress allowed in a failed element is recommended to be a value less than or equal to the failure shear stress.",
           "t": "real"
         },
         {
           "n": "STYPE",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Strength model option (see Remark 3):\nEQ.1.0 : Isotropic plasticity(von Mises yield criterion)",
           "t": "real"
         },
         {
           "n": "YLD",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Yield stress",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728850,56 +728920,56 @@
         {
           "n": "GAB",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear modulus ab",
           "t": "real"
         },
         {
           "n": "GBC",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear modulus bc",
           "t": "real"
         },
         {
           "n": "GCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Shear modulus ca",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "AOPT",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Material axes option (see *MAT_OPTIONTROPIC_ELASTIC for a more complete description):\nEQ.0.0 : Locally orthotropic with material axes determined by element nodes 1,2,and 4,as with *DEFINE_COORDINATE_NODES.EQ.1.0 : Locally orthotropic with material axes determined by a point in space and the global location of the element center; this is the a-direction.\nEQ.2.0:    Globally orthotropic with material axes determined by vectors defined below, as with *DEFINE_COORDINATE_VECTOR.\nEQ.3.0:    Locally orthotropic material axes determined by a vector v and the normal vector to the plane of the element. The plane of a solid element is the midsurface between the inner surface and outer surface, defined by the first four nodes and the last four nodes of the connectivity of the element, respectively. Thus, for solid elements, AOPT = 3 is only available for hexahedra. a is determined by taking the cross product of v with the normal vector, b is determined by taking the cross product of the normal vector with a, and c is the normal vector. Then a and b are rotated about c by an angle. The angle may be set in the keyword input for the element as BETA or in the input for this keyword as MANGLE.\nEQ.4.0:    Locally orthotropic in cylindrical coordinate system with the material axes determined by a vector v, and an originating point, p, which define the centerline axis.\nLT.0.0:    The absolute value of AOPT is a coordinate system ID number (CID on *DEFINE_COORDINATE_NODES, *DEFINE_COORDINATE_SYSTEM or *DEFINE_COORDINATE_VECTOR).",
           "t": "real"
         },
         {
           "n": "2WAY",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Flag to turn on two-way fiber action (see Remark 2):\nEQ.0.0 : Unidirectional behavior, meaning fibers run only in a - direction.\nEQ.1.0 : Two - way fiber behavior, meaning fibers run in both the a - and b - directions.The meaning of the fields DFAILM,DFAILT,XT,and YT are altered if this flag is set.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728908,56 +728978,56 @@
         {
           "n": "XP",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "YP",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "ZP",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "A1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "MANGLE",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Material angle in degrees for AOPT = 3. MANGLE may be overridden on the element card; see BETA on *ELEMENT_SOLID_ORTHO.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -728966,56 +729036,56 @@
         {
           "n": "V1",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V2",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V3",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "D1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "DFAILM",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Maximum strain for the matrix straining in tension. For unidirectional fibers, this is in the b- and c-directions, while for two-way fibers, this is in the c-direciton.",
           "t": "real"
         },
         {
           "n": "DFAILS",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Maximum shear strain in the ab-plane",
           "t": "real"
         }
@@ -729024,56 +729094,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
-          "h": "",
-          "t": "integer"
-        },
-        {
-          "n": "UNUSED",
-          "p": 0,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 10,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 40,
+          "p": 30,
+          "w": 10,
+          "h": "",
+          "t": "integer"
+        },
+        {
+          "n": "UNUSED",
+          "p": 40,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "DFAILT",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Maximum fiber strain under tension in the fiber longitudinal direction. A value of 1 is 100% tensile strain. If the two-way fiber flag is set, then DFAILT is the fiber tensile failure strain in the a- and b-directions; otherwise, it is only in the a-direction.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -729082,56 +729152,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "XT",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Tensile strength of the fibers in the fiber longitudinal direction. For unidirectional fibers (TWOWAY = 0.0), this is along the a-direction, while for two-way fiber behavior (TWOWAY = 1.0), this is along the a- and b-directions.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "YT",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Tensile strength of the matrix transverse to the fibers. For unidirectional fibers (TWOWAY = 0.0), this is along the b- and c-directions, while for two-way fiber behavior (TWOWAY = 1.0), this is along the c-direction.",
           "t": "real"
         },
         {
           "n": "SC",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Shear strength in the ab-plane",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -729140,56 +729210,56 @@
         {
           "n": "S_CA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear strength in the ca-plane",
           "t": "real"
         },
         {
           "n": "S_CB",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear strength in the cb-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Maximum shear strain in the ca-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCB",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Maximum shear strain in the cb-plane",
           "t": "real"
         },
         {
           "n": "FTYPE",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Post-failure option (see Remark 2):\nEQ.1.0 : Isotropic post - failure response.All the directions behave the same after failure; the failed elements can only carry bulk compressive stresses.\nEQ.2.0 : Orthotropic post - failure response.The three spatial directions behave differently after failure, requiring the definition of additional post - failure parameters.These parameters include the post - failure mode in each material direction and the residual shear strength of the failed material.",
           "t": "real"
         },
         {
           "n": "FMAA",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Failure mode in the failed a-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : aa only",
           "t": "real"
         },
         {
           "n": "FMBB",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Failure mode in the failed b-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : bb only",
           "t": "real"
         },
         {
           "n": "FMCC",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Failure mode in the failed c-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cc only",
           "t": "real"
         }
@@ -729198,56 +729268,56 @@
         {
           "n": "FMBA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Failure mode in the failed ba plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ba and aa only\nEQ.3.0 : ba and bb only\nEQ.4.0 : ba and cc only",
           "t": "real"
         },
         {
           "n": "FMCA",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Failure mode in the failed ca plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ca and aa only\nEQ.3.0 : ca and bb only\nEQ.4.0 : ca and cc only",
           "t": "real"
         },
         {
           "n": "FMCB",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Failure mode in the failed cb plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cb and aa only\nEQ.3.0 : cb and bb only\nEQ.4.0 : cb and cc only",
           "t": "real"
         },
         {
           "n": "FSHR",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Residual shear stiffness fraction; 0.0 ≤ FSHR ≤ 1.0. For the orthotropic post-failure response, the residual shear modulus is set to the specified value of FHSR times the intact shear modulus.",
           "t": "real"
         },
         {
           "n": "FSMAX",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Maximum residual shear stress, 0.0 ≤ FSMAX ≤ 1.0e20. For the orthotropic post-failure response, the maximum shear stress allowed in a failed element is recommended to be a value less than or equal to the failure shear stress.",
           "t": "real"
         },
         {
           "n": "STYPE",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Strength model option (see Remark 3):\nEQ.1.0 : Isotropic plasticity(von Mises yield criterion)",
           "t": "real"
         },
         {
           "n": "YLD",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Yield stress",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -745364,13 +745434,6 @@
           "w": 10,
           "h": "Define components of the i th phase's vector a for AOPT = 2",
           "t": "real"
-        },
-        {
-          "n": "XP2",
-          "p": 0,
-          "w": 10,
-          "h": "Material identification. A unique number has to be chosen.",
-          "t": "real"
         }
       ],
       [
@@ -746020,13 +746083,6 @@
           "p": 50,
           "w": 10,
           "h": "Define components of the i th phase's vector a for AOPT = 2",
-          "t": "real"
-        },
-        {
-          "n": "XP2",
-          "p": 0,
-          "w": 10,
-          "h": "Material identification. A unique number has to be chosen.",
           "t": "real"
         }
       ],
@@ -782878,14 +782934,14 @@
         },
         {
           "n": "PFAIL",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Maximum principal stress at failure. Must be sustained NUM ( > 0) timesteps to fail element. Default is no failure due to maximum principal stress",
           "t": "real"
         },
         {
           "n": "NUM",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Number of timesteps at or above PFAIL to trigger element failure",
           "t": "integer",
@@ -783015,14 +783071,14 @@
         },
         {
           "n": "PFAIL",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Maximum principal stress at failure. Must be sustained NUM ( > 0) timesteps to fail element. Default is no failure due to maximum principal stress",
           "t": "real"
         },
         {
           "n": "NUM",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Number of timesteps at or above PFAIL to trigger element failure",
           "t": "integer",
@@ -807284,7 +807340,7 @@
         },
         {
           "n": "MST",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Moisture, M. If the moisture is 0.0, the moisture option is disabled.\nGT.0.0: Specifies a curve ID giving moisture as a function of time.\nLT.0.0: Specifies the negative of a constant value of moisture",
           "t": "real"
@@ -807505,7 +807561,7 @@
         },
         {
           "n": "MST",
-          "p": 30,
+          "p": 40,
           "w": 10,
           "h": "Moisture, M. If the moisture is 0.0, the moisture option is disabled.\nGT.0.0: Specifies a curve ID giving moisture as a function of time.\nLT.0.0: Specifies the negative of a constant value of moisture",
           "t": "real"
@@ -819249,56 +819305,56 @@
         {
           "n": "GAB",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear modulus ab",
           "t": "real"
         },
         {
           "n": "GBC",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear modulus bc",
           "t": "real"
         },
         {
           "n": "GCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Shear modulus ca",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "AOPT",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Material axes option (see *MAT_OPTIONTROPIC_ELASTIC for a more complete description):\nEQ.0.0 : Locally orthotropic with material axes determined by element nodes 1,2,and 4,as with *DEFINE_COORDINATE_NODES.EQ.1.0 : Locally orthotropic with material axes determined by a point in space and the global location of the element center; this is the a-direction.\nEQ.2.0:    Globally orthotropic with material axes determined by vectors defined below, as with *DEFINE_COORDINATE_VECTOR.\nEQ.3.0:    Locally orthotropic material axes determined by a vector v and the normal vector to the plane of the element. The plane of a solid element is the midsurface between the inner surface and outer surface, defined by the first four nodes and the last four nodes of the connectivity of the element, respectively. Thus, for solid elements, AOPT = 3 is only available for hexahedra. a is determined by taking the cross product of v with the normal vector, b is determined by taking the cross product of the normal vector with a, and c is the normal vector. Then a and b are rotated about c by an angle. The angle may be set in the keyword input for the element as BETA or in the input for this keyword as MANGLE.\nEQ.4.0:    Locally orthotropic in cylindrical coordinate system with the material axes determined by a vector v, and an originating point, p, which define the centerline axis.\nLT.0.0:    The absolute value of AOPT is a coordinate system ID number (CID on *DEFINE_COORDINATE_NODES, *DEFINE_COORDINATE_SYSTEM or *DEFINE_COORDINATE_VECTOR).",
           "t": "real"
         },
         {
           "n": "2WAY",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Flag to turn on two-way fiber action (see Remark 2):\nEQ.0.0 : Unidirectional behavior, meaning fibers run only in a - direction.\nEQ.1.0 : Two - way fiber behavior, meaning fibers run in both the a - and b - directions.The meaning of the fields DFAILM,DFAILT,XT,and YT are altered if this flag is set.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819307,56 +819363,56 @@
         {
           "n": "XP",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "YP",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "ZP",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "A1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "MANGLE",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Material angle in degrees for AOPT = 3. MANGLE may be overridden on the element card; see BETA on *ELEMENT_SOLID_ORTHO.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819365,56 +819421,56 @@
         {
           "n": "V1",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V2",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V3",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "D1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "DFAILM",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Maximum strain for the matrix straining in tension. For unidirectional fibers, this is in the b- and c-directions, while for two-way fibers, this is in the c-direciton.",
           "t": "real"
         },
         {
           "n": "DFAILS",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Maximum shear strain in the ab-plane",
           "t": "real"
         }
@@ -819423,56 +819479,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
-          "h": "",
-          "t": "integer"
-        },
-        {
-          "n": "UNUSED",
-          "p": 0,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 10,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 40,
+          "p": 30,
+          "w": 10,
+          "h": "",
+          "t": "integer"
+        },
+        {
+          "n": "UNUSED",
+          "p": 40,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "DFAILT",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Maximum fiber strain under tension in the fiber longitudinal direction. A value of 1 is 100% tensile strain. If the two-way fiber flag is set, then DFAILT is the fiber tensile failure strain in the a- and b-directions; otherwise, it is only in the a-direction.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819481,56 +819537,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "XT",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Tensile strength of the fibers in the fiber longitudinal direction. For unidirectional fibers (TWOWAY = 0.0), this is along the a-direction, while for two-way fiber behavior (TWOWAY = 1.0), this is along the a- and b-directions.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "YT",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Tensile strength of the matrix transverse to the fibers. For unidirectional fibers (TWOWAY = 0.0), this is along the b- and c-directions, while for two-way fiber behavior (TWOWAY = 1.0), this is along the c-direction.",
           "t": "real"
         },
         {
           "n": "SC",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Shear strength in the ab-plane",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819539,56 +819595,56 @@
         {
           "n": "S_CA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear strength in the ca-plane",
           "t": "real"
         },
         {
           "n": "S_CB",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear strength in the cb-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Maximum shear strain in the ca-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCB",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Maximum shear strain in the cb-plane",
           "t": "real"
         },
         {
           "n": "FTYPE",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Post-failure option (see Remark 2):\nEQ.1.0 : Isotropic post - failure response.All the directions behave the same after failure; the failed elements can only carry bulk compressive stresses.\nEQ.2.0 : Orthotropic post - failure response.The three spatial directions behave differently after failure, requiring the definition of additional post - failure parameters.These parameters include the post - failure mode in each material direction and the residual shear strength of the failed material.",
           "t": "real"
         },
         {
           "n": "FMAA",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Failure mode in the failed a-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : aa only",
           "t": "real"
         },
         {
           "n": "FMBB",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Failure mode in the failed b-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : bb only",
           "t": "real"
         },
         {
           "n": "FMCC",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Failure mode in the failed c-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cc only",
           "t": "real"
         }
@@ -819597,56 +819653,56 @@
         {
           "n": "FMBA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Failure mode in the failed ba plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ba and aa only\nEQ.3.0 : ba and bb only\nEQ.4.0 : ba and cc only",
           "t": "real"
         },
         {
           "n": "FMCA",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Failure mode in the failed ca plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ca and aa only\nEQ.3.0 : ca and bb only\nEQ.4.0 : ca and cc only",
           "t": "real"
         },
         {
           "n": "FMCB",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Failure mode in the failed cb plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cb and aa only\nEQ.3.0 : cb and bb only\nEQ.4.0 : cb and cc only",
           "t": "real"
         },
         {
           "n": "FSHR",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Residual shear stiffness fraction; 0.0 ≤ FSHR ≤ 1.0. For the orthotropic post-failure response, the residual shear modulus is set to the specified value of FHSR times the intact shear modulus.",
           "t": "real"
         },
         {
           "n": "FSMAX",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Maximum residual shear stress, 0.0 ≤ FSMAX ≤ 1.0e20. For the orthotropic post-failure response, the maximum shear stress allowed in a failed element is recommended to be a value less than or equal to the failure shear stress.",
           "t": "real"
         },
         {
           "n": "STYPE",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Strength model option (see Remark 3):\nEQ.1.0 : Isotropic plasticity(von Mises yield criterion)",
           "t": "real"
         },
         {
           "n": "YLD",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Yield stress",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819742,56 +819798,56 @@
         {
           "n": "GAB",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear modulus ab",
           "t": "real"
         },
         {
           "n": "GBC",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear modulus bc",
           "t": "real"
         },
         {
           "n": "GCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Shear modulus ca",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "AOPT",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Material axes option (see *MAT_OPTIONTROPIC_ELASTIC for a more complete description):\nEQ.0.0 : Locally orthotropic with material axes determined by element nodes 1,2,and 4,as with *DEFINE_COORDINATE_NODES.EQ.1.0 : Locally orthotropic with material axes determined by a point in space and the global location of the element center; this is the a-direction.\nEQ.2.0:    Globally orthotropic with material axes determined by vectors defined below, as with *DEFINE_COORDINATE_VECTOR.\nEQ.3.0:    Locally orthotropic material axes determined by a vector v and the normal vector to the plane of the element. The plane of a solid element is the midsurface between the inner surface and outer surface, defined by the first four nodes and the last four nodes of the connectivity of the element, respectively. Thus, for solid elements, AOPT = 3 is only available for hexahedra. a is determined by taking the cross product of v with the normal vector, b is determined by taking the cross product of the normal vector with a, and c is the normal vector. Then a and b are rotated about c by an angle. The angle may be set in the keyword input for the element as BETA or in the input for this keyword as MANGLE.\nEQ.4.0:    Locally orthotropic in cylindrical coordinate system with the material axes determined by a vector v, and an originating point, p, which define the centerline axis.\nLT.0.0:    The absolute value of AOPT is a coordinate system ID number (CID on *DEFINE_COORDINATE_NODES, *DEFINE_COORDINATE_SYSTEM or *DEFINE_COORDINATE_VECTOR).",
           "t": "real"
         },
         {
           "n": "2WAY",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Flag to turn on two-way fiber action (see Remark 2):\nEQ.0.0 : Unidirectional behavior, meaning fibers run only in a - direction.\nEQ.1.0 : Two - way fiber behavior, meaning fibers run in both the a - and b - directions.The meaning of the fields DFAILM,DFAILT,XT,and YT are altered if this flag is set.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819800,56 +819856,56 @@
         {
           "n": "XP",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "YP",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "ZP",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Coordinates of point p for AOPT = 1 and 4",
           "t": "real"
         },
         {
           "n": "A1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "A3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector a for AOPT = 2",
           "t": "real"
         },
         {
           "n": "MANGLE",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Material angle in degrees for AOPT = 3. MANGLE may be overridden on the element card; see BETA on *ELEMENT_SOLID_ORTHO.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819858,56 +819914,56 @@
         {
           "n": "V1",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V2",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "V3",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Components of vector v for AOPT = 3",
           "t": "real"
         },
         {
           "n": "D1",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D2",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "D3",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Components of vector d for AOPT = 2",
           "t": "real"
         },
         {
           "n": "DFAILM",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Maximum strain for the matrix straining in tension. For unidirectional fibers, this is in the b- and c-directions, while for two-way fibers, this is in the c-direciton.",
           "t": "real"
         },
         {
           "n": "DFAILS",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Maximum shear strain in the ab-plane",
           "t": "real"
         }
@@ -819916,56 +819972,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
-          "h": "",
-          "t": "integer"
-        },
-        {
-          "n": "UNUSED",
-          "p": 0,
           "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 10,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 30,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 40,
+          "p": 30,
+          "w": 10,
+          "h": "",
+          "t": "integer"
+        },
+        {
+          "n": "UNUSED",
+          "p": 40,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "DFAILT",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Maximum fiber strain under tension in the fiber longitudinal direction. A value of 1 is 100% tensile strain. If the two-way fiber flag is set, then DFAILT is the fiber tensile failure strain in the a- and b-directions; otherwise, it is only in the a-direction.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -819974,56 +820030,56 @@
         {
           "n": "UNUSED",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "XT",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Tensile strength of the fibers in the fiber longitudinal direction. For unidirectional fibers (TWOWAY = 0.0), this is along the a-direction, while for two-way fiber behavior (TWOWAY = 1.0), this is along the a- and b-directions.",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "YT",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Tensile strength of the matrix transverse to the fibers. For unidirectional fibers (TWOWAY = 0.0), this is along the b- and c-directions, while for two-way fiber behavior (TWOWAY = 1.0), this is along the c-direction.",
           "t": "real"
         },
         {
           "n": "SC",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Shear strength in the ab-plane",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "",
           "t": "integer"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -820032,56 +820088,56 @@
         {
           "n": "S_CA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Shear strength in the ca-plane",
           "t": "real"
         },
         {
           "n": "S_CB",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Shear strength in the cb-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCA",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Maximum shear strain in the ca-plane",
           "t": "real"
         },
         {
           "n": "DFAILSCB",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Maximum shear strain in the cb-plane",
           "t": "real"
         },
         {
           "n": "FTYPE",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Post-failure option (see Remark 2):\nEQ.1.0 : Isotropic post - failure response.All the directions behave the same after failure; the failed elements can only carry bulk compressive stresses.\nEQ.2.0 : Orthotropic post - failure response.The three spatial directions behave differently after failure, requiring the definition of additional post - failure parameters.These parameters include the post - failure mode in each material direction and the residual shear strength of the failed material.",
           "t": "real"
         },
         {
           "n": "FMAA",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Failure mode in the failed a-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : aa only",
           "t": "real"
         },
         {
           "n": "FMBB",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Failure mode in the failed b-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : bb only",
           "t": "real"
         },
         {
           "n": "FMCC",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "Failure mode in the failed c-direction (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cc only",
           "t": "real"
         }
@@ -820090,56 +820146,56 @@
         {
           "n": "FMBA",
           "p": 0,
-          "w": 0,
+          "w": 10,
           "h": "Failure mode in the failed ba plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ba and aa only\nEQ.3.0 : ba and bb only\nEQ.4.0 : ba and cc only",
           "t": "real"
         },
         {
           "n": "FMCA",
-          "p": 0,
+          "p": 10,
           "w": 10,
           "h": "Failure mode in the failed ca plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : ca and aa only\nEQ.3.0 : ca and bb only\nEQ.4.0 : ca and cc only",
           "t": "real"
         },
         {
           "n": "FMCB",
-          "p": 0,
-          "w": 20,
+          "p": 20,
+          "w": 10,
           "h": "Failure mode in the failed cb plane (FTYPE = 2 only):\nEQ.1.0 : Bulk\nEQ.2.0 : cb and aa only\nEQ.3.0 : cb and bb only\nEQ.4.0 : cb and cc only",
           "t": "real"
         },
         {
           "n": "FSHR",
-          "p": 0,
-          "w": 30,
+          "p": 30,
+          "w": 10,
           "h": "Residual shear stiffness fraction; 0.0 ≤ FSHR ≤ 1.0. For the orthotropic post-failure response, the residual shear modulus is set to the specified value of FHSR times the intact shear modulus.",
           "t": "real"
         },
         {
           "n": "FSMAX",
-          "p": 0,
-          "w": 40,
+          "p": 40,
+          "w": 10,
           "h": "Maximum residual shear stress, 0.0 ≤ FSMAX ≤ 1.0e20. For the orthotropic post-failure response, the maximum shear stress allowed in a failed element is recommended to be a value less than or equal to the failure shear stress.",
           "t": "real"
         },
         {
           "n": "STYPE",
-          "p": 0,
-          "w": 50,
+          "p": 50,
+          "w": 10,
           "h": "Strength model option (see Remark 3):\nEQ.1.0 : Isotropic plasticity(von Mises yield criterion)",
           "t": "real"
         },
         {
           "n": "YLD",
-          "p": 0,
-          "w": 60,
+          "p": 60,
+          "w": 10,
           "h": "Yield stress",
           "t": "real"
         },
         {
           "n": "UNUSED",
-          "p": 0,
-          "w": 70,
+          "p": 70,
+          "w": 10,
           "h": "",
           "t": "integer"
         }
@@ -875233,7 +875289,7 @@
         },
         {
           "n": "P23",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Initial compactness tensor Pij.",
           "t": "real"
@@ -875557,7 +875613,7 @@
         },
         {
           "n": "P23",
-          "p": 50,
+          "p": 60,
           "w": 10,
           "h": "Initial compactness tensor Pij.",
           "t": "real"
@@ -880997,14 +881053,14 @@
         },
         {
           "n": "VG4",
-          "p": 40,
+          "p": 60,
           "w": 10,
           "h": "Relaxation modulus G_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
         },
         {
           "n": "VB4",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Decay constant beta_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
@@ -881543,14 +881599,14 @@
         },
         {
           "n": "VG4",
-          "p": 40,
+          "p": 60,
           "w": 10,
           "h": "Relaxation modulus G_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
         },
         {
           "n": "VB4",
-          "p": 50,
+          "p": 70,
           "w": 10,
           "h": "Decay constant beta_k for the k-th term of the Prony series for viscoelastic fibers",
           "t": "real"
@@ -942887,7 +942943,7 @@
         {
           "n": "NID",
           "p": 0,
-          "w": 10,
+          "w": 8,
           "h": "Node ID containing list of node to be considered for merging.",
           "t": "integer"
         },

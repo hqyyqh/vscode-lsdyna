@@ -143,6 +143,7 @@ export function SearchPopover({
                     onClick={() => choose(index)}
                 >
                     <strong><HighlightedText text={title} query={query} /></strong>
+                    {result.volumeTitle ? <small className="reader-search-location">{result.volumeTitle}</small> : null}
                     {result.preview ? <small><HighlightedText text={result.preview} query={query} /></small> : null}
                 </button>;
             })}

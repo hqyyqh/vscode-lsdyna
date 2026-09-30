@@ -1,0 +1,41 @@
+{
+  "generator": {
+    "path": "scripts/import-family-definition-scanner-handoff.cjs",
+    "sha256": "4f2fa0fb028a932a8e7b672b713c0c7407bb65ca5849bccbd4f24cef0a6b0c69",
+    "size": 8034
+  },
+  "kind": "dynasense-family-definition-scanner-handoff-build-report",
+  "output": {
+    "bytes": 2622032,
+    "contentSha256": "f5cdb08a3ae0c7c24bbf234f7eaa4f32bc497a3953d37065153e3365baa75c9e",
+    "path": "keywords/family_definition_scanner_handoff.json",
+    "sha256": "cd9a54d6f9e1cfb2a3d6e413ebe5d5da5dddc92ffc3489f53b43c0dba689b614"
+  },
+  "permissions": {
+    "completenessClaimPermission": false,
+    "definitionRegistryPermission": false,
+    "f12Permission": false,
+    "pluginRuntimePermission": false,
+    "referenceProviderPermission": false,
+    "scannerPermission": false
+  },
+  "schemaVersion": 1,
+  "source": {
+    "authorityLockSha256": "6950c9d87e29a80b0ecbee8e82410874ff537f30467b0fc20abb7455632bb269",
+    "contentSha256": "c66b2eaf84b3554943160d2717813a5fcf3a32ea87ad6eb91acbe85ac2335dab",
+    "manifestSha256": "122006da1b90581b1bc9484e2e55d70d45b0736050eb39cd6636a1903298642a",
+    "standaloneCommit": "6f7bb2bf72c6197a17218799023306b43750f159"
+  },
+  "summary": {
+    "baseDescriptors": 856,
+    "descriptors": 1673,
+    "integerOnlyDescriptors": 14,
+    "integerOnlyLabelRejectionObligations": 56,
+    "labelCapableDescriptors": 1659,
+    "labelPositiveFixtureObligations": 6636,
+    "numericPositiveFixtureObligations": 6692,
+    "scannerEligibleDescriptors": 0,
+    "titleDescriptors": 817,
+    "totalPositiveFixtureObligations": 13328
+  }
+}

@@ -5,11 +5,15 @@ const {
     classifyParameterKeyword,
     parseParameterDataLine,
 } = require('../parser/parameterSyntax');
+const {
+    globalInputFormatFromKeywordLine,
+} = require('../parser/inputFormat');
+const { throwIfCancellationRequested } = require('../scanner/scannerContracts');
 
 function normalizeKeyword(value) {
     let token = String(value || '').trim().toUpperCase().split(/[\s,$]/)[0];
     if (!token.startsWith('*')) token = `*${token}`;
-    return token.endsWith('+') ? token.slice(0, -1) : token;
+    return /[+%\-]$/.test(token) ? token.slice(0, -1) : token;
 }
 
 function dataLines(block, text) {
@@ -36,11 +40,12 @@ function definitionEvent(definition) {
     let reason = definition.expression
         ? 'parameter-expression-unresolved'
         : 'unsupported-parameter-type';
-    if (!definition.expression && definition.parameterType === 'I') {
-        const input = parseNumericInput(definition.value, { integerOnly: true });
-        if (input.kind === 'numeric' && Number.isSafeInteger(input.value)) {
+    if (!definition.expression && ['I', 'R'].includes(definition.parameterType)) {
+        const integer = definition.parameterType === 'I';
+        const input = parseNumericInput(definition.value, { integerOnly: integer });
+        if (input.kind === 'numeric' && (!integer || Number.isSafeInteger(input.value))) {
             value = input.value;
-            valueState = 'integer';
+            valueState = integer ? 'integer' : 'real';
             reason = null;
         } else {
             reason = input.kind === 'parameter'
@@ -106,7 +111,9 @@ function scanParameterDefinitionBlock(block, text, options: { globalLongFormat?:
 function scanParameterDuplicationBlock(block, text, options: { globalLongFormat?: boolean } = {}) {
     const entry = dataLines(block, text)[0];
     const keyword = classifyParameterKeyword(block.keyword);
-    const width = keyword?.longFormat || options.globalLongFormat ? 20 : 10;
+    const longFormat = keyword?.inputFormatOverride === 'long' ||
+        (keyword?.inputFormatOverride === null && options.globalLongFormat);
+    const width = longFormat ? 20 : 10;
     if (!entry) {
         return [{
             type: 'duplication',
@@ -135,15 +142,21 @@ function classifyParameterKeywordKind(keyword) {
     return classifyParameterKeyword(keyword)?.kind || null;
 }
 
-async function scanParameterEventsFromFileIndex(fileIndex, readKeywordBlockText) {
+async function scanParameterEventsFromFileIndex(
+    fileIndex,
+    readKeywordBlockText,
+    options: { cancellationToken?: { isCancellationRequested?: boolean } } = {},
+) {
     const events = [];
-    let globalLongFormat = false;
+    let globalInputFormat = 'standard';
     for (const block of fileIndex && fileIndex.keywordBlocks || []) {
+        throwIfCancellationRequested(options.cancellationToken);
         const normalized = normalizeKeyword(block.keyword);
         if (normalized === '*KEYWORD') {
             const headerText = await readKeywordBlockText(block);
+            throwIfCancellationRequested(options.cancellationToken);
             const firstLine = String(headerText || '').split(/\r?\n/)[0];
-            globalLongFormat = /\bLONG\s*=\s*[YS]\b/i.test(firstLine);
+            globalInputFormat = globalInputFormatFromKeywordLine(firstLine, globalInputFormat);
             continue;
         }
 
@@ -160,10 +173,15 @@ async function scanParameterEventsFromFileIndex(fileIndex, readKeywordBlockText)
         }
 
         const text = await readKeywordBlockText(block);
+        throwIfCancellationRequested(options.cancellationToken);
         if (kind === 'duplication') {
-            events.push(...scanParameterDuplicationBlock(block, text, { globalLongFormat }));
+            events.push(...scanParameterDuplicationBlock(block, text, {
+                globalLongFormat: globalInputFormat === 'long',
+            }));
         } else {
-            events.push(...scanParameterDefinitionBlock(block, text, { globalLongFormat }));
+            events.push(...scanParameterDefinitionBlock(block, text, {
+                globalLongFormat: globalInputFormat === 'long',
+            }));
         }
     }
 

@@ -70,4 +70,24 @@ describe('createProjectDiagnosticStore', () => {
         store.refresh(shared);
         assert.deepStrictEqual(collection.sets.get(shared), [diagA, diagB]);
     });
+
+    it('clears every project contribution and remains reusable', () => {
+        const { createProjectDiagnosticStore } = require('../../../out/client/services/projectDiagnosticStore');
+        const collection = {
+            sets: new Map(),
+            set(uri, diagnostics) { this.sets.set(uri.fsPath, diagnostics); },
+            delete(uri) { this.sets.delete(uri.fsPath); },
+        };
+        const store = createProjectDiagnosticStore(collection);
+        const root = '/project/root.k';
+        const child = '/project/child.k';
+        store.publish(root, new Map([[child, [{ message: 'before clear' }]]]));
+        assert.equal(collection.sets.has(child), true);
+
+        store.clearAll();
+        assert.equal(collection.sets.has(child), false);
+
+        store.publish(root, new Map([[child, [{ message: 'after clear' }]]]));
+        assert.equal(collection.sets.get(child)[0].message, 'after clear');
+    });
 });

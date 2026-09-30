@@ -28,8 +28,8 @@ const {
 
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
-const { buildFileIndex } = require('../scanner/fileIndexBuilder');
-const { SCANNER_VERSION } = require('../scanner/scannerContracts');
+const { buildFileIndex, buildFileStructure, completeFileIndex } = require('../scanner/fileIndexBuilder');
+const { SCANNER_VERSION, throwIfCancellationRequested } = require('../scanner/scannerContracts');
 const { ProjectGraph } = require('./projectGraph');
 
 type FileSignature = {
@@ -38,6 +38,7 @@ type FileSignature = {
 };
 
 type FileScanResult = {
+    scanOptionsKey?: string;
     filePath: string;
     fileIndex: any;
     keywords: Array<{ keyword: string; filePath: string; lineIndex: number }>;
@@ -50,8 +51,15 @@ type FileScanResult = {
         keywordLine?: number;
         transform?: any;
         parameterizedFileName?: boolean;
+        inputFormatOverride?: 'long' | 'standard';
     }>;
     searchPaths: string[];
+};
+
+type ProjectIndexBuildOptions = {
+    cancellationToken?: { isCancellationRequested?: boolean };
+    singleFileOnly?: boolean;
+    [key: string]: any;
 };
 
 /**
@@ -59,6 +67,11 @@ type FileScanResult = {
  * @type {number}
  */
 const DEFAULT_CONCURRENCY = 16;
+const DEFAULT_FILE_SCAN_MEMORY_CACHE_BYTES = 16 * 1024 * 1024;
+
+function estimateFileScanResultSize(scanResult) {
+    return require('../cache/memorySize').estimateMemorySize(scanResult, DEFAULT_FILE_SCAN_MEMORY_CACHE_BYTES);
+}
 
 /**
  * @typedef {Object} ProjectIndexResult
@@ -283,6 +296,8 @@ function createProjectIndexer({
     getFileSignature = readFileSignature,
     concurrency = DEFAULT_CONCURRENCY,
     persistentFileScanCache = null,
+    maxFileScanCacheBytes = DEFAULT_FILE_SCAN_MEMORY_CACHE_BYTES,
+    estimateFileScanSize = estimateFileScanResultSize,
 } = {}) {
     if (loadFileIndex !== null && typeof loadFileIndex !== 'function') {
         throw new TypeError('createProjectIndexer requires loadFileIndex to be a function');
@@ -296,16 +311,54 @@ function createProjectIndexer({
     if (typeof getFileSignature !== 'function') {
         throw new TypeError('createProjectIndexer requires getFileSignature to be a function');
     }
+    if (!Number.isFinite(maxFileScanCacheBytes) || maxFileScanCacheBytes <= 0) {
+        throw new TypeError('createProjectIndexer requires maxFileScanCacheBytes to be a positive finite number');
+    }
+    if (typeof estimateFileScanSize !== 'function') {
+        throw new TypeError('createProjectIndexer requires estimateFileScanSize to be a function');
+    }
 
-    /** @type {Map<string, { signature: import('../cache/diskSnapshotStore').FileSignature, scanResult: Object }>} */
+    /** @type {Map<string, { signature: import('../cache/diskSnapshotStore').FileSignature, scanResult: Object, byteSize: number, lastAccessedAt: number }>} */
     const fileScanCache = new Map();
+    let fileScanAccessSequence = 0;
     const usesLegacyCollectors = collectIncludeDirectivesFromFile !== includeScanner.collectIncludeDirectivesFromFile
         || collectKeywordsFromFile !== keywordScanner.collectKeywordsFromFile;
+    const staged = loadFileIndex === null && !usesLegacyCollectors;
     const effectiveLoadFileIndex = loadFileIndex || (
         usesLegacyCollectors
             ? (filePath, options) => buildLegacyFileIndexFromCollectors(filePath, options, collectKeywordsFromFile, collectIncludeDirectivesFromFile)
             : buildFileIndex
     );
+
+    function getFileScanCacheStats() {
+        let totalBytes = 0;
+        for (const entry of fileScanCache.values()) totalBytes += entry.byteSize;
+        return { entryCount: fileScanCache.size, totalBytes };
+    }
+
+    function cacheFileScan(fileCacheKey, signature, scanResult) {
+        const measuredByteSize = Number(estimateFileScanSize(scanResult));
+        const entry = {
+            signature,
+            scanResult,
+            byteSize: Number.isFinite(measuredByteSize) && measuredByteSize >= 0
+                ? measuredByteSize
+                : Number.POSITIVE_INFINITY,
+            lastAccessedAt: ++fileScanAccessSequence,
+        };
+        if (entry.byteSize > maxFileScanCacheBytes) return false;
+        fileScanCache.set(fileCacheKey, entry);
+        let stats = getFileScanCacheStats();
+        while (stats.totalBytes > maxFileScanCacheBytes) {
+            const candidates = [...fileScanCache.entries()]
+                .filter(([cacheKey]) => cacheKey !== fileCacheKey)
+                .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt);
+            const victimKey = candidates.length > 0 ? candidates[0][0] : fileCacheKey;
+            if (!fileScanCache.delete(victimKey)) break;
+            stats = getFileScanCacheStats();
+        }
+        return fileScanCache.has(fileCacheKey);
+    }
 
     /**
      * Performs a file-level scan (keywords, includes, paths), utilizing L1 in-memory cache
@@ -317,33 +370,55 @@ function createProjectIndexer({
      * @returns {Promise<Object>} The cached or newly scanned file result.
      */
     async function loadFileScan(filePath, options, stats): Promise<FileScanResult> {
+        throwIfCancellationRequested(options.cancellationToken);
         const resolvedFilePath = resolveProjectFile(filePath);
-        const fileCacheKey = getProjectFileCacheKey(resolvedFilePath);
+        const scanOptionsKey = JSON.stringify([options.maxDefinitionBlockBytes ?? null,
+            options.maxReferenceBlockBytes ?? null, options.largeFileThresholdBytes ?? null,
+            options.fullScanLargeFiles ?? false]);
+        const fileCacheKey = getProjectFileCacheKey(resolvedFilePath) + scanOptionsKey + (options.structureOnly ? ':structure' : '');
         const signature = await getFileSignature(resolvedFilePath);
+        throwIfCancellationRequested(options.cancellationToken);
         const cachedEntry = fileScanCache.get(fileCacheKey);
 
         if (cachedEntry && areFileSignaturesEqual(cachedEntry.signature, signature)) {
-            stats.reusedFileCount += 1;
+            cachedEntry.lastAccessedAt = ++fileScanAccessSequence;
+            if (!options.structure) stats.reusedFileCount += 1;
             return cachedEntry.scanResult;
         }
 
         // Try L1.5 persistent per-file cache
-        if (persistentFileScanCache) {
+        if (persistentFileScanCache && !options.structureOnly) {
             try {
                 const persistedResult = await persistentFileScanCache.get(resolvedFilePath, signature);
-                if (persistedResult) {
-                    fileScanCache.set(fileCacheKey, { signature, scanResult: persistedResult });
-                    stats.reusedFileCount += 1;
+                throwIfCancellationRequested(options.cancellationToken);
+                if (persistedResult && persistedResult.scanOptionsKey === scanOptionsKey) {
+                    cacheFileScan(fileCacheKey, signature, persistedResult);
+                    if (!options.structure) stats.reusedFileCount += 1;
                     return persistedResult;
                 }
-            } catch (_error) {
+            } catch (error) {
+                if (error?.name === 'CancellationError') throw error;
+                throwIfCancellationRequested(options.cancellationToken);
                 // Best-effort: fall through to full scan
             }
         }
 
-        const fileIndex = await effectiveLoadFileIndex(resolvedFilePath, options);
-        const keywords = keywordsFromFileIndex(fileIndex);
+        const fileIndex = options.structureOnly
+            ? await buildFileStructure(resolvedFilePath, options)
+            : options.structure
+                ? await completeFileIndex(options.structure, options)
+                : await effectiveLoadFileIndex(resolvedFilePath, options);
+        const after = await getFileSignature(resolvedFilePath);
+        if (!areFileSignaturesEqual(signature, after) || (options.structure &&
+            !areFileSignaturesEqual(signature, options.structure))) {
+            const error = new Error('File changed during scan: ' + resolvedFilePath);
+            error.name = 'ScanChangedError';
+            throw error;
+        }
+        throwIfCancellationRequested(options.cancellationToken);
+        const keywords = options.structureKeywords || keywordsFromFileIndex(fileIndex);
         const scanResult: FileScanResult = {
+            scanOptionsKey,
             filePath: resolvedFilePath,
             fileIndex,
             keywords,
@@ -351,14 +426,11 @@ function createProjectIndexer({
             searchPaths: fileIndex.searchPaths || [path.dirname(resolvedFilePath)],
         };
 
-        fileScanCache.set(fileCacheKey, {
-            signature,
-            scanResult,
-        });
-        stats.scannedFileCount += 1;
+        cacheFileScan(fileCacheKey, signature, scanResult);
+        if (!options.structure) stats.scannedFileCount += 1;
 
         // Persist to L1.5 cache (fire-and-forget)
-        if (persistentFileScanCache) {
+        if (persistentFileScanCache && !options.structureOnly) {
             persistentFileScanCache.set(resolvedFilePath, signature, scanResult).catch(() => {
                 // Best-effort persistence
             });
@@ -374,11 +446,12 @@ function createProjectIndexer({
      * I/O throughput. Cycle detection and ancestry tracking are maintained per-path via the queue.
      * 
      * @param {string} rootFile - Absolute path to the main LS-DYNA input deck.
-     * @param {Object} [options] - Indexing options.
+     * @param {ProjectIndexBuildOptions} [options] - Indexing options.
      * @param {function(Object): void} [onProgress] - Optional callback for periodic snapshot progress.
      * @returns {Promise<ProjectIndexResult>} The assembled project index snapshot.
      */
-    async function buildProjectIndex(rootFile, options = {}, onProgress = null) {
+    async function buildProjectIndexOnce(rootFile, options: ProjectIndexBuildOptions = {}, onProgress = null) {
+        throwIfCancellationRequested(options.cancellationToken);
         const resolvedRootFile = resolveProjectFile(rootFile);
         const files = [];
         const fileIndexes = new Map();
@@ -392,10 +465,29 @@ function createProjectIndexer({
             reusedFileCount: 0,
             includeOccurrenceCount: 0,
         };
-        let lastProgressTime = Date.now();
+        let lastProgressTime = 0;
+        let lastPhase = '';
+        const progress = (event) => {
+            if (!onProgress) return;
+            if (event.phase !== lastPhase || Date.now() - lastProgressTime >= 200) {
+                lastPhase = event.phase;
+                lastProgressTime = Date.now();
+                onProgress({ type: 'progress', rootFile: resolvedRootFile, ...event });
+            }
+        };
+        progress({ phase: 'structure', processedFiles: 0 });
 
         const limit = createConcurrencyLimiter(concurrency);
         const resolutionCache = new Map();
+        const scans = new Map<string, Promise<any>>();
+        const startScan = (filePath) => {
+            if (!scans.has(filePath)) {
+                const pending = limit(() => loadFileScan(filePath, { ...options, structureOnly: staged }, stats));
+                pending.catch(() => {});
+                scans.set(filePath, pending);
+            }
+            return scans.get(filePath);
+        };
 
         /**
          * @typedef {Object} BFSQueueItem
@@ -408,6 +500,7 @@ function createProjectIndexer({
         let currentLevel = [{ filePath: resolvedRootFile, ancestry: [], inheritedPaths: [] }];
 
         while (currentLevel.length > 0) {
+            throwIfCancellationRequested(options.cancellationToken);
             // Filter out already-visited files before scanning
             const toScan = [];
             for (const item of currentLevel) {
@@ -422,21 +515,29 @@ function createProjectIndexer({
             if (toScan.length === 0) break;
 
             // Scan all files in this level in parallel (with concurrency limit)
-            const scanResults = await Promise.all(
-                toScan.map(item => limit(() => loadFileScan(item.filePath, options, stats)))
-            ) as FileScanResult[];
+            const scanResults = toScan.map(item => startScan(item.filePath));
+            // Observe failures immediately while consuming in deterministic BFS order.
+            for (const pending of scanResults) pending.catch(() => {});
+            throwIfCancellationRequested(options.cancellationToken);
 
             /** @type {BFSQueueItem[]} */
             const nextLevel = [];
 
             for (let i = 0; i < toScan.length; i++) {
+                throwIfCancellationRequested(options.cancellationToken);
                 const { filePath: resolvedFilePath, ancestry, inheritedPaths } = toScan[i];
-                const scanResult = scanResults[i];
+                const scanResult = await scanResults[i] as FileScanResult;
+                progress({ phase: "structure", filePath: resolvedFilePath, processedFiles: fileIndexes.size + 1 });
 
                 if (scanResult.fileIndex) {
                     fileIndexes.set(resolvedFilePath, scanResult.fileIndex);
                 }
                 addKeywordUsages(keywordMap, scanResult.keywords);
+
+                // A disk-backed entity-ID query may need one very large file without claiming
+                // or traversing its Include closure. The file index still records Include cards,
+                // but they do not enter the project graph or BFS queue in this explicit scope.
+                if (options.singleFileOnly === true) continue;
 
                 const fileDir = path.dirname(resolvedFilePath);
                 const pathEntries = scanResult.fileIndex && scanResult.fileIndex.pathEntries
@@ -468,8 +569,10 @@ function createProjectIndexer({
                         resolveIncludeWithCandidatesAsync(entry.fileName, effectivePaths, resolutionCache)
                     )
                 );
+                throwIfCancellationRequested(options.cancellationToken);
 
                 for (let j = 0; j < scanResult.includeEntries.length; j++) {
+                    throwIfCancellationRequested(options.cancellationToken);
                     const entry = scanResult.includeEntries[j];
                     const {
                         fileName,
@@ -480,6 +583,7 @@ function createProjectIndexer({
                         keywordLine,
                         transform,
                         parameterizedFileName,
+                        inputFormatOverride,
                     } = entry;
                     const { resolvedPath, candidatePaths } = includeResolutions[j];
 
@@ -496,6 +600,7 @@ function createProjectIndexer({
                             keywordLine,
                             transform,
                             parameterizedFileName,
+                            inputFormatOverride,
                         });
                         continue;
                     }
@@ -519,6 +624,7 @@ function createProjectIndexer({
                             keywordLine,
                             transform,
                             parameterizedFileName,
+                            inputFormatOverride,
                             cycle: true,
                         });
                         continue;
@@ -534,9 +640,11 @@ function createProjectIndexer({
                         keywordLine,
                         transform,
                         parameterizedFileName,
+                        inputFormatOverride,
                     });
 
                     if (!visited.has(resolvedPath)) {
+                        startScan(resolvedPath);
                         nextLevel.push({
                             filePath: resolvedPath,
                             ancestry: [...ancestry, resolvedFilePath],
@@ -546,28 +654,12 @@ function createProjectIndexer({
                 }
             }
 
-            // Report progress between BFS levels
-            if (onProgress && Date.now() - lastProgressTime >= 500) {
-                lastProgressTime = Date.now();
-                stats.includeOccurrenceCount = graph.includeOccurrences.length;
-                onProgress({
-                    rootFile: resolvedRootFile,
-                    files: [...files],
-                    fileIndexes,
-                    graph,
-                    keywordMap,
-                    missingFiles: graph.missingFiles,
-                    cycles: graph.cycles,
-                    effectiveSearchPathsByFile,
-                    stats: { ...stats },
-                });
-            }
-
             currentLevel = nextLevel;
         }
 
         stats.includeOccurrenceCount = graph.includeOccurrences.length;
-        return {
+        const snapshot = {
+            scope: options.singleFileOnly === true ? 'single-file' : 'project',
             rootFile: resolvedRootFile,
             files,
             fileIndexes,
@@ -578,10 +670,47 @@ function createProjectIndexer({
             effectiveSearchPathsByFile,
             stats,
         };
+        if (staged) {
+            onProgress?.({ type: 'structureReady', rootFile: resolvedRootFile,
+                snapshot: { ...snapshot, phase: 'structure', fileIndexes: new Map(), keywordMap: new Map() } });
+            progress({ phase: 'references', processedFiles: 0 });
+            for (const filePath of files) {
+                const result = await loadFileScan(filePath, { ...options,
+                    structure: fileIndexes.get(filePath), structureKeywords: (await scans.get(filePath)).keywords,
+                    onProgress: progress }, stats);
+                fileIndexes.set(filePath, result.fileIndex);
+            }
+            // Reject mixed versions even when a previously completed file changes later.
+            for (const [filePath, index] of fileIndexes) {
+                const signature = await getFileSignature(filePath);
+                if (!areFileSignaturesEqual(signature, index)) {
+                    const error = new Error('File changed during scan: ' + filePath);
+                    error.name = 'ScanChangedError';
+                    throw error;
+                }
+            }
+        }
+        return snapshot;
+    }
+
+    async function buildProjectIndex(rootFile, options = {}, onProgress = null) {
+        for (let attempt = 0; ; attempt++) {
+            try { return await buildProjectIndexOnce(rootFile, options, onProgress); }
+            catch (error) {
+                if (error?.name !== 'ScanChangedError' || attempt >= 1) throw error;
+                onProgress?.({ type: 'progress', rootFile: resolveProjectFile(rootFile), phase: 'restarting' });
+            }
+        }
     }
 
     return {
         buildProjectIndex,
+        clearMemoryCache() {
+            const removed = getFileScanCacheStats();
+            fileScanCache.clear();
+            return removed;
+        },
+        getMemoryCacheStats: getFileScanCacheStats,
     };
 }
 
@@ -594,6 +723,8 @@ module.exports = {
     resolveIncludeFromSearchPathsAsync,
     resolveIncludeWithCandidatesAsync,
     createConcurrencyLimiter,
+    DEFAULT_FILE_SCAN_MEMORY_CACHE_BYTES,
+    estimateFileScanResultSize,
 };
 
 export {};

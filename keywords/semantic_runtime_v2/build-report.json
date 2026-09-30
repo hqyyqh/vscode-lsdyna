@@ -1,0 +1,28 @@
+{
+  "capacities": {
+    "lruUncompressedBytes": 16777216,
+    "maxCompressedShardBytes": 2097152,
+    "maxTotalCompressedBytes": 67108864,
+    "maxUncompressedShardBytes": 16777216
+  },
+  "compressedBytes": 5113143,
+  "datasetReleaseId": "semantic-dataset:165e1d7ec00eb71552dd93b8",
+  "deterministicReplayRequired": true,
+  "kind": "dynasense-semantic-build-report-v2",
+  "schemaVersion": 2,
+  "summary": {
+    "ambiguousReferenceRelations": 9646,
+    "blockedCrossCanonicalOptionMutationEdges": 77730,
+    "definitionScanners": 1678,
+    "distinctManualRelations": 4021,
+    "editableOptionMutationEdges": 130090,
+    "editableOptionTargets": 4475,
+    "optionGrammars": 1676,
+    "optionMutationStates": 4535,
+    "optionTargets": 4475,
+    "referenceCoordinates": 16047,
+    "referenceKeywords": 2245,
+    "referenceRelations": 19709,
+    "sourceManualRelations": 4021
+  }
+}

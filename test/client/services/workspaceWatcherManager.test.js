@@ -28,13 +28,13 @@ describe('createWorkspaceWatcherManager', () => {
         });
 
         const first = manager.rebuild(['dat', '.DAT', '../bad', '.x*y']);
-        assert.deepStrictEqual(first, ['.asc', '.dat', '.dyna', '.k', '.key']);
+        assert.deepStrictEqual(first, ['.dat', '.dyna', '.k', '.key']);
         assert.deepStrictEqual(created, first.map(extension => `**/*${extension}`));
 
         created.length = 0;
         events.length = 0;
         const second = manager.rebuild(['.foo']);
-        assert.deepStrictEqual(second, ['.asc', '.dyna', '.foo', '.k', '.key']);
+        assert.deepStrictEqual(second, ['.dyna', '.foo', '.k', '.key']);
         const lastCreate = events.reduce((index, event, current) => event.startsWith('create:') ? current : index, -1);
         const firstDispose = events.findIndex(event => event.startsWith('dispose:'));
         assert.ok(firstDispose > lastCreate, 'new watchers must exist before old watchers are disposed');

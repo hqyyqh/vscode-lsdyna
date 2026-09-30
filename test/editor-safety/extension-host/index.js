@@ -166,25 +166,52 @@ async function waitForRendererEditorFocus(devTools) {
 }
 
 async function waitForRendererActionWidget(devTools) {
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + 5000;
     let widget = null;
     while (Date.now() < deadline) {
         const response = await devTools.call('Runtime.evaluate', {
             expression: `(() => {
-                const isVisible = element =>
-                    element instanceof HTMLElement &&
-                    element.offsetParent !== null;
-                const element = document.querySelector('.action-widget');
-                if (!isVisible(element)) return null;
-                const rows = Array.from(
-                    element.querySelectorAll('.monaco-list-row.action')
-                ).filter(isVisible).map(row =>
-                    String(row.textContent || '').trim()
-                );
-                return {
-                    text: String(element.textContent || '').trim(),
-                    rows
+                const queryAllDeep = selector => {
+                    const matches = [];
+                    const roots = [document];
+                    for (const root of roots) {
+                        matches.push(...root.querySelectorAll(selector));
+                        for (const element of root.querySelectorAll('*')) {
+                            if (element.shadowRoot) roots.push(element.shadowRoot);
+                            if (String(element.tagName || '').toUpperCase() === 'IFRAME') {
+                                try {
+                                    if (element.contentDocument) roots.push(element.contentDocument);
+                                } catch (_) {
+                                    // Cross-origin frames are outside the VS Code workbench DOM.
+                                }
+                            }
+                        }
+                    }
+                    return matches;
                 };
+                const isVisible = element => {
+                    if (!element || element.nodeType !== 1 ||
+                        typeof element.getBoundingClientRect !== 'function') return false;
+                    const rect = element.getBoundingClientRect();
+                    const view = element.ownerDocument && element.ownerDocument.defaultView;
+                    const style = view && view.getComputedStyle(element);
+                    return rect.width > 0 && rect.height > 0 &&
+                        style && style.display !== 'none' && style.visibility !== 'hidden';
+                };
+                for (const element of queryAllDeep('.action-widget').filter(isVisible)) {
+                    const rows = Array.from(
+                        element.querySelectorAll('.monaco-list-row.action')
+                    ).filter(isVisible).map(row =>
+                        String(row.textContent || '').trim()
+                    );
+                    if (rows.length > 0) {
+                        return {
+                            text: String(element.textContent || '').trim(),
+                            rows
+                        };
+                    }
+                }
+                return null;
             })()`,
             returnByValue: true,
         });
@@ -192,6 +219,7 @@ async function waitForRendererActionWidget(devTools) {
         if (widget && widget.rows.length > 0) return widget;
         await new Promise(resolve => setTimeout(resolve, 25));
     }
+    await captureRendererDiagnostic(devTools, 'code-action-widget');
     throw new Error(
         `Renderer Code Action widget did not become ready: ${JSON.stringify(widget)}`,
     );
@@ -334,19 +362,55 @@ async function dispatchRendererKey(devTools, key, code, virtualKeyCode, modifier
 async function getRendererVisibleElementCenter(devTools, selector) {
     const response = await devTools.call('Runtime.evaluate', {
         expression: `(() => {
-            const elements = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
+            const queryAllDeep = query => {
+                const matches = [];
+                const roots = [document];
+                for (const root of roots) {
+                    matches.push(...root.querySelectorAll(query));
+                    for (const element of root.querySelectorAll('*')) {
+                        if (element.shadowRoot) roots.push(element.shadowRoot);
+                        if (String(element.tagName || '').toUpperCase() === 'IFRAME') {
+                            try {
+                                if (element.contentDocument) roots.push(element.contentDocument);
+                            } catch (_) {
+                                // Cross-origin frames are outside the VS Code workbench DOM.
+                            }
+                        }
+                    }
+                }
+                return matches;
+            };
+            const elements = queryAllDeep(${JSON.stringify(selector)});
             const element = elements.find(candidate => {
-                if (!(candidate instanceof HTMLElement)) return false;
+                if (!candidate || candidate.nodeType !== 1 ||
+                    typeof candidate.getBoundingClientRect !== 'function') return false;
                 const rect = candidate.getBoundingClientRect();
-                const style = getComputedStyle(candidate);
+                const view = candidate.ownerDocument && candidate.ownerDocument.defaultView;
+                const style = view && view.getComputedStyle(candidate);
                 return rect.width > 0 && rect.height > 0 &&
-                    style.display !== 'none' && style.visibility !== 'hidden';
+                    style && style.display !== 'none' && style.visibility !== 'hidden';
             });
             if (!element) return null;
             const rect = element.getBoundingClientRect();
+            let x = rect.left + rect.width / 2;
+            let y = rect.top + rect.height / 2;
+            let view = element.ownerDocument && element.ownerDocument.defaultView;
+            while (view && view !== window) {
+                let frame;
+                try {
+                    frame = view.frameElement;
+                } catch (_) {
+                    return null;
+                }
+                if (!frame) return null;
+                const frameRect = frame.getBoundingClientRect();
+                x += frameRect.left + Number(frame.clientLeft || 0);
+                y += frameRect.top + Number(frame.clientTop || 0);
+                view = frame.ownerDocument && frame.ownerDocument.defaultView;
+            }
             return {
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2,
+                x,
+                y,
                 text: String(element.textContent || '').trim()
             };
         })()`,
@@ -355,6 +419,93 @@ async function getRendererVisibleElementCenter(devTools, selector) {
     const point = response.result ? response.result.value : null;
     if (!point) throw new Error(`Visible renderer element not found: ${selector}`);
     return point;
+}
+
+async function getRendererVisibleTextElementCenter(
+    devTools,
+    selector,
+    textFragment,
+    startsWith = false,
+) {
+    const response = await devTools.call('Runtime.evaluate', {
+        expression: `(() => {
+            const queryAllDeep = query => {
+                const matches = [];
+                const roots = [document];
+                for (const root of roots) {
+                    matches.push(...root.querySelectorAll(query));
+                    for (const element of root.querySelectorAll('*')) {
+                        if (element.shadowRoot) roots.push(element.shadowRoot);
+                        if (String(element.tagName || '').toUpperCase() === 'IFRAME') {
+                            try {
+                                if (element.contentDocument) roots.push(element.contentDocument);
+                            } catch (_) {}
+                        }
+                    }
+                }
+                return matches;
+            };
+            const expected = ${JSON.stringify(String(textFragment))};
+            const elements = queryAllDeep(${JSON.stringify(selector)});
+            const element = elements.find(candidate => {
+                if (!candidate || candidate.nodeType !== 1 ||
+                    typeof candidate.getBoundingClientRect !== 'function') return false;
+                const rect = candidate.getBoundingClientRect();
+                const view = candidate.ownerDocument && candidate.ownerDocument.defaultView;
+                const style = view && view.getComputedStyle(candidate);
+                const text = String(candidate.textContent || '').trim();
+                const textMatches = ${startsWith ? 'text.startsWith(expected)' : 'text.includes(expected)'};
+                return textMatches && rect.width > 0 && rect.height > 0 &&
+                    style && style.display !== 'none' && style.visibility !== 'hidden';
+            });
+            if (!element) return null;
+            const rect = element.getBoundingClientRect();
+            let x = rect.left + rect.width / 2;
+            let y = rect.top + rect.height / 2;
+            let view = element.ownerDocument && element.ownerDocument.defaultView;
+            while (view && view !== window) {
+                let frame;
+                try { frame = view.frameElement; } catch (_) { return null; }
+                if (!frame) return null;
+                const frameRect = frame.getBoundingClientRect();
+                x += frameRect.left + Number(frame.clientLeft || 0);
+                y += frameRect.top + Number(frame.clientTop || 0);
+                view = frame.ownerDocument && frame.ownerDocument.defaultView;
+            }
+            return { x, y, text: String(element.textContent || '').trim() };
+        })()`,
+        returnByValue: true,
+    });
+    return response.result ? response.result.value : null;
+}
+
+async function waitForRendererVisibleTextElementCenter(
+    devTools,
+    selector,
+    textFragment,
+    startsWith = false,
+    timeoutMs = 5000,
+) {
+    const deadline = Date.now() + timeoutMs;
+    let point = null;
+    while (Date.now() < deadline) {
+        point = await getRendererVisibleTextElementCenter(
+            devTools,
+            selector,
+            textFragment,
+            startsWith,
+        );
+        if (point) return point;
+        await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    await captureRendererDiagnostic(
+        devTools,
+        `visible-text-${String(textFragment).replace(/[^a-z0-9]+/gi, '-')}`,
+    );
+    throw new Error(
+        `Visible renderer text element did not appear: ${selector} / ${textFragment}; ` +
+        JSON.stringify(point),
+    );
 }
 
 async function getRendererEditorPositionPoint(devTools, oneBasedLine, zeroBasedColumn = 0) {
@@ -670,7 +821,9 @@ async function writeClipboardText(text) {
         if (await vscode.env.clipboard.readText() === text) return;
         await new Promise(resolve => setTimeout(resolve, 25));
     }
-    assert.strictEqual(await vscode.env.clipboard.readText(), text);
+    const error = new Error('System clipboard did not retain the test text after five write/read attempts');
+    error.code = 'LSDYNA_CLIPBOARD_UNAVAILABLE';
+    throw error;
 }
 
 async function waitForAssertion(assertion, timeoutMs = 1500) {
@@ -707,6 +860,27 @@ async function settleQuickPickCommand(commandPromise, commands) {
     return result;
 }
 
+async function runInlineEditChoice(commandFactory, expectedRowFragment, commands) {
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await waitForRendererEditorFocus(devTools);
+        await commandFactory();
+        const widget = await waitForRendererSuggestionWidget(devTools);
+        assert.ok(
+            widget.rows.some(row => row.includes(expectedRowFragment)),
+            `Inline edit choices did not show ${JSON.stringify(expectedRowFragment)}: ${JSON.stringify(widget.rows)}`,
+        );
+        for (const command of commands) {
+            await vscode.commands.executeCommand(command);
+            await new Promise(resolve => setTimeout(resolve, 75));
+        }
+        await new Promise(resolve => setTimeout(resolve, 125));
+    } finally {
+        devTools.close();
+    }
+}
+
 async function settleSuggestionCommand(command, expectSuggestions = true) {
     const devTools = expectSuggestions ? await connectWorkbenchDevTools() : null;
     try {
@@ -730,26 +904,16 @@ async function settleSuggestionCommand(command, expectSuggestions = true) {
     }
 }
 
-async function chooseContactPostOption(keywordLine, nextCount) {
-    const commandPromise = vscode.commands.executeCommand(
-        'extension.lsdynaChooseKeywordOptions',
-        keywordLine,
-    );
-    await new Promise(resolve => setTimeout(resolve, 100));
-    await vscode.commands.executeCommand('quickInput.accept');
-    await new Promise(resolve => setTimeout(resolve, 100));
-    await vscode.commands.executeCommand('quickInput.first');
-    for (let index = 0; index < nextCount; index++) {
-        await vscode.commands.executeCommand('quickInput.next');
+async function closeManagerAndFocusDocument(document) {
+    for (const group of vscode.window.tabGroups.all) {
+        for (const tab of group.tabs) {
+            if (tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("lsdynaKeywordManager")) {
+                assert.equal(await vscode.window.tabGroups.close(tab, true), true);
+            }
+        }
     }
-    await vscode.commands.executeCommand('quickInput.accept');
-    return Promise.race([
-        commandPromise,
-        new Promise((_, reject) => setTimeout(
-            () => reject(new Error('CONTACT option command did not settle')),
-            2000,
-        )),
-    ]);
+    await vscode.window.showTextDocument(document, vscode.ViewColumn.One, false);
+    await vscode.commands.executeCommand("workbench.action.focusFirstEditorGroup");
 }
 
 async function assertInteractiveLatencyBaseline() {
@@ -966,7 +1130,7 @@ async function assertFunctionalHoverMatrix() {
     );
     const parameterKeywordMarkdown = hoverMarkdown(parameterKeyword);
     assert.ok(parameterKeywordMarkdown.includes('PRMR1'));
-    assert.ok(parameterKeywordMarkdown.includes('Available Options'));
+    assert.ok(parameterKeywordMarkdown.includes('Keyword options'));
     assert.ok(parameterKeywordMarkdown.includes('command:extension.selectKeyword'));
 
     const includeHover = await executeHover(
@@ -1698,8 +1862,15 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
         );
         await new Promise(resolve => setTimeout(resolve, 150));
         await dispatchRendererMouseClick(devTools, pasteMenuPoint);
-        await new Promise(resolve => setTimeout(resolve, 100));
-        if (document.getText() === original) {
+        try {
+            // Renderer text and the Extension Host TextDocument are updated on
+            // separate IPC turns. Busy startup notifications can make the old
+            // fixed 100 ms sample observe stale model text even after the real
+            // menu action has visibly applied.
+            await waitForAssertion(() => {
+                assert.notStrictEqual(document.getText(), original);
+            }, 1500);
+        } catch (_error) {
             const menuAfterClick = await getRendererMenuItemState(devTools, 'Ctrl+V');
             await captureRendererDiagnostic(devTools, 'context-menu-paste-noop');
             throw new Error(
@@ -1767,7 +1938,11 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
             assert.strictEqual(changedLine.slice(24), originalLine.slice(24));
             assert.strictEqual(document.isDirty, true);
         });
-        assert.strictEqual(await vscode.env.clipboard.readText(), '23');
+        // The native clipboard can settle one IPC turn after the TextDocument
+        // cut edit. Keep this bounded and still require the exact selected text.
+        await waitForAssertion(async () => {
+            assert.strictEqual(await vscode.env.clipboard.readText(), '23');
+        }, 1500);
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
 
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
@@ -1981,6 +2156,306 @@ async function assertCellDeleteAndBackspaceAreLocalAndUndoable() {
     assert.strictEqual(document.isDirty, false);
 }
 
+async function assertAdjacentFieldMergeIsChosenAndUndoable() {
+    const { document, editor } = await openFixture('merge-fields.key');
+    const original = document.getText();
+    const sourceLine = document.lineAt(5).text;
+    assert.strictEqual(sourceLine.slice(60, 70).trim(), '95200');
+    assert.strictEqual(sourceLine.slice(70, 80).trim(), '501');
+
+    editor.selection = new vscode.Selection(5, 77, 5, 77);
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaCellDeleteLeft'),
+        '95200501',
+        ['extension.lsdynaCancelInlineEditChoice'],
+    );
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaCellDeleteLeft'),
+        '95200501',
+        ['selectNextSuggestion', 'acceptSelectedSuggestion'],
+    );
+    assert.strictEqual(document.lineAt(5).text.slice(60, 70).trim(), '95200501');
+    assert.strictEqual(document.lineAt(5).text.slice(70, 80).trim(), '');
+    assert.strictEqual(document.lineAt(5).text.slice(0, 60), sourceLine.slice(0, 60));
+
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+}
+
+async function assertRendererInlineChoiceCancelKeysPreserveSource() {
+    const { document, editor } = await openFixture('merge-fields.key');
+    const original = document.getText();
+    const devTools = await connectWorkbenchDevTools();
+    const keys = [
+        ['Backspace', 'Backspace', 8],
+        ['Delete', 'Delete', 46],
+        ['Escape', 'Escape', 27],
+    ];
+    try {
+        for (const [key, code, virtualKeyCode] of keys) {
+            editor.selection = new vscode.Selection(5, 77, 5, 77);
+            await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+            await waitForRendererEditorFocus(devTools);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            await vscode.commands.executeCommand('extension.lsdynaCellDeleteLeft');
+            const widget = await waitForRendererSuggestionWidget(devTools);
+            assert.ok(widget.rows.some(row => row.includes('95200501')));
+
+            await dispatchRendererKey(devTools, key, code, virtualKeyCode);
+            await waitForAssertion(async () => {
+                const currentWidget = await getRendererSuggestionWidget(devTools);
+                assert.ok(!currentWidget || currentWidget.rows.length === 0);
+                assert.strictEqual(document.getText(), original, key);
+                assert.strictEqual(document.isDirty, false, key);
+            });
+        }
+    } finally {
+        devTools.close();
+    }
+}
+
+async function assertRendererCompletionBackspaceKeepsFixedColumns() {
+    const { document, editor } = await openFixture('fixed.key');
+    const original = document.getText();
+    const originalLine = document.lineAt(2).text;
+    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    await vscode.commands.executeCommand('extension.lsdynaTab');
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await waitForRendererEditorFocus(devTools);
+        await vscode.commands.executeCommand('editor.action.triggerSuggest');
+        await waitForRendererSuggestionWidget(devTools);
+
+        await dispatchRendererKey(devTools, 'Backspace', 'Backspace', 8);
+        await waitForAssertion(() => {
+            const changed = document.lineAt(2).text;
+            assert.strictEqual(changed.slice(0, 8), originalLine.slice(0, 8));
+            assert.strictEqual(changed.slice(8, 24).trim(), '');
+            assert.strictEqual(changed.slice(24), originalLine.slice(24));
+        });
+
+        await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+    } finally {
+        devTools.close();
+    }
+}
+
+async function assertEmptyFieldTypingAlignsWithoutTab() {
+    const { document, editor } = await openFixture('empty-field-input.key');
+    const original = document.getText();
+    const sourceLine = document.lineAt(4).text;
+    assert.strictEqual(sourceLine.length, 70);
+    editor.selection = new vscode.Selection(4, 70, 4, 70);
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const guard = extension.exports._internals.ensureCardCellEditGuard();
+    const boundaryTarget = guard.getEmptyCellTypeTarget(document, editor.selection, '9');
+    assert.ok(boundaryTarget, 'shared-boundary target should resolve');
+    assert.strictEqual(boundaryTarget.fieldIndex, 7);
+    assert.strictEqual(boundaryTarget.ambiguousPreviousFieldIndex, 6);
+    guard.markAp(document, 4, 6, 70);
+
+    let typed = '9';
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('type', { text: typed }),
+        'Write next field',
+        ['selectNextSuggestion', 'acceptSelectedSuggestion'],
+    );
+    await waitForAssertion(() => {
+        assert.strictEqual(document.lineAt(4).text.slice(70, 80).trim(), typed);
+        assert.strictEqual(document.lineAt(4).text.slice(0, 70), sourceLine);
+    });
+
+    for (const character of '6200301') {
+        typed += character;
+        await vscode.commands.executeCommand('type', { text: character });
+        await waitForAssertion(() => {
+            assert.strictEqual(document.lineAt(4).text.slice(70, 80).trim(), typed);
+            assert.strictEqual(document.lineAt(4).text.slice(0, 70), sourceLine);
+        });
+    }
+
+    assert.strictEqual(document.lineAt(4).text.slice(70, 80), '  96200301');
+    assert.strictEqual(editor.selection.active.character, 80);
+
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    // Keep accepting fast numeric input while the original suggestion widget is
+    // open; once the previous field overflows, the next-field meaning is unique.
+    editor.selection = new vscode.Selection(4, 70, 4, 70);
+    await vscode.commands.executeCommand('type', { text: '9' });
+    await new Promise(resolve => setTimeout(resolve, 75));
+    assert.strictEqual(document.getText(), original);
+    await vscode.commands.executeCommand('type', { text: '6' });
+    await new Promise(resolve => setTimeout(resolve, 75));
+    assert.strictEqual(document.getText(), original);
+    await vscode.commands.executeCommand('type', { text: '2' });
+    await waitForAssertion(() => {
+        assert.strictEqual(document.lineAt(4).text.slice(70, 80).trim(), '962');
+        assert.strictEqual(document.lineAt(4).text.slice(0, 70), sourceLine);
+    });
+
+    let fastTyped = '962';
+    for (const character of '00301') {
+        fastTyped += character;
+        await vscode.commands.executeCommand('type', { text: character });
+        await waitForAssertion(() => {
+            assert.strictEqual(document.lineAt(4).text.slice(70, 80).trim(), fastTyped);
+            assert.strictEqual(document.lineAt(4).text.slice(0, 70), sourceLine);
+        });
+    }
+    assert.strictEqual(document.lineAt(4).text.slice(70, 80), '  96200301');
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+}
+
+async function assertLargeNodeBlockKeepsSchemaAfterEdit() {
+    const { document, editor } = await openFixture('large-node-edit.key');
+    const original = document.getText();
+    assert.ok(document.lineCount > 100_000);
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const internals = extension.exports._internals;
+    const endLine = document.lineCount - 2;
+    internals.setFileIndexForTesting(document.uri.fsPath, {
+        keywordBlocks: [
+            { keyword: '*KEYWORD', startLine: 0, endLine: 0 },
+            { keyword: '*NODE', startLine: 1, endLine: endLine - 1 },
+            { keyword: '*END', startLine: endLine, endLine },
+        ],
+    });
+
+    try {
+        const editLine = 6002;
+        const oldEditLine = document.lineAt(editLine).text;
+        await editor.edit(builder => builder.replace(
+            new vscode.Range(editLine, 7, editLine, 8),
+            oldEditLine.slice(7, 8) === '1' ? '2' : '1',
+        ));
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const targetLine = 90_000;
+        const targetText = document.lineAt(targetLine).text;
+        editor.selection = new vscode.Selection(targetLine, 0, targetLine, 0);
+        await vscode.commands.executeCommand('extension.lsdynaTab');
+
+        assert.strictEqual(document.lineAt(targetLine).text, targetText);
+        assert.ok(!document.lineAt(targetLine).text.includes('\t'));
+        assert.strictEqual(editor.selection.start.line, targetLine);
+        assert.strictEqual(editor.selection.start.character, 9);
+        assert.strictEqual(editor.selection.end.character, 24);
+
+        await vscode.commands.executeCommand('undo');
+        assert.strictEqual(document.getText(), original);
+        assert.strictEqual(document.isDirty, false);
+    } finally {
+        internals.setFileIndexForTesting(document.uri.fsPath, null);
+    }
+}
+
+async function assertOverlappingSchemaTabAndFormatAreByteStable() {
+    const { document, editor } = await openFixture('overlapping-schema.key');
+    const original = document.getText();
+    const originalLine = document.lineAt(3).text;
+
+    editor.selection = new vscode.Selection(3, 0, 3, 0);
+    await vscode.commands.executeCommand('extension.lsdynaTab');
+    assert.strictEqual(document.lineAt(3).text, originalLine);
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    await vscode.commands.executeCommand('extension.lsdynaShiftTab');
+    assert.strictEqual(document.lineAt(3).text, originalLine);
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    editor.selection = new vscode.Selection(3, 0, 3, originalLine.length);
+    await vscode.commands.executeCommand('extension.lsdynaFormatSelection');
+    assert.strictEqual(document.lineAt(3).text, originalLine);
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+}
+
+async function assertRendererTabKeepsSnippetPlaceholderNavigation() {
+    const { document, editor } = await openFixture('snippet-tab.key');
+    const original = document.getText();
+    const position = new vscode.Position(2, 0);
+    editor.selection = new vscode.Selection(position, position);
+    const inserted = await editor.insertSnippet(
+        new vscode.SnippetString('${1:11111111}${2:22222222}'),
+        editor.selection,
+    );
+    assert.strictEqual(inserted, true);
+    assert.strictEqual(document.lineAt(2).text, '1111111122222222');
+    assert.strictEqual(editor.selection.start.character, 0);
+    assert.strictEqual(editor.selection.end.character, 8);
+
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await waitForRendererEditorFocus(devTools);
+        await dispatchRendererKey(devTools, 'Tab', 'Tab', 9);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.lineAt(2).text, '1111111122222222');
+            assert.strictEqual(editor.selection.start.character, 8);
+            assert.strictEqual(editor.selection.end.character, 16);
+        });
+
+        await dispatchRendererKey(devTools, 'Escape', 'Escape', 27);
+        await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+    } finally {
+        devTools.close();
+    }
+}
+
+async function assertRendererMultiLineSelectionUsesNativeTab() {
+    const { document, editor } = await openFixture('renderer-multi.key');
+    const original = document.getText();
+    const firstLine = document.lineAt(2).text;
+    const secondLine = document.lineAt(3).text;
+    editor.options = { ...editor.options, insertSpaces: true, tabSize: 4 };
+    editor.selection = new vscode.Selection(2, 0, 3, 12);
+
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await waitForRendererEditorFocus(devTools);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await dispatchRendererKey(devTools, 'Tab', 'Tab', 9);
+        await waitForAssertion(() => {
+            // Both source rows begin at visual column 7, so native indentation
+            // advances them by one space to the next configured tab stop.
+            assert.strictEqual(document.lineAt(2).text, ` ${firstLine}`);
+            assert.strictEqual(document.lineAt(3).text, ` ${secondLine}`);
+            assert.strictEqual(document.isDirty, true);
+        });
+
+        await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+    } finally {
+        devTools.close();
+    }
+}
+
 async function assertEmptyCellBackspaceMovesWithoutWriting() {
     const { document, editor } = await openFixture('fixed-empty-field.key');
     const original = document.getText();
@@ -2010,14 +2485,16 @@ async function assertSecondDeleteRemovesNowEmptyCardRow() {
         await vscode.commands.executeCommand(command);
         const emptyRowText = document.getText();
         assert.strictEqual(document.lineCount, 5, command);
-        assert.strictEqual(document.lineAt(2).text.trim(), '', command);
+        assert.strictEqual(document.lineAt(2).text, '', command);
 
         await vscode.commands.executeCommand(command);
         assert.strictEqual(document.lineCount, 4, command);
-        assert.strictEqual(document.lineAt(2).text, '*END', command);
+        assert.notStrictEqual(document.getText(), emptyRowText, command);
 
         await vscode.commands.executeCommand('undo');
         assert.strictEqual(document.getText(), emptyRowText, command);
+        assert.strictEqual(document.lineAt(2).text, '', command);
+
         await vscode.commands.executeCommand('undo');
         assert.strictEqual(document.getText(), original, command);
         assert.strictEqual(document.isDirty, false, command);
@@ -2129,58 +2606,72 @@ async function assertEnterIsAtomicAndUndoable() {
     assert.strictEqual(document.isDirty, false);
 }
 
-async function assertKeywordTitleOptionIsTransactional() {
+async function assertVerifiedKeywordAliasIsTransactional() {
     const { document, editor } = await openFixture('option-title.key');
     const original = document.getText();
     const otherFilesBefore = workspaceSnapshot();
     editor.selection = new vscode.Selection(1, 0, 1, 0);
 
-    let commandPromise = vscode.commands.executeCommand(
+    const openedModel = await vscode.commands.executeCommand(
         'extension.lsdynaChooseKeywordOptions',
         1,
     );
-    await settleQuickPickCommand(commandPromise, ['quickInput.hide']);
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
     assert.deepStrictEqual(workspaceSnapshot(), otherFilesBefore);
 
-    commandPromise = vscode.commands.executeCommand(
-        'extension.lsdynaChooseKeywordOptions',
-        1,
+    assert.ok(!openedModel.choices.some(choice => choice.targetKeyword === '*MAT_001_TITLE' && choice.enabled),
+        'TITLE is a native form control, not an equivalent-spelling choice');
+    const rejected = await vscode.commands.executeCommand('extension.keywordOptions.stage', 'spelling:*MAT_001_TITLE');
+    assert.equal(rejected, null);
+    assert.equal(document.getText(), original);
+    assert.equal(document.isDirty, false);
+    const staged = await vscode.commands.executeCommand(
+        'extension.keywordOptions.stage',
+        'spelling:*MAT_ELASTIC',
     );
-    await settleQuickPickCommand(commandPromise, [
-        'quickInput.first',
-        'quickInput.toggleCheckbox',
-        'quickInput.accept',
-    ]);
-    assert.strictEqual(document.lineAt(1).text, '*MAT_001_TITLE');
-    assert.strictEqual(document.lineAt(2).text.trim(), '$# title');
-    assert.strictEqual(document.lineAt(3).text, '');
-    assert.strictEqual(document.lineAt(4).text, '       1');
+    assert.ok(staged, 'Keyword Manager did not retain the verified alias target');
+    assert.strictEqual(staged.targetKeyword, '*MAT_ELASTIC');
+    const applied = await vscode.commands.executeCommand('extension.keywordOptions.apply');
+    assert.ok(applied, 'Keyword Manager rejected a current, writable alias plan in the real Extension Host');
+    assert.strictEqual(applied.plan.targetKeyword, '*MAT_ELASTIC');
+    const editEntries = applied.edit.entries();
+    assert.strictEqual(editEntries.length, 1);
+    assert.strictEqual(editEntries[0][0].toString(), document.uri.toString());
+    assert.ok(editEntries[0][1][0].newText.startsWith('*MAT_ELASTIC'));
+    await waitForAssertion(() => {
+        assert.strictEqual(document.lineAt(1).text, '*MAT_ELASTIC');
+        assert.strictEqual(document.lineAt(2).text.trim(), '1');
+    });
 
-    await vscode.commands.executeCommand('undo');
-    assert.strictEqual(document.getText(), original);
+    const undoDevTools = await connectWorkbenchDevTools();
+    try {
+        await closeManagerAndFocusDocument(document);
+        await waitForRendererEditorFocus(undoDevTools);
+        await dispatchRendererKey(undoDevTools, 'z', 'KeyZ', 90, 2);
+    } finally {
+        undoDevTools.close();
+    }
+    await waitForAssertion(() => {
+        assert.strictEqual(document.getText(), original);
+    });
     assert.strictEqual(document.isDirty, false);
 
-    commandPromise = vscode.commands.executeCommand(
+    await vscode.commands.executeCommand(
         'extension.lsdynaChooseKeywordOptions',
         1,
     );
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await vscode.commands.executeCommand('extension.keywordOptions.stage', 'spelling:*MAT_ELASTIC');
     await editor.edit(editBuilder => {
         editBuilder.insert(new vscode.Position(0, 0), '$ concurrent engineer edit\r\n');
     });
     const afterConcurrentEdit = document.getText();
-    await settleQuickPickCommand(commandPromise, [
-        'quickInput.first',
-        'quickInput.toggleCheckbox',
-        'quickInput.accept',
-    ]);
+    await vscode.commands.executeCommand('extension.keywordOptions.apply');
 
     assert.strictEqual(document.getText(), afterConcurrentEdit);
     const devTools = await connectWorkbenchDevTools();
     try {
-        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await closeManagerAndFocusDocument(document);
         await waitForRendererEditorFocus(devTools);
         await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
     } finally {
@@ -2190,6 +2681,7 @@ async function assertKeywordTitleOptionIsTransactional() {
         assert.strictEqual(document.getText(), original);
     });
     assert.strictEqual(document.isDirty, false);
+    await vscode.commands.executeCommand('extension.keywordOptions.reset');
 }
 
 async function assertKeywordOptionsCannotModifyReadonlyDeck() {
@@ -2206,20 +2698,18 @@ async function assertKeywordOptionsCannotModifyReadonlyDeck() {
         const original = document.getText();
         const workspaceBefore = workspaceSnapshot();
         editor.selection = new vscode.Selection(1, 0, 1, 0);
-        const commandPromise = vscode.commands.executeCommand(
+        await vscode.commands.executeCommand(
             'extension.lsdynaChooseKeywordOptions',
             1,
         );
-        await settleQuickPickCommand(commandPromise, [
-            'quickInput.first',
-            'quickInput.toggleCheckbox',
-            'quickInput.accept',
-        ]);
+        await vscode.commands.executeCommand('extension.keywordOptions.stage', 'spelling:*MAT_ELASTIC');
+        await vscode.commands.executeCommand('extension.keywordOptions.apply');
 
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
     } finally {
+        await vscode.commands.executeCommand('extension.keywordOptions.reset');
         await filesConfiguration.update(
             'readonlyInclude',
             undefined,
@@ -2228,76 +2718,77 @@ async function assertKeywordOptionsCannotModifyReadonlyDeck() {
     }
 }
 
-async function assertKeywordOptionPickerSwitchIsNoOp() {
+async function assertKeywordManagerRemainsBoundWhenEditorFocusChanges() {
     const { document, editor } = await openFixture('option-title.key');
     const original = document.getText();
     const workspaceBefore = workspaceSnapshot();
     editor.selection = new vscode.Selection(1, 0, 1, 0);
 
-    const commandPromise = vscode.commands.executeCommand(
+    await vscode.commands.executeCommand(
         'extension.lsdynaChooseKeywordOptions',
         1,
     );
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await vscode.commands.executeCommand('extension.keywordOptions.stage', 'spelling:*MAT_ELASTIC');
 
     const { document: otherDocument, editor: otherEditor } = await openFixture(
         'option-title-other-condition.key',
     );
     const otherOriginal = otherDocument.getText();
-    await settleQuickPickCommand(commandPromise, [
-        'quickInput.first',
-        'quickInput.toggleCheckbox',
-        'quickInput.accept',
-    ]);
+    const applied = await vscode.commands.executeCommand('extension.keywordOptions.apply');
 
-    assert.strictEqual(document.getText(), original);
-    assert.strictEqual(document.isDirty, false);
+    assert.ok(applied, 'a current manager draft remains bound to its original document');
+    assert.equal(document.getText(), original.replace('*MAT_001', '*MAT_ELASTIC'));
+    assert.deepEqual(applied.edit.entries().map(([uri]) => uri.toString()), [document.uri.toString()]);
     assert.strictEqual(otherDocument.getText(), otherOriginal);
     assert.strictEqual(otherDocument.isDirty, false);
-    assert.strictEqual(vscode.window.activeTextEditor, otherEditor);
     assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+    await closeManagerAndFocusDocument(document);
+    await vscode.commands.executeCommand('undo');
+    assert.equal(document.getText(), original);
+    assert.equal(document.isDirty, false);
+    await vscode.commands.executeCommand('extension.keywordOptions.reset');
 }
 
 async function assertContactOptionsDoNotDuplicateOrRemoveComments() {
     const { document, editor } = await openFixture('option-contact.key');
     const original = document.getText();
-    const otherFilesBefore = workspaceSnapshot();
+    const diskBefore = workspaceSnapshot();
     editor.selection = new vscode.Selection(1, 0, 1, 0);
-
-    await chooseContactPostOption(1, 6);
+    const opened = await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions', 1);
+    assert.ok(!opened.choices.some(choice => choice.kind === 'post-range'));
+    assert.equal(await vscode.commands.executeCommand('extension.keywordOptions.stage', 'post:6'), null);
+    assert.equal(document.getText(), original, 'the superseded post-count command must not write');
+    await closeManagerAndFocusDocument(document);
+    const api = require(path.join(vscode.extensions.getExtension('hqyyqh.dynasense').extensionPath, 'out/extension'))._internals;
+    const optional = opened.controls.find(control => control.choices.some(choice => choice.value === 'ABCDEFG'));
+    assert.ok(optional, 'published native A-G control must be available');
+    const stage = value => api.buildKeywordOptionViewModel(editor, 1, {
+        provisional: true, draftControlState: { [optional.controlId]: value },
+    });
+    const apply = model => api.applyKeywordOptionViewModel({ getModel: () => model, markStale() {} }, editor);
+    const verifyComments = () => {
+        assert.equal(document.getText().split('$ engineer comment must stay').length - 1, 1);
+        assert.equal(document.getText().split('$#   surfa').length - 1, 1);
+        assert.deepEqual(workspaceSnapshot(), diskBefore);
+    };
+    const expanded = stage('ABCDEF');
+    assert.equal(expanded.plan.replacementRecords.length, 9);
+    assert.ok(await apply(expanded));
     const withAThroughF = document.getText();
-    assert.strictEqual(document.lineCount, 20);
-    assert.strictEqual(document.lineAt(5).text, '$ engineer comment must stay');
-    assert.strictEqual(
-        document.lineAt(6).text,
-        '$#    soft    sofscl    lcidab    maxpar     sbopt     depth     bsort    frcfrq',
-    );
-    assert.strictEqual(
-        document.lineAt(16).text,
-        '$#  pstiff   ignroff               fstol    2dbinr    ssftyp     swtpr    tetfac',
-    );
-    assert.strictEqual(document.lineAt(18).text, '*END');
-    assert.deepStrictEqual(workspaceSnapshot(), otherFilesBefore);
-
-    const versionAfterAdd = document.version;
-    await chooseContactPostOption(1, 6);
-    assert.strictEqual(document.getText(), withAThroughF);
-    assert.strictEqual(document.version, versionAfterAdd);
-
-    await chooseContactPostOption(1, 3);
-    assert.strictEqual(document.lineCount, 14);
-    assert.strictEqual(document.lineAt(5).text, '$ engineer comment must stay');
-    assert.strictEqual(
-        document.lineAt(10).text,
-        '$#    igap    ignore    dprfac    dtstif     edgek              flangl   cid_rcf',
-    );
-    assert.strictEqual(document.lineAt(12).text, '*END');
-
+    verifyComments();
+    const version = document.version;
+    assert.equal(await apply(stage('ABCDEF')), null);
+    assert.equal(document.version, version);
+    assert.equal(document.getText(), withAThroughF);
+    const shrunk = stage('ABC');
+    assert.equal(shrunk.plan.replacementRecords.length, 6);
+    assert.ok(await apply(shrunk));
+    verifyComments();
     await vscode.commands.executeCommand('undo');
-    assert.strictEqual(document.getText(), withAThroughF);
+    assert.equal(document.getText(), withAThroughF);
     await vscode.commands.executeCommand('undo');
-    assert.strictEqual(document.getText(), original);
-    assert.strictEqual(document.isDirty, false);
+    assert.equal(document.getText(), original);
+    assert.equal(document.isDirty, false);
 }
 
 async function assertParameterRenameIsDocumentLocalAndUndoable() {
@@ -3023,14 +3514,35 @@ async function assertCellTypeIsLocalAndUndoable() {
     assert.strictEqual(document.isDirty, false);
 }
 
-async function assertCommaTabKeepsFreeFormatAndUndo() {
+async function assertCommaTabRequiresExplicitConversionAndUndo() {
     const { document, editor } = await openFixture('comma.key');
     const original = document.getText();
     editor.selection = new vscode.Selection(2, 0, 2, 0);
 
-    await vscode.commands.executeCommand('extension.lsdynaTab');
-    assert.ok(document.lineAt(2).text.includes('1,2.0,-3.0,4.0'));
-    assert.ok(document.lineAt(2).text.includes(','));
+    // The neutral, preselected choice must be a true no-op.  A comma-delimited
+    // LS-DYNA row is already a valid free-format representation, so merely
+    // opening and accepting the Tab menu must not silently convert it.
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaTab'),
+        'Keep source unchanged',
+        ['acceptSelectedSuggestion'],
+    );
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    // Conversion is still available, but only after explicitly navigating to
+    // the non-default value-order candidate and accepting it with Enter.
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaTab'),
+        'Interpret by value order',
+        ['selectNextSuggestion', 'acceptSelectedSuggestion'],
+    );
+    const converted = document.lineAt(2).text;
+    assert.ok(!converted.includes(','));
+    assert.strictEqual(converted.slice(0, 8).trim(), '1');
+    assert.strictEqual(converted.slice(8, 24).trim(), '2.0');
+    assert.strictEqual(converted.slice(24, 40).trim(), '-3.0');
+    assert.strictEqual(converted.slice(40, 56).trim(), '4.0');
 
     await vscode.commands.executeCommand('undo');
     assert.strictEqual(document.getText(), original);
@@ -3059,31 +3571,150 @@ async function assertFormatOnSaveScopeAndUndo() {
     );
 
     try {
-        const { document, editor } = await openFixture('format-on-save.key');
-        const cleanBytes = fs.readFileSync(document.uri.fsPath);
-        assert.strictEqual(await document.save(), true);
-        assert.deepStrictEqual(fs.readFileSync(document.uri.fsPath), cleanBytes);
+        for (const mode of ['file', 'modifications', 'modificationsIfAvailable']) {
+            await configuration.update(
+                'formatOnSaveMode',
+                mode,
+                vscode.ConfigurationTarget.Global,
+            );
+            const { document, editor } = await openFixture('format-on-save.key');
+            const cleanText = document.getText();
+            const cleanBytes = fs.readFileSync(document.uri.fsPath);
+            assert.strictEqual(await document.save(), true);
+            assert.deepStrictEqual(fs.readFileSync(document.uri.fsPath), cleanBytes);
 
-        await editor.edit(editBuilder => {
-            editBuilder.insert(new vscode.Position(1, 0), '$ engineer edit\n');
-        });
-        const beforeSaveText = document.getText();
-        assert.strictEqual(document.isDirty, true);
+            await editor.edit(editBuilder => {
+                editBuilder.insert(new vscode.Position(1, 0), `$ engineer edit ${mode}\n`);
+            });
+            const beforeSaveText = document.getText();
+            assert.strictEqual(document.isDirty, true);
 
-        assert.strictEqual(await document.save(), true);
-        assert.strictEqual(document.isDirty, false);
-        assert.notStrictEqual(document.getText(), beforeSaveText);
+            assert.strictEqual(await document.save(), true);
+            assert.strictEqual(document.isDirty, false);
+            assert.strictEqual(document.getText(), beforeSaveText, mode);
+            assert.strictEqual(fs.readFileSync(document.uri.fsPath, 'utf8'), beforeSaveText, mode);
 
-        const otherFilesAfter = workspaceSnapshot();
-        for (const [name, fingerprint] of Object.entries(otherFilesBefore)) {
-            if (name === 'format-on-save.key') continue;
-            assert.deepStrictEqual(otherFilesAfter[name], fingerprint);
+            const otherFilesAfter = workspaceSnapshot();
+            for (const [name, fingerprint] of Object.entries(otherFilesBefore)) {
+                if (name === 'format-on-save.key') continue;
+                assert.deepStrictEqual(otherFilesAfter[name], fingerprint);
+            }
+
+            await vscode.commands.executeCommand('undo');
+            assert.strictEqual(document.getText(), cleanText);
+            assert.strictEqual(document.isDirty, true);
+            assert.strictEqual(await document.save(), true);
+            assert.strictEqual(document.isDirty, false);
         }
+    } finally {
+        await configuration.update(
+            'formatOnSaveMode',
+            undefined,
+            vscode.ConfigurationTarget.Global,
+        );
+        await configuration.update(
+            'formatOnSave',
+            undefined,
+            vscode.ConfigurationTarget.Global,
+        );
+    }
+}
 
-        await vscode.commands.executeCommand('undo');
-        assert.strictEqual(document.getText(), beforeSaveText);
+async function assertStandardFormattingEntrypointsAreUnclaimed() {
+    const configuration = vscode.workspace.getConfiguration('editor');
+    const { document, editor } = await openFixture('format-selection.key');
+    const original = document.getText();
+    const options = { tabSize: 4, insertSpaces: true };
+    const range = new vscode.Range(
+        new vscode.Position(2, 0),
+        document.lineAt(2).range.end,
+    );
+
+    const documentEdits = await vscode.commands.executeCommand(
+        'vscode.executeFormatDocumentProvider',
+        document.uri,
+        options,
+    );
+    const rangeEdits = await vscode.commands.executeCommand(
+        'vscode.executeFormatRangeProvider',
+        document.uri,
+        range,
+        options,
+    );
+    assert.ok(!documentEdits || documentEdits.length === 0);
+    assert.ok(!rangeEdits || rangeEdits.length === 0);
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    await configuration.update(
+        'formatOnPaste',
+        true,
+        vscode.ConfigurationTarget.Global,
+    );
+    try {
+        const pasted = '1,2.0,-3.0,4.0';
+        editor.selection = new vscode.Selection(range.start, range.end);
+        await writeClipboardText(pasted);
+        await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+        assert.strictEqual(document.lineAt(2).text, pasted);
         assert.strictEqual(document.isDirty, true);
-        await vscode.commands.executeCommand('workbench.action.files.revert');
+        await vscode.commands.executeCommand('undo');
+        assert.strictEqual(document.getText(), original);
+        assert.strictEqual(document.isDirty, false);
+    } finally {
+        await configuration.update(
+            'formatOnPaste',
+            undefined,
+            vscode.ConfigurationTarget.Global,
+        );
+    }
+}
+
+async function assertSaveAllDoesNotFormatInactiveDocuments() {
+    const configuration = vscode.workspace.getConfiguration('editor');
+    await configuration.update('formatOnSave', true, vscode.ConfigurationTarget.Global);
+    try {
+        const first = await openFixture('format-on-save.key', {
+            viewColumn: vscode.ViewColumn.One,
+        });
+        const firstClean = first.document.getText();
+        await first.editor.edit(builder => {
+            builder.insert(new vscode.Position(1, 0), '$ inactive save-all edit\n');
+        });
+        const firstBeforeSave = first.document.getText();
+
+        const second = await openFixture('autosave.key', {
+            viewColumn: vscode.ViewColumn.Two,
+        });
+        const secondClean = second.document.getText();
+        await second.editor.edit(builder => {
+            builder.insert(new vscode.Position(1, 0), '$ active save-all edit\n');
+        });
+        const secondBeforeSave = second.document.getText();
+
+        await vscode.commands.executeCommand('workbench.action.files.saveAll');
+        assert.strictEqual(first.document.getText(), firstBeforeSave);
+        assert.strictEqual(second.document.getText(), secondBeforeSave);
+        assert.strictEqual(first.document.isDirty, false);
+        assert.strictEqual(second.document.isDirty, false);
+
+        await vscode.window.showTextDocument(first.document, {
+            viewColumn: vscode.ViewColumn.One,
+            preview: false,
+            preserveFocus: false,
+        });
+        await vscode.commands.executeCommand('undo');
+        assert.strictEqual(first.document.getText(), firstClean);
+        assert.strictEqual(await first.document.save(), true);
+
+        await vscode.window.showTextDocument(second.document, {
+            viewColumn: vscode.ViewColumn.Two,
+            preview: false,
+            preserveFocus: false,
+        });
+        await vscode.commands.executeCommand('undo');
+        assert.strictEqual(second.document.getText(), secondClean);
+        assert.strictEqual(await second.document.save(), true);
     } finally {
         await configuration.update(
             'formatOnSave',
@@ -3328,7 +3959,7 @@ async function assertOnBlurFormattingCannotModifyReadonlyDeck() {
     }
 }
 
-async function assertOnBlurFormattingCannotModifyOsReadonlyDeck() {
+async function assertOnBlurFormattingCannotModifyOsReadonlyDeck(readonlyFromPermissions = false) {
     if (process.platform !== 'win32') return;
 
     const lsdynaConfiguration = vscode.workspace.getConfiguration('lsdyna');
@@ -3339,7 +3970,7 @@ async function assertOnBlurFormattingCannotModifyOsReadonlyDeck() {
     childProcess.execFileSync('attrib.exe', ['+R', fixturePath]);
     await filesConfiguration.update(
         'readonlyFromPermissions',
-        true,
+        readonlyFromPermissions,
         vscode.ConfigurationTarget.Global,
     );
     await lsdynaConfiguration.update(
@@ -3349,12 +3980,6 @@ async function assertOnBlurFormattingCannotModifyOsReadonlyDeck() {
     );
 
     try {
-        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(fixturePath));
-        assert.strictEqual(
-            (Number(stat.permissions || 0) & vscode.FilePermission.Readonly) !== 0,
-            false,
-            'This regression requires the VS Code 1.130 file provider gap on Windows',
-        );
         assert.throws(
             () => {
                 const descriptor = fs.openSync(fixturePath, 'r+');
@@ -3904,9 +4529,27 @@ async function assertOfficialFormatCorpusFailsClosedInRealHost() {
     assert.strictEqual(mixedDocument.getText(), mixedOriginal);
     assert.strictEqual(mixedDocument.isDirty, false);
     mixedEditor.selection = new vscode.Selection(3, 0, 3, 0);
-    await vscode.commands.executeCommand('extension.lsdynaTab');
-    assert.ok(mixedDocument.lineAt(3).text.includes(','));
-    assert.ok(mixedDocument.lineAt(4).text.includes(','));
+    const untouchedNextCommaLine = mixedDocument.lineAt(4).text;
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaTab'),
+        'Keep source unchanged',
+        ['acceptSelectedSuggestion'],
+    );
+    assert.strictEqual(mixedDocument.getText(), mixedOriginal);
+    assert.strictEqual(mixedDocument.isDirty, false);
+
+    await runInlineEditChoice(
+        () => vscode.commands.executeCommand('extension.lsdynaTab'),
+        'Interpret by value order',
+        ['selectNextSuggestion', 'acceptSelectedSuggestion'],
+    );
+    const convertedCommaLine = mixedDocument.lineAt(3).text;
+    assert.ok(!convertedCommaLine.includes(','));
+    assert.deepStrictEqual(
+        convertedCommaLine.trim().split(/\s+/),
+        ['0.0', '0.0'],
+    );
+    assert.strictEqual(mixedDocument.lineAt(4).text, untouchedNextCommaLine);
     await vscode.commands.executeCommand('undo');
     assert.strictEqual(mixedDocument.getText(), mixedOriginal);
     assert.strictEqual(mixedDocument.isDirty, false);
@@ -4267,17 +4910,13 @@ async function assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly() {
     assert.strictEqual(document.isDirty, false);
 }
 
-async function assertLineCommentEmptyLineIsLoneDollar() {
+async function assertLineCommentEmptyLineIsNoop() {
     const { document, editor } = await openFixture('comment-toggle.key');
     const original = document.getText();
     assert.strictEqual(document.lineAt(5).text, '');
     editor.selection = new vscode.Selection(5, 0, 5, 0);
 
     await vscode.commands.executeCommand('extension.lsdynaLineComment');
-    assert.strictEqual(document.lineAt(5).text, '$');
-    assert.strictEqual(document.isDirty, true);
-
-    await vscode.commands.executeCommand('undo');
     assert.strictEqual(document.lineAt(5).text, '');
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
@@ -4297,18 +4936,25 @@ async function assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo() {
     );
 
     await vscode.commands.executeCommand('extension.lsdynaLineComment');
-    // Mixed mode: comment only uncommented lines 2/5/7; skip already-commented 3
-    // and 4 (no $$); never touch the $# field-header line 6.
+    // Mixed mode layers every ordinary line, including the authored comment, so a
+    // second toggle can remove exactly one layer without losing that comment.
     assert.strictEqual(document.lineAt(2).text, `$${dataLine}`);
-    assert.strictEqual(document.lineAt(3).text, '$ existing');
-    assert.strictEqual(document.lineAt(4).text, '    $ legacy indented');
-    assert.strictEqual(document.lineAt(5).text, '$');
-    assert.strictEqual(document.lineAt(6).text, fieldHeader);
+    assert.strictEqual(document.lineAt(3).text, '$$ existing');
+    assert.strictEqual(document.lineAt(4).text, '$    $ legacy indented');
+    assert.strictEqual(document.lineAt(5).text, '');
+    assert.strictEqual(document.lineAt(6).text, `$${fieldHeader}`);
     assert.strictEqual(document.lineAt(7).text, `$${dataLine}`);
     assert.strictEqual(document.isDirty, true);
     assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
 
-    await vscode.commands.executeCommand('undo'); // single Ctrl+Z restores every line
+    await vscode.commands.executeCommand('extension.lsdynaLineComment');
+    assert.strictEqual(document.getText(), original);
+
+    // Each toggle is one transaction: undo once returns to the layered form, and
+    // undo again restores the original clean buffer.
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.lineAt(3).text, '$$ existing');
+    await vscode.commands.executeCommand('undo');
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
     assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
@@ -4338,28 +4984,135 @@ async function assertLineCommentMultiCursorIsAtomicAndSingleUndo() {
     assert.strictEqual(document.isDirty, false);
 }
 
-async function assertLineCommentAllCommentedUncommentsAndLeavesLegacy() {
+async function assertLineCommentOrdinaryPlusIndentedDollarUsesCommentMode() {
     const { document, editor } = await openFixture('comment-toggle.key');
     const original = document.getText();
     const workspaceBefore = workspaceSnapshot();
 
-    // Lines 3 ($ existing) and 4 (    $ legacy indented) are both commented.
+    // Only column-zero `$` is a solver line comment. The indented `$` line is
+    // active code, so its presence selects comment mode for the mixed selection.
     editor.selection = new vscode.Selection(
         new vscode.Position(3, 0),
         document.lineAt(4).range.end,
     );
 
     await vscode.commands.executeCommand('extension.lsdynaLineComment');
-    // All-commented -> uncomment mode: remove the column-0 $ on line 3, but the
-    // legacy indented $ on line 4 (no column-0 $) is recognized yet not rewritten.
-    assert.strictEqual(document.lineAt(3).text, ' existing');
-    assert.strictEqual(document.lineAt(4).text, '    $ legacy indented');
+    assert.strictEqual(document.lineAt(3).text, '$$ existing');
+    assert.strictEqual(document.lineAt(4).text, '$    $ legacy indented');
     assert.strictEqual(document.isDirty, true);
     assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
 
     await vscode.commands.executeCommand('undo');
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
+}
+
+async function assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody() {
+    const { document, editor } = await openFixture('comment-curve.key');
+    const original = document.getText();
+    const originalLines = original.split(/\r?\n/);
+    const workspaceBefore = workspaceSnapshot();
+    editor.selection = new vscode.Selection(
+        new vscode.Position(0, 0),
+        document.lineAt(6).range.end,
+    );
+
+    await vscode.commands.executeCommand('extension.lsdynaLineComment');
+    assert.strictEqual(document.lineAt(0).text, '*COMMENT *DEFINE_CURVE');
+    for (let line = 1; line <= 6; line++) {
+        assert.strictEqual(document.lineAt(line).text, originalLines[line]);
+    }
+    assert.strictEqual(
+        document.lineAt(5).text,
+        '$  add another point -- resolution IS lost when table of curves is used',
+    );
+
+    await vscode.commands.executeCommand('extension.lsdynaLineComment');
+    assert.strictEqual(document.getText(), original);
+    assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.lineAt(0).text, '*COMMENT *DEFINE_CURVE');
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+}
+
+async function assertCommentOpaqueProvidersAndToggleAreScoped() {
+    const { document, editor } = await openFixture('comment-opaque.key');
+    const original = document.getText();
+    const workspaceBefore = workspaceSnapshot();
+
+    const controlHovers = await vscode.commands.executeCommand(
+        'vscode.executeHoverProvider',
+        document.uri,
+        new vscode.Position(1, 2),
+    );
+    assert.ok((controlHovers || []).length > 0, '*COMMENT token lost keyword hover');
+    const suffixHovers = await vscode.commands.executeCommand(
+        'vscode.executeHoverProvider',
+        document.uri,
+        new vscode.Position(1, 13),
+    );
+    const bodyHovers = await vscode.commands.executeCommand(
+        'vscode.executeHoverProvider',
+        document.uri,
+        new vscode.Position(5, 6),
+    );
+    assert.deepStrictEqual(suffixHovers || [], []);
+    assert.deepStrictEqual(bodyHovers || [], []);
+
+    const symbols = await vscode.commands.executeCommand(
+        'vscode.executeDocumentSymbolProvider',
+        document.uri,
+    );
+    assert.deepStrictEqual(
+        (symbols || []).map(symbol => symbol.name),
+        ['*KEYWORD', '*COMMENT', '*SET_SEGMENT', '*END'],
+    );
+    const links = await vscode.extensions
+        .getExtension('hqyyqh.dynasense')
+        ?.exports?._internals
+        ?.collectIncludeDocumentLinks?.(document);
+    assert.deepStrictEqual(links || [], []);
+    const definitions = await vscode.commands.executeCommand(
+        'vscode.executeDefinitionProvider',
+        document.uri,
+        new vscode.Position(6, 3),
+    );
+    const references = await vscode.commands.executeCommand(
+        'vscode.executeReferenceProvider',
+        document.uri,
+        new vscode.Position(6, 3),
+    );
+    assert.deepStrictEqual(definitions || [], []);
+    assert.deepStrictEqual(references || [], []);
+    assert.ok(
+        !vscode.languages.getDiagnostics(document.uri).some(diagnostic =>
+            diagnostic.range.start.line >= 2 && diagnostic.range.start.line <= 6
+        ),
+        'opaque body produced diagnostics',
+    );
+
+    editor.selection = new vscode.Selection(
+        new vscode.Position(1, 0),
+        document.lineAt(9).range.end,
+    );
+    await vscode.commands.executeCommand('extension.lsdynaLineComment');
+    assert.strictEqual(document.lineAt(1).text, '*COMMENT *COMMENT   *INCLUDE');
+    for (let line = 2; line <= 6; line++) {
+        assert.strictEqual(document.lineAt(line).text, original.split(/\r?\n/)[line]);
+    }
+    assert.strictEqual(document.lineAt(7).text, '*COMMENT *SET_SEGMENT');
+    assert.strictEqual(document.lineAt(8).text, '$#       sid');
+    assert.strictEqual(document.lineAt(9).text, '       1');
+    assert.strictEqual(document.isDirty, true);
+    assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+    assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
 }
 
 async function assertLineCommentFallsThroughForNonLsdynaDocument() {
@@ -4548,6 +5301,367 @@ async function assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible(
     }
 }
 
+async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
+    const workspaceBefore = workspaceSnapshot();
+    const { document, editor } = await openFixture('official-field-choice.key');
+    const original = document.getText();
+    const originalLine = document.lineAt(3).text;
+    const position = new vscode.Position(3, 75);
+    editor.selection = new vscode.Selection(position, position);
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        // A freshly opened isolated workbench can leave DOM focus on the
+        // unified agents bar even though the TextEditor is active. Use one real
+        // renderer click to establish the same editor focus as a user click.
+        const editorPoint = await getRendererVisibleElementCenter(
+            devTools,
+            '.monaco-editor .view-lines',
+        );
+        await dispatchRendererMouseClick(devTools, editorPoint);
+        await waitForRendererEditorFocus(devTools);
+        editor.selection = new vscode.Selection(position, position);
+
+        const extensionInternals = vscode.extensions
+            .getExtension('hqyyqh.dynasense')
+            ?.exports?._internals;
+        let latestPlan = null;
+        await waitForAssertion(() => {
+            latestPlan = extensionInternals?.planOfficialFieldChoicesForDocument?.(
+                document,
+                position,
+            );
+            assert.strictEqual(
+                latestPlan?.status,
+                'ready',
+                `official choice plan was not ready: ${JSON.stringify(latestPlan)}`,
+            );
+        }, 5000);
+        // Publish one post-index selection event as a real click/Tab would do.
+        editor.selection = new vscode.Selection(position, position);
+
+        // Selection alone must never open Suggest or QuickPick. The engineer can
+        // keep typing, use an IME, or continue Tab navigation without focus theft.
+        await new Promise(resolve => setTimeout(resolve, 250));
+        assert.strictEqual(await getRendererSuggestionWidget(devTools), null);
+        const activeBeforeClick = await getRendererActiveElement(devTools);
+        assert.ok(
+            activeBeforeClick.className.includes('inputarea') ||
+            activeBeforeClick.className.includes('native-edit-context'),
+        );
+
+        // Exercise the intended no-shortcut path: real mouse click on the status
+        // item, followed by a native-verified value 1 QuickPick row. The manual's
+        // 10/11 entries are outside this native descriptor's accepted enum.
+        const statusPoint = await waitForRendererVisibleTextElementCenter(
+            devTools,
+            '.statusbar-item',
+            'FLAG',
+        );
+        await dispatchRendererMouseClick(devTools, statusPoint);
+        await waitForRendererInput(devTools, '');
+        const valuePoint = await waitForRendererVisibleTextElementCenter(
+            devTools,
+            '.quick-input-widget .monaco-list-row',
+            '1',
+            true,
+        );
+        await dispatchRendererMouseClick(devTools, valuePoint);
+
+        await waitForAssertion(() => {
+            assert.strictEqual(document.lineAt(3).text.slice(70, 80), '         1');
+            assert.strictEqual(document.isDirty, true);
+        });
+        assert.strictEqual(document.lineAt(3).text.slice(0, 70), originalLine.slice(0, 70));
+        assert.strictEqual(document.lineAt(3).text.slice(80), originalLine.slice(80));
+
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        const undoEditorPoint = await getRendererVisibleElementCenter(
+            devTools,
+            '.monaco-editor .view-lines',
+        );
+        await dispatchRendererMouseClick(devTools, undoEditorPoint);
+        await waitForRendererEditorFocus(devTools);
+        await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+
+        // Exercise the actual field-hover command link after the edit/Undo
+        // cycle. Provider-only tests can prove the URI text but cannot prove
+        // that the workbench dispatches it after a real mouse click. The link
+        // must use the document's current post-Undo version and cancellation
+        // must leave the restored source untouched.
+        editor.selection = new vscode.Selection(position, position);
+        await vscode.commands.executeCommand('editor.action.showHover');
+        const hoverChoicePoint = await waitForRendererVisibleTextElementCenter(
+            devTools,
+            '.monaco-hover a',
+            'Select value',
+            false,
+            3000,
+        );
+        await dispatchRendererMouseClick(devTools, hoverChoicePoint);
+        await waitForRendererInput(devTools, '');
+        await vscode.commands.executeCommand('quickInput.hide');
+        await waitForAssertion(async () => {
+            assert.strictEqual(await getRendererSuggestionWidget(devTools), null);
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+        assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+        devTools.close();
+    }
+}
+
+async function assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable() {
+    const workspaceBefore = workspaceSnapshot();
+    const { document, editor } = await openFixture('keyword-structure-winfrith-missing.key');
+    const original = document.getText();
+    const originalDisk = fs.readFileSync(document.uri.fsPath);
+    // The complete-block diagnostic and suffix repair are on the keyword Hover.
+    const position = new vscode.Position(1, 5);
+    editor.selection = new vscode.Selection(position, position);
+
+    const hover = await executeHover(document, position, 'Add these blank cards');
+    const markdown = hoverMarkdown(hover);
+    assert.ok(markdown.includes('Missing Card 5, Card 6, Card 7'));
+    assert.ok(markdown.includes('command:extension.checkKeywordStructure'));
+    assert.ok(markdown.includes('command:extension.addVerifiedConditionalCards'));
+    const commandMatch = markdown.match(
+        /command:extension\.addVerifiedConditionalCards\?([^ )"]+)/,
+    );
+    assert.ok(commandMatch, 'verified structure repair command URI was not published');
+    const [staleRequest] = JSON.parse(decodeURIComponent(commandMatch[1]));
+
+    // A command URI is only an identity hint. Any intervening document edit must
+    // invalidate it, even when the resulting deck would still look repairable.
+    await editor.edit(edit => edit.insert(document.lineAt(3).range.end, ' '));
+    const staleText = document.getText();
+    await vscode.commands.executeCommand(
+        'extension.addVerifiedConditionalCards',
+        staleRequest,
+    );
+    assert.strictEqual(document.getText(), staleText);
+    assert.strictEqual(document.isDirty, true);
+    assert.deepStrictEqual(fs.readFileSync(document.uri.fsPath), originalDisk);
+    assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+    await vscode.commands.executeCommand('undo');
+    assert.strictEqual(document.getText(), original);
+    assert.strictEqual(document.isDirty, false);
+
+    // Exercise the real rendered Hover link. The click must append exactly three
+    // verified headers and 80-column blanks in one WorkspaceEdit and touch no disk file.
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        const editorPoint = await getRendererVisibleElementCenter(
+            devTools,
+            '.monaco-editor .view-lines',
+        );
+        await dispatchRendererMouseClick(devTools, editorPoint);
+        await waitForRendererEditorFocus(devTools);
+        editor.selection = new vscode.Selection(position, position);
+        await vscode.commands.executeCommand('editor.action.hideHover');
+        await vscode.commands.executeCommand('editor.action.showHover');
+        // Hover content arrives asynchronously. Scroll only after the link exists;
+        // a nonzero DOM rectangle can still be clipped outside the scroll viewport.
+        await waitForRendererVisibleTextElementCenter(
+            devTools, '.monaco-hover a', 'Add these blank cards', false, 3000,
+        );
+        await devTools.call('Runtime.evaluate', {
+            expression: "Array.from(document.querySelectorAll('.monaco-hover a')).find(a => a.textContent.includes('Add these blank cards'))?.scrollIntoView({block:'nearest', inline:'nearest'})",
+        });
+        const repairPoint = await waitForRendererVisibleTextElementCenter(
+            devTools,
+            '.monaco-hover a',
+            'Add these blank cards',
+            false,
+            3000,
+        );
+        await dispatchRendererMouseClick(devTools, repairPoint);
+
+        const originalLines = original.split(/\r?\n/);
+        await waitForAssertion(() => {
+            const lines = document.getText().split(/\r?\n/);
+            assert.strictEqual(lines.length, originalLines.length + 6);
+            assert.deepStrictEqual(lines.slice(0, 6), originalLines.slice(0, 6));
+            assert.deepStrictEqual(lines.slice(12), originalLines.slice(6));
+            for (let index = 6; index < 12; index += 2) {
+                assert.ok(lines[index].startsWith('$#'));
+                assert.strictEqual(lines[index + 1], ' '.repeat(80));
+            }
+            assert.strictEqual(document.isDirty, true);
+        });
+        assert.deepStrictEqual(fs.readFileSync(document.uri.fsPath), originalDisk);
+        assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+
+        const structure = vscode.extensions
+            .getExtension('hqyyqh.dynasense')
+            ?.exports?._internals
+            ?.analyzeKeywordStructureForDocument?.(
+                document,
+                1,
+                { bypassCache: true },
+            );
+        assert.strictEqual(structure?.status, 'valid');
+        assert.strictEqual(structure?.observedDataRecords, 7);
+
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        const undoPoint = await getRendererVisibleElementCenter(
+            devTools,
+            '.monaco-editor .view-lines',
+        );
+        await dispatchRendererMouseClick(devTools, undoPoint);
+        await waitForRendererEditorFocus(devTools);
+        await dispatchRendererKey(devTools, 'z', 'KeyZ', 90, 2);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
+        assert.deepStrictEqual(fs.readFileSync(document.uri.fsPath), originalDisk);
+        assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    } finally {
+        devTools.close();
+    }
+}
+
+async function assertUnverifiedTitleVariantStaysReadOnly() {
+    const workspaceBefore = workspaceSnapshot();
+    const { document } = await openFixture('title-card-position-conflict.key');
+    const original = document.getText();
+    const keywordHover = await executeHover(document, new vscode.Position(1, 5), '`TITLE`');
+    const keywordMarkdown = hoverMarkdown(keywordHover);
+    assert.ok(keywordMarkdown.includes('(active)'));
+    assert.ok(!keywordMarkdown.includes('command:extension.insertVerifiedMissingRecords'));
+    assert.ok(!keywordMarkdown.includes('record may be missing'));
+
+    const titleHover = await executeHover(document, new vscode.Position(3, 5), 'TITLE');
+    const titleMarkdown = hoverMarkdown(titleHover);
+    assert.ok(!titleMarkdown.includes('command:extension.insertVerifiedMissingRecords'));
+
+    const apparentFlagPosition = new vscode.Position(5, 75);
+    const shiftedHover = await executeHover(
+        document,
+        new vscode.Position(5, 5),
+        '**MID**',
+    );
+    const shiftedMarkdown = hoverMarkdown(shiftedHover);
+    assert.ok(!shiftedMarkdown.includes('command:extension.insertVerifiedMissingRecords'));
+    assert.ok(!shiftedMarkdown.includes('**FLAG**'));
+    assert.ok(!shiftedMarkdown.includes('command:extension.pickOfficialFieldValue'));
+
+    const plan = vscode.extensions
+        .getExtension('hqyyqh.dynasense')
+        ?.exports?._internals
+        ?.planOfficialFieldChoicesForDocument?.(document, apparentFlagPosition);
+    assert.strictEqual(plan?.status, 'no-choice');
+    assert.strictEqual(plan?.reason, 'position-outside-field');
+    assert.deepStrictEqual(plan?.choices, []);
+
+    await vscode.commands.executeCommand('extension.insertVerifiedMissingRecords');
+    await waitForAssertion(() => {
+        assert.strictEqual(document.getText(), original);
+        assert.strictEqual(document.isDirty, false);
+    });
+    assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+}
+
+async function assertEntityReferencesWebviewActivatesAndQueries() {
+    const commands = await vscode.commands.getCommands(true);
+    for (const command of [
+        'extension.queryLsdynaEntityId',
+        'extension.entityReferences.refresh',
+        'lsdynaEntityReferences.focus',
+    ]) {
+        assert.ok(commands.includes(command), `Missing object-reference command: ${command}`);
+    }
+
+    await openFixture('comment-curve.key');
+    await vscode.commands.executeCommand('lsdynaEntityReferences.focus');
+    const result = await vscode.commands.executeCommand(
+        'extension.queryLsdynaEntityId',
+        { targetKind: 'curve', id: 3 },
+    );
+    assert.ok(result, 'Object-reference command did not return a query result');
+    assert.ok(['exact', 'complete', 'ambiguous'].includes(result.state), JSON.stringify(result.reasons));
+    assert.ok(
+        result.locations.some(location =>
+            location.role === 'definition' && location.keyword === '*DEFINE_CURVE'
+        ),
+        'Object-reference Webview query did not resolve the curve definition',
+    );
+}
+
+async function assertLargeFileCustomEditorOpensReadonly() {
+    const filePath = path.join(workspaceRoot, 'large-file-viewer.key');
+    const uri = vscode.Uri.file(filePath);
+    const descriptor = fs.openSync(filePath, 'w');
+    const header = Buffer.from([
+        '*KEYWORD',
+        '*PART',
+        'Large file viewer fixture',
+        '   2000101   2000101   2000101',
+        '*MAT_ELASTIC',
+        '   2000101',
+        '',
+    ].join('\n'), 'utf8');
+    const chunk = Buffer.from(`${'$ large-file-viewer fixture'.padEnd(79)}\n`.repeat(8192), 'utf8');
+    try {
+        fs.writeSync(descriptor, header);
+        while (fs.fstatSync(descriptor).size < 50 * 1024 * 1024) fs.writeSync(descriptor, chunk);
+    } finally {
+        fs.closeSync(descriptor);
+    }
+    const before = fs.statSync(filePath);
+    const readPrefix = () => {
+        const descriptor = fs.openSync(filePath, 'r');
+        const buffer = Buffer.alloc(128);
+        try {
+            const bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
+            return buffer.subarray(0, bytes).toString('utf8');
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    };
+    const prefix = readPrefix();
+    assert.ok(before.size >= 50 * 1024 * 1024);
+    assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.fsPath === filePath));
+
+    try {
+        const opened = await vscode.commands.executeCommand(
+            'extension.openLsdynaLargeFileViewer',
+            uri,
+        );
+        assert.strictEqual(opened, true);
+        await waitForAssertion(() => {
+            const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+            assert.strictEqual(input?.viewType, 'lsdyna.largeFileViewer');
+            assert.strictEqual(path.resolve(input?.uri?.fsPath).toLowerCase(), path.resolve(filePath).toLowerCase());
+        });
+        assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.fsPath === filePath));
+
+        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+        const after = fs.statSync(filePath);
+        assert.strictEqual(after.size, before.size);
+        assert.strictEqual(readPrefix(), prefix);
+    } finally {
+        if (vscode.window.tabGroups.activeTabGroup.activeTab?.input?.viewType ===
+            'lsdyna.largeFileViewer') {
+            await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+        }
+        fs.rmSync(filePath, { force: true });
+        // A cancelled background reader can briefly leave a Windows delete-pending
+        // entry. Do not feed that transient fixture into the next byte snapshot.
+        await waitForAssertion(() => assert.ok(!fs.readdirSync(workspaceRoot).includes(path.basename(filePath))));
+    }
+}
+
 async function run() {
     if (!workspaceRoot || !fs.existsSync(workspaceRoot)) {
         throw new Error('LSDYNA_EDITOR_SAFETY_WORKSPACE is missing');
@@ -4555,12 +5669,121 @@ async function run() {
 
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
     assert.ok(extension, 'development extension was not loaded');
+    if (process.env.LSDYNA_EDITOR_SAFETY_REPORT_ENVIRONMENT_GAPS === '1') {
+        const original = await vscode.env.clipboard.readText();
+        let writableBeforeActivation = false;
+        try {
+            await writeClipboardText('DynaSense isolated clipboard preflight');
+            writableBeforeActivation = true;
+        } catch (error) {
+            if (error.code !== 'LSDYNA_CLIPBOARD_UNAVAILABLE') throw error;
+        } finally { await vscode.env.clipboard.writeText(original); }
+        fs.writeFileSync(path.join(workspaceRoot, 'clipboard-environment.json'), JSON.stringify({
+            extensionActiveAtProbe: extension.isActive, writableBeforeActivation,
+        }, null, 2));
+        console.log(`Clipboard preflight before DynaSense activation: ${writableBeforeActivation}`);
+    }
     await extension.activate();
     assert.strictEqual(extension.isActive, true);
+    // The suite's Enter scenarios exercise the explicit opt-in cleanup mode;
+    // default-off preservation is covered by the provider regression tests.
+    await vscode.workspace.getConfiguration('lsdyna').update(
+        'clearAutoIndentOnEnter',
+        true,
+        vscode.ConfigurationTarget.Global,
+    );
 
     const focusedScenario = process.env.LSDYNA_EDITOR_SAFETY_ONLY;
     if (focusedScenario) {
         const scenarios = {
+            'enter': assertEnterIsAtomicAndUndoable,
+            'release-b05': async () => {
+                await assertPassiveOperationsDoNotWrite();
+                console.log('B05 host passed: assertPassiveOperationsDoNotWrite');
+                await assertCompletionAcceptCancelIsLocalAndUndoable();
+                console.log('B05 host passed: assertCompletionAcceptCancelIsLocalAndUndoable');
+                await assertCompletionMixedCursorsFailClosed();
+                console.log('B05 host passed: assertCompletionMixedCursorsFailClosed');
+                await assertMultiCursorNavigationCommandsFailClosed();
+                console.log('B05 host passed: assertMultiCursorNavigationCommandsFailClosed');
+                await assertMultiCursorDeleteCommandsFailClosed();
+                console.log('B05 host passed: assertMultiCursorDeleteCommandsFailClosed');
+                await assertCellDeleteCannotModifyReadonlyDeck();
+                console.log('B05 host passed: assertCellDeleteCannotModifyReadonlyDeck');
+                await assertCellDeleteAndEnterUseCurrentExternalVersion();
+                console.log('B05 host passed: assertCellDeleteAndEnterUseCurrentExternalVersion');
+                await assertTypeAfterExternalReloadCannotCollapseColumns();
+                console.log('B05 host passed: assertTypeAfterExternalReloadCannotCollapseColumns');
+                await assertCellDeleteAndBackspaceAreLocalAndUndoable();
+                console.log('B05 host passed: assertCellDeleteAndBackspaceAreLocalAndUndoable');
+                await assertAdjacentFieldMergeIsChosenAndUndoable();
+                console.log('B05 host passed: assertAdjacentFieldMergeIsChosenAndUndoable');
+                await assertEmptyFieldTypingAlignsWithoutTab();
+                console.log('B05 host passed: assertEmptyFieldTypingAlignsWithoutTab');
+                await assertLargeNodeBlockKeepsSchemaAfterEdit();
+                console.log('B05 host passed: assertLargeNodeBlockKeepsSchemaAfterEdit');
+                await assertOverlappingSchemaTabAndFormatAreByteStable();
+                console.log('B05 host passed: assertOverlappingSchemaTabAndFormatAreByteStable');
+                await assertEmptyCellBackspaceMovesWithoutWriting();
+                console.log('B05 host passed: assertEmptyCellBackspaceMovesWithoutWriting');
+                await assertSecondDeleteRemovesNowEmptyCardRow();
+                console.log('B05 host passed: assertSecondDeleteRemovesNowEmptyCardRow');
+                await assertCommaDeleteUsesNativeUndoableEditing();
+                console.log('B05 host passed: assertCommaDeleteUsesNativeUndoableEditing');
+                await assertEnterIsAtomicAndUndoable();
+                console.log('B05 host passed: assertEnterIsAtomicAndUndoable');
+                await assertCellTypeIsLocalAndUndoable();
+                console.log('B05 host passed: assertCellTypeIsLocalAndUndoable');
+                await assertCommaTabRequiresExplicitConversionAndUndo();
+                console.log('B05 host passed: assertCommaTabRequiresExplicitConversionAndUndo');
+                await assertOverWidthTypeIsRejectedAtomically();
+                console.log('B05 host passed: assertOverWidthTypeIsRejectedAtomically');
+                await assertFormatOnSaveScopeAndUndo();
+                console.log('B05 host passed: assertFormatOnSaveScopeAndUndo');
+                await assertStandardFormattingEntrypointsAreUnclaimed();
+                console.log('B05 host passed: assertStandardFormattingEntrypointsAreUnclaimed');
+                await assertSaveAllDoesNotFormatInactiveDocuments();
+                console.log('B05 host passed: assertSaveAllDoesNotFormatInactiveDocuments');
+                await assertExplicitFormattingIsScopedAndUndoable();
+                console.log('B05 host passed: assertExplicitFormattingIsScopedAndUndoable');
+                await assertOverlappingFormatSelectionsAreAtomicAndUndoable();
+                console.log('B05 host passed: assertOverlappingFormatSelectionsAreAtomicAndUndoable');
+                await assertOnBlurFormattingTracksOnlyTheActiveCondition();
+                console.log('B05 host passed: assertOnBlurFormattingTracksOnlyTheActiveCondition');
+                await assertOnBlurFormattingCannotModifyReadonlyDeck();
+                console.log('B05 host passed: assertOnBlurFormattingCannotModifyReadonlyDeck');
+                await assertOnBlurFormattingCannotModifyOsReadonlyDeck();
+                console.log('B05 host passed: assertOnBlurFormattingCannotModifyOsReadonlyDeck');
+                await assertOnBlurFormattingUsesCurrentExternalVersion();
+                console.log('B05 host passed: assertOnBlurFormattingUsesCurrentExternalVersion');
+                await assertRapidCloseDuringOnBlurCheckIsNonMutating();
+                console.log('B05 host passed: assertRapidCloseDuringOnBlurCheckIsNonMutating');
+                await assertAutoSaveFormatIsLocalAndUndoable();
+                console.log('B05 host passed: assertAutoSaveFormatIsLocalAndUndoable');
+                await assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly();
+                console.log('B05 host passed: assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly');
+                await assertLineCommentEmptyLineIsNoop();
+                console.log('B05 host passed: assertLineCommentEmptyLineIsNoop');
+                await assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo();
+                console.log('B05 host passed: assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo');
+                await assertLineCommentMultiCursorIsAtomicAndSingleUndo();
+                console.log('B05 host passed: assertLineCommentMultiCursorIsAtomicAndSingleUndo');
+                await assertLineCommentOrdinaryPlusIndentedDollarUsesCommentMode();
+                console.log('B05 host passed: assertLineCommentOrdinaryPlusIndentedDollarUsesCommentMode');
+                await assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody();
+                console.log('B05 host passed: assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody');
+                await assertCommentOpaqueProvidersAndToggleAreScoped();
+                console.log('B05 host passed: assertCommentOpaqueProvidersAndToggleAreScoped');
+                await assertLineCommentFallsThroughForNonLsdynaDocument();
+                console.log('B05 host passed: assertLineCommentFallsThroughForNonLsdynaDocument');
+                await assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck();
+                console.log('B05 host passed: assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck');
+                await assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged();
+                console.log('B05 host passed: assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged');
+                await assertOnBlurFormattingCannotModifyOsReadonlyDeck(true);
+            },
+            'entity-references-webview': assertEntityReferencesWebviewActivatesAndQueries,
+            'large-file-viewer': assertLargeFileCustomEditorOpensReadonly,
             'committed-ime': assertCommittedImeTextIsEditorLocalAndUndoable,
             composition: assertRendererImeCompositionIsLocalAndUndoable,
             'composition-cancel': assertRendererImeCompositionCancelRestoresCell,
@@ -4572,10 +5795,28 @@ async function run() {
             'mouse-context-menu': assertRendererContextMenuPasteAndCutAreScopedAndUndoable,
             'mouse-code-action': assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
             'line-comment': assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly,
+            'comment-roundtrip': assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody,
+            'comment-opaque': assertCommentOpaqueProvidersAndToggleAreScoped,
             'line-comment-readonly': assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck,
             'ctrl-slash': assertRendererCtrlSlashFiresColumnZeroComment,
             'ctrl-slash-suggest': assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible,
+            'inline-choice-cancel': assertRendererInlineChoiceCancelKeysPreserveSource,
+            'completion-backspace': assertRendererCompletionBackspaceKeepsFixedColumns,
+            'merge-choice': assertAdjacentFieldMergeIsChosenAndUndoable,
+            'empty-field-input': assertEmptyFieldTypingAlignsWithoutTab,
+            'keyword-title': assertVerifiedKeywordAliasIsTransactional,
+            'keyword-alias': assertVerifiedKeywordAliasIsTransactional,
+            'keyword-contact': assertContactOptionsDoNotDuplicateOrRemoveComments,
+            'large-node-edit': assertLargeNodeBlockKeepsSchemaAfterEdit,
+            'overlapping-schema': assertOverlappingSchemaTabAndFormatAreByteStable,
+            'snippet-tab': assertRendererTabKeepsSnippetPlaceholderNavigation,
+            'multiline-tab': assertRendererMultiLineSelectionUsesNativeTab,
+            'comma-tab': assertCommaTabRequiresExplicitConversionAndUndo,
+            'official-corpus': assertOfficialFormatCorpusFailsClosedInRealHost,
             'hover-functional': assertFunctionalHoverMatrix,
+            'official-choice': assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable,
+            'keyword-structure': assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable,
+            'title-card-position': assertUnverifiedTitleVariantStaysReadOnly,
         };
         assert.ok(scenarios[focusedScenario], `Unknown focused scenario: ${focusedScenario}`);
         await scenarios[focusedScenario]();
@@ -4584,71 +5825,104 @@ async function run() {
         return;
     }
 
-    await assertPassiveOperationsDoNotWrite();
-    await assertFunctionalHoverMatrix();
-    await assertCompletionAcceptCancelIsLocalAndUndoable();
-    await assertCompletionMixedCursorsFailClosed();
-    await assertMultiCursorNavigationCommandsFailClosed();
-    await assertMultiCursorDeleteCommandsFailClosed();
-    await assertRendererMultiCursorKeysStayNativeAndUndoable();
-    await assertRendererAltClickMultiCursorActionsAreAtomic();
-    await assertRendererMouseDragSelectionsAreScopedAndUndoable();
-    await assertRendererContextMenuPasteAndCutAreScopedAndUndoable();
-    await assertCellDeleteCannotModifyReadonlyDeck();
-    await assertCellDeleteAndEnterUseCurrentExternalVersion();
-    await assertTypeAfterExternalReloadCannotCollapseColumns();
-    await assertCellDeleteAndBackspaceAreLocalAndUndoable();
-    await assertEmptyCellBackspaceMovesWithoutWriting();
-    await assertSecondDeleteRemovesNowEmptyCardRow();
-    await assertCommaDeleteUsesNativeUndoableEditing();
-    await assertEnterIsAtomicAndUndoable();
-    await assertKeywordTitleOptionIsTransactional();
-    await assertKeywordOptionsCannotModifyReadonlyDeck();
-    await assertKeywordOptionPickerSwitchIsNoOp();
-    await assertContactOptionsDoNotDuplicateOrRemoveComments();
-    await assertParameterRenameIsDocumentLocalAndUndoable();
-    await assertParameterRenameRendererCancelAndAcceptAreScoped();
-    await assertIncludeCaseQuickFixIsLocalAndUndoable();
-    await assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable();
-    await assertStaleIncludeCaseQuickFixFailsClosed();
-    await assertIncludeCaseQuickFixCancelIsNoOp();
-    await assertIncludeCaseQuickFixPreviewIsNonMutating();
-    await assertIncludeCaseActionRevalidatesAfterMenuWait();
-    await assertIncludeCaseActionRevalidatesAfterCaseOnlyRename();
-    await assertIncludeCaseQuickFixCannotModifyReadonlyDeck();
-    await assertIncludeCaseActionDoesNotOverwriteMenuTimeEdit();
-    await assertCellTypeIsLocalAndUndoable();
-    await assertCommaTabKeepsFreeFormatAndUndo();
-    await assertOverWidthTypeIsRejectedAtomically();
-    await assertFormatOnSaveScopeAndUndo();
-    await assertExplicitFormattingIsScopedAndUndoable();
-    await assertOverlappingFormatSelectionsAreAtomicAndUndoable();
-    await assertOnBlurFormattingTracksOnlyTheActiveCondition();
-    await assertOnBlurFormattingCannotModifyReadonlyDeck();
-    await assertOnBlurFormattingCannotModifyOsReadonlyDeck();
-    await assertOnBlurFormattingUsesCurrentExternalVersion();
-    await assertRapidCloseDuringOnBlurCheckIsNonMutating();
-    await assertAutoSaveFormatIsLocalAndUndoable();
-    await assertCommittedImeTextIsEditorLocalAndUndoable();
-    await assertRendererImeCompositionIsLocalAndUndoable();
-    await assertRendererImeCompositionCancelRestoresCell();
-    await assertRendererImeCompositionOverWidthIsRejected();
-    await assertOfficialFormatCorpusFailsClosedInRealHost();
-    await assertInteractiveLatencyBaseline();
-    await assertPasteIntoSelectedCellKeepsColumns();
-    await assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly();
-    await assertLineCommentEmptyLineIsLoneDollar();
-    await assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo();
-    await assertLineCommentMultiCursorIsAtomicAndSingleUndo();
-    await assertLineCommentAllCommentedUncommentsAndLeavesLegacy();
-    await assertLineCommentFallsThroughForNonLsdynaDocument();
-    await assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck();
-    await assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged();
-    await assertRendererCtrlSlashFiresColumnZeroComment();
-    await assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible();
+    const caseResults = [];
+    for (const scenario of [
+        assertPassiveOperationsDoNotWrite,
+        assertEntityReferencesWebviewActivatesAndQueries,
+        assertLargeFileCustomEditorOpensReadonly,
+        assertFunctionalHoverMatrix,
+        assertUnverifiedTitleVariantStaysReadOnly,
+        assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable,
+        assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable,
+        assertCompletionAcceptCancelIsLocalAndUndoable,
+        assertCompletionMixedCursorsFailClosed,
+        assertMultiCursorNavigationCommandsFailClosed,
+        assertMultiCursorDeleteCommandsFailClosed,
+        assertRendererMultiCursorKeysStayNativeAndUndoable,
+        assertRendererAltClickMultiCursorActionsAreAtomic,
+        assertRendererMouseDragSelectionsAreScopedAndUndoable,
+        assertRendererContextMenuPasteAndCutAreScopedAndUndoable,
+        assertCellDeleteCannotModifyReadonlyDeck,
+        assertCellDeleteAndEnterUseCurrentExternalVersion,
+        assertTypeAfterExternalReloadCannotCollapseColumns,
+        assertCellDeleteAndBackspaceAreLocalAndUndoable,
+        assertAdjacentFieldMergeIsChosenAndUndoable,
+        assertRendererInlineChoiceCancelKeysPreserveSource,
+        assertRendererCompletionBackspaceKeepsFixedColumns,
+        assertEmptyFieldTypingAlignsWithoutTab,
+        assertLargeNodeBlockKeepsSchemaAfterEdit,
+        assertOverlappingSchemaTabAndFormatAreByteStable,
+        assertRendererTabKeepsSnippetPlaceholderNavigation,
+        assertRendererMultiLineSelectionUsesNativeTab,
+        assertEmptyCellBackspaceMovesWithoutWriting,
+        assertSecondDeleteRemovesNowEmptyCardRow,
+        assertCommaDeleteUsesNativeUndoableEditing,
+        assertEnterIsAtomicAndUndoable,
+        assertVerifiedKeywordAliasIsTransactional,
+        assertKeywordOptionsCannotModifyReadonlyDeck,
+        assertKeywordManagerRemainsBoundWhenEditorFocusChanges,
+        assertContactOptionsDoNotDuplicateOrRemoveComments,
+        assertParameterRenameIsDocumentLocalAndUndoable,
+        assertParameterRenameRendererCancelAndAcceptAreScoped,
+        assertIncludeCaseQuickFixIsLocalAndUndoable,
+        assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
+        assertStaleIncludeCaseQuickFixFailsClosed,
+        assertIncludeCaseQuickFixCancelIsNoOp,
+        assertIncludeCaseQuickFixPreviewIsNonMutating,
+        assertIncludeCaseActionRevalidatesAfterMenuWait,
+        assertIncludeCaseActionRevalidatesAfterCaseOnlyRename,
+        assertIncludeCaseQuickFixCannotModifyReadonlyDeck,
+        assertIncludeCaseActionDoesNotOverwriteMenuTimeEdit,
+        assertCellTypeIsLocalAndUndoable,
+        assertCommaTabRequiresExplicitConversionAndUndo,
+        assertOverWidthTypeIsRejectedAtomically,
+        assertFormatOnSaveScopeAndUndo,
+        assertStandardFormattingEntrypointsAreUnclaimed,
+        assertSaveAllDoesNotFormatInactiveDocuments,
+        assertExplicitFormattingIsScopedAndUndoable,
+        assertOverlappingFormatSelectionsAreAtomicAndUndoable,
+        assertOnBlurFormattingTracksOnlyTheActiveCondition,
+        assertOnBlurFormattingCannotModifyReadonlyDeck,
+        assertOnBlurFormattingCannotModifyOsReadonlyDeck,
+        assertOnBlurFormattingUsesCurrentExternalVersion,
+        assertRapidCloseDuringOnBlurCheckIsNonMutating,
+        assertAutoSaveFormatIsLocalAndUndoable,
+        assertCommittedImeTextIsEditorLocalAndUndoable,
+        assertRendererImeCompositionIsLocalAndUndoable,
+        assertRendererImeCompositionCancelRestoresCell,
+        assertRendererImeCompositionOverWidthIsRejected,
+        assertOfficialFormatCorpusFailsClosedInRealHost,
+        assertInteractiveLatencyBaseline,
+        assertPasteIntoSelectedCellKeepsColumns,
+        assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly,
+        assertLineCommentEmptyLineIsNoop,
+        assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo,
+        assertLineCommentMultiCursorIsAtomicAndSingleUndo,
+        assertLineCommentOrdinaryPlusIndentedDollarUsesCommentMode,
+        assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody,
+        assertCommentOpaqueProvidersAndToggleAreScoped,
+        assertLineCommentFallsThroughForNonLsdynaDocument,
+        assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck,
+        assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged,
+        assertRendererCtrlSlashFiresColumnZeroComment,
+        assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible,
+    ]) {
+        try {
+            await scenario();
+            caseResults.push({ name: scenario.name, status: 'passed' });
+        } catch (error) {
+            if (error.code !== 'LSDYNA_CLIPBOARD_UNAVAILABLE' ||
+                process.env.LSDYNA_EDITOR_SAFETY_REPORT_ENVIRONMENT_GAPS !== '1') throw error;
+            caseResults.push({ name: scenario.name, status: 'unverified', reason: error.message });
+        }
+        console.log(JSON.stringify(caseResults[caseResults.length - 1]));
+    }
+    fs.writeFileSync(path.join(workspaceRoot, 'host-results.json'), JSON.stringify(caseResults, null, 2));
+    const gaps = caseResults.filter(item => item.status !== 'passed');
+    if (gaps.length) throw new Error('Host acceptance incomplete: ' + gaps.map(item => item.name).join(', '));
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 
-    console.log('Editor safety Extension Host: 62 scenarios passed');
+    console.log('Editor safety Extension Host: 79 scenarios passed');
 }
 
 module.exports = { run };

@@ -1,6 +1,7 @@
 'use strict';
 
 const { parseNumericInput, numericInputValue } = require('./referenceInputValue');
+const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
 const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
 
 function normalizeKeyword(value) {
@@ -20,11 +21,22 @@ function isTableKeyword(keyword) {
     return normalizeKeyword(keyword).startsWith('DEFINE_TABLE');
 }
 
-function genericDefinitionDescriptor(keyword, definitionKeywords = loadedReferenceIndex.definitionKeywords) {
-    const normalized = normalizeKeyword(keyword).replace(/\+$/, '');
-    return definitionKeywords && definitionKeywords.generic
+function genericDefinitionDescriptor(
+    keyword,
+    definitionKeywords = loadedReferenceIndex.definitionKeywords,
+    registryCatalog = getDefinitionRegistryCatalog(),
+) {
+    const normalized = normalizeKeyword(keyword).replace(/[+%\-]$/, '');
+    const indexed = definitionKeywords && definitionKeywords.generic
         ? definitionKeywords.generic[normalized] || null
         : null;
+    return indexed || registryCatalog?.definitionDescriptorForKeyword(normalized) || null;
+}
+
+function isVerifiedScannedDefinition(keyword, definitionKeywords = loadedReferenceIndex.definitionKeywords) {
+    const normalized = normalizeKeyword(keyword).replace(/[+%\-]$/, '');
+    return Array.isArray(definitionKeywords?.scanned) &&
+        definitionKeywords.scanned.includes(normalized);
 }
 
 function splitLines(text) {
@@ -41,7 +53,11 @@ function isKeywordLine(line) {
 }
 
 function tokenize(line) {
-    return String(line || '')
+    const text = String(line || '');
+    // A comma marks a physical field even when its value is empty.
+    // Filtering these cells shifts scale factors and drops zero curve points.
+    if (text.includes(',')) return text.split(',').map(token => token.trim());
+    return text
         .split(/[,\s]+/)
         .map(token => token.trim())
         .filter(Boolean);
@@ -90,6 +106,73 @@ function nonCommentEntries(lines, startLine) {
     return entries;
 }
 
+function definitionIdLocation(entry, idRaw, preferredStart = null, preferredWidth = null) {
+    if (!entry || !Number.isInteger(entry.lineIndex)) return {};
+    const text = String(entry.text || '');
+    const raw = String(idRaw || '');
+    if (!raw) return { idLine: entry.lineIndex };
+
+    let start = -1;
+    if (Number.isInteger(preferredStart) && preferredStart >= 0 &&
+        Number.isInteger(preferredWidth) && preferredWidth > 0) {
+        const cell = text.slice(preferredStart, preferredStart + preferredWidth);
+        const cellOffset = cell.indexOf(raw);
+        if (cellOffset >= 0) start = preferredStart + cellOffset;
+    }
+    if (start < 0) start = text.indexOf(raw);
+    if (start < 0) return { idLine: entry.lineIndex };
+    return {
+        idLine: entry.lineIndex,
+        idStartChar: start,
+        idEndChar: start + raw.length,
+    };
+}
+
+function genericDefinitionIdLocation(entry, idRaw, descriptor, keyword) {
+    const text = String(entry?.text || '');
+    if (text.includes(',')) {
+        let start = 0;
+        for (let index = 0; index <= descriptor.fieldIndex; index++) {
+            const end = text.indexOf(',', start);
+            const cellEnd = end >= 0 ? end : text.length;
+            if (index === descriptor.fieldIndex) {
+                const cell = text.slice(start, cellEnd);
+                const offset = cell.indexOf(idRaw);
+                if (offset >= 0) {
+                    return {
+                        idLine: entry.lineIndex,
+                        idStartChar: start + offset,
+                        idEndChar: start + offset + idRaw.length,
+                    };
+                }
+                break;
+            }
+            if (end < 0) break;
+            start = end + 1;
+        }
+    }
+
+    const longFormatScale = /\+$/.test(normalizeKeyword(keyword)) ? 2 : 1;
+    const fixed = definitionIdLocation(
+        entry,
+        idRaw,
+        descriptor.position * longFormatScale,
+        descriptor.width * longFormatScale
+    );
+    if (Number.isInteger(fixed.idStartChar)) return fixed;
+
+    const tokens = [...text.matchAll(/[^,\s]+/g)];
+    const token = tokens[descriptor.fieldIndex];
+    if (token && token[0] === idRaw && Number.isInteger(token.index)) {
+        return {
+            idLine: entry.lineIndex,
+            idStartChar: token.index,
+            idEndChar: token.index + idRaw.length,
+        };
+    }
+    return { idLine: entry.lineIndex };
+}
+
 function parseScale(tokens, names) {
     const scale = {};
     for (const [name, rawIndex] of Object.entries(names)) {
@@ -133,6 +216,7 @@ function parseCurveBlock(block, text) {
             id,
             idRaw,
             idInput,
+            ...definitionIdLocation(idEntry, idRaw),
             keyword,
             filePath: block.filePath,
             startLine: block.startLine || 0,
@@ -152,8 +236,15 @@ function parseCurveBlock(block, text) {
         }
         const xRaw = entry.tokens[0];
         const yRaw = entry.tokens[1];
-        const xInput = parseNumericInput(xRaw, { integerOnly: false });
-        const yInput = parseNumericInput(yRaw, { integerOnly: false });
+        // Native comma-format curve coordinates default empty cells to zero.
+        // Keep raw text for display; do not apply this default to identifiers,
+        // symbolic/invalid values, or other record families.
+        const xInput = entry.text.includes(',') && xRaw === ''
+            ? { ...parseNumericInput('0', { integerOnly: false }), raw: '' }
+            : parseNumericInput(xRaw, { integerOnly: false });
+        const yInput = entry.text.includes(',') && yRaw === ''
+            ? { ...parseNumericInput('0', { integerOnly: false }), raw: '' }
+            : parseNumericInput(yRaw, { integerOnly: false });
         pointInputs.push(xInput, yInput);
         points.push({
             xRaw,
@@ -171,6 +262,7 @@ function parseCurveBlock(block, text) {
         id,
         idRaw,
         idInput,
+        ...definitionIdLocation(idEntry, idRaw),
         keyword,
         filePath: block.filePath,
         startLine: block.startLine || 0,
@@ -184,16 +276,8 @@ function parseCurveBlock(block, text) {
 
 function tableTypeFromKeyword(keyword) {
     const normalized = normalizeKeyword(keyword);
-    if (normalized.includes('_4D')) {
-        return '4d';
-    }
-    if (normalized.includes('_3D')) {
-        return '3d';
-    }
-    if (normalized.includes('_2D')) {
-        return '2d';
-    }
-    return '1d';
+    const dimension = normalized.match(/_([2-9])D(?:_|$)/)?.[1];
+    return dimension ? `${dimension}d` : '1d';
 }
 
 function parseTableBlock(block, text) {
@@ -221,7 +305,8 @@ function parseTableBlock(block, text) {
     cursor += 1;
 
     const tableType = tableTypeFromKeyword(keyword);
-    const childKind = tableType === '3d' || tableType === '4d' ? 'table' : 'curve';
+    const dimension = Number.parseInt(tableType, 10);
+    const childKind = dimension >= 3 ? 'table' : 'curve';
     const rows = [];
     const rowInputs = [];
     
@@ -251,6 +336,7 @@ function parseTableBlock(block, text) {
             const childIdRaw = entry.tokens[1];
             const valueInput = parseNumericInput(valueRaw, { integerOnly: false });
             const childIdInput = parseDefinitionIdInput(childIdRaw);
+            const childLocation = definitionIdLocation(entry, childIdRaw, 20, 20);
             rowInputs.push(valueInput, childIdInput);
             rows.push({
                 valueRaw,
@@ -261,6 +347,9 @@ function parseTableBlock(block, text) {
                 childIdInput,
                 childKind,
                 lineIndex: entry.lineIndex,
+                childIdLine: childLocation.idLine,
+                childIdStartChar: childLocation.idStartChar,
+                childIdEndChar: childLocation.idEndChar,
             });
         }
     }
@@ -271,6 +360,7 @@ function parseTableBlock(block, text) {
         id,
         idRaw,
         idInput,
+        ...definitionIdLocation(idEntry, idRaw),
         keyword,
         filePath: block.filePath,
         startLine: block.startLine || 0,
@@ -322,14 +412,20 @@ function parseGenericDefineBlock(block, text, descriptor) {
     }
     const id = numericInputValue(idInput);
 
+    const idLocation = genericDefinitionIdLocation(idEntry, idRaw, descriptor, keyword);
+
     return {
         kind: 'generic',
         id,
         idRaw,
         idInput,
+        ...idLocation,
         keyword,
         targetKeyword: descriptor.target,
+        ...(descriptor.targetKind ? { targetKind: descriptor.targetKind } : {}),
         idFieldName: descriptor.fieldName,
+        ruleId: descriptor.ruleId,
+        evidenceIds: descriptor.evidenceIds || [],
         filePath: block.filePath,
         startLine: block.startLine || 0,
         endLine: block.endLine || block.startLine || 0,
@@ -339,7 +435,11 @@ function parseGenericDefineBlock(block, text, descriptor) {
 async function scanCurveTableDefinitionsFromFileIndex(
     fileIndex,
     readBlockText,
-    definitionKeywords = loadedReferenceIndex.definitionKeywords
+    definitionKeywords = loadedReferenceIndex.definitionKeywords,
+    options: {
+        cancellationToken?: { isCancellationRequested?: boolean };
+        registryCatalog?: any;
+    } = {}
 ) {
     const curves = [];
     const tables = [];
@@ -348,20 +448,32 @@ async function scanCurveTableDefinitionsFromFileIndex(
         return { curves, tables, genericDefinitions };
     }
 
+    const isCancelled = () => options.cancellationToken?.isCancellationRequested === true;
+    const cancelledResult = () => ({ curves, tables, genericDefinitions, cancelled: true });
+
     for (let i = 0; i < fileIndex.keywordBlocks.length; i++) {
+        if (isCancelled()) return cancelledResult();
         const block = fileIndex.keywordBlocks[i];
         const keyword = withStar(block.keyword);
-        const genericDescriptor = genericDefinitionDescriptor(keyword, definitionKeywords);
-        if (!isCurveKeyword(keyword) && !isTableKeyword(keyword) && !genericDescriptor) {
+        const genericDescriptor = genericDefinitionDescriptor(
+            keyword,
+            definitionKeywords,
+            options.registryCatalog,
+        );
+        const verifiedScanned = isVerifiedScannedDefinition(keyword, definitionKeywords);
+        const curveDefinition = verifiedScanned && isCurveKeyword(keyword);
+        const tableDefinition = verifiedScanned && isTableKeyword(keyword);
+        if (!curveDefinition && !tableDefinition && !genericDescriptor) {
             continue;
         }
         const text = await readBlockText(block);
-        if (isCurveKeyword(keyword)) {
+        if (isCancelled()) return cancelledResult();
+        if (curveDefinition) {
             const definition = parseCurveBlock(block, text);
             if (definition) {
                 curves.push(definition);
             }
-        } else if (isTableKeyword(keyword)) {
+        } else if (tableDefinition) {
             const definition = parseTableBlock(block, text);
             if (definition) {
                 tables.push(definition);
@@ -371,13 +483,15 @@ async function scanCurveTableDefinitionsFromFileIndex(
                     let childCount = 0;
                     const requiredChildren = definition.rows.length;
                     for (let j = i + 1; j < fileIndex.keywordBlocks.length; j++) {
+                        if (isCancelled()) return cancelledResult();
                         if (childCount >= requiredChildren) {
                             break;
                         }
                         const nextBlock = fileIndex.keywordBlocks[j];
                         const nextKeyword = withStar(nextBlock.keyword);
-                        if (isCurveKeyword(nextKeyword)) {
+                        if (isVerifiedScannedDefinition(nextKeyword, definitionKeywords) && isCurveKeyword(nextKeyword)) {
                             const curveText = await readBlockText(nextBlock);
+                            if (isCancelled()) return cancelledResult();
                             const curveDef = parseCurveBlock(nextBlock, curveText);
                             if (curveDef) {
                                 const row = definition.rows[childCount];
@@ -387,8 +501,9 @@ async function scanCurveTableDefinitionsFromFileIndex(
                                 row.childKind = 'curve';
                                 childCount++;
                             }
-                        } else if (isTableKeyword(nextKeyword)) {
+                        } else if (isVerifiedScannedDefinition(nextKeyword, definitionKeywords) && isTableKeyword(nextKeyword)) {
                             const tableText = await readBlockText(nextBlock);
+                            if (isCancelled()) return cancelledResult();
                             const tableDef = parseTableBlock(nextBlock, tableText);
                             if (tableDef) {
                                 const row = definition.rows[childCount];
@@ -417,6 +532,7 @@ async function scanCurveTableDefinitionsFromFileIndex(
 }
 
 module.exports = {
+    genericDefinitionDescriptor,
     scanCurveTableDefinitionsFromFileIndex,
     parseCurveBlock,
     parseTableBlock,

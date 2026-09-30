@@ -64,4 +64,23 @@ describe('blockScanner', () => {
 
         assert.deepEqual(blocks.map(item => item.keyword), ['KEYWORD', 'INCLUDE', 'NODE', 'END']);
     });
+
+    it('keeps live and disk COMMENT block tuples identical', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-comment-parity-'));
+        const filePath = path.join(tempDir, 'comment.k');
+        const lines = [
+            '*KEYWORD',
+            '*COMMENT *INCLUDE',
+            'hidden.k',
+            '  *NODE',
+            '*PRIVATE',
+            '*END',
+        ];
+        fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
+
+        const live = collectBlocksFromLineReader(lines.length, index => lines[index]);
+        const disk = await collectBlocksFromFile(filePath);
+        assert.deepEqual(disk, live);
+        assert.deepEqual(live.map(block => block.keyword), ['KEYWORD', 'COMMENT', 'PRIVATE', 'END']);
+    });
 });

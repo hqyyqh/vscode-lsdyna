@@ -12,13 +12,25 @@
  */
 
 const path = require('path');
-const { createIndexClient } = require('../client/services/indexClient');
+const { createIndexClient, DEFAULT_MAX_SNAPSHOT_BYTES } = require('../client/services/indexClient');
 const { createProjectIndexLoader } = require('../worker/projectIndexLoader');
-const { createDiskSnapshotStore } = require('../core/cache/diskSnapshotStore');
+const {
+    createDiskSnapshotStore,
+    DEFAULT_MAX_CACHE_BYTES: DEFAULT_PROJECT_SNAPSHOT_DISK_BYTES,
+    DEFAULT_MAX_ENTRY_AGE_MS,
+} = require('../core/cache/diskSnapshotStore');
+const {
+    DEFAULT_MAX_CACHE_BYTES: DEFAULT_FILE_SCAN_DISK_BYTES,
+} = require('../core/cache/fileScanCacheStore');
 
 type ServerSessionOptions = {
     globalStoragePath?: string;
     maxCacheBytes?: number;
+    maxMemoryCacheBytes?: number;
+    maxProjectSnapshotCacheBytes?: number;
+    maxFileScanCacheBytes?: number;
+    maxFileScanMemoryCacheBytes?: number;
+    maxCacheAgeMs?: number;
 };
 
 /**
@@ -36,13 +48,26 @@ class LsdynaServerSession {
      * @param {string} [options.globalStoragePath] - Absolute folder path to store disk caches.
      * @param {number} [options.maxCacheBytes] - Max size of disk caches before eviction (defaults to 256MB).
      */
-    constructor({ globalStoragePath, maxCacheBytes }: ServerSessionOptions = {}) {
+    constructor({
+        globalStoragePath,
+        maxCacheBytes,
+        maxMemoryCacheBytes = DEFAULT_MAX_SNAPSHOT_BYTES,
+        maxProjectSnapshotCacheBytes = maxCacheBytes ?? DEFAULT_PROJECT_SNAPSHOT_DISK_BYTES,
+        maxFileScanCacheBytes = DEFAULT_FILE_SCAN_DISK_BYTES,
+        maxFileScanMemoryCacheBytes = 16 * 1024 * 1024,
+        maxCacheAgeMs = DEFAULT_MAX_ENTRY_AGE_MS,
+    }: ServerSessionOptions = {}) {
         /**
          * Pool coordinator for spawning background node worker processes.
          * @type {import('../worker/projectIndexLoader').ProjectIndexLoader}
          */
         this.projectIndexLoader = createProjectIndexLoader({
             fileScanCacheDirectory: globalStoragePath ? path.join(globalStoragePath, 'file-scans') : null,
+            fileScanCacheOptions: {
+                maxCacheBytes: maxFileScanCacheBytes,
+                maxEntryAgeMs: maxCacheAgeMs,
+            },
+            fileScanMemoryCacheBytes: maxFileScanMemoryCacheBytes,
         });
 
         /**
@@ -53,7 +78,8 @@ class LsdynaServerSession {
         if (globalStoragePath) {
             persistentCache = createDiskSnapshotStore({
                 cacheDirectory: globalStoragePath,
-                maxCacheBytes: maxCacheBytes || 256 * 1024 * 1024,
+                maxCacheBytes: maxProjectSnapshotCacheBytes,
+                maxEntryAgeMs: maxCacheAgeMs,
             });
         }
 
@@ -63,8 +89,25 @@ class LsdynaServerSession {
          */
         this.indexClient = createIndexClient({
             buildProjectIndex: this.projectIndexLoader.buildProjectIndex,
+            maxSnapshotBytes: maxMemoryCacheBytes,
             persistentCache,
         });
+    }
+
+    /**
+     * Clears all project-index cache layers. Active scans are cancelled by
+     * recycling the worker; live editor text remains owned by VS Code.
+     */
+    async clearCaches() {
+        const [project, fileScans] = await Promise.all([
+            this.indexClient.clearCaches(),
+            this.projectIndexLoader.clearPersistentCache(),
+        ]);
+        return {
+            memory: project.memory,
+            projectSnapshotDisk: project.projectSnapshotDisk,
+            fileScanDisk: fileScans,
+        };
     }
 
     /**

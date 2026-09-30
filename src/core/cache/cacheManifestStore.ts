@@ -103,6 +103,7 @@ function cloneManifestEntry(entry) {
  *   get: function(string): (ManifestEntry|null),
  *   getStats: function(): ManifestStoreStats,
  *   list: function(): ManifestEntry[],
+ *   clear: function(): number,
  *   remove: function(string): boolean,
  *   upsert: function({rootFile: string, trackedFiles: string[], byteSize: number, lastAccessedAt: number}): ManifestEntry
  * }} A manifest store instance.
@@ -198,7 +199,17 @@ function createCacheManifestStore() {
         };
     }
 
+    /**
+     * Clears all in-memory manifest entries and returns the previous count.
+     */
+    function clear() {
+        const removed = entries.size;
+        entries.clear();
+        return removed;
+    }
+
     return {
+        clear,
         get,
         getStats,
         list,

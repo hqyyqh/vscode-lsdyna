@@ -6,7 +6,12 @@ const os = require('os');
 const path = require('path');
 const { fakeDoc, vscodeMock } = require('./helpers');
 const i18n = require('../src/core/i18n');
+const { DEFAULT_STRUCTURE_SOURCE_PROFILE_EN } = require('../src/core/structure');
 const extensionModule = require('../src/extension');
+const { planVerifiedConditionalCardsForDocument, handleAddVerifiedConditionalCardsCommand, handleRebuildCardCommentsCommand, planCardCommentRewriteForDocument, handleInsertVerifiedMissingRecordsCommand, buildKeywordStructureIssueMarkdown, keywordStructureRepairRequest, documentUriIdentity, LsdynaFieldCompletionProvider } = extensionModule._internals;
+const { semanticEvidencePageLinks } = extensionModule._internals;
+const { getKeywordSemanticAdviceForDocument, buildKeywordSemanticAdviceMarkdown, cardCommentRewriteRequest, handleCheckKeywordStructureCommand, analyzeKeywordStructureForDocument, keywordStructureAnalysisCacheStatsForTesting, handleOpenSemanticEvidenceCommand } = extensionModule._internals;
+const { fieldReferenceAtPosition, resolveFieldReferenceNavigation, resolveRegistryReferenceNetwork, resolveWorkspaceReferenceSearch, handleWorkspaceReferenceSearchCommand, workspaceReferenceSearchPosition, inferIndexedEntityQueryTarget, resolveEntityReferenceCursorEditor, activeUnsynchronizedLargeFileUri, activeLargeFileViewerUri, presentIndexedEntityQueryResult, handleIndexedEntityIdQueryCommand, refreshCurrentEntityReferenceQuery, refreshStoredEntityReferenceQuery, prepareIndexedEntityQuerySnapshot, refreshCurrentEntityQueryAfterProjectScan, buildTablePreviewReferenceKey, getTablePreviewViewForReference, setTablePreviewViewForReference, clearTablePreviewViewsForTesting, handleSetTablePreviewViewCommand, clientProjectCacheStats, getFileIndexForDocument, clearClientProjectSemanticCaches, cacheRemovalTotals, handleClearProjectIndexCachesCommand, cacheLimitBytes, cacheLimitMilliseconds, getCardFieldsForLine } = extensionModule._internals;
 const { LsdynaIncludeTreeProvider } = require('../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../src/client/providers/keywordIndexProvider');
 const { buildProjectIndex } = require('../src/core/project/projectIndexer');
@@ -51,7 +56,9 @@ const {
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
     createProjectSnapshotPersistentCache,
-    chooseKeywordOptionsForEditor,
+    // Exercise the retained QuickPick fallback directly; activated entry routing
+    // is covered by the manager lifecycle and protocol tests.
+    chooseKeywordOptionsQuickPickLegacy: chooseKeywordOptionsForEditor,
     updateDocumentDiagnostics,
     collectIncludePathCaseDiagnostics,
     setResolveIncludeWithCaseCheckForTesting,
@@ -1489,12 +1496,15 @@ describe('LsdynaIncludeTreeProvider', () => {
     it('uses the shared project snapshot loader during scans when available', async () => {
         const rootFile = path.join('project', 'snapshot-root', 'main.k');
         const aFile = path.join('project', 'snapshot-root', 'a.key');
+        const cancellationToken = { isCancellationRequested: false };
+        let progressOptions = null;
         const provider = new LsdynaIncludeTreeProvider({
             searchFileFromPaths() {
                 throw new Error('searchFileFromPaths should not be used when loadProjectSnapshot is available');
             },
-            loadProjectSnapshot: async (filePath) => {
+            loadProjectSnapshot: async (filePath, _options, _onProgress, token) => {
                 assert.equal(filePath, rootFile);
+                assert.equal(token.isCancellationRequested, cancellationToken.isCancellationRequested);
                 return {
                     graph: {
                         toTree(treeRootFile) {
@@ -1520,15 +1530,57 @@ describe('LsdynaIncludeTreeProvider', () => {
                 uri: { fsPath: rootFile },
             },
         };
-        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} });
+        vscodeMock.window.withProgress = async (options, task) => {
+            progressOptions = options;
+            return task({ report() {} }, cancellationToken);
+        };
+        vscodeMock.ProgressLocation = { Notification: 15 };
+
+        try {
+            const scanResult = await provider.scan();
+
+            assert.ok(provider.root);
+            assert.equal(provider.root.filePath, rootFile);
+            assert.equal(scanResult.rootFile, rootFile);
+            assert.ok(scanResult.snapshot.graph);
+            assert.deepEqual(provider.root.children.map(child => child.filePath), [aFile]);
+            assert.equal(progressOptions.cancellable, true);
+        } finally {
+            vscodeMock.window.activeTextEditor = originalActiveTextEditor;
+            vscodeMock.window.withProgress = originalWithProgress;
+            vscodeMock.ProgressLocation = originalProgressLocation;
+        }
+    });
+
+    it('keeps the previous include tree when a cancellable project scan stops', async () => {
+        const rootFile = path.join('project', 'cancelled-include', 'main.k');
+        const cancellationToken = { isCancellationRequested: false };
+        const previousRoot = { filePath: 'previous.k', children: [] };
+        const provider = new LsdynaIncludeTreeProvider({
+            loadProjectSnapshot: async (_filePath, _options, onProgress) => {
+                onProgress({ files: [rootFile] });
+                cancellationToken.isCancellationRequested = true;
+                const error = new Error('cancelled fixture');
+                error.name = 'CancellationError';
+                throw error;
+            },
+        });
+        provider.root = previousRoot;
+        provider.resolvedPaths.set('previous', '1 KB');
+        const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
+        const originalWithProgress = vscodeMock.window.withProgress;
+        const originalProgressLocation = vscodeMock.ProgressLocation;
+        vscodeMock.window.activeTextEditor = {
+            document: { languageId: 'lsdyna', uri: { fsPath: rootFile } },
+        };
+        vscodeMock.window.withProgress = async (_options, task) =>
+            task({ report() {} }, cancellationToken);
         vscodeMock.ProgressLocation = { Notification: 15 };
 
         try {
             await provider.scan();
-
-            assert.ok(provider.root);
-            assert.equal(provider.root.filePath, rootFile);
-            assert.deepEqual(provider.root.children.map(child => child.filePath), [aFile]);
+            assert.strictEqual(provider.root, previousRoot);
+            assert.equal(provider.resolvedPaths.get('previous'), '1 KB');
         } finally {
             vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             vscodeMock.window.withProgress = originalWithProgress;
@@ -1814,7 +1866,7 @@ describe('activate', () => {
 
         try {
             await extensionModule.activate(context);
-            assert.deepEqual(watcherGlobs, ['**/*.asc', '**/*.dyna', '**/*.k', '**/*.key']);
+            assert.deepEqual(watcherGlobs, ['**/*.dyna', '**/*.k', '**/*.key']);
         } finally {
             vscodeMock.workspace.createFileSystemWatcher = originalCreateFileSystemWatcher;
             vscodeMock.window.registerTreeDataProvider = originalRegisterTreeDataProvider;
@@ -2268,6 +2320,49 @@ describe('createProjectIndexLoader', () => {
         );
         assert.strictEqual(createdPools.length, 1);
     });
+
+    it('recycles the worker before clearing the bounded per-file cache', async () => {
+        const createdPools = [];
+        const cacheOptionsSeen = [];
+        let poolDisposeCalls = 0;
+        const loader = createProjectIndexLoader({
+            createPool(options) {
+                createdPools.push(options);
+                return {
+                    async buildProjectIndex(rootFile) { return { rootFile }; },
+                    async dispose() { poolDisposeCalls += 1; },
+                };
+            },
+            createFileScanCache(options) {
+                cacheOptionsSeen.push(options);
+                return {
+                    async invalidateAll() {
+                        return { entryCount: 3, totalBytes: 4096 };
+                    },
+                };
+            },
+            fileScanCacheDirectory: path.resolve('cache', 'file-scans'),
+            fileScanCacheOptions: { maxCacheBytes: 1024, maxEntryAgeMs: 2000 },
+        });
+
+        await loader.buildProjectIndex(path.resolve('project', 'main.k'));
+        const removed = await loader.clearPersistentCache();
+        assert.deepEqual(removed, { entryCount: 3, totalBytes: 4096 });
+        assert.equal(poolDisposeCalls, 1);
+        assert.deepEqual(cacheOptionsSeen, [{
+            cacheDirectory: path.resolve('cache', 'file-scans'),
+            maxCacheBytes: 1024,
+            maxEntryAgeMs: 2000,
+        }]);
+
+        await loader.buildProjectIndex(path.resolve('project', 'again.k'));
+        assert.equal(createdPools.length, 2);
+        assert.deepEqual(createdPools[1].fileScanCacheOptions, {
+            maxCacheBytes: 1024,
+            maxEntryAgeMs: 2000,
+        });
+        await loader.dispose();
+    });
 });
 
 describe('createProjectSnapshotPersistentCache', () => {
@@ -2289,6 +2384,7 @@ describe('createProjectSnapshotPersistentCache', () => {
         assert.deepEqual(created, [{
             cacheDirectory: path.resolve('storage-root', 'project-snapshots'),
             maxCacheBytes: 256 * 1024 * 1024,
+            maxEntryAgeMs: 30 * 24 * 60 * 60 * 1000,
         }]);
         assert.deepEqual(persistentCache, { kind: 'disk-store' });
     });
@@ -2519,6 +2615,25 @@ describe('large document guards', () => {
         } finally {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
+    });
+
+    it('shares strict decoration lookups per request and observes file creation and deletion', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-refresh-'));
+        const file = path.join(root, 'child.k');
+        const doc = fakeDoc('*INCLUDE\nchild.k\n*INCLUDE\nchild.k\n', path.join(root, 'main.k'));
+        doc.languageId = 'lsdyna'; doc.version = 1;
+        let checks = 0;
+        const options = { mode: 'strict', resolveIncludeWithCaseCheck: async () => {
+            checks++; return { status: 'exact', resolvedPath: file };
+        } };
+        try {
+            assert.equal((await collectIncludeDecorationSets(doc, options)).missing.length, 2);
+            fs.writeFileSync(file, '*KEYWORD\n');
+            assert.equal((await collectIncludeDecorationSets(doc, options)).resolved.length, 2);
+            assert.equal(checks, 1);
+            fs.unlinkSync(file);
+            assert.equal((await collectIncludeDecorationSets(doc, options)).missing.length, 2);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
     });
 
     it('skips automatic include document links for very large documents', async () => {
@@ -2759,6 +2874,15 @@ describe('getParameterAtCursor', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaFieldHoverProvider', () => {
+    it('discards a hover when its document changes during cold schema preparation', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc('*NODE\n       1             0.0\n');
+        doc.version = 1;
+        const pending = provider.provideHover(doc, { line: 1, character: 12 });
+        doc.version = 2;
+        assert.equal(await pending, null);
+    });
+
     afterEach(() => {
         if (typeof clearReferenceIndexCacheForTesting === 'function') {
             clearReferenceIndexCacheForTesting();
@@ -3044,7 +3168,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         assert.ok(value.includes('Current-file source definition'));
         assert.ok(value.includes('`3003`'));
-        assert.ok(value.includes('Choose main deck context'));
+        assert.ok(value.includes('Choose main deck'));
         assert.ok(!value.includes('Effective value in the current main-deck context'));
         assert.ok(!value.includes('`1001`'));
         assert.ok(!value.includes('`2002`'));
@@ -3138,7 +3262,7 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover);
             const value = hover.contents[0].value;
             assert.ok(value.startsWith('### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**ENDMAS**</span> *(real)*'));
-            assert.ok(value.includes('DT2MS.  \nLT.0.0:'));
+            assert.match(value, /DT2MS\. {2,}\nLT\.0\.0:/);
             assert.ok(value.includes('**$(table) Card Columns:**'));
             assert.ok(value.includes('**&nbsp;ENDMAS&nbsp;**'));
         } finally {
@@ -3170,14 +3294,11 @@ describe('LsdynaFieldHoverProvider', () => {
             const value = hover.contents[0].value;
 
             const zhAt = value.indexOf('节点集');
-            const enAt = value.indexOf('Node set ID');
+            const originalAt = value.indexOf('[原文](');
             assert.ok(zhAt >= 0, 'expected Chinese help as primary');
-            assert.ok(enAt >= 0, 'expected English help as secondary');
-            assert.ok(zhAt < enAt, 'Chinese primary should appear before English secondary');
-            assert.ok(
-                value.includes('descriptionForeground') || value.includes('opacity:0.72'),
-                'expected muted English styling'
-            );
+            assert.ok(originalAt >= 0, 'expected original English action link');
+            assert.ok(originalAt < zhAt, 'original action link should appear before Chinese primary');
+            assert.ok(value.includes('command:extension.showFieldHelpEnglish'), 'expected command link to English original');
             assert.ok(!value.includes('Node set ID.\n节点集'), 'should not leave raw stacked bilingual block as primary-only');
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
@@ -3257,12 +3378,13 @@ describe('LsdynaFieldHoverProvider', () => {
 
             assert.ok(value.includes('**LCSS**'));
             assert.ok(value.includes('LCSS reference'));
-            assert.ok(value.includes('*DEFINE_CURVE'));
-            assert.ok(value.includes('Current-file candidate'));
+            assert.ok(value.includes('*DEFINE\\_CURVE'));
+            assert.ok(value.includes('Current-file preview'));
             assert.ok(value.includes('command:extension.openLsdynaReferenceDefinition'));
             assert.ok(value.includes('data:image/svg+xml;base64,'));
-            assert.ok(value.includes('insufficient to resolve'));
             assert.ok(value.includes('Scan Include Tree'));
+            assert.ok(!value.includes('Current-file candidate'));
+            assert.ok(!value.includes('insufficient to resolve'));
             assert.ok(!value.includes('No matching curve/table definition'));
         } finally {
             setFileIndexForTesting(filePath, null);
@@ -3356,7 +3478,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const value = hover.contents[0].value;
 
         assert.ok(value.includes(childFile));
-        assert.ok(value.includes('*DEFINE_CURVE'));
+        assert.ok(value.includes('*DEFINE\\_CURVE'));
         assert.ok(!value.includes('Scan Include Tree'));
     });
 
@@ -3505,7 +3627,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('multiple main decks'));
-        assert.ok(value.includes('Choose main deck context'));
+        assert.ok(value.includes('Choose main deck'));
         assert.ok(!value.includes(curveA));
         assert.ok(!value.includes(curveB));
         assert.ok(!value.includes('No matching curve/table definition'));
@@ -3516,7 +3638,7 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.equal(selectedA.rootFile, rootA);
         const hoverA = await provider.provideHover(doc, { line: 4, character: 24 });
         const valueA = hoverA.contents[0].value;
-        assert.ok(valueA.includes('Current main deck context'));
+        assert.ok(valueA.includes('Current main deck'));
         assert.ok(valueA.includes(path.basename(rootA)));
         assert.ok(valueA.includes(curveA));
         assert.ok(!valueA.includes(curveB));
@@ -3602,7 +3724,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const titleHover = await provider.provideHover(doc, { line: 1, character: 2 });
         assert.ok(titleHover);
         assert.ok(titleHover.contents[0].value.includes('**TITLE**'));
-        assert.ok(titleHover.contents[0].value.includes('Additional title line'));
+        assert.ok(titleHover.contents[0].value.includes('Enter title for the datacard.'));
 
         // Hovering on comment line (line 2) should return null
         const commentHover = await provider.provideHover(doc, { line: 2, character: 2 });
@@ -3654,11 +3776,12 @@ describe('LsdynaFieldHoverProvider', () => {
 
             assert.ok(value.includes('**LCSS**'));
             assert.ok(value.includes('LCSS reference'));
-            assert.ok(value.includes('*DEFINE_CURVE'));
-            assert.ok(value.includes('Current-file candidate'));
+            assert.ok(value.includes('*DEFINE\\_CURVE'));
+            assert.ok(value.includes('Current-file preview'));
             assert.ok(value.includes('command:extension.openLsdynaReferenceDefinition'));
             assert.ok(value.includes('Scan Include Tree'));
             assert.ok(value.includes('data:image/svg+xml;base64,'));
+            assert.ok(!value.includes('Current-file candidate'));
         } finally {
             setFileIndexForTesting(filePath, null);
             fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -3706,9 +3829,9 @@ describe('LsdynaFieldHoverProvider', () => {
             const value = hover.contents[0].value;
 
             // Assert it contains both the graph preview and the keyword documentation
-            assert.ok(value.includes('### $(graph-line) **\\*DEFINE_CURVE_TITLE (ID: 1001)** - _My Curve Title_'));
+            assert.ok(value.includes('### $(graph-line) **\\*DEFINE\\_CURVE\\_TITLE (ID: 1001)** - _My Curve Title_'));
             assert.ok(value.includes('data:image/svg+xml;base64,'));
-            assert.ok(value.includes('**\\*DEFINE_CURVE')); // Manual/help text
+            assert.ok(value.includes('**\\*DEFINE\\_CURVE')); // Manual/help text
         } finally {
             setFileIndexForTesting(filePath, null);
             fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -3755,7 +3878,10 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(!ordinaryValue.includes('command:extension.lsdynaChooseKeywordOptions'));
         assert.ok(optionValue.includes('command:extension.selectKeyword?%5B1%5D'));
         assert.ok(optionValue.includes('command:extension.lsdynaFormatSelection?%5B1%5D'));
-        assert.ok(optionValue.includes('command:extension.lsdynaChooseKeywordOptions?%5B1%5D'));
+        assert.ok(optionValue.includes('command:extension.lsdynaChooseKeywordOptions?'));
+        const target = JSON.parse(decodeURIComponent(optionValue.match(/command:extension\.lsdynaChooseKeywordOptions\?([^ ]+)/)[1]));
+        assert.equal(target[0].keywordLine, 1);
+        assert.equal(target[0].uri, extensionModule._internals.documentUriIdentity(doc));
     });
 
     it('returns custom hover actions for existing include files', async () => {
@@ -3827,7 +3953,7 @@ describe('LsdynaFieldHoverProvider', () => {
         });
         const noisyPdf = path.join(tempRoot, 'old-version.pdf');
         let liveBookmarkReads = 0;
-        
+
         workspace.getConfiguration = () => ({
             get: (key) => key === 'manualsDir' ? tempRoot : undefined
         });
@@ -3845,7 +3971,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         try {
             const provider = new LsdynaFieldHoverProvider();
-            
+
             // Hovering over keyword line *CONTROL_TERMINATION
             const doc = fakeDoc('*CONTROL_TERMINATION\n');
             const kwHover = await provider.provideHover(doc, { line: 0, character: 3 });
@@ -4038,7 +4164,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualLocations = manualIndexer.getManualLocations;
         const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
-        
+
         workspace.getConfiguration = () => ({
             get: (key) => key === 'manualsDir' ? 'd:/manuals' : undefined
         });
@@ -4053,7 +4179,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         try {
             const provider = new LsdynaFieldHoverProvider();
-            
+
             // Hovering over keyword line *SOME_UNUSUAL_KEYWORD.
             // Keyword title is omitted on purpose: diagnosis already shows
             // "未知*… ⓘ" / "Unknown *… ⓘ"; hover only adds manuals + actions.
@@ -4076,7 +4202,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require('../src/core/manualIndexer');
         const originalGetManualFilesCount = manualIndexer.getManualFilesCount;
-        
+
         workspace.getConfiguration = () => ({
             get: (key) => key === 'manualsDir' ? '' : undefined
         });
@@ -4252,6 +4378,1031 @@ describe('LsdynaFieldHoverProvider', () => {
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
+    });
+
+    it('keeps field queries out of structural grammar analysis', async () => {
+        const { KeywordStructureCatalog } = require('../src/core/structure/structureCatalog');
+        const original = KeywordStructureCatalog.prototype.lookupBinding;
+        let lookups = 0;
+        KeywordStructureCatalog.prototype.lookupBinding = function (...args) {
+            lookups++;
+            return original.apply(this, args);
+        };
+        try {
+            const document = fakeDoc('*DATABASE_EXTENT_BINARY\n' + '         1'.repeat(8));
+            document.languageId = 'lsdyna';
+            document.version = 1;
+            const hover = await new LsdynaFieldHoverProvider().provideHover(document, { line: 1, character: 5 });
+            assert.ok(hover);
+            assert.ok(getCardFieldsForLine(document, 1));
+            assert.equal(lookups, 0, 'field interaction must not expand or align structural grammar paths');
+        } finally { KeywordStructureCatalog.prototype.lookupBinding = original; }
+    });
+
+    it('keeps TITLE physical order ahead of stale headers without reviving an unverified structure repair', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}        -1`,
+            '$#      vk        vm     r00/f     r45/g     r90/h         l         m         n',
+            `${' '.repeat(50)}       1.5       1.5       1.5`,
+            '$#    aopt    unused    unused      macf',
+            `${' '.repeat(30)}         1`,
+            '$#      xp        yp        zp        a1        a2        a3',
+            ' '.repeat(80),
+            '$#      v1        v2        v3        d1        d2        d3      beta',
+            ' '.repeat(80),
+            '*END',
+        ].join('\n'), path.resolve('title-position-hover', 'damage.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const keywordHover = await provider.provideHover(doc, { line: 0, character: 5 });
+        assert.ok(keywordHover);
+        assert.ok(keywordHover.contents[0].value.includes(i18n.get('keywordHoverOptions')));
+        assert.ok(keywordHover.contents[0].value.includes(i18n.get('keywordHoverOptionActive')));
+        assert.ok(keywordHover.contents[0].value.includes('| **1** | `TITLE`'));
+        assert.ok(keywordHover.contents[0].value.includes('| **2** | `MID`'));
+        assert.ok(!keywordHover.contents[0].value.includes('command:extension.insertVerifiedMissingRecords'));
+
+        const titleHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        assert.ok(titleHover);
+        const titleValue = titleHover.contents[0].value;
+        assert.ok(titleValue.includes('**TITLE**'));
+        assert.ok(!titleValue.includes('command:extension.insertVerifiedMissingRecords'));
+        assert.ok(!titleValue.includes('command:extension.pickOfficialFieldValue'));
+
+        const shiftedHover = await provider.provideHover(doc, { line: 4, character: 5 });
+        assert.ok(shiftedHover);
+        const shiftedValue = shiftedHover.contents[0].value;
+        assert.ok(shiftedValue.includes('**MID**'));
+        assert.ok(!shiftedValue.includes('**FLAG**'));
+        assert.ok(!shiftedValue.includes('command:extension.insertVerifiedMissingRecords'));
+    });
+
+    it('accepts pipe-delimited preprocessor field headers without spending hover space', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const header = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|   RLTFLG|   ENGFLG';
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            header,
+            '         0        16         3         1         1         1         1         1',
+        ].join('\n'), path.resolve('card-comments', 'pipe-current.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const hover = await provider.provideHover(doc, { line: 2, character: 65 });
+        assert.ok(hover);
+        const value = hover.contents[0].value;
+        assert.ok(value.includes('**RLTFLG**'));
+        assert.ok(!value.includes(i18n.get('cardCommentVersionHint')));
+        assert.ok(!value.includes(i18n.get('cardCommentShiftHint')));
+        assert.ok(!value.includes('command:extension.rebuildCardComments'));
+    });
+
+    it('adds a comment mismatch reminder without suppressing field help', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const header = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|      OLD|     OLD2';
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            header,
+            '         0        16         3         1         1         1         1         1',
+        ].join('\n'), path.resolve('card-comments', 'pipe-legacy.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 7;
+
+        const unchangedHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        assert.ok(unchangedHover);
+        assert.ok(unchangedHover.contents[0].value.includes('**NEIPH**'));
+        assert.ok(!unchangedHover.contents[0].value.includes(i18n.get('cardCommentVersionHint')));
+
+        const changedHover = await provider.provideHover(doc, { line: 2, character: 65 });
+        assert.ok(changedHover);
+        const value = changedHover.contents[0].value;
+        assert.ok(value.includes(i18n.get('cardCommentVersionHint')));
+        assert.ok(value.includes('command:extension.rebuildCardComments'));
+        assert.ok(value.includes('**RLTFLG**'));
+        assert.ok(value.includes(i18n.get('cardColumns')));
+
+        const request = cardCommentRewriteRequest(doc, 0, 2);
+        assert.deepEqual(Object.keys(request).sort(), [
+            'documentVersion', 'keywordLine', 'line', 'uri',
+        ]);
+        const plan = planCardCommentRewriteForDocument(doc, 0, { blockIndex: null });
+        assert.equal(plan.status, 'ready');
+        assert.equal(plan.edits.length, 1);
+        assert.equal(plan.edits[0].kind, 'replace-line');
+        assert.equal(plan.edits[0].line, 1);
+        assert.ok(plan.edits[0].replacementText.includes('RLTFLG'));
+        assert.ok(plan.edits[0].replacementText.includes('ENGFLG'));
+        assert.ok(!plan.edits[0].replacementText.includes('OLD'));
+        assert.equal(plan.edits[0].replacementText[10], '|');
+
+        let appliedEdit;
+        const statuses = [];
+        const result = await handleRebuildCardCommentsCommand(request, {
+            editor: { document: doc },
+            blockIndex: null,
+            applyEdit: async edit => { appliedEdit = edit; return true; },
+            showStatus: (key, ...args) => statuses.push([key, ...args]),
+        });
+        assert.ok(result);
+        assert.equal(result.notice.kind, 'definition-mismatch');
+        assert.equal(appliedEdit.edits.length, 1);
+        assert.equal(appliedEdit.edits[0].range.start.line, 1);
+        assert.equal(appliedEdit.edits[0].range.end.line, 1);
+        assert.ok(appliedEdit.edits[0].text.includes('RLTFLG'));
+        assert.deepEqual(statuses.at(-1), ['cardCommentRewriteApplied', 1]);
+
+        let staleEditApplied = false;
+        const staleStatuses = [];
+        const stale = await handleRebuildCardCommentsCommand({ ...request, documentVersion: 6 }, {
+            editor: { document: doc },
+            blockIndex: null,
+            applyEdit: async () => { staleEditApplied = true; return true; },
+            showStatus: (key, ...args) => staleStatuses.push([key, ...args]),
+        });
+        assert.equal(stale, null);
+        assert.equal(staleEditApplied, false);
+        assert.deepEqual(staleStatuses, [['cardCommentRewriteStale']]);
+
+        let rejectedEditCount = 0;
+        const rejectedStatuses = [];
+        const rejected = await handleRebuildCardCommentsCommand(request, {
+            editor: { document: doc },
+            blockIndex: null,
+            applyEdit: async () => { rejectedEditCount++; return false; },
+            showStatus: (key, ...args) => rejectedStatuses.push([key, ...args]),
+        });
+        assert.equal(rejected, null);
+        assert.equal(rejectedEditCount, 1);
+        assert.deepEqual(rejectedStatuses, [['cardCommentRewriteApplyFailed']]);
+    });
+
+    it('bounds per-document structure results by both entries and estimated bytes', () => {
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ...Array(6).fill(' '.repeat(80)),
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'bounded-cache.k'));
+        doc.languageId = 'lsdyna';
+        for (let version = 1; version <= 100; version++) {
+            doc.version = version;
+            assert.equal(analyzeKeywordStructureForDocument(doc, 0, {
+                blockIndex: null,
+                sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            }).status, 'ambiguous');
+        }
+        const stats = keywordStructureAnalysisCacheStatsForTesting(doc);
+        assert.ok(stats.entries > 0 && stats.entries <= stats.maximumEntries);
+        assert.ok(stats.bytes > 0 && stats.bytes <= stats.maximumBytes);
+        assert.equal(stats.maximumEntries, 64);
+        assert.equal(stats.maximumBytes, 2 * 1024 * 1024);
+    });
+
+    it('returns unverified inventory status before reading an oversized keyword body', () => {
+        const reads = [];
+        const doc = {
+            languageId: 'lsdyna',
+            version: 1,
+            lineCount: 1_000_000,
+            uri: { fsPath: path.resolve('card-comments', 'unverified-large.k') },
+            lineAt(line) {
+                reads.push(line);
+                if (line === 0) return { text: '*MAT_DAMAGE_1_TITLE' };
+                throw new Error('unverified bindings must not scan their keyword body');
+            },
+        };
+        const result = analyzeKeywordStructureForDocument(doc, 0, {
+            blockIndex: null,
+            globalInputFormat: 'standard',
+        });
+        assert.equal(result.status, 'profile-unverified');
+        assert.equal(result.reason, 'variant-requires-reviewed-option-expansion');
+        assert.equal(result.sourceProfileId, DEFAULT_STRUCTURE_SOURCE_PROFILE_EN);
+        assert.equal(result.sourceProfileOrigin, 'builtin-default');
+        assert.deepEqual(reads, [0]);
+    });
+
+    it('uses a ready block index for command-palette checks near a million-line tail', async () => {
+        const keywordLine = 999_990;
+        const reads = [];
+        const doc = {
+            languageId: 'lsdyna',
+            version: 3,
+            lineCount: 1_000_000,
+            uri: { fsPath: path.resolve('card-comments', 'palette-large.k') },
+            lineAt(line) {
+                reads.push(line);
+                if (line === keywordLine) return { text: '*MAT_DAMAGE_1_TITLE' };
+                throw new Error(`unexpected line read: ${line}`);
+            },
+        };
+        const messages = [];
+        const result = await handleCheckKeywordStructureCommand(null, {
+            editor: {
+                document: doc,
+                selection: { active: { line: 999_999 } },
+            },
+            blockIndex: {
+                lineCount: doc.lineCount,
+                findBlockAtLine: () => ({ startLine: keywordLine, endLine: 999_999 }),
+            },
+            globalInputFormat: 'standard',
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            showInformationMessage: message => messages.push(message),
+        });
+        assert.equal(result.status, 'profile-unverified');
+        assert.ok(messages.length === 1);
+        assert.ok(reads.length <= 3, `ready-index command performed ${reads.length} line reads`);
+        assert.ok(reads.every(line => line === keywordLine));
+    });
+
+    it('keeps structure checks bounded near a million-line tail with a ready block index', () => {
+        const keywordLine = 999_900;
+        const blockLines = [
+            '*MAT_DAMAGE_1',
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}        -1`,
+            '$#      vk        vm     r00/f     r45/g     r90/h         l         m         n',
+            `${' '.repeat(50)}       1.5       1.5       1.5`,
+            '$#    aopt    unused    unused      macf',
+            `${' '.repeat(30)}         1`,
+            '$#      xp        yp        zp        a1        a2        a3',
+            ' '.repeat(80),
+            '$#      v1        v2        v3        d1        d2        d3      beta',
+            ' '.repeat(80),
+        ];
+        let lineReads = 0;
+        const readLines = [];
+        const document = {
+            version: 1,
+            lineCount: 1_000_000,
+            lineAt(line) {
+                lineReads++;
+                readLines.push(line);
+                const offset = line - keywordLine;
+                return { text: blockLines[offset] ?? '$ untouched' };
+            },
+        };
+        const blockIndex = {
+            lineCount: document.lineCount,
+            findBlockAtLine: () => ({
+                startLine: keywordLine,
+                endLine: keywordLine + blockLines.length - 1,
+            }),
+        };
+
+        const structure = analyzeKeywordStructureForDocument(document, keywordLine, {
+            blockIndex,
+            globalInputFormat: 'standard',
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+        });
+
+        assert.equal(structure.status, 'ambiguous');
+        assert.equal(structure.reason, 'verified-boundary-only-no-record-signatures');
+        assert.ok(lineReads <= 16, `expected bounded structure reads, got ${lineReads}`);
+        assert.ok(readLines.every(line => line >= keywordLine && line < keywordLine + blockLines.length));
+
+        lineReads = 0;
+        const overBudget = analyzeKeywordStructureForDocument(document, keywordLine, {
+            globalInputFormat: 'standard',
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            blockIndex: {
+                lineCount: document.lineCount,
+                findBlockAtLine: () => ({ startLine: keywordLine, endLine: keywordLine + 33 }),
+            },
+        });
+        assert.equal(overBudget.status, 'unsupported-input');
+        assert.equal(overBudget.reason, 'block-line-limit');
+        assert.ok(lineReads <= 2, `expected over-budget check to stop immediately, got ${lineReads}`);
+    });
+
+    it('moves conditional-card details out of keyword hover while keeping manager access', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const flagMinusOne = `${' '.repeat(70)}        -1`;
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            flagMinusOne,
+        ].join('\n'));
+
+        const hover = await provider.provideHover(doc, { line: 0, character: 4 });
+        assert.ok(hover);
+        const value = hover.contents[0].value;
+        assert.ok(!value.includes(i18n.get('officialConditionalCards')));
+        assert.ok(!value.includes('`Anisotropic Damage Card`'));
+        assert.ok(value.includes('command:extension.lsdynaChooseKeywordOptions'));
+        assert.ok(!value.includes('#### $(book)'));
+        assert.ok(!value.includes('diagnostic'));
+    });
+
+    it('does not repeat unresolved conditional-card details on keyword hover', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const parameterFlag = `${' '.repeat(70)}     &FLAG`;
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            parameterFlag,
+        ].join('\n'));
+
+        const hover = await provider.provideHover(doc, { line: 0, character: 4 });
+        assert.ok(hover);
+        const value = hover.contents[0].value;
+        assert.ok(!value.includes(i18n.get('semanticIndeterminateHint')));
+        assert.ok(value.includes('command:extension.lsdynaChooseKeywordOptions'));
+    });
+
+    it('limits field hover conditions to the selected controller', () => {
+        const doc = fakeDoc('*MAT_DAMAGE_1\n' + ' '.repeat(80) + '\n' + ' '.repeat(70) + '        -1');
+        const build = extensionModule._internals.buildControlConditionMarkdown;
+        assert.ok(build(doc, 0, ['FLAG']).includes('Anisotropic Damage Card'));
+        assert.equal(build(doc, 0, ['MID']), '');
+    });
+
+    it('renders CONTACT slot evidence without claiming concrete option values', () => {
+        const advice = getKeywordSemanticAdviceForDocument(
+            fakeDoc('*CONTACT\n'),
+            0,
+            { canonicalName: 'CONTACT', activeOptions: [], entry: { c: [], o: [] } },
+        );
+        const markdown = buildKeywordSemanticAdviceMarkdown(advice);
+
+        assert.ok(markdown.includes('`OPTION1`'));
+        assert.ok(markdown.includes(i18n.get('semanticRequired')));
+        assert.ok(markdown.includes('`OPTION6`'));
+        assert.ok(!markdown.includes('AUTOMATIC_SURFACE_TO_SURFACE'));
+    });
+
+    it('opens a semantic evidence PDF only after the resolver verifies it', async () => {
+        const opened = [];
+        const request = { keyword: '*TEST', ruleId: 'rule:one', evidenceId: 'evidence:one' };
+        const result = await handleOpenSemanticEvidenceCommand({}, request, {
+            resolver: {
+                resolve: async (actualRequest, catalog, packRoot) => {
+                    assert.deepEqual(actualRequest, request);
+                    assert.equal(packRoot, '/verified-pack');
+                    assert.deepEqual(catalog, { id: 'catalog' });
+                    return {
+                        status: 'resolved',
+                        pdfPath: '/verified-pack/pdf/vol-i.pdf',
+                        page: 42,
+                    };
+                },
+            },
+            catalog: { id: 'catalog' },
+            manualPackRoot: '/verified-pack',
+            openPdf: (context, pdfPath, page) => opened.push({ context, pdfPath, page }),
+        });
+
+        assert.equal(result.status, 'resolved');
+        assert.deepEqual(opened, [{
+            context: {},
+            pdfPath: '/verified-pack/pdf/vol-i.pdf',
+            page: 42,
+        }]);
+    });
+
+    it('uses only the generic unavailable message for a stale legacy evidence identity', async () => {
+        const originalShowWarningMessage = vscodeMock.window.showWarningMessage;
+        let warning = '';
+        let opened = false;
+        vscodeMock.window.showWarningMessage = message => { warning = message; };
+        try {
+            const result = await handleOpenSemanticEvidenceCommand({}, {}, {
+                resolver: { resolve: async () => ({ status: 'manual-pack-evidence-unavailable' }) },
+                catalog: {},
+                manualPackRoot: '/different-pack',
+                openPdf: () => { opened = true; },
+            });
+            assert.equal(result.status, 'manual-pack-evidence-unavailable');
+            assert.equal(opened, false);
+            assert.equal(warning, i18n.get('semanticEvidenceUnavailable'));
+        } finally {
+            vscodeMock.window.showWarningMessage = originalShowWarningMessage;
+        }
+    });
+
+    it('silently hides a locked evidence page for an unapproved current profile', () => {
+        const lockedProfile = 'a'.repeat(64);
+        const lockedIndex = 'b'.repeat(64);
+        const links = semanticEvidencePageLinks('*TEST', [{
+            ruleId: 'rule:one',
+            evidence: [{
+                evidenceId: 'evidence:one',
+                manualId: 'manual-vol-ii',
+                page: 832,
+                sourceProfileId: lockedProfile,
+            }],
+        }], {
+            catalogSummary: {
+                evidenceAuthority: {
+                    sourceProfileId: lockedProfile,
+                    indexSha256: lockedIndex,
+                    documents: [],
+                },
+            },
+            currentAuthority: {
+                sourceProfileId: 'c'.repeat(64),
+                indexSha256: 'd'.repeat(64),
+                documents: [],
+            },
+        });
+        assert.deepEqual(links, []);
+    });
+
+    it('renders the native evidence page selected by the current manual profile', () => {
+        const englishProfile = 'a'.repeat(64);
+        const englishIndex = 'b'.repeat(64);
+        const bilingualProfile = 'c'.repeat(64);
+        const bilingualIndex = 'd'.repeat(64);
+        const items = [{
+            ruleId: 'rule:one',
+            evidence: [
+                {
+                    evidenceId: 'evidence:one',
+                    manualId: 'manual-vol-ii',
+                    page: 832,
+                    sourceProfileId: englishProfile,
+                },
+                {
+                    evidenceId: 'evidence:one',
+                    manualId: 'manual-vol-ii',
+                    page: 814,
+                    sourceProfileId: bilingualProfile,
+                },
+            ],
+        }];
+        const catalogSummary = {
+            evidenceAuthority: {
+                schemaVersion: 2,
+                defaultSourceProfileId: englishProfile,
+                profiles: [
+                    {
+                        sourceProfileId: englishProfile,
+                        indexSha256: englishIndex,
+                        documents: [{ manualId: 'manual-vol-ii', title: 'Vol II' }],
+                    },
+                    {
+                        sourceProfileId: bilingualProfile,
+                        indexSha256: bilingualIndex,
+                        documents: [{ manualId: 'manual-vol-ii', title: 'Vol II' }],
+                    },
+                ],
+            },
+        };
+        const bilingualLinks = semanticEvidencePageLinks('*TEST', items, {
+            catalogSummary,
+            currentAuthority: {
+                sourceProfileId: bilingualProfile,
+                indexSha256: bilingualIndex,
+                documents: [],
+            },
+        });
+        assert.equal(bilingualLinks.length, 1);
+        assert.ok(bilingualLinks[0].includes('Vol II · P814'));
+        assert.ok(!bilingualLinks[0].includes('P832'));
+
+        const englishLinks = semanticEvidencePageLinks('*TEST', items, {
+            catalogSummary,
+            currentAuthority: {
+                sourceProfileId: englishProfile,
+                indexSha256: englishIndex,
+                documents: [],
+            },
+        });
+        assert.equal(englishLinks.length, 1);
+        assert.ok(englishLinks[0].includes('Vol II · P832'));
+    });
+
+it('keeps the official FLAG hover action for a complete TITLE layout with field headers', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            'Engineer material title'.padEnd(80),
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}        -1`,
+            '$#      vk        vm     r00/f     r45/g     r90/h         l         m         n',
+            `${' '.repeat(50)}       1.5       1.5       1.5`,
+            '$#    aopt    unused    unused      macf',
+            `${' '.repeat(30)}         1`,
+            '$#      xp        yp        zp        a1        a2        a3',
+            ' '.repeat(80),
+            '$#      v1        v2        v3        d1        d2        d3      beta',
+            ' '.repeat(80),
+            '*END',
+        ].join('\n'), path.resolve('title-position-hover', 'complete.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const hover = await provider.provideHover(doc, { line: 5, character: 75 });
+        assert.ok(hover);
+        const value = hover.contents[0].value;
+        assert.ok(value.includes('**FLAG**'));
+        assert.ok(value.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(!value.includes(i18n.get('cardCommentShiftHint')));
+    });
+
+it('blocks comment rewrites and applies one generic verified-full blank-suffix edit', async () => {
+        const fixed = values => Array.from(
+            { length: 8 },
+            (_, index) => String(values[index] ?? '').padStart(10),
+        ).join('');
+        const doc = fakeDoc([
+            '*MAT_WINFRITH_CONCRETE',
+            fixed([1, 2, 3, 4, 5, 6, 7, 8]),
+            fixed([1, 2, 3, 4, 8, 6, 7, 8]),
+            fixed([.1, .2, .3, .4, .5, .6, .7, .8]),
+            fixed([1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8]),
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'winfrith-missing-suffix.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 2;
+
+        const structureOptions = {
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+        };
+        const structure = analyzeKeywordStructureForDocument(doc, 0, structureOptions);
+        const plan = planCardCommentRewriteForDocument(doc, 0, structureOptions);
+
+        assert.equal(structure.status, 'definite-error');
+        assert.equal(structure.reason, 'missing-required-records');
+        assert.equal(structure.observedDataRecords, 4);
+        assert.equal(structure.expectedDataRecords, 7);
+        assert.deepEqual(structure.repairCandidates.map(item => item.cardLabel), [
+            'Card 5', 'Card 6', 'Card 7',
+        ]);
+        assert.equal(plan.status, 'structure-error');
+        assert.deepEqual(plan.edits, []);
+
+        const markdown = buildKeywordStructureIssueMarkdown(structure, doc, 0, 2);
+        assert.ok(markdown.includes(i18n.get('keywordStructureMissingNamed', 'Card 5, Card 6, Card 7')));
+        assert.ok(markdown.includes('command:extension.checkKeywordStructure'));
+        assert.ok(markdown.includes('command:extension.insertVerifiedMissingRecords'));
+        assert.ok(!markdown.includes('TITLE'));
+
+        const request = keywordStructureRepairRequest(doc, 0, 2, structure);
+        assert.deepEqual(Object.keys(request).sort(), [
+            'diagnosticIdentity', 'documentVersion', 'grammarId', 'keywordLine', 'line',
+            'sourceProfileId', 'uri',
+        ]);
+        let appliedEdit;
+        const statuses = [];
+        const result = await handleInsertVerifiedMissingRecordsCommand(request, {
+            editor: { document: doc },
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            applyEdit: async edit => { appliedEdit = edit; return true; },
+            showStatus: (key, ...args) => statuses.push([key, ...args]),
+        });
+        assert.ok(result);
+        assert.equal(appliedEdit.edits.length, 1, 'all blanks must be one WorkspaceEdit/Undo unit');
+        const insertion = appliedEdit.edits[0];
+        assert.equal(insertion.range.start.line, 5);
+        assert.equal(insertion.range.end.line, 5);
+        const insertedLines = insertion.text.split('\n');
+        assert.deepEqual(insertedLines.slice(0, 3), Array(3).fill(' '.repeat(80)));
+        assert.equal(insertedLines[3], '');
+        assert.deepEqual(statuses.at(-1), ['keywordStructureRecordsInserted', 3]);
+
+        for (const [mutation, expectedStatus] of [
+            [{ documentVersion: 1 }, 'keywordStructureRepairStale'],
+            [{ uri: 'file:///forged-structure-repair.k' }, 'keywordStructureRepairStale'],
+            [{ sourceProfileId: 'f'.repeat(64) }, 'keywordStructureRepairStale'],
+            [{ diagnosticIdentity: 'forged' }, 'keywordStructureRepairUnavailable'],
+            [{ line: doc.lineCount - 1 }, 'keywordStructureRepairUnavailable'],
+        ]) {
+            let didApply = false;
+            const rejectedStatuses = [];
+            const rejected = await handleInsertVerifiedMissingRecordsCommand({ ...request, ...mutation }, {
+                editor: { document: doc },
+                blockIndex: null,
+                sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+                applyEdit: async () => { didApply = true; return true; },
+                showStatus: (key, ...args) => rejectedStatuses.push([key, ...args]),
+            });
+            assert.equal(rejected, null);
+            assert.equal(didApply, false);
+            assert.deepEqual(rejectedStatuses, [[expectedStatus]]);
+        }
+
+        let rejectedEditCount = 0;
+        const rejectedStatuses = [];
+        const rejected = await handleInsertVerifiedMissingRecordsCommand(request, {
+            editor: { document: doc },
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            applyEdit: async () => { rejectedEditCount++; return false; },
+            showStatus: (key, ...args) => rejectedStatuses.push([key, ...args]),
+        });
+        assert.equal(rejected, null);
+        assert.equal(rejectedEditCount, 1);
+        assert.deepEqual(rejectedStatuses, [['keywordStructureRepairApplyFailed']]);
+
+        const warnings = [];
+        const checked = await handleCheckKeywordStructureCommand({
+            uri: documentUriIdentity(doc), documentVersion: doc.version, keywordLine: 0,
+        }, {
+            editor: { document: doc },
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            showWarningMessage: message => warnings.push(message),
+            showInformationMessage: message => warnings.push(message),
+        });
+        assert.equal(checked.status, 'definite-error');
+        assert.ok(warnings[0].includes('Card 5'));
+    });
+
+it('bypasses cached hover results before every explicit check and repair', async () => {
+        const fixed = values => Array.from(
+            { length: 8 },
+            (_, index) => String(values[index] ?? '').padStart(10),
+        ).join('');
+        const mutableLines = [
+            '*MAT_WINFRITH_CONCRETE',
+            fixed([1, 2, 3, 4, 5, 6, 7, 8]),
+            fixed([1, 2, 3, 4, 8, 6, 7, 8]),
+            fixed([.1, .2, .3, .4, .5, .6, .7, .8]),
+            fixed([1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8]),
+            '$ initially a comment',
+            '$ initially a comment',
+            '$ initially a comment',
+            '*END',
+        ];
+        const doc = fakeDoc(mutableLines.join('\n'), path.resolve('card-comments', 'cache-revalidation.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 9;
+        doc.lineAt = line => ({
+            text: mutableLines[line],
+            range: new vscodeMock.Range(line, 0, line, mutableLines[line].length),
+        });
+        const options = {
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+        };
+        const cachedMissing = analyzeKeywordStructureForDocument(doc, 0, options);
+        assert.equal(cachedMissing.status, 'definite-error');
+        const request = keywordStructureRepairRequest(doc, 0, 2, cachedMissing);
+
+        mutableLines.splice(5, 3,
+            fixed([2.1, 2, 3, 4, '', '', 7, 8]),
+            fixed([3.1, 3.2, 3.3, 3.4, 5, 3.6, 3.7, 8]),
+            fixed([7, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 8]));
+        assert.equal(
+            analyzeKeywordStructureForDocument(doc, 0, options).status,
+            'definite-error',
+            'the passive same-version path intentionally remains cached',
+        );
+
+        const messages = [];
+        const checked = await handleCheckKeywordStructureCommand({
+            uri: documentUriIdentity(doc), documentVersion: doc.version, keywordLine: 0,
+        }, {
+            editor: { document: doc },
+            ...options,
+            showInformationMessage: message => messages.push(message),
+            showWarningMessage: message => messages.push(message),
+        });
+        assert.equal(checked.status, 'valid');
+
+        let applied = false;
+        const statuses = [];
+        const repaired = await handleInsertVerifiedMissingRecordsCommand(request, {
+            editor: { document: doc },
+            ...options,
+            applyEdit: async () => { applied = true; return true; },
+            showStatus: key => statuses.push(key),
+        });
+        assert.equal(repaired, null);
+        assert.equal(applied, false);
+        assert.deepEqual(statuses, ['keywordStructureRepairUnavailable']);
+    });
+
+it('withholds all repairs at boundary-only and unverified variant boundaries', () => {
+        const titleDoc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            ...Array(6).fill(' '.repeat(80)),
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'damage-title-unverified.k'));
+        titleDoc.languageId = 'lsdyna';
+        titleDoc.version = 1;
+        const title = analyzeKeywordStructureForDocument(titleDoc, 0, {
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+        });
+        assert.equal(title.status, 'profile-unverified');
+        assert.equal(title.reason, 'variant-requires-reviewed-option-expansion');
+        assert.equal(title.repairCandidates.length, 0);
+        assert.equal(buildKeywordStructureIssueMarkdown(title, titleDoc, 0, 2), '');
+
+        const boundaryDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ...Array(6).fill(' '.repeat(80)),
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'damage-boundary.k'));
+        boundaryDoc.languageId = 'lsdyna';
+        boundaryDoc.version = 1;
+        const boundary = analyzeKeywordStructureForDocument(boundaryDoc, 0, {
+            blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+        });
+        const markdown = buildKeywordStructureIssueMarkdown(boundary, boundaryDoc, 0, 2);
+        assert.equal(boundary.status, 'ambiguous');
+        assert.equal(boundary.reason, 'verified-boundary-only-no-record-signatures');
+        assert.equal(boundary.repairCandidates.length, 0);
+        assert.ok(markdown.includes(i18n.get('keywordStructureAmbiguous')));
+        assert.ok(markdown.includes('command:extension.checkKeywordStructure'));
+        assert.ok(!markdown.includes('command:extension.insertVerifiedMissingRecords'));
+    });
+
+it('removes only a surplus recognized header before the same data record', () => {
+        const legacyHeader = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|      OLD|     OLD2';
+        const currentHeader = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|   RLTFLG|   ENGFLG';
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            legacyHeader,
+            currentHeader,
+            '         0        16         3         1         1         1         1         1',
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'surplus-header.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const plan = planCardCommentRewriteForDocument(doc, 0, { blockIndex: null });
+
+        assert.equal(plan.status, 'ready');
+        assert.deepEqual(plan.edits.map(edit => [edit.kind, edit.line]), [
+            ['delete-line', 1],
+        ]);
+        assert.equal(plan.edits[0].sourceText, legacyHeader);
+        assert.ok(plan.edits.every(edit => edit.line !== 2 && edit.line !== 3));
+    });
+
+it('inserts a missing finite-card header while preserving preprocessor metadata', () => {
+        const legacyHeader = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|      OLD|     OLD2';
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            legacyHeader,
+            '         0        16         3         1         1         1         1         1',
+            '$HMNAME DATABASE 1',
+            ' '.repeat(80),
+            '*END',
+        ].join('\n'), path.resolve('card-comments', 'metadata.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 3;
+
+        const plan = planCardCommentRewriteForDocument(doc, 0, { blockIndex: null });
+
+        assert.equal(plan.status, 'ready');
+        assert.deepEqual(plan.edits.map(edit => [edit.kind, edit.line]), [
+            ['replace-line', 1],
+            ['insert-before-line', 4],
+        ]);
+        assert.ok(plan.edits[1].replacementText.startsWith('$'));
+        assert.ok(plan.edits.every(edit => edit.line !== 2 && edit.line !== 3));
+    });
+
+it('refuses repeated and over-budget blocks instead of synthesizing bulk comments', () => {
+        const repeated = fakeDoc([
+            '*NODE',
+            '$#     nid               x               y               z      tc      rc',
+            '       1             0.0             0.0             0.0',
+            '       2             1.0             0.0             0.0',
+            '*END',
+        ].join('\n'));
+        repeated.version = 1;
+        assert.equal(
+            planCardCommentRewriteForDocument(repeated, 0, { blockIndex: null }).reason,
+            'repeat-or-extra-data',
+        );
+
+        let lineReads = 0;
+        const millionLineDocument = {
+            version: 1,
+            lineCount: 1_000_000,
+            lineAt(line) {
+                lineReads++;
+                if (line === 999_000) return { text: '*DATABASE_EXTENT_BINARY' };
+                return { text: '$ metadata' };
+            },
+        };
+        const overBudget = planCardCommentRewriteForDocument(
+            millionLineDocument,
+            999_000,
+            {
+                globalInputFormat: 'standard',
+                blockIndex: {
+                    lineCount: 1_000_000,
+                    findBlockAtLine: () => ({ startLine: 999_000, endLine: 999_500 }),
+                },
+            },
+        );
+        assert.equal(overBudget.reason, 'block-line-limit');
+        assert.ok(lineReads <= 2, `expected bounded planning, got ${lineReads} reads`);
+    });
+
+it('warns quietly and disables editing for manual-denied TITLE variants', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const doc = fakeDoc([
+            '*DEFINE_FUNCTION_TITLE',
+            'Not an official title record'.padEnd(80),
+            '         1',
+            'x+y',
+        ].join('\n'));
+
+        const keywordHover = await provider.provideHover(doc, { line: 0, character: 5 });
+        assert.ok(keywordHover);
+        const keywordValue = keywordHover.contents[0].value;
+        assert.ok(keywordValue.includes(i18n.get(
+            'keywordPrefixOptionUnsupported',
+            'TITLE',
+        )));
+        assert.ok(!keywordValue.includes('command:extension.lsdynaChooseKeywordOptions'));
+
+        const fieldHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        assert.ok(fieldHover);
+        assert.ok(fieldHover.contents[0].value.includes('TITLE'));
+        assert.ok(fieldHover.contents[0].value.includes('left unchanged'));
+        assert.ok(!fieldHover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
+    });
+
+it('adds an identity-only official-value action to a ready fixed-width field hover', async () => {
+        const { ManualPackManager } = require('../src/manual/ManualPackManager');
+        const priorAuthority = ManualPackManager.prototype.peekCurrentAuthority;
+        const authority = extensionModule._internals.getManualSemanticCatalog().summary().evidenceAuthority;
+        const profile = authority.profiles?.find(p => p.sourceProfileId === authority.defaultSourceProfileId) || authority;
+        ManualPackManager.prototype.peekCurrentAuthority = () => profile;
+        try {
+
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+        ].join('\n'), path.resolve('official-choice-hover', 'damage.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const hover = await new LsdynaFieldHoverProvider().provideHover(
+            doc,
+            { line: 2, character: 75 },
+        );
+        const value = hover.contents[0].value;
+        assert.ok(value.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(value.includes(i18n.get('officialFieldChoiceHoverClosedAction')));
+        assert.ok(value.includes('command:extension.openSemanticEvidence'));
+        assert.ok(value.includes('P832'));
+        assert.ok(value.includes('Vol II · P832'));
+        const actionLine = value.split('\n')
+            .find(line => line.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(actionLine);
+        assert.ok(actionLine.includes('command:extension.openSemanticEvidence'));
+        assert.ok(!actionLine.includes(`${i18n.get('semanticEvidencePages')}:`));
+        assert.ok(!actionLine.includes('---'));
+        const actionLabel = /\[\$\(list-selection\) ([^\]]+)\]\(command:extension\.pickOfficialFieldValue/.exec(actionLine);
+        assert.ok(actionLabel);
+        assert.equal(actionLabel[1], i18n.get('officialFieldChoiceHoverClosedAction'));
+        assert.equal(
+            (value.match(/command:extension\.openSemanticEvidence/g) || []).length,
+            1,
+            'two evidence IDs on the same physical page must render one target',
+        );
+
+        const match = /command:extension\.pickOfficialFieldValue\?([^\s"\)]+)/.exec(value);
+        assert.ok(match);
+        const payload = JSON.parse(decodeURIComponent(match[1]))[0];
+        assert.deepEqual(Object.keys(payload).sort(), [
+            'character', 'documentVersion', 'line', 'uri',
+        ]);
+        assert.equal(payload.line, 2);
+        assert.equal(payload.character, 70);
+        assert.equal(payload.documentVersion, doc.version);
+        assert.equal(payload.keyword, undefined);
+        assert.equal(payload.choices, undefined);
+
+        const evidenceMatch = /command:extension\.openSemanticEvidence\?([^\s"\)]+)/.exec(value);
+        assert.ok(evidenceMatch);
+        const evidencePayload = JSON.parse(decodeURIComponent(evidenceMatch[1]))[0];
+        assert.deepEqual(Object.keys(evidencePayload).sort(), [
+            'evidenceId', 'keyword', 'ruleId',
+        ]);
+
+        } finally { ManualPackManager.prototype.peekCurrentAuthority = priorAuthority; }
+});
+
+it('labels a mixed hover projection as incomplete instead of a complete value list', async () => {
+        const doc = fakeDoc([
+            '*DAMPING_GLOBAL',
+            ' '.repeat(80),
+        ].join('\n'), path.resolve('official-choice-hover', 'damping.k'));
+        doc.languageId = 'lsdyna';
+        doc.version = 1;
+
+        const hover = await new LsdynaFieldHoverProvider().provideHover(
+            doc,
+            { line: 1, character: 5 },
+        );
+        const value = hover.contents[0].value;
+        assert.ok(value.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(value.includes(i18n.get('officialFieldChoiceHoverMixedAction')));
+        assert.ok(value.includes(i18n.get('officialFieldChoiceHoverMixedIncomplete')));
+        const actionLine = value.split('\n')
+            .find(line => line.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(actionLine);
+        assert.ok(actionLine.includes(i18n.get('officialFieldChoiceHoverMixedIncomplete')));
+        assert.ok(!actionLine.includes('---'));
+    });
+
+it('keeps display-only CONTROL_THERMAL_TIMESTEP hover free of writable value actions', async () => {
+        const doc = fakeDoc(['*CONTROL_THERMAL_TIMESTEP', ' '.repeat(80)].join('\n'));
+        doc.languageId = 'lsdyna'; doc.version = 1;
+        const hover = await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 45 });
+        assert.ok(hover, 'display-only field remains viewable');
+        assert.ok(hover.contents.every(content => !String(content.value || content).includes('command:extension.pickOfficialFieldValue')));
+    });
+
+it('uses compact engineer-facing field-choice wording in Chinese and English', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        try {
+            const cases = [
+                {
+                    language: 'zh-cn',
+                    closed: '选择取值…',
+                    mixed: '查看特殊情况…',
+                    incomplete: '非完整列表',
+                    optionSlots: '关键字选项',
+                    applicable: '适用',
+                    closedStatus: 'FLAG · 5 个取值',
+                    mixedStatus: 'TMAX · 1 个特殊情况',
+                },
+                {
+                    language: 'en',
+                    closed: 'Select value…',
+                    mixed: 'View special cases…',
+                    incomplete: 'Not exhaustive',
+                    optionSlots: 'Keyword options',
+                    applicable: 'applies',
+                    closedStatus: 'FLAG · values (5)',
+                    mixedStatus: 'TMAX · special cases (1)',
+                },
+            ];
+            for (const expected of cases) {
+                vscodeMock.workspace.getConfiguration = () => ({
+                    get: (key, defaultValue) => key === 'language' ? expected.language : defaultValue,
+                });
+                i18n.updateLanguage();
+                assert.equal(i18n.get('officialFieldChoiceHoverClosedAction'), expected.closed);
+                assert.equal(i18n.get('officialFieldChoiceHoverMixedAction'), expected.mixed);
+                assert.equal(i18n.get('officialFieldChoiceHoverMixedIncomplete'), expected.incomplete);
+                assert.equal(i18n.get('officialKeywordOptionSlots'), expected.optionSlots);
+                assert.equal(i18n.get('semanticApplicable'), expected.applicable);
+                assert.equal(i18n.get('officialFieldChoiceStatusClosedLabel', 'FLAG', 5), expected.closedStatus);
+                assert.equal(i18n.get('officialFieldChoiceStatusMixedLabel', 'TMAX', 1), expected.mixedStatus);
+                assert.ok(!i18n.get('officialFieldChoiceHoverClosedAction').includes('official'));
+                assert.ok(!i18n.get('officialFieldChoiceHoverMixedAction').includes('branch'));
+            }
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+            i18n.updateLanguage();
+        }
+    });
+
+it('does not add a writable official-value hover action for expressions or free format', async () => {
+        const provider = new LsdynaFieldHoverProvider();
+        const expressionDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            `${' '.repeat(70)}  <FLAG+1>`,
+        ].join('\n'), path.resolve('official-choice-hover', 'expression.k'));
+        expressionDoc.languageId = 'lsdyna';
+        expressionDoc.version = 1;
+        const expressionHover = await provider.provideHover(
+            expressionDoc,
+            { line: 2, character: 75 },
+        );
+        assert.ok(expressionHover);
+        assert.ok(!expressionHover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
+
+        const freeDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            '0,0,0,0,0,0,0',
+            '0,0,0,0,0,0,0,0',
+        ].join('\n'), path.resolve('official-choice-hover', 'free.k'));
+        freeDoc.languageId = 'lsdyna';
+        freeDoc.version = 1;
+        const freeHover = await provider.provideHover(freeDoc, { line: 2, character: 7 });
+        assert.ok(!freeHover || !freeHover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
     });
 });
 
@@ -4710,7 +5861,7 @@ describe('LS-DYNA keyword option interactions', () => {
         assert.deepEqual(editor.lines, ['*MAT_001', '        1']);
     });
 
-    it('removes orphan strict option comments that are not selected', async () => {
+    it('preserves orphan option comments without assigning them to data', async () => {
         const editor = makeEditableEditor([
             '*MAT_024',
             '$# title                                                                        ',
@@ -4726,12 +5877,13 @@ describe('LS-DYNA keyword option interactions', () => {
 
         assert.deepEqual(editor.lines, [
             '*MAT_024',
+            '$# title                                                                        ',
             '$#     mid        ro         e        pr      sigy      etan      fail      tdel',
             '                                                                 1e+21          '
         ]);
     });
 
-    it('removes orphan strict option comments with adjacent empty skeleton lines', async () => {
+    it('preserves blank data records following orphan option comments', async () => {
         const editor = makeEditableEditor([
             '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
             '$#  ignore      bckt    lcbckt    ns2trk   inititr    parmax    unused    cparm8',
@@ -4749,6 +5901,9 @@ describe('LS-DYNA keyword option interactions', () => {
 
         assert.deepEqual(editor.lines, [
             '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
+            '$#  ignore      bckt    lcbckt    ns2trk   inititr    parmax    unused    cparm8',
+            '$#     cidheading                                                               ',
+            '',
             '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
             ''
         ]);
@@ -5117,7 +6272,7 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
             assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
             assert.equal(i18n.get('parameterReferencesPlural', 2), '2 处引用');
-            assert.equal(i18n.get('manualSidebarSearchModeKeyword'), '关键字');
+            assert.equal(i18n.get('manualSidebarSearchModeKeyword'), '关键字与标题');
             assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) 环境与手册状态');
             assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '待配置：2');
             assert.equal(i18n.get('healthNoticeMessage', 2), 'DynaSense 待配置项：2。');
@@ -5299,16 +6454,16 @@ describe('formatBytes', () => {
         assert.strictEqual(formatShortBytes(1024 * 1024 * 1024 * 125), 'G');
 
         // Test formatVividBytes
-        assert.strictEqual(formatVividBytes(0), '▏ 0 B');
-        assert.strictEqual(formatVividBytes(512), '▏ 512.0 B');
-        assert.strictEqual(formatVividBytes(1024 * 5), '▏ 5.0 KB');
-        assert.strictEqual(formatVividBytes(1024 * 45), '▌ 45.0 KB');
-        assert.strictEqual(formatVividBytes(1024 * 1024 * 1.2), '█ 1.2 MB');
+        assert.strictEqual(formatVividBytes(0), '0 B');
+        assert.strictEqual(formatVividBytes(512), '512.0 B');
+        assert.strictEqual(formatVividBytes(1024 * 5), '5.0 KB');
+        assert.strictEqual(formatVividBytes(1024 * 45), '45.0 KB');
+        assert.strictEqual(formatVividBytes(1024 * 1024 * 1.2), '1.2 MB');
 
         // Test applyVividDescription
         const mockItem1 = { contextValue: 'file', description: '', fileSizeVal: 1024 * 5 };
         applyVividDescription(mockItem1, 'sub');
-        assert.strictEqual(mockItem1.description, '▏ 5.0 KB');
+        assert.strictEqual(mockItem1.description, '5.0 KB');
         assert.strictEqual(mockItem1.relDir, 'sub');
 
         const mockItem2 = { contextValue: 'file-missing', description: 'not found' };
@@ -5360,7 +6515,7 @@ describe('LsdynaFileDecorationProvider', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaIncludeCompletionProvider', () => {
-    it('browses one level on / and inserts full relative paths', () => {
+    it('browses one level on / and inserts full relative paths', async () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
 
@@ -5385,14 +6540,14 @@ describe('LsdynaIncludeCompletionProvider', () => {
 
         try {
             // Empty card: Mode A empty query → no dump of entire tree
-            const emptyList = provider.provideCompletionItems(doc, { line: 5, character: 0 });
+            const emptyList = await provider.provideCompletionItems(doc, { line: 5, character: 0 });
             assert.ok(emptyList);
             assert.strictEqual(emptyList.isIncomplete, true);
             assert.strictEqual(emptyList.items.length, 0);
 
             // Browse root via /
             const slashDoc = fakeDoc(`*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n/`, mainFile);
-            const slashList = provider.provideCompletionItems(slashDoc, { line: 3, character: 1 });
+            const slashList = await provider.provideCompletionItems(slashDoc, { line: 3, character: 1 });
             assert.ok(slashList);
             const labels = slashList.items.map(item => item.label);
             // Search roots include deck dir + submodels → root-level entries from both
@@ -5421,7 +6576,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
 
             // Backslash same as slash (insert still uses /)
             const backslashDoc = fakeDoc(`*INCLUDE_PATH_RELATIVE\nsubmodels\n*INCLUDE\n\\`, mainFile);
-            const backslashList = provider.provideCompletionItems(backslashDoc, { line: 3, character: 1 });
+            const backslashList = await provider.provideCompletionItems(backslashDoc, { line: 3, character: 1 });
             assert.ok(backslashList);
             assert.ok(backslashList.items.some(i => i.label === 'file2.k' || i.label === 'file1.k'));
 
@@ -5429,7 +6584,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
             // the current level and never returns the matching file in unrelated/.
             for (const prefix of ['/ma', '\\ma', './ma', '.\\ma']) {
                 const filteredDoc = fakeDoc(`*INCLUDE\n${prefix}`, mainFile);
-                const filteredList = provider.provideCompletionItems(
+                const filteredList = await provider.provideCompletionItems(
                     filteredDoc,
                     { line: 1, character: prefix.length },
                 );
@@ -5456,7 +6611,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
             // Browse into submodels/ via deck-relative path from deck search root
             // Put layout under tempDir only (deck dir is a search root)
             const nestedDoc = fakeDoc(`*INCLUDE\nsubmodels/`, mainFile);
-            const nestedList = provider.provideCompletionItems(nestedDoc, { line: 1, character: 10 });
+            const nestedList = await provider.provideCompletionItems(nestedDoc, { line: 1, character: 10 });
             assert.ok(nestedList);
             const nestedLabels = nestedList.items.map(i => i.label);
             assert.ok(nestedLabels.includes('submodels/file2.k'));
@@ -5464,12 +6619,12 @@ describe('LsdynaIncludeCompletionProvider', () => {
 
             // Partial segment filter
             const partialDoc = fakeDoc(`*INCLUDE\nsubmodels/fi`, mainFile);
-            const partialList = provider.provideCompletionItems(partialDoc, { line: 1, character: 12 });
+            const partialList = await provider.provideCompletionItems(partialDoc, { line: 1, character: 12 });
             assert.ok(partialList.items.some(i => i.label === 'submodels/file2.k'));
 
             // Range with leading spaces
             const prefixDoc = fakeDoc(`*INCLUDE\n  submodels/fi`, mainFile);
-            const prefixList = provider.provideCompletionItems(prefixDoc, { line: 1, character: 14 });
+            const prefixList = await provider.provideCompletionItems(prefixDoc, { line: 1, character: 14 });
             assert.ok(prefixList);
             for (const item of prefixList.items) {
                 assert.strictEqual(item.range.start.line, 1);
@@ -5479,23 +6634,23 @@ describe('LsdynaIncludeCompletionProvider', () => {
 
             // Bare name search (Mode A) — full relPath
             const searchDoc = fakeDoc(`*INCLUDE\nfile2`, mainFile);
-            const searchList = provider.provideCompletionItems(searchDoc, { line: 1, character: 5 });
+            const searchList = await provider.provideCompletionItems(searchDoc, { line: 1, character: 5 });
             assert.ok(searchList.items.some(i => i.label === 'file2.k' || i.label === 'submodels/file2.k'));
 
             // Keyword line / INCLUDE_PATH card / comment → empty
             assert.strictEqual(
-                (provider.provideCompletionItems(doc, { line: 4, character: 0 }).items || []).length,
+                ((await provider.provideCompletionItems(doc, { line: 4, character: 0 })).items || []).length,
                 0
             );
             assert.strictEqual(
-                (provider.provideCompletionItems(doc, { line: 1, character: 0 }).length
-                    || provider.provideCompletionItems(doc, { line: 1, character: 0 }).items?.length
+                ((await provider.provideCompletionItems(doc, { line: 1, character: 0 })).length
+                    || (await provider.provideCompletionItems(doc, { line: 1, character: 0 })).items?.length
                     || 0),
                 0
             );
             const docWithComment = fakeDoc(`*INCLUDE\n$ this is a comment\n`, mainFile);
             assert.strictEqual(
-                (provider.provideCompletionItems(docWithComment, { line: 1, character: 0 }).items || []).length,
+                ((await provider.provideCompletionItems(docWithComment, { line: 1, character: 0 })).items || []).length,
                 0
             );
         } finally {
@@ -5503,7 +6658,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         }
     });
 
-    it('provides browse items from continued *INCLUDE_PATH directories', () => {
+    it('provides browse items from continued *INCLUDE_PATH directories', async () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
 
@@ -5520,7 +6675,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         const doc = fakeDoc(mainFileContent, mainFile);
 
         try {
-            const list = provider.provideCompletionItems(doc, { line: 4, character: 1 });
+            const list = await provider.provideCompletionItems(doc, { line: 4, character: 1 });
             assert.ok(list);
             const labels = list.items.map(item => item.label);
             assert.ok(labels.includes('continued.k'));
@@ -5531,7 +6686,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         }
     });
 
-    it('does not truncate large browse levels while retaining the search top-N limit', () => {
+    it('does not truncate large browse levels while retaining the search top-N limit', async () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-count-'));
@@ -5547,21 +6702,21 @@ describe('LsdynaIncludeCompletionProvider', () => {
             fs.writeFileSync(mainFile, '*INCLUDE\n/');
 
             const browseDoc = fakeDoc('*INCLUDE\n/', mainFile);
-            const browseList = provider.provideCompletionItems(browseDoc, { line: 1, character: 1 });
+            const browseList = await provider.provideCompletionItems(browseDoc, { line: 1, character: 1 });
             assert.strictEqual(
                 browseList.items.filter(item => item.kind === vscodeMock.CompletionItemKind.Folder).length,
                 75,
             );
 
             const searchDoc = fakeDoc('*INCLUDE\nmat', mainFile);
-            const searchList = provider.provideCompletionItems(searchDoc, { line: 1, character: 3 });
+            const searchList = await provider.provideCompletionItems(searchDoc, { line: 1, character: 3 });
             assert.strictEqual(searchList.items.length, 40);
         } finally {
             fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 
-    it('fails closed across all completion providers when the active document has multiple selections', () => {
+    it('fails closed across all completion providers when the active document has multiple selections', async () => {
         const {
             LsdynaIncludeCompletionProvider,
             LsdynaFieldCompletionProvider,
@@ -5596,12 +6751,12 @@ describe('LsdynaIncludeCompletionProvider', () => {
                     document,
                     selections: [{}],
                 };
-                const single = provider.provideCompletionItems(document, position);
+                const single = await provider.provideCompletionItems(document, position);
                 const singleItems = Array.isArray(single) ? single : single.items;
                 assert.ok(singleItems.length > 0);
 
                 vscodeMock.window.activeTextEditor.selections = [{}, {}];
-                const multiple = provider.provideCompletionItems(document, position);
+                const multiple = await provider.provideCompletionItems(document, position);
                 const multipleItems = Array.isArray(multiple) ? multiple : multiple.items;
                 assert.strictEqual(multipleItems.length, 0);
             }
@@ -6232,5 +7387,3811 @@ describe('extension.openManual command', () => {
             vscodeMock.window.showInformationMessage = originalShowInformationMessage;
             fs.rmSync(root, { recursive: true, force: true });
         }
+    });
+});
+
+describe('3D table preview viewpoints', () => {
+    afterEach(() => {
+        clearTablePreviewViewsForTesting();
+        vscodeMock.window.activeTextEditor = null;
+        vscodeMock.window.visibleTextEditors = [];
+    });
+
+    it('stores a normalized session view independently for each source field', () => {
+        const firstKey = buildTablePreviewReferenceKey('C:/model/main.k', 4, 'LCSS');
+        const secondKey = buildTablePreviewReferenceKey('C:/model/main.k', 9, 'LCSS');
+
+        assert.ok(firstKey);
+        assert.notEqual(firstKey, secondKey);
+        assert.equal(getTablePreviewViewForReference(firstKey), 'isometric');
+        assert.equal(setTablePreviewViewForReference(firstKey, 'side'), true);
+        assert.equal(getTablePreviewViewForReference(firstKey), 'side');
+        assert.equal(getTablePreviewViewForReference(secondKey), 'isometric');
+        assert.equal(setTablePreviewViewForReference(firstKey, 'top'), false);
+        assert.equal(getTablePreviewViewForReference(firstKey), 'side');
+    });
+
+    it('refreshes the matching editor hover after a viewpoint change', async () => {
+        const originalExecuteCommand = vscodeMock.commands.executeCommand;
+        const calls = [];
+        const originalSelection = new vscodeMock.Selection(
+            new vscodeMock.Position(4, 15),
+            new vscodeMock.Position(4, 15),
+        );
+        const editor = {
+            document: { uri: { fsPath: 'C:/model/main.k' } },
+            selections: [originalSelection],
+            get selection() { return this.selections[0]; },
+            set selection(value) { this.selections = [value]; },
+        };
+        vscodeMock.window.activeTextEditor = editor;
+        vscodeMock.commands.executeCommand = command => {
+            calls.push(command);
+            return Promise.resolve();
+        };
+        const key = buildTablePreviewReferenceKey('C:/model/main.k', 4, 'LCSS');
+
+        try {
+            const changed = await handleSetTablePreviewViewCommand({
+                key,
+                view: 'reverse-isometric',
+                filePath: 'C:/model/main.k',
+                lineIndex: 4,
+                character: 12,
+                endCharacter: 20,
+            });
+
+            assert.equal(changed, true);
+            assert.equal(getTablePreviewViewForReference(key), 'reverse-isometric');
+            assert.deepEqual(calls, ['editor.action.hideHover', 'editor.action.showHover']);
+            assert.strictEqual(editor.selection, originalSelection);
+        } finally {
+            vscodeMock.commands.executeCommand = originalExecuteCommand;
+        }
+    });
+
+    it('refreshes at the mouse source and restores all selections when the caret is elsewhere', async () => {
+        const originalExecuteCommand = vscodeMock.commands.executeCommand;
+        const originalSetStatusBarMessage = vscodeMock.window.setStatusBarMessage;
+        const calls = [];
+        const hints = [];
+        const originalSelection = new vscodeMock.Selection(
+            new vscodeMock.Position(8, 3),
+            new vscodeMock.Position(8, 3),
+        );
+        const editor = {
+            document: { uri: { fsPath: 'C:/model/main.k' } },
+            selections: [originalSelection, new vscodeMock.Selection(new vscodeMock.Position(9, 1), new vscodeMock.Position(9, 3))],
+            get selection() { return this.selections[0]; },
+            set selection(value) { this.selections = [value]; },
+        };
+        const originalSelections = editor.selections;
+        vscodeMock.window.activeTextEditor = editor;
+        vscodeMock.commands.executeCommand = (command, args) => {
+            calls.push(command);
+            assert.equal(editor.selection.active.line, 4);
+            assert.equal(editor.selection.active.character, 12);
+            if (command === 'editor.action.showHover') assert.deepEqual(args, { focus: 'autoFocusImmediately' });
+            return Promise.resolve();
+        };
+        vscodeMock.window.setStatusBarMessage = message => {
+            hints.push(message);
+        };
+
+        try {
+            const changed = await handleSetTablePreviewViewCommand({
+                key: buildTablePreviewReferenceKey('C:/model/main.k', 4, 'LCSS'),
+                view: 'front',
+                filePath: 'C:/model/main.k',
+                lineIndex: 4,
+                character: 12,
+                endCharacter: 20,
+            });
+
+            assert.equal(changed, true);
+            assert.deepEqual(calls, ['editor.action.hideHover', 'editor.action.showHover']);
+            assert.deepEqual(hints, []);
+            assert.strictEqual(editor.selection, originalSelection);
+            assert.strictEqual(editor.selections, originalSelections);
+        } finally {
+            vscodeMock.commands.executeCommand = originalExecuteCommand;
+            vscodeMock.window.setStatusBarMessage = originalSetStatusBarMessage;
+        }
+    });
+    for (const outcome of ['failed-command', 'user-selection-changed', 'another-document']) {
+        it(`preserves editing state on ${outcome}`, async () => {
+            const execute = vscodeMock.commands.executeCommand;
+            const original = [new vscodeMock.Selection(new vscodeMock.Position(8, 3), new vscodeMock.Position(8, 4))];
+            const editor = {
+                document: { uri: { fsPath: outcome === 'another-document' ? 'C:/other.k' : 'C:/model/main.k' } },
+                selections: original,
+                get selection() { return this.selections[0]; },
+                set selection(value) { this.selections = [value]; },
+            };
+            vscodeMock.window.activeTextEditor = editor;
+            let calls = 0, changedSelections;
+            vscodeMock.commands.executeCommand = async command => {
+                calls++;
+                if (command !== 'editor.action.showHover') return;
+                if (outcome === 'failed-command') throw Error('Hover unavailable');
+                // A new secondary cursor must not be overwritten by restoration.
+                changedSelections = [editor.selection, ...original];
+                editor.selections = changedSelections;
+            };
+            try {
+                const result = handleSetTablePreviewViewCommand({key: 'preview', view: 'side',
+                    filePath: 'C:/model/main.k', lineIndex: 4, character: 12, endCharacter: 20});
+                if (outcome === 'failed-command') await assert.rejects(result, /Hover unavailable/);
+                else assert.equal(await result, true);
+                assert.equal(calls, outcome === 'another-document' ? 0 : 2);
+                assert.strictEqual(editor.selections, changedSelections || original);
+            } finally { vscodeMock.commands.executeCommand = execute; }
+        });
+    }
+});
+
+describe('LsdynaDefinitionProvider field references', () => {
+    const touchedFileIndexes = new Set();
+
+    function materialReferenceDocument(filePath, value = '1001') {
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            [0, 0, value, 0, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function adaptiveBoxDocument(filePath, value) {
+        const doc = fakeDoc([
+            '*DEFINE_BOX_ADAPTIVE',
+            [1, 0, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+            [0, 1, value, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function constrainedPartReferenceDocument(filePath, value = 42) {
+        const doc = fakeDoc([
+            '*CONSTRAINED_NODAL_RIGID_BODY',
+            [value, 0, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function loadBodyCurveReferenceDocument(filePath, value = 1000001) {
+        const doc = fakeDoc([
+            '*LOAD_BODY_Z',
+            [value, 9806, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+            '*DEFINE_CURVE',
+            [value, 0, 1, 1, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function loadBodyPartsSetPartDocument(filePath, value = 1000001) {
+        const doc = fakeDoc([
+            '*LOAD_BODY_PARTS',
+            [value, 1, 0].map(item => String(item).padStart(10)).join(''),
+            '*SET_PART',
+            String(value).padStart(10),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function partAdpoptReferenceDocument(filePath, value = -17) {
+        const doc = fakeDoc([
+            '*PART',
+            'Registry signed reference fixture',
+            [1, 0, 0, 0, 0, 0, value, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        return doc;
+    }
+
+    function partDefinition(filePath, id = 42, line = 2) {
+        const raw = String(id);
+        return {
+            kind: 'generic',
+            id,
+            idRaw: raw,
+            keyword: '*PART',
+            targetKeyword: 'PART',
+            targetKind: 'part',
+            ruleId: 'rule:da4aa6b06d895cb13ae9120b',
+            evidenceIds: ['evidence:c05c75b0b88afcbdc9057f5d'],
+            filePath,
+            startLine: Math.max(0, line - 2),
+            endLine: line,
+            idLine: line,
+            idStartChar: 10 - raw.length,
+            idEndChar: 10,
+        };
+    }
+
+    function emptyDefinitions() {
+        return { curves: [], tables: [], genericDefinitions: [] };
+    }
+
+    function curveDefinition(filePath, id = 1001, line = 2) {
+        const raw = String(id);
+        return {
+            kind: 'curve',
+            id,
+            idRaw: raw,
+            keyword: '*DEFINE_CURVE',
+            filePath,
+            startLine: Math.max(0, line - 1),
+            endLine: line + 2,
+            idLine: line,
+            idStartChar: 10 - raw.length,
+            idEndChar: 10,
+            points: [],
+        };
+    }
+
+    function setPartDefinition(filePath, id = 1000001, line = 3) {
+        const raw = String(id);
+        return {
+            kind: 'generic',
+            id,
+            idRaw: raw,
+            keyword: '*SET_PART',
+            targetKeyword: 'SET_PART',
+            targetKind: 'part-set',
+            ruleId: 'rule:94d1738d89bdf682dd5fc3bb',
+            evidenceIds: ['evidence:a347e4e065b89b286fac2b17'],
+            filePath,
+            startLine: line - 1,
+            endLine: line,
+            idLine: line,
+            idStartChar: 10 - raw.length,
+            idEndChar: 10,
+        };
+    }
+
+    function rememberFileIndex(filePath, fileIndex) {
+        touchedFileIndexes.add(filePath);
+        setFileIndexForTesting(filePath, fileIndex);
+    }
+
+    afterEach(() => {
+        clearReferenceIndexCacheForTesting();
+        for (const filePath of touchedFileIndexes) setFileIndexForTesting(filePath, null);
+        touchedFileIndexes.clear();
+    });
+
+    it('uses the Registry-authorized relation as the primary native F12 scope', async () => {
+        const rootFile = path.resolve('definition-navigation', 'registry-main.k');
+        const partFile = path.resolve('definition-navigation', 'registry-parts.k');
+        const doc = constrainedPartReferenceDocument(rootFile);
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, partFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:parts',
+                    fromFile: rootFile,
+                    filePath: partFile,
+                    fileName: path.basename(partFile),
+                    lineIndex: 2,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                [partFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [], tables: [], genericDefinitions: [partDefinition(partFile)],
+                    },
+                }],
+            ]),
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(1, 2),
+            null,
+            { semanticScope: 'registry-approved' },
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(1, 2),
+        );
+
+        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.source.referenceInfo.definitionRegistry.f12Authorized, true);
+        assert.equal(
+            navigation.source.referenceInfo.definitionRegistry.authoringRelationId,
+            'authoring-relation:4634a76c9a6a04205a6ff1e7',
+        );
+        assert.equal(navigation.state, 'resolved');
+        assert.equal(definition.uri.fsPath, partFile);
+        assert.equal(definition.range.start.line, 2);
+    });
+
+    it('does not navigate a schema-matching ambiguous operational projection', async () => {
+        const filePath = path.resolve('definition-navigation', 'ambiguous-change-boundary.k');
+        const doc = fakeDoc([
+            '*CHANGE_BOUNDARY_CONDITION',
+            [42, 0, 0, 0, 0, 0, 0, 0].map(value => String(value).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+
+        assert.equal(fieldReferenceAtPosition(
+            doc,
+            new vscodeMock.Position(1, 5),
+            { semanticScope: 'registry-approved' },
+        ), null);
+        assert.equal(await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(1, 5),
+            null,
+            { semanticScope: 'registry-approved' },
+        ), null);
+        assert.equal(await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(1, 5),
+        ), null);
+    });
+
+    it('navigates LOAD_BODY_Z/LCID to DEFINE_CURVE and back through family provenance', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-load-body-curve.k');
+        const doc = loadBodyCurveReferenceDocument(filePath);
+        const source = fieldReferenceAtPosition(
+            doc,
+            new vscodeMock.Position(1, 5),
+            { semanticScope: 'registry-approved' },
+        );
+        const referenceOccurrence = {
+            filePath,
+            keyword: '*LOAD_BODY_Z',
+            cardIndex: 1,
+            fieldName: 'LCID',
+            lineIndex: 1,
+            startCharacter: 3,
+            endCharacter: 10,
+            rawValue: '1000001',
+            authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+            coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+            sourceRuleId: source.referenceInfo.ruleId,
+            referenceValue: source.referenceValue,
+            targetKinds: source.referenceValue.targetKinds,
+            targetDefinitions: source.referenceValue.targetDefinitions,
+        };
+        cacheReferenceIndexFromSnapshot({
+            rootFile: filePath,
+            files: [filePath],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[filePath, {
+                parameterEvents: [],
+                referenceDefinitions: {
+                    curves: [curveDefinition(filePath, 1000001, 3)],
+                    tables: [],
+                    genericDefinitions: [],
+                },
+                registryReferences: {
+                    complete: true,
+                    reasons: [],
+                    referenceOccurrences: [referenceOccurrence],
+                    valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(1, 5),
+            null,
+            { semanticScope: 'registry-approved' },
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(1, 5),
+        );
+        const references = await new LsdynaReferenceProvider().provideReferences(
+            doc,
+            new vscodeMock.Position(3, 5),
+            { includeDeclaration: true },
+        );
+
+        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.source.referenceValue.id, 1000001);
+        assert.equal(navigation.source.referenceInfo.definitionRegistry.familyKeyword, '*LOAD_BODY');
+        assert.equal(navigation.source.referenceInfo.definitionRegistry.familyOption, 'Z');
+        assert.deepEqual(navigation.source.referenceValue.targetDefinitions, ['DEFINE_CURVE']);
+        assert.equal(definition.range.start.line, 3);
+        assert.deepEqual(references.map(location => location.range.start.line).sort((a, b) => a - b), [1, 3]);
+    });
+
+    it('finds LOAD_BODY_Z references from DEFINE_CURVE in an unscanned single document', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-load-body-local.k');
+        const doc = loadBodyCurveReferenceDocument(filePath);
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [doc];
+        try {
+            const network = await resolveRegistryReferenceNetwork(
+                doc,
+                new vscodeMock.Position(3, 5),
+                { includeDeclaration: false },
+            );
+            const references = await new LsdynaReferenceProvider().provideReferences(
+                doc,
+                new vscodeMock.Position(3, 5),
+                { includeDeclaration: false },
+            );
+
+            assert.equal(network.state, 'complete', JSON.stringify(network.reasons));
+            assert.equal(network.referenceIndexState.projectScoped, false);
+            assert.equal(network.referenceIndexState.singleDocumentScoped, true);
+            assert.deepEqual(network.locations.map(location => location.line), [1]);
+            assert.deepEqual(references.map(location => location.range.start.line), [1]);
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocuments;
+        }
+    });
+
+    it('uses current-document references without scanning when an unscanned document has Include cards', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-load-body-local-include.k');
+        const doc = fakeDoc([
+            loadBodyCurveReferenceDocument(filePath).getText(),
+            '*INCLUDE',
+            'other-curves.k',
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        doc.isDirty = false;
+        let loads = 0;
+        const network = await resolveRegistryReferenceNetwork(
+            doc,
+            new vscodeMock.Position(3, 5),
+            { includeDeclaration: false },
+            null,
+            { loadProjectSnapshot: async () => { loads += 1; } },
+        );
+
+        assert.equal(loads, 0);
+        assert.equal(network.state, 'complete', JSON.stringify(network.reasons));
+        assert.equal(network.referenceIndexState.projectScoped, false);
+        assert.equal(network.referenceIndexState.singleDocumentScoped, true);
+        assert.deepEqual(network.locations.map(location => location.line), [1]);
+    });
+
+    it('uses every reference in an already-scanned Include closure', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-load-body-root.k');
+        const includePath = path.resolve('definition-navigation', 'other-loads.k');
+        const doc = fakeDoc([
+            loadBodyCurveReferenceDocument(filePath).getText(),
+            '*INCLUDE',
+            'other-curves.k',
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        doc.isDirty = false;
+        const source = fieldReferenceAtPosition(
+            doc,
+            new vscodeMock.Position(1, 5),
+            { semanticScope: 'registry-approved' },
+        );
+        const occurrence = {
+            filePath,
+            keyword: '*LOAD_BODY_Z',
+            cardIndex: 1,
+            fieldName: 'LCID',
+            lineIndex: 1,
+            startCharacter: 3,
+            endCharacter: 10,
+            rawValue: '1000001',
+            authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+            coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+            sourceRuleId: source.referenceInfo.ruleId,
+            referenceValue: source.referenceValue,
+            targetKinds: source.referenceValue.targetKinds,
+            targetDefinitions: source.referenceValue.targetDefinitions,
+        };
+        cacheReferenceIndexFromSnapshot({
+            rootFile: filePath,
+            files: [filePath, includePath],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:other-loads',
+                    fromFile: filePath,
+                    filePath: includePath,
+                    fileName: path.basename(includePath),
+                    lineIndex: 6,
+                    keyword: '*INCLUDE',
+                }],
+                includeOccurrencesComplete: true,
+            },
+            fileIndexes: new Map([
+                [filePath, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [curveDefinition(filePath, 1000001, 3)],
+                        tables: [],
+                        genericDefinitions: [],
+                    },
+                    registryReferences: {
+                        complete: true,
+                        reasons: [],
+                        referenceOccurrences: [occurrence],
+                        valueDomainOccurrences: [],
+                    },
+                }],
+                [includePath, {
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                    registryReferences: {
+                        complete: true,
+                        reasons: [],
+                        referenceOccurrences: [{ ...occurrence, filePath: includePath, lineIndex: 8 }],
+                        valueDomainOccurrences: [],
+                    },
+                }],
+            ]),
+        });
+        const network = await resolveRegistryReferenceNetwork(
+            doc,
+            new vscodeMock.Position(3, 5),
+            { includeDeclaration: false },
+        );
+
+        assert.equal(network.state, 'complete', JSON.stringify(network.reasons));
+        assert.equal(network.referenceIndexState.projectScoped, true);
+        assert.deepEqual(
+            network.locations.map(location => [location.filePath, location.line]),
+            [[includePath, 8], [filePath, 1]],
+        );
+    });
+
+    it('navigates LOAD_BODY_PARTS/PSID to corrected SET_PART/SID and back', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-load-body-parts-set-part.k');
+        const doc = loadBodyPartsSetPartDocument(filePath);
+        const source = fieldReferenceAtPosition(
+            doc,
+            new vscodeMock.Position(1, 5),
+            { semanticScope: 'registry-approved' },
+        );
+        assert.ok(source);
+        const referenceOccurrence = {
+            filePath,
+            keyword: '*LOAD_BODY_PARTS',
+            cardIndex: 1,
+            fieldName: 'PSID',
+            lineIndex: 1,
+            startCharacter: 3,
+            endCharacter: 10,
+            rawValue: '1000001',
+            authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+            coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+            sourceRuleId: source.referenceInfo.ruleId,
+            referenceValue: source.referenceValue,
+            targetKinds: source.referenceValue.targetKinds,
+            targetDefinitions: source.referenceValue.targetDefinitions,
+        };
+        cacheReferenceIndexFromSnapshot({
+            rootFile: filePath,
+            files: [filePath],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[filePath, {
+                parameterEvents: [],
+                referenceDefinitions: {
+                    curves: [], tables: [],
+                    genericDefinitions: [setPartDefinition(filePath)],
+                },
+                registryReferences: {
+                    complete: true,
+                    reasons: [],
+                    referenceOccurrences: [referenceOccurrence],
+                    valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(1, 5),
+            null,
+            { semanticScope: 'registry-approved' },
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(1, 5),
+        );
+        const references = await new LsdynaReferenceProvider().provideReferences(
+            doc,
+            new vscodeMock.Position(3, 5),
+            { includeDeclaration: true },
+        );
+
+        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.source.referenceValue.id, 1000001);
+        assert.deepEqual(navigation.source.referenceValue.targetKinds, ['part-set']);
+        assert.deepEqual(navigation.source.referenceValue.targetDefinitions, ['SET_PART']);
+        assert.equal(definition.range.start.line, 3);
+        assert.deepEqual(references.map(location => location.range.start.line).sort((a, b) => a - b),
+            [1, 3]);
+    });
+
+    it('routes every operational official-manual relation through the Registry authority path', async () => {
+        const filePath = path.resolve('definition-navigation', 'manual-runtime-scope.k');
+        const doc = materialReferenceDocument(filePath);
+        rememberFileIndex(filePath, {
+            referenceDefinitions: {
+                curves: [curveDefinition(filePath, 1001, 9)],
+                tables: [],
+                genericDefinitions: [],
+            },
+        });
+
+        const source = fieldReferenceAtPosition(
+            doc,
+            new vscodeMock.Position(2, 24),
+            { semanticScope: 'registry-approved' },
+        );
+        assert.equal(source.authorityScope, 'definition-registry');
+        assert.equal(source.referenceValue.id, 1001);
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.state, 'unindexed');
+        assert.equal(navigation.candidates.length, 1);
+    });
+
+    it('uses the Registry signed predicate and abs transform for native F12', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-signed-part.k');
+        const doc = partAdpoptReferenceDocument(filePath);
+        rememberFileIndex(filePath, {
+            referenceDefinitions: {
+                curves: [curveDefinition(filePath, 17, 9)],
+                tables: [],
+                genericDefinitions: [],
+            },
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 65),
+            null,
+            { semanticScope: 'registry-approved' },
+        );
+        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.source.referenceValue.id, 17);
+        assert.equal(navigation.source.referenceValue.idTransform, 'abs');
+        assert.equal(navigation.source.referenceValue.isSignedSwitch, true);
+        assert.deepEqual(navigation.source.referenceValue.targetKinds, ['curve']);
+        assert.equal(navigation.candidates[0].line, 9);
+
+        const nonReference = partAdpoptReferenceDocument(filePath, 2);
+        assert.equal(fieldReferenceAtPosition(
+            nonReference,
+            new vscodeMock.Position(2, 65),
+            { semanticScope: 'registry-approved' },
+        ), null);
+    });
+
+    it('rejects blank, $/$# comments, and COMMENT opaque bodies before Registry lookup', async () => {
+        const filePath = path.resolve('definition-navigation', 'registry-comment-boundaries.k');
+        const comments = fakeDoc([
+            '*CONSTRAINED_NODAL_RIGID_BODY',
+            '',
+            '$        42',
+            '   $     42',
+            '$#      PID       CID      NSID     PNODE      IPRT    DRFLAG    RRFLAG',
+            '*COMMENT *CONSTRAINED_NODAL_RIGID_BODY',
+            [42, 0, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+            '*END',
+        ].join('\n'), filePath);
+        comments.languageId = 'lsdyna';
+
+        for (const line of [1, 2, 3, 4, 6]) {
+            const position = new vscodeMock.Position(line, Math.min(2, comments.lineAt(line).text.length));
+            assert.equal(fieldReferenceAtPosition(
+                comments,
+                position,
+                { semanticScope: 'registry-approved' },
+            ), null);
+            assert.equal(await resolveFieldReferenceNavigation(
+                comments,
+                position,
+                null,
+                { semanticScope: 'registry-approved' },
+            ), null);
+            assert.deepEqual(await new LsdynaReferenceProvider().provideReferences(
+                comments,
+                position,
+                { includeDeclaration: true },
+            ), []);
+        }
+        assert.equal(await new LsdynaDefinitionProvider().provideDefinition(
+            comments,
+            new vscodeMock.Position(6, 2),
+        ), null);
+    });
+
+    it('keeps a current-file candidate navigable while reporting project coverage as unindexed', async () => {
+        const filePath = path.resolve('definition-navigation', 'local.k');
+        const doc = materialReferenceDocument(filePath);
+        rememberFileIndex(filePath, {
+            filePath,
+            referenceDefinitions: {
+                curves: [curveDefinition(filePath, 1001, 9)],
+                tables: [],
+                genericDefinitions: [],
+            },
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+
+        assert.equal(navigation.state, 'unindexed');
+        assert.equal(navigation.candidateCertainty, 'known-candidate');
+        assert.equal(navigation.candidates.length, 1);
+        assert.equal(definition.uri.fsPath, filePath);
+        assert.equal(definition.range.start.line, 9);
+        assert.equal(definition.range.start.character, 6);
+        assert.equal(definition.range.end.character, 10);
+    });
+
+    it('resolves an exact field reference across the selected Include closure', async () => {
+        const rootFile = path.resolve('definition-navigation', 'main.k');
+        const childFile = path.resolve('definition-navigation', 'curves.k');
+        const doc = materialReferenceDocument(rootFile);
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, childFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:curves',
+                    fromFile: rootFile,
+                    filePath: childFile,
+                    fileName: 'curves.k',
+                    lineIndex: 4,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                [childFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [curveDefinition(childFile, 1001, 12)],
+                        tables: [],
+                        genericDefinitions: [],
+                    },
+                }],
+            ]),
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+
+        assert.equal(navigation.state, 'resolved');
+        assert.equal(navigation.referenceIndexState.projectScoped, true);
+        assert.equal(definition.uri.fsPath, childFile);
+        assert.equal(definition.range.start.line, 12);
+    });
+
+    it('opens the ranked provisional primary while hover retains physical alternatives', async () => {
+        const rootFile = path.resolve('definition-navigation', 'peek-main.k');
+        const firstFile = path.resolve('definition-navigation', 'first-curves.k');
+        const secondFile = path.resolve('definition-navigation', 'second-curves.k');
+        const doc = materialReferenceDocument(rootFile);
+        const sharedDefinition = curveDefinition(firstFile, 1001, 5);
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, firstFile, secondFile],
+            graph: {
+                includeOccurrences: [
+                    {
+                        occurrenceId: 'root:first-a',
+                        fromFile: rootFile,
+                        filePath: firstFile,
+                        fileName: path.basename(firstFile),
+                        lineIndex: 1,
+                        keyword: '*INCLUDE',
+                    },
+                    {
+                        occurrenceId: 'root:first-b',
+                        fromFile: rootFile,
+                        filePath: firstFile,
+                        fileName: path.basename(firstFile),
+                        lineIndex: 2,
+                        keyword: '*INCLUDE',
+                    },
+                    {
+                        occurrenceId: 'root:second',
+                        fromFile: rootFile,
+                        filePath: secondFile,
+                        fileName: path.basename(secondFile),
+                        lineIndex: 3,
+                        keyword: '*INCLUDE',
+                    },
+                ],
+            },
+            fileIndexes: new Map([
+                [rootFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                [firstFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [sharedDefinition], tables: [], genericDefinitions: [],
+                    },
+                }],
+                [secondFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [curveDefinition(secondFile, 1001, 8)],
+                        tables: [],
+                        genericDefinitions: [],
+                    },
+                }],
+            ]),
+        });
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        const definitions = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+
+        assert.equal(navigation.state, 'ambiguous');
+        assert.equal(navigation.analysis.definitions.length, 3);
+        assert.equal(navigation.candidates.length, 2);
+        assert.equal(navigation.provisional, true);
+        assert.equal(navigation.provisionalPrimary.filePath, firstFile);
+        assert.equal(navigation.provisionalAlternatives.length, 1);
+        assert.equal(definitions.uri.fsPath, firstFile);
+    });
+
+    it('reports missing only for a complete closure and otherwise remains unindexed', async () => {
+        const rootFile = path.resolve('definition-navigation', 'missing-main.k');
+        const doc = materialReferenceDocument(rootFile, '9999');
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[
+                rootFile,
+                { parameterEvents: [], referenceDefinitions: emptyDefinitions() },
+            ]]),
+        });
+
+        const complete = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        assert.equal(complete.state, 'missing');
+        assert.equal(complete.candidates.length, 0);
+
+        clearReferenceIndexCacheForTesting();
+        const localOnly = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        assert.equal(localOnly.state, 'unindexed');
+        assert.ok(localOnly.reasons.includes('project-scan-unavailable'));
+
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:missing-curves',
+                    fromFile: rootFile,
+                    filePath: path.resolve('definition-navigation', 'outside-index.k'),
+                    fileName: 'outside-index.k',
+                    lineIndex: 3,
+                    keyword: '*INCLUDE',
+                    missing: true,
+                }],
+            },
+            fileIndexes: new Map([[
+                rootFile,
+                { parameterEvents: [], referenceDefinitions: emptyDefinitions() },
+            ]]),
+        });
+        const outsideClosure = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        assert.equal(outsideClosure.state, 'out-of-closure');
+        assert.ok(outsideClosure.reasons.includes('missing-include'));
+    });
+
+    it('does not borrow either project when a shared file has ambiguous main-deck context', async () => {
+        const rootA = path.resolve('definition-navigation', 'root-a.k');
+        const rootB = path.resolve('definition-navigation', 'root-b.k');
+        const sharedFile = path.resolve('definition-navigation', 'shared-material.k');
+        const curveA = path.resolve('definition-navigation', 'curve-a.k');
+        const curveB = path.resolve('definition-navigation', 'curve-b.k');
+        const doc = materialReferenceDocument(sharedFile);
+
+        for (const [rootFile, curveFile] of [[rootA, curveA], [rootB, curveB]]) {
+            cacheReferenceIndexFromSnapshot({
+                rootFile,
+                files: [rootFile, sharedFile, curveFile],
+                graph: {
+                    includeOccurrences: [
+                        {
+                            occurrenceId: `${rootFile}:shared`,
+                            fromFile: rootFile,
+                            filePath: sharedFile,
+                            fileName: path.basename(sharedFile),
+                            lineIndex: 1,
+                            keyword: '*INCLUDE',
+                        },
+                        {
+                            occurrenceId: `${rootFile}:curve`,
+                            fromFile: rootFile,
+                            filePath: curveFile,
+                            fileName: path.basename(curveFile),
+                            lineIndex: 2,
+                            keyword: '*INCLUDE',
+                        },
+                    ],
+                },
+                fileIndexes: new Map([
+                    [rootFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                    [sharedFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                    [curveFile, {
+                        parameterEvents: [],
+                        referenceDefinitions: {
+                            curves: [curveDefinition(curveFile)],
+                            tables: [],
+                            genericDefinitions: [],
+                        },
+                    }],
+                ]),
+            });
+        }
+
+        const navigation = await resolveFieldReferenceNavigation(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+        const definition = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(2, 24),
+        );
+
+        assert.equal(navigation.state, 'ambiguous');
+        assert.ok(navigation.reasons.includes('project-root-ambiguous'));
+        assert.equal(navigation.candidates.length, 0);
+        assert.equal(definition, null);
+    });
+
+    it('uses the verified sign branch and never falls through to a wrong namespace', async () => {
+        const rootFile = path.resolve('definition-navigation', 'adaptive-main.k');
+        const curveFile = path.resolve('definition-navigation', 'adaptive-curves.k');
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, curveFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:curves',
+                    fromFile: rootFile,
+                    filePath: curveFile,
+                    fileName: path.basename(curveFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, { parameterEvents: [], referenceDefinitions: emptyDefinitions() }],
+                [curveFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [curveDefinition(curveFile, 17, 6)],
+                        tables: [],
+                        genericDefinitions: [],
+                    },
+                }],
+            ]),
+        });
+
+        const positive = await resolveFieldReferenceNavigation(
+            adaptiveBoxDocument(rootFile, 17),
+            new vscodeMock.Position(2, 24),
+        );
+        const negative = await resolveFieldReferenceNavigation(
+            adaptiveBoxDocument(rootFile, -17),
+            new vscodeMock.Position(2, 24),
+        );
+
+        assert.equal(positive.state, 'resolved');
+        assert.equal(positive.candidates[0].filePath, curveFile);
+        assert.deepEqual(positive.source.referenceValue.targetKinds, ['curve']);
+        assert.equal(negative.state, 'unindexed');
+        assert.deepEqual(negative.source.referenceValue.targetKinds, ['node']);
+        assert.equal(negative.candidates.length, 0);
+        assert.ok(negative.reasons.includes('target-kind-on-demand'));
+    });
+
+    it('streams an official NODE block on explicit F12 and reuses only the bounded query result', async () => {
+        const rootFile = path.resolve('definition-navigation', 'node-main.k');
+        const nodeFile = path.resolve('definition-navigation', 'nodes.k');
+        const sourceDocument = adaptiveBoxDocument(rootFile, -17);
+        const nodeDocument = fakeDoc([
+            '*NODE',
+            '      17             0.0             0.0             0.0',
+        ].join('\n'), nodeFile);
+        nodeDocument.languageId = 'lsdyna';
+        let nodeReads = 0;
+        const originalNodeLineAt = nodeDocument.lineAt;
+        nodeDocument.lineAt = line => {
+            nodeReads += 1;
+            return originalNodeLineAt(line);
+        };
+        const originalTextDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [nodeDocument];
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:nodes',
+                    fromFile: rootFile,
+                    filePath: nodeFile,
+                    fileName: path.basename(nodeFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    keywordBlocks: [],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+                [nodeFile, {
+                    keywordBlocks: [{
+                        filePath: nodeFile,
+                        keyword: '*NODE',
+                        rawKeyword: '*NODE',
+                        startLine: 0,
+                        endLine: 1,
+                    }],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+            ]),
+        });
+
+        try {
+            const navigation = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(navigation.state, 'resolved');
+            assert.equal(navigation.candidates.length, 1);
+            assert.equal(navigation.candidates[0].filePath, nodeFile);
+            assert.equal(navigation.candidates[0].line, 1);
+            assert.equal(navigation.candidates[0].startCharacter, 6);
+            assert.ok(nodeReads > 0);
+
+            nodeReads = 0;
+            const definition = await new LsdynaDefinitionProvider().provideDefinition(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(definition.uri.fsPath, nodeFile);
+            assert.equal(definition.range.start.line, 1);
+            assert.equal(nodeReads, 0, 'warm F12 should reuse the target-only query result');
+        } finally {
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+        }
+    });
+
+    it('cancels an active live NODE scan without caching a partial lookup', async () => {
+        const rootFile = path.resolve('definition-navigation', 'cancel-live-main.k');
+        const nodeFile = path.resolve('definition-navigation', 'cancel-live-nodes.k');
+        const sourceDocument = adaptiveBoxDocument(rootFile, -17);
+        const nodeLineCount = 8_193;
+        const token = { isCancellationRequested: false };
+        let cancelOnRead = true;
+        let nodeReads = 0;
+        const nodeDocument = {
+            languageId: 'lsdyna',
+            version: 1,
+            isDirty: false,
+            lineCount: nodeLineCount,
+            uri: { fsPath: nodeFile },
+            lineAt(line) {
+                nodeReads += 1;
+                if (cancelOnRead && line >= 1_024) token.isCancellationRequested = true;
+                const text = line === 0
+                    ? '*NODE'
+                    : line === nodeLineCount - 1
+                        ? '      17             0.0             0.0             0.0'
+                        : '       1             0.0             0.0             0.0';
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+        const originalTextDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [nodeDocument];
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:cancel-live-nodes',
+                    fromFile: rootFile,
+                    filePath: nodeFile,
+                    fileName: path.basename(nodeFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    keywordBlocks: [], parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                }],
+                [nodeFile, {
+                    keywordBlocks: [{
+                        filePath: nodeFile,
+                        keyword: '*NODE',
+                        startLine: 0,
+                        endLine: nodeLineCount - 1,
+                    }],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+            ]),
+        });
+
+        try {
+            const cancelled = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+                token,
+            );
+            assert.equal(cancelled, null);
+            assert.ok(nodeReads < 1_500, `expected prompt live cancellation, got ${nodeReads} reads`);
+
+            cancelOnRead = false;
+            token.isCancellationRequested = false;
+            nodeReads = 0;
+            const resumed = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(resumed.state, 'resolved');
+            assert.equal(resumed.candidates[0].line, nodeLineCount - 1);
+            assert.ok(
+                nodeReads >= nodeLineCount,
+                'a cancelled partial lookup must not be reused as a cache result',
+            );
+        } finally {
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+        }
+    });
+
+    it('does not borrow stale snapshot blocks or cache scans for a dirty NODE document', async () => {
+        const rootFile = path.resolve('definition-navigation', 'dirty-node-main.k');
+        const nodeFile = path.resolve('definition-navigation', 'dirty-nodes.k');
+        const sourceDocument = adaptiveBoxDocument(rootFile, -17);
+        const nodeLines = [
+            '$ inserted before the old snapshot block',
+            '      17             9.0             9.0             9.0',
+            '*NODE',
+            '      17             0.0             0.0             0.0',
+        ];
+        let nodeReads = 0;
+        const nodeDocument = {
+            languageId: 'lsdyna',
+            version: 2,
+            isDirty: true,
+            lineCount: nodeLines.length,
+            uri: { fsPath: nodeFile },
+            lineAt(line) {
+                nodeReads += 1;
+                const text = nodeLines[line];
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+        const originalTextDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [nodeDocument];
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:dirty-nodes',
+                    fromFile: rootFile,
+                    filePath: nodeFile,
+                    fileName: path.basename(nodeFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    keywordBlocks: [], parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                }],
+                [nodeFile, {
+                    keywordBlocks: [{
+                        filePath: nodeFile,
+                        keyword: '*NODE',
+                        startLine: 0,
+                        endLine: 1,
+                    }],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+            ]),
+        });
+
+        try {
+            const stale = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(stale.state, 'unindexed');
+            assert.equal(stale.candidates.length, 0);
+            assert.ok(stale.reasons.includes('on-demand-live-structure-unavailable'));
+            assert.ok(nodeReads <= nodeLines.length * 2,
+                'fresh dirty-document inspection must remain bounded and must not return the stale candidate');
+
+            rememberFileIndex(nodeFile, {
+                filePath: nodeFile,
+                documentVersion: 2,
+                keywordBlocks: [{
+                    filePath: nodeFile,
+                    keyword: '*NODE',
+                    rawKeyword: '*NODE',
+                    startLine: 2,
+                    endLine: 3,
+                }],
+            });
+            const firstLive = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(firstLive.state, 'resolved');
+            assert.equal(firstLive.candidates[0].line, 3);
+            const firstReads = nodeReads;
+            assert.ok(firstReads > 0);
+
+            const secondLive = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(secondLive.state, 'resolved');
+            assert.ok(nodeReads > firstReads, 'dirty live lookups must not enter the result cache');
+        } finally {
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+        }
+    });
+
+    it('keeps a signed node candidate dynamic when its Include occurrence has IDFOFF', async () => {
+        const rootFile = path.resolve('definition-navigation', 'node-offset-main.k');
+        const nodeFile = path.resolve('definition-navigation', 'offset-nodes.k');
+        const sourceDocument = adaptiveBoxDocument(rootFile, -117);
+        const nodeDocument = fakeDoc('*NODE\n      17', nodeFile);
+        nodeDocument.languageId = 'lsdyna';
+        const originalTextDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [nodeDocument];
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:offset-nodes',
+                    fromFile: rootFile,
+                    filePath: nodeFile,
+                    fileName: path.basename(nodeFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE_TRANSFORM',
+                    transform: {
+                        offsets: {
+                            idfoff: { kind: 'numeric', raw: '100', value: 100 },
+                        },
+                    },
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    keywordBlocks: [], parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                }],
+                [nodeFile, {
+                    keywordBlocks: [{
+                        filePath: nodeFile,
+                        keyword: '*NODE',
+                        startLine: 0,
+                        endLine: 1,
+                    }],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+            ]),
+        });
+
+        try {
+            const navigation = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            assert.equal(navigation.state, 'dynamic');
+            assert.equal(navigation.candidateCertainty, 'known-candidate');
+            assert.equal(navigation.candidates.length, 1);
+            assert.ok(navigation.reasons.includes('signed-switch-transform-unverified'));
+        } finally {
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+        }
+    });
+
+    it('fails open for comma, long-format, and expression field sources', () => {
+        const filePath = path.resolve('definition-navigation', 'unsafe.k');
+        const comma = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '1,7.8,210.0,0.3,400.0,0.0',
+            '0.0,0.0,1001,0,0.0',
+        ].join('\n'), filePath);
+        const long = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY+',
+            '                   1',
+            '                                       1001',
+        ].join('\n'), filePath);
+        const expression = materialReferenceDocument(filePath, '&CID+1');
+
+        assert.equal(fieldReferenceAtPosition(comma, new vscodeMock.Position(2, 12)), null);
+        assert.equal(fieldReferenceAtPosition(long, new vscodeMock.Position(2, 24)), null);
+        assert.equal(fieldReferenceAtPosition(expression, new vscodeMock.Position(2, 28)), null);
+    });
+
+    it('keeps reference semantics invariant under mismatched comment labels', () => {
+        const filePath = path.resolve('definition-navigation', 'comment-version.k');
+        const labels = ['MID', 'RO', 'E', 'PR', 'SIGY', 'OLDREF', 'OLDDS'];
+        const header = '$#' + labels.map((label, index) => label.padStart(index === 0 ? 8 : 10)).join('');
+        const data = ['1', '7.8', '210', '0.3', '400', '1001', '1002']
+            .map(value => value.padStart(10)).join('');
+        const current = fakeDoc(['*MAT_DAMAGE_1', data].join('\n'), filePath);
+        const possibleLegacy = fakeDoc(['*MAT_DAMAGE_1', header, data].join('\n'), filePath);
+        current.languageId = 'lsdyna';
+        possibleLegacy.languageId = 'lsdyna';
+
+        assert.ok(fieldReferenceAtPosition(current, new vscodeMock.Position(1, 55)));
+        const annotated = fieldReferenceAtPosition(possibleLegacy, new vscodeMock.Position(2, 55));
+        const original = fieldReferenceAtPosition(current, new vscodeMock.Position(1, 55));
+        assert.deepStrictEqual(annotated.referenceInfo, original.referenceInfo);
+        assert.deepStrictEqual(annotated.referenceValue, original.referenceValue);
+    });
+
+    it('honors LONG=K/S and a keyword-level standard override for field geometry', () => {
+        const filePath = path.resolve('definition-navigation', 'input-format-modes.k');
+        const cardOne = [1, 0, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join('');
+        const cardTwo = [0, 1, -17, 0, 0, 0, 0].map(item => String(item).padStart(10)).join('');
+        const makeDocument = (header, keyword) => {
+            const doc = fakeDoc([header, keyword, cardOne, cardTwo].join('\n'), filePath);
+            doc.languageId = 'lsdyna';
+            return doc;
+        };
+        const longDeck = makeDocument('*KEYWORD LONG=K', '*DEFINE_BOX_ADAPTIVE');
+        const standardOverride = makeDocument('*KEYWORD LONG=K', '*DEFINE_BOX_ADAPTIVE-');
+        const standardDeck = makeDocument('*KEYWORD LONG=S', '*DEFINE_BOX_ADAPTIVE');
+        const i10Deck = makeDocument('*KEYWORD I10=Y', '*DEFINE_BOX_ADAPTIVE');
+        const position = new vscodeMock.Position(3, 24);
+
+        assert.equal(fieldReferenceAtPosition(longDeck, position), null);
+        assert.equal(fieldReferenceAtPosition(i10Deck, position), null);
+        assert.deepEqual(
+            fieldReferenceAtPosition(standardOverride, position).referenceValue.targetKinds,
+            ['node'],
+        );
+        assert.deepEqual(
+            fieldReferenceAtPosition(standardDeck, position).referenceValue.targetKinds,
+            ['node'],
+        );
+        assert.ok(getCardFieldsForLine(standardOverride, 3));
+        assert.ok(getCardFieldsForLine(standardDeck, 3));
+    });
+
+    it('honors cancellation before any field-navigation scan', async () => {
+        const filePath = path.resolve('definition-navigation', 'cancelled.k');
+        const doc = materialReferenceDocument(filePath);
+        let reads = 0;
+        const originalLineAt = doc.lineAt;
+        doc.lineAt = line => {
+            reads += 1;
+            return originalLineAt(line);
+        };
+        const result = await new LsdynaDefinitionProvider().provideDefinition(
+            doc,
+            new vscodeMock.Position(2, 24),
+            { isCancellationRequested: true },
+        );
+
+        assert.equal(result, null);
+        assert.equal(reads, 0);
+    });
+
+    it('keeps warm F12 lookup near a million-line tail bounded by the structural index', async () => {
+        const rootFile = path.resolve('definition-navigation', 'million-line-main.k');
+        const lineCount = 1_000_000;
+        const keywordLine = lineCount - 3;
+        const cardOne = '         1       7.8     210.0       0.3     400.0       0.0';
+        const cardTwo = [0, 0, 1001, 0, 0].map(item => String(item).padStart(10)).join('');
+        let reads = 0;
+        const document = {
+            languageId: 'lsdyna',
+            version: 1,
+            lineCount,
+            uri: { fsPath: rootFile },
+            lineAt(line) {
+                reads += 1;
+                let text = '';
+                if (line === 0) text = '*KEYWORD';
+                else if (line === keywordLine) text = '*MAT_PIECEWISE_LINEAR_PLASTICITY';
+                else if (line === keywordLine + 1) text = cardOne;
+                else if (line === keywordLine + 2) text = cardTwo;
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+        rememberFileIndex(rootFile, {
+            filePath: rootFile,
+            documentVersion: 1,
+            keywordBlocks: [{
+                filePath: rootFile,
+                keyword: '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+                startLine: keywordLine,
+                endLine: lineCount - 1,
+            }],
+        });
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[
+                rootFile,
+                {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [curveDefinition(rootFile, 1001, 100)],
+                        tables: [],
+                        genericDefinitions: [],
+                    },
+                },
+            ]]),
+        });
+
+        const provider = new LsdynaDefinitionProvider();
+        const position = new vscodeMock.Position(lineCount - 1, 24);
+        for (let index = 0; index < 10; index++) {
+            await provider.provideDefinition(document, position);
+        }
+
+        reads = 0;
+        const samples = [];
+        for (let index = 0; index < 200; index++) {
+            const started = performance.now();
+            const definition = await provider.provideDefinition(document, position);
+            samples.push(performance.now() - started);
+            assert.ok(definition);
+            assert.equal(definition.range.start.line, 100);
+        }
+        samples.sort((left, right) => left - right);
+        const p95 = samples[Math.floor(samples.length * 0.95)];
+        if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+            const p50 = samples[Math.floor(samples.length * 0.50)];
+            const p99 = samples[Math.floor(samples.length * 0.99)];
+            console.log(
+                `    warm F12: P50 ${p50.toFixed(3)} ms, ` +
+                `P95 ${p95.toFixed(3)} ms, P99 ${p99.toFixed(3)} ms, ` +
+                `${(reads / samples.length).toFixed(1)} lineAt/call`,
+            );
+        }
+
+        assert.ok(reads < 8_000, `expected bounded line reads, got ${reads}`);
+        // Release budget: retain the independent line-read bound above, and measure
+        // wall time against the agreed 100 ms interaction limit on the host machine.
+        assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+    });
+
+    it('streams a million-row NODE block once, yields, and keeps warm queries O(1)', async () => {
+        const rootFile = path.resolve('definition-navigation', 'million-node-main.k');
+        const nodeFile = path.resolve('definition-navigation', 'million-nodes.k');
+        const sourceDocument = adaptiveBoxDocument(rootFile, -17);
+        const nodeLineCount = 1_000_001;
+        let nodeReads = 0;
+        const nodeDocument = {
+            languageId: 'lsdyna',
+            version: 1,
+            isDirty: false,
+            lineCount: nodeLineCount,
+            uri: { fsPath: nodeFile },
+            lineAt(line) {
+                nodeReads += 1;
+                const text = line === 0
+                    ? '*NODE'
+                    : line === nodeLineCount - 1
+                        ? '      17             0.0             0.0             0.0'
+                        : '       1             0.0             0.0             0.0';
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+        const originalTextDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [nodeDocument];
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, nodeFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:million-nodes',
+                    fromFile: rootFile,
+                    filePath: nodeFile,
+                    fileName: path.basename(nodeFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    keywordBlocks: [], parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                }],
+                [nodeFile, {
+                    keywordBlocks: [{
+                        filePath: nodeFile,
+                        keyword: '*NODE',
+                        startLine: 0,
+                        endLine: nodeLineCount - 1,
+                    }],
+                    parameterEvents: [],
+                    referenceDefinitions: emptyDefinitions(),
+                }],
+            ]),
+        });
+
+        try {
+            let eventLoopYielded = false;
+            const yieldProbe = new Promise(resolve => setImmediate(() => {
+                eventLoopYielded = true;
+                resolve();
+            }));
+            const coldStarted = performance.now();
+            const navigation = await resolveFieldReferenceNavigation(
+                sourceDocument,
+                new vscodeMock.Position(2, 24),
+            );
+            const coldDuration = performance.now() - coldStarted;
+            await yieldProbe;
+
+            assert.equal(navigation.state, 'resolved');
+            assert.equal(navigation.candidates[0].line, nodeLineCount - 1);
+            assert.equal(eventLoopYielded, true);
+            assert.ok(nodeReads >= nodeLineCount, `expected one streaming pass, got ${nodeReads} reads`);
+
+            nodeReads = 0;
+            const samples = [];
+            for (let index = 0; index < 100; index++) {
+                const started = performance.now();
+                const warm = await resolveFieldReferenceNavigation(
+                    sourceDocument,
+                    new vscodeMock.Position(2, 24),
+                );
+                samples.push(performance.now() - started);
+                assert.equal(warm.state, 'resolved');
+            }
+            samples.sort((left, right) => left - right);
+            const p95 = samples[Math.floor(samples.length * 0.95)];
+            if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+                console.log(
+                    `    million NODE F12: cold ${coldDuration.toFixed(1)} ms, ` +
+                    `warm P95 ${p95.toFixed(3)} ms`,
+                );
+            }
+            assert.equal(nodeReads, 0, 'warm target-only cache must not rescan NODE rows');
+            assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+        } finally {
+            vscodeMock.workspace.textDocuments = originalTextDocuments;
+        }
+    });
+
+    it('does not implicitly scan an unindexed million-line document on F12', async () => {
+        const filePath = path.resolve('definition-navigation', 'unindexed-million-line.k');
+        const lineCount = 1_000_000;
+        const keywordLine = lineCount - 3;
+        const cardOne = '         1       7.8     210.0       0.3     400.0       0.0';
+        const cardTwo = [0, 0, 1001, 0, 0].map(item => String(item).padStart(10)).join('');
+        let reads = 0;
+        const document = {
+            languageId: 'lsdyna',
+            version: 1,
+            lineCount,
+            uri: { fsPath: filePath },
+            lineAt(line) {
+                reads += 1;
+                let text = '';
+                if (line === 0) text = '*KEYWORD';
+                else if (line === keywordLine) text = '*MAT_PIECEWISE_LINEAR_PLASTICITY';
+                else if (line === keywordLine + 1) text = cardOne;
+                else if (line === keywordLine + 2) text = cardTwo;
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+
+        const navigation = await resolveFieldReferenceNavigation(
+            document,
+            new vscodeMock.Position(lineCount - 1, 24),
+        );
+
+        assert.equal(navigation.state, 'unindexed');
+        assert.equal(navigation.candidates.length, 0);
+        assert.ok(reads < 40, `expected no implicit whole-file scan, got ${reads} reads`);
+    });
+
+    it('builds a complete native reverse-reference result from a Registry source', async () => {
+        const rootFile = path.resolve('definition-navigation', 'references-main.k');
+        const partFile = path.resolve('definition-navigation', 'references-parts.k');
+        const sourceDocument = constrainedPartReferenceDocument(rootFile);
+        const targetDocument = fakeDoc([
+            '*PART',
+            'Registry reverse-reference target',
+            [42, 0, 0, 0, 0, 0, 0, 0].map(value => String(value).padStart(10)).join(''),
+        ].join('\n'), partFile);
+        targetDocument.languageId = 'lsdyna';
+        const source = fieldReferenceAtPosition(
+            sourceDocument,
+            new vscodeMock.Position(1, 2),
+            { semanticScope: 'registry-approved' },
+        );
+        const referenceOccurrence = {
+            filePath: rootFile,
+            keyword: '*CONSTRAINED_NODAL_RIGID_BODY',
+            cardIndex: 1,
+            fieldName: 'PID',
+            lineIndex: 1,
+            startCharacter: 8,
+            endCharacter: 10,
+            rawValue: '42',
+            authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+            coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+            sourceRuleId: source.referenceInfo.ruleId,
+            referenceValue: source.referenceValue,
+            targetKinds: source.referenceValue.targetKinds,
+            targetDefinitions: source.referenceValue.targetDefinitions,
+        };
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, partFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:parts', fromFile: rootFile, filePath: partFile,
+                    fileName: path.basename(partFile), lineIndex: 2, keyword: '*INCLUDE',
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, {
+                    parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                    registryReferences: {
+                        complete: true, reasons: [], referenceOccurrences: [referenceOccurrence],
+                        valueDomainOccurrences: [],
+                    },
+                }],
+                [partFile, {
+                    parameterEvents: [],
+                    referenceDefinitions: {
+                        curves: [], tables: [], genericDefinitions: [partDefinition(partFile)],
+                    },
+                    registryReferences: {
+                        complete: true, reasons: [], referenceOccurrences: [], valueDomainOccurrences: [],
+                    },
+                }],
+            ]),
+        });
+
+        const fromReference = await resolveRegistryReferenceNetwork(
+            sourceDocument,
+            new vscodeMock.Position(1, 2),
+            { includeDeclaration: true },
+            null,
+            { allowWhenPermissionDisabled: true },
+        );
+        const fromDefinition = await resolveRegistryReferenceNetwork(
+            targetDocument,
+            new vscodeMock.Position(2, 9),
+            { includeDeclaration: false },
+            null,
+            { allowWhenPermissionDisabled: true },
+        );
+
+        assert.equal(fromReference.state, 'complete');
+        assert.deepEqual(
+            fromReference.locations.map(location => [location.filePath, location.line, location.declaration === true]),
+            [[rootFile, 1, false], [partFile, 2, true]],
+        );
+        assert.equal(fromDefinition.state, 'complete');
+        assert.deepEqual(fromDefinition.locations.map(location => [location.filePath, location.line]), [[rootFile, 1]]);
+        const nativeLocations = await new LsdynaReferenceProvider().provideReferences(
+            sourceDocument,
+            new vscodeMock.Position(1, 2),
+            { includeDeclaration: true },
+        );
+        assert.deepEqual(
+            nativeLocations.map(location => [location.uri.fsPath, location.range.start.line]),
+            [[rootFile, 1], [partFile, 2]],
+        );
+        const nativeFromDefinition = await new LsdynaReferenceProvider().provideReferences(
+            targetDocument,
+            new vscodeMock.Position(2, 9),
+            { includeDeclaration: false },
+        );
+        assert.deepEqual(
+            nativeFromDefinition.map(location => [location.uri.fsPath, location.range.start.line]),
+            [[rootFile, 1]],
+        );
+    });
+
+    it('provides approved F12 and Shift+F12 for a proved family definition', async () => {
+        const rootFile = path.resolve('definition-navigation', 'family-material.k');
+        const partRow = [1, 0, 1000001, 0, 0, 0, 0, 0]
+            .map(value => String(value).padStart(10)).join('');
+        const materialRow = [1000001, 0, 0, 0, 0, 0, 0, 0]
+            .map(value => String(value).padStart(10)).join('');
+        const document = fakeDoc([
+            '*PART',
+            'family reference',
+            partRow,
+            '*MAT_024',
+            materialRow,
+        ].join('\n'), rootFile);
+        document.languageId = 'lsdyna';
+        const source = fieldReferenceAtPosition(
+            document,
+            new vscodeMock.Position(2, 25),
+            { semanticScope: 'registry-approved' },
+        );
+        assert.ok(source?.referenceInfo?.definitionRegistry?.approved);
+        const referenceOccurrence = {
+            filePath: rootFile,
+            keyword: '*PART',
+            cardIndex: 1,
+            fieldName: 'MID',
+            lineIndex: 2,
+            startCharacter: 23,
+            endCharacter: 30,
+            rawValue: '1000001',
+            authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+            coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+            sourceRuleId: source.referenceInfo.ruleId,
+            referenceValue: source.referenceValue,
+            targetKinds: source.referenceValue.targetKinds,
+            targetDefinitions: source.referenceValue.targetDefinitions,
+        };
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[rootFile, {
+                keywordBlocks: [
+                    { filePath: rootFile, keyword: '*PART', rawKeyword: '*PART', startLine: 0, endLine: 2 },
+                    { filePath: rootFile, keyword: '*MAT_024', rawKeyword: '*MAT_024', startLine: 3, endLine: 4 },
+                ],
+                parameterEvents: [],
+                referenceDefinitions: emptyDefinitions(),
+                registryReferences: {
+                    complete: true,
+                    reasons: [],
+                    referenceOccurrences: [referenceOccurrence],
+                    valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [document];
+        try {
+            const forward = await resolveFieldReferenceNavigation(
+                document,
+                new vscodeMock.Position(2, 25),
+                null,
+                { semanticScope: 'registry-approved', allowFamilyCandidate: true },
+            );
+            assert.equal(forward.state, 'resolved', JSON.stringify(forward.reasons));
+            assert.deepEqual(
+                forward.candidates.map(candidate => [candidate.line, candidate.startCharacter]),
+                [[4, 3]],
+            );
+
+            const reverse = await resolveRegistryReferenceNetwork(
+                document,
+                new vscodeMock.Position(4, 5),
+                { includeDeclaration: true },
+                null,
+                { allowWhenPermissionDisabled: true },
+            );
+            assert.equal(reverse.state, 'complete', JSON.stringify(reverse.reasons));
+            assert.deepEqual(
+                reverse.locations.map(location => [location.line, location.declaration === true]),
+                [[2, false], [4, true]],
+            );
+
+            const nativeDefinition = await new LsdynaDefinitionProvider().provideDefinition(
+                document,
+                new vscodeMock.Position(2, 25),
+            );
+            assert.deepEqual(
+                [nativeDefinition.uri.fsPath, nativeDefinition.range.start.line,
+                    nativeDefinition.range.start.character],
+                [rootFile, 4, 3],
+            );
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocuments;
+        }
+    });
+
+    it('overlays dirty reference data but fails closed for incomplete or dirty-Include snapshots', async () => {
+        const rootFile = path.resolve('definition-navigation', 'references-dirty.k');
+        const sourceDocument = constrainedPartReferenceDocument(rootFile);
+        const source = fieldReferenceAtPosition(
+            sourceDocument,
+            new vscodeMock.Position(1, 2),
+            { semanticScope: 'registry-approved' },
+        );
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[rootFile, {
+                parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                registryReferences: {
+                    complete: false,
+                    reasons: ['registry-reference-preview-byte-limit'],
+                    referenceOccurrences: [], valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+
+        const incomplete = await resolveRegistryReferenceNetwork(
+            sourceDocument,
+            new vscodeMock.Position(1, 2),
+            {},
+            null,
+            { allowWhenPermissionDisabled: true },
+        );
+        assert.equal(incomplete.state, 'incomplete');
+        assert.ok(incomplete.reasons.some(reason => reason.includes('registry-reference-preview-byte-limit')));
+
+        clearReferenceIndexCacheForTesting();
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[rootFile, {
+                parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                registryReferences: {
+                    complete: true, reasons: [],
+                    referenceOccurrences: [{
+                        filePath: rootFile, lineIndex: 1, startCharacter: 8, endCharacter: 10,
+                        referenceValue: source.referenceValue,
+                        targetKinds: source.referenceValue.targetKinds,
+                        targetDefinitions: source.referenceValue.targetDefinitions,
+                    }],
+                    valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        sourceDocument.isDirty = true;
+        vscodeMock.workspace.textDocuments = [sourceDocument];
+        try {
+            const dirty = await resolveRegistryReferenceNetwork(
+                sourceDocument,
+                new vscodeMock.Position(1, 2),
+                {},
+                null,
+                { allowWhenPermissionDisabled: true },
+            );
+            assert.equal(dirty.state, 'complete', JSON.stringify(dirty.reasons));
+            assert.equal(dirty.referenceIndexState.liveReferenceOverlay, true);
+            assert.deepEqual(dirty.locations, []);
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocuments;
+        }
+
+        clearReferenceIndexCacheForTesting();
+        const dirtyInclude = fakeDoc([
+            '*CONSTRAINED_NODAL_RIGID_BODY',
+            [42, 0, 0, 0, 0, 0, 0].map(item => String(item).padStart(10)).join(''),
+            '*INCLUDE',
+            'parts.k',
+        ].join('\n'), rootFile);
+        dirtyInclude.languageId = 'lsdyna';
+        dirtyInclude.isDirty = true;
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[rootFile, {
+                keywordBlocks: [], parameterEvents: [], referenceDefinitions: emptyDefinitions(),
+                registryReferences: {
+                    complete: true, reasons: [], referenceOccurrences: [], valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+        const originalDocumentsForInclude = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [dirtyInclude];
+        try {
+            const changedGraph = await resolveRegistryReferenceNetwork(
+                dirtyInclude,
+                new vscodeMock.Position(1, 2),
+                {},
+                null,
+                { allowWhenPermissionDisabled: true },
+            );
+            assert.equal(changedGraph.state, 'incomplete');
+            assert.ok(changedGraph.reasons.some(reason => reason.includes('dirty-include-graph-unverified')));
+            assert.deepEqual(changedGraph.locations, []);
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocumentsForInclude;
+        }
+    });
+
+    it('returns signed Registry field references natively and excludes enum branches', async () => {
+        const rootFile = path.resolve('definition-navigation', 'references-signed.k');
+        const sourceDocument = partAdpoptReferenceDocument(rootFile, -17);
+        const source = fieldReferenceAtPosition(
+            sourceDocument,
+            new vscodeMock.Position(2, 65),
+            { semanticScope: 'registry-approved' },
+        );
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map([[rootFile, {
+                parameterEvents: [],
+                referenceDefinitions: {
+                    curves: [curveDefinition(rootFile, 17, 9)], tables: [], genericDefinitions: [],
+                },
+                registryReferences: {
+                    complete: true,
+                    reasons: [],
+                    referenceOccurrences: [{
+                        filePath: rootFile,
+                        keyword: '*PART',
+                        cardIndex: 2,
+                        fieldName: 'ADPOPT',
+                        lineIndex: 2,
+                        startCharacter: 67,
+                        endCharacter: 70,
+                        rawValue: '-17',
+                        authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+                        coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+                        sourceRuleId: source.referenceInfo.ruleId,
+                        referenceValue: source.referenceValue,
+                        targetKinds: source.referenceValue.targetKinds,
+                        targetDefinitions: source.referenceValue.targetDefinitions,
+                    }],
+                    valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+
+        const provider = new LsdynaReferenceProvider();
+        const references = await provider.provideReferences(
+            sourceDocument,
+            new vscodeMock.Position(2, 65),
+            { includeDeclaration: false },
+        );
+        const withDeclaration = await provider.provideReferences(
+            sourceDocument,
+            new vscodeMock.Position(2, 65),
+            { includeDeclaration: true },
+        );
+        assert.deepEqual(references.map(location => location.range.start.line), [2]);
+        assert.deepEqual(withDeclaration.map(location => location.range.start.line), [2, 9]);
+
+        const enumDocument = partAdpoptReferenceDocument(rootFile, 2);
+        assert.deepEqual(await provider.provideReferences(
+            enumDocument,
+            new vscodeMock.Position(2, 65),
+            { includeDeclaration: true },
+        ), []);
+    });
+});
+
+describe('manual workspace reference text search', () => {
+    function materialReferenceDocument(filePath, value = '1001') {
+        const doc = fakeDoc([
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY',
+            '         1       7.8     210.0       0.3     400.0       0.0',
+            [0, 0, value, 0, 0].map(item => String(item).padStart(10)).join(''),
+        ].join('\n'), filePath);
+        doc.languageId = 'lsdyna';
+        doc.version = 7;
+        return doc;
+    }
+
+    const emptyFileIndex = () => ({
+        keywordBlocks: [],
+        parameterEvents: [],
+        referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+    });
+
+    let originalExecuteCommand;
+    let originalGetConfiguration;
+    let originalStatusMessage;
+
+    beforeEach(() => {
+        originalExecuteCommand = vscodeMock.commands.executeCommand;
+        originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        originalStatusMessage = vscodeMock.window.setStatusBarMessage;
+    });
+
+    afterEach(() => {
+        vscodeMock.commands.executeCommand = originalExecuteCommand;
+        vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        vscodeMock.window.setStatusBarMessage = originalStatusMessage;
+        vscodeMock.window.activeTextEditor = null;
+        clearReferenceIndexCacheForTesting();
+    });
+
+    it('re-parses the active field and ignores a forged command ID', async () => {
+        const filePath = path.resolve('workspace-search', 'main.k');
+        const document = materialReferenceDocument(filePath);
+        vscodeMock.window.activeTextEditor = {
+            document,
+            selection: { active: new vscodeMock.Position(2, 24) },
+        };
+        vscodeMock.workspace.getConfiguration = () => ({
+            get: (key, defaultValue) => key === 'additionalExtensions'
+                ? ['dat', '.incl', '.K', '*.unsafe']
+                : defaultValue,
+        });
+        const calls = [];
+        const statuses = [];
+        vscodeMock.commands.executeCommand = async (command, args) => {
+            calls.push({ command, args });
+        };
+        vscodeMock.window.setStatusBarMessage = (message, timeout) => {
+            statuses.push({ message, timeout });
+            return { dispose() {} };
+        };
+
+        const result = await handleWorkspaceReferenceSearchCommand({
+            filePath,
+            lineIndex: 2,
+            character: 20,
+            documentVersion: 7,
+            id: 9999,
+            targetKinds: ['material'],
+        });
+
+        assert.equal(result.id, 1001);
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].command, 'workbench.action.findInFiles');
+        assert.deepEqual(calls[0].args, {
+            query: '1001',
+            triggerSearch: true,
+            isRegex: false,
+            isCaseSensitive: false,
+            matchWholeWord: true,
+            filesToInclude: '**/*.dat,**/*.incl,**/*.k',
+        });
+        assert.equal(Object.hasOwn(calls[0].args, 'filesToExclude'), false);
+        assert.equal(Object.hasOwn(calls[0].args, 'useExcludeSettingsAndIgnoreFiles'), false);
+        assert.ok(statuses[0].message.includes('text'));
+    });
+
+    it('uses the cached Include occurrence to search the effective ID after IDFOFF', async () => {
+        const rootFile = path.resolve('workspace-search', 'root.k');
+        const sourceFile = path.resolve('workspace-search', 'included-material.k');
+        const document = materialReferenceDocument(sourceFile, '1001');
+        cacheReferenceIndexFromSnapshot({
+            rootFile,
+            files: [rootFile, sourceFile],
+            graph: {
+                includeOccurrences: [{
+                    occurrenceId: 'root:source',
+                    fromFile: rootFile,
+                    filePath: sourceFile,
+                    fileName: path.basename(sourceFile),
+                    lineIndex: 1,
+                    keyword: '*INCLUDE_TRANSFORM',
+                    transform: {
+                        offsets: {
+                            idfoff: { kind: 'numeric', raw: '100', value: 100 },
+                        },
+                    },
+                }],
+            },
+            fileIndexes: new Map([
+                [rootFile, emptyFileIndex()],
+                [sourceFile, emptyFileIndex()],
+            ]),
+        });
+        vscodeMock.window.activeTextEditor = {
+            document,
+            selection: { active: new vscodeMock.Position(2, 24) },
+        };
+        const calls = [];
+        vscodeMock.commands.executeCommand = async (command, args) => calls.push({ command, args });
+
+        const resolved = resolveWorkspaceReferenceSearch(
+            document,
+            new vscodeMock.Position(2, 24)
+        );
+        const result = await handleWorkspaceReferenceSearchCommand({
+            filePath: sourceFile,
+            lineIndex: 2,
+            character: 20,
+            documentVersion: 7,
+            projectRootFile: rootFile,
+        });
+
+        assert.equal(resolved.id, 1101);
+        assert.equal(resolved.analysis.transformResolution.offset, 100);
+        assert.equal(result.id, 1101);
+        assert.equal(calls[0].args.query, '1101');
+
+        const staleContext = await handleWorkspaceReferenceSearchCommand({
+            filePath: sourceFile,
+            lineIndex: 2,
+            character: 20,
+            documentVersion: 7,
+            projectRootFile: path.resolve('workspace-search', 'other-root.k'),
+        });
+        assert.equal(staleContext, null);
+        assert.equal(calls.length, 1);
+    });
+
+    it('fails open when the hover source is stale or the parameter remains dynamic', async () => {
+        const filePath = path.resolve('workspace-search', 'stale.k');
+        const document = materialReferenceDocument(filePath);
+        vscodeMock.window.activeTextEditor = {
+            document,
+            selection: { active: new vscodeMock.Position(2, 24) },
+        };
+        let executeCount = 0;
+        const statuses = [];
+        vscodeMock.commands.executeCommand = async () => { executeCount += 1; };
+        vscodeMock.window.setStatusBarMessage = message => {
+            statuses.push(message);
+            return { dispose() {} };
+        };
+
+        assert.equal(workspaceReferenceSearchPosition(vscodeMock.window.activeTextEditor, {
+            filePath,
+            lineIndex: 2,
+            character: 20,
+            documentVersion: 6,
+        }), null);
+        assert.equal(await handleWorkspaceReferenceSearchCommand({
+            filePath,
+            lineIndex: 2,
+            character: 20,
+            documentVersion: 6,
+        }), null);
+
+        const parameterDocument = materialReferenceDocument(filePath, '&CID');
+        vscodeMock.window.activeTextEditor = {
+            document: parameterDocument,
+            selection: { active: new vscodeMock.Position(2, 24) },
+        };
+        assert.equal(await handleWorkspaceReferenceSearchCommand(), null);
+        assert.equal(executeCount, 0);
+        assert.equal(statuses.length, 2);
+    });
+
+    it('uses the current file value when main-deck context is ambiguous', async () => {
+        const rootA = path.resolve('workspace-search', 'root-a.k');
+        const rootB = path.resolve('workspace-search', 'root-b.k');
+        const sourceFile = path.resolve('workspace-search', 'shared.k');
+        const document = materialReferenceDocument(sourceFile);
+        for (const [rootFile, offset] of [[rootA, 100], [rootB, 200]]) {
+            cacheReferenceIndexFromSnapshot({
+                rootFile,
+                files: [rootFile, sourceFile],
+                graph: {
+                    includeOccurrences: [{
+                        occurrenceId: `${rootFile}:source`,
+                        fromFile: rootFile,
+                        filePath: sourceFile,
+                        fileName: path.basename(sourceFile),
+                        lineIndex: 1,
+                        keyword: '*INCLUDE_TRANSFORM',
+                        transform: {
+                            offsets: {
+                                idfoff: { kind: 'numeric', raw: String(offset), value: offset },
+                            },
+                        },
+                    }],
+                },
+                fileIndexes: new Map([
+                    [rootFile, emptyFileIndex()],
+                    [sourceFile, emptyFileIndex()],
+                ]),
+            });
+        }
+        vscodeMock.window.activeTextEditor = {
+            document,
+            selection: { active: new vscodeMock.Position(2, 24) },
+        };
+        let executeCount = 0;
+        vscodeMock.commands.executeCommand = async () => { executeCount += 1; };
+
+        const resolved = resolveWorkspaceReferenceSearch(
+            document,
+            new vscodeMock.Position(2, 24)
+        );
+        const result = await handleWorkspaceReferenceSearchCommand();
+
+        assert.notEqual(resolved?.unavailableReason, 'project-root-ambiguous');
+        assert.equal(result.id, 1001);
+        assert.equal(executeCount, 1);
+    });
+
+    it('keeps search planning bounded near the tail of an unindexed million-line deck', async () => {
+        const filePath = path.resolve('workspace-search', 'million-line.k');
+        const lineCount = 1_000_000;
+        const keywordLine = lineCount - 3;
+        const cardOne = '         1       7.8     210.0       0.3     400.0       0.0';
+        const cardTwo = [0, 0, 1001, 0, 0].map(item => String(item).padStart(10)).join('');
+        let reads = 0;
+        const document = {
+            languageId: 'lsdyna',
+            version: 1,
+            isDirty: false,
+            lineCount,
+            uri: { fsPath: filePath },
+            lineAt(line) {
+                reads += 1;
+                let text = '';
+                if (line === 0) text = '*KEYWORD';
+                else if (line === keywordLine) text = '*MAT_PIECEWISE_LINEAR_PLASTICITY';
+                else if (line === keywordLine + 1) text = cardOne;
+                else if (line === keywordLine + 2) text = cardTwo;
+                return { text, range: new vscodeMock.Range(line, 0, line, text.length) };
+            },
+        };
+        vscodeMock.window.activeTextEditor = {
+            document,
+            selection: { active: new vscodeMock.Position(lineCount - 1, 24) },
+        };
+        let searchCount = 0;
+        vscodeMock.commands.executeCommand = async (command, args) => {
+            assert.equal(command, 'workbench.action.findInFiles');
+            assert.equal(args.query, '1001');
+            searchCount += 1;
+        };
+
+        const samples = [];
+        for (let index = 0; index < 100; index++) {
+            const started = performance.now();
+            const result = await handleWorkspaceReferenceSearchCommand();
+            samples.push(performance.now() - started);
+            assert.equal(result.id, 1001);
+        }
+        samples.sort((left, right) => left - right);
+        const p95 = samples[Math.floor(samples.length * 0.95)];
+        if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+            const p50 = samples[Math.floor(samples.length * 0.50)];
+            const p99 = samples[Math.floor(samples.length * 0.99)];
+            console.log(
+                `    workspace text search planning: P50 ${p50.toFixed(3)} ms, ` +
+                `P95 ${p95.toFixed(3)} ms, P99 ${p99.toFixed(3)} ms, ` +
+                `${(reads / samples.length).toFixed(1)} lineAt/call`,
+            );
+        }
+
+        assert.equal(searchCount, 100);
+        assert.ok(reads < 4_000, `expected bounded source reads, got ${reads}`);
+        assert.ok(p95 < 5, `expected workspace search planning P95 <5 ms, got ${p95.toFixed(3)} ms`);
+    });
+});
+
+describe('indexed entity ID query command', () => {
+    it('contributes the query to LS-DYNA editor context menus including unsynchronized large resources', () => {
+        const manifest = require('../package.json');
+        const item = manifest.contributes.menus['editor/context'].find(candidate =>
+            candidate.command === 'extension.queryLsdynaEntityId'
+        );
+
+        assert.ok(item);
+        assert.ok(item.when.includes("editorLangId == 'lsdyna'"));
+        assert.ok(item.when.includes("resourceExtname == '.k'"));
+        assert.ok(item.when.includes("resourceExtname == '.key'"));
+        assert.ok(item.when.includes("resourceExtname == '.dyna'"));
+    });
+
+    it('contributes the object-reference webview and preserves its command IDs', () => {
+        const manifest = require('../package.json');
+        const views = manifest.contributes.views['lsdyna-includes'];
+        assert.equal(views.find(view => view.id === 'lsdynaEntityReferences').type, 'webview');
+        const commands = new Set(manifest.contributes.commands.map(command => command.command));
+        for (const command of [
+            'extension.entityReferences.refresh', 'extension.entityReferences.pin',
+            'extension.entityReferences.unpin', 'extension.entityReferences.remove',
+            'extension.entityReferences.clear', 'extension.entityReferences.next',
+            'extension.entityReferences.previous', 'extension.entityReferences.openSide',
+            'extension.entityReferences.openCurrent',
+        ]) {
+            assert.ok(commands.has(command), `missing ${command}`);
+        }
+        const keybindings = manifest.contributes.keybindings || [];
+        assert.equal(keybindings.some(binding => binding.command.startsWith('extension.entityReferences.')), false);
+        const editorContext = manifest.contributes.menus['editor/context'] || [];
+        assert.ok(editorContext.some(item =>
+            item.command === 'extension.entityReferences.refresh' &&
+            item.when === "editorLangId == 'lsdyna'",
+        ));
+        const viewTitle = manifest.contributes.menus['view/title'] || [];
+        assert.ok(viewTitle.some(item =>
+            item.command === 'extension.entityReferences.refresh' &&
+            item.when === 'view == lsdynaEntityReferences',
+        ));
+        const itemContext = manifest.contributes.menus['view/item/context'] || [];
+        assert.equal(itemContext.some(item => item.command.startsWith('extension.entityReferences.')), false);
+    });
+
+
+
+    it('refreshes from the current cursor and clears the current query when no entity is under it', async () => {
+        const refreshState = { revision: 0 };
+        const calls = [];
+        let current = { key: 'old', identity: { targetKind: 'curve', id: 1 } };
+        const provider = {
+            getCurrentSession: () => current,
+            markLoading: session => calls.push({ type: 'loading', session }),
+            clearCurrent: () => { calls.push({ type: 'clear' }); current = null; return true; },
+        };
+        const target = { targetKind: 'curve', id: 1000001, filePath: 'deck.key', line: 2, character: 5 };
+        const refreshed = await refreshCurrentEntityReferenceQuery(
+            {}, provider, refreshState,
+            {
+                inferTarget: () => target,
+                runQuery: async (_indexClient, actualTarget, options) => {
+                    calls.push({ type: 'query', actualTarget, current: options.isCurrentRequest() });
+                    return { state: 'complete', locations: [], querySession: { key: 'new' } };
+                },
+            },
+        );
+        assert.equal(refreshed.state, 'complete');
+        assert.deepEqual(calls.map(call => call.type), ['loading', 'query']);
+        assert.deepEqual(calls[1].actualTarget, target);
+        assert.equal(calls[1].current, true);
+
+        const cleared = await refreshCurrentEntityReferenceQuery(
+            {}, provider, refreshState,
+            { inferTarget: () => null, runQuery: async () => { throw new Error('must not query'); } },
+        );
+        assert.equal(cleared, null);
+        assert.equal(calls.at(-1).type, 'clear');
+    });
+
+    it('does not publish a superseded current refresh and leaves failures retryable', async () => {
+        const refreshState = { revision: 0 };
+        const published = [];
+        const loading = [];
+        let clearCount = 0;
+        const provider = {
+            current: { key: 'old' },
+            getCurrentSession() { return this.current; },
+            markLoading(session) { loading.push(session); },
+            clearCurrent() { clearCount += 1; this.current = null; return true; },
+        };
+        let releaseFirst;
+        const firstGate = new Promise(resolve => { releaseFirst = resolve; });
+        const runQuery = async (_indexClient, target, options) => {
+            if (target.id === 1) {
+                await firstGate;
+                if (!options.isCurrentRequest()) return null;
+            }
+            published.push(target.id);
+            return { state: 'complete', locations: [], querySession: { key: String(target.id) } };
+        };
+        const first = refreshCurrentEntityReferenceQuery({}, provider, refreshState, {
+            inferTarget: () => ({ targetKind: 'curve', id: 1 }), runQuery,
+        });
+        const second = refreshCurrentEntityReferenceQuery({}, provider, refreshState, {
+            inferTarget: () => ({ targetKind: 'curve', id: 2 }), runQuery,
+        });
+        await second;
+        releaseFirst();
+        await first;
+        assert.deepEqual(published, [2]);
+        assert.equal(loading.length, 2);
+
+        const failed = await refreshCurrentEntityReferenceQuery({}, provider, refreshState, {
+            inferTarget: () => ({ targetKind: 'curve', id: 3 }),
+            runQuery: async () => { throw new Error('query failed'); },
+            logError: () => {},
+        });
+        assert.equal(failed, null);
+        assert.equal(clearCount, 1);
+    });
+
+    it('refreshes a stale stored query using its saved identity and scope', async () => {
+        const refreshState = { revision: 0 };
+        const session = {
+            key: 'curve:1000001',
+            identity: {
+                targetKind: 'curve', id: 1000001,
+                scope: { kind: 'single-file', filePath: path.resolve('stale.key') },
+            },
+            state: 'stale',
+        };
+        const calls = [];
+        const provider = {
+            getSession: target => target === session ? session : null,
+            markLoading: value => calls.push({ type: 'loading', value }),
+            markNeedsRefresh: (value, reasons) => calls.push({ type: 'needs-refresh', value, reasons }),
+        };
+        const result = await refreshStoredEntityReferenceQuery({}, provider, refreshState, session, {
+            runQuery: async (_indexClient, target, options) => {
+                calls.push({ type: 'query', target, scope: options.scopeIdentity });
+                return { state: 'complete', locations: [{ role: 'definition' }], querySession: session };
+            },
+        });
+        assert.equal(result.state, 'complete');
+        assert.deepEqual(calls.map(call => call.type), ['loading', 'query']);
+        assert.deepEqual(calls[1].target, { targetKind: 'curve', id: 1000001 });
+        assert.deepEqual(calls[1].scope, session.identity.scope);
+    });
+
+    it('promotes the current single-file query after its root Include tree finishes scanning', async () => {
+        const rootFile = path.resolve('entity-query-scan', 'root.k');
+        const snapshot = { scope: 'project', rootFile, files: [rootFile] };
+        const session = {
+            pinned: false,
+            identity: {
+                targetKind: 'material', id: 2000102,
+                scope: { kind: 'single-file', filePath: rootFile },
+            },
+        };
+        const calls = [];
+        const result = await refreshCurrentEntityQueryAfterProjectScan(
+            { rootFile, snapshot },
+            { getActiveSession: () => session },
+            async (active, scanResult) => {
+                calls.push({ active, scanResult });
+                return { state: 'partial', locations: [{ role: 'definition' }] };
+            },
+        );
+
+        assert.equal(result.state, 'partial');
+        assert.equal(calls.length, 1);
+        assert.strictEqual(calls[0].active, session);
+        assert.strictEqual(calls[0].scanResult.snapshot, snapshot);
+
+        session.pinned = true;
+        assert.equal(await refreshCurrentEntityQueryAfterProjectScan(
+            { rootFile, snapshot },
+            { getActiveSession: () => session },
+            async () => { throw new Error('pinned query must not be promoted'); },
+        ), null);
+    });
+
+    it('queries the active disk file without requiring an active TextDocument', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-command-'));
+        const filePath = path.join(tempRoot, 'large.key');
+        fs.writeFileSync(filePath, '*MAT_ELASTIC\n   2000101\n', 'utf8');
+        const snapshot = {
+            scope: 'single-file',
+            rootFile: filePath,
+            files: [filePath],
+            graph: { includeOccurrences: [] },
+            fileIndexes: new Map(),
+        };
+        const calls = [];
+        const originalTabGroups = vscodeMock.window.tabGroups;
+        try {
+            vscodeMock.window.activeTextEditor = null;
+            vscodeMock.window.tabGroups = {
+                ...originalTabGroups,
+                activeTabGroup: { activeTab: { input: { uri: { fsPath: filePath } } } },
+            };
+            const result = await handleIndexedEntityIdQueryCommand(
+                { loadProjectSnapshot: async () => { throw new Error('unexpected default load'); } },
+                { targetKind: 'material', id: '2000101' },
+                {
+                    prepareSnapshot: async value => ({ state: 'ready', snapshot: value, reasons: [] }),
+                    loadSnapshot: async (requestedPath, token) => {
+                        calls.push({ type: 'load', requestedPath, token });
+                        return snapshot;
+                    },
+                    query: async request => {
+                        calls.push({ type: 'query', request });
+                        return {
+                            state: 'complete',
+                            id: 2000101,
+                            targetKind: 'material',
+                            locations: [
+                                {
+                                    role: 'definition', keyword: '*MAT_ELASTIC', fieldName: 'MID',
+                                    filePath, line: 1, startCharacter: 3, endCharacter: 10,
+                                },
+                                {
+                                    role: 'reference', keyword: '*PART', fieldName: 'MID',
+                                    filePath, line: 8, startCharacter: 23, endCharacter: 30,
+                                },
+                            ],
+                            reasons: [],
+                        };
+                    },
+                    entityReferenceProvider: {
+                        publish: (identity, queryResult) => {
+                            calls.push({ type: 'publish', identity, queryResult });
+                            return { key: 'material:2000101', identity };
+                        },
+                        revealSession: async session => calls.push({ type: 'reveal', session }),
+                    },
+                    presentResult: async queryResult => calls.push({ type: 'present', queryResult }),
+                    runWithProgress: operation => operation(null, null),
+                },
+            );
+
+            assert.equal(result.state, 'complete');
+            assert.equal(result.id, 2000101);
+            assert.equal(calls[0].type, 'load');
+            assert.equal(calls[0].requestedPath, filePath);
+            assert.equal(calls[1].type, 'publish');
+            assert.equal(calls[1].queryResult.state, 'loading');
+            assert.equal(calls[2].type, 'query');
+            assert.strictEqual(calls[2].request.snapshot, snapshot);
+            assert.equal(calls[2].request.targetKind, 'material');
+            assert.equal(calls[2].request.id, 2000101);
+            assert.equal(calls[3].type, 'publish');
+            assert.deepEqual(calls[3].identity, {
+                targetKind: 'material',
+                id: 2000101,
+                scope: { kind: 'single-file', filePath },
+            });
+            assert.equal(calls[4].type, 'present');
+        } finally {
+            vscodeMock.window.tabGroups = originalTabGroups;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('uses cursor inference and delegates missing input to the webview form', async () => {
+        const snapshot = { scope: 'single-file', fileIndexes: new Map() };
+        const run = async options => handleIndexedEntityIdQueryCommand(
+            { loadProjectSnapshot: async () => snapshot },
+            null,
+            {
+                scope: { kind: 'single-file', filePath: path.resolve('query.key'), snapshot },
+                prepareSnapshot: async value => ({ state: 'ready', snapshot: value }),
+                query: async request => ({
+                    state: 'complete', locations: [], reasons: [],
+                    id: request.id, targetKind: request.targetKind,
+                }),
+                presentResult: false,
+                runWithProgress: operation => operation(null, null),
+                ...options,
+            },
+        );
+        const inferred = await run({
+            inferTarget: () => ({ targetKind: 'curve', id: 101 }),
+        });
+        assert.equal(inferred.id, 101);
+
+        let inputRequired = 0;
+        const entered = await run({
+            inferTarget: () => null,
+            onInputRequired: () => { inputRequired += 1; },
+        });
+        assert.equal(entered, null);
+        assert.equal(inputRequired, 1);
+    });
+
+    it('keeps the last LS-DYNA editor as the cursor source while the webview has focus', () => {
+        const originalActiveEditor = vscodeMock.window.activeTextEditor;
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        const originalVisibleEditors = vscodeMock.window.visibleTextEditors;
+        const originalTabGroups = vscodeMock.window.tabGroups;
+        const document = fakeDoc('*PART\n         1', path.resolve('cursor-source.key'));
+        document.languageId = 'lsdyna';
+        const editor = { document, selection: { active: new vscodeMock.Position(1, 9) } };
+        try {
+            vscodeMock.workspace.textDocuments = [document];
+            vscodeMock.window.activeTextEditor = undefined;
+            assert.strictEqual(resolveEntityReferenceCursorEditor(editor), editor);
+
+            vscodeMock.window.visibleTextEditors = [editor];
+            vscodeMock.window.tabGroups = {
+                ...originalTabGroups,
+                activeTabGroup: { activeTab: { input: { uri: document.uri } } },
+            };
+            assert.strictEqual(resolveEntityReferenceCursorEditor(null), editor);
+
+            vscodeMock.workspace.textDocuments = [];
+            vscodeMock.window.visibleTextEditors = [];
+            assert.equal(resolveEntityReferenceCursorEditor(editor), null);
+        } finally {
+            vscodeMock.window.activeTextEditor = originalActiveEditor;
+            vscodeMock.workspace.textDocuments = originalDocuments;
+            vscodeMock.window.visibleTextEditors = originalVisibleEditors;
+            vscodeMock.window.tabGroups = originalTabGroups;
+        }
+    });
+
+    it('distinguishes an unsynchronized large-file tab from the custom large-file viewer', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-large-tab-'));
+        const filePath = path.join(tempRoot, 'large.key');
+        const uri = { ...vscodeMock.Uri.file(filePath), scheme: 'file' };
+        const originalActiveEditor = vscodeMock.window.activeTextEditor;
+        const originalTabGroups = vscodeMock.window.tabGroups;
+        try {
+            fs.writeFileSync(filePath, '*KEYWORD\n', 'utf8');
+            fs.truncateSync(filePath, 50 * 1024 * 1024);
+            vscodeMock.window.activeTextEditor = undefined;
+            vscodeMock.window.tabGroups = {
+                ...originalTabGroups,
+                activeTabGroup: { activeTab: { input: { uri } } },
+            };
+            assert.equal(activeUnsynchronizedLargeFileUri().fsPath, filePath);
+            assert.equal(activeLargeFileViewerUri(), null);
+
+            vscodeMock.window.tabGroups.activeTabGroup.activeTab.input.viewType =
+                'lsdyna.largeFileViewer';
+            assert.equal(activeUnsynchronizedLargeFileUri(), null);
+            assert.equal(activeLargeFileViewerUri().fsPath, filePath);
+        } finally {
+            vscodeMock.window.activeTextEditor = originalActiveEditor;
+            vscodeMock.window.tabGroups = originalTabGroups;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('infers a definition query from the current definition ID and follows cursor changes', () => {
+        const document = fakeDoc([
+            '*KEYWORD',
+            '*SET_NODE_GENERAL',
+            '$#     sid       da1       da2       da3       da4',
+            '   1000003',
+            '*SET_NODE_GENERAL',
+            '$#     sid       da1       da2       da3       da4',
+            '   1000004',
+            '*END',
+        ].join('\n'), path.resolve('definition-refresh.key'));
+        document.languageId = 'lsdyna';
+        document.version = 1;
+
+        assert.deepEqual(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: { line: 3, character: 5 } },
+            }),
+            {
+                targetKind: 'node-set',
+                id: 1000003,
+                filePath: document.uri.fsPath,
+                line: 3,
+                character: 5,
+            },
+        );
+        assert.equal(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: { line: 6, character: 5 } },
+            }).id,
+            1000004,
+        );
+        assert.equal(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: { line: 3, character: 10 } },
+            }).id,
+            1000003,
+        );
+    });
+
+    it('infers LS-PrePost transformation definitions and references at the cursor', () => {
+        const document = fakeDoc([
+            '*KEYWORD',
+            '*DEFINE_TRANSFORMATION',
+            '   1000001',
+            '*INCLUDE_TRANSFORM',
+            'test2/wall2.key',
+            '  10000000  10000000  10000000  10000000  10000000  10000000  10000000',
+            '  10000000',
+            '',
+            '$#  tranid',
+            '   1000001',
+            '*END',
+        ].join('\n'), path.resolve('transformation-cursor.key'));
+        document.languageId = 'lsdyna';
+        document.version = 1;
+
+        for (const line of [2, 9]) {
+            assert.deepEqual(
+                inferIndexedEntityQueryTarget({
+                    document,
+                    selection: { active: new vscodeMock.Position(line, 5) },
+                }),
+                {
+                    targetKind: 'transformation',
+                    id: 1000001,
+                    filePath: document.uri.fsPath,
+                    line,
+                    character: 5,
+                },
+            );
+        }
+    });
+
+    it('queries the complete LS-PrePost transformation deck through the webview command path', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-transform-webview-'));
+        const filePath = path.join(tempRoot, 'main.key');
+        fs.writeFileSync(filePath, [
+            '*KEYWORD',
+            '*DEFINE_TRANSFORMATION',
+            '   1000001',
+            '$   ROTATE       0.0       0.0       1.0       0.0       0.0       0.0      -25.',
+            'TRANSL       -4450.0        2.       0.0',
+            '*INCLUDE_TRANSFORM',
+            'test2/wall2.key',
+            '  10000000  10000000  10000000  10000000  10000000  10000000  10000000',
+            '  10000000',
+            '$#  fctmas    fcttim    fctlen    fcttem    incout',
+            '',
+            '$#  tranid',
+            '   1000001',
+            '*END',
+        ].join('\n'), 'utf8');
+        try {
+            const snapshot = await buildProjectIndex(filePath, { singleFileOnly: true });
+            const query = await handleIndexedEntityIdQueryCommand(
+                { loadProjectSnapshot: async () => snapshot },
+                { targetKind: 'transformation', id: 1000001, filePath },
+                {
+                    scope: { kind: 'single-file', filePath, snapshot },
+                    runWithProgress: operation => operation(null, null),
+                },
+            );
+            assert.equal(query.state, 'exact', JSON.stringify(query.reasons));
+            assert.deepEqual(query.locations.map(location => [
+                location.role, location.keyword, location.fieldName, location.line,
+            ]), [
+                ['definition', '*DEFINE_TRANSFORMATION', 'TRANID', 2],
+                ['reference', '*INCLUDE_TRANSFORM', 'TRANID', 12],
+            ]);
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('keeps a reference value under the cursor at its fixed-width exclusive end', () => {
+        const document = fakeDoc([
+            '*NODE_TRANSFORM',
+            '   2000101',
+            '*END',
+        ].join('\n'), path.resolve('transformation-boundary.key'));
+        document.languageId = 'lsdyna';
+        document.version = 1;
+
+        assert.deepEqual(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: new vscodeMock.Position(1, 10) },
+            }),
+            {
+                targetKind: 'transformation',
+                id: 2000101,
+                filePath: document.uri.fsPath,
+                line: 1,
+                character: 10,
+            },
+        );
+    });
+
+    it('infers part-set definitions through TITLE schema aliases', () => {
+        const document = fakeDoc([
+            '*SET_PART_LIST_TITLE',
+            'SET_Dummy',
+            '   8100001',
+            '91200001,91200401,91200601',
+            '*END',
+        ].join('\n'), path.resolve('definition-refresh-set-part-title.key'));
+        document.languageId = 'lsdyna';
+        document.version = 1;
+
+        assert.deepEqual(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: new vscodeMock.Position(2, 5) },
+            }),
+            {
+                targetKind: 'part-set',
+                id: 8100001,
+                filePath: document.uri.fsPath,
+                line: 2,
+                character: 5,
+            },
+        );
+        assert.equal(
+            inferIndexedEntityQueryTarget({
+                document,
+                selection: { active: new vscodeMock.Position(3, 2) },
+            }),
+            null,
+        );
+    });
+
+    it('opens one result in the current editor and multiple results in native Peek', async () => {
+        const originalExecute = vscodeMock.commands.executeCommand;
+        const calls = [];
+        vscodeMock.commands.executeCommand = async (...args) => calls.push(args);
+        try {
+            const location = {
+                role: 'definition', filePath: path.resolve('definition.key'),
+                line: 2, startCharacter: 0, endCharacter: 10,
+            };
+            await presentIndexedEntityQueryResult({ locations: [location] });
+            assert.equal(calls[0][0], 'vscode.open');
+            assert.equal(calls[0][2].viewColumn, vscodeMock.ViewColumn.Active);
+
+            await presentIndexedEntityQueryResult({ locations: [location, { ...location, line: 3 }] });
+            assert.equal(calls[1][0], 'editor.action.peekLocations');
+            assert.equal(calls[1][3].length, 2);
+        } finally {
+            vscodeMock.commands.executeCommand = originalExecute;
+        }
+    });
+
+    it('reuses an already-scanned project snapshot instead of loading a single file', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-project-'));
+        const rootFile = path.join(tempRoot, 'root.k');
+        fs.writeFileSync(rootFile, '*KEYWORD\n*END\n', 'utf8');
+        cacheReferenceIndexFromSnapshot({
+            scope: 'project',
+            rootFile,
+            files: [rootFile],
+            graph: { includeOccurrences: [], includeOccurrencesComplete: true },
+            fileIndexes: new Map([[rootFile, {
+                parameterEvents: [],
+                referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                registryReferences: {
+                    complete: true, reasons: [], referenceOccurrences: [], valueDomainOccurrences: [],
+                },
+            }]]),
+        });
+        let loadCount = 0;
+        const originalTabGroups = vscodeMock.window.tabGroups;
+        try {
+            vscodeMock.window.activeTextEditor = null;
+            vscodeMock.window.tabGroups = {
+                ...originalTabGroups,
+                activeTabGroup: { activeTab: { input: { uri: { fsPath: rootFile } } } },
+            };
+            const result = await handleIndexedEntityIdQueryCommand(
+                { loadProjectSnapshot: async () => { loadCount += 1; } },
+                { targetKind: 'material', id: 2000101 },
+                {
+                    loadSnapshot: async () => { loadCount += 1; },
+                    query: async request => ({
+                        state: 'complete',
+                        id: request.id,
+                        targetKind: request.targetKind,
+                        locations: [],
+                        reasons: [],
+                    }),
+                    runWithProgress: operation => operation(null, null),
+                },
+            );
+
+            assert.equal(loadCount, 0);
+            assert.equal(result.state, 'complete');
+        } finally {
+            vscodeMock.window.tabGroups = originalTabGroups;
+            clearReferenceIndexCacheForTesting();
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('reloads an oversized scanned project scope instead of falling back to the active root file', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-oversized-scope-'));
+        const rootFile = path.join(tempRoot, 'root.k');
+        const childFile = path.join(tempRoot, 'child.k');
+        fs.writeFileSync(rootFile, '*INCLUDE\nchild.k\n', 'utf8');
+        fs.writeFileSync(childFile, '*MAT_ELASTIC\n   2000102\n', 'utf8');
+        const snapshot = {
+            scope: 'project', rootFile, files: [rootFile, childFile],
+            graph: { includeOccurrences: [], includeOccurrencesComplete: true },
+            fileIndexes: new Map(),
+        };
+        const loads = [];
+        const originalTabGroups = vscodeMock.window.tabGroups;
+        try {
+            clearReferenceIndexCacheForTesting();
+            assert.equal(cacheReferenceIndexFromSnapshot(snapshot, { maxBytes: 1 }), false);
+            vscodeMock.window.activeTextEditor = null;
+            vscodeMock.window.tabGroups = {
+                ...originalTabGroups,
+                activeTabGroup: { activeTab: { input: { uri: { fsPath: rootFile } } } },
+            };
+            const result = await handleIndexedEntityIdQueryCommand(
+                {
+                    loadProjectSnapshot: async (requestedRoot, options) => {
+                        loads.push({ requestedRoot, options });
+                        return snapshot;
+                    },
+                },
+                { targetKind: 'material', id: 2000102 },
+                {
+                    prepareSnapshot: async value => ({ state: 'ready', snapshot: value, reasons: [] }),
+                    query: async request => ({
+                        state: 'complete', id: request.id, targetKind: request.targetKind,
+                        locations: [], reasons: [],
+                    }),
+                    runWithProgress: operation => operation(null, null),
+                },
+            );
+
+            assert.equal(result.state, 'complete');
+            assert.equal(loads.length, 1);
+            assert.equal(loads[0].requestedRoot, rootFile);
+            assert.equal(loads[0].options.singleFileOnly, undefined);
+        } finally {
+            vscodeMock.window.tabGroups = originalTabGroups;
+            clearReferenceIndexCacheForTesting();
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('uses a dirty ordinary document as a live overlay for references and definitions', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-live-'));
+        const filePath = path.join(tempRoot, 'live.key');
+        fs.writeFileSync(filePath, '*MAT_ELASTIC\n         1\n', 'utf8');
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        try {
+            const snapshot = await buildProjectIndex(filePath, { singleFileOnly: true });
+            const document = fakeDoc('*MAT_ELASTIC\n   2000101\n', filePath);
+            document.isDirty = true;
+            document.version = 7;
+            document.languageId = 'lsdyna';
+            vscodeMock.workspace.textDocuments = [document];
+
+            const prepared = await prepareIndexedEntityQuerySnapshot(snapshot);
+            assert.equal(prepared.state, 'ready');
+            assert.equal(prepared.snapshot.fileIndexes.get(filePath).documentVersion, 7);
+
+            const query = await handleIndexedEntityIdQueryCommand(
+                { loadProjectSnapshot: async () => { throw new Error('unexpected load'); } },
+                { targetKind: 'material', id: 2000101 },
+                {
+                    scope: { kind: 'single-file', filePath, snapshot },
+                    runWithProgress: operation => operation(null, null),
+                },
+            );
+            assert.equal(query.state, 'exact', JSON.stringify(query.reasons));
+            assert.ok(query.locations.some(location =>
+                location.role === 'definition' && location.line === 1
+            ));
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocuments;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    it('fails closed when a dirty document can change the Include graph', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-dirty-include-'));
+        const filePath = path.join(tempRoot, 'root.key');
+        fs.writeFileSync(filePath, '*KEYWORD\n*END\n', 'utf8');
+        const originalDocuments = vscodeMock.workspace.textDocuments;
+        try {
+            const snapshot = await buildProjectIndex(filePath, { singleFileOnly: true });
+            const document = fakeDoc('*KEYWORD\n*INCLUDE\nchild.key\n*END\n', filePath);
+            document.isDirty = true;
+            document.version = 2;
+            document.languageId = 'lsdyna';
+            vscodeMock.workspace.textDocuments = [document];
+
+            const prepared = await prepareIndexedEntityQuerySnapshot(snapshot);
+            assert.equal(prepared.state, 'incomplete');
+            assert.equal(prepared.snapshot, null);
+            assert.ok(prepared.reasons.some(reason => reason.includes('dirty-include-graph-unverified')));
+        } finally {
+            vscodeMock.workspace.textDocuments = originalDocuments;
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('project index cache controls', () => {
+    function compactSnapshot(rootFile, padding = '') {
+        return {
+            rootFile,
+            files: [rootFile],
+            fileIndexes: new Map([[rootFile, {
+                keywordBlocks: [],
+                parameterEvents: [],
+                referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                padding,
+            }]]),
+        };
+    }
+
+    it('clamps configured limits to the documented hard ceilings', () => {
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = () => ({
+            get(key, fallback) {
+                return {
+                    'cache.memoryMaxMiB': 999,
+                    'cache.projectSnapshotDiskMaxMiB': 1,
+                    'cache.maxAgeDays': 0,
+                }[key] ?? fallback;
+            },
+        });
+        try {
+            assert.equal(cacheLimitBytes('cache.memoryMaxMiB', 48, 16, 64), 64 * 1024 * 1024);
+            assert.equal(cacheLimitBytes('cache.projectSnapshotDiskMaxMiB', 256, 32, 256), 32 * 1024 * 1024);
+            assert.equal(cacheLimitMilliseconds('cache.maxAgeDays', 30, 1, 30), 24 * 60 * 60 * 1000);
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
+    it('clears the LSP layers with progress and reports aggregate removed bytes', async () => {
+        const originalWithProgress = vscodeMock.window.withProgress;
+        const originalProgressLocation = vscodeMock.ProgressLocation;
+        const originalSetStatusBarMessage = vscodeMock.window.setStatusBarMessage;
+        const progressOptions = [];
+        const statusMessages = [];
+        const expected = {
+            memory: { cachedSnapshotCount: 2, totalSnapshotBytes: 1024 },
+            projectSnapshotDisk: { entryCount: 3, totalBytes: 2048 },
+            fileScanDisk: { entryCount: 4, totalBytes: 4096 },
+        };
+        let clearCalls = 0;
+        let diagnosticClearCalls = 0;
+        let includeClearCalls = 0;
+        let keywordLocalCalls = 0;
+        vscodeMock.ProgressLocation = { Notification: 15 };
+        vscodeMock.window.withProgress = async (options, task) => {
+            progressOptions.push(options);
+            return task({ report() {} });
+        };
+        vscodeMock.window.setStatusBarMessage = (message, timeout) => {
+            statusMessages.push({ message, timeout });
+            return { dispose() {} };
+        };
+
+        try {
+            const result = await handleClearProjectIndexCachesCommand({
+                async clearCaches() {
+                    clearCalls += 1;
+                    return expected;
+                },
+            }, {
+                projectDiagnosticStore: { clearAll() { diagnosticClearCalls++; } },
+                includeTreeProvider: { clearProjectSnapshot() { includeClearCalls++; } },
+                keywordIndexProvider: { async setLocal() { keywordLocalCalls++; } },
+            });
+            assert.strictEqual(result, expected);
+            assert.equal(clearCalls, 1);
+            assert.equal(diagnosticClearCalls, 1);
+            assert.equal(includeClearCalls, 1);
+            assert.equal(keywordLocalCalls, 1);
+            assert.equal(progressOptions.length, 1);
+            assert.equal(progressOptions[0].cancellable, false);
+            assert.deepEqual(cacheRemovalTotals(expected), { entryCount: 9, totalBytes: 7168 });
+            assert.equal(statusMessages.length, 1);
+            assert.match(statusMessages[0].message, /9/);
+            assert.match(statusMessages[0].message, /7\.0 KB/);
+            assert.equal(statusMessages[0].timeout, 8000);
+        } finally {
+            clearClientProjectSemanticCaches();
+            vscodeMock.window.withProgress = originalWithProgress;
+            vscodeMock.ProgressLocation = originalProgressLocation;
+            vscodeMock.window.setStatusBarMessage = originalSetStatusBarMessage;
+        }
+    });
+
+    it('evicts least-recently-used client project skeletons by estimated bytes', () => {
+        const rootA = path.resolve('client-cache', 'a.k');
+        const rootB = path.resolve('client-cache', 'b.k');
+        const rootC = path.resolve('client-cache', 'c.k');
+        clearReferenceIndexCacheForTesting();
+        try {
+            assert.equal(cacheReferenceIndexFromSnapshot(compactSnapshot(rootA, 'a'.repeat(1024))), true);
+            assert.equal(cacheReferenceIndexFromSnapshot(compactSnapshot(rootB, 'b'.repeat(1024))), true);
+            const twoProjectBudget = clientProjectCacheStats().totalBytes;
+            assert.equal(clientProjectCacheStats().entryCount, 2);
+
+            // Resolve A to make it the MRU project, then admit C under the exact
+            // two-project budget. B must be the only eviction candidate.
+            assert.equal(getMainDeckContextForDocumentPath(rootA).rootFile, rootA);
+            assert.equal(cacheReferenceIndexFromSnapshot(
+                compactSnapshot(rootC, 'c'.repeat(1024)),
+                { maxBytes: twoProjectBudget },
+            ), true);
+
+            assert.equal(clientProjectCacheStats(twoProjectBudget).entryCount, 2);
+            assert.equal(getMainDeckContextForDocumentPath(rootA).rootFile, rootA);
+            assert.equal(getMainDeckContextForDocumentPath(rootB).rootFile, rootB);
+            assert.equal(getMainDeckContextForDocumentPath(rootB).project.snapshot, undefined);
+            assert.equal(getMainDeckContextForDocumentPath(rootC).rootFile, rootC);
+            assert.ok(clientProjectCacheStats(twoProjectBudget).totalBytes <= twoProjectBudget);
+        } finally {
+            clearReferenceIndexCacheForTesting();
+        }
+    });
+
+    it('rejects an oversized client project and preserves live open-document indexes on clear', () => {
+        const rootFile = path.resolve('client-cache', 'oversize.k');
+        const liveFile = path.resolve('client-cache', 'open.k');
+        clearReferenceIndexCacheForTesting();
+        setFileIndexForTesting(liveFile, {
+            filePath: liveFile,
+            documentVersion: 7,
+            keywordBlocks: [],
+        });
+        try {
+            assert.equal(cacheReferenceIndexFromSnapshot(
+                compactSnapshot(rootFile, 'large'),
+                { maxBytes: 1 },
+            ), false);
+            assert.equal(clientProjectCacheStats().entryCount, 0);
+            assert.equal(getMainDeckContextForDocumentPath(rootFile).rootFile, rootFile);
+            assert.equal(getMainDeckContextForDocumentPath(rootFile).project.snapshot, undefined);
+            clearClientProjectSemanticCaches();
+            assert.equal(getMainDeckContextForDocumentPath(rootFile).rootFile, null);
+            assert.equal(getFileIndexForDocument({ uri: { fsPath: liveFile } }).documentVersion, 7);
+        } finally {
+            setFileIndexForTesting(liveFile, null);
+            clearReferenceIndexCacheForTesting();
+        }
+    });
+
+    it('bounds cache admission work without serializing an entire project', () => {
+        const rootFile = path.resolve('client-cache', 'bounded.k');
+        const snapshot = compactSnapshot(rootFile, 'small');
+        let visited = 0;
+        const occurrence = { filePath: rootFile };
+        const occurrences = Array(100000).fill(occurrence);
+        Object.defineProperty(occurrences, 99999, {
+            get() { visited++; throw new Error('cache admission traversed the entire project'); },
+        });
+        // Search-path metadata is walked by cache sizing, without an earlier
+        // snapshot copy. A rejected admission must retain project membership.
+        snapshot.effectiveSearchPathsByFile = new Map([[rootFile, occurrences]]);
+        clearReferenceIndexCacheForTesting();
+        try {
+            assert.equal(cacheReferenceIndexFromSnapshot(snapshot), false);
+            assert.equal(visited, 0);
+            assert.equal(clientProjectCacheStats().entryCount, 0);
+            assert.equal(getMainDeckContextForDocumentPath(rootFile).rootFile, rootFile);
+        } finally {
+            clearReferenceIndexCacheForTesting();
+        }
+    });
+
+    it('accounts for retained slots when project metadata shares objects', () => {
+        const rootFile = path.resolve('client-cache', 'shared.k');
+        const snapshot = compactSnapshot(rootFile, 'small');
+        const shared = { path: rootFile };
+        snapshot.effectiveSearchPathsByFile = new Map([[rootFile, [shared]]]);
+        clearReferenceIndexCacheForTesting();
+        try {
+            assert.equal(cacheReferenceIndexFromSnapshot(snapshot), true);
+            const small = clientProjectCacheStats().totalBytes;
+            snapshot.effectiveSearchPathsByFile = new Map([[rootFile, Array(1001).fill(shared)]]);
+            assert.equal(cacheReferenceIndexFromSnapshot(snapshot), true);
+            assert.ok(clientProjectCacheStats().totalBytes >= small + 8000);
+        } finally {
+            clearReferenceIndexCacheForTesting();
+        }
+    });
+});
+
+describe('verified conditional-card hover and command', () => {
+    const schema = require('../keywords/field_data.json');
+    const entry = schema.MAT_WINFRITH_CONCRETE;
+    const layoutId = 'card-edit-layout:4834299f92dfa36f81b31fbf';
+    const ruleId = 'rule:390df6397d5041459cbd486f';
+
+    function fixedCard(card, values = {}) {
+        const width = Math.max(...card.map(field => field.p + field.w));
+        const characters = Array(width).fill(' ');
+        for (const field of card) {
+            if (!Object.hasOwn(values, field.n)) continue;
+            const value = String(values[field.n]);
+            const start = field.p + field.w - value.length;
+            for (let index = 0; index < value.length; index++) characters[start + index] = value[index];
+        }
+        return characters.join('');
+    }
+
+    function winfrithDocument({
+        rate = 8,
+        cards = 2,
+        version = 7,
+        filePath = path.resolve('card-edit', 'winfrith.k'),
+        keyword = '*MAT_WINFRITH_CONCRETE',
+        globalHeader = null,
+    } = {}) {
+        const cardLines = entry.c.slice(0, cards).map((card, index) => fixedCard(
+            card,
+            index === 0 ? { MID: 1 } : index === 1 ? { RATE: rate } : {},
+        ));
+        const lines = [keyword, ...cardLines, '*END'];
+        if (globalHeader) lines.unshift(globalHeader);
+        const document = fakeDoc(lines.join('\n'), filePath);
+        document.languageId = 'lsdyna';
+        document.version = version;
+        document.eol = 1;
+        const uriIdentity = `file:///${filePath.replace(/\\/g, '/')}`;
+        document.uri = { fsPath: filePath, toString: () => uriIdentity };
+        return { document, keywordLine: globalHeader ? 1 : 0, uriIdentity };
+    }
+
+    function requestFor(document, keywordLine) {
+        return {
+            uri: document.uri.toString(),
+            keywordLine,
+            documentVersion: document.version,
+            layoutId,
+            ruleId,
+        };
+    }
+
+    let originalStatusMessage;
+
+    beforeEach(() => {
+        originalStatusMessage = vscodeMock.window.setStatusBarMessage;
+        vscodeMock.window.setStatusBarMessage = () => ({ dispose() {} });
+    });
+
+    afterEach(() => {
+        vscodeMock.window.setStatusBarMessage = originalStatusMessage;
+        vscodeMock.window.activeTextEditor = null;
+    });
+
+    it('shows one explicit ready-only hover action with identity-only command arguments', async () => {
+        const { document, keywordLine } = winfrithDocument();
+        const hover = await new LsdynaFieldHoverProvider().provideHover(
+            document,
+            { line: keywordLine, character: 4 },
+        );
+        assert.ok(hover);
+        const value = hover.contents[0].value;
+        assert.ok(value.includes(i18n.get('verifiedCardEditSection')));
+        assert.ok(value.includes('Cards 3–7'));
+        assert.ok(value.includes('Cards 3–4'));
+        assert.ok(value.includes('Cards 5–7'));
+        assert.ok(value.includes('RATE = 8'));
+        assert.ok(value.includes('LCCMP'));
+        assert.ok(value.includes(i18n.get('verifiedCardEditBlankOnly')));
+        assert.ok(value.includes(i18n.get('verifiedCardEditAction')));
+
+        const match = value.match(/command:extension\.addVerifiedConditionalCards\?([^\s"]+)/);
+        assert.ok(match, value);
+        const args = JSON.parse(decodeURIComponent(match[1]));
+        assert.equal(args.length, 1);
+        assert.deepEqual(Object.keys(args[0]).sort(), [
+            'documentVersion',
+            'keywordLine',
+            'layoutId',
+            'ruleId',
+            'uri',
+        ]);
+        assert.deepEqual(args[0], requestFor(document, keywordLine));
+        for (const forbidden of ['RATE', 'predicateState', 'existingPhysicalCards', 'cardsToAppend', 'insertion']) {
+            assert.equal(Object.hasOwn(args[0], forbidden), false);
+        }
+    });
+
+    it('does not offer two competing repair commands for the same verified suffix', async () => {
+        const { document, keywordLine } = winfrithDocument({ cards: 4 });
+        const hover = await new LsdynaFieldHoverProvider().provideHover(
+            document,
+            { line: keywordLine, character: 4 },
+        );
+        const value = hover.contents[0].value;
+        assert.ok(value.includes('command:extension.addVerifiedConditionalCards'));
+        assert.ok(value.includes(i18n.get('keywordStructureMissingNamed', 'Card 5, Card 6, Card 7')));
+        assert.ok(!value.includes('command:extension.insertVerifiedMissingRecords'));
+    });
+
+    it('does not add hover editing noise for false predicates or alternative layouts', async () => {
+        const falseDocument = winfrithDocument({ rate: 2 }).document;
+        const falseHover = await new LsdynaFieldHoverProvider().provideHover(
+            falseDocument,
+            { line: 0, character: 4 },
+        );
+        assert.ok(falseHover);
+        assert.ok(!falseHover.contents[0].value.includes('extension.addVerifiedConditionalCards'));
+
+        const alternative = fakeDoc('*MAT_DAMAGE_1\n' + ' '.repeat(80) + '\n' + ' '.repeat(70) + '        -1');
+        alternative.languageId = 'lsdyna';
+        alternative.version = 1;
+        const alternativeHover = await new LsdynaFieldHoverProvider().provideHover(
+            alternative,
+            { line: 0, character: 4 },
+        );
+        assert.ok(alternativeHover);
+        assert.ok(!alternativeHover.contents[0].value.includes('extension.addVerifiedConditionalCards'));
+    });
+
+    it('re-plans from the live document and applies exactly one zero-length edit', async () => {
+        const { document, keywordLine } = winfrithDocument();
+        const editor = {
+            document,
+            selection: { active: new vscodeMock.Position(keywordLine, 4) },
+        };
+        const expected = planVerifiedConditionalCardsForDocument(document, keywordLine, {
+            schema,
+            blockIndex: null,
+        });
+        let appliedEdit = null;
+        const forged = {
+            ...requestFor(document, keywordLine),
+            RATE: 2,
+            existingPhysicalCards: 99,
+            cardsToAppend: [],
+            insertion: { line: 0, character: 0, text: '*DELETE' },
+        };
+
+        const result = await handleAddVerifiedConditionalCardsCommand(forged, {
+            editor,
+            schema,
+            blockIndex: null,
+            applyEdit: async edit => {
+                appliedEdit = edit;
+                return true;
+            },
+        });
+
+        assert.ok(result);
+        assert.equal(result.plan.status, 'ready');
+        assert.strictEqual(result.edit, appliedEdit);
+        assert.equal(appliedEdit.edits.length, 1);
+        const actual = appliedEdit.edits[0];
+        assert.strictEqual(actual.uri, document.uri);
+        assert.deepEqual(actual.range.start, actual.range.end);
+        assert.deepEqual(actual.range.start, new vscodeMock.Position(
+            expected.insertion.line,
+            expected.insertion.character,
+        ));
+        assert.equal(actual.text, expected.insertion.text);
+        assert.ok(!actual.text.includes('*DELETE'));
+        assert.ok(actual.text.includes('$#'));
+        assert.ok(expected.cardsToAppend.every(card => actual.text.includes(card.blankText)));
+    });
+
+    it('fails open for stale source identities, forged layout identities, and changed live semantics', async () => {
+        const original = winfrithDocument();
+        let applyCount = 0;
+        const applyEdit = async () => {
+            applyCount++;
+            return true;
+        };
+        const editorFor = document => ({
+            document,
+            selection: { active: new vscodeMock.Position(original.keywordLine, 4) },
+        });
+
+        assert.equal(await handleAddVerifiedConditionalCardsCommand({
+            ...requestFor(original.document, original.keywordLine),
+            documentVersion: 6,
+        }, { editor: editorFor(original.document), schema, blockIndex: null, applyEdit }), null);
+        assert.equal(await handleAddVerifiedConditionalCardsCommand({
+            ...requestFor(original.document, original.keywordLine),
+            uri: 'file:///different.k',
+        }, { editor: editorFor(original.document), schema, blockIndex: null, applyEdit }), null);
+        assert.equal(await handleAddVerifiedConditionalCardsCommand({
+            ...requestFor(original.document, original.keywordLine),
+            layoutId: 'card-edit-layout:forged',
+        }, { editor: editorFor(original.document), schema, blockIndex: null, applyEdit }), null);
+        assert.equal(await handleAddVerifiedConditionalCardsCommand({
+            ...requestFor(original.document, original.keywordLine),
+            ruleId: 'rule:forged',
+        }, { editor: editorFor(original.document), schema, blockIndex: null, applyEdit }), null);
+
+        const changedRate = winfrithDocument({ rate: 2 });
+        assert.equal(await handleAddVerifiedConditionalCardsCommand(
+            requestFor(changedRate.document, changedRate.keywordLine),
+            { editor: editorFor(changedRate.document), schema, blockIndex: null, applyEdit },
+        ), null);
+        const complete = winfrithDocument({ cards: 7 });
+        assert.equal(await handleAddVerifiedConditionalCardsCommand(
+            requestFor(complete.document, complete.keywordLine),
+            { editor: editorFor(complete.document), schema, blockIndex: null, applyEdit },
+        ), null);
+        const longDeck = winfrithDocument({ globalHeader: '*KEYWORD LONG=Y' });
+        assert.equal(await handleAddVerifiedConditionalCardsCommand(
+            requestFor(longDeck.document, longDeck.keywordLine),
+            { editor: editorFor(longDeck.document), schema, blockIndex: null, applyEdit },
+        ), null);
+        const changedKeyword = winfrithDocument({ keyword: '*MAT_DAMAGE_1' });
+        assert.equal(await handleAddVerifiedConditionalCardsCommand(
+            requestFor(changedKeyword.document, changedKeyword.keywordLine),
+            { editor: editorFor(changedKeyword.document), schema, blockIndex: null, applyEdit },
+        ), null);
+        const localLong = winfrithDocument({ keyword: '*MAT_WINFRITH_CONCRETE+' });
+        assert.equal(await handleAddVerifiedConditionalCardsCommand(
+            requestFor(localLong.document, localLong.keywordLine),
+            { editor: editorFor(localLong.document), schema, blockIndex: null, applyEdit },
+        ), null);
+        assert.equal(applyCount, 0);
+    });
+
+    it('keeps applyEdit=false non-destructive and supports command-palette use only on the keyword line', async () => {
+        const { document, keywordLine } = winfrithDocument();
+        let applyCount = 0;
+        const failed = await handleAddVerifiedConditionalCardsCommand(
+            requestFor(document, keywordLine),
+            {
+                editor: { document, selection: { active: new vscodeMock.Position(keywordLine, 2) } },
+                schema,
+                blockIndex: null,
+                applyEdit: async edit => {
+                    applyCount++;
+                    assert.equal(edit.edits.length, 1);
+                    return false;
+                },
+            },
+        );
+        assert.equal(failed, null);
+        assert.equal(applyCount, 1);
+
+        const dataLine = await handleAddVerifiedConditionalCardsCommand(undefined, {
+            editor: { document, selection: { active: new vscodeMock.Position(1, 2) } },
+            schema,
+            blockIndex: null,
+            applyEdit: async () => {
+                throw new Error('must not apply from a data line');
+            },
+        });
+        assert.equal(dataLine, null);
+
+        const palette = await handleAddVerifiedConditionalCardsCommand(undefined, {
+            editor: { document, selection: { active: new vscodeMock.Position(keywordLine, 2) } },
+            schema,
+            blockIndex: null,
+            applyEdit: async () => true,
+        });
+        assert.ok(palette);
+        assert.equal(palette.plan.status, 'ready');
+    });
+
+    it('uses only an already-ready index hint and never asks the provider to build one', () => {
+        const { document, keywordLine } = winfrithDocument();
+        let reads = 0;
+        const provider = {
+            getDocumentBlockIndexIfReady(actualDocument) {
+                reads++;
+                assert.strictEqual(actualDocument, document);
+                return null;
+            },
+            _documentIndex() {
+                throw new Error('semantic planning must not build an index');
+            },
+        };
+        const plan = planVerifiedConditionalCardsForDocument(document, keywordLine, {
+            schema,
+            keywordIndexProvider: provider,
+        });
+        assert.equal(plan.status, 'ready');
+        assert.equal(reads, 1);
+    });
+});
+
+describe('official field value completions', () => {
+    const { LsdynaFieldCompletionProvider } = extensionModule._internals;
+
+    function officialChoices(result) {
+        const items = Array.isArray(result) ? result : (result?.items || []);
+        return items.filter(item => item.kind === vscodeMock.CompletionItemKind.EnumMember);
+    }
+
+    it('uses the LSPP MAT_DAMAGE_1 FLAG domain when manual values disagree', async () => {
+        const { ManualPackManager } = require('../src/manual/ManualPackManager');
+        const priorAuthority = ManualPackManager.prototype.peekCurrentAuthority;
+        const authority = extensionModule._internals.getManualSemanticCatalog().summary().evidenceAuthority;
+        const profile = authority.profiles?.find(p => p.sourceProfileId === authority.defaultSourceProfileId) || authority;
+        ManualPackManager.prototype.peekCurrentAuthority = () => profile;
+        try {
+
+        const provider = new LsdynaFieldCompletionProvider();
+        const line = `${' '.repeat(70)}         0`;
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            line,
+        ].join('\n'));
+
+        const choices = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 2, character: 75 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+        ));
+        assert.deepEqual(choices.map(item => item.label), ['-1', '0', '1']);
+
+        const lsPrePostValues = require('../keywords/field_data.json')
+            .MAT_DAMAGE_1.c[1].find(field => field.n === 'FLAG').e;
+        assert.ok(!lsPrePostValues.includes('10'));
+        assert.ok(!lsPrePostValues.includes('11'));
+
+        const ten = choices.find(item => item.label === '1');
+        assert.equal(ten.insertText, '         1');
+        assert.equal(ten.insertText.length, 10);
+        assert.equal(ten.range.start.character, 70);
+        assert.equal(ten.range.end.character, 80);
+        assert.ok(ten.documentation.value.includes('command:extension.openSemanticEvidence'));
+        assert.ok(ten.documentation.value.includes('P832'));
+
+        } finally { ManualPackManager.prototype.peekCurrentAuthority = priorAuthority; }
+});
+
+    it('maps the same official choices to a TITLE alias only through its shifted physical card', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            'Engineer material title',
+            ' '.repeat(80),
+            ' '.repeat(80),
+        ].join('\n'));
+
+        const choices = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 3, character: 75 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+        ));
+        assert.deepEqual(choices.map(item => item.label), ['-1', '0', '1']);
+    });
+
+    it('does not offer official choices when TITLE order conflicts with stale field headers', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}        -1`,
+        ].join('\n'));
+
+        const choices = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 4, character: 75 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+        ));
+        assert.deepEqual(choices, []);
+    });
+
+    it('does not offer value replacements for parameterized, free-format, or long-format cards', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const invoke = { triggerKind: vscodeMock.CompletionTriggerKind.Invoke };
+        const parameterDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            `${' '.repeat(70)}     &FLAG`,
+        ].join('\n'));
+        const signedParameterDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            `${' '.repeat(70)}    -&FLAG`,
+        ].join('\n'));
+        const freeFormatDoc = fakeDoc([
+            '*MAT_DAMAGE_1',
+            '0,0,0,0,0,0,0',
+            '0,0,0,0,0,0,0,0',
+        ].join('\n'));
+        const longFormatDoc = fakeDoc([
+            '*MAT_DAMAGE_1+',
+            ' '.repeat(160),
+            ' '.repeat(160),
+        ].join('\n'));
+
+        assert.equal(officialChoices(await provider.provideCompletionItems(
+            parameterDoc, { line: 2, character: 78 }, undefined, invoke,
+        )).length, 0);
+        assert.equal(officialChoices(await provider.provideCompletionItems(
+            signedParameterDoc, { line: 2, character: 78 }, undefined, invoke,
+        )).length, 0);
+        assert.equal(officialChoices(await provider.provideCompletionItems(
+            freeFormatDoc, { line: 2, character: 7 }, undefined, invoke,
+        )).length, 0);
+        assert.equal(officialChoices(await provider.provideCompletionItems(
+            longFormatDoc, { line: 2, character: 75 }, undefined, invoke,
+        )).length, 0);
+    });
+
+    it('keeps finite values from a mixed literal/reference domain behind explicit Ctrl+Space', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const doc = fakeDoc([
+            '*DAMPING_GLOBAL',
+            ' '.repeat(80),
+        ].join('\n'));
+
+        const automatic = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 1, character: 5 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.TriggerCharacter },
+        ));
+        const explicit = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 1, character: 5 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+        ));
+
+        assert.deepEqual(automatic, []);
+        assert.deepEqual(explicit.map(item => item.label), ['0']);
+        assert.ok(explicit[0].documentation.value.includes('curve'));
+    });
+
+    it('rejects explicit official value completion for display-only CONTROL_THERMAL_TIMESTEP', async () => {
+        const doc = fakeDoc(['*CONTROL_THERMAL_TIMESTEP', ' '.repeat(80)].join('\n'));
+        const choices = officialChoices(await new LsdynaFieldCompletionProvider().provideCompletionItems(
+            doc, { line: 1, character: 45 }, undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke }));
+        assert.deepEqual(choices, []);
+    });
+
+    it('keeps mixed domains hidden when automatic quick suggestions make Invoke ambiguous', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const doc = fakeDoc([
+            '*CONTROL_THERMAL_TIMESTEP',
+            ' '.repeat(80),
+        ].join('\n'));
+        const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+        vscodeMock.workspace.getConfiguration = (section) => ({
+            get: (key, defaultValue) => section === 'editor' && key === 'quickSuggestions'
+                ? { other: true, comments: false, strings: false }
+                : defaultValue,
+        });
+
+        try {
+            const choices = officialChoices(await provider.provideCompletionItems(
+                doc,
+                { line: 1, character: 45 },
+                undefined,
+                { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+            ));
+            assert.deepEqual(choices, []);
+            const closedEnumDoc = fakeDoc([
+                '*MAT_DAMAGE_1',
+                ' '.repeat(80),
+                ' '.repeat(80),
+            ].join('\n'));
+            assert.deepEqual(officialChoices(await provider.provideCompletionItems(
+                closedEnumDoc,
+                { line: 2, character: 75 },
+                undefined,
+                { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+            )).map(item => item.label), ['-1', '0', '1']);
+        } finally {
+            vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+        }
+    });
+
+    it('replaces only the selected fixed-width cell and preserves adjacent fields', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const original = `${'1'.repeat(40)}         9${'Z'.repeat(30)}`;
+        const doc = fakeDoc([
+            '*BOUNDARY_TEMPERATURE_PERIODIC_SET',
+            original,
+        ].join('\n'));
+        const choices = officialChoices(await provider.provideCompletionItems(
+            doc,
+            { line: 1, character: 45 },
+            undefined,
+            { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
+        ));
+        const axisTwo = choices.find(item => item.label === '2');
+        const applied = original.slice(0, axisTwo.range.start.character) +
+            axisTwo.insertText + original.slice(axisTwo.range.end.character);
+
+        assert.equal(applied.length, original.length);
+        assert.equal(applied.slice(0, 40), original.slice(0, 40));
+        assert.equal(applied.slice(50), original.slice(50));
+        assert.equal(applied.slice(40, 50), '         2');
+    });
+
+    it('keeps warm official value completion bounded near the end of a million-line indexed deck', async () => {
+        const provider = new LsdynaFieldCompletionProvider();
+        const filePath = '/project/million-line-field-choice.k';
+        const lineCount = 1_000_000;
+        const keywordLine = lineCount - 3;
+        let lineAtCalls = 0;
+        const document = {
+            languageId: 'lsdyna',
+            lineCount,
+            version: 1,
+            uri: { fsPath: filePath },
+            lineAt(line) {
+                lineAtCalls += 1;
+                return {
+                    text: line === 0 ? '*KEYWORD' : line === keywordLine ? '*MAT_DAMAGE_1' : ' '.repeat(80),
+                };
+            },
+        };
+        setFileIndexForTesting(filePath, {
+            documentVersion: document.version,
+            keywordBlocks: [{
+                keyword: '*MAT_DAMAGE_1',
+                startLine: keywordLine,
+                endLine: lineCount - 1,
+            }],
+        });
+
+        try {
+            const position = { line: lineCount - 1, character: 75 };
+            const context = { triggerKind: vscodeMock.CompletionTriggerKind.Invoke };
+            for (let index = 0; index < 10; index++) {
+                await provider.provideCompletionItems(document, position, undefined, context);
+            }
+
+            lineAtCalls = 0;
+            const samples = [];
+            for (let index = 0; index < 200; index++) {
+                const started = performance.now();
+                const choices = officialChoices(await provider.provideCompletionItems(
+                    document, position, undefined, context,
+                ));
+                samples.push(performance.now() - started);
+                assert.equal(choices.length, 3);
+            }
+            samples.sort((left, right) => left - right);
+            const p95 = samples[Math.floor(samples.length * 0.95)];
+
+            assert.ok(lineAtCalls < 4_000, `expected bounded line reads, got ${lineAtCalls}`);
+            assert.ok(p95 < 2, `expected warm completion P95 <2 ms, got ${p95.toFixed(3)} ms`);
+        } finally {
+            setFileIndexForTesting(filePath, null);
+        }
+    });
+});
+
+it('contributes the optional readonly LS-DYNA large-file editor', async () => {
+        const manifest = require('../package.json');
+        const editor = manifest.contributes.customEditors.find(item =>
+            item.viewType === 'lsdyna.largeFileViewer');
+        assert.ok(editor);
+        assert.equal(editor.priority, 'option');
+        assert.deepEqual(editor.selector.map(item => item.filenamePattern), ['*.key', '*.k', '*.dyna']);
+        assert.ok(manifest.activationEvents.includes('onCustomEditor:lsdyna.largeFileViewer'));
+        assert.ok(manifest.contributes.commands.some(command =>
+            command.command === 'extension.openLsdynaLargeFileViewer'));
+    });
+
+
+describe('staged Include tree publication', () => {
+    it('shows the structure before the loader finishes and discards it after a document version change', async () => {
+        const rootFile=path.resolve('stage-main.k');let finish;
+        const snapshot={rootFile,graph:{toTree:()=>({filePath:rootFile,children:[]})}};
+        const provider=new LsdynaIncludeTreeProvider({loadProjectSnapshot:async(_root,_options,progress)=>{
+            progress({type:'structureReady',rootFile,snapshot});
+            return new Promise(resolve=>finish=()=>resolve(snapshot));
+        }});
+        const originalEditor=vscodeMock.window.activeTextEditor,originalProgress=vscodeMock.window.withProgress;
+        const originalLocation=vscodeMock.ProgressLocation;
+        vscodeMock.ProgressLocation={Window:10,Notification:15};
+        const document={version:1,isClosed:false,languageId:'lsdyna',uri:{fsPath:rootFile}};
+        vscodeMock.window.activeTextEditor={document};
+        vscodeMock.window.withProgress=async(_options,task)=>task({report(){}},{isCancellationRequested:false});
+        try {
+            const pending=provider.scan();
+            assert.equal(provider.root.filePath,rootFile);assert.equal(provider.scanPhase,'references');
+            document.version++;finish();
+            assert.equal(await pending,null);assert.equal(provider.root,null);
+        } finally {vscodeMock.window.activeTextEditor=originalEditor;vscodeMock.window.withProgress=originalProgress;vscodeMock.ProgressLocation=originalLocation;}
     });
 });

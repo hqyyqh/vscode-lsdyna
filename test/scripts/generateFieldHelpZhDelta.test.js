@@ -81,6 +81,28 @@ describe('field-help Chinese delta generator', () => {
         );
     });
 
+    it('allows localized sources to omit trailing null-only English fields', () => {
+        const english = {
+            DEMO: {
+                c: [[
+                    { n: 'ID', p: 0, w: 10, h: 'Identifier.', t: 'integer', d: null },
+                ]],
+            },
+        };
+        const localized = {
+            DEMO: {
+                c: [[
+                    { n: 'ID', p: 0, w: 10, h: 'Identifier.\n标识符。', t: 'integer' },
+                ]],
+            },
+        };
+
+        const delta = buildFieldHelpDelta(JSON.stringify(english), JSON.stringify(localized));
+        assert.equal(delta.helpSlotCount, 1);
+        assert.equal(delta.localizedCount, 1);
+        assert.deepEqual(delta.values, ['标识符。']);
+    });
+
     it('produces deterministic gzip bytes', () => {
         const { english, localized } = fixture();
         const delta = buildFieldHelpDelta(JSON.stringify(english), JSON.stringify(localized));

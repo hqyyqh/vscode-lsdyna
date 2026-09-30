@@ -2,8 +2,7 @@ import { useLayoutEffect, type RefObject } from 'react';
 
 /**
  * Keep --reader-toolbar-height in sync for search offset / scroll-margin.
- * Single-row toolbar has near-constant height; only publish when the measured
- * value changes to avoid layout thrash from sub-pixel ResizeObserver noise.
+ * Only publish when the measured value changes to avoid layout thrash from sub-pixel ResizeObserver noise.
  */
 export function useToolbarHeight(toolbarRef: RefObject<HTMLElement | null>): void {
     useLayoutEffect(() => {

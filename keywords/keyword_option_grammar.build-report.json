@@ -1,0 +1,36 @@
+{
+  "generator": {
+    "path": "scripts/import-keyword-option-grammar-handoff.cjs",
+    "sha256": "2050fc93a8fc472ccf192a2e83256a075da5ecb6c2ec532206197bd5fb201e0a"
+  },
+  "kind": "dynasense-keyword-option-grammar-build-report",
+  "output": {
+    "bytes": 96680,
+    "contentSha256": "0e35d6176121f967e09d817e4ea8aad3e81794e537e9438e7a4a027b09efae51",
+    "path": "keywords/keyword_option_grammar.runtime.json.gz",
+    "sha256": "60215dd26bf65e2ac6786e0467757a564530cd0a880078217d686f55d02cb8a9"
+  },
+  "permissions": {
+    "completenessClaimPermission": false,
+    "deckMutationPermission": false,
+    "fieldMigrationPermission": false,
+    "grammarInferencePermission": false,
+    "readOnlyDisplayPermission": true
+  },
+  "schemaVersion": 1,
+  "source": {
+    "authorityLockSha256": "35e844c4f3b260718a2c0d89c92e1333c84f8fdfdf5eb0dd96c45171fe0d35a0",
+    "blockerContentSha256": "522ecd997ec832308cf888d1ca4a835b90c1522f844635c2b364f0669d70f882",
+    "ownershipContentSha256": "4da2f2f6d7ce72e3dfa8841e181f05721ef60fb0e6c470f923e85698afec677a",
+    "spellingContentSha256": "314ead5693b1f41e96111cca916c33f5f5f800490235f34e774588cf3f7b8cd5",
+    "standaloneCommit": "6cc47a8"
+  },
+  "summary": {
+    "blockedEvidenceGap": 1667,
+    "editable": 0,
+    "grammars": 1676,
+    "readOnlyIndeterminate": 9,
+    "unclassified": 0,
+    "uniqueConcreteSpellings": 4475
+  }
+}

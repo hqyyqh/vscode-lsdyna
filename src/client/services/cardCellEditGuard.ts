@@ -109,7 +109,13 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         };
     }
 
-    function markAp(document: any, line: number, fieldIndex: number, caretCol?: number) {
+    function markAp(
+        document: any,
+        line: number,
+        fieldIndex: number,
+        caretCol?: number,
+        selectionRange?: { start: number; end: number },
+    ) {
         if (!document) return;
         const originalLine = String(document.lineAt(line).text || '');
         const card = deps.getCardFieldsForLine(document, line) || [];
@@ -119,6 +125,8 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         } else if (fieldIndex >= 0 && fieldIndex < card.length) {
             caret = cellModel.caretAfterCellValue(originalLine, card, fieldIndex);
         }
+        const expectedStart = selectionRange?.start ?? caret;
+        const expectedEnd = selectionRange?.end ?? caret;
         nav = {
             uri: uriKey(document),
             line,
@@ -127,8 +135,8 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
             mode: 'Ap',
             keepSeparator: false,
             originalLine,
-            expectedStart: caret,
-            expectedEnd: caret,
+            expectedStart,
+            expectedEnd,
         };
     }
 
@@ -359,6 +367,10 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         if (deps.isKeywordLineText && deps.isKeywordLineText(text)) return null;
         if (deps.isTextCardLine && deps.isTextCardLine(document, lineNum)) return null;
         if (trimmed.startsWith('$')) return null;
+        // A physical zero-length line must retain ordinary editor semantics so
+        // Backspace/Delete can remove its newline directly. Smart Tab resolves
+        // cards independently and may still enter a blank row on demand.
+        if (text.length === 0) return null;
         const card = deps.getCardFieldsForLine(document, lineNum);
         if (!card || card.length === 0) return null;
         if (card.length === 1 && card[0].w >= 40) return null;
@@ -471,74 +483,6 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
     }
 
     /**
-     * Empty card row + Delete/Backspace → remove the line and land on the previous
-     * line's last field (LS-DYNA card habit; A+D).
-     */
-    function planEmptyRowLineDelete(
-        document: any,
-        lineNum: number,
-    ): null | {
-        lineNum: number;
-        deleteLine: true;
-        newText: string;
-        selStart: number;
-        selEnd: number;
-        targetLine: number;
-        markA?: { fieldIndex: number; keepSeparator: boolean };
-        clearNav?: boolean;
-    } {
-        if (lineNum < 0 || lineNum >= document.lineCount) return null;
-
-        const targetLine = Math.max(0, lineNum - 1);
-        // Deleting the only / first line: caret stays at start of what becomes line 0.
-        if (lineNum === 0) {
-            return {
-                lineNum,
-                deleteLine: true,
-                newText: '',
-                selStart: 0,
-                selEnd: 0,
-                targetLine: 0,
-                clearNav: true,
-            };
-        }
-
-        const prevCard = getCardIfCellLine(document, targetLine);
-        const prevText = document.lineAt(targetLine).text;
-        if (prevCard && prevCard.length > 0) {
-            const lastFi = prevCard.length - 1;
-            const keepSeparator = lastFi > 0;
-            const previousFieldHasValue =
-                lastFi > 0 ? cellModel.readCellValue(prevText, prevCard, lastFi - 1).length > 0 : false;
-            const range = cellModel.navSelectionRange(prevCard, lastFi, {
-                keepSeparator,
-                previousFieldHasValue,
-            });
-            return {
-                lineNum,
-                deleteLine: true,
-                newText: '',
-                selStart: range?.start ?? prevCard[lastFi].p,
-                selEnd: range?.end ?? prevCard[lastFi].p + prevCard[lastFi].w,
-                targetLine,
-                markA: { fieldIndex: lastFi, keepSeparator },
-            };
-        }
-
-        // Previous line is not a multi-field card (keyword / comment / free text).
-        const end = String(prevText || '').length;
-        return {
-            lineNum,
-            deleteLine: true,
-            newText: '',
-            selStart: end,
-            selEnd: end,
-            targetLine,
-            clearNav: true,
-        };
-    }
-
-    /**
      * Select a field in A-nav style (keep-separator when useful).
      */
     function planSelectFieldA(
@@ -573,7 +517,7 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
 
     /**
      * Empty cell + Backspace/Delete at boundary:
-     * - whole row empty → delete line (A+D)
+     * - whole row empty → navigate within the row; never delete it implicitly
      * - Backspace → jump to previous field (A select), never stuck
      * - Delete on last field with no more content → no-op stay (or jump next if any)
      */
@@ -594,10 +538,6 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         deleteLine?: boolean;
         targetLine?: number;
     } {
-        if (cellModel.isLineAllEmpty(lineText, card)) {
-            return planEmptyRowLineDelete(document, lineNum);
-        }
-
         if (direction === 'left') {
             if (fieldIndex > 0) {
                 return planSelectFieldA(lineNum, lineText, card, fieldIndex - 1);
@@ -645,6 +585,8 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         markAp?: boolean;
         markA?: { fieldIndex: number; keepSeparator: boolean };
         clearNav?: boolean;
+        /** Explicit user choice: concatenate this field into its left neighbor. */
+        mergeLeft?: ReturnType<typeof cellModel.planMergeCellLeft>;
         /** When true, remove the whole line (incl. line break); use targetLine for caret. */
         deleteLine?: boolean;
         targetLine?: number;
@@ -663,10 +605,18 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         const lineText = document.lineAt(lineNum).text;
         if (isWholeLineSelection(sel, lineText)) return null;
 
-        // A+D: whole row already empty (space wall / blank) → remove the line.
-        // Do this before A-clear so a second BS on a blank row actually deletes it.
-        if (cellModel.isLineAllEmpty(lineText, card)) {
-            return planEmptyRowLineDelete(document, lineNum);
+        // Space walls are visually indistinguishable from empty lines. Collapse
+        // one to a real blank line instead of navigating invisible cells or
+        // requiring dozens of native deletes. The following key press then has
+        // normal newline-deletion semantics because getCardIfCellLine bows out.
+        if (lineText.length > 0 && lineText.trim().length === 0) {
+            return {
+                lineNum,
+                newText: '',
+                selStart: 0,
+                selEnd: 0,
+                clearNav: true,
+            };
         }
 
         const afterFirstKey = navMatches(document, lineNum) && nav?.mode === 'Ap';
@@ -714,6 +664,39 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
 
         if (kind === 'E' || fieldIndex < 0) return null;
 
+        // Selecting only the leading pad immediately before a value expresses the
+        // same visual intent as repeatedly pressing Backspace there. Offer one
+        // semantic merge rather than deleting structural columns character by
+        // character. A selection touching value text keeps the normal cell-clear
+        // behavior below.
+        if (!sel.isEmpty && direction === 'left') {
+            const rightIndex = cellModel.fieldIndexAt(
+                lineText,
+                card,
+                Math.max(sel.startChar, sel.endChar - 1),
+            );
+            const rightField = card[rightIndex];
+            const rightValueRange = cellModel.cellValueRange(lineText, card, rightIndex);
+            if (
+                rightField &&
+                rightValueRange &&
+                sel.startChar >= rightField.p &&
+                sel.endChar <= rightValueRange.start
+            ) {
+                const mergeLeft = cellModel.planMergeCellLeft(lineText, card, rightIndex);
+                if (mergeLeft) {
+                    return {
+                        lineNum,
+                        newText: lineText,
+                        selStart: sel.startChar,
+                        selEnd: sel.endChar,
+                        clearNav: true,
+                        mergeLeft,
+                    };
+                }
+            }
+        }
+
         if (kind === 'A') {
             const cellVal = cellModel.readCellValue(lineText, card, fieldIndex);
             // Empty A selection (already cleared, or empty field): jump / line-delete, not stuck clear.
@@ -722,6 +705,15 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
             }
             // Non-empty A: clear this cell only; stay on same field in A (ready to type or BS again).
             const newText = cellModel.clearCell(lineText, card, fieldIndex);
+            if (newText.trim().length === 0) {
+                return {
+                    lineNum,
+                    newText: '',
+                    selStart: 0,
+                    selEnd: 0,
+                    clearNav: true,
+                };
+            }
             return {
                 ...planSelectFieldA(lineNum, newText, card, fieldIndex),
                 newText,
@@ -731,6 +723,15 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         if (kind === 'D') {
             // M1: clear fields whose values intersect the selection (pad-only next cell stays).
             const newText = cellModel.clearCellsIntersecting(lineText, card, sel.startChar, sel.endChar);
+            if (newText.trim().length === 0) {
+                return {
+                    lineNum,
+                    newText: '',
+                    selStart: 0,
+                    selEnd: 0,
+                    clearNav: true,
+                };
+            }
             return {
                 lineNum,
                 newText,
@@ -740,7 +741,40 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
             };
         }
 
-        // Ap / B / C — caret-relative in-cell delete
+        // Ap / B / C — caret-relative in-cell delete. Padding is structural,
+        // not a shortcut to a distant value: Delete before the first visible
+        // character and Backspace after the last visible character are no-ops.
+        const valueRange = cellModel.cellValueRange(lineText, card, fieldIndex);
+        if (valueRange) {
+            if (
+                sel.isEmpty &&
+                (
+                    (direction === 'right' && sel.startChar < valueRange.start) ||
+                    (direction === 'left' && sel.startChar > valueRange.end)
+                )
+            ) {
+                return {
+                    lineNum,
+                    newText: lineText,
+                    selStart: sel.startChar,
+                    selEnd: sel.startChar,
+                    clearNav: true,
+                };
+            }
+            if (
+                !sel.isEmpty &&
+                (sel.endChar <= valueRange.start || sel.startChar >= valueRange.end)
+            ) {
+                return {
+                    lineNum,
+                    newText: lineText,
+                    selStart: sel.startChar,
+                    selEnd: sel.startChar,
+                    clearNav: true,
+                };
+            }
+        }
+
         const result = cellModel.applyInCellDelete(
             lineText,
             card,
@@ -750,7 +784,30 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         );
         if (!result) return null;
 
+        if (result.line.trim().length === 0) {
+            return {
+                lineNum,
+                newText: '',
+                selStart: 0,
+                selEnd: 0,
+                clearNav: true,
+            };
+        }
+
         if (result.hitBoundary) {
+            if (result.hitBoundary === 'left' && direction === 'left') {
+                const mergeLeft = cellModel.planMergeCellLeft(lineText, card, fieldIndex);
+                if (mergeLeft) {
+                    return {
+                        lineNum,
+                        newText: lineText,
+                        selStart: sel.startChar,
+                        selEnd: sel.startChar,
+                        clearNav: true,
+                        mergeLeft,
+                    };
+                }
+            }
             return planEmptyCellBoundary(
                 document,
                 lineNum,
@@ -776,6 +833,99 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
      */
     function isTypeEscapeText(text: string): boolean {
         return text.startsWith('*') || text.startsWith('$');
+    }
+
+    /**
+     * Resolve direct typing to one fixed-width field, or to a shared boundary
+     * where the input may belong to either adjacent field. A field's existing
+     * value does not disable this path: native insertion would shift every
+     * following fixed-width column.
+     */
+    function getEmptyCellTypeTarget(
+        document: any,
+        selection: any,
+        text = '',
+    ): null | {
+        lineNum: number;
+        fieldIndex: number;
+        caretCol: number;
+        ambiguousPreviousFieldIndex?: number;
+    } {
+        if (!isEligibleDocument(document)) return null;
+        const sel = lineSelFromSelection(selection);
+        if (sel.startLine !== sel.endLine) return null;
+        const lineNum = sel.startLine;
+        const card = getCardIfCellLine(document, lineNum);
+        if (!card) return null;
+        const lineText = document.lineAt(lineNum).text;
+        const caretCol = sel.isEmpty ? sel.startChar : sel.endChar;
+        let fieldIndex = cellModel.fieldIndexAt(lineText, card, caretCol);
+        if (fieldIndex < 0 || fieldIndex >= card.length) return null;
+
+        if (!sel.isEmpty) {
+            const startField = cellModel.fieldIndexAt(lineText, card, sel.startChar);
+            const endField = cellModel.fieldIndexAt(
+                lineText,
+                card,
+                Math.max(sel.startChar, sel.endChar - 1),
+            );
+            if (startField < 0 || startField !== endField) return null;
+            fieldIndex = startField;
+        }
+
+        // Only the exact next-field start is a shared boundary. A caret one
+        // column before it may be between the last two characters of the
+        // right-aligned previous value and must remain in that previous field.
+        if (sel.isEmpty && fieldIndex > 0 && caretCol === card[fieldIndex].p) {
+            const previousIndex = fieldIndex - 1;
+            const previousValue = cellModel.readCellValue(lineText, card, previousIndex);
+            const currentValue = cellModel.readCellValue(lineText, card, fieldIndex);
+            if (
+                previousValue &&
+                cellModel.caretAfterCellValue(lineText, card, previousIndex) === caretCol &&
+                String(text || '').length > 0 &&
+                previousValue.length + String(text || '').length <= card[previousIndex].w &&
+                currentValue.length + String(text || '').length <= card[fieldIndex].w
+            ) {
+                return {
+                    lineNum,
+                    fieldIndex,
+                    caretCol,
+                    ambiguousPreviousFieldIndex: previousIndex,
+                };
+            }
+        }
+
+        const field = card[fieldIndex];
+        // Accept any caret inside the current physical cell. The exclusive end
+        // of a non-final cell is handled above as the exact shared boundary.
+        if (caretCol < field.p || caretCol > field.p + field.w) return null;
+        const result: {
+            lineNum: number;
+            fieldIndex: number;
+            caretCol: number;
+            ambiguousPreviousFieldIndex?: number;
+        } = { lineNum, fieldIndex, caretCol };
+
+        // At a shared boundary an R1 value in the previous field naturally ends
+        // at exactly the next field's start. If that value still has capacity,
+        // both choices preserve valid columns; expose only those two choices.
+        if (sel.isEmpty && fieldIndex > 0 && caretCol === field.p) {
+            const previousIndex = fieldIndex - 1;
+            const previousField = card[previousIndex];
+            const previousValue = cellModel.readCellValue(lineText, card, previousIndex);
+            if (
+                previousValue.length > 0 &&
+                String(text || '').length > 0 &&
+                String(text || '').length <= field.w &&
+                previousValue.length + String(text || '').length <= previousField.w &&
+                previousField.p + previousField.w === field.p &&
+                cellModel.caretAfterCellValue(lineText, card, previousIndex) === caretCol
+            ) {
+                result.ambiguousPreviousFieldIndex = previousIndex;
+            }
+        }
+        return result;
     }
 
     /**
@@ -924,6 +1074,7 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         shouldCellEditActive,
         onSelectionChange,
         planDelete,
+        getEmptyCellTypeTarget,
         planType,
         planPostEditCorrection,
         cellModel,

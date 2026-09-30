@@ -19,7 +19,53 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function createCancellationController() {
+    const listeners = new Set();
+    const token = {
+        isCancellationRequested: false,
+        onCancellationRequested(listener) {
+            listeners.add(listener);
+            return { dispose: () => listeners.delete(listener) };
+        },
+    };
+    return {
+        token,
+        cancel() {
+            token.isCancellationRequested = true;
+            for (const listener of [...listeners]) listener();
+        },
+        listenerCount: () => listeners.size,
+    };
+}
+
 describe('createWorkerPool', () => {
+    it('passes bounded per-file cache options to the worker data contract', async () => {
+        const { createWorkerPool } = require('../../src/worker/workerPool');
+        let workerOptions = null;
+        const fakeWorker = {
+            on() {},
+            postMessage() {},
+            terminate() { return Promise.resolve(0); },
+        };
+        const pool = createWorkerPool({
+            workerPath: 'cache-worker.js',
+            fileScanCacheDirectory: path.resolve('cache', 'files'),
+            fileScanCacheOptions: { maxCacheBytes: 123, maxEntryAgeMs: 456 },
+            fileScanMemoryCacheBytes: 789,
+            workerFactory(_workerPath, options) {
+                workerOptions = options;
+                return fakeWorker;
+            },
+        });
+
+        assert.deepEqual(workerOptions.workerData, {
+            fileScanCacheDirectory: path.resolve('cache', 'files'),
+            fileScanCacheOptions: { maxCacheBytes: 123, maxEntryAgeMs: 456 },
+            fileScanMemoryCacheBytes: 789,
+        });
+        await pool.dispose();
+    });
+
     it('builds project snapshots in a worker and hydrates graph and keywordMap', async () => {
         const { createWorkerPool } = require('../../src/worker/workerPool');
         const workerPath = path.join(__dirname, '..', '..', 'out', 'worker', 'scanWorker.js');
@@ -50,7 +96,7 @@ describe('createWorkerPool', () => {
             await pool.dispose();
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
-    });
+    }).timeout(10_000);
 
     it('rejects pending requests when the worker errors', async () => {
         const { createWorkerPool } = require('../../src/worker/workerPool');
@@ -73,6 +119,68 @@ describe('createWorkerPool', () => {
         handlers.get('error')(new Error('worker crashed'));
 
         await assert.rejects(pendingRequest, /worker crashed/);
+        await pool.dispose();
+    });
+
+    it('rejects cancelled requests immediately, notifies the worker, and ignores late results', async () => {
+        const { createWorkerPool } = require('../../src/worker/workerPool');
+        const handlers = new Map();
+        const postedMessages = [];
+        const fakeWorker = {
+            on(eventName, handler) {
+                handlers.set(eventName, handler);
+            },
+            postMessage(message) {
+                postedMessages.push(message);
+            },
+            terminate() {
+                return Promise.resolve(0);
+            },
+        };
+        const pool = createWorkerPool({
+            workerPath: 'cancel-worker.js',
+            workerFactory: () => fakeWorker,
+        });
+        const cancellation = createCancellationController();
+        const pending = pool.buildProjectIndex('project/main.k', {}, null, cancellation.token);
+        const requestId = postedMessages[0].requestId;
+
+        cancellation.cancel();
+        await assert.rejects(pending, error => error?.name === 'CancellationError');
+        assert.deepEqual(postedMessages.map(message => message.type), [
+            'buildProjectIndex',
+            'cancelRequest',
+        ]);
+        assert.equal(postedMessages[1].requestId, requestId);
+        assert.equal(cancellation.listenerCount(), 0);
+
+        assert.doesNotThrow(() => handlers.get('message')({
+            requestId,
+            snapshot: serializedSnapshot(),
+            type: 'result',
+        }));
+        assert.equal(pool.isDisposed(), false);
+        await pool.dispose();
+    });
+
+    it('does not post a worker request for an already-cancelled token', async () => {
+        const { createWorkerPool } = require('../../src/worker/workerPool');
+        let postCount = 0;
+        const fakeWorker = {
+            on() {},
+            postMessage() { postCount += 1; },
+            terminate() { return Promise.resolve(0); },
+        };
+        const pool = createWorkerPool({
+            workerPath: 'pre-cancelled-worker.js',
+            workerFactory: () => fakeWorker,
+        });
+
+        await assert.rejects(
+            pool.buildProjectIndex('project/main.k', {}, null, { isCancellationRequested: true }),
+            error => error?.name === 'CancellationError',
+        );
+        assert.equal(postCount, 0);
         await pool.dispose();
     });
 

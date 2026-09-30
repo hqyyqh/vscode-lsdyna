@@ -14,6 +14,63 @@ async function buildFileIndex(filePath) {
 }
 
 describe('scanCurveTableDefinitionsFromFileIndex', () => {
+    it('preserves curve points and scaling in all four native format fixtures', () => {
+        const { parseCurveBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
+        for (const mode of ['standard', 'long', 'i10', 'free']) {
+            const text = fs.readFileSync(path.join(__dirname, `../../fixtures/lspp-native-formats/native-${mode}.k`), 'ascii');
+            const blockText = text.slice(text.indexOf('*DEFINE_CURVE_TITLE'), text.indexOf('*ELEMENT_SHELL'));
+            const result = parseCurveBlock({ keyword: 'DEFINE_CURVE_TITLE', startLine: 0 }, blockText);
+            assert.equal(result.points.length, 2, mode);
+            assert.deepEqual([result.points[0].x, result.points[0].y], [0, -0.125], mode);
+            assert.equal(result.scale.sfa, 1, mode);
+            assert.equal(result.scale.sfo, 1, mode);
+            assert.equal(result.dataCompleteness.state, 'complete', mode);
+            if (mode === 'free') assert.equal(result.points[0].xRaw, '');
+        }
+    });
+
+    it('keeps comma slots and defaults only explicit empty curve coordinates', () => {
+        const { parseCurveBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
+        const result = parseCurveBlock({ keyword: 'DEFINE_CURVE', startLine: 0 },
+            '*DEFINE_CURVE\n901,,2,3,4,5\n,1\n2,\n&X,bad\n*END');
+        assert.deepEqual(result.scale, { sfa: 2, sfo: 3, offa: 4, offo: 5 });
+        assert.deepEqual(result.points.map(p => [p.x, p.y]), [[0, 1], [2, 0], [null, null]]);
+        assert.equal(result.points[0].xInput.raw, '');
+        assert.equal(result.points[1].yInput.raw, '');
+        assert.equal(result.points[2].xInput.kind, 'parameter');
+        assert.equal(result.points[2].yInput.kind, 'invalid');
+        assert.equal(result.dataCompleteness.state, 'incomplete');
+        assert.equal(parseCurveBlock({ keyword: 'DEFINE_CURVE', startLine: 0 },
+            '*DEFINE_CURVE\n,901,2,3\n0,1\n*END'), null);
+    });
+
+    it('indexes generic definitions through TITLE schema aliases', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-set-part-'));
+        const filePath = path.join(dir, 'sets.k');
+        fs.writeFileSync(filePath, [
+            '*SET_PART_LIST_TITLE',
+            'SET_Dummy',
+            '   8100001',
+            '91200001,91200401,91200601',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block),
+            );
+            assert.equal(result.genericDefinitions.length, 1);
+            assert.equal(result.genericDefinitions[0].id, 8100001);
+            assert.equal(result.genericDefinitions[0].targetKind, 'part-set');
+            assert.equal(result.genericDefinitions[0].idLine, 2);
+            assert.equal(result.genericDefinitions[0].idStartChar, 3);
+            assert.equal(result.genericDefinitions[0].idEndChar, 10);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('parses DEFINE_CURVE_TITLE id, title, scale and numeric points', async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-curve-'));
         const filePath = path.join(dir, 'curves.k');
@@ -37,6 +94,9 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
 
             assert.equal(result.curves.length, 1);
             assert.equal(result.curves[0].id, 1001);
+            assert.equal(result.curves[0].idLine, 3);
+            assert.equal(result.curves[0].idStartChar, 6);
+            assert.equal(result.curves[0].idEndChar, 10);
             assert.equal(result.curves[0].title, 'Steel hardening');
             assert.equal(result.curves[0].scale.sfa, 2);
             assert.equal(result.curves[0].scale.sfo, 3);
@@ -112,6 +172,9 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
 
             assert.equal(result.tables.length, 1);
             assert.equal(result.tables[0].id, 2001);
+            assert.equal(result.tables[0].idLine, 3);
+            assert.equal(result.tables[0].idStartChar, 6);
+            assert.equal(result.tables[0].idEndChar, 10);
             assert.equal(result.tables[0].title, 'rate table');
             assert.equal(result.tables[0].tableType, '2d');
             assert.deepEqual(result.tables[0].rows.map(row => [row.value, row.childId, row.childKind]), [
@@ -222,6 +285,31 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
         }
     });
 
+    it('parses verified high-dimensional table rows as child table ids', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-table9d-'));
+        const filePath = path.join(dir, 'table9d.k');
+        fs.writeFileSync(filePath, [
+            '*DEFINE_TABLE_9D',
+            '      9001       1.0       0.0',
+            '                0.0                8001',
+            '*END',
+        ].join('\n'));
+
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block),
+            );
+
+            assert.equal(result.tables.length, 1);
+            assert.equal(result.tables[0].tableType, '9d');
+            assert.equal(result.tables[0].rows[0].childId, 8001);
+            assert.equal(result.tables[0].rows[0].childKind, 'table');
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('indexes generic DEFINE keywords separately by their exact keyword and numeric ID', async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-ref-generic-'));
         const filePath = path.join(dir, 'generic.k');
@@ -266,10 +354,153 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
                 ['*DEFINE_CPM_GAS_PROPERTIES', 'DEFINE_CPM_GAS_PROPERTIES', 7001],
                 ['*DEFINE_CPG_GAS_PROPERTIES_TITLE', 'DEFINE_CPG_GAS_PROPERTIES', 7002],
             ]);
+            assert.deepEqual(result.genericDefinitions.map(definition => [
+                definition.idLine,
+                definition.idStartChar,
+                definition.idEndChar,
+            ]), [
+                [1, 6, 10],
+                [3, 6, 10],
+                [6, 6, 10],
+            ]);
             assert.deepEqual(result.curves, []);
             assert.deepEqual(result.tables, []);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    it('scans the four newly approved definition coordinates from their exact official layouts', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-registry-definitions-'));
+        const filePath = path.join(dir, 'definitions.k');
+        fs.writeFileSync(filePath, [
+            '*BOUNDARY_PRESCRIBED_FINAL_GEOMETRY',
+            String(101).padStart(10),
+            '*DEFINE_CONTACT_VOLUME',
+            String(102).padStart(10),
+            '*SET_BEAM',
+            String(103).padStart(10),
+            '*SET_IGA_POINT_UVW',
+            String(104).padStart(10),
+            '*END',
+        ].join('\n'));
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block),
+            );
+            assert.deepEqual(result.genericDefinitions.map(definition => ({
+                keyword: definition.keyword,
+                field: definition.idFieldName,
+                id: definition.id,
+                ruleId: definition.ruleId,
+            })), [
+                { keyword: '*BOUNDARY_PRESCRIBED_FINAL_GEOMETRY', field: 'BPFGID', id: 101,
+                    ruleId: 'rule:6bd70d5d2745fbcbfb977b6c' },
+                { keyword: '*DEFINE_CONTACT_VOLUME', field: 'CVID', id: 102,
+                    ruleId: 'rule:c773decc16b937240d8cc334' },
+                { keyword: '*SET_BEAM', field: 'SID', id: 103,
+                    ruleId: 'rule:f1ff04a27038b5cc08dcac00' },
+                { keyword: '*SET_IGA_POINT_UVW', field: 'SID', id: 104,
+                    ruleId: 'rule:b5258b5c999b2d4fbc3972fb' },
+            ]);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('scans corrected SET_PART SID only through the Registry exact-selector overlay', async function () {
+        this.timeout(10000);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-registry-set-part-'));
+        const filePath = path.join(dir, 'set-part.k');
+        fs.writeFileSync(filePath, [
+            '*SET_PART',
+            String(1000001).padStart(10),
+            '*END',
+        ].join('\n'));
+        try {
+            const result = await scanCurveTableDefinitionsFromFileIndex(
+                await buildFileIndex(filePath),
+                block => readBlockText(block),
+            );
+            assert.deepEqual(result.genericDefinitions.map(definition => ({
+                keyword: definition.keyword,
+                targetKeyword: definition.targetKeyword,
+                targetKind: definition.targetKind,
+                field: definition.idFieldName,
+                id: definition.id,
+                ruleId: definition.ruleId,
+                range: [definition.idLine, definition.idStartChar, definition.idEndChar],
+            })), [{
+                keyword: '*SET_PART',
+                targetKeyword: 'SET_PART',
+                targetKind: 'part-set',
+                field: 'SID',
+                id: 1000001,
+                ruleId: 'rule:94d1738d89bdf682dd5fc3bb',
+                range: [1, 3, 10],
+            }]);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('stops before reading a definition block when navigation is cancelled', async () => {
+        let reads = 0;
+        const result = await scanCurveTableDefinitionsFromFileIndex(
+            {
+                filePath: '/model/cancelled.k',
+                keywordBlocks: [{
+                    keyword: '*DEFINE_CURVE',
+                    filePath: '/model/cancelled.k',
+                    startLine: 0,
+                    endLine: 2,
+                }],
+            },
+            async () => {
+                reads += 1;
+                return '*DEFINE_CURVE\n         1\n       0.0       1.0';
+            },
+            undefined,
+            { cancellationToken: { isCancellationRequested: true } },
+        );
+
+        assert.equal(result.cancelled, true);
+        assert.equal(reads, 0);
+        assert.deepEqual(result.curves, []);
+    });
+
+    it('records the selected comma field when the same numeric text appears earlier', async () => {
+        const result = await scanCurveTableDefinitionsFromFileIndex(
+            {
+                filePath: '/model/comma-definition.k',
+                keywordBlocks: [{
+                    keyword: '*DEFINE_TEST',
+                    filePath: '/model/comma-definition.k',
+                    startLine: 0,
+                    endLine: 1,
+                }],
+            },
+            async () => '*DEFINE_TEST\n7, 7, 9',
+            {
+                generic: {
+                    DEFINE_TEST: {
+                        target: 'DEFINE_TEST',
+                        cardIndex: 1,
+                        fieldIndex: 1,
+                        fieldName: 'ID',
+                        fieldType: 'integer',
+                        position: 10,
+                        width: 10,
+                    },
+                },
+            },
+        );
+
+        assert.equal(result.genericDefinitions.length, 1);
+        assert.equal(result.genericDefinitions[0].id, 7);
+        assert.equal(result.genericDefinitions[0].idLine, 1);
+        assert.equal(result.genericDefinitions[0].idStartChar, 3);
+        assert.equal(result.genericDefinitions[0].idEndChar, 4);
     });
 });

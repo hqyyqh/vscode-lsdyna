@@ -3,6 +3,7 @@
 	"name": "LS-Dyna",
 	"scopeName": "source.lsdyna",
 	"patterns": [
+		{"include": "#opaque_comment_blocks"},
 		{"include": "#include_path_blocks"},
 		{"include": "#comments"},
 		{"include": "#dyna_numeric"},
@@ -16,6 +17,19 @@
 		{"include": "#phrase"}
 	],
 	"repository": {
+		"opaque_comment_blocks": {
+			"patterns": [
+				{
+					"comment": "COMMENT disables its same-line suffix and body until the next column-zero asterisk",
+					"begin": "^((?i:\\*COMMENT(?:_NOECHO)?))(?=$|[ \\t,])",
+					"beginCaptures": {
+						"1": { "name": "keyword.control.lsdyna" }
+					},
+					"contentName": "comment.block.lsdyna",
+					"end": "(?=^\\*)|\\z"
+				}
+			]
+		},
 		"include_path_blocks": {
 			"patterns": [
 				{

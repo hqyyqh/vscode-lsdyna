@@ -227,4 +227,128 @@ describe('createDiskSnapshotStore', () => {
             fs.rmSync(cacheDirectory, { recursive: true, force: true });
         }
     });
+
+    it('expires idle entries at the configured age boundary across sessions', async () => {
+        const { createDiskSnapshotStore } = require('../../../src/core/cache/diskSnapshotStore');
+        const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-age-'));
+        const rootFile = path.resolve('project', 'aged.k');
+        const snapshot = createSnapshot(rootFile);
+        const signatures = new Map(snapshot.files.map((filePath, index) => [
+            filePath,
+            { mtimeMs: index + 1, size: index + 100 },
+        ]));
+
+        try {
+            const writer = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async filePath => signatures.get(filePath),
+                maxEntryAgeMs: 100,
+                now: () => 1000,
+            });
+            await writer.persist({
+                snapshot,
+                trackedFiles: snapshot.files.map(filePath => ({ filePath, signature: signatures.get(filePath) })),
+            });
+
+            const reader = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async filePath => signatures.get(filePath),
+                maxEntryAgeMs: 100,
+                now: () => 1100,
+            });
+            assert.equal(await reader.restore(rootFile), null);
+            assert.deepEqual(reader.getStats(), { entryCount: 0, totalBytes: 0 });
+            assert.deepEqual(fs.readdirSync(path.join(cacheDirectory, 'payloads')), []);
+        } finally {
+            fs.rmSync(cacheDirectory, { recursive: true, force: true });
+        }
+    });
+
+    it('does not retain a single snapshot larger than the hard byte budget', async () => {
+        const { createDiskSnapshotStore } = require('../../../src/core/cache/diskSnapshotStore');
+        const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-oversize-'));
+        const rootFile = path.resolve('project', 'oversize.k');
+        const snapshot = createSnapshot(rootFile);
+
+        try {
+            const store = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+                maxCacheBytes: 1,
+            });
+            await store.persist({
+                snapshot,
+                trackedFiles: snapshot.files.map(filePath => ({
+                    filePath,
+                    signature: { mtimeMs: 1, size: 1 },
+                })),
+            });
+
+            assert.deepEqual(store.getStats(), { entryCount: 0, totalBytes: 0 });
+            assert.equal(await store.restore(rootFile), null);
+        } finally {
+            fs.rmSync(cacheDirectory, { recursive: true, force: true });
+        }
+    });
+
+    it('clears all payloads atomically and reports the removed budget', async () => {
+        const { createDiskSnapshotStore } = require('../../../src/core/cache/diskSnapshotStore');
+        const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-clear-'));
+        const rootFile = path.resolve('project', 'clear.k');
+        const snapshot = createSnapshot(rootFile);
+
+        try {
+            const store = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            });
+            await store.persist({
+                snapshot,
+                trackedFiles: snapshot.files.map(filePath => ({
+                    filePath,
+                    signature: { mtimeMs: 1, size: 1 },
+                })),
+            });
+            const before = store.getStats();
+            const removed = await store.clear();
+
+            assert.deepEqual(removed, before);
+            assert.deepEqual(store.getStats(), { entryCount: 0, totalBytes: 0 });
+            assert.deepEqual(fs.readdirSync(path.join(cacheDirectory, 'payloads')), []);
+        } finally {
+            fs.rmSync(cacheDirectory, { recursive: true, force: true });
+        }
+    });
+
+    it('reconciles payload sizes before enforcing a lower cross-session budget', async () => {
+        const { createDiskSnapshotStore } = require('../../../src/core/cache/diskSnapshotStore');
+        const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-disk-cache-reconcile-'));
+        const rootFile = path.resolve('project', 'reconcile.k');
+        const snapshot = createSnapshot(rootFile);
+        const signatures = new Map(snapshot.files.map(filePath => [filePath, { mtimeMs: 1, size: 1 }]));
+        try {
+            const writer = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async filePath => signatures.get(filePath),
+            });
+            await writer.persist({
+                snapshot,
+                trackedFiles: snapshot.files.map(filePath => ({ filePath, signature: signatures.get(filePath) })),
+            });
+            const indexPath = path.join(cacheDirectory, 'index.json');
+            const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+            index.entries[0].byteSize = 0;
+            fs.writeFileSync(indexPath, JSON.stringify(index), 'utf8');
+
+            const reader = createDiskSnapshotStore({
+                cacheDirectory,
+                getFileSignature: async filePath => signatures.get(filePath),
+                maxCacheBytes: 1,
+            });
+            assert.equal(await reader.restore(rootFile), null);
+            assert.deepEqual(reader.getStats(), { entryCount: 0, totalBytes: 0 });
+        } finally {
+            fs.rmSync(cacheDirectory, { recursive: true, force: true });
+        }
+    });
 });

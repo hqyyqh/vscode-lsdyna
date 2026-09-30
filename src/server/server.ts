@@ -29,6 +29,11 @@ connection.onInitialize((params) => {
     initializeSession({
         globalStoragePath: initOptions.globalStoragePath,
         maxCacheBytes: initOptions.maxCacheBytes,
+        maxMemoryCacheBytes: initOptions.maxMemoryCacheBytes,
+        maxProjectSnapshotCacheBytes: initOptions.maxProjectSnapshotCacheBytes,
+        maxFileScanCacheBytes: initOptions.maxFileScanCacheBytes,
+        maxFileScanMemoryCacheBytes: initOptions.maxFileScanMemoryCacheBytes,
+        maxCacheAgeMs: initOptions.maxCacheAgeMs,
     });
 
     return {
@@ -44,8 +49,8 @@ connection.onShutdown(async () => {
 });
 
 // Bind custom request handler for loading project snapshots.
-connection.onRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, async (params) => {
-    return handleRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, params, connection);
+connection.onRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, async (params, cancellationToken) => {
+    return handleRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, params, connection, cancellationToken);
 });
 
 // Bind custom request handler for retrieving cache manifests.
@@ -56,6 +61,10 @@ connection.onRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST, async (params) => {
 // Bind custom request handler for fetching cache size and stats.
 connection.onRequest(protocol.GET_CACHE_STATS_REQUEST, async (params) => {
     return handleRequest(protocol.GET_CACHE_STATS_REQUEST, params);
+});
+
+connection.onRequest(protocol.CLEAR_CACHES_REQUEST, async (params) => {
+    return handleRequest(protocol.CLEAR_CACHES_REQUEST, params);
 });
 
 // Bind custom notification handler to invalidate cache ranges.

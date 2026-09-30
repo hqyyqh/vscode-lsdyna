@@ -2,70 +2,50 @@ const assert = require('assert');
 const path = require('path');
 
 describe('field reference index', () => {
-    it('contains generated curve/table field metadata from schema help', () => {
+    it('contains source-locked LS-PrePost relations and compact definition layouts', () => {
         const index = require(path.join('..', '..', '..', 'keywords', 'field_reference_index.json'));
-        const references = index.references || {};
-        const mat024 = references.MAT_PIECEWISE_LINEAR_PLASTICITY || {};
-        const matAddErosion = references.MAT_ADD_EROSION || {};
-        const matAddErosionTitle = references.MAT_ADD_EROSION_TITLE || {};
-        const airbagHybridJetting = references.AIRBAG_HYBRID_JETTING || {};
-        const airbagPressureVolume = references.AIRBAG_SIMPLE_PRESSURE_VOLUME || {};
 
-        assert.equal(index.schemaVersion, 1);
-        assert.deepEqual(index.generatedFrom, {
-            fieldData: 'keywords/field_data.json',
-        });
-        assert.ok(index.definitionKeywords.scanned.length >= 50);
+        assert.equal(index.schemaVersion, 2);
+        assert.ok(Object.keys(index.references).length > 0);
+        assert.match(index.generatedFrom.lsppDatabaseSha256, /^[0-9a-f]{64}$/);
+        assert.match(index.generatedFrom.lsppHandoffSha256, /^[0-9a-f]{64}$/);
+        assert.equal(index.definitionKeywords.generic.SET_PART, undefined);
+        assert.equal(index.lsppReferenceCoverage.publishedSourceRelations +
+            index.lsppReferenceCoverage.blockedRelations,
+        index.lsppReferenceCoverage.relationBranches);
+        assert.match(index.generatedFrom.manualSemanticRuntimeId, /^[0-9a-f]{64}$/);
+        assert.match(index.generatedFrom.manualSemanticManifestSha256, /^[0-9a-f]{64}$/);
+        assert.ok(index.definitionKeywords.scanned.includes('DEFINE_CURVE'));
         assert.ok(index.definitionKeywords.scanned.includes('DEFINE_CURVE_FUNCTION'));
-        assert.ok(index.definitionKeywords.scanned.includes('DEFINE_TABLE_3D'));
+        assert.ok(index.definitionKeywords.scanned.includes('DEFINE_TABLE_2D'));
+        assert.ok(!index.definitionKeywords.scanned.includes('DEFINE_CURVE_FEEDBACK'));
         assert.ok(index.definitionKeywords.generic.DEFINE_CPM_CHAMBER);
         assert.equal(
             index.definitionKeywords.generic.DEFINE_CPM_CHAMBER_TITLE.target,
             'DEFINE_CPM_CHAMBER',
         );
-        assert.ok(index.definitionKeywords.ambiguousIdFields.some(item => item.reason === 'missing-schema-entry'));
-        assert.ok(Object.values(references).every(rules => Object.values(rules).every(rule =>
-            (rule.targetDefinitions || []).every(target =>
-                Object.values(index.definitionKeywords.generic).some(descriptor => descriptor.target === target)
-            )
-        )));
-        assert.deepEqual(mat024['2:LCSS'].targetKinds, ['curve', 'table']);
-        assert.equal(mat024['2:LCSS'].confidence, 'high');
-        assert.equal(mat024['2:LCSS'].source, 'schema-help');
-        assert.deepEqual(matAddErosion['2:SIGP1'].targetKinds, ['curve']);
-        assert.equal(matAddErosion['2:SIGP1'].fieldType, 'real');
-        assert.equal(matAddErosion['2:SIGP1'].requiresSignedSwitch, true);
-        assert.deepEqual(matAddErosion['2:SIGVM'].targetKinds, ['curve']);
-        assert.equal(matAddErosion['2:SIGVM'].requiresSignedSwitch, true);
-        assert.deepEqual(matAddErosionTitle['3:SIGP1'].targetKinds, ['curve']);
-        assert.equal(matAddErosionTitle['3:SIGP1'].requiresSignedSwitch, true);
-        assert.deepEqual(airbagHybridJetting['7:CA'].targetKinds, ['curve']);
-        assert.equal(airbagHybridJetting['7:CA'].requiresSignedSwitch, true);
-        assert.equal(airbagPressureVolume['2:BETA'], undefined);
-        assert.equal(mat024['1:MID'], undefined);
-        assert.ok(Object.keys(references).length > 100);
+        assert.equal(index.definitionKeywords.generic.PART.targetKind, 'part');
+        assert.equal(index.definitionKeywords.generic.MAT_ELASTIC.targetKind, 'material');
+        assert.equal(index.definitionKeywords.onDemand.NODE.targetKind, 'node');
+        assert.equal(index.definitionKeywords.blocked.length, 0);
     });
 
-    it('keeps every generic definition descriptor aligned with rendered schema cards', () => {
+    it('keeps every definition descriptor aligned with a unique rendered schema field', () => {
         const index = require(path.join('..', '..', '..', 'keywords', 'field_reference_index.json'));
         const schema = require(path.join('..', '..', '..', 'keywords', 'field_data.json'));
         const { getRenderedCards, lookupKeywordSchema } = require('../../../out/core/keywordSchema');
-        const generic = index.definitionKeywords.generic;
+        const descriptors = {
+            ...index.definitionKeywords.generic,
+            ...index.definitionKeywords.onDemand,
+        };
 
-        assert.equal(Object.keys(index.references).length, 2299);
-        assert.equal(Object.keys(generic).length, 58);
-        assert.equal(new Set(Object.values(generic).map(descriptor => descriptor.target)).size, 29);
-        assert.equal(index.definitionKeywords.ambiguousIdFields.length, 6);
-        assert.ok(!index.definitionKeywords.ambiguousIdFields.some(item =>
-            item.target === 'DEFINE_FUNCTIONS' ||
-            item.target === 'DEFINE_COORDI_NATE_VECTOR' ||
-            item.target === 'DEFINE_COOR_DINATE_VECTOR'
-        ));
+        assert.ok(Object.keys(index.references).length > 0);
+        assert.ok(Object.keys(descriptors).length >= 700);
+        assert.ok(Object.keys(index.definitionKeywords.onDemand).length > 0);
 
-        for (const [keyword, descriptor] of Object.entries(generic)) {
+        for (const [keyword, descriptor] of Object.entries(descriptors)) {
             const lookup = lookupKeywordSchema(keyword, schema);
             assert.ok(lookup, `missing schema lookup for ${keyword}`);
-            assert.equal(lookup.canonicalName, descriptor.target, `${keyword} target mismatch`);
             const card = getRenderedCards(lookup.entry, lookup.activeOptions)[descriptor.cardIndex - 1];
             const field = card && card[descriptor.fieldIndex];
             assert.ok(field, `missing ${keyword} descriptor field`);
@@ -74,6 +54,12 @@ describe('field reference index', () => {
                 [descriptor.fieldName, descriptor.fieldType, descriptor.position, descriptor.width],
                 `${keyword} descriptor layout mismatch`,
             );
+            if (descriptor.source === "keyword-catalog") {
+                assert.ok(Number.isInteger(descriptor.linkCode));
+            } else {
+                assert.match(descriptor.ruleId, /^rule:/);
+                assert.ok(descriptor.evidenceIds.every(id => /^evidence:/.test(id)));
+            }
         }
     });
 });

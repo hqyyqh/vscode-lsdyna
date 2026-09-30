@@ -23,6 +23,24 @@ function permutations(values) {
 }
 
 describe('parameterScanner', () => {
+    it('suppresses definitions and references inside COMMENT ranges', () => {
+        const index = scan([
+            '*PARAMETER',
+            'IVISIBLE,1',
+            '*COMMENT *PARAMETER',
+            'IHIDDEN,2',
+            '  *PARAMETER',
+            'IALSOHIDE,3',
+            'value=&VISIBLE',
+            '*CONTROL_TERMINATION',
+            'value=&VISIBLE',
+        ].join('\n'));
+
+        assert.deepEqual([...index.definitions.keys()], ['VISIBLE']);
+        assert.equal(index.references.filter(reference => reference.name === 'VISIBLE').length, 1);
+        assert.equal(index.references[0].lineIndex, 8);
+    });
+
     it('scans ordinary and expression definitions with precise values', () => {
         const index = scan(
             '*PARAMETER\n' +
@@ -142,6 +160,25 @@ describe('parameterScanner', () => {
         assert.equal(firstDefinition(index, 'GLOBAL_1').format, 'long-fixed');
         assert.equal(firstDefinition(index, 'GLOBAL_1').valueStartChar, 38);
         assert.equal(firstDefinition(index, 'LOCAL_123').format, 'long-fixed');
+    });
+
+    it('uses LONG=K for long parameter cards and LONG=S for standard cards', () => {
+        const longLine = 'ILONG_K'.padEnd(20) + '42'.padStart(20);
+        const overrideLine = 'IOVERRIDE'.padEnd(10) + '7'.padStart(10);
+        const standardLine = 'ISTANDARD'.padEnd(10) + '8'.padStart(10);
+        const index = scan(
+            '*KEYWORD LONG=K\n' +
+            '*PARAMETER\n' + longLine + '\n' +
+            '*PARAMETER -\n' + overrideLine + '\n' +
+            '*KEYWORD LONG=S\n' +
+            '*PARAMETER\n' + standardLine + '\n'
+        );
+
+        assert.equal(firstDefinition(index, 'LONG_K').format, 'long-fixed');
+        assert.equal(firstDefinition(index, 'OVERRIDE').format, 'fixed');
+        assert.equal(firstDefinition(index, 'OVERRIDE').value, 7);
+        assert.equal(firstDefinition(index, 'STANDARD').format, 'fixed');
+        assert.equal(firstDefinition(index, 'STANDARD').value, 8);
     });
 
     it('scans expression continuations and preserves dependency ranges', () => {

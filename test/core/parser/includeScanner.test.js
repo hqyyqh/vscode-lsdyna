@@ -10,6 +10,22 @@ const { collectIncludeDirectivesFromFile } = require('../../../src/core/parser/i
 const FIXTURE_DIR = path.join(__dirname, '..', '..', 'Bolt_A_Explicit');
 
 describe('includeScanner', () => {
+    it('suppresses include and path cards inside COMMENT ranges in the small-file path', async () => {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-comment-'));
+        const filePath = path.join(tempDir, 'comment.k');
+        fs.writeFileSync(filePath, [
+            '*COMMENT *INCLUDE',
+            'hidden-inline.k',
+            '  *INCLUDE',
+            'hidden-indented.k',
+            '*INCLUDE',
+            'visible.k',
+        ].join('\n'), 'utf8');
+
+        const result = await collectIncludeDirectivesFromFile(filePath);
+        assert.deepEqual(result.includeEntries.map(entry => entry.fileName), ['visible.k']);
+    });
+
     it('handles leading whitespace and mixed-case include keywords', async () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-case-'));
         const filePath = path.join(tempDir, 'mixed-case.k');
@@ -278,6 +294,45 @@ describe('includeScanner', () => {
         assert.equal(transform.offsets.idnoff.value, 10);
         assert.equal(transform.offsets.idfoff.value, 0);
         assert.equal(transform.parseCompleteness.state, 'complete');
+    });
+
+    it('preserves attached and separated *INCLUDE input-format overrides', () => {
+        const { collectIncludeDirectivesFromBuffer } = require('../../../src/core/parser/includeScanner');
+        const result = collectIncludeDirectivesFromBuffer(Buffer.from([
+            '*INCLUDE +',
+            'long-separated.k',
+            '*INCLUDE-',
+            'standard-attached.k',
+            '*INCLUDE_TRANSFORM+',
+            'long-transform.k',
+            '0,0,0,0,0,0,0',
+            '0',
+            '1,1,1,1,1',
+            '0',
+            '*END',
+        ].join('\n')), 'C:/model');
+
+        assert.deepEqual(result.includeEntries.map(entry => ({
+            fileName: entry.fileName,
+            keyword: entry.keyword,
+            inputFormatOverride: entry.inputFormatOverride,
+        })), [
+            {
+                fileName: 'long-separated.k',
+                keyword: '*INCLUDE',
+                inputFormatOverride: 'long',
+            },
+            {
+                fileName: 'standard-attached.k',
+                keyword: '*INCLUDE',
+                inputFormatOverride: 'standard',
+            },
+            {
+                fileName: 'long-transform.k',
+                keyword: '*INCLUDE_TRANSFORM',
+                inputFormatOverride: 'long',
+            },
+        ]);
     });
 
     it('collects filename on card 2 for *INCLUDE_MULTISCALE and SPOTWELD', async () => {

@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "numberedAliases": [
+    "*MAT_BILKHU",
+    "*MAT_CONSTRAINED",
+    "*MAT_CONSTRAINED_TITLE"
+  ],
+  "definitions": [
+    "EOS_027|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_022|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_024|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_023|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_025|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_028|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_029|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_042|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_026|EOSID|identifier|1|EOSID|integer|0|10",
+    "EOS_030|EOSID|identifier|1|EOSID|integer|0|10"
+  ],
+  "typeDrift": [
+    {
+      "coordinate": "*MAT_BILKHU|1|4|LCUYS|float|integer|40|10",
+      "disposition": "no-product-info",
+      "pair": "float->integer"
+    },
+    {
+      "coordinate": "*MAT_BILKHU|1|3|LCPY|float|integer|30|10",
+      "disposition": "no-product-info",
+      "pair": "float->integer"
+    },
+    {
+      "coordinate": "*MAT_BILKHU|1|0|MID|string|integer|0|10",
+      "disposition": "definition-priority",
+      "pair": "string->integer"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|0|MID|string|integer|0|10",
+      "disposition": "definition-priority",
+      "pair": "string->integer"
+    }
+  ],
+  "blockers": [
+    {
+      "coordinate": "*MAT_BILKHU|1|4|LCUYS|float|40|10",
+      "reason": "field-type-mismatch"
+    },
+    {
+      "coordinate": "*MAT_BILKHU|1|2|LCRATE|float|20|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_BILKHU|1|3|LCPY|float|30|10",
+      "reason": "field-type-mismatch"
+    },
+    {
+      "coordinate": "*MAT_BILKHU|1|0|MID|string|0|10",
+      "reason": "field-type-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|3|EXFC|float|30|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|1|RN|float|10|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|2|FFS|float|20|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|7|NPFC|float|70|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|4|STIFP|float|40|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|1|FFB|float|10|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|6|LCUPF|float|60|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|0|FFN|float|0|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|0|MID|string|0|10",
+      "reason": "field-type-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|5|MFSFC|float|50|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|5|LCF|float|50|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|7|LCUPR|float|70|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|6|DEFC|float|60|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|1|FFB|float|10|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|7|NPFC|float|70|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|5|LCF|float|50|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|0|FFN|float|0|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|5|MFSFC|float|50|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|2|FFS|float|20|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|0|MID|string|0|10",
+      "reason": "field-name-mismatch"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|6|LCUPF|float|60|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|4|STIFP|float|40|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|7|LCUPR|float|70|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|3|EXFC|float|30|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|1|RN|float|10|10",
+      "reason": "slot-missing"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|6|DEFC|float|60|10",
+      "reason": "slot-missing"
+    }
+  ],
+  "nameDrift": [
+    {
+      "coordinate": "*MAT_BILKHU|1|2|LCRATE|float|20|10",
+      "category": "no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|1|RN|float|10|10",
+      "category": "no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|2|FFS|float|20|10",
+      "category": "no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|1|FFB|float|10|10",
+      "category": "no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|0|FFN|float|0|10",
+      "category": "no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|0|FFN|float|0|10",
+      "category": "mismatch-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|0|MID|string|0|10",
+      "category": "mismatch-independent-of-option"
+    }
+  ],
+  "missingSlots": [
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|3|EXFC|float|30|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|7|NPFC|float|70|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|4|STIFP|float|40|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|6|LCUPF|float|60|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|5|MFSFC|float|50|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|5|LCF|float|50|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|7|LCUPR|float|70|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED|1|6|DEFC|float|60|10",
+      "bucket": "slot-missing:no-active-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|1|FFB|float|10|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|7|NPFC|float|70|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|5|LCF|float|50|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|5|MFSFC|float|50|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|2|FFS|float|20|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|6|LCUPF|float|60|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|4|STIFP|float|40|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|7|LCUPR|float|70|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|3|EXFC|float|30|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|1|RN|float|10|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    },
+    {
+      "coordinate": "*MAT_CONSTRAINED_TITLE|1|6|DEFC|float|60|10",
+      "bucket": "slot-missing:missing-independent-of-option"
+    }
+  ],
+  "remapped": [
+    {
+      "keyword": "*MAT_CONSTRAINED",
+      "keys": [
+        "[4,\"EXFC\",\"float\",30,10]",
+        "[4,\"FFS\",\"float\",20,10]",
+        "[4,\"NPFC\",\"float\",70,10]",
+        "[4,\"STIFP\",\"float\",40,10]",
+        "[4,\"FFB\",\"float\",10,10]",
+        "[4,\"FFN\",\"float\",0,10]",
+        "[4,\"MFSFC\",\"float\",50,10]",
+        "[4,\"DEFC\",\"float\",60,10]",
+        "[2,\"RN\",\"float\",10,10]"
+      ]
+    },
+    {
+      "keyword": "*MAT_CONSTRAINED_TITLE",
+      "keys": [
+        "[5,\"FFB\",\"float\",10,10]",
+        "[5,\"NPFC\",\"float\",70,10]",
+        "[5,\"FFN\",\"float\",0,10]",
+        "[5,\"MFSFC\",\"float\",50,10]",
+        "[5,\"FFS\",\"float\",20,10]",
+        "[5,\"STIFP\",\"float\",40,10]",
+        "[5,\"EXFC\",\"float\",30,10]",
+        "[5,\"DEFC\",\"float\",60,10]",
+        "[3,\"RN\",\"float\",10,10]"
+      ]
+    }
+  ],
+  "actionable": [
+    "*MAT_CONSTRAINED_TITLE|3|1|RN|real|10|10",
+    "*MAT_CONSTRAINED_TITLE|5|0|FFN|real|0|10",
+    "*MAT_CONSTRAINED_TITLE|5|1|FFB|real|10|10",
+    "*MAT_CONSTRAINED_TITLE|5|2|FFS|real|20|10",
+    "*MAT_CONSTRAINED_TITLE|5|3|EXFC|real|30|10",
+    "*MAT_CONSTRAINED_TITLE|5|4|STIFP|real|40|10",
+    "*MAT_CONSTRAINED_TITLE|5|5|MFSFC|real|50|10",
+    "*MAT_CONSTRAINED_TITLE|5|6|DEFC|real|60|10",
+    "*MAT_CONSTRAINED_TITLE|5|7|NPFC|real|70|10",
+    "*MAT_CONSTRAINED|2|1|RN|real|10|10",
+    "*MAT_CONSTRAINED|4|0|FFN|real|0|10",
+    "*MAT_CONSTRAINED|4|1|FFB|real|10|10",
+    "*MAT_CONSTRAINED|4|2|FFS|real|20|10",
+    "*MAT_CONSTRAINED|4|3|EXFC|real|30|10",
+    "*MAT_CONSTRAINED|4|4|STIFP|real|40|10",
+    "*MAT_CONSTRAINED|4|5|MFSFC|real|50|10",
+    "*MAT_CONSTRAINED|4|6|DEFC|real|60|10",
+    "*MAT_CONSTRAINED|4|7|NPFC|real|70|10"
+  ]
+}

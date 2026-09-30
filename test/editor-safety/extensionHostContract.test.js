@@ -17,7 +17,7 @@ describe('editor safety Extension Host contract', () => {
             /const scenarios = \{([\s\S]*?)\n\s*\};/,
         );
         const fullRunBlock = source.match(
-            /await assertPassiveOperationsDoNotWrite\(\);([\s\S]*?)\n\s*await vscode\.commands\.executeCommand\('workbench\.action\.closeAllEditors'\);/,
+            /for \(const scenario of \[([\s\S]*?)\n    \]\) \{/,
         );
         assert.ok(focusedBlock, 'focused scenario registry must be present');
         assert.ok(fullRunBlock, 'default full-run sequence must be present');
@@ -28,7 +28,7 @@ describe('editor safety Extension Host contract', () => {
         assert.ok(focusedFunctions.length > 0, 'focused scenario registry must not be empty');
 
         const omitted = focusedFunctions.filter(
-            functionName => !fullRunBlock[0].includes(`await ${functionName}();`),
+            functionName => !fullRunBlock[1].includes(`${functionName},`),
         );
         assert.deepStrictEqual(
             omitted,
@@ -39,7 +39,7 @@ describe('editor safety Extension Host contract', () => {
 
     it('reports the number of scenarios actually invoked by the full run', () => {
         const fullRunBlock = source.match(
-            /await assertPassiveOperationsDoNotWrite\(\);([\s\S]*?)\n\s*await vscode\.commands\.executeCommand\('workbench\.action\.closeAllEditors'\);/,
+            /for \(const scenario of \[([\s\S]*?)\n    \]\) \{/,
         );
         const reportedCount = source.match(
             /Editor safety Extension Host: (\d+) scenarios passed/,
@@ -48,8 +48,11 @@ describe('editor safety Extension Host contract', () => {
         assert.ok(reportedCount, 'full-run scenario count must be reported');
 
         const invokedCount = (
-            fullRunBlock[0].match(/await assert[A-Za-z0-9_]+\(\);/g) || []
+            fullRunBlock[1].match(/assert[A-Za-z0-9_]+,/g) || []
         ).length;
         assert.strictEqual(Number(reportedCount[1]), invokedCount);
+        assert.ok(source.includes('await scenario();'));
+        assert.ok(source.includes("throw new Error('Host acceptance incomplete:"),
+            'environment gaps must prevent a successful acceptance result');
     });
 });

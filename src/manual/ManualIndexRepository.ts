@@ -657,7 +657,8 @@ export class ManualIndexRepository {
                 || left.titleEn.localeCompare(right.titleEn, 'en')
                 || left.location.manualId.localeCompare(right.location.manualId, 'en')
                 || left.location.sectionId.localeCompare(right.location.sectionId, 'en'))
-            .slice(0, limit);
+            .slice(0, limit)
+            .map(result => ({ ...result, volumeTitle: this.listDocuments().find(doc => doc.manualId === result.location.manualId)?.title }));
     }
 
     private withTitle(location: ManualLocation): ManualLocation {

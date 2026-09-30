@@ -11,7 +11,10 @@ const targetRelativePath = process.env.LSDYNA_EDITOR_SAFETY_LARGE_TARGET;
 const resultFile = process.env.LSDYNA_EDITOR_SAFETY_LARGE_RESULT;
 const progressFile = process.env.LSDYNA_EDITOR_SAFETY_PROGRESS_FILE;
 const noProgressTimeoutMs = Number(
-    process.env.LSDYNA_EDITOR_SAFETY_NO_PROGRESS_TIMEOUT_MS || 120000,
+    process.env.LSDYNA_EDITOR_SAFETY_NO_PROGRESS_TIMEOUT_MS || 10000,
+);
+const scenarioTimeoutMs = Number(
+    process.env.LSDYNA_EDITOR_SAFETY_SCENARIO_TIMEOUT_MS || 120000,
 );
 
 const metrics = [];
@@ -33,15 +36,30 @@ function writeProgress(label, state, details = {}) {
 }
 
 async function measureStep(label, operation) {
+    let profiler;
+    if (process.env.LSDYNA_PROFILE_PHASES && new RegExp(process.env.LSDYNA_PROFILE_PHASES).test(label)) {
+        const { Session } = require('node:inspector');
+        profiler = new Session();
+        profiler.connect();
+        await new Promise((resolve, reject) => profiler.post('Profiler.enable', error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => profiler.post('Profiler.start', error => error ? reject(error) : resolve()));
+    }
     const started = performance.now();
     const rssBefore = process.memoryUsage().rss;
     let lastTick = started;
     let maxEventLoopGapMs = 0;
+    let lastHeartbeat = started;
     const intervalMs = 25;
     const interval = setInterval(() => {
         const now = performance.now();
         maxEventLoopGapMs = Math.max(maxEventLoopGapMs, now - lastTick - intervalMs);
         lastTick = now;
+        if (now - lastHeartbeat >= 1000) {
+            lastHeartbeat = now;
+            writeProgress(label, 'heartbeat', {
+                durationMs: Math.round(now - started),
+            });
+        }
     }, intervalMs);
     let timeout;
     writeProgress(label, 'started');
@@ -53,9 +71,9 @@ async function measureStep(label, operation) {
                 timeout = setTimeout(
                     () => reject(new Error(
                         `${label} made no observable progress for ` +
-                        `${noProgressTimeoutMs} ms`,
+                        `${scenarioTimeoutMs} ms`,
                     )),
-                    noProgressTimeoutMs,
+                    scenarioTimeoutMs,
                 );
             }),
         ]);
@@ -72,6 +90,12 @@ async function measureStep(label, operation) {
     } finally {
         clearInterval(interval);
         clearTimeout(timeout);
+        if (profiler) {
+            const { profile } = await new Promise((resolve, reject) =>
+                profiler.post('Profiler.stop', (error, result) => error ? reject(error) : resolve(result)));
+            profiler.disconnect();
+            fs.writeFileSync(`${resultFile}.${label.replace(/[^a-z0-9]+/gi, '-')}.cpuprofile`, JSON.stringify(profile));
+        }
     }
 }
 
@@ -114,11 +138,95 @@ function writeResult(result) {
     fs.writeFileSync(resultFile, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
 }
 
+async function assertSyntheticFormattingBoundaries() {
+    const configuration = vscode.workspace.getConfiguration('lsdyna');
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const planner = extension?.exports?._internals?.planLsdynaFormatting || require(path.join(
+        extension.extensionPath,
+        'out',
+        'client',
+        'services',
+        'lsdynaFormatting.js',
+    )).planLsdynaFormatting;
+    assert.strictEqual(typeof planner, 'function');
+    const dataLine = `1${' '.repeat(83)}`;
+    const dependencies = {
+        classifyKeywordLine(text) {
+            const trimmed = String(text || '').trimStart();
+            if (!trimmed.startsWith('*')) return { isKeyword: false };
+            return {
+                isKeyword: true,
+                normalizedKeyword: trimmed.split(/[\s,]/)[0].toUpperCase(),
+            };
+        },
+        resolveCard: () => null,
+        alignLine: text => ({ status: 'unchanged', text }),
+        splitIncludePathEntry: fullPath => ({ status: 'unchanged', lines: [fullPath] }),
+        isLongFormatKeyword: () => false,
+    };
+    for (const enableRendering of [true, false]) {
+        await configuration.update(
+            'largeFile.enableRendering',
+            enableRendering,
+            vscode.ConfigurationTarget.Global,
+        );
+        for (const lineCount of [99_999, 100_000, 100_001]) {
+            const logicalBytes = '*NODE'.length +
+                (lineCount - 1) * dataLine.length +
+                (lineCount - 1);
+            assert.ok(logicalBytes >= 8 * 1024 * 1024);
+            assert.ok(logicalBytes <= 16 * 1024 * 1024);
+            let bodyReads = 0;
+            const document = {
+                lineCount,
+                version: 1,
+                isDirty: false,
+                lineAt(line) {
+                    if (line > 0) bodyReads++;
+                    return { text: line === 0 ? '*NODE' : dataLine };
+                },
+            };
+            const started = performance.now();
+            const result = await measureStep(
+                `reject oversized explicit format ${lineCount}/${enableRendering}`,
+                () => planner({
+                    document,
+                    selections: [{
+                        start: { line: 0, character: 0 },
+                        end: { line: 0, character: 0 },
+                    }],
+                    fileIndex: {
+                        documentVersion: 1,
+                        keywordBlocks: [{
+                            keyword: '*NODE',
+                            startLine: 0,
+                            endLine: lineCount - 1,
+                        }],
+                    },
+                }, dependencies),
+            );
+            assert.strictEqual(result.status, 'rejected');
+            assert.strictEqual(result.reason, 'target-line-limit');
+            assert.strictEqual(bodyReads, 0);
+            assert.ok(
+                performance.now() - started < 1000,
+                `oversized formatting rejection exceeded 1 second (${lineCount}/${enableRendering})`,
+            );
+        }
+    }
+    await configuration.update(
+        'largeFile.enableRendering',
+        undefined,
+        vscode.ConfigurationTarget.Global,
+    );
+}
+
 async function run() {
     assert.ok(workspaceRoot);
     assert.ok(targetRelativePath);
     assert.ok(resultFile);
-    assert.strictEqual(noProgressTimeoutMs, 120000);
+    assert.strictEqual(noProgressTimeoutMs, 10000);
+    assert.strictEqual(scenarioTimeoutMs, 120000);
 
     const targetPath = path.join(workspaceRoot, targetRelativePath);
     const targetStat = fs.statSync(targetPath);
@@ -140,6 +248,7 @@ async function run() {
         vscode.workspace.getConfiguration('lsdyna').get('autoFormat'),
         'disabled',
     );
+    await assertSyntheticFormattingBoundaries();
 
     let document;
     let editor;

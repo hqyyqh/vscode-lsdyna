@@ -5,9 +5,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { collectKeywordsFromFile } = require('../../../src/core/parser/keywordScanner');
+const {
+    collectKeywordsFromFile,
+    collectKeywordsFromLineReader,
+} = require('../../../src/core/parser/keywordScanner');
 
 describe('keywordScanner', () => {
+    it('suppresses pseudo-keywords inside COMMENT ranges for live line readers', () => {
+        const lines = ['*COMMENT', '  *NODE', '$*END', '*PART'];
+        const keywords = collectKeywordsFromLineReader(lines.length, index => lines[index], 'live.k');
+        assert.deepEqual(keywords.map(entry => entry.keyword), ['COMMENT', 'PART']);
+    });
+
     it('normalizes indented mixed-case keyword usages', async () => {
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-case-'));
         const filePath = path.join(tempDir, 'mixed-case.k');

@@ -4,7 +4,7 @@ const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
-const { runTests } = require('@vscode/test-electron');
+const { runTests } = require('./vsix-host.cjs');
 const {
     createOfficialEdgeCaseCorpus,
 } = require('../test/editor-safety/createOfficialCorpus');
@@ -13,6 +13,10 @@ const repoRoot = path.resolve(__dirname, '..');
 
 function right(value, width) {
     return String(value).padStart(width, ' ');
+}
+
+function fixed80(values) {
+    return Array.from({ length: 8 }, (_, index) => right(values[index] ?? '', 10)).join('');
 }
 
 function resolveVSCodeExecutable() {
@@ -80,6 +84,62 @@ function createFixtureWorkspace() {
         'utf8',
     );
     fs.writeFileSync(
+        path.join(root, 'merge-fields.key'),
+        [
+            '*KEYWORD',
+            '*SET_PART_LIST_TITLE',
+            'SET_Dummy',
+            right('8100001', 10),
+            '  91200001  91200401  91200601  91201101  91201301  92200001  92200401  92200601',
+            '  92201101  92201301  93200101  93700101  95200001  95200301     95200       501',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'empty-field-input.key'),
+        [
+            '*KEYWORD',
+            '*SET_PART_LIST_TITLE',
+            'SET_Dummy',
+            right('8100001', 10),
+            '  92201101  92201301  93200101  93700101  95200001  95200301  95200501',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    const largeNodeRows = 100_010;
+    const largeNodeLines = ['*KEYWORD', '*NODE'];
+    for (let index = 0; index < largeNodeRows; index++) {
+        largeNodeLines.push(nodeLine);
+    }
+    largeNodeLines.push('*END', '');
+    fs.writeFileSync(
+        path.join(root, 'large-node-edit.key'),
+        largeNodeLines.join('\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'overlapping-schema.key'),
+        [
+            '*KEYWORD',
+            '*EM_SOLVER_FEMBEM_MONOLITHIC',
+            '         1         0     1.0-6     1.0-4       500',
+            '         1                   2         3         4',
+            '         0',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'snippet-tab.key'),
+        '*KEYWORD\r\n*NODE\r\n\r\n*END\r\n',
+        'utf8',
+    );
+    fs.writeFileSync(
         path.join(root, 'renderer-multi.key'),
         `*KEYWORD\r\n*NODE\r\n${nodeLine}\r\n${nodeLine}\r\n*END\r\n`,
         'utf8',
@@ -136,17 +196,17 @@ function createFixtureWorkspace() {
     );
     fs.writeFileSync(
         path.join(root, 'option-title.key'),
-        '*KEYWORD\r\n*MAT_001\r\n       1\r\n*END\r\n',
+        '*KEYWORD\r\n*MAT_001\r\n       1\r\n\r\n*END\r\n',
         'utf8',
     );
     fs.writeFileSync(
         path.join(root, 'option-title-other-condition.key'),
-        '*KEYWORD\r\n*MAT_001\r\n       2\r\n*END\r\n',
+        '*KEYWORD\r\n*MAT_001\r\n       2\r\n\r\n*END\r\n',
         'utf8',
     );
     fs.writeFileSync(
         path.join(root, 'option-title-readonly.key'),
-        '*KEYWORD\r\n*MAT_001\r\n       3\r\n*END\r\n',
+        '*KEYWORD\r\n*MAT_001\r\n       3\r\n\r\n*END\r\n',
         'utf8',
     );
     fs.writeFileSync(
@@ -154,9 +214,10 @@ function createFixtureWorkspace() {
         [
             '*KEYWORD',
             '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
-            'base 1',
-            'base 2',
-            'base 3',
+            '$#   surfa     surfb  surfatyp  surfbtyp   saboxid   sbboxid      sapr      sbpr',
+            fixed80([1, 2, 0, 0, 0, 0, 0, 0]),
+            fixed80([0, 0, 0, 0, 0, 0, 0, 0]),
+            fixed80([0, 0, 0, 0, 0, 0, 0, 0]),
             '$ engineer comment must stay',
             '*END',
             '',
@@ -201,6 +262,58 @@ function createFixtureWorkspace() {
             '*NODE',
             nodeLine,
             '*NOT_A_REAL_KEYWORD',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'official-field-choice.key'),
+        [
+            '*KEYWORD',
+            '*MAT_DAMAGE_1',
+            ' '.repeat(80),
+            `${'1'.repeat(70)}${right('0', 10)}`,
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+            ' '.repeat(80),
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'keyword-structure-winfrith-missing.key'),
+        [
+            '*KEYWORD',
+            '*MAT_WINFRITH_CONCRETE',
+            fixed80([1, 2, 3, 4, 5, 6, 7, 8]),
+            fixed80([1, 2, 3, 4, 8, 6, 7, 8]),
+            fixed80([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
+            fixed80([1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8]),
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'title-card-position-conflict.key'),
+        [
+            '*KEYWORD',
+            '*MAT_DAMAGE_1_TITLE',
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}${right('-1', 10)}`,
+            '$#      vk        vm     r00/f     r45/g     r90/h         l         m         n',
+            `${' '.repeat(50)}${right('1.5', 10)}${right('1.5', 10)}${right('1.5', 10)}`,
+            '$#    aopt    unused    unused      macf',
+            `${' '.repeat(30)}${right('1', 10)}`,
+            '$#      xp        yp        zp        a1        a2        a3',
+            ' '.repeat(80),
+            '$#      v1        v2        v3        d1        d2        d3      beta',
+            ' '.repeat(80),
             '*END',
             '',
         ].join('\r\n'),
@@ -370,6 +483,39 @@ function createFixtureWorkspace() {
         `*KEYWORD\r\n*NODE\r\n${nodeLine}\r\n$ existing\r\n    $ legacy indented\r\n\r\n$#   secid       mid    elform\r\n${nodeLine}\r\n*END\r\n`,
         'utf8',
     );
+    fs.writeFileSync(
+        path.join(root, 'comment-curve.key'),
+        [
+            '*DEFINE_CURVE',
+            '         3         0 0.0000000 0.0000000 0.0000000 0.0000000',
+            '      0.00000000E+00      2.15000000E+02',
+            '      4.99999989E-03      3.00000000E+02',
+            '      9.99999978E-03      3.40000000E+02',
+            '$  add another point -- resolution IS lost when table of curves is used',
+            '100. 3400.e+0',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
+    fs.writeFileSync(
+        path.join(root, 'comment-opaque.key'),
+        [
+            '*KEYWORD',
+            '*COMMENT   *INCLUDE',
+            'hidden-child.k',
+            '$# hidden header',
+            '1,2,3',
+            '    *NODE',
+            '&HIDDEN',
+            '*SET_SEGMENT',
+            '$#       sid',
+            '       1',
+            '*END',
+            '',
+        ].join('\r\n'),
+        'utf8',
+    );
     createOfficialEdgeCaseCorpus(path.join(root, 'official-corpus'));
     return root;
 }
@@ -381,7 +527,7 @@ function removeTempDirectory(root, expectedPrefix) {
         !path.basename(resolved).startsWith(expectedPrefix)) {
         throw new Error(`Refusing to remove unexpected temporary directory: ${resolved}`);
     }
-    fs.rmSync(resolved, { recursive: true, force: true });
+    fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
 }
 
 async function main() {
@@ -395,7 +541,9 @@ async function main() {
     try {
         await runTests({
             vscodeExecutablePath: resolveVSCodeExecutable(),
-            extensionDevelopmentPath: repoRoot,
+            extensionDevelopmentPath: process.env.LSDYNA_EXTENSION_DEVELOPMENT_PATH
+                ? path.resolve(process.env.LSDYNA_EXTENSION_DEVELOPMENT_PATH)
+                : repoRoot,
             extensionTestsPath: path.join(
                 repoRoot,
                 'test',
@@ -429,11 +577,19 @@ async function main() {
         } else {
             console.error(`Extension Host fixture preserved after failure: ${workspaceDir}`);
             console.error(`Extension Host user data preserved after failure: ${userDataDir}`);
+            console.error(`Extension Host extensions directory preserved after failure: ${extensionsDir}`);
         }
     }
 }
 
-main().catch(error => {
-    console.error(error);
-    process.exitCode = 1;
-});
+module.exports = {
+    removeTempDirectory,
+    resolveVSCodeExecutable,
+};
+
+if (require.main === module) {
+    main().catch(error => {
+        console.error(error);
+        process.exitCode = 1;
+    });
+}

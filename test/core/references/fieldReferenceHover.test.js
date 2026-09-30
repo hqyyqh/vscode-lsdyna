@@ -30,12 +30,14 @@ describe('fieldReferenceHover', () => {
 
         assert.ok(section.includes('LCSS reference'));
         assert.ok(section.includes(i18n.get('negativeSwitchStripped')));
-        assert.ok(section.includes('*DEFINE_CURVE'));
+        assert.ok(section.includes('*DEFINE\\_CURVE'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
+        assert.ok(!section.includes('Current-file preview'));
+        assert.ok(!section.includes('Reference not unique'));
     });
 
-    it('renders uncertain state rather than a false missing result when no project index is cached', () => {
+    it('renders a compact unscanned-project status rather than a false missing result', () => {
         const section = buildReferenceHoverSection({
             fieldName: 'LCSS',
             id: 1001,
@@ -43,9 +45,86 @@ describe('fieldReferenceHover', () => {
             needsProjectScan: true,
         });
 
-        assert.ok(section.includes('insufficient to resolve'));
+        assert.ok(section.includes('Project not scanned'));
         assert.ok(!section.includes('No curve or table definition was found'));
         assert.ok(section.includes('Scan Include Tree'));
+        assert.ok(!section.includes('insufficient to resolve'));
+    });
+
+    it('offers an explicitly labeled workspace text fallback without serializing semantic claims', () => {
+        const section = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            referenceValue: { kind: 'numeric', id: 1001, raw: '1001' },
+            analysis: {
+                state: 'uncertain',
+                id: 1001,
+                definitions: [],
+                reasons: ['project-scan-unavailable'],
+            },
+            workspaceSearchContext: {
+                filePath: 'C:/model/main.k',
+                lineIndex: 4,
+                character: 20,
+                documentVersion: 7,
+                projectRootFile: 'C:/model/root.k',
+            },
+        });
+
+        assert.ok(section.includes('Search workspace text for ID 1001'));
+        assert.ok(section.includes('Text matches only'));
+        const match = section.match(
+            /command:extension\.searchLsdynaReferenceInWorkspace\?([^\s)]+)/
+        );
+        assert.ok(match);
+        const [payload] = JSON.parse(decodeURIComponent(match[1]));
+        assert.deepEqual(payload, {
+            filePath: 'C:/model/main.k',
+            lineIndex: 4,
+            character: 20,
+            documentVersion: 7,
+            projectRootFile: 'C:/model/root.k',
+        });
+        assert.equal(Object.hasOwn(payload, 'id'), false);
+        assert.equal(Object.hasOwn(payload, 'targetKinds'), false);
+    });
+
+    it('does not offer workspace search for unresolved parameters or known candidates', () => {
+        const context = {
+            filePath: 'C:/model/main.k',
+            lineIndex: 4,
+            character: 20,
+            documentVersion: 7,
+        };
+        const unresolved = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            referenceValue: { kind: 'parameter', raw: '&CID', parameterName: 'CID' },
+            analysis: {
+                state: 'uncertain',
+                definitions: [],
+                reasons: ['parameter-unresolved'],
+            },
+            workspaceSearchContext: context,
+        });
+        assert.ok(!unresolved.includes('searchLsdynaReferenceInWorkspace'));
+
+        const known = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            referenceValue: { kind: 'numeric', id: 1001, raw: '1001' },
+            analysis: {
+                state: 'uncertain',
+                id: 1001,
+                definitions: [{
+                    kind: 'curve',
+                    id: 1001,
+                    keyword: '*DEFINE_CURVE',
+                    filePath: 'C:/model/curves.k',
+                    startLine: 10,
+                }],
+                reasons: ['project-scan-unavailable'],
+            },
+            workspaceSearchContext: context,
+        });
+        assert.ok(!known.includes('searchLsdynaReferenceInWorkspace'));
     });
 
     it('renders generic DEFINE target locations without curve or table previews', () => {
@@ -62,7 +141,7 @@ describe('fieldReferenceHover', () => {
             }],
         });
 
-        assert.ok(section.includes('*DEFINE_CPM_CHAMBER'));
+        assert.ok(section.includes('*DEFINE\\_CPM\\_CHAMBER'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
     });
@@ -96,7 +175,8 @@ describe('fieldReferenceHover', () => {
             analysis: { state: 'missing', definitions: [], reasons: [] },
         });
 
-        assert.ok(section.includes('No curve or table definition was found for ID `77`'));
+        assert.ok(section.includes('Definition not found'));
+        assert.ok(section.includes('No curve or table definition was found for ID 77'));
         assert.ok(!section.includes('insufficient to resolve'));
     });
 
@@ -122,15 +202,47 @@ describe('fieldReferenceHover', () => {
             documentPath: 'C:/model/main.k',
         });
 
-        assert.ok(section.includes('Known candidate definitions: 1'));
-        assert.ok(section.includes('Current-file candidate'));
-        assert.ok(section.includes('*DEFINE_CURVE'));
+        const referenceLine = section.split('\n').find(line => line.includes('LCSS reference'));
+        assert.ok(referenceLine.includes('Current-file preview'));
+        assert.ok(section.includes('*DEFINE\\_CURVE'));
         assert.ok(section.includes('Open candidate definition'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
-        assert.ok(section.includes('insufficient to resolve'));
         assert.ok(section.includes('Scan Include Tree'));
+        assert.ok(!section.includes('Known candidate definitions'));
+        assert.ok(!section.includes('Current-file candidate'));
+        assert.ok(!section.includes('insufficient to resolve'));
         assert.ok(!section.includes('No curve or table definition was found'));
+    });
+
+    it('hides every curve preview when multiple current-file candidates are known before a scan', () => {
+        const definitions = ['a.k', 'b.k'].map((filePath, index) => ({
+            kind: 'curve',
+            id: 1001,
+            keyword: '*DEFINE_CURVE',
+            filePath: `C:/model/${filePath}`,
+            startLine: 10 + index,
+            points: [
+                { x: 0, y: 1 + index, xRaw: '0', yRaw: String(1 + index) },
+                { x: 1, y: 2 + index, xRaw: '1', yRaw: String(2 + index) },
+            ],
+        }));
+        const section = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            referenceValue: { kind: 'numeric', id: 1001, raw: '1001' },
+            analysis: {
+                state: 'uncertain',
+                reasons: ['project-scan-unavailable'],
+                definitions,
+            },
+            documentPath: 'C:/model/main.k',
+        });
+
+        assert.ok(section.includes('Reference not unique'));
+        assert.ok(section.includes('2 definitions with the same ID'));
+        assert.ok(section.includes('a.k'));
+        assert.ok(section.includes('b.k'));
+        assert.ok(!section.includes('data:image/svg+xml;base64,'));
     });
 
     it('keeps a local table and its local child inspectable before project scan', () => {
@@ -141,6 +253,12 @@ describe('fieldReferenceHover', () => {
             filePath: 'C:/model/main.k',
             startLine: 30,
             points: [{ x: 0, y: 1 }, { x: 1, y: 2 }],
+        };
+        const secondChildCurve = {
+            ...childCurve,
+            id: 1002,
+            startLine: 40,
+            points: [{ x: 0, y: 3 }, { x: 1, y: 4 }],
         };
         const section = buildReferenceHoverSection({
             fieldName: 'LCSS',
@@ -155,30 +273,61 @@ describe('fieldReferenceHover', () => {
                     keyword: '*DEFINE_TABLE_2D',
                     filePath: 'C:/model/main.k',
                     startLine: 20,
-                    rows: [{
-                        valueRaw: '0.01',
-                        value: 0.01,
-                        childIdRaw: '1001',
-                        childId: 1001,
-                        childKind: 'curve',
-                        childAnalysis: {
-                            state: 'uncertain',
-                            effectiveChildId: 1001,
-                            definitions: [childCurve],
-                            unresolved: [],
-                            reasons: ['project-scan-unavailable'],
+                    rows: [
+                        {
+                            valueRaw: '0.01',
+                            value: 0.01,
+                            childIdRaw: '1001',
+                            childId: 1001,
+                            childKind: 'curve',
+                            childAnalysis: {
+                                state: 'uncertain',
+                                effectiveChildId: 1001,
+                                definitions: [childCurve],
+                                unresolved: [],
+                                reasons: ['project-scan-unavailable'],
+                            },
                         },
-                    }],
+                        {
+                            valueRaw: '0.02',
+                            value: 0.02,
+                            childIdRaw: '1002',
+                            childId: 1002,
+                            childKind: 'curve',
+                            childAnalysis: {
+                                state: 'uncertain',
+                                effectiveChildId: 1002,
+                                definitions: [secondChildCurve],
+                                unresolved: [],
+                                reasons: ['project-scan-unavailable'],
+                            },
+                        },
+                    ],
                 }],
             },
             documentPath: 'C:/model/main.k',
+            tablePreviewContext: {
+                key: 'C:/model/main.k:4:LCSS',
+                view: 'front',
+                filePath: 'C:/model/main.k',
+                lineIndex: 4,
+                character: 10,
+            },
         });
 
-        assert.ok(section.includes('Current-file candidate'));
+        assert.ok(section.includes('Current-file preview'));
         assert.ok(section.includes('Open candidate definition'));
         assert.ok(section.includes('Open child curve candidate 1'));
         assert.ok(section.includes('Scan Include Tree'));
-        assert.ok(!section.includes('data:image/svg+xml;base64,'));
+        assert.ok(section.includes('View:'));
+        assert.ok(section.includes('**Front**'));
+        assert.ok(section.includes('command:extension.setLsdynaTablePreviewView'));
+        assert.ok(section.includes('![3D table preview](data:image/svg+xml;base64,'));
+        assert.ok(!section.includes('binding for child ID'));
+
+        const dataUri = section.match(/data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+/)[0];
+        const svg = Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
+        assert.ok(svg.includes('data-table-view="front"'));
     });
 
     it('shows occurrence paths for complete ambiguous matches', () => {
@@ -204,10 +353,12 @@ describe('fieldReferenceHover', () => {
             },
         });
 
-        assert.ok(section.includes('2 matching definitions'));
+        assert.ok(section.includes('Reference not unique'));
+        assert.ok(section.includes('2 definitions with the same ID'));
         assert.ok(section.includes('Occurrence path'));
         assert.ok(section.includes('main.k:5'));
         assert.ok(section.includes('main.k:12'));
+        assert.ok(!section.includes('data:image/svg+xml;base64,'));
     });
 
     it('shows source and effective IDs for a proven numeric IDFOFF mapping', () => {
@@ -290,9 +441,11 @@ describe('fieldReferenceHover', () => {
             });
 
             assert.ok(section.includes('LCSS 引用'));
+            assert.ok(section.includes('项目未扫描'));
             assert.ok(section.includes('原始值'));
             assert.ok(section.includes('按绝对值 ID 查找定义'));
             assert.ok(section.includes('扫描引用文件树'));
+            assert.ok(!section.includes('当前信息不足'));
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         }
@@ -384,8 +537,54 @@ describe('fieldReferenceHover', () => {
         assert.ok(section.includes('2 matching candidates'));
         assert.ok(section.includes('Open child curve candidate 1'));
         assert.ok(section.includes('Open child curve candidate 2'));
-        assert.ok(section.includes('only when every child reference is exact'));
+        assert.ok(section.includes('Combined preview hidden'));
+        assert.ok(section.includes('requires exactly one candidate definition'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
+    });
+
+    it('previews a unique uncertain child and keeps its non-scan warning compact', () => {
+        const childCurve = {
+            kind: 'curve',
+            id: 1001,
+            keyword: '*DEFINE_CURVE',
+            filePath: 'C:/model/main.k',
+            startLine: 30,
+            points: [
+                { x: 0, y: 10, xRaw: '0', yRaw: '10' },
+                { x: 1, y: 20, xRaw: '1', yRaw: '20' },
+            ],
+        };
+        const section = buildReferenceHoverSection({
+            fieldName: 'LCSS',
+            id: 2001,
+            definitions: [{
+                kind: 'table',
+                tableType: '2d',
+                id: 2001,
+                keyword: '*DEFINE_TABLE_2D',
+                filePath: 'C:/model/main.k',
+                startLine: 20,
+                rows: [{
+                    valueRaw: '0.01',
+                    value: 0.01,
+                    childIdRaw: '1001',
+                    childId: 1001,
+                    childKind: 'curve',
+                    childAnalysis: {
+                        state: 'uncertain',
+                        effectiveChildId: 1001,
+                        definitions: [childCurve],
+                        unresolved: [],
+                        reasons: ['missing-include'],
+                    },
+                }],
+            }],
+        });
+
+        assert.ok(section.includes('![3D table preview](data:image/svg+xml;base64,'));
+        assert.ok(section.includes('Child 1001 unresolved'));
+        assert.ok(section.includes('At least one include file is missing'));
+        assert.ok(!section.includes('\n- At least one include file is missing'));
     });
 
     it('keeps parameterized table children uncertain and visible as raw IDs', () => {
@@ -416,7 +615,7 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('&CID'));
-        assert.ok(section.includes('binding for child ID'));
+        assert.ok(section.includes('Child &amp;CID unresolved'));
         assert.ok(section.includes('parameter-controlled'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
     });
@@ -573,11 +772,49 @@ describe('fieldReferenceHover', () => {
             });
 
             // Should have headers, title, and preview SVG
-            assert.ok(section.includes('### $(graph-line) **\\*DEFINE_CURVE (ID: 1001)** - _My Curve Title_'));
+            assert.ok(section.includes('### $(graph-line) **\\*DEFINE\\_CURVE (ID: 1001)** - _My Curve Title_'));
             assert.ok(section.includes('data:image/svg+xml;base64,'));
             // Should NOT have reference header or Go to File links since it's definition hover
             assert.ok(!section.includes('LCSS reference'));
             assert.ok(!section.includes('command:extension.openLsdynaReferenceDefinition'));
+        });
+
+        it('offers viewpoint controls on a combined table definition preview', () => {
+            const childCurve = {
+                kind: 'curve',
+                id: 1001,
+                points: [{ x: 0, y: 2 }, { x: 1, y: 4 }],
+            };
+            const section = buildDefinitionHoverSection({
+                kind: 'table',
+                tableType: '2d',
+                id: 2001,
+                keyword: '*DEFINE_TABLE_2D',
+                rows: [{
+                    valueRaw: '0.5',
+                    value: 0.5,
+                    childIdRaw: '1001',
+                    childKind: 'curve',
+                    childAnalysis: {
+                        state: 'exact',
+                        definitions: [childCurve],
+                        reasons: [],
+                    },
+                }],
+            }, 2, {
+                key: 'C:/model/main.k:20:DEFINITION',
+                view: 'side',
+                filePath: 'C:/model/main.k',
+                lineIndex: 20,
+                character: 0,
+            });
+
+            assert.ok(section.includes('View:'));
+            assert.ok(section.includes('**Side**'));
+            assert.ok(section.includes('command:extension.setLsdynaTablePreviewView'));
+            const dataUri = section.match(/data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+/)[0];
+            const svg = Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
+            assert.ok(svg.includes('data-table-view="side"'));
         });
 
         it('localizes curve definition title punctuation in Chinese', () => {
@@ -598,10 +835,24 @@ describe('fieldReferenceHover', () => {
                     points: [],
                 });
 
-                assert.ok(section.includes('### $(graph-line) **\\*DEFINE_CURVE（ID：1001）**'));
+                assert.ok(section.includes('### $(graph-line) **\\*DEFINE\\_CURVE（ID：1001）**'));
             } finally {
                 vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             }
         });
+    });
+});
+
+
+describe('public reference diagnostic wording', () => {
+    const { userFacingReason } = require('../../../out/core/userFacingReason');
+    const { uncertaintyReasonLabel } = require('../../../out/core/references/fieldReferenceHover');
+    it('keeps source names and unknown diagnostic codes out of Hover and notices', () => {
+        for (const reason of ['lspp-link-code-target-noncanonical', 'lspp-link-code-target-unresolved (4 occurrences)', 'LSPREPOST-source-unavailable', 'future-internal-reason']) {
+            assert.doesNotMatch(uncertaintyReasonLabel(reason), /lspp|lsprepost|future-internal-reason/i);
+            for (const locale of ['zh-cn', 'en']) assert.doesNotMatch(userFacingReason(reason, locale), /lspp|lsprepost|future-internal-reason/i);
+        }
+        assert.match(userFacingReason('lspp-link-code-target-unresolved (4 occurrences)', 'zh-cn'), /4 处/);
+        assert.match(userFacingReason('lspp-link-code-target-unresolved (1 occurrence)', 'en'), /1 occurrence\)/);
     });
 });

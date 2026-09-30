@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "id": "define-control-volume-flow-area-card1-manual-layout",
+  "version": 1,
+  "policy": "official-pdf-required-card1-layout-v1",
+  "scope": "Restore the reviewed Card 1 layout of DEFINE_CONTROL_VOLUME_FLOW_AREA when upstream exposes the older six-field ID/SID/STYPE/PID/AREA/CVIID shape.",
+  "keywords": [
+    "DEFINE_CONTROL_VOLUME_FLOW_AREA"
+  ],
+  "upstreamGap": {
+    "expectedCardCount": 1,
+    "expectedFieldCount": 6,
+    "cardSignatureSha256": "99dcf1e2fd4a66421489dc536d32a684dd78b71767ccb248dfc409616a354827"
+  },
+  "card": {
+    "physicalCardIndex": 0,
+    "fields": [
+      {
+        "name": "FAID",
+        "position": 0,
+        "width": 10,
+        "type": "integer",
+        "english": "Flow area ID.",
+        "chinese": "流通面积 ID。"
+      },
+      {
+        "name": "FCISID",
+        "position": 10,
+        "width": 10,
+        "type": "integer",
+        "english": "Fluid cavity interaction ID referencing the *DEFINE_CONTROL_VOLUME_INTERACTION for which this area is used",
+        "chinese": "引用 *DEFINE_CONTROL_VOLUME_INTERACTION 的流体腔体相互作用 ID；该流动面积用于此处。"
+      },
+      {
+        "name": "FASID",
+        "position": 20,
+        "width": 10,
+        "type": "integer",
+        "english": "Set ID giving the flow area",
+        "chinese": "给出流动面积的集合 ID。"
+      },
+      {
+        "name": "STYPE",
+        "position": 30,
+        "width": 10,
+        "type": "integer",
+        "english": "Type of set specifying flow area (see Remark 2):\nEQ.1: Node set giving the perimeter of the area. The flow area will be automatically meshed.\nEQ.2: Segment set covering the flow area",
+        "chinese": "规定流动面积的集合类型（参见备注 2）：\nEQ.1：给出面积周界的节点集合；流动面积将自动划分网格。\nEQ.2：覆盖流动面积的段集。",
+        "default": 1,
+        "options": ["1", "2"]
+      }
+    ]
+  },
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+    "pdfSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+    "pdfSize": 34763447,
+    "toolVersion": "24.03.0",
+    "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "pages": [
+      {
+        "physicalPage": 2196,
+        "textSha256": "9c35c6b52b57dbe38d8d90a5f314734a8d27571dea0ec28f7a3ccdfe7d570dd0",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 2197,
+        "textSha256": "f9ab8bbd53ced10a11c43126068d51f0ed23ef7fce83bbf939467bf0e15cdcb4",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 2200,
+        "textSha256": "18428623c837b77a500fa20a4692a55012a74c3ab7901b09ee6c9860cd7dc7ef",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 2201,
+        "textSha256": "ad56c7a24f8396a8ebcf9c832af2d8b30eb4b544adc20608fb3b2461a6065e2a",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 2202,
+        "textSha256": "60d8ef713310d833652513b9bd55be6d3eab9919e276452ae73bce8af98ca34a",
+        "renderSha256": null
+      }
+    ]
+  },
+  "evidence": {
+    "requiredCardNumbers": [1],
+    "card1FieldNames": ["FAID", "FCISID", "FASID", "STYPE"],
+    "card1Description": "Specify the flow area between two interacting control volumes (see *DEFINE_CONTROL_VOLUME).",
+    "directFieldLayout": true,
+    "optionEvidence": false,
+    "inferenceUsed": false
+  },
+  "permissions": {
+    "schemaCardAddition": false,
+    "schemaTypeCorrection": true,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

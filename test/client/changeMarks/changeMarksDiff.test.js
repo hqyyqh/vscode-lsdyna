@@ -10,6 +10,67 @@ const {
 const { emptyChangeMarks } = require('../../../src/client/changeMarks/types');
 
 describe('changeMarksDiff', () => {
+    describe('bounded alignment', () => {
+        it('preserves all six legacy results within budget away from repeated-line boundaries', () => {
+            const fixtures = require('../../fixtures/change-marks/legacy-budget-results.json');
+            for (const { snapshots, expected } of fixtures.cases)
+                assert.deepStrictEqual(computeChangeMarks(...snapshots), expected);
+        });
+        const work = () => ({ tables: 0, cells: 0, characterComparisons: 0, fallbacks: 0 });
+        for (const count of [1000, 2000, 3999, 4001, 100000]) {
+            it(`preserves single-line insert/delete locations across ${count} lines`, () => {
+                const lines = Array.from({ length: count }, (_, i) => `${i}: 0.0 0.0`);
+                const origin = lines.join('\r\n');
+                for (const at of [0, Math.floor(count / 2), count]) {
+                    const inserted = [...lines.slice(0, at), '$ new', ...lines.slice(at)].join('\r\n');
+                    const stats = work();
+                    assert.deepStrictEqual(computeChangeMarks(origin, origin, inserted, stats), {
+                        ...emptyChangeMarks(), unsavedInsertedLines: [at],
+                    });
+                    assert.equal(stats.cells, 0, 'pure insertion must not build a table');
+                    assert.deepStrictEqual(computeChangeMarks(inserted, inserted, origin), {
+                        ...emptyChangeMarks(), unsavedDeletedLines: [Math.min(at, count - 1)],
+                    });
+                    assert.deepStrictEqual(computeChangeMarks(origin, inserted, inserted), {
+                        ...emptyChangeMarks(), savedInsertedLines: [at],
+                    });
+                    assert.deepStrictEqual(computeChangeMarks(origin, origin, origin), emptyChangeMarks());
+                }
+            });
+        }
+        it('reuses identical baselines and computes deletion anchors in the same table', () => {
+            const stats = work();
+            const marks = computeChangeMarks('head\nB\nC\ntail', 'head\nB\nC\ntail',
+                'head\nBX\nNEW\nC\ntail', stats);
+            assert.deepStrictEqual(marks, { ...emptyChangeMarks(), unsavedModifiedLines: [1], unsavedInsertedLines: [2] });
+            assert.equal(stats.tables, 1);
+            assert.equal(stats.cells, 6);
+        });
+        it('uses positional approximation only between unchanged boundaries', () => {
+            const left = ['head', ...Array.from({ length: 300 }, (_, i) => `old ${i}`), 'tail'];
+            const right = ['head', ...Array.from({ length: 301 }, (_, i) => `new ${i}`), 'tail'];
+            const stats = work();
+            const marks = computeChangeMarks(left.join('\n'), left.join('\n'), right.join('\n'), stats);
+            assert.equal(stats.tables, 0);
+            assert.equal(stats.fallbacks, 1);
+            assert.deepStrictEqual(marks.unsavedInsertedLines, [301]);
+            assert.deepStrictEqual(marks.unsavedModifiedLines, Array.from({ length: 300 }, (_, i) => i + 1));
+        });
+        it('bounds long-line comparisons independently of table size', () => {
+            const left = Array.from({ length: 100 }, (_, i) => `${'x'.repeat(1000)}${i}`);
+            const right = Array.from({ length: 101 }, (_, i) => `${'y'.repeat(1000)}${i}`);
+            const stats = work();
+            computeChangeMarks(left.join('\n'), left.join('\n'), right.join('\n'), stats);
+            assert.equal(stats.tables, 0);
+            assert.equal(stats.fallbacks, 1);
+        });
+        it('keeps prefix-first placement deterministic for repeated and empty lines', () => {
+            assert.deepStrictEqual(computeChangeMarks('A\nA', 'A\nA', 'A\nA\nA'),
+                { ...emptyChangeMarks(), unsavedInsertedLines: [2] });
+            assert.deepStrictEqual(computeChangeMarks('A\n', 'A\n', ''),
+                { ...emptyChangeMarks(), unsavedDeletedLines: [0] });
+        });
+    });
     describe('splitLines', () => {
         it('normalizes CRLF and keeps trailing empty line after final newline', () => {
             assert.deepStrictEqual(splitLines('a\r\nb\r\n'), ['a', 'b', '']);

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-locked-keyword-layout-corrections",
+  "policy": {
+    "matching": "exact-keyword-and-complete-source-card",
+    "optionInferencePermission": false,
+    "partialCardCorrectionPermission": false
+  },
+  "corrections": [
+    {
+      "keyword": "IGA_INTEGRATION_SHELL_REDUCE",
+      "cardIndex": 1,
+      "sourceCard": [
+        { "name": "PATCHID", "type": "integer", "position": 152, "width": 10 },
+        { "name": "NRDR", "type": "integer", "position": 10, "width": 10 },
+        { "name": "NRDS", "type": "integer", "position": 20, "width": 20 }
+      ],
+      "officialCard": [
+        { "name": "PATCHID", "type": "integer", "position": 0, "width": 10 },
+        { "name": "NRDR", "type": "integer", "position": 10, "width": 10 },
+        { "name": "NRDS", "type": "integer", "position": 20, "width": 10 }
+      ],
+      "runtimeRelation": {
+        "authoringRelationId": "authoring-relation:d01bfccc168177721963ebda",
+        "physicalTableId": "global-manual-card-grid:a0c13de3c9f5699325893881",
+        "evidenceId": "evidence:e1e7c7eb00d14d74acfe4594",
+        "quoteSha256": "dc56f84ab272b0d6ef003137e845dd156cacf60770f2542496ec142e68b470aa"
+      },
+      "pdfEvidence": {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 2967,
+        "pdfSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+        "pdfSize": 34763447,
+        "textSha256": "7c1e3f3123a43f2bf4186f188212d0b028a05be275286617ebeff94687a7c996",
+        "renderSha256": "1127cb62592443923ea535c5772f4ba8b67bfe44510a0f1b0a9f72175dc17083",
+        "renderBytes": 123219,
+        "toolVersion": "24.03.0",
+        "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+        "renderCommand": "pdftoppm -r 144 -png -singlefile"
+      }
+    }
+  ]
+}

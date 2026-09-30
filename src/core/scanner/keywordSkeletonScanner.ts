@@ -1,14 +1,29 @@
 'use strict';
 
 const fs = require('fs');
-const { isElementKeyword, isNodeKeyword } = require('./scannerContracts');
+const {
+    isElementKeyword,
+    isNodeKeyword,
+    throwIfCancellationRequested,
+} = require('./scannerContracts');
+const {
+    classifyOpaqueCommentDirective,
+    isColumnZeroKeywordBoundary,
+} = require('../parser/opaqueCommentRange');
 
 type KeywordSkeletonScanOptions = {
     highWaterMark?: number;
     yieldInterval?: number;
+    createBlockSummaryAccumulator?: (block: any, keywordLine: Buffer) => {
+        acceptLine?: (line: Buffer) => boolean;
+        finish?: (metadata?: { dataLineCount?: number }) => any;
+        isCaptureComplete?: () => boolean;
+    } | null;
+    cancellationToken?: { isCancellationRequested?: boolean };
+    onLineStart?: (line: number, byteOffset: number) => void;
 };
 
-const DEFAULT_SCAN_YIELD_INTERVAL = 50000;
+const DEFAULT_SCAN_YIELD_INTERVAL = 1000;
 
 function isHorizontalWhitespace(byte) {
     return byte === 0x20 || byte === 0x09;
@@ -58,7 +73,19 @@ function closePreviousBlock(blocks, nextStartOffset, nextStartLine) {
     previous.endLine = Math.max(previous.startLine, nextStartLine - 1);
 }
 
+function isDataLine(lineBuffer) {
+    let index = 0;
+    while (
+        index < lineBuffer.length
+        && (lineBuffer[index] === 0x20 || lineBuffer[index] === 0x09 || lineBuffer[index] === 0x0d)
+    ) {
+        index++;
+    }
+    return index < lineBuffer.length && lineBuffer[index] !== 0x24;
+}
+
 async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonScanOptions = {}) {
+    throwIfCancellationRequested(options.cancellationToken);
     const stat = await fs.promises.stat(filePath);
     const stream = fs.createReadStream(filePath, {
         highWaterMark: options.highWaterMark || 1024 * 1024,
@@ -70,13 +97,57 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
     let lineIndex = 0;
     let linesProcessed = 0;
     const yieldInterval = options.yieldInterval || DEFAULT_SCAN_YIELD_INTERVAL;
+    let currentSummaryAccumulator = null;
+    let currentBlockOpen = false;
+    let opaqueActive = false;
+
+    function finishCurrentSummary() {
+        if (!currentBlockOpen) return;
+        const block = blocks[blocks.length - 1];
+        if (!block || !currentSummaryAccumulator) return;
+        try {
+            if (typeof currentSummaryAccumulator.finish === 'function') {
+                block.displayIdentity = currentSummaryAccumulator.finish({
+                    dataLineCount: block.dataLineCount || 0,
+                });
+            }
+        } catch (_error) {
+            // Display metadata is best-effort and must never make structural indexing fail.
+        }
+        currentSummaryAccumulator = null;
+    }
 
     function processLine(lineBuffer, startOffset, currentLine) {
-        const parsed = extractKeywordFromLine(lineBuffer);
-        if (!parsed) return;
+        options.onLineStart?.(currentLine, startOffset);
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(lineBuffer)) return;
+            finishCurrentSummary();
+            closePreviousBlock(blocks, startOffset, currentLine);
+            currentBlockOpen = false;
+            opaqueActive = false;
+        }
 
-        closePreviousBlock(blocks, startOffset, currentLine);
-        blocks.push({
+        const parsed = extractKeywordFromLine(lineBuffer);
+        if (!parsed) {
+            const block = currentBlockOpen ? blocks[blocks.length - 1] : null;
+            if (block && isDataLine(lineBuffer)) {
+                block.dataLineCount = (block.dataLineCount || 0) + 1;
+                try {
+                    const captured = currentSummaryAccumulator?.acceptLine?.(lineBuffer);
+                    if (captured === true) block.displaySourceEndLine = currentLine;
+                } catch (_error) {
+                    // Keep counting and scanning even when optional display parsing fails.
+                }
+            }
+            return;
+        }
+
+        if (currentBlockOpen) {
+            finishCurrentSummary();
+            closePreviousBlock(blocks, startOffset, currentLine);
+        }
+        const opaqueDirective = classifyOpaqueCommentDirective(lineBuffer);
+        const block = {
             filePath,
             keyword: parsed.keyword,
             rawKeyword: parsed.rawKeyword,
@@ -90,11 +161,33 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                 isNodeBlock: isNodeKeyword(parsed.keyword),
                 isElementBlock: isElementKeyword(parsed.keyword),
             },
-        });
+            dataLineCount: 0,
+            ...(opaqueDirective
+                ? {
+                    opaqueKind: opaqueDirective.kind,
+                    opaqueStartCharacter: opaqueDirective.tokenEnd,
+                }
+                : {}),
+            ...(typeof options.createBlockSummaryAccumulator === 'function'
+                && !opaqueDirective
+                ? { displaySourceEndLine: currentLine }
+                : {}),
+        };
+        blocks.push(block);
+        currentBlockOpen = true;
+        opaqueActive = !!opaqueDirective;
+        if (typeof options.createBlockSummaryAccumulator === 'function' && !opaqueDirective) {
+            try {
+                currentSummaryAccumulator = options.createBlockSummaryAccumulator(block, lineBuffer);
+            } catch (_error) {
+                currentSummaryAccumulator = null;
+            }
+        }
     }
 
     try {
         for await (const chunk of stream) {
+            throwIfCancellationRequested(options.cancellationToken);
             const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
             const combinedStartOffset = absoluteOffset - remainder.length;
             let offset = 0;
@@ -110,6 +203,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                 lineStartOffset = combinedStartOffset + offset;
                 if (yieldInterval > 0 && linesProcessed % yieldInterval === 0) {
                     await new Promise(r => setImmediate(r));
+                    throwIfCancellationRequested(options.cancellationToken);
                 }
             }
 
@@ -124,11 +218,13 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
         stream.destroy();
     }
 
-    if (blocks.length > 0) {
+    if (currentBlockOpen && blocks.length > 0) {
         const last = blocks[blocks.length - 1];
         last.endOffset = stat.size;
         last.endLine = remainder.length > 0 ? lineIndex : Math.max(last.startLine, lineIndex - 1);
     }
+    finishCurrentSummary();
+    throwIfCancellationRequested(options.cancellationToken);
 
     return blocks;
 }

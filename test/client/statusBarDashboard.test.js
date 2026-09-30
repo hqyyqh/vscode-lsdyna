@@ -154,7 +154,7 @@ describe('DynaSense status bar dashboard', () => {
                 mainDeckContextState: 'ambiguous',
                 mainDeckRootName: null,
             });
-            assert.ok(ambiguous.includes('choose one'));
+            assert.ok(ambiguous.includes('No main deck has been selected for analysis'));
         });
     });
 

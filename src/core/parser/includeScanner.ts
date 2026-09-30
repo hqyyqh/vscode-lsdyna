@@ -15,6 +15,10 @@
 const fs = require('fs');
 const path = require('path');
 const { classifyKeywordLine, findKeywordAsterisk } = require('./keywordLine');
+const {
+    classifyOpaqueCommentDirective,
+    isColumnZeroKeywordBoundary,
+} = require('./opaqueCommentRange');
 const { getIncludeDirectiveRule } = require('./includeDirectiveRules');
 const {
     createIncludeTransformMetadata,
@@ -24,9 +28,11 @@ const {
 } = require('./includeTransformMetadata');
 const { readBlockText } = require('../scanner/blockReader');
 const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScanner');
+const { throwIfCancellationRequested } = require('../scanner/scannerContracts');
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
+    cancellationToken?: { isCancellationRequested?: boolean };
 };
 
 /**
@@ -99,6 +105,7 @@ const STREAM_SCAN_YIELD_INTERVAL = 50000;
  * @property {PendingInclude|null} pendingInclude - Active include entry being built.
  * @property {PendingPath|null} pendingPath - Active path entry being built (for *INCLUDE_PATH continuation).
  * @property {IncludeEntry|null} activeTransformEntry - Transform include receiving cards 2b.1-2b.4.
+ * @property {'long'|'standard'|null} inputFormatOverride - Format forced on the included file by *INCLUDE +/-.
  */
 
 /**
@@ -126,6 +133,8 @@ function createIncludeDirectiveState(basePath) {
         pendingInclude: null,
         pendingPath: null,
         activeTransformEntry: null,
+        inputFormatOverride: null,
+        opaqueActive: false,
     };
 }
 
@@ -152,7 +161,13 @@ function createIncludeSegment(line, lineIndex) {
  * @param {number} lineIndex - 0-indexed line number.
  * @returns {PendingInclude} A new pending include object.
  */
-function startIncludeEntry(line, lineIndex, keyword = '', keywordLine = -1) {
+function startIncludeEntry(
+    line,
+    lineIndex,
+    keyword = '',
+    keywordLine = -1,
+    inputFormatOverride = null
+) {
     const trimmed = line.trim();
     const segment = createIncludeSegment(line, lineIndex);
     return {
@@ -165,6 +180,7 @@ function startIncludeEntry(line, lineIndex, keyword = '', keywordLine = -1) {
         awaitingContinuation: trimmed.endsWith(' +'),
         keyword,
         keywordLine,
+        inputFormatOverride,
     };
 }
 
@@ -296,6 +312,7 @@ function flushIncludeEntry(state) {
             segments,
             keyword,
             keywordLine,
+            inputFormatOverride,
         } = state.pendingInclude;
         const entry: any = {
             lineIndex,
@@ -307,6 +324,7 @@ function flushIncludeEntry(state) {
             keyword,
             keywordLine,
             parameterizedFileName: /&[A-Za-z_][A-Za-z0-9_-]{0,8}/.test(fileName),
+            ...(inputFormatOverride ? { inputFormatOverride } : {}),
         };
         if (isTransformIncludeKeyword(keyword)) {
             entry.transform = createIncludeTransformMetadata(keyword, keywordLine, lineIndex);
@@ -350,6 +368,22 @@ function flushPathEntry(state) {
  * @param {number} lineIndex - 0-indexed line number.
  */
 function processIncludeDirectiveLine(state, line, lineIndex) {
+    if (state.opaqueActive) {
+        if (!isColumnZeroKeywordBoundary(line)) return;
+        state.opaqueActive = false;
+    }
+    const opaqueDirective = classifyOpaqueCommentDirective(line);
+    if (opaqueDirective) {
+        flushIncludeEntry(state);
+        flushPathEntry(state);
+        finalizeActiveTransformEntry(state);
+        state.keyword = '';
+        state.keywordLine = lineIndex;
+        state.cardCount = 0;
+        state.opaqueActive = true;
+        return;
+    }
+
     const trimmed = line.trim();
     const classification = classifyKeywordLine(line);
 
@@ -357,7 +391,25 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
         flushIncludeEntry(state);
         flushPathEntry(state);
         finalizeActiveTransformEntry(state);
-        state.keyword = classification.normalizedKeyword;
+        const normalizedKeyword = String(classification.normalizedKeyword || '');
+        const attachedOverride = normalizedKeyword.endsWith('+')
+            ? 'long'
+            : normalizedKeyword.endsWith('-')
+                ? 'standard'
+                : null;
+        state.keyword = attachedOverride
+            ? normalizedKeyword.slice(0, -1)
+            : normalizedKeyword;
+        const remainder = line.slice(
+            classification.indent + String(classification.rawKeyword || '').length
+        );
+        const separatedMatch = /^\s*([+-])(?:\s|,|$)/.exec(remainder);
+        state.inputFormatOverride = attachedOverride ||
+            (separatedMatch?.[1] === '+'
+                ? 'long'
+                : separatedMatch?.[1] === '-'
+                    ? 'standard'
+                    : null);
         state.keywordLine = lineIndex;
         state.cardCount = 0;
         return;
@@ -403,7 +455,13 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
 
     state.cardCount++;
     if (includeRule.repeatable || state.cardCount === includeRule.filenameCard) {
-        state.pendingInclude = startIncludeEntry(line, lineIndex, state.keyword, state.keywordLine);
+        state.pendingInclude = startIncludeEntry(
+            line,
+            lineIndex,
+            state.keyword,
+            state.keywordLine,
+            state.inputFormatOverride
+        );
         if (!state.pendingInclude.awaitingContinuation) {
             flushIncludeEntry(state);
         }
@@ -446,14 +504,21 @@ function collectIncludeDirectivesFromLineReader(lineCount, getLine, basePath) {
     return finalizeIncludeDirectiveState(state);
 }
 
-async function collectIncludeDirectivesFromKeywordBlocks(filePath, keywordBlocks, readKeywordBlockText) {
+async function collectIncludeDirectivesFromKeywordBlocks(
+    filePath,
+    keywordBlocks,
+    readKeywordBlockText,
+    options: LargeFileScanOptions = {},
+) {
     const basePath = path.dirname(filePath);
     const state = createIncludeDirectiveState(basePath);
 
     for (const block of keywordBlocks) {
+        throwIfCancellationRequested(options.cancellationToken);
         if (!block.keyword || !block.keyword.startsWith('*INCLUDE')) continue;
 
         const text = await readKeywordBlockText(block);
+        throwIfCancellationRequested(options.cancellationToken);
         const lines = text.split(/\r?\n/);
         for (let lineOffset = 0; lineOffset < lines.length; lineOffset++) {
             if (lineOffset === lines.length - 1 && lines[lineOffset] === '') continue;
@@ -462,6 +527,33 @@ async function collectIncludeDirectivesFromKeywordBlocks(filePath, keywordBlocks
     }
 
     return finalizeIncludeDirectiveState(state);
+}
+
+/** Live documents reuse the same parser, reading only Include blocks in bounded chunks. */
+async function collectIncludeDirectivesFromDocumentBlocks(document, blocks, shouldCancel = () => false) {
+    const state = createIncludeDirectiveState(path.dirname(document.uri.fsPath));
+    let started = performance.now(), visited = 0;
+    for (const block of blocks) {
+        if ((++visited & 255) === 0 && performance.now() - started >= 8) {
+            await new Promise(resolve => setImmediate(resolve));
+            started = performance.now();
+        }
+        if (shouldCancel()) return null;
+        if (!String(block.keyword || '').replace(/^\*/, '').startsWith('INCLUDE') || block.opaqueKind) continue;
+        for (let line = block.startLine; line <= block.endLine; line++) {
+            processIncludeDirectiveLine(state, document.lineAt(line).text, line);
+            if ((line & 255) === 0 && performance.now() - started >= 8) {
+                await new Promise(resolve => setImmediate(resolve));
+                if (shouldCancel()) return null;
+                started = performance.now();
+            }
+        }
+        // A non-Include boundary must flush continuation/transform state too.
+        flushIncludeEntry(state);
+        flushPathEntry(state);
+        finalizeActiveTransformEntry(state);
+    }
+    return shouldCancel() ? null : finalizeIncludeDirectiveState(state);
 }
 
 /**
@@ -518,6 +610,7 @@ function collectIncludeDirectivesFromBuffer(buffer, basePath) {
  * @returns {Promise<IncludeResult>} Include entries and search paths.
  */
 async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScanOptions = {}) {
+    throwIfCancellationRequested(options.cancellationToken);
     const basePath = path.dirname(filePath);
 
     let fileStat;
@@ -529,6 +622,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
 
     if (fileStat.size <= SMALL_FILE_THRESHOLD) {
         const buffer = await fs.promises.readFile(filePath);
+        throwIfCancellationRequested(options.cancellationToken);
         return collectIncludeDirectivesFromBuffer(buffer, basePath);
     }
 
@@ -536,7 +630,8 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
     return collectIncludeDirectivesFromKeywordBlocks(
         filePath,
         keywordBlocks,
-        block => readBlockText(block)
+        block => readBlockText(block, 'utf8', { cancellationToken: options.cancellationToken }),
+        options,
     );
 }
 
@@ -597,6 +692,7 @@ function bufferContainsIncludeKeyword(buffer) {
 }
 
 module.exports = {
+    collectIncludeDirectivesFromDocumentBlocks,
     collectIncludeDirectivesFromBuffer,
     collectIncludeDirectivesFromFile,
     collectIncludeDirectivesFromKeywordBlocks,

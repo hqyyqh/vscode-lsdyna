@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "id": "constrained-soil-pile-card2-manual-layout",
+  "version": 1,
+  "policy": "official-pdf-required-card2-layout-v1",
+  "scope": "Restore Card 2 of the CONSTRAINED_SOIL_PILE family when upstream compresses it to the two-field DAMP/LOCAL shape.",
+  "keywords": [
+    "CONSTRAINED_SOIL_PILE_CONSTANTS",
+    "CONSTRAINED_SOIL_PILE_CONSTANTS_SET",
+    "CONSTRAINED_SOIL_PILE_CURVES",
+    "CONSTRAINED_SOIL_PILE_CURVES_SET"
+  ],
+  "upstreamGap": {
+    "expectedCardCount": 6,
+    "expectedFieldCount": 2,
+    "cardSignatureSha256": "b80fff2e5d1632e33ae107fc6e7baaa5d0b08e8b424cdbbc613880b88771e19c"
+  },
+  "alternateExpectedCardCounts": {
+    "CONSTRAINED_SOIL_PILE_CONSTANTS": 7,
+    "CONSTRAINED_SOIL_PILE_CONSTANTS_SET": 7
+  },
+  "alternateCardSignatures": [
+    "1f76e40eb932538b5bb590a293927289c26d33935dc2a265c1cd94db0c14f640"
+  ],
+  "card": {
+    "physicalCardIndex": 1,
+    "fields": [
+      {
+        "name": "DAMP",
+        "position": 0,
+        "width": 10,
+        "type": "real",
+        "english": "Optional damping coefficient for axial coupling.",
+        "chinese": "轴向耦合的可选阻尼系数。",
+        "default": 0.0
+      },
+      {
+        "name": "LOCAL",
+        "position": 10,
+        "width": 10,
+        "type": "integer",
+        "english": "Flag identifying which free end of the pile is treated as the base.",
+        "chinese": "用于标识作为基座的桩自由端。",
+        "default": 1,
+        "options": ["1", "2"]
+      },
+      {
+        "name": "INSTRF",
+        "position": 20,
+        "width": 10,
+        "type": "integer",
+        "english": "Flag controlling whether soil stress is time-varying or frozen at TIMSTR.",
+        "chinese": "控制土体应力是否随时间变化或在 TIMSTR 冻结的标志。",
+        "default": 0,
+        "options": ["0", "1"]
+      },
+      {
+        "name": "TIMSTR",
+        "position": 30,
+        "width": 10,
+        "type": "real",
+        "english": "Time at which the effect of soil stress is frozen.",
+        "chinese": "土体应力效应冻结的时间。",
+        "default": 0.0
+      },
+      {
+        "name": "ICD7A",
+        "position": 40,
+        "width": 10,
+        "type": "integer",
+        "english": "If nonzero and OPTION1 is CONSTANTS, Card 7a will be read.",
+        "chinese": "若非零且 OPTION1 = CONSTANTS，则读取卡片 7a。",
+        "default": 0
+      },
+      {
+        "name": "DAMPH",
+        "position": 50,
+        "width": 10,
+        "type": "real",
+        "english": "Optional damping coefficient for perpendicular coupling.",
+        "chinese": "垂直耦合的可选阻尼系数。",
+        "default": 0.0
+      },
+      {
+        "name": "UNUSED",
+        "position": 60,
+        "width": 10,
+        "type": "integer",
+        "english": "",
+        "chinese": ""
+      },
+      {
+        "name": "UNUSED",
+        "position": 70,
+        "width": 10,
+        "type": "integer",
+        "english": "",
+        "chinese": ""
+      }
+    ]
+  },
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+    "pdfSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+    "pdfSize": 34763447,
+    "toolVersion": "24.03.0",
+    "textCommand": "pdftotext -layout -enc UTF-8 (page form-feed split)",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "pages": [
+      {
+        "physicalPage": 1077,
+        "textSha256": "d2dca30fa671ae6fc0075d7f834ed8aa562f1c1e82963fd7ec63bf33b16214bd",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 1078,
+        "textSha256": "6235e9bccd54e9121850a8117c0bede321d0605a90a6c2377e59ce4e104fb64f",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 1079,
+        "textSha256": "58742428fc2d00b7c1ba1f472affebc4ba852f2d71addd6abf72047b05cc89d0",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 1080,
+        "textSha256": "e436d6ee0913a7bf5a539c8af0ef49806bc4999d20251dcba42edcf807879ac7",
+        "renderSha256": null
+      },
+      {
+        "physicalPage": 1085,
+        "textSha256": "99d7031d3c712ee46f529bc5c5f075d08144afffceb6c289bcde89c39c92be43",
+        "renderSha256": null
+      }
+    ]
+  },
+  "evidence": {
+    "requiredCardNumbers": [1, 2, 3, 4, 5, 6, 7],
+    "card2FieldNames": ["DAMP", "LOCAL", "INSTRF", "TIMSTR", "ICD7A", "DAMPH", "UNUSED", "UNUSED"],
+    "card2Description": "Include this card unless OPTION1 is unset (<BLANK>).",
+    "directFieldLayout": true,
+    "optionEvidence": false,
+    "inferenceUsed": false
+  },
+  "permissions": {
+    "schemaCardAddition": false,
+    "schemaTypeCorrection": true,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

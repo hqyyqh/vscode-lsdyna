@@ -38,6 +38,20 @@ function allDiagnostics(document) {
 }
 
 describe('keywordValidator *END awareness', () => {
+    it('ignores unknown keywords and *END-looking lines inside COMMENT ranges', () => {
+        const doc = fakeDoc([
+            '*COMMENT',
+            '  *BOGUS_HIDDEN',
+            '  *END',
+            '$*END',
+            '*PART',
+            '*BOGUS_VISIBLE',
+            '*END',
+        ].join('\n'));
+        assert.deepEqual(unknownDiagnostics(doc).map(d => d.unknownKeyword), ['BOGUS_VISIBLE']);
+        assert.equal(keywordValidator.findEndDirectiveLine(doc), 6);
+    });
+
     it('does not flag unknown keywords after a column-1 *END', () => {
         const doc = fakeDoc([
             '*NODE',

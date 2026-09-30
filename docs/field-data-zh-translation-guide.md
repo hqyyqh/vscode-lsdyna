@@ -4,7 +4,9 @@
 
 - English structure source: `keywords/field_data.json`
 - Chinese authoring source: `keywords/field_data_zh.json`
-- Runtime output: `out/runtime/field_help_zh.delta.json.gz`
+- Native/overridden help translations: `keywords/native_field_help_zh.json`
+- Manual condition, choice, dependency and keyword-option translations: `keywords/manual_semantics_zh.json`
+- Runtime output: `out/runtime/field_help/manifest.json` and `shards/*.json.gz`
 - Structure/content validator: `keywords/validate_field_data_translation.py`
 - Final quality gate: `keywords/audit_field_data_quality.py`
 - Generation boundary and Unicode sanitizer: `keywords/text_sanitization.py`
@@ -13,9 +15,9 @@
 - Reviewed compatibility source: `keywords/compatibility/mat_add_erosion_legacy_fields.json`
 
 The extension treats the English file as the schema authority. The Chinese file is
-a reviewable authoring mirror. Compilation produces a deterministic, hash-bound
-delta containing only Chinese help suffixes. The full Chinese JSON must not be
-packaged in the VSIX.
+a reviewable authoring mirror. Compilation produces deterministic, hash-bound
+shards containing English help and Chinese suffixes. The full Chinese JSON and the
+legacy standalone delta output must not be packaged in the VSIX.
 
 ## Data contract
 
@@ -73,7 +75,9 @@ python -m pip install -r keywords/requirements-codegen.txt
 python keywords/validate_field_data_translation.py --check-content
 python keywords/audit_field_data_quality.py
 python -m unittest discover -s keywords/tests -p "test_*.py" -v
-npm run build:field-help-delta
+npm run build:field-help-runtime
+npm run check:native-help-zh
+npm run check:manual-semantics-zh
 npm run check:contracts
 ```
 
@@ -106,11 +110,81 @@ Both Python tools return non-zero on failure. Normal maintenance and CI print a
 summary only; they do not create tracked reports. Use `--output <temporary-path>`
 with the audit only when local diagnostics are needed.
 
-After building the delta, verify that its `sourceLocalizedSha256` equals the raw
+After building the shards, verify that the manifest's `localizedSourceSha256` equals the raw
 SHA-256 of the LF Chinese source and that its localized count equals the validator's
 non-empty translated count.
 
 ## Updating after PyDYNA
+
+### Runtime help outside the static schema
+
+Static coverage alone does not certify hover coverage. Native LS-PrePost help and
+the authoritative PARAMETER descriptions can differ from `field_data.json`.
+The field-help build also produces `text-index.json.gz`, bound by a hash in the
+runtime manifest. It reuses a static translation only when the **complete**
+English text matches after collapsing layout whitespace. Punctuation, signs,
+identifiers, numbers, and words are never dropped for matching. Conflicting
+translations for the same normalized source are excluded from automatic reuse.
+
+`native_field_help_zh.json` contains reviewed `{english, localized}` pairs for
+remaining sources and conflicts. The full English source is the lookup identity;
+field names or similar-looking descriptions cannot authorize a translation.
+Changed direct English overrides must not retain an unrelated schema translation.
+
+Some native source strings contain missing symbols, damaged formulas, or broken
+cross-references. Preserve what can be read, disclose the uncertainty in the
+Chinese text, and record `sourceIssue`; never infer a missing axis, operator,
+keyword, unit, or reference. The original English remains available from the
+hover's original-text action. A disclosed source defect is **not** a verified
+physical definition and is counted separately by the coverage validator.
+
+After rebuilding, `check:native-help-zh` checks the current native corpus and
+PARAMETER overrides against the actual runtime index, checks source membership,
+protected identifiers/conditions, and fails on missing translations or stale
+artifacts. Keep this gate in CI and release validation. The tests also exercise
+actual Chinese/English hover output for native fields and reject stale slot
+translations. Neither automated checks nor exact translation reuse constitute
+an exhaustive expert semantic review of every static translation.
+
+External manual-context or relaxed-model descriptions have their own content
+sources. Unknown source text remains explicitly marked as untranslated rather
+than being replaced by a generic Chinese summary; generated fallback labels and
+geometry descriptions are localized separately.
+
+### Manual semantic descriptions
+
+`manual_semantics_zh.json` stores `{english, localized, sourceIssue}` rows for
+conditional card, field-choice, field-dependency and keyword-option summaries in
+`keywords/manual_semantics/shards/`. It uses the same complete-English matching
+and whitespace normalization as native help, but keeps its source membership
+separate. Do not add these rows to the native help corpus or modify generated
+English rules to make translations match.
+
+The field-help build merges reviewed rows into the existing text index and records
+their authoring hash as `textIndex.manualSemanticsSha256`. Identical rows shared
+across corpora are harmless; conflicting reviewed translations stop the build.
+Changed source text requires a new review. Record truncated or damaged sources in
+the internal `sourceIssue` metadata. Translate the available text without adding
+disclaimers about source quality to the displayed Chinese or inferring missing
+content. Keep a trailing ellipsis where the source stops and preserve its actual
+warnings and restrictions.
+Only the translated text enters the runtime index. Do not package `sourceIssue`,
+authoring JSON, translation batches, or review reports in the VSIX.
+
+Run `npm run build:field-help-runtime` followed by
+`npm run check:manual-semantics-zh`. The latter fails on missing translations,
+stale/missing runtime output or content mismatches. `--summary` only reduces output;
+it does not relax the exit status. `--stage-report` permits incomplete coverage for
+work-in-progress reporting and is never a release gate. Structural checks do not
+certify engineering meaning, natural Chinese or actual UI presentation.
+
+中文维护要求：卡片条件、取值及依赖说明独立存放，按完整英文来源匹配；保留条件、
+否定、数值、单位和选项标记。原文截断或损坏仅记入内部 sourceIssue；译文只表达
+已有内容，不附加“无法确认”“未推断补全”等说明，不猜补，保留原有警告和限制。
+中文界面显示译文并保留原文入口；缺译须明确提示。正式验收必须完成语言、工程语义
+和实际界面核查，不能以阶段报告或结构检查代替。
+
+### Static schema update procedure
 
 1. Save the old `field_data.json` outside the repository.
 2. Regenerate the four English artifacts from the clean, pinned PyDYNA commit.
@@ -120,7 +194,7 @@ non-empty translated count.
    also applies the reviewed Chinese help stored in compatibility overlays after
    the English source and field signature have been verified.
 4. Review every fallback created by new, changed, or ambiguous English text.
-5. Run all quality gates and rebuild the runtime delta.
+5. Run all quality gates and rebuild the runtime help shards.
 6. Commit the four PyDYNA outputs separately from the reviewed Chinese update when
    practical, so reviewers can distinguish source changes from translations.
 
@@ -148,7 +222,7 @@ artifact hashes in `keywords/pydyna-source.json`. It does not generate or track
 a Chinese candidate, review report, or intermediate package. After a source
 update, record the new commit and input hashes in the provenance file, compare
 keyword/field statistics, regenerate the English artifacts, then run the
-bilingual validator, audit, tests, and runtime-delta build before reviewing new
+bilingual validator, audit, tests, and runtime-help build before reviewing new
 or changed Chinese suffixes.
 
 The minimum Unicode/content check sequence is:

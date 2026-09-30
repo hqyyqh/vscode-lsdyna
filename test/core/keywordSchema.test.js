@@ -4,28 +4,42 @@ const assert = require('assert');
 const { fakeDoc } = require('../helpers');
 
 describe('keywordSchema resolver', () => {
-    it('maps text-card lines including $ and $# content to the text card', () => {
-        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
-        const schema = {
-            COMMENT: {
-                c: [[{ n: 'COMMENT', p: 0, w: 80, h: 'Any comment line.', t: 'string' }]],
-                tc: [{ name: 'comment', f: [{ n: 'COMMENT', p: 0, w: 80, t: 'string' }] }],
-            },
-        };
-        const doc = fakeDoc([
-            '*COMMENT',
-            '$# this is text, not a field header',
-            '$ this is also text',
-            'ordinary free text',
-            '*END',
-        ].join('\n'));
+    it('resolves every mixed-case catalog key without replacing its help objects', () => {
+        const { loadKeywordSchema, lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const schema = loadKeywordSchema();
+        const names = Object.keys(schema).filter(name => /^[A-Z0-9_-]+$/i.test(name) && name !== name.toUpperCase());
+        assert.ok(names.length > 0);
+        for (const name of names) {
+            const canonical = schema[name].x || name;
+            for (const spelling of [name, name.toUpperCase(), name.toLowerCase()]) {
+                const found = lookupKeywordSchema(spelling, schema);
+                assert.ok(found, spelling);
+                assert.strictEqual(found.entry, schema[canonical]);
+                assert.strictEqual(found.entry.c[0][0], schema[canonical].c[0][0]);
+                assert.deepEqual(found.activeOptions, schema[name].active || []);
+            }
+        }
+    });
 
-        for (const line of [1, 2, 3]) {
-            const info = getCardInfoForDocumentLine(doc, line, schema);
-            assert.ok(info);
-            assert.equal(info.isTextCard, true);
-            assert.equal(info.cardIndex, 1);
-            assert.equal(info.card[0].n, 'COMMENT');
+    it('handles folded keys, aliases and option prefixes without guessing ambiguous keys', () => {
+        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const base = { c: [], a: ['ALIAS'], o: [{ n: 'TITLE', c: [], co: 'before/1', to: 1 }] };
+        const schema = { Mixed: base, Mixed_TITLE: { c: [], x: 'Mixed', active: ['TITLE'] } };
+        assert.strictEqual(lookupKeywordSchema('ALIAS', schema).entry, base);
+        assert.strictEqual(lookupKeywordSchema('MIXED_TITLE', schema).entry, base);
+        assert.deepEqual(lookupKeywordSchema('mixed_title', { Mixed: base }).activeOptions, ['TITLE']);
+        assert.equal(lookupKeywordSchema('MIXED_UNKNOWN', schema), null);
+        assert.equal(lookupKeywordSchema('MIXED', { 'Mixed (description)': base }), null);
+        assert.equal(lookupKeywordSchema('MIXED', { Mixed: base, miXed: { c: [] } }), null);
+        const exact = { c: [] };
+        assert.strictEqual(lookupKeywordSchema('mixed', { Mixed: base, MIXED: exact }).entry, exact);
+    });
+
+    it('keeps COMMENT bodies opaque to field resolution', () => {
+        const { resolveCardForDocumentLine } = require('../../src/core/keywordSchema');
+        const doc = fakeDoc('*COMMENT\n$# fields\nordinary text\n*END');
+        for (const line of [1, 2]) {
+            assert.equal(resolveCardForDocumentLine(doc, line).status, 'unsupported');
         }
     });
 
@@ -71,6 +85,81 @@ describe('keywordSchema resolver', () => {
         const rendered = getRenderedCards(lookup.entry, lookup.activeOptions);
         assert.equal(rendered[0][0].n, 'TITLE');
         assert.equal(rendered[1][0].n, 'MID');
+    });
+
+    it('uses the verified leading-card count across TITLE, ID, and MPP families', () => {
+        const {
+            getLeadingMaterialTitleCardCount,
+            lookupKeywordSchema,
+        } = require('../../src/core/keywordSchema');
+        const material = lookupKeywordSchema('MAT_DAMAGE_1_TITLE');
+        const curve = lookupKeywordSchema('DEFINE_CURVE_TITLE');
+        const set = lookupKeywordSchema('SET_PART_LIST_TITLE');
+
+        assert.equal(getLeadingMaterialTitleCardCount(material), 1);
+        assert.equal(getLeadingMaterialTitleCardCount(curve), 1);
+        assert.equal(getLeadingMaterialTitleCardCount(set), 1);
+        assert.equal(
+            getLeadingMaterialTitleCardCount(lookupKeywordSchema('RIGIDWALL_GEOMETRIC_CYLINDER_ID')),
+            1,
+        );
+        assert.equal(
+            getLeadingMaterialTitleCardCount(lookupKeywordSchema('CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP')),
+            2,
+        );
+    });
+
+    it('projects official prefix fields and conditional CONTACT MPP2 exactly', () => {
+        const {
+            getRenderedCardsForLookup,
+            getVerifiedPrefixLayout,
+            lookupKeywordSchema,
+        } = require('../../src/core/keywordSchema');
+
+        const geometric = lookupKeywordSchema('RIGIDWALL_GEOMETRIC_CYLINDER_ID');
+        assert.deepEqual(
+            getVerifiedPrefixLayout(geometric).cards[0].map(field => field.n),
+            ['RWID', 'HEADING'],
+        );
+        const planar = lookupKeywordSchema('RIGIDWALL_PLANAR_ID');
+        assert.deepEqual(getVerifiedPrefixLayout(planar).cards[0].map(field => field.n), ['RWID']);
+        const rivet = lookupKeywordSchema('CONSTRAINED_RIVET_ID');
+        assert.deepEqual(getVerifiedPrefixLayout(rivet).cards[0].map(field => field.n), ['RID']);
+        const icfd = lookupKeywordSchema('ICFD_PART_TITLE');
+        assert.deepEqual(getVerifiedPrefixLayout(icfd).cards[0].map(field => field.n), ['HEADING']);
+
+        const combined = lookupKeywordSchema('CONSTRAINED_BEAM_IN_SOLID_ID_TITLE');
+        assert.deepEqual(
+            getVerifiedPrefixLayout(combined).cards[0].map(field => field.n),
+            ['COUPID', 'TITLE'],
+        );
+        assert.equal(getVerifiedPrefixLayout(combined).cards.length, 1);
+
+        const contact = lookupKeywordSchema('CONTACT_AUTOMATIC_SINGLE_SURFACE_MPP_ID');
+        const withoutMarker = getVerifiedPrefixLayout(contact, ['', '', '']);
+        assert.deepEqual(withoutMarker.cards.map(card => card[0].n), ['CID', 'IGNORE']);
+        const withMarker = getVerifiedPrefixLayout(contact, ['', '', '&']);
+        assert.deepEqual(withMarker.cards.map(card => card[0].n), ['CID', 'IGNORE', '&']);
+        assert.deepEqual(withMarker.cards[2].map(field => field.n), ['&', 'CHKSEGS', 'PENSF', 'GRPABLE', 'IGTOL']);
+        assert.equal(getRenderedCardsForLookup(contact, ['', '', '&'])[3][0].n, 'SSID');
+    });
+
+    it('fails closed for the two manual-denied DEFINE_FUNCTION TITLE spellings', () => {
+        const { getVerifiedPrefixLayout, lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        for (const keyword of ['DEFINE_FUNCTION_TITLE', 'DEFINE_FUNCTION_TABULATED_TITLE']) {
+            const layout = getVerifiedPrefixLayout(lookupKeywordSchema(keyword));
+            assert.equal(layout.status, 'unsupported-option');
+            assert.deepEqual(layout.unsupportedOptions, ['TITLE']);
+            assert.deepEqual(layout.cards, []);
+        }
+    });
+
+    it('marks the variable-position SECTION_SHELL MISC card as reviewed but unwritable', () => {
+        const { getVerifiedPrefixLayout, lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const layout = getVerifiedPrefixLayout(lookupKeywordSchema('SECTION_SHELL_MISC'));
+        assert.equal(layout.status, 'unverified');
+        assert.deepEqual(layout.activePreOptions, ['MISC']);
+        assert.deepEqual(layout.cards, []);
     });
 
     it('resolves card info via keywordOverride for unknown typed block names', () => {
@@ -159,6 +248,99 @@ describe('keywordSchema resolver', () => {
         assert.equal(lookup.entry.c[0][0].n, 'SID');
     });
 
+    it('resolves only source-locked manual spellings with an exact complete card layout', () => {
+        const {
+            getRenderedCards,
+            loadKeywordSchema,
+            lookupKeywordSchema,
+        } = require('../../src/core/keywordSchema');
+        const source = require('../../src/core/keywordSpellingAliases.json');
+        const schema = loadKeywordSchema(() => 'en');
+
+        assert.equal(source.policy.fuzzyAliasPermission, false);
+        assert.equal(source.policy.optionInferencePermission, false);
+        assert.equal(source.aliases.length, 5);
+        for (const item of source.aliases) {
+            const lookup = lookupKeywordSchema(item.manualKeyword, schema);
+            assert.ok(lookup, item.manualKeyword);
+            assert.equal(lookup.canonicalName, item.schemaKeyword);
+            assert.deepEqual(
+                getRenderedCards(lookup.entry, lookup.activeOptions)[item.cardIndex - 1]
+                    .map(field => ({
+                        name: field.n,
+                        type: field.t,
+                        position: field.p,
+                        width: field.w,
+                    })),
+                item.card,
+                item.manualKeyword,
+            );
+
+            const drifted = { ...schema, [item.schemaKeyword]: {
+                ...schema[item.schemaKeyword],
+                c: schema[item.schemaKeyword].c.map((card, index) => index === item.cardIndex - 1
+                    ? card.map((field, fieldIndex) => fieldIndex === 0
+                        ? { ...field, w: field.w + 1 }
+                        : field)
+                    : card),
+            } };
+            assert.equal(lookupKeywordSchema(item.manualKeyword, drifted), null,
+                `${item.manualKeyword} must fail closed after layout drift`);
+        }
+    });
+
+    it('repairs the source-locked IGA card only while the complete bad source shape matches', () => {
+        const { getCardInfoForDocumentLine, getRenderedCardsForLookup, loadKeywordSchema, lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const { readCellValue, writeCellR1 } = require('../../src/core/edit/cardCellModel');
+        const { fakeDoc } = require('../helpers');
+        const source = require('../../src/core/keywordLayoutCorrections.json');
+        const schema = loadKeywordSchema(() => 'en');
+        const correction = source.corrections[0];
+
+        assert.equal(source.policy.optionInferencePermission, false);
+        assert.equal(source.policy.partialCardCorrectionPermission, false);
+        assert.equal(correction.keyword, 'IGA_INTEGRATION_SHELL_REDUCE');
+        assert.deepEqual(
+            lookupKeywordSchema(correction.keyword, schema).entry.c[0].map(field => ({
+                name: field.n,
+                type: field.t,
+                position: field.p,
+                width: field.w,
+            })),
+            correction.officialCard,
+        );
+
+        const lookup = lookupKeywordSchema(correction.keyword, schema);
+        const card = getRenderedCardsForLookup(lookup)[0];
+        assert.deepEqual(card.map(field => [field.p, field.w]), [[0, 10], [10, 10], [20, 10]]);
+        let line = '';
+        line = writeCellR1(line, card, 0, '12');
+        line = writeCellR1(line, card, 1, '1');
+        line = writeCellR1(line, card, 2, '2');
+        assert.equal(readCellValue(line, card, 0), '12');
+        assert.equal(readCellValue(line, card, 1), '1');
+        assert.equal(readCellValue(line, card, 2), '2');
+
+        const doc = fakeDoc(['*IGA_INTEGRATION_SHELL_REDUCE', line].join('\n'));
+        const info = getCardInfoForDocumentLine(doc, 1, schema);
+        assert.ok(info);
+        // Actual file reads take precedence over the legacy schema correction.
+        // The pinned native probe reads PATCHID at offset 152, not column zero.
+        assert.equal(info.card[0].p, 152);
+        assert.equal(info.card[2].w, 20);
+        assert.equal(info.card[0].rawValue, '');
+
+        const drifted = { ...schema, [correction.keyword]: {
+            ...schema[correction.keyword],
+            c: schema[correction.keyword].c.map((card, index) => index === 0
+                ? card.map((field, fieldIndex) => fieldIndex === 0
+                    ? { ...field, p: field.p + 1 }
+                    : field)
+                : card),
+        } };
+        assert.equal(lookupKeywordSchema(correction.keyword, drifted), null);
+    });
+
     it('resolves SET_PART aliases to the SET_PART_LIST card schema', () => {
         const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
 
@@ -223,8 +405,161 @@ describe('keywordSchema resolver', () => {
         assert.equal(titleCard[0].n, 'TITLE');
     });
 
-    it('uses field comment headers before line-count fallback for CONTACT option variants', () => {
-        const { getCardForDocumentLine } = require('../../src/core/keywordSchema');
+    it('does not let a stale field-header comment override an active TITLE prefix', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const doc = fakeDoc([
+            '*MAT_DAMAGE_1_TITLE',
+            '$#     mid        ro         e        pr      sigy      lcss      lcds',
+            ' '.repeat(80),
+            '$#      q1        c1        q2        c2      epsd    espr/s        dc      flag',
+            `${' '.repeat(70)}        -1`,
+        ].join('\n'));
+
+        const title = getCardInfoForDocumentLine(doc, 2);
+        assert.ok(title);
+        assert.equal(title.cardIndex, 1);
+        assert.equal(title.card[0].n, 'TITLE');
+        assert.equal(title.isLeadingOptionCard, true);
+        assert.equal(title.resolutionSource, 'leading-option');
+        assert.equal(title.cardPositionConflict, undefined);
+
+        const shifted = getCardInfoForDocumentLine(doc, 4, undefined, {
+            keywordLine: 0,
+            dataLineOrdinal: 2,
+            previousHeaderText: doc.lineAt(3).text,
+            columnOneCommentsOnly: true,
+            observedDataLines: [' '.repeat(80), doc.lineAt(4).text],
+        });
+        assert.ok(shifted);
+        assert.equal(shifted.cardIndex, 2);
+        assert.equal(shifted.card[0].n, 'MID');
+        assert.equal(shifted.resolutionSource, 'physical-order');
+        assert.equal(shifted.cardPositionConflict, undefined);
+    });
+
+    it('recognizes pipe-delimited preprocessor headers as the same physical card', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const header = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|   RLTFLG|   ENGFLG';
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            header,
+            '         0        16         3         1         1         1         1         1',
+        ].join('\n'));
+
+        const info = getCardInfoForDocumentLine(doc, 2, undefined, {
+            keywordLine: 0,
+            dataLineOrdinal: 1,
+            previousHeaderTexts: [header],
+            columnOneCommentsOnly: true,
+        });
+
+        assert.ok(info);
+        assert.deepEqual(info.card.map(field => field.n), [
+            'NEIPH', 'NEIPS', 'MAXINT', 'STRFLG',
+            'SIGFLG', 'EPSFLG', 'RLTFLG', 'ENGFLG',
+        ]);
+        assert.equal(info.cardCommentNotice, undefined);
+        assert.equal(info.cardPositionConflict, undefined);
+    });
+
+    it('recognizes plain dollar fixed headers and ignores nearby prose comments', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const labels = ['NEIPH', 'NEIPS', 'MAXINT', 'STRFLG', 'SIGFLG', 'EPSFLG', 'RLTFLG', 'ENGFLG'];
+        const header = '$' + labels.map((label, index) => label.padStart(index === 0 ? 9 : 10)).join('');
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            header,
+            '$ Output settings retained for the company crash workflow',
+            ' '.repeat(80),
+        ].join('\n'));
+
+        const info = getCardInfoForDocumentLine(doc, 3, undefined, {
+            keywordLine: 0,
+            dataLineOrdinal: 1,
+            previousHeaderTexts: [header, doc.lineAt(2).text],
+            columnOneCommentsOnly: true,
+        });
+
+        assert.ok(info);
+        assert.equal(info.card[0].n, 'NEIPH');
+        assert.equal(info.cardCommentNotice, undefined);
+    });
+
+    it('assesses mismatched comments separately from card resolution', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const header = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|      OLD|     OLD2';
+        const doc = fakeDoc(['*DATABASE_EXTENT_BINARY', header, ' '.repeat(80)].join('\n'));
+
+        const info = getCardInfoForDocumentLine(doc, 2, undefined, {
+            keywordLine: 0,
+            dataLineOrdinal: 1,
+            previousHeaderTexts: [header],
+            columnOneCommentsOnly: true,
+        });
+
+        assert.ok(info);
+        assert.equal(info.card[0].n, 'NEIPH');
+        assert.equal(info.cardPositionConflict, undefined);
+        assert.equal(info.cardCommentNotice, undefined);
+        const notice = require('../../src/core/keywordSchema').assessCardComment(info, [header]);
+        assert.equal(notice.kind, 'definition-mismatch');
+        assert.equal(notice.matchedFieldCount, 6);
+        assert.deepEqual(notice.differences, [
+            { position: 60, width: 10, observed: 'OLD', expected: 'RLTFLG' },
+            { position: 70, width: 10, observed: 'OLD2', expected: 'ENGFLG' },
+        ]);
+    });
+
+    it('keeps preprocessor metadata and low-coverage comments unknown and quiet', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const doc = fakeDoc([
+            '*DATABASE_EXTENT_BINARY',
+            '$HMNAME DATABASE 1',
+            '$HWCOLOR DATABASE 4',
+            '$ ------------------------------',
+            ' '.repeat(80),
+        ].join('\n'));
+
+        const info = getCardInfoForDocumentLine(doc, 4, undefined, {
+            keywordLine: 0,
+            dataLineOrdinal: 1,
+            previousHeaderTexts: [doc.lineAt(1).text, doc.lineAt(2).text, doc.lineAt(3).text],
+            columnOneCommentsOnly: true,
+        });
+
+        assert.ok(info);
+        assert.equal(info.card[0].n, 'NEIPH');
+        assert.equal(info.cardCommentNotice, undefined);
+        assert.equal(info.cardPositionConflict, undefined);
+    });
+
+    it('returns unresolved within the read budget near the end of a million-line deck', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const lineCount = 1_000_000;
+        const targetLine = lineCount - 1;
+        const header = '$    NEIPH|    NEIPS|   MAXINT|   STRFLG|   SIGFLG|   EPSFLG|   RLTFLG|   ENGFLG';
+        let lineReads = 0;
+        const doc = {
+            lineCount,
+            lineAt(line) {
+                lineReads++;
+                if (line === 0) return { text: '*DATABASE_EXTENT_BINARY' };
+                if (line === targetLine) return { text: ' '.repeat(80) };
+                return { text: header };
+            },
+        };
+
+        const info = getCardInfoForDocumentLine(doc, targetLine, undefined, {
+            keywordLine: 0,
+            columnOneCommentsOnly: true,
+        });
+
+        assert.equal(info, null);
+        assert.ok(lineReads <= 256, `expected bounded line reads, got ${lineReads}`);
+    });
+
+    it('keeps native CONTACT ID_MPP card order despite stale comments', () => {
+        const { getCardForDocumentLine, getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
         const doc = fakeDoc([
             '*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID_MPP',
             '$#    ssid      msid     sstyp     mstyp    sboxid    mboxid       spr       mpr',
@@ -237,21 +572,23 @@ describe('keywordSchema resolver', () => {
             '         0         0                 2.0         0         0         0       0.0'
         ].join('\n'));
 
-        const ssid = getCardForDocumentLine(doc, 2);
-        assert.ok(ssid);
-        assert.equal(ssid[0].n, 'SSID');
+        const cid = getCardInfoForDocumentLine(doc, 2);
+        assert.ok(cid);
+        assert.equal(cid.card[0].n, 'CID');
+        assert.equal(cid.isLeadingOptionCard, true);
+        assert.equal(cid.cardPositionConflict, undefined);
 
-        const fs = getCardForDocumentLine(doc, 4);
-        assert.ok(fs);
-        assert.equal(fs[0].n, 'FS');
+        const mpp1 = getCardForDocumentLine(doc, 4);
+        assert.ok(mpp1);
+        assert.equal(mpp1[0].n, 'SURFA');
 
         const soft = getCardForDocumentLine(doc, 6);
         assert.ok(soft);
-        assert.equal(soft[0].n, 'SOFT');
+        assert.equal(soft[0].n, 'FS');
 
         const pstiff = getCardForDocumentLine(doc, 8);
         assert.ok(pstiff);
-        assert.equal(pstiff[0].n, 'PSTIFF');
+        assert.equal(pstiff[0].n, 'SFSA');
     });
 
     it('keeps old compact entries usable when option metadata is absent', () => {
@@ -264,36 +601,12 @@ describe('keywordSchema resolver', () => {
         assert.equal(cards[3][0].n, 'B');
     });
 
-    it('repeats single-card keywords for extra data rows even without r', () => {
-        const { getRenderedCards, getCardForDocumentLine } = require('../../src/core/keywordSchema');
-        const entry = {
-            c: [[
-                { n: 'EID', p: 0, w: 8 },
-                { n: 'NID', p: 8, w: 8 },
-                { n: 'MASS', p: 16, w: 16 },
-                { n: 'PID', p: 32, w: 8 },
-            ]],
-        };
-        const cards = getRenderedCards(entry, [], 3);
-        assert.equal(cards.length, 3);
-        assert.equal(cards[2][0].n, 'EID');
-
-        // Live schema: *ELEMENT_MASS second data row must resolve a card
-        const doc = {
-            lineCount: 4,
-            lineAt(i) {
-                const lines = [
-                    '*ELEMENT_MASS',
-                    '$#   eid     nid            mass     pid',
-                    '  900001  900001         7.77E-2       0',
-                    '  920001  920001         7.77E-2       0',
-                ];
-                return { text: lines[i] };
-            },
-        };
-        const row2 = getCardForDocumentLine(doc, 3);
-        assert.ok(row2, 'second ELEMENT_MASS data row should have card fields');
-        assert.equal(row2[0].n, 'EID');
+    it('does not invent repetition for a single-card schema without r', () => {
+        const { getCardInfoForDocumentLine } = require('../../src/core/keywordSchema');
+        const schema = { TEST: { c: [[{ n: 'ID', p: 0, w: 10 }]] } };
+        const doc = fakeDoc('*TEST\n         1\n         2');
+        assert.ok(getCardInfoForDocumentLine(doc, 1, schema));
+        assert.equal(getCardInfoForDocumentLine(doc, 2, schema), null);
     });
 
     it('does not invent extra cards for multi-card keywords without r', () => {
@@ -349,16 +662,16 @@ describe('keywordSchema resolver', () => {
         assert.equal(cards[2][0].n, 'NID1');
     });
 
-    it('caches loaded schema JSON per language', () => {
+    it('caches the compact schema runtime per language', () => {
         const fs = require('fs');
         const keywordSchema = require('../../src/core/keywordSchema');
         const originalReadFileSync = fs.readFileSync;
-        let fieldDataReads = 0;
+        let schemaRuntimeReads = 0;
 
         keywordSchema.resetKeywordSchemaCache();
         fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
-            if (String(filePath).endsWith('field_data.json')) {
-                fieldDataReads++;
+            if (String(filePath).endsWith('field_schema.runtime.json.gz')) {
+                schemaRuntimeReads++;
             }
             return originalReadFileSync.call(this, filePath, ...args);
         };
@@ -368,7 +681,7 @@ describe('keywordSchema resolver', () => {
             const second = keywordSchema.loadKeywordSchema(() => 'en');
 
             assert.strictEqual(first, second);
-            assert.equal(fieldDataReads, 1);
+            assert.equal(schemaRuntimeReads, 1);
         } finally {
             fs.readFileSync = originalReadFileSync;
             keywordSchema.resetKeywordSchemaCache();
@@ -393,7 +706,8 @@ describe('keywordSchema resolver', () => {
     });
 
     describe('isLongFormatKeyword', () => {
-        const { isLongFormatKeyword } = require('../../src/core/keywordSchema');
+        const keywordSchema = require('../../src/core/keywordSchema');
+        const { isLongFormatKeyword } = keywordSchema;
 
         it('detects per-keyword long-format marker (trailing +)', () => {
             assert.strictEqual(isLongFormatKeyword('*NODE+'), true);
@@ -401,16 +715,36 @@ describe('keywordSchema resolver', () => {
             assert.strictEqual(isLongFormatKeyword('  *NODE+  '), true);
         });
 
-        it('detects deck-wide LONG=Y / LONG=S option', () => {
+        it('detects the per-keyword I10 percent marker', () => {
+            assert.strictEqual(isLongFormatKeyword('*NODE %'), true);
+            assert.strictEqual(isLongFormatKeyword('*NODE%'), true);
+            assert.strictEqual(isLongFormatKeyword('*NODE,%'), true);
+        });
+
+        it('detects deck-wide LONG=Y/K while keeping LONG=S standard', () => {
             assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=Y'), true);
-            assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=S'), true);
+            assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=K'), true);
+            assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=S'), false);
             assert.strictEqual(isLongFormatKeyword('*KEYWORD  long = y'), true);
             assert.strictEqual(isLongFormatKeyword('*KEYWORD LONG=Y 100000000'), true);
+            assert.strictEqual(isLongFormatKeyword('*NODE LONG=Y'), false);
+            assert.strictEqual(isLongFormatKeyword('*KEYWORD I10=Y'), true);
+            assert.strictEqual(isLongFormatKeyword('*KEYWORD I10=N'), false);
+        });
+
+        it('resolves attached standard-format overrides to the base schema keyword', () => {
+            const schema = keywordSchema.loadKeywordSchema(() => 'en');
+            assert.equal(keywordSchema.lookupKeywordSchema('*NODE-', schema).canonicalName, 'NODE');
+            assert.equal(
+                keywordSchema.lookupKeywordSchema('*DEFINE_BOX_ADAPTIVE-', schema).canonicalName,
+                'DEFINE_BOX_ADAPTIVE',
+            );
         });
 
         it('is false for short-format keywords', () => {
             assert.strictEqual(isLongFormatKeyword('*NODE'), false);
             assert.strictEqual(isLongFormatKeyword('*SET_NODE_LIST'), false);
+            assert.strictEqual(isLongFormatKeyword('*NODE-'), false);
             assert.strictEqual(isLongFormatKeyword('*KEYWORD'), false);
             assert.strictEqual(isLongFormatKeyword('*KEYWORD 100000000'), false);
         });

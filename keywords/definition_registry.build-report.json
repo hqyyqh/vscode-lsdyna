@@ -1,0 +1,43 @@
+{
+  "generator": {
+    "path": "scripts/generate-definition-registry.cjs",
+    "sha256": "b301e2d4c647017bf6cbce3245fed9d3103e151b7e62b0297f07f857c090aa6a",
+    "size": 35473
+  },
+  "kind": "dynasense-definition-registry-build-report",
+  "output": {
+    "bytes": 234499,
+    "contentSha256": "dd62fcbc459f495dbbf38ac1e5b3d95af76708d03af0404ad2a24df4c7556205",
+    "path": "keywords/definition_registry.json",
+    "sha256": "ae5ae890c442f2ab55e9ecacd46ad075c68ca6d9238502e1374bce59cf3f2df4"
+  },
+  "permissions": {
+    "automaticMutationPermission": false,
+    "definitionIndexOverlayPermission": true,
+    "definitionRegistryRuntimePermission": true,
+    "diagnosticPermission": false,
+    "f12Permission": true,
+    "fieldClassifierOverlayPermission": true,
+    "referenceProviderPermission": true
+  },
+  "schemaVersion": 1,
+  "source": {
+    "authoringHandoffContentSha256": "bb864e9eabc5753c0f32686d2bdf8c15eaf98753737563220e3e25558461a2cd",
+    "authoringHandoffManifestSha256": "cc011ade8dc97433685d9ce01875b90dbdfc5c30d1ff020375db5c09ff2e3f6d",
+    "authorityLockSha256": "b6560b2ef289f1dd7fadae536d809ac5965bbbff60f399a54565d5d2a6996ffb",
+    "standaloneCommit": "ee4581f890de13d9bb86bf1646b869af46703ce3"
+  },
+  "summary": {
+    "coordinates": 86,
+    "distinctManualRelations": 73,
+    "familyProjectionRelations": 22,
+    "keywords": 42,
+    "maxRelationsPerCoordinate": 2,
+    "relationKinds": {
+      "entity-definition": 14,
+      "entity-reference": 72,
+      "value-branch": 5
+    },
+    "relations": 91
+  }
+}

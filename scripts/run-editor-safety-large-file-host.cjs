@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { runTests } = require('@vscode/test-electron');
+const { spawn, spawnSync } = require('child_process');
 
 const {
     copyDirectoryExact,
@@ -13,6 +13,103 @@ const {
 
 const repoRoot = path.resolve(__dirname, '..');
 const isolationPrefix = 'vscode-lsdyna-editor-safety-large-';
+const noProgressTimeoutMs = 10_000;
+const setupNoProgressTimeoutMs = 30_000;
+const scenarioTimeoutMs = 120_000;
+
+function terminateProcessTree(child) {
+    if (!child || !child.pid || child.exitCode !== null) return;
+    if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+            windowsHide: true,
+            stdio: 'ignore',
+        });
+    } else {
+        child.kill('SIGKILL');
+    }
+}
+
+function runExtensionHostWithWatchdog(options) {
+    return new Promise((resolve, reject) => {
+        const started = Date.now();
+        let lastProgress = started;
+        let lastProgressRecord = null;
+        let watchdogError = null;
+        const workerPath = path.join(
+            repoRoot,
+            'scripts',
+            'run-editor-safety-large-file-host-worker.cjs',
+        );
+        const child = spawn(process.execPath, [workerPath], {
+            cwd: repoRoot,
+            windowsHide: true,
+            stdio: 'inherit',
+            env: {
+                ...process.env,
+                LSDYNA_WATCHDOG_VSCODE_EXECUTABLE: options.vscodeExecutablePath,
+                LSDYNA_WATCHDOG_REPO_ROOT: repoRoot,
+                LSDYNA_WATCHDOG_WORKSPACE: options.workspaceDirectory,
+                LSDYNA_WATCHDOG_USER_DATA: options.userDataDirectory,
+                LSDYNA_WATCHDOG_EXTENSIONS_DIR: options.extensionsDirectory,
+                LSDYNA_EDITOR_SAFETY_LARGE_WORKSPACE: options.workspaceDirectory,
+                LSDYNA_EDITOR_SAFETY_LARGE_TARGET: options.targetRelativePath,
+                LSDYNA_EDITOR_SAFETY_LARGE_RESULT: options.resultFile,
+                LSDYNA_EDITOR_SAFETY_PROGRESS_FILE: options.progressFile,
+            },
+        });
+
+        const watchdog = setInterval(() => {
+            try {
+                if (fs.existsSync(options.progressFile)) {
+                    const progressText = fs.readFileSync(options.progressFile, 'utf8').trim();
+                    if (progressText) lastProgressRecord = JSON.parse(progressText);
+                    lastProgress = Math.max(
+                        lastProgress,
+                        fs.statSync(options.progressFile).mtimeMs,
+                    );
+                }
+            } catch (_) {
+                // A concurrent heartbeat replacement is retried on the next tick.
+            }
+            const now = Date.now();
+            if (now - started > scenarioTimeoutMs) {
+                watchdogError = new Error(
+                    `Large-file Extension Host exceeded ${scenarioTimeoutMs} ms`,
+                );
+                terminateProcessTree(child);
+            } else {
+                const label = String(lastProgressRecord?.label || 'startup');
+                const isFormattingStep = /format/i.test(label) && !/^open synthetic/i.test(label);
+                const inactivityLimit = isFormattingStep
+                    ? noProgressTimeoutMs
+                    : setupNoProgressTimeoutMs;
+                if (now - lastProgress <= inactivityLimit) return;
+                watchdogError = new Error(
+                    `Large-file Extension Host produced no heartbeat for ${inactivityLimit} ms ` +
+                    `during ${label}`,
+                );
+                terminateProcessTree(child);
+            }
+        }, 250);
+
+        child.once('error', error => {
+            clearInterval(watchdog);
+            reject(error);
+        });
+        child.once('exit', (code, signal) => {
+            clearInterval(watchdog);
+            if (watchdogError) {
+                reject(watchdogError);
+            } else if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(
+                    `Large-file Extension Host worker exited with code ${code} signal ${signal || 'none'}`,
+                ));
+            }
+        });
+    });
+}
 
 function resolveVSCodeExecutable() {
     if (process.env.VSCODE_EXECUTABLE_PATH) {
@@ -126,33 +223,14 @@ async function runModel({
             'utf8',
         );
 
-        await runTests({
+        await runExtensionHostWithWatchdog({
             vscodeExecutablePath,
-            extensionDevelopmentPath: repoRoot,
-            extensionTestsPath: path.join(
-                repoRoot,
-                'test',
-                'editor-safety',
-                'large-file-extension-host',
-                'index.js',
-            ),
-            launchArgs: [
-                workspaceDirectory,
-                '--disable-extensions',
-                '--disable-gpu',
-                '--disable-workspace-trust',
-                '--skip-welcome',
-                '--skip-release-notes',
-                `--user-data-dir=${userDataDirectory}`,
-                `--extensions-dir=${extensionsDirectory}`,
-            ],
-            extensionTestsEnv: {
-                LSDYNA_EDITOR_SAFETY_LARGE_WORKSPACE: workspaceDirectory,
-                LSDYNA_EDITOR_SAFETY_LARGE_TARGET: path.join(modelName, target.name),
-                LSDYNA_EDITOR_SAFETY_LARGE_RESULT: resultFile,
-                LSDYNA_EDITOR_SAFETY_PROGRESS_FILE: progressFile,
-                LSDYNA_EDITOR_SAFETY_NO_PROGRESS_TIMEOUT_MS: '120000',
-            },
+            workspaceDirectory,
+            userDataDirectory,
+            extensionsDirectory,
+            targetRelativePath: path.join(modelName, target.name),
+            resultFile,
+            progressFile,
         });
 
         const after = await snapshotDirectory(isolatedModelRoot);
@@ -214,7 +292,8 @@ async function main() {
     const summary = {
         capturedAt: new Date().toISOString(),
         sourceRoot,
-        noProgressTimeoutMs: 120000,
+        noProgressTimeoutMs,
+        scenarioTimeoutMs,
         modelCount: results.length,
         models: results,
     };

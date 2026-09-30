@@ -23,17 +23,28 @@ export type IncludePathSuggestTriggerDeps = {
 };
 
 /**
- * True when a text change looks like typing path/name characters (not pure delete).
+ * True only for one ordinary path/name character typed at one cursor. Paste,
+ * multi-cursor batches and replacements stay quiet.
  */
-export function changeLooksLikeIncludePathTyping(contentChanges: Array<{ text?: string }>): boolean {
-    if (!contentChanges || !contentChanges.length) return false;
-    for (const ch of contentChanges) {
-        const t = ch && ch.text != null ? String(ch.text) : '';
-        if (!t) continue;
-        // Allow path-ish inserts; ignore pure newlines-only (new card line still ok if user types later)
-        if (/[A-Za-z0-9._\-\\/]/.test(t)) return true;
+export function changeLooksLikeIncludePathTyping(contentChanges: Array<{ text?: string; rangeLength?: number }>): boolean {
+    if (!contentChanges || contentChanges.length !== 1) return false;
+    if (
+        Number.isFinite(contentChanges[0]?.rangeLength) &&
+        Number(contentChanges[0].rangeLength) !== 0
+    ) return false;
+    const text = contentChanges[0]?.text != null ? String(contentChanges[0].text) : '';
+    return /^[A-Za-z0-9._\-\\/]$/.test(text);
+}
+
+export function effectiveIncludePathPrefixLength(document: any, position: any): number {
+    try {
+        const lineText = String(document.lineAt(position.line).text || '');
+        const beforeCursor = lineText.slice(0, Math.max(0, position.character));
+        const currentToken = beforeCursor.match(/[A-Za-z0-9._\-\\/]+$/)?.[0] || '';
+        return (currentToken.match(/[A-Za-z0-9._-]/g) || []).length;
+    } catch (_error) {
+        return 0;
     }
-    return false;
 }
 
 /**
@@ -54,7 +65,7 @@ export function createIncludePathSuggestTrigger(deps: IncludePathSuggestTriggerD
 
     function onDidChangeTextDocument(event: {
         document: any;
-        contentChanges?: Array<{ text?: string }>;
+        contentChanges?: Array<{ text?: string; rangeLength?: number }>;
     }) {
         if (!event || !event.document) return;
         if (deps.isLsdynaDocument && !deps.isLsdynaDocument(event.document)) return;
@@ -66,6 +77,7 @@ export function createIncludePathSuggestTrigger(deps: IncludePathSuggestTriggerD
         const position = editor.selection && editor.selection.active;
         if (!position) return;
         if (!deps.isIncludeFilenameContext(event.document, position)) return;
+        if (effectiveIncludePathPrefixLength(event.document, position) < 2) return;
         if (deps.isSuggestVisible && deps.isSuggestVisible()) return;
 
         dispose();
@@ -75,6 +87,7 @@ export function createIncludePathSuggestTrigger(deps: IncludePathSuggestTriggerD
             if (!active || active.document !== event.document) return;
             const pos = active.selection && active.selection.active;
             if (!pos || !deps.isIncludeFilenameContext(active.document, pos)) return;
+            if (effectiveIncludePathPrefixLength(active.document, pos) < 2) return;
             if (deps.isSuggestVisible && deps.isSuggestVisible()) return;
             try {
                 deps.executeCommand('editor.action.triggerSuggest');
@@ -89,6 +102,7 @@ export function createIncludePathSuggestTrigger(deps: IncludePathSuggestTriggerD
 
 module.exports = {
     changeLooksLikeIncludePathTyping,
+    effectiveIncludePathPrefixLength,
     createIncludePathSuggestTrigger,
 };
 

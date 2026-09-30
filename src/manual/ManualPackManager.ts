@@ -7,6 +7,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ManualIndexRepository, ManualLanguage, ManualLocation } from './ManualIndexRepository';
+import {
+    loadManualPackAuthoritySync,
+    type ManualPackAuthoritySnapshot,
+} from './manualPackAuthority';
 const i18n = require('../core/i18n');
 
 export interface PersistedReaderState {
@@ -36,10 +40,12 @@ function stateKey(root: string): string {
  */
 export class ManualPackManager {
     private root = '';
+    private requestedRoot = '';
     private manifestMtime = -1;
     private repository: ManualIndexRepository | undefined;
+    private authoritySnapshot: ManualPackAuthoritySnapshot | null = null;
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext, private readonly onAuthorityChanged?: () => void) {}
 
     hasPack(packRoot: string): boolean {
         return fs.existsSync(path.join(packRoot, 'manifest.json'))
@@ -47,6 +53,7 @@ export class ManualPackManager {
     }
 
     getRepository(packRoot: string): ManualIndexRepository {
+        const requestedRoot = path.resolve(packRoot);
         const root = canonicalRoot(packRoot);
         if (!this.hasPack(root)) {
             throw new Error(i18n.get('manualReaderNoPack'));
@@ -59,14 +66,32 @@ export class ManualPackManager {
             this.root = root;
             this.manifestMtime = mtime;
             this.repository = repository;
+            const authority = loadManualPackAuthoritySync(root);
+            this.authoritySnapshot = authority.status === 'ready' ? authority.snapshot : null;
+            this.onAuthorityChanged?.();
         }
+        this.requestedRoot = requestedRoot;
         return this.repository;
+    }
+
+    /** Memory-only authority view for Hover/Completion; never performs I/O. */
+    peekAuthority(packRoot: string): ManualPackAuthoritySnapshot | null {
+        if (!this.repository || path.resolve(packRoot) !== this.requestedRoot) return null;
+        return this.authoritySnapshot;
+    }
+
+    /** Current cached snapshot; undefined pack data is represented by null. */
+    peekCurrentAuthority(): ManualPackAuthoritySnapshot | null {
+        return this.repository ? this.authoritySnapshot : null;
     }
 
     invalidate(): void {
         this.root = '';
+        this.requestedRoot = '';
         this.manifestMtime = -1;
         this.repository = undefined;
+        this.authoritySnapshot = null;
+        this.onAuthorityChanged?.();
     }
 
     saveState(packRoot: string, state: PersistedReaderState): void {

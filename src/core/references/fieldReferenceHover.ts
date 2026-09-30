@@ -1,16 +1,27 @@
+import { userFacingReason } from '../userFacingReason';
 const i18n = require('../i18n');
 
 const {
     renderCurveSvgDataUri,
     renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
+    TABLE_3D_VIEWS,
+    normalizeTable3dView,
     markdownCode,
 } = require('./curvePlotRenderer');
 const { buildReferencePresentation } = require('./referencePresentation');
+const {
+    effectiveWorkspaceSearchId,
+    shouldOfferWorkspaceReferenceSearch,
+} = require('./workspaceReferenceSearch');
 
 const MAX_HOVER_DEFINITIONS = 4;
 const MAX_TABLE_ROWS = 8;
 const MAX_FUNCTION_LINES = 8;
+
+function markdownText(value) {
+    return String(value ?? '').replace(/[\\`*_{}\[\]()#+.!|<>-]/g, '\\$&').replace(/\r?\n/g, ' ');
+}
 
 function encodeCommandArgs(args) {
     return encodeURIComponent(JSON.stringify([args]));
@@ -23,6 +34,30 @@ function definitionLink(definition, title = i18n.get('openDefinition')) {
         character: 0,
     });
     return `[$(go-to-file) ${title}](command:extension.openLsdynaReferenceDefinition?${args} "${title}")`;
+}
+
+function workspaceReferenceSearchLink(referenceValue, analysis, candidateCount, context) {
+    if (!context || typeof context.filePath !== 'string' || !context.filePath ||
+        !Number.isInteger(context.lineIndex) || !Number.isInteger(context.character) ||
+        !shouldOfferWorkspaceReferenceSearch(referenceValue, analysis, candidateCount)) {
+        return '';
+    }
+    const id = effectiveWorkspaceSearchId(referenceValue, analysis);
+    if (id === null) return '';
+    const args = encodeCommandArgs({
+        filePath: context.filePath,
+        lineIndex: context.lineIndex,
+        character: context.character,
+        documentVersion: Number.isInteger(context.documentVersion)
+            ? context.documentVersion
+            : undefined,
+        projectRootFile: typeof context.projectRootFile === 'string' && context.projectRootFile
+            ? context.projectRootFile
+            : undefined,
+    });
+    const title = i18n.get('workspaceReferenceSearchTooltip');
+    const label = i18n.get('workspaceReferenceSearchAction', markdownText(id));
+    return `[$(search) ${label}](command:extension.searchLsdynaReferenceInWorkspace?${args} "${title}")`;
 }
 
 function isNavigableDefinition(definition) {
@@ -41,6 +76,57 @@ function childDefinitionKindLabel(kind) {
 
 function hoverRenderOptions(themeKind, isDark = true) {
     return themeKind == null ? { isDark } : { themeKind };
+}
+
+function escapeHtmlText(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlAttribute(value) {
+    return escapeHtmlText(value)
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\r?\n/g, '&#10;');
+}
+
+function compactStatus(icon, label, details) {
+    return `<span style="color:var(--vscode-descriptionForeground);font-size:90%;" title="${escapeHtmlAttribute(details)}">${icon} ${escapeHtmlText(label)}</span>`;
+}
+
+const TABLE_VIEW_LABEL_KEYS = {
+    isometric: 'tablePreviewViewIsometric',
+    'reverse-isometric': 'tablePreviewViewReverseIsometric',
+    front: 'tablePreviewViewFront',
+    side: 'tablePreviewViewSide',
+};
+const TABLE_VIEW_DETAIL_KEYS = {
+    isometric: 'tablePreviewViewIsometricDetail',
+    'reverse-isometric': 'tablePreviewViewReverseIsometricDetail',
+    front: 'tablePreviewViewFrontDetail',
+    side: 'tablePreviewViewSideDetail',
+};
+
+function tablePreviewViewSelector(context) {
+    if (!context || typeof context.key !== 'string' || !context.key) return '';
+    const currentView = normalizeTable3dView(context.view);
+    const options = TABLE_3D_VIEWS.map(view => {
+        const label = i18n.get(TABLE_VIEW_LABEL_KEYS[view]);
+        if (view === currentView) return `**${label}**`;
+        const args = encodeCommandArgs({
+            key: context.key,
+            view,
+            filePath: context.filePath,
+            lineIndex: context.lineIndex,
+            character: context.character,
+            endCharacter: context.endCharacter,
+        });
+        const detail = i18n.get(TABLE_VIEW_DETAIL_KEYS[view]).replace(/"/g, '&quot;');
+        return `[${label}](command:extension.setLsdynaTablePreviewView?${args} "${detail}")`;
+    });
+    return `<span style="color:var(--vscode-descriptionForeground);font-size:90%;">${escapeHtmlText(i18n.get('tablePreviewViewLabel'))}</span> ${options.join(' · ')}`;
 }
 
 function appendCurvePreview(lines, definition, renderOptions: any = { isDark: true }) {
@@ -62,7 +148,9 @@ function appendCurvePreview(lines, definition, renderOptions: any = { isDark: tr
 function appendFunctionPreview(lines, definition) {
     const text = String(definition.functionText || '').split(/\r?\n/).slice(0, MAX_FUNCTION_LINES).join('\n');
     if (text) {
-        lines.push('', '```lsdyna', text, '```');
+        const longest = Math.max(2, ...(text.match(/`+/g) || []).map(run => run.length));
+        const fence = '`'.repeat(longest + 1);
+        lines.push('', `${fence}lsdyna`, text, fence);
     }
 }
 
@@ -104,6 +192,14 @@ function appendTableChildDiagnostics(lines, rows) {
     for (const row of rows) {
         const analysis = childAnalysisForRow(row);
         if (!analysis || analysis.state === 'exact') continue;
+        const childReasons = [...new Set(analysis.reasons || [])];
+        const isCurrentFileSingleton = analysis.state === 'uncertain' &&
+            (analysis.definitions || []).length === 1 &&
+            childReasons.length > 0 &&
+            childReasons.every(reason => reason === 'project-scan-unavailable');
+        if (isCurrentFileSingleton) {
+            continue;
+        }
         const displayId = Number.isSafeInteger(analysis.effectiveChildId)
             ? analysis.effectiveChildId
             : row.childIdRaw;
@@ -120,10 +216,14 @@ function appendTableChildDiagnostics(lines, rows) {
                 displayId
             ));
         } else {
-            lines.push('', i18n.get('tableChildUncertain', displayId));
-            for (const reason of [...new Set(analysis.reasons || [])]) {
-                lines.push(`- ${uncertaintyReasonLabel(reason)}`);
-            }
+            lines.push('', compactStatus(
+                '⚠',
+                i18n.get('tableChildUncertainCompact', displayId),
+                [
+                    i18n.get('tableChildUncertainDetail', displayId),
+                    ...childReasons.map(uncertaintyReasonLabel),
+                ].join('\n')
+            ));
         }
     }
 }
@@ -134,20 +234,19 @@ function appendTablePreview(lines, definition, renderOptions: any = { isDark: tr
         !(row.childIdInput && row.childIdInput.kind === 'blank') &&
         String(row.childIdRaw || '').trim().length > 0
     );
-    const allChildrenExact = requiredChildRows.every(row => {
+    const allChildrenUnique = requiredChildRows.every(row => {
         const analysis = childAnalysisForRow(row);
-        return !!analysis && analysis.state === 'exact' &&
-            (analysis.definitions || []).length === 1;
+        return !!analysis && (analysis.definitions || []).length === 1;
     });
     const tableWithPoints = {
         ...definition,
         rows: allRows.map(row => {
             const analysis = childAnalysisForRow(row);
-            const [exactDefinition] = analysis && analysis.state === 'exact' &&
+            const [uniqueDefinition] = analysis &&
                 analysis.definitions && analysis.definitions.length === 1
                 ? analysis.definitions
                 : [];
-            const points = exactDefinition && exactDefinition.points || [];
+            const points = uniqueDefinition && uniqueDefinition.points || [];
             return { ...row, points };
         })
     };
@@ -155,11 +254,19 @@ function appendTablePreview(lines, definition, renderOptions: any = { isDark: tr
     const incomplete = definition.dataCompleteness && definition.dataCompleteness.state !== 'complete';
     if (incomplete) {
         lines.push('', i18n.get('referenceDataIncomplete'));
-    } else if (!allChildrenExact) {
-        lines.push('', i18n.get('tablePreviewRequiresExactChildren'));
+    } else if (!allChildrenUnique) {
+        lines.push('', compactStatus(
+            '⚠',
+            i18n.get('tablePreviewHidden'),
+            i18n.get('tablePreviewRequiresUniqueChildren')
+        ));
     } else {
-        const dataUri = renderTable3dSvgDataUri(tableWithPoints, renderOptions);
+        const tablePreviewContext = renderOptions.tablePreviewContext || null;
+        const view = normalizeTable3dView(tablePreviewContext && tablePreviewContext.view);
+        const dataUri = renderTable3dSvgDataUri(tableWithPoints, { ...renderOptions, view });
         if (dataUri) {
+            const selector = tablePreviewViewSelector(tablePreviewContext);
+            if (selector) lines.push('', selector);
             lines.push('', `![${i18n.get('table3dPreviewAlt')}](${dataUri})`);
         }
     }
@@ -184,14 +291,7 @@ function appendTablePreview(lines, definition, renderOptions: any = { isDark: tr
 
 function appendDefinition(lines, definition, renderOptions: any = { isDark: true }, candidate = null) {
     const isPossibleMatch = candidate && candidate.relation === 'possible-match';
-    if (isPossibleMatch) {
-        lines.push('', `**${i18n.get(
-            candidate.origin === 'current-file'
-                ? 'referenceCurrentFileCandidate'
-                : 'referenceProjectCandidate'
-        )}**`);
-    }
-    const locationLines = ['', i18n.get('definitionLocation', definition.keyword, definition.filePath)];
+    const locationLines = ['', i18n.get('definitionLocation', markdownText(definition.keyword), markdownCode(definition.filePath))];
     if (!candidate || candidate.navigable) {
         locationLines.push(definitionLink(
             definition,
@@ -202,7 +302,7 @@ function appendDefinition(lines, definition, renderOptions: any = { isDark: true
     if (Array.isArray(definition.occurrencePathLabels) && definition.occurrencePathLabels.length > 1) {
         lines.push(i18n.get(
             'definitionOccurrence',
-            definition.occurrencePathLabels.slice(1).join(' | ')
+            markdownCode(definition.occurrencePathLabels.slice(1).join(' | '))
         ));
     }
     if (Number.isSafeInteger(definition.idfoffOffset) && definition.idfoffOffset !== 0) {
@@ -214,10 +314,10 @@ function appendDefinition(lines, definition, renderOptions: any = { isDark: true
         ));
     }
     if (definition.title) {
-        lines.push(`_${definition.title}_`);
+        lines.push(`_${markdownText(definition.title)}_`);
     }
     const previewMode = candidate && candidate.previewMode || null;
-    if (previewMode === 'location-only') {
+    if ((candidate && !candidate.previewAllowed) || previewMode === 'location-only') {
         return;
     }
     if (definition.kind === 'curve') {
@@ -243,6 +343,13 @@ function uncertaintyReasonLabel(reason) {
         'project-root-ambiguous': 'referenceReasonProjectRootAmbiguous',
         'occurrence-search-path-unavailable': 'referenceReasonOccurrenceSearchPathUnavailable',
         'parameter-environment-unavailable': 'referenceReasonParameterEnvironmentUnavailable',
+        'parameter-context-unavailable': 'referenceReasonParameterEnvironmentUnavailable',
+        'parameter-document-version-unavailable': 'referenceReasonParameterEnvironmentUnavailable',
+        'parameter-project-context-unavailable': 'referenceReasonProjectScanUnavailable',
+        'parameter-project-context-incomplete': 'referenceReasonProjectScanUnavailable',
+        'parameter-main-file-ambiguous': 'referenceReasonProjectRootAmbiguous',
+        'parameter-context-stale': 'referenceReasonParameterContextStale',
+        'parameter-control-outside-int32': 'referenceReasonParameterControlRange',
         'parameter-occurrence-ambiguous': 'referenceReasonParameterOccurrenceAmbiguous',
         'parameter-scope-control-unsupported': 'referenceReasonParameterScopeControlUnsupported',
         'parameter-type-unsupported': 'referenceReasonParameterTypeUnsupported',
@@ -259,7 +366,66 @@ function uncertaintyReasonLabel(reason) {
         'reference-value-unresolved': 'referenceReasonValueUnresolved',
     };
     const key = keyByReason[reason];
-    return key ? i18n.get(key) : i18n.get('referenceReasonOther', reason);
+    return key ? i18n.get(key) : userFacingReason(reason, i18n.getLanguage());
+}
+
+function compactReferenceStatus(analysis, presentation, displayValue) {
+    const candidates = presentation.candidates || [];
+    const reasons = [...new Set(analysis.reasons || [])];
+    const reasonDetails = reasons.map(uncertaintyReasonLabel);
+
+    if (analysis.state === 'missing') {
+        return compactStatus(
+            '⚠',
+            i18n.get('referenceStatusMissing'),
+            i18n.get('referenceStatusMissingDetail', displayValue)
+        );
+    }
+
+    if (analysis.state === 'ambiguous' || candidates.length > 1) {
+        const details = [
+            i18n.get('referenceStatusAmbiguousDetail', candidates.length),
+            ...reasonDetails,
+        ].join('\n');
+        return compactStatus('⚠', i18n.get('referenceStatusAmbiguous'), details);
+    }
+
+    if (analysis.state !== 'uncertain') {
+        return '';
+    }
+
+    if (candidates.length === 1) {
+        const [candidate] = candidates;
+        const isCurrentFilePreview = candidate.origin === 'current-file' &&
+            reasons.includes('project-scan-unavailable');
+        const label = i18n.get(isCurrentFilePreview
+            ? 'referenceStatusCurrentFilePreview'
+            : 'referenceStatusCandidatePreview');
+        const primaryDetail = i18n.get(isCurrentFilePreview
+            ? 'referenceStatusCurrentFilePreviewDetail'
+            : 'referenceStatusCandidatePreviewDetail');
+        const details = [
+            primaryDetail,
+            ...reasonDetails.filter((_, index) =>
+                !isCurrentFilePreview || reasons[index] !== 'project-scan-unavailable'
+            ),
+        ].join('\n');
+        return compactStatus('ⓘ', label, details);
+    }
+
+    if (reasons.includes('project-scan-unavailable')) {
+        const details = [
+            i18n.get('referenceStatusProjectUnscannedDetail'),
+            ...reasonDetails.filter((_, index) => reasons[index] !== 'project-scan-unavailable'),
+        ].join('\n');
+        return compactStatus('ⓘ', i18n.get('referenceStatusProjectUnscanned'), details);
+    }
+
+    return compactStatus(
+        '⚠',
+        i18n.get('referenceStatusUnresolved'),
+        reasonDetails.join('\n') || i18n.get('referenceStatusUnresolvedDetail')
+    );
 }
 
 function inferLegacyAnalysis(definitions, needsProjectScan) {
@@ -293,6 +459,8 @@ function buildReferenceHoverSection({
     isDark = true,
     themeKind = null,
     documentPath = '',
+    tablePreviewContext = null,
+    workspaceSearchContext = null,
 }) {
     const effectiveReference = referenceValue || {
         kind: 'numeric',
@@ -302,21 +470,28 @@ function buildReferenceHoverSection({
     const effectiveAnalysis = analysis || inferLegacyAnalysis(definitions || [], needsProjectScan);
     const presentation = buildReferencePresentation(effectiveAnalysis, { documentPath });
     const resolvedDefinitions = effectiveAnalysis.definitions || [];
-    const presentedCandidates = presentation.candidates;
-    const renderOptions = hoverRenderOptions(themeKind, isDark);
+    const presentedCandidates = presentation.provisional && presentation.provisionalPrimary
+        ? [presentation.provisionalPrimary, ...presentation.provisionalAlternatives]
+        : presentation.candidates;
+    const renderOptions = {
+        ...hoverRenderOptions(themeKind, isDark),
+        tablePreviewContext,
+    };
     const displayValue = effectiveReference.kind === 'parameter'
         ? effectiveReference.raw
         : effectiveReference.id;
+    const status = compactReferenceStatus(effectiveAnalysis, presentation, displayValue);
+    const statusSuffix = status ? `&nbsp;&nbsp;${status}` : '';
     const lines = [
         '',
         '',
         '---',
         '',
-        `**$(graph-line) ${i18n.get('referenceLabel', fieldName)}:** \`${displayValue}\``,
+        `**$(graph-line) ${i18n.get('referenceLabel', markdownText(fieldName))}:** ${markdownCode(displayValue)}${statusSuffix}`,
     ];
 
     if (effectiveReference.raw && String(effectiveReference.raw) !== String(displayValue)) {
-        lines.push(i18n.get('rawValue', effectiveReference.raw));
+        lines.push(i18n.get('rawValue', markdownCode(effectiveReference.raw)));
     }
     if (effectiveAnalysis.parameterResolution &&
         effectiveAnalysis.parameterResolution.resolved) {
@@ -339,33 +514,26 @@ function buildReferenceHoverSection({
         lines.push(i18n.get('negativeSwitchStripped'));
     }
 
-    if (effectiveAnalysis.state === 'uncertain') {
-        lines.push('', i18n.get('referenceResolutionUncertain'));
-        for (const reason of [...new Set(effectiveAnalysis.reasons || [])]) {
-            lines.push(`- ${uncertaintyReasonLabel(reason)}`);
-        }
-        if (presentedCandidates.length > 0) {
-            lines.push('', i18n.get('referenceKnownCandidates', presentedCandidates.length));
-            for (const candidate of presentedCandidates.slice(0, MAX_HOVER_DEFINITIONS)) {
-                appendDefinition(lines, candidate.definition, renderOptions, candidate);
-            }
-        }
-        const omitted = presentedCandidates.length - MAX_HOVER_DEFINITIONS;
-        if (omitted > 0) {
-            lines.push('', i18n.get('moreDefinitionsOmitted', omitted));
-        }
-        if (presentation.showProjectScanAction) {
-            lines.push('', i18n.get('runScanIncludeTreeForCrossFileDefinitions'));
-        }
-        return lines.join('\n');
-    } else if (effectiveAnalysis.state === 'missing') {
-        lines.push('', i18n.get('noMatchingDefinition', displayValue));
-    } else if (effectiveAnalysis.state === 'ambiguous') {
-        lines.push('', i18n.get('matchingDefinitionsFound', resolvedDefinitions.length));
+    const workspaceSearchLink = workspaceReferenceSearchLink(
+        effectiveReference,
+        effectiveAnalysis,
+        presentedCandidates.length,
+        workspaceSearchContext
+    );
+    if (workspaceSearchLink) {
+        lines.push('', workspaceSearchLink);
     }
 
     if (resolvedDefinitions.length === 0) {
         return lines.join('\n');
+    }
+
+    if (presentation.provisional && presentation.provisionalPrimary) {
+        lines.push('', compactStatus(
+            '⚠',
+            'Provisional navigation',
+            `Selection: ${presentation.provisionalSelectionReason || 'candidate'}; strict resolution remains unchanged.`,
+        ));
     }
 
     for (const candidate of presentedCandidates.slice(0, MAX_HOVER_DEFINITIONS)) {
@@ -380,15 +548,20 @@ function buildReferenceHoverSection({
     return lines.join('\n');
 }
 
-function buildDefinitionHoverSection(definition, themeOrIsDark: any = true) {
+function buildDefinitionHoverSection(
+    definition,
+    themeOrIsDark: any = true,
+    tablePreviewContext = null
+) {
     const lines = [];
-    const renderOptions = typeof themeOrIsDark === 'boolean'
+    const renderOptions: any = typeof themeOrIsDark === 'boolean'
         ? { isDark: themeOrIsDark }
         : { themeKind: themeOrIsDark };
-    const titleStr = definition.title ? ` - _${definition.title}_` : '';
-    const cleanKeyword = definition.keyword.replace(/^\*/, '');
+    renderOptions.tablePreviewContext = tablePreviewContext;
+    const titleStr = definition.title ? ` - _${markdownText(definition.title)}_` : '';
+    const cleanKeyword = markdownText(definition.keyword.replace(/^\*/, ''));
     const displayId = Number.isFinite(definition.id) ? definition.id : definition.idRaw;
-    lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', displayId)}**${titleStr}`);
+    lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', markdownText(displayId))}**${titleStr}`);
     if (definition.kind === 'curve') {
         appendCurvePreview(lines, definition, renderOptions);
     } else if (definition.kind === 'functionCurve') {
@@ -404,7 +577,7 @@ module.exports = {
     buildDefinitionHoverSection,
     definitionLink,
     uncertaintyReasonLabel,
+    workspaceReferenceSearchLink,
 };
 
 export {};
-

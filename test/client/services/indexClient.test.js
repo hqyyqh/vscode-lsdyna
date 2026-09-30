@@ -3,7 +3,69 @@
 const assert = require('assert');
 const path = require('path');
 
+function createCancellationController() {
+    const listeners = new Set();
+    const token = {
+        isCancellationRequested: false,
+        onCancellationRequested(listener) {
+            listeners.add(listener);
+            return { dispose: () => listeners.delete(listener) };
+        },
+    };
+    return {
+        token,
+        cancel() {
+            if (token.isCancellationRequested) return;
+            token.isCancellationRequested = true;
+            for (const listener of [...listeners]) listener();
+        },
+        listenerCount: () => listeners.size,
+    };
+}
+
 describe('createIndexClient', () => {
+    it('keeps single-file scans out of project snapshot and manifest caches', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const { createCacheManifestStore } = require('../../../src/core/cache/cacheManifestStore');
+        const rootFile = path.resolve('project', 'large.k');
+        const manifestStore = createCacheManifestStore();
+        const calls = [];
+        let restoreCount = 0;
+        let persistCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async (filePath, options) => {
+                calls.push({ filePath, options });
+                return {
+                    scope: options.singleFileOnly ? 'single-file' : 'project',
+                    rootFile: filePath,
+                    files: [filePath],
+                };
+            },
+            getFileSignature: async () => ({ mtimeMs: 1, size: 10 }),
+            manifestStore,
+            persistentCache: {
+                async restore() { restoreCount += 1; return null; },
+                async persist() { persistCount += 1; },
+                async invalidate() {},
+                async invalidateAll() { return { entryCount: 0, totalBytes: 0 }; },
+            },
+        });
+
+        const first = await client.loadProjectSnapshot(rootFile, { singleFileOnly: true });
+        const second = await client.loadProjectSnapshot(rootFile, { singleFileOnly: true });
+        assert.equal(first.scope, 'single-file');
+        assert.equal(second.scope, 'single-file');
+        assert.equal(calls.length, 2);
+        assert.equal(restoreCount, 0);
+        assert.equal(persistCount, 0);
+        assert.equal(manifestStore.get(rootFile), null);
+
+        await client.loadProjectSnapshot(rootFile);
+        assert.equal(calls.length, 3);
+        assert.equal(restoreCount, 1);
+        assert.ok(manifestStore.get(rootFile));
+    });
+
     it('exposes loadProjectSnapshot as the shared snapshot entry point', async () => {
         let createIndexClient;
         try {
@@ -87,8 +149,7 @@ describe('createIndexClient', () => {
         assert.equal(buildCount, 2);
 
         resolvers[0]();
-        const staleSnapshot = await staleLoad;
-        assert.equal(staleSnapshot.version, 1);
+        await assert.rejects(staleLoad, error => error?.name === 'CancellationError');
 
         const sharedFreshLoad = client.loadProjectSnapshot(rootFile);
         assert.equal(buildCount, 2);
@@ -294,7 +355,7 @@ describe('createIndexClient', () => {
             trackedFiles: [rootFile],
             trackedFileCount: 1,
             missingDependencyPaths: [],
-            byteSize: Buffer.byteLength(JSON.stringify(snapshots[1]), 'utf8'),
+            byteSize: require('../../../out/core/cache/memorySize').estimateMemorySize(snapshots[1]),
             lastAccessedAt: 2,
         });
     });
@@ -524,5 +585,206 @@ describe('createIndexClient', () => {
         assert.strictEqual(result, snapshot);
         assert.equal(restoreCount, 1);
         assert.equal(buildCount, 1);
+    });
+
+    it('propagates cancellation after disk restore instead of silently rebuilding', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'cancel-restore.k');
+        const cancellation = createCancellationController();
+        let buildCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return { rootFile, files: [rootFile] };
+            },
+            persistentCache: {
+                async restore() {
+                    cancellation.cancel();
+                    return null;
+                },
+                async persist() {},
+            },
+        });
+
+        await assert.rejects(
+            client.loadProjectSnapshot(rootFile, {}, null, cancellation.token),
+            error => error?.name === 'CancellationError',
+        );
+        assert.equal(buildCount, 0);
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 0,
+            totalSnapshotBytes: 0,
+        });
+    });
+
+    it('does not retain a snapshot cancelled while capturing tracked-file signatures', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'cancel-signature.k');
+        const cancellation = createCancellationController();
+        const client = createIndexClient({
+            buildProjectIndex: async (_root, _options, _progress, token) => {
+                assert.equal(token.isCancellationRequested, false);
+                return { rootFile, files: [rootFile] };
+            },
+            getFileSignature: async () => {
+                cancellation.cancel();
+                return { mtimeMs: 1, size: 1 };
+            },
+        });
+
+        await assert.rejects(
+            client.loadProjectSnapshot(rootFile, {}, null, cancellation.token),
+            error => error?.name === 'CancellationError',
+        );
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 0,
+            totalSnapshotBytes: 0,
+        });
+    });
+
+    it('lets a coalesced waiter cancel without aborting or retaining its listener on the shared load', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'coalesced-cancel.k');
+        const cancellation = createCancellationController();
+        let resolveBuild;
+        const snapshot = { rootFile, files: [rootFile] };
+        const client = createIndexClient({
+            buildProjectIndex: async () => new Promise(resolve => {
+                resolveBuild = resolve;
+            }),
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+        });
+
+        const sharedLoad = client.loadProjectSnapshot(rootFile);
+        while (!resolveBuild) await new Promise(resolve => setImmediate(resolve));
+        const cancelledWaiter = client.loadProjectSnapshot(rootFile, {}, null, cancellation.token);
+        cancellation.cancel();
+
+        await assert.rejects(cancelledWaiter, error => error?.name === 'CancellationError');
+        assert.equal(cancellation.listenerCount(), 0);
+        resolveBuild(snapshot);
+        assert.strictEqual(await sharedLoad, snapshot);
+        assert.strictEqual(await client.loadProjectSnapshot(rootFile), snapshot);
+    });
+
+    it('does not retain a single in-memory snapshot above the hard byte budget', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'oversize.k');
+        let buildCount = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => {
+                buildCount += 1;
+                return { rootFile, files: [rootFile], payload: new Map([['large', 'value']]) };
+            },
+            estimateSnapshotSize: () => 10,
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            maxSnapshotBytes: 5,
+        });
+
+        await client.loadProjectSnapshot(rootFile);
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 0,
+            totalSnapshotBytes: 0,
+        });
+        await client.loadProjectSnapshot(rootFile);
+        assert.equal(buildCount, 2);
+    });
+
+    it('counts Map-backed snapshot payloads in the default size estimate', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'map-size.k');
+        const client = createIndexClient({
+            buildProjectIndex: async () => ({
+                rootFile,
+                files: [rootFile],
+                keywordMap: new Map([['PART', [{ lineIndex: 1 }]]]),
+            }),
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+        });
+
+        await client.loadProjectSnapshot(rootFile);
+        assert.ok(client.getCacheStats().totalSnapshotBytes > Buffer.byteLength(JSON.stringify({
+            rootFile,
+            files: [rootFile],
+            keywordMap: {},
+        })));
+    });
+
+    it('clears memory and disk caches and prevents an older in-flight build from repopulating them', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'in-flight-clear.k');
+        let resolveBuild;
+        let persistCalls = 0;
+        let clearCalls = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => new Promise(resolve => {
+                resolveBuild = resolve;
+            }),
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            persistentCache: {
+                async restore() { return null; },
+                async persist() { persistCalls += 1; },
+                async clear() {
+                    clearCalls += 1;
+                    return { entryCount: 2, totalBytes: 200 };
+                },
+            },
+        });
+
+        const pending = client.loadProjectSnapshot(rootFile);
+        while (!resolveBuild) await new Promise(resolve => setImmediate(resolve));
+        const removed = await client.clearCaches();
+        resolveBuild({ rootFile, files: [rootFile] });
+        await assert.rejects(pending, error => error?.name === 'CancellationError');
+        await new Promise(resolve => setImmediate(resolve));
+
+        assert.deepEqual(removed, {
+            memory: { cachedSnapshotCount: 0, totalSnapshotBytes: 0 },
+            projectSnapshotDisk: { entryCount: 2, totalBytes: 200 },
+        });
+        assert.equal(clearCalls, 1);
+        assert.equal(persistCalls, 0);
+        assert.deepEqual(client.getCacheStats(), {
+            cachedSnapshotCount: 0,
+            totalSnapshotBytes: 0,
+        });
+        assert.deepEqual(client.getManifestEntries(), []);
+    });
+});
+
+
+describe('shared staged requests', () => {
+    const { createIndexClient } = require('../../../out/client/services/indexClient');
+    it('replays structure and delivers subsequent progress to coalesced subscribers', async () => {
+        const root = path.resolve('staged.k'); let publish, finish, builds = 0;
+        const client = createIndexClient({ getFileSignature: async () => ({ size:1,mtimeMs:1 }),
+            buildProjectIndex: async (_root,_options,progress) => { builds++; publish=progress; return new Promise(resolve=>finish=resolve); } });
+        const first=[], second=[];
+        const a=client.loadProjectSnapshot(root,{},event=>first.push(event));
+        publish({type:'structureReady',rootFile:root,snapshot:{files:[root]}});
+        const b=client.loadProjectSnapshot(root,{},event=>second.push(event));
+        publish({type:'progress',rootFile:root,phase:'references'});
+        finish({rootFile:root,files:[root]});
+        assert.strictEqual(await a,await b); assert.equal(builds,1); assert.deepEqual(first,second);
+    });
+    it('does not abort the remaining subscriber when the initiating subscriber cancels', async () => {
+        const root=path.resolve('shared-cancel.k');let finish,sharedToken;
+        const controller=createCancellationController();
+        const client=createIndexClient({getFileSignature:async()=>({size:1,mtimeMs:1}),
+            buildProjectIndex:async(_root,_options,_progress,token)=>{sharedToken=token;return new Promise(resolve=>finish=resolve);} });
+        const a=client.loadProjectSnapshot(root,{},null,controller.token);
+        const b=client.loadProjectSnapshot(root);
+        controller.cancel();
+        await assert.rejects(a,e=>e.name==='CancellationError'); assert.equal(sharedToken.isCancellationRequested,false);
+        finish({rootFile:root,files:[root]}); assert.equal((await b).rootFile,root);
+    });
+    it('never reuses a snapshot built with different scan options', async () => {
+        let builds=0;const root=path.resolve('options.k');
+        const client=createIndexClient({getFileSignature:async()=>({size:1,mtimeMs:1}),
+            buildProjectIndex:async()=>({rootFile:root,files:[root],build:++builds})});
+        const first=await client.loadProjectSnapshot(root,{fullScanLargeFiles:false});
+        assert.strictEqual(await client.loadProjectSnapshot(root), first, 'omitted and explicit defaults must share the snapshot');
+        const next=await client.loadProjectSnapshot(root,{fullScanLargeFiles:true});
+        assert.equal(next.build,2);
     });
 });

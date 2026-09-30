@@ -15,6 +15,7 @@
 const { Worker } = require('worker_threads');
 
 const { hydrateProjectSnapshot } = require('../core/cache/snapshotSerializer');
+const { createCancellationError } = require('../core/scanner/scannerContracts');
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120000;
 
@@ -26,8 +27,10 @@ type WorkerLike = {
 
 type WorkerPoolOptions = {
     workerPath?: string;
-    workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: { fileScanCacheDirectory: string } }) => WorkerLike;
+    workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: { fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number } }) => WorkerLike;
     fileScanCacheDirectory?: string | null;
+    fileScanCacheOptions?: object;
+    fileScanMemoryCacheBytes?: number;
     requestTimeoutMs?: number;
 };
 
@@ -53,6 +56,8 @@ function createWorkerPool({
     workerPath,
     workerFactory = (nextWorkerPath, workerOpts) => new Worker(nextWorkerPath, workerOpts),
     fileScanCacheDirectory = null,
+    fileScanCacheOptions = {},
+    fileScanMemoryCacheBytes = 16 * 1024 * 1024,
     requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 }: WorkerPoolOptions = {}) {
     if (typeof workerPath !== 'string' || workerPath.trim() === '') {
@@ -66,12 +71,15 @@ function createWorkerPool({
     }
 
     /** @type {Worker} */
-    const workerOpts: { workerData?: { fileScanCacheDirectory: string } } = {};
-    if (fileScanCacheDirectory) {
-        workerOpts.workerData = { fileScanCacheDirectory };
-    }
+    const workerOpts: { workerData?: { fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number } } = {
+        workerData: {
+            fileScanCacheDirectory,
+            fileScanCacheOptions,
+            fileScanMemoryCacheBytes,
+        },
+    };
     const worker = workerFactory(workerPath, workerOpts);
-    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void, onProgress: function(any): void, timeout: NodeJS.Timeout|null}>} */
+    /** @type {Map<number, {resolve: function(any): void, reject: function(Error): void, onProgress: function(any): void, timeout: NodeJS.Timeout|null, cancellationRegistration?: {dispose?: function(): void}|null}>} */
     const pendingRequests = new Map();
     let nextRequestId = 1;
     let disposed = false;
@@ -83,11 +91,18 @@ function createWorkerPool({
         pendingRequest.timeout = null;
     }
 
+    function disposeCancellationRegistration(pendingRequest) {
+        const registration = pendingRequest?.cancellationRegistration;
+        pendingRequest.cancellationRegistration = null;
+        registration?.dispose?.();
+    }
+
     function takePendingRequest(requestId) {
         const pendingRequest = pendingRequests.get(requestId);
         if (!pendingRequest) return null;
         pendingRequests.delete(requestId);
         clearRequestTimeout(pendingRequest);
+        disposeCancellationRegistration(pendingRequest);
         return pendingRequest;
     }
 
@@ -99,6 +114,7 @@ function createWorkerPool({
     function rejectPendingRequests(error) {
         for (const pendingRequest of pendingRequests.values()) {
             clearRequestTimeout(pendingRequest);
+            disposeCancellationRegistration(pendingRequest);
             pendingRequest.reject(error);
         }
         pendingRequests.clear();
@@ -141,7 +157,10 @@ function createWorkerPool({
         if (message.type === 'progress') {
             try {
                 if (pendingRequest.onProgress) {
-                    pendingRequest.onProgress(hydrateProjectSnapshot(message.snapshot));
+                    const event = message.event;
+                    pendingRequest.onProgress(event?.type === 'structureReady'
+                        ? { ...event, snapshot: hydrateProjectSnapshot(event.snapshot) }
+                        : event?.type === 'progress' ? event : hydrateProjectSnapshot(message.snapshot));
                 }
                 armRequestTimeout(message.requestId, pendingRequest);
             } catch (error) {
@@ -204,9 +223,12 @@ function createWorkerPool({
          * @param {function(Object): void} [onProgress] - Optional progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Resolved project index.
          */
-        buildProjectIndex(rootFile, options = {}, onProgress = null) {
+        buildProjectIndex(rootFile, options = {}, onProgress = null, cancellationToken = null) {
             if (disposed) {
                 return Promise.reject(new Error('scan worker pool has been disposed'));
+            }
+            if (cancellationToken?.isCancellationRequested === true) {
+                return Promise.reject(createCancellationError());
             }
 
             const requestId = nextRequestId++;
@@ -216,6 +238,7 @@ function createWorkerPool({
                     resolve,
                     onProgress,
                     timeout: null,
+                    cancellationRegistration: null,
                 };
                 pendingRequests.set(requestId, pendingRequest);
                 armRequestTimeout(requestId, pendingRequest);
@@ -226,9 +249,26 @@ function createWorkerPool({
                         options,
                         type: 'buildProjectIndex',
                     });
+                    if (typeof cancellationToken?.onCancellationRequested === 'function') {
+                        const registration = cancellationToken.onCancellationRequested(() => {
+                            if (pendingRequests.get(requestId) !== pendingRequest) return;
+                            try {
+                                worker.postMessage({ requestId, type: 'cancelRequest' });
+                            } catch {
+                                // The local promise is still rejected below; worker failure is handled separately.
+                            }
+                            const cancelledRequest = takePendingRequest(requestId);
+                            cancelledRequest?.reject(createCancellationError());
+                        });
+                        if (pendingRequests.get(requestId) === pendingRequest) {
+                            pendingRequest.cancellationRegistration = registration;
+                        } else {
+                            registration?.dispose?.();
+                        }
+                    }
                 } catch (error) {
-                    takePendingRequest(requestId);
-                    pendingRequest.reject(error);
+                    const failedRequest = takePendingRequest(requestId);
+                    failedRequest?.reject(error);
                 }
             });
         },

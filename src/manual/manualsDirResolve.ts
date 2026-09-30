@@ -117,19 +117,17 @@ function resolveManualsRoot({
         return manualsDir && typeof manualsDir === 'string' ? manualsDir : '';
     }
 
-    const existing = candidates.filter(dir => {
+    let firstExisting: string | undefined;
+    for (const dir of candidates) {
         try {
-            return fs.existsSync(dir);
+            if (!fs.existsSync(dir)) continue;
         } catch {
-            return false;
+            continue;
         }
-    });
-
-    for (const dir of existing) {
+        firstExisting ??= dir;
         if (looksLikeManualPack(dir, fs, pathModule)) return dir;
     }
-    if (existing.length > 0) return existing[0];
-    return candidates[0];
+    return firstExisting || candidates[0];
 }
 
 module.exports = {

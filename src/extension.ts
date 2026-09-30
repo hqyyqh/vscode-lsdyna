@@ -1,26 +1,64 @@
+const { KeywordOptionsWebviewProvider } = require('./client/KeywordOptionsWebviewProvider');
 /**
  * @fileoverview Main entry point for the LS-DYNA VS Code extension.
  * @module extension
- * 
+ *
  * This file coordinates client-side VS Code features: registering document providers
  * (definition, reference, rename, hover, codelens, folding, document symbols, completions,
  * file decorations), launching the LSP background server, watching the workspace for file changes,
  * managing diagnostics reporting, and providing commands to navigate keywords and open manuals.
- * 
+ *
  * Role in System: Main extension process controller.
  */
 
 const vscode = require('vscode');
+const { groupConditionalAdvice } = require('./core/semantics/conditionalPresentation');
+const { createKeywordStructureDiagnostics } = require('./client/services/keywordStructureDiagnostics');
+let keywordStructureDiagnosticsRef;
+const documentEditGuard = require('./client/services/documentEditGuard');
 const path = require('path');
 const fs = require('fs');
 const readline = require('readline');
 const manualIndexer = require('./core/manualIndexer');
+const { resolveManualsRoot } = require('./manual/manualsDirResolve');
 const keywordSchema = require('./core/keywordSchema');
+const HOVER_TRUST = { enabledCommands: [
+    'extension.pickOfficialFieldValue',
+    'extension.addVerifiedConditionalCards',
+    'extension.rebuildCardComments',
+    'extension.insertVerifiedMissingRecords',
+    'extension.openSemanticEvidence',
+    'extension.checkKeywordStructure',
+    "extension.addCustomValidKeyword",
+    "extension.configureManualsDir",
+    "extension.disableFieldHover",
+    "extension.lsdynaChooseKeywordOptions",
+    "extension.lsdynaFormatSelection",
+    "extension.manual.openPackChapter",
+    "extension.manual.pickPackChapter",
+    "extension.manual.pickPdfLocation",
+    "extension.muteFieldHoverSession",
+    "extension.openIncludeFolder",
+    "extension.openIncludeNewTab",
+    "extension.openIncludeSplit",
+    "extension.openLsdynaReferenceDefinition",
+    "extension.openManual",
+    "extension.pickSimilarKeywordHelp",
+    "extension.revealInExplorer",
+    "extension.searchLsdynaReferenceInWorkspace",
+    "extension.selectKeyword",
+    "extension.selectMainDeckContext",
+    "extension.setLsdynaTablePreviewView",
+    "extension.showFieldHelpEnglish"
+] };
+
 const { ManualIndexRepository } = require('./manual/ManualIndexRepository');
 const { ManualReaderPanel } = require('./manual/ManualReaderPanel');
 const { ManualPackManager } = require('./manual/ManualPackManager');
 const { ManualSidebarProvider } = require('./manual/ManualSidebarProvider');
-const { LsdynaIncludeTreeProvider, normalizePathKey } = require('./client/providers/includeTreeProvider');
+const { LsdynaIncludeTreeProvider, normalizePathKey, formatBytes } = require('./client/providers/includeTreeProvider');
+const { LsdynaEntityReferenceProvider } = require('./client/providers/entityReferenceProvider');
+const { EntityReferencesWebviewProvider } = require('./client/EntityReferencesWebviewProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
@@ -50,9 +88,9 @@ const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidatio
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
 const keywordValidator = require('./core/parser/keywordValidator');
-const { classifyKeywordLine } = require('./core/parser/keywordLine');
+const { classifyKeywordLine, isKeywordCommentLine } = require('./core/parser/keywordLine');
 const { scanParameterSymbols } = require('./core/parser/parameterScanner');
-const { isValidParameterName } = require('./core/parser/parameterSyntax');
+const { isValidParameterName, classifyParameterKeyword } = require('./core/parser/parameterSyntax');
 const pathCaseFidelity = require('./core/fs/pathCaseFidelity');
 const includePathCompletion = require('./core/completion/includePathCompletion');
 const { createWorkerPool } = require('./worker/workerPool');
@@ -61,6 +99,8 @@ const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 const i18n = require('./core/i18n');
 const {
     getFieldReferenceInfo,
+    getActionableFieldReferenceInfo,
+    isUnambiguousOperationalProjection,
     parseFieldReferenceValue,
 } = require('./core/references/fieldReferenceClassifier');
 const {
@@ -71,6 +111,7 @@ const {
 } = require('./core/references/projectReferenceIndex');
 const {
     createMainDeckContextSelector,
+    projectRootFile,
 } = require('./core/project/mainDeckContextSelection');
 const {
     buildReferenceHoverSection,
@@ -81,7 +122,6 @@ const { scanCurveTableDefinitionsFromFileIndex } = require('./core/references/cu
 const {
     selectFieldHelp,
     formatFieldHelpMarkdown,
-    isShortEnglish,
 } = require('./core/hover/fieldHelpPresentation');
 const {
     stashFieldHelpEnglish,
@@ -134,7 +174,7 @@ async function startLanguageClient(client, context) {
  */
 async function startLanguageServer(context) {
     const serverModule = path.join(__dirname, 'server', 'server.js');
-    const debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
+    const debugOptions = { execArgv: ['--nolazy', '--inspect=0'] };
 
     const serverOptions = {
         run: { module: serverModule, transport: TransportKind.ipc },
@@ -145,7 +185,11 @@ async function startLanguageServer(context) {
         documentSelector: [{ scheme: 'file', language: 'lsdyna' }],
         initializationOptions: {
             globalStoragePath: context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'project-snapshots') : null,
-            maxCacheBytes: PROJECT_SNAPSHOT_DISK_CACHE_BYTES,
+            maxMemoryCacheBytes: cacheLimitBytes('cache.memoryMaxMiB', 48, 16, 64),
+            maxProjectSnapshotCacheBytes: cacheLimitBytes('cache.projectSnapshotDiskMaxMiB', 256, 32, 256),
+            maxFileScanCacheBytes: cacheLimitBytes('cache.fileScanDiskMaxMiB', 256, 32, 256),
+            maxFileScanMemoryCacheBytes: cacheLimitBytes('cache.fileScanMemoryMaxMiB', 16, 4, 16),
+            maxCacheAgeMs: cacheLimitMilliseconds('cache.maxAgeDays', 30, 1, 30),
         },
     };
 
@@ -163,8 +207,10 @@ const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
+const documentPresentationCache = new WeakMap();
 const activeFileIndexCache = new Map();
 const activeProjectReferenceIndexCache = new Map();
+let referenceSnapshotLoader = null;
 const {
     createEffectiveSearchPathCache,
 } = require('./core/project/effectiveSearchPathLookup');
@@ -216,6 +262,10 @@ function setFileIndexForTesting(filePath, fileIndex) {
     activeFileIndexCache.set(key, fileIndex);
 }
 
+function setReferenceSnapshotLoaderForTesting(loader) {
+    referenceSnapshotLoader = loader;
+}
+
 function cacheFileIndexesFromSnapshot(snapshot) {
     if (!snapshot || !snapshot.fileIndexes) return;
     const entries = snapshot.fileIndexes instanceof Map
@@ -223,7 +273,10 @@ function cacheFileIndexesFromSnapshot(snapshot) {
         : Object.entries(snapshot.fileIndexes);
     for (const [filePath, fileIndex] of entries) {
         if (!filePath || !fileIndex) continue;
-        activeFileIndexCache.set(normalizeFileIndexKey(filePath), fileIndex);
+        const fileKey = normalizeFileIndexKey(filePath);
+        const current = activeFileIndexCache.get(fileKey);
+        if (Number.isInteger(current?.documentVersion)) continue;
+        activeFileIndexCache.set(fileKey, fileIndex);
     }
     // Also cache ancestor-aware *INCLUDE* search paths for editor resolve/completion.
     cacheEffectiveSearchPathsFromSnapshot(snapshot);
@@ -246,23 +299,67 @@ function normalizeSnapshotRootKey(rootFile) {
     return normalizeFileIndexKey(rootFile);
 }
 
-function cacheReferenceIndexFromSnapshot(snapshot) {
-    if (!snapshot || !snapshot.rootFile) return;
-    activeProjectReferenceIndexCache.set(normalizeSnapshotRootKey(snapshot.rootFile), {
-        snapshot,
-        referenceIndex: buildProjectReferenceIndex(snapshot),
+function cacheReferenceIndexFromSnapshot(snapshot, { maxBytes = CLIENT_PROJECT_SEMANTIC_CACHE_BYTES } = {}) {
+    if (!snapshot || !snapshot.rootFile) return false;
+    const effectiveMaxBytes = Number.isFinite(maxBytes) && maxBytes > 0
+        ? Math.min(maxBytes, CLIENT_PROJECT_SEMANTIC_CACHE_BYTES)
+        : CLIENT_PROJECT_SEMANTIC_CACHE_BYTES;
+    const rootKey = normalizeSnapshotRootKey(snapshot.rootFile);
+    activeProjectScopeCache.set(rootKey, {
+        rootFile: snapshot.rootFile,
+        files: Array.isArray(snapshot.files) ? [...snapshot.files] : [snapshot.rootFile],
+        lastAccessedAt: ++activeProjectCacheAccessSequence,
     });
+    const summary = compactClientProjectSnapshot(snapshot);
+    const summaryBytes = estimateClientCacheBytes({
+        summary,
+        effectiveSearchPathsByFile: snapshot.effectiveSearchPathsByFile,
+    }, effectiveMaxBytes);
+    removeClientProjectRoot(rootKey, {
+        preserveMainDeckSelection: true,
+        preserveProjectScope: true,
+    });
+    if (summaryBytes > effectiveMaxBytes) return false;
+
+    const referenceIndex = buildProjectReferenceIndex(snapshot);
+    const byteSize = summaryBytes + estimateClientCacheBytes(referenceIndex, effectiveMaxBytes - summaryBytes);
+    if (byteSize > effectiveMaxBytes) return false;
+
+    const fileKeys = new Set();
+    for (const [filePath] of summary.fileIndexes) {
+        const fileKey = normalizeFileIndexKey(filePath);
+        fileKeys.add(fileKey);
+        if (!activeFileIndexOwners.has(fileKey)) activeFileIndexOwners.set(fileKey, new Set());
+        activeFileIndexOwners.get(fileKey).add(rootKey);
+    }
+    cacheFileIndexesFromSnapshot(snapshot);
+    activeProjectReferenceIndexCache.set(rootKey, { snapshot: summary, referenceIndex });
+    activeProjectCacheMetadata.set(rootKey, {
+        rootFile: snapshot.rootFile,
+        fileKeys,
+        byteSize,
+        lastAccessedAt: ++activeProjectCacheAccessSequence,
+    });
+    evictClientProjectsIfNeeded(rootKey, effectiveMaxBytes);
+    return activeProjectReferenceIndexCache.has(rootKey);
 }
 
 function clearReferenceIndexCacheForTesting() {
+    for (const rootKey of [...new Set([
+        ...activeProjectCacheMetadata.keys(),
+        ...activeProjectScopeCache.keys(),
+    ])]) removeClientProjectRoot(rootKey);
+    activeProjectCacheMetadata.clear();
+    activeFileIndexOwners.clear();
     activeProjectReferenceIndexCache.clear();
+    activeProjectScopeCache.clear();
     activeMainDeckContextSelector.clearAll();
+    activeOnDemandReferenceLookupCache = new WeakMap();
 }
 
 function clearReferenceIndexForRoot(rootFile) {
     if (!rootFile) return false;
-    activeMainDeckContextSelector.clearRoot(rootFile);
-    return activeProjectReferenceIndexCache.delete(normalizeSnapshotRootKey(rootFile));
+    return removeClientProjectRoot(rootFile);
 }
 
 function snapshotContainsDocument(snapshot, documentPath) {
@@ -272,8 +369,19 @@ function snapshotContainsDocument(snapshot, documentPath) {
 
 function getContainingReferenceProjects(documentPath) {
     if (!documentPath) return [];
-    return [...activeProjectReferenceIndexCache.values()]
-        .filter(cached => snapshotContainsDocument(cached.snapshot, documentPath));
+    const projects = [...activeProjectScopeCache.entries()]
+        .filter(([, scope]) => snapshotContainsDocument(scope, documentPath))
+        .map(([rootKey, scope]) => [
+            rootKey,
+            activeProjectReferenceIndexCache.get(rootKey) || scope,
+        ]);
+    for (const [rootKey] of projects) {
+        const metadata = activeProjectCacheMetadata.get(rootKey);
+        if (metadata) metadata.lastAccessedAt = ++activeProjectCacheAccessSequence;
+        const scope = activeProjectScopeCache.get(rootKey);
+        if (scope) scope.lastAccessedAt = ++activeProjectCacheAccessSequence;
+    }
+    return projects.map(([, cached]) => cached);
 }
 
 function getMainDeckContextForDocumentPath(documentPath) {
@@ -282,7 +390,8 @@ function getMainDeckContextForDocumentPath(documentPath) {
     }
     const documentKey = normalizeFileIndexKey(documentPath);
     return activeMainDeckContextSelector.resolve(documentPath, {
-        exactProject: activeProjectReferenceIndexCache.get(documentKey) || null,
+        exactProject: activeProjectReferenceIndexCache.get(documentKey) ||
+            activeProjectScopeCache.get(documentKey) || null,
         containingProjects: getContainingReferenceProjects(documentPath),
     });
 }
@@ -340,7 +449,7 @@ async function handleSelectMainDeckContextCommand(
         detail: i18n.get('mainDeckContextClearDetail'),
     };
     const rootItems = context.candidates.map(candidate => {
-        const rootFile = candidate.snapshot.rootFile;
+        const rootFile = projectRootFile(candidate);
         const selected = context.state === 'selected' &&
             normalizeSnapshotRootKey(rootFile) === normalizeSnapshotRootKey(context.rootFile);
         return {
@@ -433,68 +542,111 @@ function buildParameterReferenceHoverMarkdown({
 }
 
 function parseKeywordBlocksFromDocument(document) {
-    const blocks = [];
-    let currentBlock = null;
-    const lineCount = document.lineCount;
-    for (let i = 0; i < lineCount; i++) {
-        const text = document.lineAt(i).text;
-        const trimmed = text.trimStart();
-        if (isKeywordLineText(text)) {
-            if (currentBlock) {
-                currentBlock.endLine = i - 1;
-            }
-            const cleanKw = trimmed.trim();
-            const keyword = cleanKw.slice(1).toUpperCase().split(/[\s,$]/)[0];
-            currentBlock = {
-                filePath: document.uri.fsPath,
-                keyword: '*' + keyword,
-                rawKeyword: cleanKw,
-                startOffset: 0,
-                endOffset: 0,
-                startLine: i,
-                endLine: lineCount - 1,
-            };
-            blocks.push(currentBlock);
-        }
-    }
-    return blocks;
+    return decorateDocumentKeywordBlocks(document, collectBlocksFromLineReader(
+        document.lineCount,
+        line => document.lineAt(line).text,
+    ));
 }
 
-async function getReferenceIndexForDocument(document) {
+function createDocumentReadGuard(document, cancellationToken = null) {
+    const version = document?.version;
+    const uri = document?.uri;
+    return () => !!document && !document.isClosed && document.uri === uri && document.version === version &&
+        !cancellationToken?.isCancellationRequested;
+}
+
+function createReferenceReadGuard(document, cancellationToken = null) {
+    const current = createDocumentReadGuard(document, cancellationToken);
+    const epoch = activeProjectCacheEpoch;
+    const context = getMainDeckContextForDocumentPath(document?.uri?.fsPath);
+    return () => {
+        if (!current() || activeProjectCacheEpoch !== epoch) return false;
+        const next = getMainDeckContextForDocumentPath(document.uri?.fsPath);
+        return next.rootFile === context.rootFile && next.state === context.state;
+    };
+}
+
+async function getReferenceIndexForDocument(document, cancellationToken = null) {
+    const isCurrent = createReferenceReadGuard(document, cancellationToken);
     if (!document || !document.uri || !document.uri.fsPath) {
         return null;
     }
+    if (!isCurrent()) return null;
 
     const mainDeckContext = getMainDeckContextForDocumentPath(document.uri.fsPath);
     if (mainDeckContext.project) {
-        return {
-            referenceIndex: mainDeckContext.project.referenceIndex,
+        let snapshot = mainDeckContext.project.snapshot;
+        let referenceIndex = mainDeckContext.project.referenceIndex;
+        if (!snapshot || !referenceIndex) {
+            try {
+                snapshot = await referenceSnapshotLoader?.(mainDeckContext.rootFile, {}, null, cancellationToken);
+            } catch (error) {
+                if (isCurrent()) console.error('[lsdyna] Failed to load reference snapshot:', error);
+            }
+            if (!isCurrent()) return null;
+            if (!snapshot?.fileIndexes || !snapshot.rootFile || snapshot.scope === 'single-file' ||
+                normalizeSnapshotRootKey(snapshot.rootFile) !== normalizeSnapshotRootKey(mainDeckContext.rootFile) ||
+                !snapshotContainsDocument(snapshot, document.uri.fsPath)) {
+                return { unavailable: true, rootFile: mainDeckContext.rootFile,
+                    incompleteReasons: ['project-scan-unavailable'] };
+            }
+            referenceIndex = buildProjectReferenceIndex(snapshot);
+        }
+        const base = {
+            referenceIndex,
+            snapshot,
             projectScoped: true,
             rootFile: mainDeckContext.rootFile,
             mainDeckContextState: mainDeckContext.state,
             projectContextSelected: mainDeckContext.state === 'selected',
-            candidateRootFiles: mainDeckContext.candidates.map(candidate => candidate.snapshot.rootFile),
+            candidateRootFiles: mainDeckContext.candidates.map(projectRootFile),
+        };
+        const overlay = await overlayDirtyRegistryReferenceFiles(base, cancellationToken);
+        if (!isCurrent()) return null;
+        return overlay.state === 'ready' ? overlay.referenceIndexState : {
+            ...base, referenceIndex: null, unavailable: true, incompleteReasons: overlay.reasons,
         };
     }
 
     let fileIndex = getFileIndexForDocument(document);
+    if (Number.isInteger(fileIndex?.documentVersion) && fileIndex.documentVersion !== document.version) fileIndex = null;
     if (!fileIndex || !fileIndex.referenceDefinitions) {
         try {
-            const blocks = parseKeywordBlocksFromDocument(document);
+            const blocks = Array.isArray(fileIndex?.keywordBlocks)
+                ? fileIndex.keywordBlocks
+                : document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD
+                    ? []
+                    : await parseKeywordBlocksFromDocumentAsync(document, cancellationToken);
+            if (!blocks || !isCurrent()) return null;
             const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
                 { filePath: document.uri.fsPath, keywordBlocks: blocks },
-                (block) => {
+                async (block) => {
                     const lines = [];
                     for (let i = block.startLine; i <= block.endLine; i++) {
+                        if ((i & 255) === 0 && !isCurrent()) {
+                            return null;
+                        }
+                        if (i > block.startLine && ((i - block.startLine) & 4095) === 0) {
+                            await new Promise(resolve => setImmediate(resolve));
+                            if (!isCurrent()) return null;
+                        }
                         lines.push(document.lineAt(i).text);
                     }
-                    return Promise.resolve(lines.join('\n'));
-                }
+                    return lines.join('\n');
+                },
+                undefined,
+                { cancellationToken }
             );
+            if (referenceDefinitions.cancelled || !isCurrent()) {
+                return null;
+            }
             fileIndex = {
                 filePath: document.uri.fsPath,
                 keywordBlocks: blocks,
                 referenceDefinitions,
+                documentVersion: Number.isInteger(document.version)
+                    ? document.version
+                    : undefined,
             };
             activeFileIndexCache.set(normalizeFileIndexKey(document.uri.fsPath), fileIndex);
         } catch (e) {
@@ -502,21 +654,24 @@ async function getReferenceIndexForDocument(document) {
             return null;
         }
     }
-    const referenceIndex = buildProjectReferenceIndex({
+    const localSnapshot = {
             rootFile: document.uri.fsPath,
             files: [document.uri.fsPath],
             fileIndexes: new Map([[document.uri.fsPath, fileIndex]]),
-        });
+        };
+    const referenceIndex = buildProjectReferenceIndex(localSnapshot);
+    if (!isCurrent()) return null;
     if (mainDeckContext.state === 'ambiguous') {
         referenceIndex.completenessReasons.push('project-root-ambiguous');
     }
     return {
         referenceIndex,
+        snapshot: localSnapshot,
         projectScoped: false,
         rootFile: document.uri.fsPath,
         mainDeckContextState: mainDeckContext.state,
         projectContextAmbiguous: mainDeckContext.state === 'ambiguous',
-        candidateRootFiles: mainDeckContext.candidates.map(candidate => candidate.snapshot.rootFile),
+        candidateRootFiles: mainDeckContext.candidates.map(projectRootFile),
     };
 }
 
@@ -530,12 +685,12 @@ function resolveHoverAnalysis(
     const analysis = analyzeReference(
         referenceIndex,
         referenceValue,
-        referenceInfo.targetKinds,
+        referenceValue.targetKinds || referenceInfo.targetKinds,
         {
             projectScoped: !!(referenceIndexState && referenceIndexState.projectScoped),
             documentPath: location.documentPath,
             lineIndex: location.lineIndex,
-            targetDefinitions: referenceInfo.targetDefinitions,
+            targetDefinitions: referenceValue.targetDefinitions || referenceInfo.targetDefinitions,
         }
     );
     return {
@@ -559,37 +714,23 @@ function resolveHoverAnalysis(
 class LsDynaFoldingProvider {
     /**
      * Resolves folding ranges for *KEYWORD blocks.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Target document.
      * @returns {import('vscode').FoldingRange[]} Folding ranges.
      */
     provideFoldingRanges(document) {
-        const fileIndex = getFileIndexForDocument(document);
-        if (fileIndex && Array.isArray(fileIndex.keywordBlocks)) {
-            return fileIndex.keywordBlocks
+        const indexedBlocks = getReadyKeywordBlocksForDocument(document);
+        if (indexedBlocks) {
+            return indexedBlocks
                 .filter(block => block.endLine > block.startLine)
                 .map(block => new vscode.FoldingRange(block.startLine, block.endLine));
         }
 
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
-        const ranges = [];
-        let foldStart = -1;
-
-        for (let i = 0; i < document.lineCount; i++) {
-            if (isKeywordLineText(document.lineAt(i).text)) {
-                if (foldStart !== -1 && i - 1 > foldStart) {
-                    ranges.push(new vscode.FoldingRange(foldStart, i - 1));
-                }
-                foldStart = i;
-            }
-        }
-
-        if (foldStart !== -1 && document.lineCount - 1 > foldStart) {
-            ranges.push(new vscode.FoldingRange(foldStart, document.lineCount - 1));
-        }
-
-        return ranges;
+        return parseKeywordBlocksFromDocument(document)
+            .filter(block => block.endLine > block.startLine)
+            .map(block => new vscode.FoldingRange(block.startLine, block.endLine));
     }
 }
 
@@ -602,14 +743,14 @@ class LsDynaFoldingProvider {
 class LsdynaKeywordSymbolProvider {
     /**
      * Collects *KEYWORD occurrences as DocumentSymbol objects.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Target document.
      * @returns {import('vscode').DocumentSymbol[]} Document symbols.
      */
     provideDocumentSymbols(document) {
-        const fileIndex = getFileIndexForDocument(document);
-        if (fileIndex && Array.isArray(fileIndex.keywordBlocks)) {
-            return fileIndex.keywordBlocks.map(block => {
+        const indexedBlocks = getReadyKeywordBlocksForDocument(document);
+        if (indexedBlocks) {
+            return indexedBlocks.map(block => {
                 const startChar = block.keywordStartChar || 0;
                 const keyword = block.keyword || block.rawKeyword || '';
                 const range = new vscode.Range(
@@ -630,20 +771,16 @@ class LsdynaKeywordSymbolProvider {
 
         if (shouldSkipAutomaticDocumentScan(document)) return [];
 
-        const symbols = [];
-        for (let i = 0; i < document.lineCount; i++) {
-            const line = document.lineAt(i);
-            if (isKeywordLineText(line.text)) {
-                symbols.push(new vscode.DocumentSymbol(
-                    line.text.trim(),
-                    '',
-                    vscode.SymbolKind.Property,
-                    line.range,
-                    line.range
-                ));
-            }
-        }
-        return symbols;
+        return parseKeywordBlocksFromDocument(document).map(block => {
+            const line = document.lineAt(block.startLine);
+            return new vscode.DocumentSymbol(
+                block.rawKeyword || block.keyword,
+                '',
+                vscode.SymbolKind.Property,
+                line.range,
+                line.range,
+            );
+        });
     }
 }
 
@@ -656,7 +793,7 @@ class LsdynaKeywordSymbolProvider {
 class LsdynaDocumentLinkProvider {
     /**
      * Collects DocumentLinks for include files.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Target document.
      * @returns {Promise<import('vscode').DocumentLink[]>} Document links.
      */
@@ -669,7 +806,7 @@ class LsdynaDocumentLinkProvider {
 
 /**
  * Scans includes in the document, caching the result by document version.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Target document.
  * @returns {import('./core/parser/includeScanner').IncludeResult} include directive results.
  */
@@ -690,9 +827,90 @@ function getIncludeDirectiveData(document) {
     return value;
 }
 
+function presentationBlockAtLine(blocks, line) {
+    let low = 0, high = blocks.length - 1;
+    while (low <= high) {
+        const mid = (low + high) >>> 1, block = blocks[mid];
+        if (line < block.startLine) high = mid - 1;
+        else if (line > block.endLine) low = mid + 1;
+        else return block;
+    }
+    return null;
+}
+
+function updateDocumentPresentationAfterChange(event) {
+    const document = event.document, cached = documentPresentationCache.get(document);
+    const change = event.contentChanges?.length === 1 ? event.contentChanges[0] : null;
+    const block = cached?.blocks && change ? presentationBlockAtLine(cached.blocks, change.range.start.line) : null;
+    if (cached?.ready && cached.version === document.version - 1 && change &&
+        cached.lineCount === document.lineCount && change.range.start.line === change.range.end.line &&
+        !/[\r\n]/.test(change.text) && block &&
+        change.range.start.line > block.startLine && !block.opaqueKind &&
+        !String(block.keyword).replace(/^\*/, '').startsWith('INCLUDE') &&
+        !classifyKeywordLine(document.lineAt(change.range.start.line).text).isKeyword) {
+        cached.version = document.version;
+        cached.skipDecorationsVersion = cached.painted ? document.version : null;
+        const includes = includeDirectiveCache.get(document);
+        if (includes?.version === document.version - 1) includes.version = document.version;
+        return true;
+    }
+    documentPresentationCache.delete(document);
+    includeDirectiveCache.delete(document);
+    return false;
+}
+
+function prepareDocumentPresentation(document) {
+    if (!document || document.isClosed || shouldSkipAutomaticDocumentScan(document)) return Promise.resolve(null);
+    const previous = documentPresentationCache.get(document);
+    if (previous && previous.version === document.version) return previous.pending;
+    const state: any = { version: document.version, lineCount: document.lineCount, ready: false };
+    documentPresentationCache.set(document, state);
+    const current = () => !document.isClosed && document.version === state.version &&
+        documentPresentationCache.get(document) === state;
+    state.pending = (async () => {
+        const readyIndex = readyCardEditBlockIndex(document);
+        const blocks = readyIndex?.blocks ||
+            await collectBlocksFromLineReaderAsync(document.lineCount, line => document.lineAt(line).text,
+                { shouldCancel: () => !current() });
+        if (!blocks || !current()) return null;
+        const includes = await includeScanner.collectIncludeDirectivesFromDocumentBlocks(document, blocks, () => !current());
+        if (!includes || !current()) return null;
+        const ranges = [];
+        let started = performance.now();
+        for (const block of blocks) {
+            const info = classifyKeywordLine(document.lineAt(block.startLine).text);
+            ranges.push(new vscode.Range(block.startLine, info.indent || 0,
+                block.startLine, (info.indent || 0) + (info.rawKeyword?.length || 0)));
+            if (performance.now() - started >= 8) {
+                await new Promise(resolve => setImmediate(resolve));
+                if (!current()) return null;
+                started = performance.now();
+            }
+        }
+        if (!current()) return null;
+        state.blocks = blocks;
+        state.ranges = ranges;
+        state.ready = true;
+        includeDirectiveCache.set(document, { version: state.version, value: includes });
+        return state;
+    })().catch(error => {
+        if (documentPresentationCache.get(document) === state) documentPresentationCache.delete(document);
+        throw error;
+    });
+    return state.pending;
+}
+
+async function searchFileFromPathsAsync(filePath, paths) {
+    for (const directory of paths) {
+        const fullPath = path.resolve(directory, filePath);
+        try { await fs.promises.access(fullPath); return fullPath; } catch (_) { /* next search root */ }
+    }
+    throw new Error(i18n.get('fileNotFound', filePath));
+}
+
 /**
  * Guard check to skip automatic parsing/diagnostics for very large files.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Document to inspect.
  * @returns {boolean} True if size exceeds line threshold.
  */
@@ -706,7 +924,7 @@ function shouldSkipAutomaticDocumentScan(document) {
 
 /**
  * Resolves the URI of the currently active text editor or tab resource.
- * 
+ *
  * @returns {import('vscode').Uri|null} Active file URI.
  */
 function getActiveUri() {
@@ -725,14 +943,14 @@ function getActiveUri() {
 
 /**
  * Checks if a file URI represents an LS-DYNA file extension.
- * 
+ *
  * @param {import('vscode').Uri|null} uri - URI to inspect.
  * @returns {boolean} True if lsdyna extension.
  */
 function isLsdynaUri(uri) {
     if (!uri) return false;
     const ext = path.extname(uri.fsPath).toLowerCase();
-    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc']) || ['.k', '.key', '.dyna', '.asc'];
+    const configExtensions = getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna']) || ['.k', '.key', '.dyna'];
     const normalizedExtensions = configExtensions.map(e => {
         const trimmed = e.trim().toLowerCase();
         return trimmed.startsWith('.') ? trimmed : '.' + trimmed;
@@ -742,7 +960,7 @@ function isLsdynaUri(uri) {
 
 /**
  * Checks if a TextDocument represents an LS-DYNA file.
- * 
+ *
  * @param {import('vscode').TextDocument|null} document - Document.
  * @returns {boolean} True if lsdyna file.
  */
@@ -784,6 +1002,8 @@ function getIncludePathCaseCheckMode(document) {
 async function collectIncludeDocumentLinks(document, options: any = {}) {
     if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
 
+    const isCurrent = createDocumentReadGuard(document);
+    if (!await prepareDocumentPresentation(document) || !isCurrent()) return [];
     const mode = pathCaseFidelity.normalizePathCaseCheckMode(
         options.mode !== undefined ? options.mode : getIncludePathCaseCheckMode(document)
     );
@@ -793,7 +1013,7 @@ async function collectIncludeDocumentLinks(document, options: any = {}) {
 
     for (const entry of findIncludeFileLines(document)) {
         try {
-            const fullPath = searchFileFromPaths(entry.fileName, searchPaths);
+            const fullPath = await searchFileFromPathsAsync(entry.fileName, searchPaths);
             if (mode === 'strict') {
                 const caseResult = await resolveFn(entry.fileName, searchPaths);
                 if (!pathCaseFidelity.isIncludeResolveAccepted(caseResult, mode)) {
@@ -818,7 +1038,7 @@ async function collectIncludeDocumentLinks(document, options: any = {}) {
             targetPath = path.resolve(path.dirname(document.uri.fsPath), targetPath);
         }
         try {
-            if (!fs.existsSync(targetPath)) continue;
+            await fs.promises.access(targetPath);
             if (mode === 'strict') {
                 const baseDir = path.dirname(document.uri.fsPath);
                 const caseResult = await resolveFn(entry.pathName, [baseDir]);
@@ -843,12 +1063,12 @@ async function collectIncludeDocumentLinks(document, options: any = {}) {
         }
     }
 
-    return [...includeFileLinks, ...includePathLinks];
+    return isCurrent() ? [...includeFileLinks, ...includePathLinks] : [];
 }
 
 /**
  * Scans lines exceeding 80 characters (excluding comments) to flag them as warnings.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Target document.
  * @returns {import('vscode').Diagnostic[]} Diagnostics list.
  */
@@ -856,14 +1076,38 @@ function collectLineLengthDiagnostics(document) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) return [];
 
     const issues = [];
+    let opaqueActive = false;
+    let keywordLine = null;
+    let ordinal = 0;
+    let records = [];
+    let globalMode = 'standard';
     // LS-DYNA ignores everything after *END; do not flag long lines past it.
     const scanUpperBound = Math.min(document.lineCount, keywordValidator.findEndDirectiveLine(document) + 1);
     for (let i = 0; i < scanUpperBound; i++) {
         const line = document.lineAt(i);
-        if (line.text.startsWith('$') || line.text.length <= 80) {
+        if (opaqueActive) {
+            if (!isColumnZeroKeywordBoundary(line.text)) continue;
+            opaqueActive = false;
+        }
+        if (classifyOpaqueCommentDirective(line.text)) {
+            opaqueActive = true;
             continue;
         }
-        const cardInfo = keywordSchema.getCardInfoForDocumentLine(document, i, getFieldData());
+        if (classifyKeywordLine(line.text).isKeyword) {
+            keywordLine = i; ordinal = 0; records = [];
+            globalMode = globalInputFormatFromKeywordLine(line.text, globalMode);
+            continue;
+        }
+        if (!isKeywordCommentLine(line.text)) {
+            ordinal++;
+            if (records.length < 32) records.push(line.text);
+        }
+        if (isKeywordCommentLine(line.text) || line.text.length <= 80) {
+            continue;
+        }
+        const cardInfo = keywordSchema.getCardInfoForDocumentLine(document, i, getFieldData(), {
+            keywordLine, dataLineOrdinal: ordinal, observedDataLines: records, globalInputFormat: globalMode,
+        });
         if (!cardInfo?.isTextCard) {
             issues.push(new vscode.Diagnostic(
                 new vscode.Range(i, 80, i, line.text.length),
@@ -894,6 +1138,10 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
         return { resolved: [], missing: [], missingIndicators: [] };
     }
 
+    const empty = { resolved: [], missing: [], missingIndicators: [] };
+    const isCurrent = createDocumentReadGuard(document);
+    if (!await prepareDocumentPresentation(document) || !isCurrent()) return empty;
+    const lookups = new Map();
     const mode = pathCaseFidelity.normalizePathCaseCheckMode(
         options.mode !== undefined ? options.mode : getIncludePathCaseCheckMode(document)
     );
@@ -925,13 +1173,16 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
             });
         };
         try {
-            searchFileFromPaths(entry.fileName, searchPaths);
-            if (mode === 'strict') {
-                const caseResult = await resolveFn(entry.fileName, searchPaths);
-                if (!pathCaseFidelity.isIncludeResolveAccepted(caseResult, mode)) {
-                    markMissing();
-                    continue;
-                }
+            if (!lookups.has(entry.fileName)) lookups.set(entry.fileName, (async () => {
+                await searchFileFromPathsAsync(entry.fileName, searchPaths);
+                return mode !== 'strict' || pathCaseFidelity.isIncludeResolveAccepted(
+                    await resolveFn(entry.fileName, searchPaths), mode);
+            })());
+            const accepted = await lookups.get(entry.fileName);
+            if (!isCurrent()) return empty;
+            if (!accepted) {
+                markMissing();
+                continue;
             }
             resolved.push(...ranges);
         } catch (e) {
@@ -939,7 +1190,7 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
         }
     }
 
-    return { resolved, missing, missingIndicators };
+    return isCurrent() ? { resolved, missing, missingIndicators } : empty;
 }
 
 /**
@@ -988,22 +1239,25 @@ function collectKeywordDecorationRanges(document) {
         return [];
     }
 
-    const ranges = [];
-    for (let i = 0; i < document.lineCount; i++) {
-        const text = document.lineAt(i).text;
-        const match = text.match(/^(\s*)(\*[^\s,$]+)/);
-        if (match) {
-            const startChar = match[1].length;
-            const keywordLength = match[2].length;
-            ranges.push(new vscode.Range(i, startChar, i, startChar + keywordLength));
-        }
-    }
-    return ranges;
+    const cached = documentPresentationCache.get(document);
+    if (cached?.ready && cached.version === document.version) return cached.ranges;
+    return parseKeywordBlocksFromDocument(document).map(block => {
+        const text = document.lineAt(block.startLine).text;
+        const classification = classifyKeywordLine(text);
+        const startChar = classification.indent || 0;
+        const keywordLength = classification.rawKeyword?.length || 0;
+        return new vscode.Range(
+            block.startLine,
+            startChar,
+            block.startLine,
+            startChar + keywordLength,
+        );
+    });
 }
 
 /**
  * Checks if the specified line index falls within any include file card definition.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Document.
  * @param {number} currentLine - Line number to check.
  * @returns {boolean} True if is on include declaration line.
@@ -1019,7 +1273,7 @@ function isIncludeLine(document, currentLine) {
 
 /**
  * Returns raw include scan entries for the document.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Document.
  * @returns {import('./core/parser/includeScanner').IncludeEntry[]} include entry lists.
  */
@@ -1031,21 +1285,18 @@ function findIncludeFileLines(document) {
 
 /**
  * Scans parameters (*PARAMETER...) defined in a document, cataloging their details.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Document to scan.
  * @returns {Map<string, Array<{ lineIndex: number, startChar: number, length: number, name: string, value: string }>>} Parameter definitions grouped by name.
  */
 function findParameterDefinitions(document) {
     if (shouldSkipAutomaticDocumentScan(document)) return new Map();
-    return scanParameterSymbols(
-        document.lineCount,
-        lineIndex => document.lineAt(lineIndex).text,
-    ).definitions;
+    return getDocumentParameterSymbols(document).definitions;
 }
 
 /**
  * Scans parameters referenced via '&name' or bare names inside expressions.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Document to scan.
  * @returns {Array<{
  *   name: string,
@@ -1059,25 +1310,20 @@ function findParameterDefinitions(document) {
  */
 function findParameterReferences(document) {
     if (shouldSkipAutomaticDocumentScan(document)) return [];
-    return scanParameterSymbols(
-        document.lineCount,
-        lineIndex => document.lineAt(lineIndex).text,
-    ).references;
+    return getDocumentParameterSymbols(document).references;
 }
 
 /**
  * Finds the parameter name and token range under the cursor position.
- * 
+ *
  * @param {import('vscode').TextDocument} document - Target document.
  * @param {import('vscode').Position} position - Editor position.
  * @returns {{ name: string, range: import('vscode').Range }|null} Active parameter token, or null.
  */
 function getParameterAtCursor(document, position) {
     if (shouldSkipAutomaticDocumentScan(document)) return null;
-    const symbols = scanParameterSymbols(
-        document.lineCount,
-        lineIndex => document.lineAt(lineIndex).text,
-    );
+    if (!isActiveLsdynaSemanticLocation(document, position)) return null;
+    const symbols = getDocumentParameterSymbols(document);
     for (const definition of symbols.definitionList) {
         if (definition.lineIndex !== position.line) continue;
         const endChar = definition.startChar + definition.length;
@@ -1134,27 +1380,58 @@ function getParameterAtCursor(document, position) {
 class LsdynaDefinitionProvider {
     /**
      * Resolves parameter definition target location.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Document.
      * @param {import('vscode').Position} position - Position.
-     * @returns {import('vscode').Location|null} definition destination.
+     * @param {import('vscode').CancellationToken} [token] - Cancellation token.
+     * @returns {import('vscode').Definition|Promise<import('vscode').Definition|null>|null} definition destination.
      */
-    provideDefinition(document, position) {
-        const param = getParameterAtCursor(document, position);
-        if (!param) return null;
-        const definitions = findParameterDefinitions(document).get(param.name.toUpperCase()) || [];
-        const locations = definitions.map(definition =>
-            new vscode.Location(
-                document.uri,
-                new vscode.Range(
-                    definition.lineIndex,
-                    definition.startChar,
-                    definition.lineIndex,
-                    definition.startChar + definition.length,
-                ),
-            )
+    provideDefinition(document, position, token) {
+        if (token?.isCancellationRequested) return null;
+        const param = shouldResolveParameterDefinitionAtPosition(document, position)
+            ? getParameterAtCursor(document, position)
+            : null;
+        if (param) {
+            const definitions = findParameterDefinitions(document).get(param.name.toUpperCase()) || [];
+            const locations = definitions.map(definition =>
+                new vscode.Location(
+                    document.uri,
+                    new vscode.Range(
+                        definition.lineIndex,
+                        definition.startChar,
+                        definition.lineIndex,
+                        definition.startChar + definition.length,
+                    ),
+                )
+            );
+            if (locations.length === 0) return null;
+            return locations.length === 1 ? locations[0] : locations;
+        }
+        return this.provideFieldDefinition(document, position, token);
+    }
+
+    async provideFieldDefinition(document, position, token) {
+        const navigation = await resolveFieldReferenceNavigation(
+            document,
+            position,
+            token,
+            { semanticScope: 'prefer-registry' },
         );
+        if (!navigation || token?.isCancellationRequested) return null;
+        const candidates = navigation.provisional && navigation.provisionalPrimary
+            ? [navigation.provisionalPrimary, ...(navigation.provisionalAlternatives || [])]
+            : navigation.candidates;
+        const locations = candidates.map(candidate => new vscode.Location(
+            vscode.Uri.file(candidate.filePath),
+            new vscode.Range(
+                candidate.line,
+                candidate.startCharacter,
+                candidate.line,
+                candidate.endCharacter,
+            )
+        ));
         if (locations.length === 0) return null;
+        if (navigation.provisional && navigation.provisionalPrimary) return locations[0];
         return locations.length === 1 ? locations[0] : locations;
     }
 }
@@ -1166,15 +1443,17 @@ class LsdynaDefinitionProvider {
 class LsdynaReferenceProvider {
     /**
      * Gathers all parameter usage references.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Document.
      * @param {import('vscode').Position} position - Position.
      * @param {import('vscode').ReferenceContext} context - Reference options.
      * @returns {import('vscode').Location[]} References.
      */
-    provideReferences(document, position, context) {
+    provideReferences(document, position, context, token = null) {
+        if (token?.isCancellationRequested ||
+            !isActiveLsdynaSemanticLocation(document, position)) return [];
         const param = getParameterAtCursor(document, position);
-        if (!param) return [];
+        if (!param) return this.provideFieldReferences(document, position, context, token);
         const nameUpper = param.name.toUpperCase();
         const locations = [];
 
@@ -1194,6 +1473,25 @@ class LsdynaReferenceProvider {
         }
         return locations;
     }
+
+    async provideFieldReferences(document, position, context, token = null) {
+        const network = await resolveRegistryReferenceNetwork(
+            document,
+            position,
+            context,
+            token,
+        );
+        if (!network || network.state !== 'complete' || token?.isCancellationRequested) return [];
+        return network.locations.map(location => new vscode.Location(
+            vscode.Uri.file(location.filePath),
+            new vscode.Range(
+                location.line,
+                location.startCharacter,
+                location.line,
+                location.endCharacter,
+            ),
+        ));
+    }
 }
 
 /**
@@ -1203,7 +1501,7 @@ class LsdynaReferenceProvider {
 class LsdynaRenameProvider {
     /**
      * Validates if renaming can occur under cursor.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Document.
      * @param {import('vscode').Position} position - Position.
      * @returns {import('vscode').Range} Renamable token range.
@@ -1216,7 +1514,7 @@ class LsdynaRenameProvider {
 
     /**
      * Resolves WorkspaceEdits replacing parameter definitions and references.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Document.
      * @param {import('vscode').Position} position - Position.
      * @param {string} newName - Target name.
@@ -1286,28 +1584,74 @@ function getFieldData() {
  * @param {{ h?: string, n?: string, p?: number }} field
  * @returns {string} Markdown fragment (no leading blank lines); empty if no help.
  */
-function buildFieldHelpMarkdown(field) {
-    if (!field || !field.h) return '';
+function buildFieldHelpMarkdown(field, context: any = {}) {
+    if (!field) return '';
     const language = i18n.getLanguage();
+    const englishHelp = keywordSchema.getEnglishFieldHelp(field);
+    let relaxedRecord = null;
+    if (!englishHelp) {
+        try {
+            const catalog = getRelaxedModelEvidenceV1Catalog();
+            const physicalId = context.finalPhysicalFieldId || field.finalPhysicalFieldId;
+            if (physicalId) {
+                relaxedRecord = catalog.recordForField(physicalId);
+            } else if (!field.nativeIdentity) {
+                const candidates = catalog.recordsForFieldName(field.n || context.fieldName);
+                // Name-only lookup is safe only for a unique physical field.
+                relaxedRecord = candidates.length === 1 ? candidates[0] : null;
+            }
+        } catch (_error) {
+            relaxedRecord = null;
+        }
+    }
+    const manualContext = context.manualContext !== undefined
+        ? context.manualContext
+        : field.nativeIdentity ? null : buildProvisionalManualContext(field, context);
+    const resolved = resolveProvisionalFieldHelp({
+        language,
+        field,
+        strictText: englishHelp,
+        relaxedRecord,
+        manualContext,
+        schemaText: context.schemaText,
+        fieldName: context.fieldName,
+        keyword: context.keyword,
+        cardIndex: context.cardIndex,
+        fieldIndex: context.fieldIndex,
+    });
+    const provisional = resolved.source !== 'strict';
+    const sourceKeys = {
+        'relaxed-model': 'fieldHelpSourceRelaxed',
+        'manual-context': 'fieldHelpSourceManual',
+        'lspp-schema': 'fieldHelpSourceSchema',
+        'field-name': 'fieldHelpSourceName',
+    };
     const localizedHelp = language === 'zh-cn'
-        ? keywordSchema.getLocalizedFieldHelp(field)
+        ? provisional
+            ? keywordSchema.getLocalizedHelpForText(resolved.text)
+            : keywordSchema.getLocalizedFieldHelp(field)
         : null;
-    const parts = selectFieldHelp(field.h, localizedHelp, language);
+    const prefix = provisional
+        ? `⚠ **${i18n.get('fieldHelpProvisional')}** · _${i18n.get(sourceKeys[resolved.source])}_\n\n`
+            + (language === 'zh-cn' && !localizedHelp && !/[\u3400-\u9fff]/.test(resolved.text)
+                ? `${i18n.get('fieldHelpUntranslated')}\n\n` : '')
+        : '';
+    const parts = selectFieldHelp(provisional ? resolved.text : englishHelp, localizedHelp, language);
     const summaryLabel = i18n.get('fieldHelpEnglishOriginal');
-    if (parts.secondary && !isShortEnglish(parts.secondary)) {
+    if (parts.secondary) {
         const id = stashFieldHelpEnglish(parts.secondary);
-        return formatFieldHelpMarkdown(parts, {
+        return prefix + formatFieldHelpMarkdown(parts, {
             summaryLabel,
             englishCommandHref:
                 `command:extension.showFieldHelpEnglish?${encodeURIComponent(JSON.stringify([id]))}`,
         });
     }
-    return formatFieldHelpMarkdown(parts, { summaryLabel });
+    return prefix + formatFieldHelpMarkdown(parts, { summaryLabel });
 }
 
 /**
  * Searches the schema dictionary for a keyword definition, supporting aliases and variants.
- * 
+ *
  * @param {string} name - Keyword string.
  * @returns {Object|null} Schema lookup descriptor, or null.
  */
@@ -1322,25 +1666,42 @@ function lookupKeyword(name) {
 
 /**
  * Assembles Markdown text summarizing card structure for a keyword hover card.
- * 
+ *
  * @param {string} kwName - Keyword name.
  * @param {Object} entry - Schema definition entry.
  * @returns {string} Markdown text.
  */
-function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
-    const cards = keywordSchema.getRenderedCards(entry, activeOptions);
+function keywordHoverMarkdown(
+    kwName,
+    entry,
+    activeOptions = [],
+    canonicalName = kwName,
+    observedDataLines = [],
+    nativeCards = undefined,
+) {
+    const lookup = {
+        inputName: kwName,
+        canonicalName,
+        entry,
+        activeOptions,
+    };
+    const cards = nativeCards ?? keywordSchema.getRenderedCardsForLookup(lookup, observedDataLines);
     const lines = [`### $(symbol-keyword) **\\*${kwName}**\n\n---\n`];
     let cardNum = 1;
-    
-    const tableHeader = `| Card | 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 | 61-70 | 71-80 |`;
+
+    const tableHeader = `| ${i18n.get('keywordHoverCard')} | 1-10 | 11-20 | 21-30 | 31-40 | 41-50 | 51-60 | 61-70 | 71-80 |`;
     const tableSeparator = `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |`;
     const tableRows = [];
 
     for (const card of cards) {
         if (!card.length) continue;
+        if (nativeCards) {
+            tableRows.push(`| **${cardNum++}** | ${card.map(field => inlineSemanticLabel(field.n)).join(' · ')} |`);
+            continue;
+        }
         const isWide = card.length === 1 && card[0].w >= 40;
         if (isWide) {
-            tableRows.push(`| **${cardNum}** | \`${card[0].n}\` | *(Title)* | | | | | | |`);
+            tableRows.push(`| **${cardNum}** | \`${card[0].n}\` | *(${i18n.get('keywordHoverTitle')})* | | | | | | |`);
         } else {
             const rowCells = Array(8).fill('');
             for (const f of card) {
@@ -1361,16 +1722,47 @@ function keywordHoverMarkdown(kwName, entry, activeOptions = []) {
     }
 
     if (tableRows.length > 0) {
-        lines.push(tableHeader);
-        lines.push(tableSeparator);
+        lines.push(nativeCards ? `| ${i18n.get('keywordHoverCard')} | ${i18n.get('cardColumns')} |` : tableHeader);
+        lines.push(nativeCards ? '| :--- | :--- |' : tableSeparator);
         lines.push(...tableRows);
         lines.push('');
     }
 
-    if (entry.r) lines.push('*(✨ Last card repeats for each data row)*\n');
+    if (nativeCards) lines.push(i18n.getLanguage() === 'zh-cn'
+        ? '以上为当前数据前部已确定的记录。' : 'Resolved records from the beginning of the current data.');
+    if (!nativeCards && entry.r) lines.push(`*(✨ ${i18n.get('keywordHoverLastCardRepeats')})*\n`);
     if (entry.o && entry.o.length) {
-        const options = entry.o.map(option => `\`${option.n}\``);
-        lines.push(`**$(gear) Available Options:**\n${options.join(' • ')}`);
+        const active = new Set((activeOptions || []).map(option => String(option || '').toUpperCase()));
+        const options = supportedKeywordOptions(entry, canonicalName).map(option => {
+            const name = String(option.n || '').toUpperCase();
+            return active.has(name)
+                ? `\`${option.n}\` *(${i18n.get('keywordHoverOptionActive')})*`
+                : `\`${option.n}\``;
+        });
+        if (options.length) {
+            lines.push(`$(gear) **${i18n.get('keywordHoverOptions')}:** ${options.join(' • ')}`);
+        }
+        const deniedActive = (entry.o || [])
+            .filter(option => active.has(normalizeOptionName(option.n)))
+            .filter(option => parseKeywordOptionOrder(option).position === 'pre')
+            .filter(option => keywordSchema.keywordPrefixOptionDecision(
+                canonicalName,
+                normalizeOptionName(option.n),
+            ) === 'deny')
+            .map(option => normalizeOptionName(option.n));
+        if (deniedActive.length) {
+            lines.push(`$(warning) ${i18n.get('keywordPrefixOptionUnsupported', deniedActive.join(', '))}`);
+        }
+        const unverifiedActive = (entry.o || [])
+            .filter(option => active.has(normalizeOptionName(option.n)))
+            .filter(option => (option.to || 0) > 0 && (option.c || []).length > 0)
+            .filter(option => keywordSchema.keywordPrefixOptionDecision(
+                canonicalName,
+                normalizeOptionName(option.n),
+            ) === 'unverified');
+        if (unverifiedActive.length) {
+            lines.push(`$(warning) ${i18n.get('keywordPrefixLayoutUnavailable')}`);
+        }
     }
     return lines.join('\n');
 }
@@ -1388,9 +1780,15 @@ function parseKeywordOptionOrder(option) {
     };
 }
 
-function titleKeywordOptions(entry) {
+function titleKeywordOptions(entry, canonicalName = '') {
     return (entry.o || [])
         .filter(option => (option.to || 0) > 0)
+        .filter(option => parseKeywordOptionOrder(option).position === 'pre')
+        .filter(option => keywordOptionIsSupported(option, canonicalName))
+        .filter(option => keywordSchema.keywordPrefixOptionDecision(
+            canonicalName,
+            normalizeOptionName(option.n),
+        ) === 'allow')
         .sort((a, b) => (a.to || 0) - (b.to || 0));
 }
 
@@ -1457,8 +1855,8 @@ function keywordOptionRangeLabel(options, count) {
     return names.join(', ');
 }
 
-function keywordOptionSummary(entry) {
-    const titleNames = titleKeywordOptions(entry).map(option => normalizeOptionName(option.n));
+function keywordOptionSummary(entry, canonicalName = '') {
+    const titleNames = titleKeywordOptions(entry, canonicalName).map(option => normalizeOptionName(option.n));
     const postOptions = postKeywordOptions(entry);
     const parts = [];
     if (titleNames.length) parts.push(titleNames.join(', '));
@@ -1567,6 +1965,9 @@ function buildIncludePathCaseEdits(document, entry, correctedPath) {
 async function collectIncludePathCaseDiagnostics(document, options: any = {}) {
     if (!document || !isLsdynaFile(document) || shouldSkipAutomaticDocumentScan(document)) return [];
 
+    const current = createDocumentReadGuard(document);
+    if (!await prepareDocumentPresentation(document) || !current()) return [];
+
     const mode = pathCaseFidelity.normalizePathCaseCheckMode(
         options.mode !== undefined
             ? options.mode
@@ -1645,6 +2046,9 @@ async function updateDocumentDiagnostics(document, diagnostics, options: any = {
         diagnostics.delete(document.uri);
         return;
     }
+    const current = createDocumentReadGuard(document);
+    if (!shouldSkipAutomaticDocumentScan(document) && !await prepareDocumentPresentation(document)) return;
+    if (!current()) return;
     const lineLengthDiagnostics = collectLineLengthDiagnostics(document);
     const includePathLengthDiagnostics = collectIncludePathLengthDiagnostics(document);
     const keywordValidationDiagnostics = keywordValidator.collectKeywordValidationDiagnostics(
@@ -1652,6 +2056,7 @@ async function updateDocumentDiagnostics(document, diagnostics, options: any = {
         shouldSkipAutomaticDocumentScan
     );
     const includePathCaseDiagnostics = await collectIncludePathCaseDiagnostics(document, options);
+    if (!current()) return;
     diagnostics.set(document.uri, [
         ...lineLengthDiagnostics,
         ...includePathLengthDiagnostics,
@@ -1823,145 +2228,10 @@ function inferCurrentPostOptionCount(entry, activeTitleNames, dataLineCount) {
 }
 
 async function chooseKeywordOptionsForEditor(editor = vscode.window.activeTextEditor, requestedLine = null) {
-    if (!editor || !editor.document) return;
-    const document = editor.document;
-    const requireSameActiveEditor = vscode.window.activeTextEditor === editor;
-    const activeLine = Number.isInteger(requestedLine)
-        ? requestedLine
-        : (editor.selection && editor.selection.active ? editor.selection.active.line : 0);
-    const keywordLine = findKeywordLineForLine(document, activeLine);
-    if (keywordLine === null) {
-        vscode.window.showInformationMessage(i18n.get('noKeywordAtCursor'));
-        return;
+    if (keywordOptionsViewControllerRef?.open) {
+        return keywordOptionsViewControllerRef.open(editor, requestedLine);
     }
-
-    const keywordText = document.lineAt(keywordLine).text;
-    const initialDocumentVersion = Number.isInteger(document.version) ? document.version : null;
-    const sessionIsCurrent = () => {
-        if (editor.document !== document) return false;
-        if (requireSameActiveEditor && vscode.window.activeTextEditor !== editor) return false;
-        if (initialDocumentVersion !== null && document.version !== initialDocumentVersion) return false;
-        if (keywordLine < 0 || keywordLine >= document.lineCount) return false;
-        return document.lineAt(keywordLine).text === keywordText;
-    };
-    const lookup = lookupKeywordInfo(keywordLineNameFromText(keywordText));
-    if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) {
-        vscode.window.showInformationMessage(i18n.get('noKeywordOptionsAvailable'));
-        return;
-    }
-
-    const entry = lookup.entry;
-    const titleOptions = titleKeywordOptions(entry);
-    const postOptions = postKeywordOptions(entry);
-    const currentTitleNames = lookup.activeOptions
-        .filter(name => titleOptions.some(option => normalizeOptionName(option.n) === name));
-
-    let selectedTitleNames = currentTitleNames;
-    if (titleOptions.length) {
-        const currentSet = new Set(currentTitleNames);
-        const titleItems = titleOptions.map(option => {
-            const name = normalizeOptionName(option.n);
-            return {
-                label: name,
-                picked: currentSet.has(name),
-                optionName: name,
-            };
-        });
-        const picked = await vscode.window.showQuickPick(titleItems, {
-            canPickMany: true,
-            placeHolder: i18n.get('chooseKeywordTitleOptions'),
-        });
-        if (!picked) return;
-        if (!sessionIsCurrent()) return;
-        selectedTitleNames = picked.map(item => item.optionName || normalizeOptionName(item.label));
-    }
-
-    const blockEnd = findKeywordBlockEnd(document, keywordLine);
-    const dataLines = collectKeywordDataLines(document, keywordLine, blockEnd);
-    const currentPostCount = inferCurrentPostOptionCount(entry, currentTitleNames, dataLines.length);
-    let selectedPostCount = currentPostCount;
-    if (postOptions.length) {
-        const postItems = [{ label: keywordOptionRangeLabel(postOptions, 0), postCount: 0, picked: currentPostCount === 0 }];
-        for (let index = 0; index < postOptions.length; index++) {
-            postItems.push({
-                label: keywordOptionRangeLabel(postOptions, index + 1),
-                postCount: index + 1,
-                picked: currentPostCount === index + 1,
-            });
-        }
-        const picked = await vscode.window.showQuickPick(postItems, {
-            placeHolder: i18n.get('chooseConsecutiveOptionalCards'),
-        });
-        if (!picked) return;
-        if (!sessionIsCurrent()) return;
-        selectedPostCount = picked.postCount || 0;
-    }
-
-    const currentTitleOptions = titleOptions.filter(option => currentTitleNames.includes(normalizeOptionName(option.n)));
-    const selectedTitleOptions = titleOptions.filter(option => selectedTitleNames.includes(normalizeOptionName(option.n)));
-    const currentPreLineCount = keywordOptionCardCount(currentTitleOptions);
-    const selectedPreLineCount = keywordOptionCardCount(selectedTitleOptions);
-    const currentPostLineCount = keywordOptionCardCount(postOptions.slice(0, currentPostCount));
-    const selectedPostLineCount = keywordOptionCardCount(postOptions.slice(0, selectedPostCount));
-    const currentPreCards = keywordOptionCards(currentTitleOptions);
-    const currentPostCards = keywordOptionCards(postOptions.slice(0, currentPostCount));
-
-    const removedLines = [];
-    if (selectedPreLineCount < currentPreLineCount) {
-        removedLines.push(...dataLines.slice(selectedPreLineCount, currentPreLineCount));
-    }
-    if (selectedPostLineCount < currentPostLineCount) {
-        removedLines.push(...dataLines.slice(dataLines.length - (currentPostLineCount - selectedPostLineCount)));
-    }
-    if (!(await confirmRemoveNonEmptyOptionLines(removedLines))) return;
-    if (!sessionIsCurrent()) return;
-
-    const selectedTitleNamesInOrder = titleOptions
-        .map(option => normalizeOptionName(option.n))
-        .filter(name => selectedTitleNames.includes(name));
-    const nextKeywordLine = buildKeywordLineWithTitleOptions(keywordText, lookup.canonicalName, selectedTitleNamesInOrder);
-    const preLinesToInsert = keywordOptionManagedLines(selectedTitleOptions, currentPreLineCount);
-    const postLinesToInsert = keywordOptionManagedLines(postOptions.slice(0, selectedPostCount), currentPostLineCount);
-    const deletionRanges = [];
-
-    if (selectedPreLineCount < currentPreLineCount) {
-        const removedDataLines = dataLines.slice(selectedPreLineCount, currentPreLineCount);
-        const removedCards = currentPreCards.slice(selectedPreLineCount, currentPreLineCount);
-        removedDataLines.forEach((line, index) => {
-            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
-        });
-    }
-    if (selectedPostLineCount < currentPostLineCount) {
-        const count = currentPostLineCount - selectedPostLineCount;
-        const removedDataLines = dataLines.slice(dataLines.length - count);
-        const removedCards = currentPostCards.slice(selectedPostLineCount);
-        removedDataLines.forEach((line, index) => {
-            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
-        });
-    }
-    addOrphanManagedCommentDeletionRanges(
-        deletionRanges,
-        document,
-        keywordLine,
-        blockEnd,
-        keywordOptionCards([...titleOptions, ...postOptions]),
-        keywordOptionCards([...selectedTitleOptions, ...postOptions.slice(0, selectedPostCount)])
-    );
-
-    if (!sessionIsCurrent()) return;
-    await editor.edit(editBuilder => {
-        if (nextKeywordLine !== keywordText) {
-            editBuilder.replace(lineWholeRange(document, keywordLine), nextKeywordLine);
-        }
-        removeLineDeletionRanges(editBuilder, document, deletionRanges);
-        if (postLinesToInsert.length) {
-            insertLinesAt(editBuilder, document, blockEnd, postLinesToInsert);
-        }
-        if (preLinesToInsert.length) {
-            const insertAt = insertionLineForDataIndex(document, keywordLine, dataLines, currentPreLineCount, keywordLine + 1);
-            insertLinesAt(editBuilder, document, insertAt, preLinesToInsert);
-        }
-    });
+    return chooseKeywordOptionsQuickPickLegacy(editor, requestedLine);
 }
 
 class LsdynaKeywordOptionsCodeLensProvider {
@@ -1971,19 +2241,24 @@ class LsdynaKeywordOptionsCodeLensProvider {
         if (!showOnAll) return [];
 
         const lenses = [];
-        for (let lineNum = 0; lineNum < document.lineCount; lineNum++) {
+        for (const block of parseKeywordBlocksFromDocument(document)) {
+            if (block.opaqueKind) continue;
+            const lineNum = block.startLine;
             const text = document.lineAt(lineNum).text;
             const classification = classifyKeywordLine(text);
             if (!classification.isKeyword || classification.rawKeyword.startsWith('**')) continue;
             const lookup = lookupKeywordInfo(keywordLineNameFromText(text));
             if (!lookup) continue;
-            
-            const hasOptions = lookup.entry.o && lookup.entry.o.length > 0;
+
+            const hasOptions = writableKeywordOptions(
+                lookup.entry,
+                lookup.canonicalName,
+            ).length > 0;
 
             const range = new vscode.Range(lineNum, 0, lineNum, 0);
 
             if (hasOptions) {
-                const summary = keywordOptionSummary(lookup.entry);
+                const summary = keywordOptionSummary(lookup.entry, lookup.canonicalName);
                 lenses.push(new vscode.CodeLens(range, {
                     title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
                     command: 'extension.lsdynaChooseKeywordOptions',
@@ -2006,12 +2281,13 @@ class LsdynaKeywordOptionsCodeLensProvider {
     }
 }
 
-function appendKeywordHoverActions(md, entry, lineNum) {
+function appendKeywordHoverActions(md, lookup, lineNum, document, advice) {
     const args = encodeURIComponent(JSON.stringify([lineNum]));
     const actions = [];
-    if (entry.o && entry.o.length > 0) {
+    if (writableKeywordOptions(lookup.entry, lookup.canonicalName).length > 0 || groupConditionalAdvice(advice).length > 0) {
+        const managerArgs = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: lineNum }]));
         actions.push(
-            `[${i18n.get('keywordHoverConfigureOptions')}](command:extension.lsdynaChooseKeywordOptions?${args} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`,
+            `[${i18n.get('keywordHoverConfigureOptions')}](command:extension.lsdynaChooseKeywordOptions?${managerArgs} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`,
         );
     }
     actions.push(
@@ -2042,7 +2318,6 @@ function formatHoverHelpText(helpText) {
  * @returns {string} Absolute (or best-effort) pack root path.
  */
 function resolveManualPackRoot(context?: import('vscode').ExtensionContext) {
-    const { resolveManualsRoot } = require('./manual/manualsDirResolve');
     const manualsDir = getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack';
     return resolveManualsRoot({
         manualsDir,
@@ -2321,10 +2596,10 @@ async function pickManualLocation(kwName) {
 /**
  * Safely reads the first chunk of a file to generate a preview.
  * Returns empty string if the file doesn't exist or an error occurs.
- * 
- * @param {string} filePath 
- * @param {number} maxBytes 
- * @param {number} maxLines 
+ *
+ * @param {string} filePath
+ * @param {number} maxBytes
+ * @param {number} maxLines
  * @returns {Promise<string>}
  */
 async function getIncludeFilePreview(filePath) {
@@ -2341,7 +2616,7 @@ async function getIncludeFilePreview(filePath) {
                     let text = buffer.toString('utf8', 0, bytesRead);
                     let lines = text.split(/\r?\n/);
                     let isTruncated = false;
-                    
+
                     if (lines.length > maxLines) {
                         lines = lines.slice(0, maxLines);
                         isTruncated = true;
@@ -2349,7 +2624,7 @@ async function getIncludeFilePreview(filePath) {
                         lines.pop(); // Drop the last incomplete line
                         isTruncated = true;
                     }
-                    
+
                     let preview = lines.join('\n');
                     if (isTruncated) {
                         preview += '\n... (File is truncated for preview)';
@@ -2504,12 +2779,23 @@ function resolveKeywordLookupWithSuggest(document, keywordLine, typedKwName?: st
         const text = document.lineAt(keywordLine).text.trim();
         typedName = text.startsWith('*') ? text.slice(1).toUpperCase().split(/[\s,]/)[0] : '';
     }
-    typedName = String(typedName || '').toUpperCase().replace(/^\*/, '');
+    typedName = stripKeywordInputFormatMarker(String(typedName || '').toUpperCase().replace(/^\*/, ''));
 
     const direct = typedName ? lookupKeywordInfo(typedName) : null;
     if (direct) {
         return { typedName, lookup: direct, suggestedName: null, viaSuggest: false };
     }
+
+    // A catalogued identity without field geometry is not a spelling error.
+    // Neither missing rules nor an unavailable catalog authorize another
+    // keyword's field help, including a remembered suggestion.
+    if (keywordStructureCatalog.hasKeywordIdentity(typedName) !== false) {
+        return { typedName, lookup: null, suggestedName: null, viaSuggest: false };
+    }
+    try {
+        if (getCatalogInputFormCatalogV4().formForKeyword(typedName))
+            return { typedName, lookup: null, suggestedName: null, viaSuggest: false };
+    } catch { return { typedName, lookup: null, suggestedName: null, viaSuggest: false }; }
 
     const preferred = document
         ? getRememberedSimilarKeywordChoice(document, keywordLine, typedName)
@@ -2540,42 +2826,32 @@ function resolveKeywordLookupWithSuggest(document, keywordLine, typedKwName?: st
  * @param {number} lineNum
  * @param {object} [schema]
  */
-function getCardInfoForDocumentLineWithSuggest(document, lineNum, schema) {
-    const fieldSchema = schema || getFieldData();
-    const direct = keywordSchema.getCardInfoForDocumentLine(document, lineNum, fieldSchema);
-    if (direct) {
-        return { cardInfo: direct, viaSuggest: false, suggestedName: null, typedName: direct.keywordName };
+function getCardInfoForDocumentLineWithSuggest(document, lineNum, schema, options: any = {}): any {
+    if (!isActiveLsdynaSemanticLocation(document, { line: lineNum, character: 0 })) {
+        return { cardInfo: null, viaSuggest: false, reason: 'inactive-semantic-location' };
     }
-
-    let keywordLine = null;
-    for (let i = lineNum - 1; i >= 0; i--) {
-        if (isKeywordLineText(document.lineAt(i).text)) {
-            keywordLine = i;
-            break;
+    const fieldSchema = schema || getFieldData();
+    const context = fieldContextForLine(document, lineNum, fieldSchema, { ...options, includeCommentHeaders: true });
+    if (context.status !== 'resolved') return { cardInfo: null, viaSuggest: false, reason: context.reason };
+    const direct = keywordSchema.resolveCardFromContext(context.context, fieldSchema);
+    let cardInfo = direct.cardInfo || null;
+    let viaSuggest = false;
+    let suggestedName = null;
+    if (!cardInfo && direct.reason === 'keyword-schema-unavailable') {
+        const suggestion = resolveKeywordLookupWithSuggest(document, context.context.keywordLine);
+        if (suggestion.viaSuggest && suggestion.suggestedName) {
+            suggestedName = suggestion.suggestedName;
+            cardInfo = keywordSchema.resolveCardFromContext(context.context, fieldSchema, suggestedName).cardInfo || null;
+            viaSuggest = !!cardInfo;
         }
     }
-    if (keywordLine === null) {
-        return { cardInfo: null, viaSuggest: false, suggestedName: null, typedName: null };
-    }
-
-    const resolved = resolveKeywordLookupWithSuggest(document, keywordLine);
-    if (!resolved.viaSuggest || !resolved.suggestedName) {
-        return {
-            cardInfo: null,
-            viaSuggest: false,
-            suggestedName: null,
-            typedName: resolved.typedName,
-        };
-    }
-
-    const cardInfo = keywordSchema.getCardInfoForDocumentLine(document, lineNum, fieldSchema, {
-        keywordOverride: resolved.suggestedName,
-    });
+    if (cardInfo) cardInfo = { ...cardInfo, cardCommentNotice: keywordSchema.assessCardComment(cardInfo, context.commentHeaders || []) };
     return {
-        cardInfo,
-        viaSuggest: !!cardInfo,
-        suggestedName: resolved.suggestedName,
-        typedName: resolved.typedName,
+        cardInfo, viaSuggest, suggestedName, keywordLine: context.context.keywordLine,
+        typedName: classifyKeywordLine(context.context.keywordText).normalizedKeyword.replace(/^\*/, ''), reason: direct.reason,
+        unsupportedOptions: direct.unsupportedOptions || [],
+        prefixLayoutStatus: direct.reason === 'prefix-layout-unverified' ? 'unverified'
+            : direct.reason === 'unsupported-keyword-option' ? 'unsupported-option' : undefined,
     };
 }
 
@@ -2617,14 +2893,24 @@ function buildUnknownKeywordHoverMarkdown(kwName, ctx: any = {}) {
         const pickLookup = lookupKeywordInfo(preferred);
         if (pickLookup) {
             suggestHelpKeyword = preferred;
-            detailMarkdown = keywordHoverMarkdown(preferred, pickLookup.entry, pickLookup.activeOptions);
+            detailMarkdown = keywordHoverMarkdown(
+                preferred,
+                pickLookup.entry,
+                pickLookup.activeOptions,
+                pickLookup.canonicalName,
+            );
         }
     } else if (suggest.tier === 'high' && suggest.items[0]) {
         const best = suggest.items[0].keyword;
         const bestLookup = lookupKeywordInfo(best);
         if (bestLookup) {
             suggestHelpKeyword = best;
-            detailMarkdown = keywordHoverMarkdown(best, bestLookup.entry, bestLookup.activeOptions);
+            detailMarkdown = keywordHoverMarkdown(
+                best,
+                bestLookup.entry,
+                bestLookup.activeOptions,
+                bestLookup.canonicalName,
+            );
         }
     } else if (suggest.tier === 'medium' && suggest.items.length > 0) {
         const pickArgs = encodeURIComponent(JSON.stringify([{
@@ -2712,16 +2998,23 @@ async function handlePickSimilarKeywordHelpCommand(arg) {
 class LsdynaFieldHoverProvider {
     /**
      * Generates Hover cards for includes, parameter references, keywords, or card fields.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Active document.
      * @param {import('vscode').Position} position - Cursor position.
      * @returns {import('vscode').Hover|null} Hover card or null.
      */
-    async provideHover(document, position) {
+    async provideHover(document, position, cancellationToken = undefined) {
+        const documentVersion = document.version;
+        const isCurrent = createReferenceReadGuard(document, cancellationToken);
+        if (!isCurrent()) return null;
+        if (cancellationToken?.isCancellationRequested) return null;
         if (shouldSkipAutomaticDocumentScan(document)) return null;
+        if (!isActiveLsdynaSemanticLocation(document, position)) return null;
 
         // Hover on include file paths
-        const includeEntries = findIncludeFileLines(document);
+        if (!shouldSkipAutomaticDocumentScan(document) && !await prepareDocumentPresentation(document)) return null;
+        if (!isCurrent()) return null;
+        const includeEntries = shouldSkipAutomaticDocumentScan(document) ? [] : findIncludeFileLines(document);
         const includeEntry = includeEntries.find(entry => includeScanner.includeEntryContainsLine(entry, position.line));
         if (includeEntry) {
             const ranges = includeScanner.getIncludeEntryRanges(includeEntry);
@@ -2732,20 +3025,21 @@ class LsdynaFieldHoverProvider {
                     const fullPath = searchFileFromPaths(includeEntry.fileName, searchPaths);
                     const uri = vscode.Uri.file(fullPath);
                     const hoverRange = new vscode.Range(rangeOnLine.lineIndex, rangeOnLine.startChar, rangeOnLine.lineIndex, rangeOnLine.endChar);
-                    
+
                     const openNewTabArgs = encodeURIComponent(JSON.stringify([fullPath]));
                     const openSplitArgs = encodeURIComponent(JSON.stringify([fullPath]));
                     const openFolderArgs = encodeURIComponent(JSON.stringify([fullPath]));
-                    
+
                     const md = new vscode.MarkdownString(
                         `[$(go-to-file)](command:extension.openIncludeNewTab?${openNewTabArgs} "${i18n.get('openNewTab')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
                         `[$(split-horizontal)](command:extension.openIncludeSplit?${openSplitArgs} "${i18n.get('openSplit')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
                         `[$(folder-opened)](command:extension.openIncludeFolder?${openFolderArgs} "${i18n.get('openFolder')}")`
                     );
-                    md.isTrusted = true;
+                    md.isTrusted = HOVER_TRUST;
                     md.supportThemeIcons = true;
-                    
+
                     const previewText = await getIncludeFilePreview(fullPath);
+                    if (!isCurrent()) return null;
                     if (previewText) {
                         md.appendMarkdown('\n\n---\n\n');
                         md.appendCodeblock(previewText, 'lsdyna');
@@ -2758,6 +3052,9 @@ class LsdynaFieldHoverProvider {
             }
         }
 
+        if (!await prepareFieldInteraction(document, position, { cancellationToken }) || !isCurrent()) return null;
+        await prepareReferenceDirectory();
+        if (!isCurrent()) return null;
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
@@ -2765,7 +3062,14 @@ class LsdynaFieldHoverProvider {
         // Parameter hover is document-local first. Project evaluation is an optional
         // second layer and is not required to show a definition already in this file.
         const parameterAtCursor = getParameterAtCursor(document, position);
+        let nativeParameterMarkdown = '';
         if (parameterAtCursor) {
+            const located = (await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { cancellationToken })).cardInfo;
+            if (!isCurrent()) return null;
+            const isParameterKeyword = located?.keywordName ? Boolean(classifyParameterKeyword(located.keywordName)) : false;
+            const isParameterOnly = isParameterKeyword || parameterAtCursor.kind === 'definition' || parameterAtCursor.syntax === 'bare';
+            const nativeField = !isParameterOnly && located?.resolutionSource === 'native-file-reader' ? located.card.find(field =>
+                field.nativeRange && position.character >= field.nativeRange.start && position.character < field.nativeRange.end) : null;
             const parameterName = parameterAtCursor.name;
             const sourceDefinitions = findParameterDefinitions(document)
                 .get(parameterName.toUpperCase()) || [];
@@ -2784,7 +3088,7 @@ class LsdynaFieldHoverProvider {
                         projectContextAmbiguous: true,
                     }
                     : null;
-            const effectiveAnalysis = referenceIndexState && referenceIndexState.projectScoped
+            const effectiveAnalysis = nativeField ? nativeParameterContextForDocument(document).resolve(nativeField.rawValue, position.line) : referenceIndexState && referenceIndexState.projectScoped
                 ? analyzeParameterReferenceAtLocation(
                     referenceIndexState.referenceIndex,
                     parameterName,
@@ -2806,9 +3110,10 @@ class LsdynaFieldHoverProvider {
                 effectiveAnalysis,
                 mainDeckContextMarkdown,
             }));
-            md.isTrusted = true;
+            md.isTrusted = HOVER_TRUST;
             md.supportThemeIcons = true;
-            return new vscode.Hover(md, parameterAtCursor.fullRange);
+            if (!nativeField) return new vscode.Hover(md, parameterAtCursor.fullRange);
+            nativeParameterMarkdown = md.value;
         }
 
         // Hover on keyword lines
@@ -2820,8 +3125,9 @@ class LsdynaFieldHoverProvider {
             let previewMd = '';
             const normalizedKw = kwName.toUpperCase();
             if (normalizedKw.startsWith('DEFINE_CURVE') || normalizedKw.startsWith('DEFINE_TABLE')) {
-                const referenceIndexState = await getReferenceIndexForDocument(document);
-                const fileIndex = getFileIndexForDocument(document);
+                const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
+            if (!isCurrent() || referenceIndexState?.unavailable) return null;
+                const fileIndex = lookupNormalizedFileIndex(referenceIndexState?.snapshot?.fileIndexes, document.uri.fsPath) || getFileIndexForDocument(document);
                 if (fileIndex && fileIndex.referenceDefinitions) {
                     const { curves, tables } = fileIndex.referenceDefinitions;
                     const match = (curves || []).find(c => c.startLine === position.line) ||
@@ -2835,7 +3141,23 @@ class LsdynaFieldHoverProvider {
                                 { projectScoped: referenceIndexState.projectScoped }
                             )
                             : match;
-                        previewMd = buildDefinitionHoverSection(resolvedMatch, themeKind);
+                        const tablePreviewKey = buildTablePreviewReferenceKey(
+                            document.uri.fsPath,
+                            position.line,
+                            `definition:${resolvedMatch.keyword}:${resolvedMatch.id ?? resolvedMatch.idRaw ?? ''}`
+                        );
+                        previewMd = buildDefinitionHoverSection(
+                            resolvedMatch,
+                            themeKind,
+                            {
+                                key: tablePreviewKey,
+                                view: getTablePreviewViewForReference(tablePreviewKey),
+                                filePath: document.uri.fsPath,
+                                lineIndex: position.line,
+                                character: 0,
+                                endCharacter: document.lineAt(position.line).text.length,
+                            }
+                        );
                     }
                 }
             }
@@ -2861,7 +3183,7 @@ class LsdynaFieldHoverProvider {
                 });
                 if (hasManuals || notConfigured || previewMd || storageEntry || built.suggestHelpKeyword || built.markdown.includes('command:extension.pickSimilarKeywordHelp')) {
                     const md = new vscode.MarkdownString(built.markdown);
-                    md.isTrusted = true;
+                    md.isTrusted = HOVER_TRUST;
                     md.supportThemeIcons = true;
                     md.supportHtml = true;
                     // Manual links for the suggested keyword when we embedded its help; else the typed name.
@@ -2870,44 +3192,174 @@ class LsdynaFieldHoverProvider {
                 }
                 return null;
             }
-            let hoverContent = keywordHoverMarkdown(kwName, lookup.entry, lookup.activeOptions);
+            const prefixRecords = collectBoundedPrefixDataRecords(document, position.line);
+            const prefixDataLines = prefixRecords.map(record => record.text);
+            const parameterContext = prefixDataLines.some(text => text.includes('&')) ? nativeParameterContextForDocument(document) : undefined;
+            const nativeCards = require('./core/semantics/nativeFieldResolution').hasNativeFileReader(lookup.inputName)
+                ? prefixDataLines.flatMap((currentText, index) => {
+                    const result = keywordSchema.resolveCardFromContext({
+                        keywordLine: position.line, keywordText: text, currentText,
+                        dataLineOrdinal: index + 1, observedDataLines: prefixDataLines,
+                        recordLines: prefixRecords.map(record => record.line), parameterContext,
+                        globalInputFormat: documentGlobalInputFormat(document),
+                    }, getFieldData());
+                    return result.cardInfo ? [result.cardInfo.card] : [];
+                }) : undefined;
+            let hoverContent = keywordHoverMarkdown(
+                kwName,
+                lookup.entry,
+                lookup.activeOptions,
+                lookup.canonicalName,
+                prefixDataLines,
+                nativeCards,
+            );
+            const semanticAdvice = getKeywordSemanticAdviceForDocument(document, position.line, lookup);
+            const semanticMarkdown = buildKeywordSemanticAdviceMarkdown(semanticAdvice);
+            if (semanticMarkdown) hoverContent += `\n\n${semanticMarkdown}`;
+            const structureAnalysis = analyzeKeywordStructureForDocument(
+                document,
+                position.line,
+                { maximumPhysicalLines: KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES },
+            );
+            const cardEditPlan = planVerifiedConditionalCardsForDocument(document, position.line);
+            const cardEditMarkdown = buildVerifiedConditionalCardEditMarkdown(
+                cardEditPlan,
+                document,
+                position.line,
+            );
+            const structureMarkdown = buildKeywordStructureIssueMarkdown(
+                structureAnalysis,
+                document,
+                position.line,
+                position.line,
+                { allowRepair: cardEditPlan?.status !== 'ready' },
+            );
+            if (structureMarkdown) hoverContent += `\n\n${structureMarkdown}`;
+            if (cardEditMarkdown) hoverContent += `\n\n${cardEditMarkdown}`;
             if (previewMd) {
                 hoverContent = `${previewMd}\n\n---\n\n${hoverContent}`;
             }
             const md = new vscode.MarkdownString(hoverContent);
-            md.isTrusted = true;
+            md.isTrusted = HOVER_TRUST;
             md.supportThemeIcons = true;
             md.supportHtml = true;
-            appendKeywordHoverActions(md, lookup.entry, position.line);
+            if (!classifyOpaqueCommentDirective(text)) {
+                appendKeywordHoverActions(md, lookup, position.line, document, semanticAdvice);
+            }
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);
         }
 
-        // Skip comment lines
-        if (trimmed.startsWith('$')) return null;
+        // Fixed field help requires fixed data; conversion is an explicit editor action.
+        if (isKeywordCommentLine(text)) return null;
 
-        // Find the enclosing keyword line
-        let kwLine = null;
-        for (let i = position.line - 1; i >= 0; i--) {
-            if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
-        }
-        if (kwLine === null) return null;
-
+        const resolvedCard = await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { cancellationToken });
+        if (!isCurrent()) return null;
+        const kwLine = resolvedCard.keywordLine;
+        if (!Number.isInteger(kwLine)) return null;
         const kwText = document.lineAt(kwLine).text.trim();
         const kwName = kwText.slice(1).toUpperCase().split(/[\s,]/)[0];
-        const resolvedCard = getCardInfoForDocumentLineWithSuggest(document, position.line, getFieldData());
         const cardInfo = resolvedCard.cardInfo;
         const card = cardInfo ? cardInfo.card : null;
-        if (!card || card.length === 0) return null;
+        if (!card || card.length === 0) {
+            const rejectionMessage = String(resolvedCard.reason || '').endsWith('spelling-rejected')
+                ? (i18n.getLanguage() === 'zh-cn'
+                    ? '当前字段规则不支持此关键字拼写，无法提供对应的字段说明。'
+                    : 'This keyword spelling is not supported by the current field rules; no corresponding field help is available.') : '';
+            const controlIssue = String(resolvedCard.reason || '').match(/^native-control-(.+)-(missing|blank|unresolved)$/);
+            const controlMessage = controlIssue ? (i18n.getLanguage() === 'zh-cn'
+                ? `无法确定此处字段：控制字段 ${controlIssue[1]} ${controlIssue[2] === 'missing' ? '所在记录缺失' : controlIssue[2] === 'blank' ? '为空，默认值尚未得到文件规则验证' : '的值无法解析'}。`
+                : `Cannot determine this field: control ${controlIssue[1]} ${controlIssue[2] === 'missing' ? 'has no source record' : controlIssue[2] === 'blank' ? 'is blank and its file default is not verified' : 'has an unresolved value'}.`) : '';
+            const parameterIssue = String(resolvedCard.reason || '').startsWith('native-parameter-')
+                ? String(resolvedCard.reason).slice('native-'.length).split(',').map(uncertaintyReasonLabel).join('\n\n')
+                : '';
+            const issue = buildPrefixLayoutIssueMarkdown(
+                resolvedCard.prefixLayoutStatus,
+                resolvedCard.unsupportedOptions,
+            ) || rejectionMessage || parameterIssue || controlMessage || (String(resolvedCard.reason || '').startsWith('native-')
+                ? (i18n.getLanguage() === 'zh-cn'
+                    ? '无法确定此处字段：控制值、记录结构或输入格式尚未得到确认。'
+                    : 'Cannot determine this field: the control value, record layout, or input format is not resolved.')
+                : '');
+            if (!issue) return null;
+            const issueMd = new vscode.MarkdownString(issue);
+            issueMd.isTrusted = HOVER_TRUST;
+            issueMd.supportHtml = true;
+            issueMd.supportThemeIcons = true;
+            return new vscode.Hover(
+                issueMd,
+                new vscode.Range(position.line, 0, position.line, text.length),
+            );
+        }
 
-        const col = position.character;
-        const field = card.find(f => col >= f.p && col < f.p + f.w);
-        if (!field) return null;
         // Field-help quiet switch: only suppress card-field hovers (not include/param/keyword).
         if (!isFieldHoverEffective(document.uri)) return null;
 
+        const cardCommentNoticeMarkdown = buildCardCommentNoticeMarkdown(
+            cardInfo,
+            document,
+            kwLine,
+            position.line,
+        );
+        const col = position.character;
+        const matchingFields = card.filter(f => col >= f.p && col < f.p + f.w);
+        const field = matchingFields[0];
+        if (!field) {
+            if (!cardCommentNoticeMarkdown) return null;
+            const conflictMd = new vscode.MarkdownString(cardCommentNoticeMarkdown);
+            conflictMd.isTrusted = HOVER_TRUST;
+            conflictMd.supportHtml = true;
+            conflictMd.supportThemeIcons = true;
+            return new vscode.Hover(
+                conflictMd,
+                new vscode.Range(position.line, 0, position.line, text.length),
+            );
+        }
+
+        // Limit the hover to a region with the same set of native identities.
+        // Otherwise a single-field hover can stay cached as the cursor enters
+        // a partially overlapping field's window.
+        const boundaries = card.flatMap(f => f.nativeRange ? [f.nativeRange.start, f.nativeRange.end] : []);
+        const nativeStart = field.nativeRange ? Math.max(field.nativeRange.start, ...boundaries.filter(value => value <= col)) : Math.min(text.length, field.p);
+        const nativeEnd = field.nativeRange ? Math.min(field.nativeRange.end, ...boundaries.filter(value => value > col)) : Math.min(text.length, field.p + field.w);
+        if (matchingFields.length > 1 && matchingFields.every(f => f.nativeIdentity)) {
+            const md = new vscode.MarkdownString(i18n.getLanguage() === 'zh-cn'
+                ? '这些原生字段读取共享字节，各自保留字段身份和类型。'
+                : 'These native fields read shared bytes and retain distinct identities and types.');
+            md.isTrusted = HOVER_TRUST;
+            md.supportHtml = true;
+            md.supportThemeIcons = true;
+            for (const candidate of matchingFields) {
+                md.appendMarkdown(`\n\n### **${candidate.n}** *(${candidate.t})*\n\n`);
+                md.appendCodeblock(candidate.rawValue ?? text.slice(candidate.p, candidate.p + candidate.w));
+                const help = buildFieldHelpMarkdown(candidate, {
+                    keyword: cardInfo.keywordName || kwName, cardIndex: cardInfo.cardIndex, fieldIndex: card.indexOf(candidate),
+                });
+                if (help) md.appendMarkdown(`\n\n${help}`);
+            }
+            const conditions = buildControlConditionMarkdown(document, kwLine, matchingFields.map(candidate => candidate.n));
+            if (conditions) md.appendMarkdown(`\n\n${conditions}`);
+            if (cardCommentNoticeMarkdown) md.appendMarkdown(`\n\n${cardCommentNoticeMarkdown}`);
+            if (cardInfo.nativeConditions?.length) md.appendMarkdown(`\n\n${cardInfo.nativeConditions.join(' · ')}`);
+            if (nativeParameterMarkdown) md.appendMarkdown(`\n\n${nativeParameterMarkdown}`);
+            appendManualLinks(md, resolvedCard.suggestedName || kwName, { fieldHoverQuiet: true });
+            return new vscode.Hover(md, new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
+        }
+
+        const fieldCardCommentNoticeMarkdown = buildCardCommentNoticeMarkdown(
+            cardInfo,
+            document,
+            kwLine,
+            position.line,
+            field,
+        );
         const typeLabel = field.t ? ` *(${field.t})*` : '';
-        const formattedHelp = buildFieldHelpMarkdown(field);
+        const helpKeywordName = cardInfo.keywordName || resolvedCard.suggestedName || kwName;
+        const formattedHelp = buildFieldHelpMarkdown(field, {
+            keyword: helpKeywordName,
+            cardIndex: cardInfo.cardIndex,
+            fieldIndex: card.indexOf(field),
+        });
         const helpText = formattedHelp ? `\n\n${formattedHelp}` : '';
         const suggestInfoIcon = resolvedCard.viaSuggest && resolvedCard.suggestedName
             ? ` ${buildHoverInfoIcon([
@@ -2931,24 +3383,35 @@ class LsdynaFieldHoverProvider {
             `| ${separators.join(' | ')} |`,
             `| ${fieldNamesBody.join(' | ')} |`
         ].join('\n');
-        const rawFieldValue = text.slice(field.p, field.p + field.w);
-        const helpKeywordName = cardInfo.keywordName || resolvedCard.suggestedName || kwName;
-        const referenceInfo = getFieldReferenceInfo({
+        const rawFieldValue = field.rawValue ?? text.slice(field.p, field.p + field.w);
+        const referenceInfo = field.nativeIdentity && !field.nativeStaticBinding ? null : getActionableFieldReferenceInfo({
             keyword: helpKeywordName,
             cardIndex: cardInfo.cardIndex,
             field,
         });
         const referenceValue = referenceInfo ? parseFieldReferenceValue(rawFieldValue, referenceInfo) : null;
         const manualKw = resolvedCard.suggestedName || kwName;
+        const officialChoicePlan = resolvedCard.viaSuggest || (field.nativeIdentity && !field.nativeStaticBinding)
+            ? null
+            : planOfficialFieldChoicesForDocument(document, position, {
+                keywordLine: kwLine,
+                expectedDocumentVersion: document.version,
+                maximumKeywordLookback: 0,
+            });
+        const officialChoiceMarkdown = buildOfficialFieldChoiceHoverMarkdown(
+            officialChoicePlan,
+            document,
+        );
 
         let md;
         if (referenceInfo && referenceValue) {
             md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${suggestInfoIcon}${typeLabel}`);
-            md.isTrusted = true;
+            md.isTrusted = HOVER_TRUST;
             md.supportHtml = true;
             md.supportThemeIcons = true;
 
-            const referenceIndexState = await getReferenceIndexForDocument(document);
+            const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
+            if (!isCurrent() || referenceIndexState?.unavailable) return null;
             const analysis = resolveHoverAnalysis(
                 referenceIndexState,
                 referenceValue,
@@ -2959,6 +3422,11 @@ class LsdynaFieldHoverProvider {
                 }
             );
             const themeKind = vscode.window?.activeColorTheme?.kind;
+            const tablePreviewKey = buildTablePreviewReferenceKey(
+                document.uri.fsPath,
+                position.line,
+                field.n
+            );
 
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
@@ -2967,6 +3435,23 @@ class LsdynaFieldHoverProvider {
                 analysis,
                 themeKind,
                 documentPath: document.uri.fsPath,
+                tablePreviewContext: {
+                    key: tablePreviewKey,
+                    view: getTablePreviewViewForReference(tablePreviewKey),
+                    filePath: document.uri.fsPath,
+                    lineIndex: position.line,
+                    character: field.p,
+                    endCharacter: field.p + field.w,
+                },
+                workspaceSearchContext: {
+                    filePath: document.uri.fsPath,
+                    lineIndex: position.line,
+                    character: field.p,
+                    documentVersion: document.version,
+                    projectRootFile: referenceIndexState && referenceIndexState.projectScoped
+                        ? referenceIndexState.rootFile
+                        : undefined,
+                },
             }));
             const mainDeckContextMarkdown = buildMainDeckContextHoverMarkdown(
                 referenceIndexState,
@@ -2978,16 +3463,26 @@ class LsdynaFieldHoverProvider {
 
             // Manual & columns at the bottom
             md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
+            if (officialChoiceMarkdown) md.appendMarkdown(`\n\n${officialChoiceMarkdown}`);
+            if (fieldCardCommentNoticeMarkdown) md.appendMarkdown(`\n\n${fieldCardCommentNoticeMarkdown}`);
             appendManualLinks(md, manualKw, { fieldHoverQuiet: true });
         } else {
             md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${suggestInfoIcon}${typeLabel}${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
-            md.isTrusted = true;
+            md.isTrusted = HOVER_TRUST;
             md.supportHtml = true;
             md.supportThemeIcons = true;
+            if (officialChoiceMarkdown) md.appendMarkdown(`\n\n${officialChoiceMarkdown}`);
+            if (fieldCardCommentNoticeMarkdown) md.appendMarkdown(`\n\n${fieldCardCommentNoticeMarkdown}`);
             appendManualLinks(md, manualKw, { fieldHoverQuiet: true });
         }
 
-        const range = new vscode.Range(position.line, field.p, position.line, field.p + field.w);
+        const conditions = buildControlConditionMarkdown(document, kwLine, [field.n]);
+        if (conditions) md.appendMarkdown(`\n\n${conditions}`);
+        if (cardInfo.nativeConditions?.length) {
+            md.appendMarkdown(`\n\n${cardInfo.nativeConditions.map(value => `\`${value}\``).join(' · ')}`);
+        }
+        if (nativeParameterMarkdown) md.appendMarkdown(`\n\n---\n\n${nativeParameterMarkdown}`);
+        const range = new vscode.Range(position.line, nativeStart, position.line, nativeEnd);
         return new vscode.Hover(md, range);
     }
 }
@@ -2999,7 +3494,7 @@ class LsdynaFieldHoverProvider {
 class LsdynaParameterCodeLensProvider {
     /**
      * Spawns CodeLenses for parameter definitions.
-     * 
+     *
      * @param {import('vscode').TextDocument} document - Document.
      * @returns {import('vscode').CodeLens[]} CodeLenses.
      */
@@ -3068,7 +3563,7 @@ function getEffectiveSearchPaths(document) {
 
 /**
  * Synchronously searches backward to locate the starting line of the enclosing keyword block.
- * 
+ *
  * @param {number} lineCount - Document lines.
  * @param {function(number): string} getLine - Line retrieval callback.
  * @param {number} lineindex - Starting line index.
@@ -3083,7 +3578,7 @@ function startLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) 
 
 /**
  * Synchronously searches forward to locate the ending line of the enclosing keyword block.
- * 
+ *
  * @param {number} lineCount - Document lines.
  * @param {function(number): string} getLine - Line retrieval callback.
  * @param {number} lineindex - Starting line index.
@@ -3098,7 +3593,7 @@ function endLineOfCurrentKeywordFromLineReader(lineCount, getLine, lineindex) {
 
 /**
  * Resolves the filename corresponding to an include keyword line.
- * 
+ *
  * @param {number} lineCount - Total lines.
  * @param {function(number): string} getLine - Line reader callback.
  * @param {number} lineindex - Line index inside include block.
@@ -3153,7 +3648,7 @@ function getFilenameFromDocument(document, lineindex) {
 
 /**
  * Iterates folders in path list to find where target file exists on disk.
- * 
+ *
  * @param {string} filePath - Target file.
  * @param {string[]} paths - Ordered list of folders.
  * @returns {string} Absolute path.
@@ -3168,7 +3663,7 @@ function searchFileFromPaths(filePath, paths) {
 
 /**
  * Locates the next line starting with '*' (excluding currentLine).
- * 
+ *
  * @param {number} lineCount - Total lines.
  * @param {function(number): string} getLine - Line reader.
  * @param {number} currentLine - Current line.
@@ -3191,7 +3686,7 @@ function findNextKeywordInDocument(document, currentLine) {
 
 /**
  * Locates the previous line starting with '*' (excluding currentLine).
- * 
+ *
  * @param {number} lineCount - Total lines.
  * @param {function(number): string} getLine - Line reader.
  * @param {number} currentLine - Current line.
@@ -3214,7 +3709,7 @@ function findPreviousKeywordInDocument(document, currentLine) {
 
 /**
  * Creates a debounced callback function for updating document views on typing.
- * 
+ *
  * @param {function(): import('vscode').TextDocument|null} getActiveDocument - Gets current document.
  * @param {function(any): void} refreshDocument - Callback to trigger update.
  * @param {number} [delayMs=500] - Timer delay.
@@ -3238,7 +3733,7 @@ function createActiveDocumentDebouncer(getActiveDocument, refreshDocument, delay
 
 /**
  * Recursively scans files in project inclusion tree starting from a root.
- * 
+ *
  * @param {string} rootPath - Main file path.
  * @param {function(number): void} [onProgress] - Progress listener callback.
  * @returns {Promise<string[]>} List of all dependency files found.
@@ -3752,8 +4247,12 @@ class LsdynaUnknownKeywordCodeActionProvider {
 function isIncludeFilenameCompletionContext(document, position) {
     if (!document || !position) return false;
     const lineText = document.lineAt(position.line).text;
+    const cached = documentPresentationCache.get(document);
+    const block = cached?.ready && cached.version === document.version
+        ? presentationBlockAtLine(cached.blocks, position.line) : null;
+    if (cached?.ready && (!block || block.opaqueKind || !String(block.keyword).replace(/^\*/, '').startsWith('INCLUDE'))) return false;
     const linesBeforeAndCurrent = [];
-    for (let i = 0; i <= position.line; i++) {
+    for (let i = block?.startLine || 0; i <= position.line; i++) {
         linesBeforeAndCurrent.push(document.lineAt(i).text);
     }
     return includePathCompletion.isIncludeFilenameLineContext({
@@ -3781,10 +4280,12 @@ function activeDocumentHasMultipleSelections(document) {
  * @implements {vscode.CompletionItemProvider}
  */
 class LsdynaIncludeCompletionProvider {
-    provideCompletionItems(document, position, token, context) {
+    async provideCompletionItems(document, position, token, context) {
         if (!document || !document.uri || !document.uri.fsPath) return [];
         if (activeDocumentHasMultipleSelections(document)) return [];
         if (shouldSkipAutomaticDocumentScan(document)) return [];
+        const current = createDocumentReadGuard(document, token);
+        if (!await prepareDocumentPresentation(document) || !current()) return [];
         if (!isIncludeFilenameCompletionContext(document, position)) return [];
 
         const lineText = document.lineAt(position.line).text;
@@ -3847,13 +4348,12 @@ class LsdynaIncludeCompletionProvider {
 }
 
 function getCardFieldsForLine(document, lineNum) {
-    let kwLine = null;
-    for (let i = lineNum - 1; i >= 0; i--) {
-        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
-    }
-    if (kwLine === null) return null;
-
-    const kwText = document.lineAt(kwLine).text.trim();
+    const text = document?.lineAt(lineNum)?.text || '';
+    if (!isActiveLsdynaSemanticLocation(document, { line: lineNum, character: text.length })) return null;
+    const schema = getFieldData();
+    const context = fieldContextForLine(document, lineNum, schema);
+    if (context.status !== 'resolved') return null;
+    const kwText = context.context.keywordText;
 
     const ignoreKeywords = getLsdynaConfigurationValue('ignoreFormattingKeywords', [], document.uri) || [];
     const kwTextUpper = kwText.toUpperCase();
@@ -3863,22 +4363,10 @@ function getCardFieldsForLine(document, lineNum) {
         }
     }
 
-    // Long format (LS-DYNA `*KEYWORD+` or `LONG=Y/S`) uses 20-char fields, not the
-    // 10/8-char columns the schema encodes. Rather than re-aligning to the wrong
-    // columns and corrupting the line, bow out so cell protect / format fall back
-    // to plain editing. Notify once per document so the user knows why.
-    // Two forms: per-keyword `*NODE+` on this block's keyword line, or a deck-wide
-    // `*KEYWORD LONG=Y` header that applies to every block.
-    if (keywordSchema.isLongFormatKeyword(kwText)) {
-        notifyLongFormatOnce(document, kwText);
-        return null;
-    }
-    if (documentUsesGlobalLongFormat(document)) {
-        notifyLongFormatOnce(document, '*KEYWORD LONG=Y');
-        return null;
-    }
-
-    return keywordSchema.getCardForDocumentLine(document, lineNum, getFieldData());
+    // The conversion picker needs template geometry for comma-delimited input;
+    // semantic consumers use the strict resolver and never interpret these bytes as fixed cells.
+    const info = keywordSchema.resolveCardFromContext(context.context, schema, null, true).cardInfo;
+    return info ? info.card : null;
 }
 
 const globalLongFormatCache = new WeakMap();
@@ -3970,20 +4458,23 @@ function getDataCardDisplayIndexForLine(document, lineNum) {
 }
 
 class LsdynaFieldCompletionProvider {
-    provideCompletionItems(document, position, token, context) {
+    async provideCompletionItems(document, position, token, context) {
+        if (inlineEditChoiceSession) return [];
         if (activeDocumentHasMultipleSelections(document)) return [];
         if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+        const current = createDocumentReadGuard(document, token);
+        if (!await prepareFieldInteraction(document, position, { cancellationToken: token }) || !current()) return [];
+        if (!isActiveLsdynaSemanticLocation(document, position)) return [];
 
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
         const textBeforeCursor = text.slice(0, position.character).trim();
         const isCommentTrigger = textBeforeCursor === '$' || textBeforeCursor === '$#';
-        const textCardInfo = keywordSchema.getCardInfoForDocumentLine(
-            document,
-            position.line,
-            getFieldData()
-        );
+        const fieldContext = fieldContextForLine(document, position.line, getFieldData());
+        const keywordLine = fieldContext.status === 'resolved' ? fieldContext.context.keywordLine : null;
+        const textCardInfo = fieldContext.status === 'resolved'
+            ? keywordSchema.resolveCardFromContext(fieldContext.context, getFieldData()).cardInfo : null;
 
         // Guard: Skip keywords and non-trigger comments
         if (textCardInfo?.isTextCard || isKeywordLineText(text) || (trimmed.startsWith('$') && !isCommentTrigger)) return [];
@@ -4013,12 +4504,20 @@ class LsdynaFieldCompletionProvider {
         // Skip completions for title/filename fields (single wide field)
         if (card.length === 1 && card[0].w >= 40) return [];
 
-        const displayIndex = getDataCardDisplayIndexForLine(document, position.line);
-
-        const items = [];
+        const items = buildOfficialFieldChoiceCompletionItems(
+            document,
+            position,
+            context,
+            textCardInfo,
+            keywordLine,
+        );
 
         // 1. Row Card Template (Only when line is empty or near the beginning)
-        if (text.trim().length === 0 || position.character <= 1) {
+        if (position.character <= 1) {
+            // Counting the ordinal may walk a long repeating block. It is only
+            // presentation metadata for the row template, so never pay that cost
+            // for ordinary in-cell value completion.
+            const displayIndex = getDataCardDisplayIndexForLine(document, position.line);
             const templateItem = new vscode.CompletionItem(
                 i18n.get('rowTemplateLabel', displayIndex + 1),
                 vscode.CompletionItemKind.Snippet
@@ -4026,22 +4525,11 @@ class LsdynaFieldCompletionProvider {
             templateItem.detail = i18n.get('rowTemplateDetail');
             templateItem.documentation = new vscode.MarkdownString(i18n.get('rowTemplateDocumentation'));
 
-            let snippetText = '';
-            let prevEnd = 0;
-            for (let j = 0; j < card.length; j++) {
-                const f = card[j];
-                const gap = f.p - prevEnd;
-                if (gap > 0) snippetText += ' '.repeat(gap);
-
-                const isFloat = f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real') || f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z'));
-                const defVal = isFloat ? '0.0' : '0';
-                const padLen = Math.max(0, f.w - defVal.length);
-                const placeholder = f.w >= 40 ? defVal + ' '.repeat(padLen) : ' '.repeat(padLen) + defVal;
-
-                snippetText += `\${${j + 1}:${placeholder}}`;
-                prevEnd = f.p + f.w;
-            }
-            templateItem.insertText = new vscode.SnippetString(snippetText);
+            const template = require('./core/completion/recordTemplate').recordTemplate(card.map(field => ({
+                name: field.n, position: field.p, width: field.w, type: field.t, defaultValue: field.d,
+            })));
+            if (!template) return items;
+            templateItem.insertText = new vscode.SnippetString(template.snippet);
             // Ensure template is sorted at top
             templateItem.sortText = '0_' + displayIndex;
             items.push(templateItem);
@@ -4056,21 +4544,26 @@ class LsdynaFieldCompletionProvider {
                 const label = i18n.get('fieldCompletionLabel', f.n, f.p + 1, f.p + f.w);
                 const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Field);
                 item.detail = i18n.get('fieldDetail', f.t || 'I', f.n);
-                if (f.h) {
-                    const helpMd = buildFieldHelpMarkdown(f);
-                    const doc = new vscode.MarkdownString(helpMd || f.h);
+                const completionKeyword = keywordLine !== null
+                    ? keywordLineNameFromText(document.lineAt(keywordLine).text)
+                    : '';
+                const helpMd = buildFieldHelpMarkdown(f, {
+                    keyword: completionKeyword,
+                    cardIndex: textCardInfo?.cardIndex || 1,
+                    fieldIndex: j,
+                });
+                if (helpMd) {
+                    const doc = new vscode.MarkdownString(helpMd);
                     doc.supportHtml = true;
-                    doc.isTrusted = true;
+                    doc.isTrusted = HOVER_TRUST;
                     item.documentation = doc;
                 }
 
-                const isFloat = f.h && (f.h.toLowerCase().includes('float') || f.h.toLowerCase().includes('real') || f.n.toUpperCase().startsWith('X') || f.n.toUpperCase().startsWith('Y') || f.n.toUpperCase().startsWith('Z'));
-                const defVal = isFloat ? '0.0' : '0';
-                const padLen = Math.max(0, f.w - defVal.length);
-                const placeholder = ' '.repeat(padLen) + defVal;
-
-                // Insert spaces to align, then insert aligned placeholder
-                const insertText = ' '.repeat(padding) + `\${1:${placeholder}}`;
+                const template = require('./core/completion/recordTemplate').recordTemplate([{
+                    name: f.n, position: 0, width: f.w, type: f.t, defaultValue: f.d,
+                }]);
+                if (!template) continue;
+                const insertText = ' '.repeat(padding) + template.snippet;
                 item.insertText = new vscode.SnippetString(insertText);
                 item.range = new vscode.Range(position.line, col, position.line, col);
                 // Sort individual fields in order of column position
@@ -4088,8 +4581,10 @@ let keywordSnippets = null;
 
 class LsdynaKeywordCompletionProvider {
     provideCompletionItems(document, position, token, context) {
+        if (inlineEditChoiceSession) return [];
         if (activeDocumentHasMultipleSelections(document)) return [];
         if (!document || shouldSkipAutomaticDocumentScan(document)) return [];
+        if (!isActiveLsdynaSemanticLocation(document, position)) return [];
 
         const line = document.lineAt(position.line);
         const textBeforeCursor = line.text.slice(0, position.character);
@@ -4111,21 +4606,11 @@ class LsdynaKeywordCompletionProvider {
                     let bodyStr = snippet.body.join('\n');
                     // Remove the extra newline before $0 at the end of the snippet
                     bodyStr = bodyStr.replace(/\n\$0$/, '$0');
-                    
+
                     // Remove leading '*' from the snippet body to prevent double '**'
                     if (bodyStr.startsWith('*')) {
                         bodyStr = bodyStr.substring(1);
                     }
-                    
-                    // Replace non-numeric placeholders with spaces
-                    bodyStr = bodyStr.replace(/\$\{\d+:([^}]+)\}/g, (match, p1) => {
-                        const trimmed = p1.trim();
-                        const isNum = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/i.test(trimmed);
-                        if (!isNum && trimmed.length > 0) {
-                            return match.replace(p1, ' '.repeat(p1.length));
-                        }
-                        return match;
-                    });
 
                     item.insertText = new vscode.SnippetString(bodyStr);
                     if (snippet.description) {
@@ -4145,42 +4630,23 @@ class LsdynaKeywordCompletionProvider {
 }
 
 
-function generateCommentLine(card) {
-    if (!card || card.length === 0) return '';
-    let line = '$#';
-    let written = 2;
-    for (let i = 0; i < card.length; i++) {
-        const f = card[i];
-        const available = f.p + f.w - written;
-        if (available <= 0) continue;
-        
-        const name = (f.n || '').toLowerCase().substring(0, available);
-        if (card.length === 1 && f.w > 80) {
-            line = '$# ' + name;
-            written = line.length;
-            continue;
-        }
-        
-        if (f.w >= 40) {
-            if (i === 0) {
-                line = ('$# ' + name).padEnd(f.p + f.w, ' ');
-            } else {
-                line += name.padEnd(available, ' ');
-            }
-        } else {
-            line += name.padStart(available, ' ');
-        }
-        
-        written = f.p + f.w;
-    }
-    return line;
-}
+const { generateCommentLine } = require('./core/completion/fieldComment');
+
+const autoIndentEditBarriers = new WeakMap<object, Promise<void>>();
 
 async function handleEnterIndentationRemoval(event) {
     if (event.document.languageId !== 'lsdyna') return;
+    if (
+        getLsdynaConfigurationValue(
+            'clearAutoIndentOnEnter',
+            false,
+            event.document.uri,
+        ) !== true
+    ) return;
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document !== event.document) return;
 
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(event.document, editor);
     const changes = Array.isArray(event.contentChanges) ? event.contentChanges : [];
     if (changes.length === 0) return;
 
@@ -4217,7 +4683,11 @@ async function handleEnterIndentationRemoval(event) {
 
     if (candidates.length === 0 || (changes.length > 1 && candidates.length !== changes.length)) return;
 
+    let release;
+    const barrier = new Promise<void>(resolve => { release = resolve; });
+    autoIndentEditBarriers.set(event.document, barrier);
     try {
+        if (!await canApplyDocumentEdit(event.document, editIsCurrent)) return;
         await editor.edit(editBuilder => {
             for (const candidate of candidates) {
                 editBuilder.delete(new vscode.Range(
@@ -4228,45 +4698,46 @@ async function handleEnterIndentationRemoval(event) {
         }, { undoStopBefore: false, undoStopAfter: false });
     } catch (err) {
         console.error('[lsdyna] Failed to clear auto indent spaces:', err);
+    } finally {
+        if (autoIndentEditBarriers.get(event.document) === barrier) autoIndentEditBarriers.delete(event.document);
+        release();
     }
 }
 
 
 function extractSmartTokens(text) {
     const trimmed = text.trimStart();
-    const rawTokens = trimmed.split(/\s+/).filter(t => t.length > 0);
-    const tokens = [];
-    const numPattern = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/i;
-    for (const t of rawTokens) {
-        if (numPattern.test(t)) {
-            tokens.push(t);
-            continue;
-        }
-        const matchAlphaSignedNum = t.match(/^([A-Za-z0-9_]+)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
-        if (matchAlphaSignedNum) {
-            tokens.push(matchAlphaSignedNum[1], matchAlphaSignedNum[2]);
-            continue;
-        }
-        const matchNumNum = t.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)([+-](?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/i);
-        if (matchNumNum) {
-            tokens.push(matchNumNum[1], matchNumNum[2]);
-            continue;
-        }
-        tokens.push(t);
-    }
-    return tokens;
+    // Never split a non-whitespace token heuristically. LS-DYNA accepts compact
+    // exponents such as `1.0-3` / `2.0+4`; interpreting the sign as an adjacent
+    // field silently changes the engineering value. Genuinely concatenated
+    // fixed-width values are resolved by their physical columns instead.
+    return trimmed.split(/\s+/).filter(t => t.length > 0);
 }
 
-function planAlignedLine(text, card, isFieldHeaderLine = false) {
+function planAlignedLine(
+    text,
+    card,
+    isFieldHeaderLine = false,
+    options = { allowAmbiguousTrailing: false, forceValueOrder: false },
+) {
     const originalText = String(text || '');
-    const unchanged = () => ({ status: 'unchanged', text: originalText });
+    const unchanged = () => ({ status: 'unchanged', text: originalText, reason: null });
     const unsafe = reason => ({ status: 'unsafe', text: originalText, reason });
     const completed = alignedText => ({
         status: alignedText === originalText ? 'unchanged' : 'aligned',
         text: alignedText,
+        reason: null,
     });
 
     if (!card || card.length === 0) return unchanged();
+    // Conditional/alternative LS-DYNA schemas can describe fields that share
+    // the same physical columns.  Reconstructing such a line by value order
+    // would silently choose one schema interpretation and can duplicate or
+    // move engineering values.  Formatting must therefore fail closed before
+    // reading or rewriting any field slices.
+    if (!cardCellModel.isSafeCardGeometry(card)) {
+        return unsafe('unsafe-card-geometry');
+    }
 
     let processText = originalText;
     let commentPrefix = '';
@@ -4283,23 +4754,10 @@ function planAlignedLine(text, card, isFieldHeaderLine = false) {
         }
     }
 
-    if (!processText.trim()) {
-        let emptyLine = '';
-        let prevEnd = 0;
-        for (const f of card) {
-            const gap = f.p - prevEnd;
-            if (gap > 0) emptyLine += ' '.repeat(gap);
-            emptyLine += ' '.repeat(f.w);
-            prevEnd = f.p + f.w;
-        }
-        if (isFieldHeaderLine && commentPrefix) {
-            if (emptyLine.startsWith(' '.repeat(commentPrefix.length))) {
-                return completed(commentPrefix + emptyLine.substring(commentPrefix.length));
-            }
-            return completed(commentPrefix + emptyLine.substring(1));
-        }
-        return completed(emptyLine);
-    }
+    // Blank physical lines are meaningful editing structure. Formatting them
+    // into 72/80-column space walls makes the line look empty while preventing
+    // ordinary newline deletion, so preserve the original bytes exactly.
+    if (!processText.trim()) return unchanged();
 
     const hasComma = processText.includes(',');
     let useTokens = false;
@@ -4310,7 +4768,7 @@ function planAlignedLine(text, card, isFieldHeaderLine = false) {
         useTokens = true;
     } else {
         tokens = extractSmartTokens(processText);
-        
+
         let hasInvalidInternalSpace = false;
         const totalCardWidth = card[card.length - 1].p + card[card.length - 1].w;
         const isOverflowing = processText.trimEnd().length > totalCardWidth;
@@ -4326,10 +4784,14 @@ function planAlignedLine(text, card, isFieldHeaderLine = false) {
                 }
             }
         }
-        
+
         const validPhysValsCount = card.map(f => processText.slice(f.p, f.p + f.w).trim()).filter(v => v.length > 0).length;
 
-        if (isFieldHeaderLine || ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount)) {
+        if (
+            options.forceValueOrder === true ||
+            isFieldHeaderLine ||
+            ((hasInvalidInternalSpace || isOverflowing) && tokens.length >= validPhysValsCount)
+        ) {
             useTokens = true;
         }
     }
@@ -4350,12 +4812,21 @@ function planAlignedLine(text, card, isFieldHeaderLine = false) {
         return unsafe('content-after-card');
     }
 
+    if (useTokens) {
+        if (tokens.length > card.length) return unsafe('field-count');
+        if (
+            !isFieldHeaderLine &&
+            tokens.length < card.length &&
+            options.allowAmbiguousTrailing !== true &&
+            !canOmitTrailingFields(card, tokens.length)
+        ) {
+            return unsafe('ambiguous-field-count');
+        }
+    }
+
     const values = card.map((_, i) => {
         if (!useTokens) return physVals[i];
         if (i >= tokens.length) return '';
-        if (i === card.length - 1 && tokens.length > card.length) {
-            return tokens.slice(i).join(hasComma ? ',' : ' ');
-        }
         return tokens[i];
     });
 
@@ -4476,6 +4947,13 @@ function isSingleEightyColumnCard(cardFields) {
 }
 
 async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document);
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return;
+    if (!isActiveLsdynaSemanticLocation(
+        document,
+        { line: lineNum, character: document.lineAt(lineNum).text.length },
+        { requireLiveSnapshot: true },
+    )) return;
     const edit = createPathEntryFormatEdit(document, lineNum, kwLine);
     const result = edit.result;
     if (result.status === 'tooLong' || !edit.range) return result;
@@ -4546,70 +5024,11 @@ function setFormatLineErrorObserverForTesting(observer) {
 }
 
 function matchesConfiguredReadonlyPattern(document, settingName) {
-    if (!document || !document.uri || !vscode.languages || typeof vscode.languages.match !== 'function') {
-        return false;
-    }
-    const patterns = vscode.workspace
-        .getConfiguration('files', document.uri)
-        .get(settingName, {});
-    if (!patterns || typeof patterns !== 'object' || Array.isArray(patterns)) return false;
-
-    for (const [pattern, enabled] of Object.entries(patterns)) {
-        if (!enabled || typeof pattern !== 'string' || pattern.length === 0) continue;
-        try {
-            const filter = { scheme: document.uri.scheme, pattern };
-            if (vscode.languages.match(filter, document) > 0) return true;
-        } catch (_) {
-            // An invalid user glob must not crash selection or editor switching.
-        }
-    }
-    return false;
+    return documentEditGuard.matchesConfiguredReadonlyPattern(document, settingName, vscode);
 }
 
 async function isDocumentReadonlyForAutomaticEdit(document) {
-    const included = matchesConfiguredReadonlyPattern(document, 'readonlyInclude');
-    const excluded = included && matchesConfiguredReadonlyPattern(document, 'readonlyExclude');
-    if (included && !excluded) return true;
-
-    const filesConfiguration = vscode.workspace.getConfiguration('files', document?.uri);
-    if (
-        filesConfiguration.get('readonlyFromPermissions', false) === true &&
-        document?.uri &&
-        vscode.workspace.fs &&
-        typeof vscode.workspace.fs.stat === 'function'
-    ) {
-        try {
-            const stat = await vscode.workspace.fs.stat(document.uri);
-            const readonlyFlag = vscode.FilePermission && vscode.FilePermission.Readonly;
-            if (readonlyFlag && (Number(stat.permissions || 0) & readonlyFlag) !== 0) return true;
-        } catch (_) {
-            // A missing or concurrently removed file is not a safe automatic edit target.
-            return true;
-        }
-
-        // VS Code 1.130's local file provider does not surface the Windows DOS
-        // read-only attribute through FileStat.permissions. Probe a writable handle
-        // as the final authority so an automatic WorkspaceEdit cannot dirty a deck
-        // that the operating system itself refuses to open for writing.
-        if (document.uri.scheme === 'file' && document.uri.fsPath) {
-            let handle = null;
-            try {
-                handle = await fs.promises.open(document.uri.fsPath, 'r+');
-                await handle.close();
-                handle = null;
-            } catch (_) {
-                if (handle) {
-                    try {
-                        await handle.close();
-                    } catch (_) {
-                        // The permission probe already failed; keep the edit blocked.
-                    }
-                }
-                return true;
-            }
-        }
-    }
-    return false;
+    return documentEditGuard.isDocumentReadonlyForAutomaticEdit(document, vscode);
 }
 
 async function formatLineIfNeeded(document, lineNum) {
@@ -4618,6 +5037,11 @@ async function formatLineIfNeeded(document, lineNum) {
     if (await isDocumentReadonlyForAutomaticEdit(document)) return;
     if (isFormattingLine) return;
     if (document.isClosed || lineNum < 0 || lineNum >= document.lineCount) return;
+    if (!isActiveLsdynaSemanticLocation(
+        document,
+        { line: lineNum, character: document.lineAt(lineNum).text.length },
+        { requireLiveSnapshot: true },
+    )) return;
 
     const line = document.lineAt(lineNum);
     const text = line.text;
@@ -4625,17 +5049,14 @@ async function formatLineIfNeeded(document, lineNum) {
 
     // Skip keywords
     if (isKeywordLineText(text)) return;
-    if (keywordSchema.getCardInfoForDocumentLine(document, lineNum, getFieldData())?.isTextCard) return;
+    if (shouldPreserveTextCardLine(document, lineNum)) return;
     const isCommentLine = trimmed.startsWith('$');
     const isFieldHeaderLine = isFieldHeaderCommentLine(text);
     if (isCommentLine && !isFieldHeaderLine) return;
 
-    // Find the enclosing keyword line
-    let kwLine = null;
-    for (let i = lineNum - 1; i >= 0; i--) {
-        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
-    }
-    
+    const fieldContext = fieldContextForLine(document, lineNum, getFieldData());
+    const kwLine = fieldContext.status === 'resolved' ? fieldContext.context.keywordLine : null;
+
     if (kwLine !== null) {
         const kwText = classifyKeywordLine(document.lineAt(kwLine).text).normalizedKeyword;
         if (kwText.startsWith('*PARAMETER')) return;
@@ -4786,13 +5207,12 @@ async function waitForPendingCardCellPostEdit(document) {
     if (!barrier && document) {
         const nav = ensureCardCellEditGuard().getNav();
         const documentKey = document.uri && document.uri.toString();
-        if (
-            nav &&
+        const staleNavigationVersion = nav &&
             nav.uri === documentKey &&
             Number.isInteger(nav.version) &&
             Number.isInteger(document.version) &&
-            nav.version !== document.version
-        ) {
+            nav.version !== document.version;
+        if (staleNavigationVersion || hasRecentCardCellSelectionGrace(document)) {
             // Native paste/cut can advance the model before its change listener
             // establishes the repair barrier. Let both document and selection
             // notifications settle so the next command cannot consume stale A.
@@ -4811,8 +5231,7 @@ function ensureCardCellEditGuard() {
         getCardFieldsForLine,
         isLsdynaDocument: isLsdynaFile,
         isKeywordLineText,
-        isTextCardLine: (document, lineNum) =>
-            !!keywordSchema.getCardInfoForDocumentLine(document, lineNum, getFieldData())?.isTextCard,
+        isTextCardLine: (document, lineNum) => !!getCardInfoForLine(document, lineNum)?.isTextCard,
         isProtectEnabled: (document) =>
             getLsdynaConfigurationValue('enableCellEditProtect', true, document?.uri) !== false,
     });
@@ -4848,13 +5267,18 @@ function cardCellASelectionGraceRemaining(nav) {
     return Math.max(0, cardCellASelectionGrace.until - Date.now());
 }
 
-async function handleTabAlignment(editor, direction = 1) {
+async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = null) {
     if (!editor) return;
+    const requestedDocument = editor.document;
+    clearCardCellTypingSession(editor.document);
     const wasActiveEditor = vscode.window.activeTextEditor === editor;
     let requestedDocumentVersion = editor.document?.version;
     const requestedSelection = editor.selection;
     if (editor.selections && editor.selections.length > 1) {
         return;
+    }
+    if (!isTabSelectionEligible(editor, requestedSelection)) {
+        return direction === 0 ? undefined : executeNativeTab(direction);
     }
     const waitedForPostEdit = await waitForPendingCardCellPostEdit(editor.document);
     if (waitedForPostEdit) {
@@ -4868,6 +5292,7 @@ async function handleTabAlignment(editor, direction = 1) {
     // starts. Wait for a quiet selection window, then reinstate the selection
     // that actually invoked Tab before establishing the newer A navigation.
     await waitForCellSelectionQuietPeriod();
+    if (editor.document !== requestedDocument) return;
     if (wasActiveEditor && vscode.window.activeTextEditor !== editor) return;
     if (editor.document?.isClosed) return;
     if (editor.document.version !== requestedDocumentVersion) return;
@@ -4889,34 +5314,92 @@ async function handleTabAlignment(editor, direction = 1) {
 
     const document = editor.document;
     const selection = requestedSelection || editor.selection;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
     const lineNum = selection.start.line;
     const col = selection.start.character;
 
     const line = document.lineAt(lineNum);
     const text = line.text;
-    if (keywordSchema.getCardInfoForDocumentLine(document, lineNum, getFieldData())?.isTextCard) {
-        if (direction === 1) await vscode.commands.executeCommand('tab');
-        return;
+    if (getCardInfoForLine(document, lineNum)?.isTextCard) {
+        return executeNativeTab(direction);
     }
 
     const card = getCardFieldsForLine(document, lineNum);
     if (!card || card.length === 0) {
-        if (direction === 1) await vscode.commands.executeCommand('tab');
-        return;
+        return executeNativeTab(direction);
     }
 
     // Skip alignment for title/filename fields (single wide field)
     if (card.length === 1 && card[0].w >= 40) {
-        if (direction === 1) await vscode.commands.executeCommand('tab');
-        return;
+        return executeNativeTab(direction);
     }
 
-    // 1. Current field: Tab/SelectCell use exclusive-end ownership so a full
-    // previous value at next.p does not skip the next field; Shift+Tab stays geometric.
-    let currentFieldIndex = direction === -1
-        ? cardCellModel.fieldIndexAt(text, card, col)
-        : cardCellModel.fieldIndexForTabNav(text, card, col);
+    const interpretation = analyzeTabLineInterpretation(text, card);
+    let chosenCandidate = null;
+
+    if (interpretation.status !== 'intact') {
+        if (interpretation.status === 'unsafe') {
+            try {
+                ensureCardCellEditGuard().clearNav();
+                vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
+            } catch (_) {
+                /* ignore context failures in tests */
+            }
+            // Once a line cannot be mapped losslessly, neither alignment nor a
+            // native Tab/outdent is safe: both may shift fixed engineering
+            // columns.  Consume the key and preserve every source byte.
+            vscode.window.setStatusBarMessage(i18n.get('tabMeaningUnsafe'), 2500);
+            return;
+        }
+
+        // Shift+Tab on a non-grid line remains ordinary outdent; prompting while
+        // moving backwards is disproportionately disruptive.
+        if (direction === -1) return executeNativeTab(direction);
+
+        if (interpretation.status === 'ambiguous') {
+            if (resolvedAmbiguity?.semantic === 'native') {
+                return executeNativeTab(direction);
+            }
+            if (resolvedAmbiguity?.semantic === 'valueOrder') {
+                chosenCandidate = resolvedAmbiguity.candidate || null;
+            } else {
+                const candidate = interpretation.candidates[0];
+                return startInlineEditChoiceSession(editor, lineNum, text, [
+                    {
+                        id: 'keep-original',
+                        label: i18n.get('tabMeaningKeepOriginal'),
+                        preview: `→ ${fixedCellPreview(text, card, 0, card.length)}`,
+                        detail: i18n.get('tabMeaningKeepOriginalDetail'),
+                        preselect: true,
+                        apply: () => undefined,
+                    },
+                    {
+                        id: 'value-order',
+                        label: i18n.get('tabMeaningValueOrder'),
+                        preview: `→ ${fixedCellPreview(candidate.text, card, 0, card.length)}`,
+                        detail: `${i18n.get('tabMeaningValueOrderDetail')} ${tabMeaningCandidateDetail(candidate, card)}`,
+                        apply: () => handleTabAlignment(editor, direction, {
+                            semantic: 'valueOrder',
+                            candidate,
+                        }),
+                    },
+                ]);
+            }
+        } else {
+            chosenCandidate = interpretation.candidate || null;
+        }
+        if (!chosenCandidate) return executeNativeTab(direction);
+    }
+
+    // 1. Current field: repaired value-order rows follow the token under the
+    // invoking caret; intact grids keep physical exclusive-end ownership.
+    let currentFieldIndex = chosenCandidate
+        ? valueOrderFieldIndexAtCaret(text, col, chosenCandidate.delimiter)
+        : (direction === -1
+            ? cardCellModel.fieldIndexAt(text, card, col)
+            : cardCellModel.fieldIndexForTabNav(text, card, col));
     if (currentFieldIndex < 0) currentFieldIndex = 0;
+    currentFieldIndex = Math.min(currentFieldIndex, card.length - 1);
 
     let targetIndex;
     if (direction === 1) {
@@ -4927,20 +5410,9 @@ async function handleTabAlignment(editor, direction = 1) {
         targetIndex = currentFieldIndex;
     }
 
-    // Tab navigation is only safe on a complete fixed-column grid. Valid comma-delimited
-    // cards and ambiguous/collapsed lines stay ordinary text until explicit formatting.
-    const gridMode = cardCellModel.classifyGrid(text, card);
-    if (gridMode !== 'intact') {
-        try {
-            ensureCardCellEditGuard().clearNav();
-            vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
-        } catch (_) {
-            /* ignore context failures in tests */
-        }
-        if (direction === 1) await vscode.commands.executeCommand('tab');
-        return;
-    }
-    let alignedText = cardCellModel.alignLineInPlace(text, card);
+    let alignedText = chosenCandidate
+        ? chosenCandidate.text
+        : cardCellModel.alignLineInPlace(text, card);
 
     // Ensure padded to target field end
     let targetF_pad;
@@ -4958,13 +5430,18 @@ async function handleTabAlignment(editor, direction = 1) {
 
     // 3. Edit current line when text changed
     if (alignedText !== text) {
-        await editor.edit(editBuilder => {
+        if (!await canApplyDocumentEdit(document, editIsCurrent)) return;
+        if (wasActiveEditor && vscode.window.activeTextEditor !== editor) return;
+        const applied = await editor.edit(editBuilder => {
             const range = new vscode.Range(
                 new vscode.Position(lineNum, 0),
                 new vscode.Position(lineNum, text.length)
             );
             editBuilder.replace(range, alignedText);
-        }, { undoStopBefore: false, undoStopAfter: false });
+        }, chosenCandidate
+            ? { undoStopBefore: true, undoStopAfter: true }
+            : { undoStopBefore: false, undoStopAfter: false });
+        if (applied === false || document.isClosed || editor.document !== document) return;
     }
 
     // 4. Handle cursor movement
@@ -5039,6 +5516,35 @@ async function waitForCellSelectionQuietPeriod() {
 
 function handleSelectionChange(e) {
     const editor = e && e.textEditor ? e.textEditor : e;
+    const typingDocument = editor?.document;
+    const typingSession = typingDocument
+        ? cardCellTypingSessions.get(typingDocument)
+        : null;
+    if (typingSession) {
+        const selection = editor.selection;
+        const anchor = selection?.anchor || selection?.start;
+        const active = selection?.active || selection?.end;
+        const exactProgrammaticCaret =
+            typingSession.editor === editor &&
+            anchor && active &&
+            anchor.line === typingSession.lineNum &&
+            active.line === typingSession.lineNum &&
+            anchor.character === typingSession.caret &&
+            active.character === typingSession.caret &&
+            (
+                !Number.isInteger(typingSession.version) ||
+                !Number.isInteger(typingDocument.version) ||
+                typingSession.version === typingDocument.version
+            );
+        if (!exactProgrammaticCaret) clearCardCellTypingSession(typingDocument);
+    }
+    if (
+        inlineEditChoiceSession &&
+        inlineEditChoiceSession.editor === editor &&
+        !isInlineEditChoiceSessionValid(inlineEditChoiceSession)
+    ) {
+        clearInlineEditChoiceSession(inlineEditChoiceSession.id);
+    }
     const composition = editor?.document
         ? cardCellCompositions.get(editor.document)
         : null;
@@ -5093,9 +5599,10 @@ function handleSelectionChange(e) {
     const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
     const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
     const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
-    const hasCard = !!(cardFields && cardFields.length > 0) &&
-        !isWideField &&
-        cardCellModel.classifyGrid(text, cardFields) === 'intact';
+    // Route every recognized fixed-card data line through the command. The
+    // handler itself distinguishes intact, repairable, ambiguous, and unsafe
+    // rows so it can either navigate, ask, or delegate to native Tab.
+    const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
 
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
 
@@ -5189,7 +5696,16 @@ function isDocumentStillOpenInTextTab(document) {
 }
 
 async function handleActiveEditorChangeForFormatting(editor) {
+    if (
+        inlineEditChoiceSession &&
+        (!editor || inlineEditChoiceSession.editor !== editor)
+    ) {
+        clearInlineEditChoiceSession(inlineEditChoiceSession.id);
+    }
     const previousDoc = lastActiveDoc;
+    if (previousDoc && (!editor || editor.document !== previousDoc)) {
+        clearCardCellTypingSession(previousDoc);
+    }
     const previousLineNum = lastActiveLineNum;
     const previousDocumentVersion = lastActiveDocumentVersion;
 
@@ -5239,12 +5755,14 @@ async function handleActiveEditorChangeForFormatting(editor) {
  */
 async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd, undoOpts) {
     const document = editor.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return false;
     const line = document.lineAt(lineNum);
     const oldText = line.text;
     if (newText !== oldText) {
         beginCardCellOwnedEdit(document);
         try {
-            await editor.edit(editBuilder => {
+            const applied = await editor.edit(editBuilder => {
                 editBuilder.replace(
                     new vscode.Range(
                         new vscode.Position(lineNum, 0),
@@ -5256,6 +5774,7 @@ async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd,
                 undoStopBefore: undoOpts?.undoStopBefore !== false,
                 undoStopAfter: undoOpts?.undoStopAfter !== false,
             });
+            if (!applied) return false;
         } finally {
             endCardCellOwnedEdit(document);
         }
@@ -5271,6 +5790,8 @@ async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd,
  */
 async function applyCardCellLineDelete(editor, lineNum, targetLine, selStart, selEnd, undoOpts) {
     const document = editor.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return false;
     if (lineNum < 0 || lineNum >= document.lineCount) return;
     const line = document.lineAt(lineNum);
     // Prefer rangeIncludingLineBreak so the blank card row actually disappears.
@@ -5281,12 +5802,13 @@ async function applyCardCellLineDelete(editor, lineNum, targetLine, selStart, se
             : line.range;
     beginCardCellOwnedEdit(document);
     try {
-        await editor.edit(editBuilder => {
+        const applied = await editor.edit(editBuilder => {
             editBuilder.delete(range);
         }, {
             undoStopBefore: undoOpts?.undoStopBefore !== false,
             undoStopAfter: undoOpts?.undoStopAfter !== false,
         });
+        if (!applied) return false;
     } finally {
         endCardCellOwnedEdit(document);
     }
@@ -5302,6 +5824,15 @@ async function applyCardCellLineDelete(editor, lineNum, targetLine, selStart, se
 
 async function handleCardCellDelete(direction) {
     const editor = vscode.window.activeTextEditor;
+    if (editor?.document) clearCardCellTypingSession(editor.document);
+    if (
+        inlineEditChoiceSession &&
+        editor &&
+        inlineEditChoiceSession.editor === editor
+    ) {
+        cancelInlineEditChoiceSession(inlineEditChoiceSession.id);
+        return;
+    }
     const waitedForPostEdit = editor?.document
         ? await waitForPendingCardCellPostEdit(editor.document)
         : false;
@@ -5309,6 +5840,14 @@ async function handleCardCellDelete(direction) {
         if (vscode.window.activeTextEditor !== editor || editor.document.isClosed) return;
     }
     if (!editor || !isLsdynaFile(editor.document)) {
+        return vscode.commands.executeCommand(direction === 'left' ? 'deleteLeft' : 'deleteRight');
+    }
+    if (!isActiveLsdynaSemanticLocation(
+        editor.document,
+        editor.selection.active,
+        { requireLiveSnapshot: true },
+    )) {
+        ensureCardCellEditGuard().clearNav();
         return vscode.commands.executeCommand(direction === 'left' ? 'deleteLeft' : 'deleteRight');
     }
     // Keybindings exclude multiple selections, but commands can also be invoked
@@ -5320,6 +5859,55 @@ async function handleCardCellDelete(direction) {
     const plan = guard.planDelete(editor.document, editor.selection, direction);
     if (!plan) {
         return vscode.commands.executeCommand(direction === 'left' ? 'deleteLeft' : 'deleteRight');
+    }
+    if (plan.mergeLeft) {
+        const sourceText = editor.document.lineAt(plan.lineNum).text;
+        const merge = plan.mergeLeft;
+        return startInlineEditChoiceSession(editor, plan.lineNum, sourceText, [
+            {
+                id: 'keep-separate',
+                label: i18n.get('cellMergeKeepSeparate'),
+                preview: `→ [${merge.leftValue}][${merge.rightValue}]`,
+                detail: i18n.get('cellMergeKeepSeparateDetail'),
+                preselect: true,
+                apply: () => vscode.commands.executeCommand(
+                    'setContext',
+                    'lsdyna.cellEditActive',
+                    guard.shouldCellEditActive(editor),
+                ),
+            },
+            {
+                id: 'merge-left',
+                label: i18n.get('cellMergeLeft'),
+                preview: `→ [${merge.mergedValue}][∅]`,
+                detail: `${merge.leftValue} + ${merge.rightValue} → ${merge.mergedValue} · ${i18n.get('cellMergeLeftDetail')}`,
+                apply: async () => {
+                    if (
+                        editor.document.isClosed ||
+                        editor.document.lineAt(plan.lineNum).text !== sourceText
+                    ) return;
+                    await applyCardCellLineEdit(
+                        editor,
+                        plan.lineNum,
+                        merge.line,
+                        merge.caretCol,
+                        merge.caretCol,
+                        { undoStopBefore: true, undoStopAfter: true },
+                    );
+                    guard.markAp(
+                        editor.document,
+                        plan.lineNum,
+                        merge.leftFieldIndex,
+                        merge.caretCol,
+                    );
+                    vscode.commands.executeCommand(
+                        'setContext',
+                        'lsdyna.cellEditActive',
+                        guard.shouldCellEditActive(editor),
+                    );
+                },
+            },
+        ]);
     }
     if (plan.deleteLine) {
         const targetLine = typeof plan.targetLine === 'number' ? plan.targetLine : Math.max(0, plan.lineNum - 1);
@@ -5539,6 +6127,7 @@ async function finalizeCardCellComposition(document, state) {
         const isActiveEditor = vscode.window.activeTextEditor === state.editor;
         if (isActiveEditor) {
             guard.markAp(document, state.lineNum, state.fieldIndex, plan.caret);
+            rememberCardCellTypingSession(state.editor, state.lineNum, state.fieldIndex, plan.caret);
         }
         vscode.commands.executeCommand(
             'setContext',
@@ -5642,101 +6231,115 @@ async function cancelCardCellComposition(document, state) {
  * Type intercept only for Tab-established nav A/Ap (strict A-gate).
  * No nav / * / $ / free click-typing → default:type (never R1-pad keywords/comments).
  */
-async function handleCardCellType(args) {
+function handleCardCellType(args) {
     const text = args && args.text != null ? String(args.text) : '';
     const editor = vscode.window.activeTextEditor;
+    const pendingIndent = editor?.document && autoIndentEditBarriers.get(editor.document);
+    if (pendingIndent) {
+        const document = editor.document;
+        return pendingIndent.then(() => {
+            if (vscode.window.activeTextEditor !== editor || editor.document !== document || document.isClosed) return;
+            return handleCardCellType(args);
+        });
+    }
+    if (
+        inlineEditChoiceSession &&
+        editor &&
+        inlineEditChoiceSession.editor === editor
+    ) {
+        if (
+            typeof inlineEditChoiceSession.onType === 'function' &&
+            text &&
+            !text.includes('\n') &&
+            !text.includes('\r')
+        ) {
+            const session = inlineEditChoiceSession;
+            return session.onType(text, session);
+        }
+        cancelInlineEditChoiceSession(inlineEditChoiceSession.id);
+    }
     const composition = editor?.document
         ? cardCellCompositions.get(editor.document)
         : null;
-    if (composition) {
-        return vscode.commands.executeCommand('default:type', args);
+    if (editor?.document && (!text || text.includes('\n') || text.includes('\r'))) {
+        clearCardCellTypingSession(editor.document);
     }
-    const waitedForPostEdit = editor?.document
-        ? await waitForPendingCardCellPostEdit(editor.document)
-        : false;
-    if (waitedForPostEdit) {
-        if (vscode.window.activeTextEditor !== editor || editor.document.isClosed) return;
-    }
-    if (!editor || !isLsdynaFile(editor.document) || !text) {
-        return vscode.commands.executeCommand('default:type', args);
-    }
-    if (text.includes('\n') || text.includes('\r')) {
+    if (
+        composition ||
+        !editor ||
+        !isLsdynaFile(editor.document) ||
+        !text ||
+        text.includes('\n') ||
+        text.includes('\r') ||
+        getLsdynaConfigurationValue('enableCellEditProtect', true, editor.document.uri) === false
+    ) {
         return vscode.commands.executeCommand('default:type', args);
     }
     const guard = ensureCardCellEditGuard();
-    if (!editor.selections || editor.selections.length !== 1) {
-        guard.clearNav();
-        vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
-        return vscode.commands.executeCommand('default:type', args);
-    }
-    if (cardCellCompositions.has(editor.document)) {
-        return vscode.commands.executeCommand('default:type', args);
-    }
-    // Fast path: without Tab/SelectCell nav, never rewrite cells
     const nav = guard.getNav();
-    if (!nav) {
-        return vscode.commands.executeCommand('default:type', args);
-    }
-    if (/^[A-Za-z]$/.test(text) || /[^\u0000-\u007f]/.test(text)) {
-        const state = {
+    const documentKey = editor.document.uri?.toString?.();
+    const navMatchesDocument = !!nav && (!nav.uri || !documentKey || nav.uri === documentKey);
+    const selection = editor.selection;
+    const selectionStart = selection?.start || selection?.anchor;
+    const selectionEnd = selection?.end || selection?.active;
+    const navMatchesVersion = navMatchesDocument && (
+        !Number.isInteger(nav.version) ||
+        !Number.isInteger(editor.document.version) ||
+        nav.version === editor.document.version
+    );
+    const navSelectionIsA = navMatchesVersion && nav.mode === 'A' &&
+        selectionStart?.line === nav.line && selectionEnd?.line === nav.line &&
+        selectionStart.character === nav.expectedStart &&
+        selectionEnd.character === nav.expectedEnd;
+    const navContinuesTyping = navMatchesVersion && nav.mode === 'Ap' &&
+        selection?.isEmpty && selection.active?.line === nav.line &&
+        canContinueCardCellTypingSession(
             editor,
-            lineNum: nav.line,
-            fieldIndex: nav.fieldIndex,
-            mode: nav.mode,
-            keepSeparator: nav.keepSeparator,
-            originalLine: nav.originalLine,
-            expectedStart: nav.expectedStart,
-            expectedEnd: nav.expectedEnd,
-            phase: 'starting',
-            lastLine: nav.originalLine,
-            lastInsertedText: '',
-            sawMetadataEvent: false,
-            sawUnattributedSelection: false,
-        };
-        cardCellCompositions.set(editor.document, state);
-        try {
-            await vscode.commands.executeCommand('default:type', args);
-        } catch (error) {
-            if (cardCellCompositions.get(editor.document) === state) {
-                cardCellCompositions.delete(editor.document);
-            }
-            throw error;
+            nav.line,
+            nav.fieldIndex,
+            selection.active.character,
+        );
+    if (!navSelectionIsA && !navContinuesTyping) {
+        const canStartCellInput = text.trim().length > 0 &&
+            !text.startsWith('*') && !text.startsWith('$') &&
+            (!editor.selections || editor.selections.length === 1);
+        const target = canStartCellInput ? guard.getEmptyCellTypeTarget(
+            editor.document,
+            editor.selection,
+            text,
+        ) : null;
+        if (!target) {
+            clearCardCellTypingSession(editor.document);
+            guard.clearNav();
+            return vscode.commands.executeCommand('default:type', args);
         }
-        if (cardCellCompositions.get(editor.document) !== state) return;
-        if (
-            state.lineNum < 0 ||
-            state.lineNum >= editor.document.lineCount
-        ) {
-            cardCellCompositions.delete(editor.document);
-            return;
+        if (Number.isInteger(target.ambiguousPreviousFieldIndex)) {
+            clearCardCellTypingSession(editor.document);
+            guard.clearNav();
+            return startEmptyCellBoundaryTypeChoice(editor, target, text, guard);
         }
-        state.lastLine = editor.document.lineAt(state.lineNum).text;
-        state.phase = 'composing';
-        if (!state.sawMetadataEvent || state.sawUnattributedSelection) {
-            await finalizeCardCellComposition(editor.document, state);
-        }
-        return;
+        guard.markAp(
+            editor.document,
+            target.lineNum,
+            target.fieldIndex,
+            target.caretCol,
+            editor.selection.isEmpty
+                ? undefined
+                : {
+                    start: editor.selection.start.character,
+                    end: editor.selection.end.character,
+                },
+        );
     }
-    const plan = guard.planType(editor.document, editor.selection, text);
-    if (!plan) {
-        return vscode.commands.executeCommand('default:type', args);
-    }
-    if (plan.blocked) {
-        vscode.window.setStatusBarMessage(i18n.get('cellInputTooWide'), 3000);
-        return;
-    }
-    if (plan.escape) {
+    if (!isActiveLsdynaSemanticLocation(
+        editor.document,
+        editor.selection.active,
+        { requireLiveSnapshot: true },
+    )) {
         guard.clearNav();
         return vscode.commands.executeCommand('default:type', args);
     }
-    await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.caret, plan.caret, {
-        undoStopBefore: true,
-        undoStopAfter: false,
-    });
-    if (plan.markAp) {
-        guard.markAp(editor.document, plan.lineNum, plan.fieldIndex, plan.caret);
-    }
-    vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', guard.shouldCellEditActive(editor));
+    return handleCardCellTypeWithNavigation(args, text, editor, guard);
 }
 
 /**
@@ -5747,6 +6350,13 @@ async function handleCardCellType(args) {
  */
 async function handleCardCellPostEdit(event) {
     const document = event?.document;
+    if (
+        inlineEditChoiceSession &&
+        inlineEditChoiceSession.document === document &&
+        !isInlineEditChoiceSessionValid(inlineEditChoiceSession)
+    ) {
+        clearInlineEditChoiceSession(inlineEditChoiceSession.id);
+    }
     if (!document || isCardCellOwnedEdit(document)) return;
     const composition = cardCellCompositions.get(document);
     if (composition) {
@@ -5836,6 +6446,15 @@ async function handleCardCellPostEdit(event) {
 
     const guard = ensureCardCellEditGuard();
     if (!guard.getNav()) return;
+    if (!isActiveLsdynaSemanticLocation(
+        document,
+        editor.selection.active,
+        { requireLiveSnapshot: true },
+    )) {
+        guard.clearNav();
+        vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
+        return;
+    }
     if (!editor.selections || editor.selections.length !== 1) {
         guard.clearNav();
         vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
@@ -6249,83 +6868,6 @@ function buildStatusDashboardDiagnosticItems(editor, diagnosticsList, dashboardC
     return items;
 }
 
-class LsdynaDocumentFormattingEditProvider {
-    provideDocumentFormattingEdits(document, options, token) {
-        return this.provideDocumentRangeFormattingEdits(document, new vscode.Range(0, 0, document.lineCount, 0), options, token);
-    }
-
-    provideDocumentRangeFormattingEdits(document, range, options, token) {
-        if (shouldSkipAutomaticDocumentScan(document)) return [];
-        const edits = [];
-        for (let lineNum = range.start.line; lineNum <= range.end.line; lineNum++) {
-            if (lineNum >= document.lineCount) break;
-            const line = document.lineAt(lineNum);
-            const text = line.text;
-            const trimmed = text.trimStart();
-            
-            if (isKeywordLineText(text)) continue;
-
-            let currentKwText = null;
-            let currentKwLine = null;
-            for (let i = lineNum; i >= 0; i--) {
-                const t = document.lineAt(i).text;
-                const classification = classifyKeywordLine(t);
-                if (classification.isKeyword) {
-                    currentKwText = classification.normalizedKeyword;
-                    currentKwLine = i;
-                    break;
-                }
-            }
-            if (!currentKwText || currentKwText.startsWith('*PARAMETER')) continue;
-
-            const isCommentLine = trimmed.startsWith('$');
-            const isFieldHeaderLine = isFieldHeaderCommentLine(text);
-            if (isCommentLine && !isFieldHeaderLine) continue;
-
-            if (!isCommentLine && (currentKwText === '*INCLUDE_PATH' || currentKwText === '*INCLUDE_PATH_RELATIVE')) {
-                const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
-                if (pathEdit.range) {
-                    edits.push(vscode.TextEdit.replace(pathEdit.range, pathEdit.newText));
-                    lineNum = pathEdit.range.end.line;
-                }
-                continue;
-            }
-
-            let targetLineNum = lineNum;
-
-            if (isFieldHeaderLine) {
-                const nextDataLine = findNextDataLineInKeywordBlock(document, lineNum + 1);
-                if (nextDataLine === null) continue;
-                targetLineNum = nextDataLine;
-            }
-
-            const cardFields = getCardFieldsForLine(document, targetLineNum);
-            if (!cardFields || cardFields.length === 0) continue;
-
-            if (!isCommentLine && isIncludeFileKeyword(currentKwText) && isSingleEightyColumnCard(cardFields)) {
-                const pathEdit = createPathEntryFormatEdit(document, lineNum, currentKwLine);
-                if (pathEdit.range) {
-                    edits.push(vscode.TextEdit.replace(pathEdit.range, pathEdit.newText));
-                    lineNum = pathEdit.range.end.line;
-                }
-                continue;
-            }
-
-            const alignment = planAlignedLine(text, cardFields, isFieldHeaderLine);
-            if (alignment.status === 'unsafe') {
-                notifyUnsafeFormatOnce(document);
-                continue;
-            }
-            const alignedText = alignment.text;
-            if (text !== alignedText) {
-                const replaceRange = new vscode.Range(lineNum, 0, lineNum, text.length);
-                edits.push(vscode.TextEdit.replace(replaceRange, alignedText));
-            }
-        }
-        return edits;
-    }
-}
-
 // --- LS-DYNA line comment toggle (column-0 $) ---
 //
 // VS Code's built-in editor.action.commentLine inserts the lineComment symbol
@@ -6344,34 +6886,7 @@ class LsdynaDocumentFormattingEditProvider {
  *   noop     -> nothing eligible to toggle
  */
 function planLineCommentToggle(lineEntries) {
-    const toggleable = [];
-    for (const entry of lineEntries || []) {
-        if (!entry || typeof entry.line !== 'number' || typeof entry.text !== 'string') continue;
-        if (isFieldHeaderCommentLine(entry.text)) continue;   // preserve $# field-header comments: uncommenting would strip the $ and leave an invalid '#' line
-        toggleable.push(entry);
-    }
-    if (toggleable.length === 0) return { mode: 'noop', edits: [] };
-
-    const isCommented = text => text.trimStart().startsWith('$');
-    const allCommented = toggleable.every(entry => isCommented(entry.text));
-    const mode = allCommented ? 'uncomment' : 'comment';
-
-    // Deduplicate by line number (first occurrence wins) so overlapping selections
-    // never produce a doubled $$ on the same line.
-    const seen = new Set();
-    const edits = [];
-    for (const entry of toggleable) {
-        if (seen.has(entry.line)) continue;
-        seen.add(entry.line);
-        if (mode === 'comment') {
-            if (isCommented(entry.text)) continue;             // already commented: never add $$
-            edits.push({ line: entry.line, type: 'insert' });
-        } else if (entry.text[0] === '$') {
-            edits.push({ line: entry.line, type: 'delete' });  // strict inverse of insert
-            // Legacy indented $ (no column-0 $) is recognized as commented but not rewritten.
-        }
-    }
-    return { mode, edits };
+    return planLineCommentTogglePure(lineEntries);
 }
 
 /**
@@ -6394,7 +6909,36 @@ async function handleLineCommentToggle(editor) {
     // line). A rejected edit (read-only / stale) applies nothing and advances
     // nothing, so failing closed needs no manual selection fix-up — which also
     // avoids the double-shift that re-reading selections after the edit caused.
-    const selectionsBefore = editor.selections || [];
+    const selectionsBefore: any[] = Array.from(editor.selections || []) as any[];
+    const capturedVersion = Number.isInteger(document.version) ? document.version : null;
+    const capturedUri = document.uri?.toString?.() || document.uri?.fsPath || '';
+    const capturedSelections = selectionsBefore.map(selection => ({
+        start: { line: selection.start.line, character: selection.start.character },
+        end: { line: selection.end.line, character: selection.end.character },
+        isEmpty: selection.isEmpty,
+    }));
+    const sameSelections = () => {
+        const current = editor.selections || [];
+        if (current.length !== capturedSelections.length) return false;
+        return current.every((selection, index) => {
+            const expected = capturedSelections[index];
+            return selection.start.line === expected.start.line
+                && selection.start.character === expected.start.character
+                && selection.end.line === expected.end.line
+                && selection.end.character === expected.end.character;
+        });
+    };
+    const snapshotIsCurrent = () => {
+        const currentUri = document.uri?.toString?.() || document.uri?.fsPath || '';
+        return editor.document === document
+            && !document.isClosed
+            && (capturedVersion === null || document.version === capturedVersion)
+            && currentUri === capturedUri
+            && sameSelections();
+    };
+    if (await isDocumentReadonlyForAutomaticEdit(document)) return false;
+    if (!snapshotIsCurrent()) return false;
+
     const lineNumbers = [];
     const seen = new Set();
     for (const selection of selectionsBefore) {
@@ -6408,22 +6952,76 @@ async function handleLineCommentToggle(editor) {
             if (!seen.has(lineNum)) {
                 seen.add(lineNum);
                 lineNumbers.push(lineNum);
+                if (seen.size > LINE_COMMENT_TOGGLE_LIMITS.maxSelectedLines) {
+                    vscode.window.setStatusBarMessage(i18n.get('commentToggleRejected'), 2200);
+                    return false;
+                }
             }
         }
     }
     lineNumbers.sort((a, b) => a - b);
-    const lineEntries = lineNumbers.map(line => ({ line, text: document.lineAt(line).text }));
+    let fallbackReads = 0;
+    const lineEntries = lineNumbers.map(line => {
+        const text = document.lineAt(line).text;
+        let kind;
+        if (classifyInlineCommentedKeyword(text)) {
+            kind = 'disabled-keyword';
+        } else if (classifyOpaqueCommentDirective(text)) {
+            kind = 'opaque-control';
+        } else {
+            const location = getOpaqueCommentLocation(
+                document,
+                { line, character: text.length },
+                {
+                    requireLiveSnapshot: true,
+                    readLine: index => {
+                        fallbackReads++;
+                        if (fallbackReads > 4096) throw new Error('fallback-read-limit');
+                        return document.lineAt(index).text;
+                    },
+                },
+            );
+            if (location.state === 'unknown') kind = 'unknown';
+            else if (location.state === 'opaque') kind = 'opaque-body';
+            else if (/^\*[A-Za-z0-9_]/.test(text)) kind = 'keyword';
+            else if (/^[ \t]*\$#/.test(text)) kind = 'field-header';
+            else if (/^[ \t]*$/.test(text)) kind = 'blank';
+            else if (text.startsWith('$')) kind = 'line-comment';
+            else kind = 'code';
+        }
+        return { line, text, kind };
+    });
 
     const plan = planLineCommentToggle(lineEntries);
-    if (plan.mode === 'noop' || plan.edits.length === 0) return;
+    if (plan.status === 'rejected') {
+        vscode.window.setStatusBarMessage(
+            plan.reason === 'opaque-state-unknown'
+                ? i18n.get('commentToggleOpaqueUnknown')
+                : i18n.get('commentToggleRejected'),
+            2200,
+        );
+        return false;
+    }
+    if (plan.status === 'noop' || plan.edits.length === 0) return;
+
+    if (!snapshotIsCurrent()) return false;
 
     try {
         const applied = await editor.edit(editBuilder => {
             for (const edit of plan.edits) {
                 if (edit.type === 'insert') {
                     editBuilder.insert(new vscode.Position(edit.line, 0), '$');
-                } else {
+                } else if (edit.type === 'delete') {
                     editBuilder.delete(new vscode.Range(edit.line, 0, edit.line, 1));
+                } else if (edit.type === 'insert-keyword-comment') {
+                    editBuilder.insert(new vscode.Position(edit.line, 0), '*COMMENT ');
+                } else if (edit.type === 'delete-keyword-comment') {
+                    editBuilder.delete(new vscode.Range(
+                        edit.line,
+                        0,
+                        edit.line,
+                        edit.endCharacter,
+                    ));
                 }
             }
         });
@@ -6444,9 +7042,22 @@ async function handleLineCommentToggle(editor) {
  * @param {import('vscode').ExtensionContext} context - The extension context.
  */
 async function activate(context) {
+let largeFileViewerProvider = null;
+
+    let keywordOptionsWebviewProvider = null;
+    let refreshKeywordOptionsProductView = () => {};
+
+    await keywordSchema.prepareKeywordSchema();
+    // Keep schema installation, provider registration and the native server spawn in separate turns.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(updateDocumentPresentationAfterChange));
+
 
     let includeTreeView;
     let keywordTreeView;
+    let entityReferenceProvider = null;
+    let entityReferencesWebviewProvider = null;
+    let lastEntityReferenceCursorEditor = resolveEntityReferenceCursorEditor();
     let workspaceWatcherManager;
     let healthService = null;
     let statusDashboard = null;
@@ -6510,8 +7121,26 @@ async function activate(context) {
 
     const diagnostics = vscode.languages.createDiagnosticCollection('lsdyna');
     context.subscriptions.push(diagnostics);
+    const structureCollection = vscode.languages.createDiagnosticCollection('lsdyna-structure');
+    const structureDiagnostics = createKeywordStructureDiagnostics({ collection: structureCollection,
+        analyze: analyzeKeywordStructureForDocument, describe: keywordStructureDefiniteLabel,
+        isSupported: document => isLsdynaFile(document) && isDocumentStillOpenInTextTab(document) });
+    keywordStructureDiagnosticsRef = structureDiagnostics;
+    context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs?.(event => {
+        const matches = (tabs, document) => (tabs || []).some(tab => {
+            const input = tab.input;
+            return [input?.uri, input?.resource, input?.modified, input?.original]
+                .some(uri => uri?.toString() === document.uri.toString());
+        });
+        for (const document of vscode.workspace.textDocuments) {
+            if (matches(event.closed, document) && !isDocumentStillOpenInTextTab(document)) structureDiagnostics.clear(document);
+            if (matches(event.opened, document)) structureDiagnostics.schedule(document);
+        }
+    }) || { dispose() {} });
+    context.subscriptions.push(structureDiagnostics, structureCollection, { dispose() { keywordStructureDiagnosticsRef = null; } });
 
     function updateDiagnostics(document) {
+        structureDiagnostics.schedule(document);
         return updateDocumentDiagnostics(document, diagnostics).catch(error => {
             logDebug(`updateDocumentDiagnostics failed: ${error && error.message ? error.message : error}`);
         });
@@ -6520,7 +7149,9 @@ async function activate(context) {
     // Manual packs are independent of project scans. Keep one runtime-schema
     // repository per configured pack and let the sidebar and main reader share
     // it; a changed manifest automatically invalidates the cache.
-    const manualPackManager = new ManualPackManager(context);
+    const manualPackManager = new ManualPackManager(context, () => {
+        vscode.workspace.textDocuments.forEach(document => structureDiagnostics.schedule(document));
+    });
     manualPackManagerRef = manualPackManager;
     context.subscriptions.push({
         dispose: () => {
@@ -6591,6 +7222,8 @@ async function activate(context) {
         if (manualSidebarProvider && typeof manualSidebarProvider.refreshUiLanguage === 'function') {
             manualSidebarProvider.refreshUiLanguage();
         }
+        entityReferencesWebviewProvider?.refreshUiLanguage();
+        refreshKeywordOptionsProductView();
         ManualReaderPanel.refreshUiLanguage();
         if (healthService) {
             healthService.invalidate();
@@ -6797,10 +7430,7 @@ async function activate(context) {
     context.subscriptions.push(
         vscode.languages.registerHoverProvider({ language: 'lsdyna' }, new LsdynaFieldHoverProvider())
     );
-    context.subscriptions.push(
-        vscode.languages.registerDocumentFormattingEditProvider({ language: 'lsdyna' }, new LsdynaDocumentFormattingEditProvider()),
-        vscode.languages.registerDocumentRangeFormattingEditProvider({ language: 'lsdyna' }, new LsdynaDocumentFormattingEditProvider())
-    );
+
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider({ language: 'lsdyna' }, new LsdynaParameterCodeLensProvider())
     );
@@ -6824,7 +7454,11 @@ async function activate(context) {
     context.subscriptions.push(
         { dispose: () => includePathSuggestTrigger.dispose() },
         vscode.workspace.onDidChangeTextDocument(e => {
-            includePathSuggestTrigger.onDidChangeTextDocument(e);
+            if (!isLsdynaFile(e.document) || shouldSkipAutomaticDocumentScan(e.document)) return;
+            const current = createDocumentReadGuard(e.document);
+            void prepareDocumentPresentation(e.document).then(prepared => {
+                if (prepared && current()) includePathSuggestTrigger.onDidChangeTextDocument(e);
+            }).catch(error => logDebug(`Include suggestion preparation failed: ${error?.message || error}`));
         })
     );
     context.subscriptions.push(
@@ -6843,9 +7477,657 @@ async function activate(context) {
     );
 
 
+context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'extension.setLsdynaTablePreviewView',
+            handleSetTablePreviewViewCommand
+        )
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'extension.searchLsdynaReferenceInWorkspace',
+            handleWorkspaceReferenceSearchCommand
+        )
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.checkKeywordStructure', async (request) => {
+            await handleCheckKeywordStructureCommand(request);
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'extension.openSemanticEvidence',
+            request => handleOpenSemanticEvidenceCommand(context, request),
+        )
+    );
+context.subscriptions.push(
+        vscode.commands.registerCommand('extension.addVerifiedConditionalCards', async (request) => {
+            await handleAddVerifiedConditionalCardsCommand(request);
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.pickOfficialFieldValue', async (request) => {
+            await handlePickOfficialFieldValueCommand(context, request);
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.rebuildCardComments', async (request) => {
+            await handleRebuildCardCommentsCommand(request);
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.insertVerifiedMissingRecords', async (request) => {
+            await handleInsertVerifiedMissingRecordsCommand(request);
+        })
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { language: 'lsdyna' },
+            new LsdynaEditChoiceCompletionProvider()
+        )
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
     const client = await startLanguageServer(context);
+    await new Promise(resolve => setTimeout(resolve, 0));
     const indexClient = createIndexClient({ languageClient: client });
 
+let keywordOptionsModel = null;
+    const keywordOptionsPinned = true;
+    let keywordManagerScope = 'file';
+    let keywordManagerScopeStatus = 'ready';
+    let keywordManagerScopeMessage = '';
+    let keywordManagerProjectInstanceCache = [];
+    let keywordManagerScopeGeneration = 0;
+    let keywordOptionsRefreshGeneration = 0;
+    let keywordManagerDirectoryTask = null;
+    const completeKeywordManagerDirectory = (document, blockIndex) => {
+        const version = document.version, epoch = activeProjectCacheEpoch;
+        const previous = keywordManagerDirectoryTask;
+        if (previous?.document === document && previous.version === version &&
+            previous.blockIndex === blockIndex && previous.epoch === epoch) return;
+        const task = { document, version, blockIndex, epoch };
+        keywordManagerDirectoryTask = task;
+        const current = () => keywordManagerDirectoryTask === task && !document.isClosed &&
+            document.version === version && activeProjectCacheEpoch === epoch &&
+            keywordOptionsWebviewProvider.isOpen() && keywordOptionsModel?.uri === documentUriIdentity(document);
+        void (async () => {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            if (!current()) return;
+            try {
+                if (await prepareKeywordManagerInstances(document, blockIndex, current) && current() &&
+                    completeKeywordManagerInstances(keywordOptionsModel, document, blockIndex)) {
+                    keywordOptionsWebviewProvider.publishInstances(keywordOptionsModel.managerInstances, 'ready');
+                }
+            } catch (error) {
+                if (current()) {
+                    keywordOptionsModel.directoryStatus = 'error';
+                    keywordOptionsWebviewProvider.publishInstances(keywordOptionsModel.managerInstances, 'error');
+                    console.warn(`[lsdyna] Keyword Manager directory failed: ${String(error)}`);
+                }
+            } finally {
+                if (keywordManagerDirectoryTask === task) keywordManagerDirectoryTask = null;
+            }
+        })();
+    };
+    const refreshKeywordOptionsView = async (editor = vscode.window.activeTextEditor, line = null, staged: any = {}) => {
+        const generation = ++keywordOptionsRefreshGeneration;
+        if (!editor || !isLsdynaFile(editor.document)) {
+            if (!keywordOptionsPinned) {
+                keywordOptionsModel = null;
+                keywordOptionsWebviewProvider?.publish(keywordOptionEmptyViewState(false));
+            }
+            return null;
+        }
+        const document = editor.document, version = document.version, epoch = activeProjectCacheEpoch;
+        const requestedLine = Number.isInteger(line) ? line : editor.selection?.active?.line ?? 0;
+        const blockIndex = staged.blockIndex !== undefined ? staged.blockIndex : readyCardEditBlockIndex(document);
+        const isCurrent = () => generation === keywordOptionsRefreshGeneration && !document.isClosed &&
+            document.version === version && editor.document === document && epoch === activeProjectCacheEpoch;
+        const scope = staged.scope || keywordManagerScope;
+        {
+            if (scope === 'project') {
+                if (!await prepareKeywordManagerInstances(document, blockIndex, isCurrent)) return null;
+            } else {
+                await require('./core/keywordSchema').prepareKeywordSchema();
+                if (!isCurrent()) return null;
+                const keywordLine = findKeywordLineForLine(document, requestedLine);
+                if (Number.isInteger(keywordLine)) {
+                    const keyword = keywordSpellingFromLine(document.lineAt(keywordLine).text);
+                    try { await getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() })
+                        .prepareKeyword(require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword)); }
+                    catch { /* Model construction reports the catalog error without authorizing writes. */ }
+                }
+            }
+            if (!isCurrent()) return null;
+        }
+        const model = buildKeywordOptionViewModel(editor, requestedLine, {
+            ...staged,
+            blockIndex,
+            scope,
+            deferInstances: scope === 'file',
+            scopeStatus: staged.scopeStatus || keywordManagerScopeStatus,
+            scopeMessage: staged.scopeMessage ?? keywordManagerScopeMessage,
+            managerInstances: staged.managerInstances || (keywordManagerScope === 'project'
+                ? keywordManagerProjectInstanceCache : undefined),
+            draftControlState: staged.draftControlState !== undefined
+                ? staged.draftControlState : keywordOptionsModel?.draftControlState,
+            provisional: staged.provisional !== false,
+        });
+        if (!model) return null;
+        model.pinned = true;
+        keywordOptionsModel = model;
+        keywordOptionsWebviewProvider?.publish(buildKeywordOptionsViewState(model));
+        if (model.directoryStatus === 'loading') completeKeywordManagerDirectory(document, blockIndex);
+        return model;
+    };
+    const refreshSelectedKeywordOptions = async () => {
+        const model = keywordOptionsModel;
+        const editor = keywordOptionsEditorForModel(model);
+        if (!model || !editor) return null;
+        const line = keywordManagerRefreshLine(model, editor.document);
+        if (line === null) {
+            vscode.window.showInformationMessage(i18n.get('keywordManagerRelocateSource'));
+            return null;
+        }
+        if (model.stale && keywordManagerScope === 'project') {
+            keywordManagerScope = 'file';
+            keywordManagerProjectInstanceCache = [];
+            keywordManagerScopeStatus = 'ready';
+            keywordManagerScopeMessage = '';
+        }
+        return await refreshKeywordOptionsView(editor, line, {
+            fieldDrafts: {}, recordDrafts: {}, draftControlState: {},
+            selectedFieldId: null, selectedFormRuleId: null, provisional: true,
+        });
+    };
+    const keywordOptionsModelAdapter = {
+        getModel: () => keywordOptionsModel,
+        refreshModel: async (editor, model) => await refreshKeywordOptionsView(editor, model.keywordLine, {
+            targetKeyword: model.targetKeyword,
+            selection: model.selection,
+            targetPostCount: model.targetPostCount,
+            fieldDrafts: model.fieldDrafts,
+            recordDrafts: model.recordDrafts,
+            selectedFormRuleId: model.selectedFormRuleId,
+            dynamicCardsSelected: model.dynamicCardsSelected,
+            selectedFieldId: model.selectedFieldId,
+            pinned: keywordOptionsPinned,
+            provisional: true,
+        }),
+        markStale: (uri = null) => {
+            if (!keywordOptionsModel || (uri && keywordOptionsModel.uri !== uri)) return false;
+            keywordOptionsModel.stale = true;
+            keywordOptionsWebviewProvider?.publish(buildKeywordOptionsViewState(keywordOptionsModel));
+            return true;
+        },
+    };
+    const validKeywordOptionsModel = async () => {
+        const editor = keywordOptionsEditorForModel(keywordOptionsModel);
+        if (!keywordOptionsModel || !editor) return null;
+        if (keywordOptionsModel.stale || editor.document.version !== keywordOptionsModel.documentVersion) {
+            keywordOptionsModelAdapter.markStale();
+            return null;
+        }
+        return editor;
+    };
+    const restoreKeywordManagerFileScope = async (status = 'ready', message = '') => {
+        keywordManagerScope = 'file';
+        keywordManagerScopeStatus = status;
+        keywordManagerScopeMessage = message;
+        keywordManagerProjectInstanceCache = [];
+        const model = keywordOptionsModel;
+        const editor = keywordOptionsEditorForModel(model);
+        if (!model || !editor) return false;
+        return !!await refreshKeywordOptionsView(editor, model.keywordLine, {
+            targetKeyword: model.targetKeyword,
+            selection: model.selection,
+            targetPostCount: model.targetPostCount,
+            fieldDrafts: model.fieldDrafts,
+            recordDrafts: model.recordDrafts,
+            selectedFormRuleId: model.selectedFormRuleId,
+            dynamicCardsSelected: model.dynamicCardsSelected,
+            selectedFieldId: model.selectedFieldId,
+            pinned: keywordOptionsPinned,
+            scope: 'file',
+            scopeStatus: status,
+            scopeMessage: message,
+            provisional: true,
+        });
+    };
+    const confirmKeywordManagerTransition = async () => {
+        const model = keywordOptionsModel;
+        if (!keywordManagerHasStaging(model)) return 'proceed';
+        const stagedCount = Math.max(1, Object.keys(model.fieldDrafts || {}).length +
+            Object.keys(model.draftControlState || {}).length + (model.dynamicCardsSelected ? 1 : 0));
+        const applyLabel = i18n.get('keywordOptionsApply');
+        const discardLabel = i18n.get('keywordManagerDiscardDraftConfirm');
+        const choice = await vscode.window.showWarningMessage(
+            i18n.get('keywordManagerDiscardDraftWarning', stagedCount),
+            { modal: true },
+            applyLabel,
+            discardLabel,
+        );
+        if (choice === discardLabel) return 'discard';
+        if (choice !== applyLabel) return null;
+        const editor = keywordOptionsEditorForModel(model);
+        return editor && await applyKeywordOptionViewModel(keywordOptionsModelAdapter, editor)
+            ? 'proceed' : null;
+    };
+    keywordOptionsWebviewProvider = new KeywordOptionsWebviewProvider(context.extensionPath, {
+        selectDimension: async (dimensionId, values) => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor) return false;
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                selection: { ...keywordOptionsModel.selection, [dimensionId]: values },
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        selectTarget: async targetKeyword => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor) return false;
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword,
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        selectPostCount: async targetPostCount => {
+            const editor = await validKeywordOptionsModel();
+            const choice = keywordOptionsModel?.choices?.find(candidate =>
+                candidate.kind === 'post-range' && candidate.targetPostCount === targetPostCount);
+            if (!editor || !choice?.enabled) return false;
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        updateControl: async (controlId, value) => {
+            const editor = await validKeywordOptionsModel();
+            const control = keywordOptionsModel?.controls?.find(candidate => candidate.controlId === controlId);
+            const validBoolean = control?.kind === 'boolean' && typeof value === 'boolean';
+            const validChoice = control?.kind !== 'boolean' &&
+                control?.kind !== 'field' && typeof value === 'string' && (value === '' ||
+                control?.choices?.some(candidate => candidate.value === value && candidate.enabled));
+            if (!editor || !control || !control.enabled || (!validBoolean && !validChoice)) {
+                return false;
+            }
+            const draftControlState = { ...(keywordOptionsModel.draftControlState || {}) };
+            if (String(value) === String(keywordOptionsModel.currentControlState?.[controlId] ?? '')) {
+                delete draftControlState[controlId];
+            } else {
+                draftControlState[controlId] = value;
+            }
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount: typeof value === 'string'
+                    ? control.targetPostCountByValue?.[value] ?? keywordOptionsModel.targetPostCount
+                    : keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                draftControlState,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        selectForm: async ruleId => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor) return false;
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                draftControlState: keywordOptionsModel.draftControlState,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                selectedFormRuleId: ruleId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        selectInstance: async instanceId => {
+            let model = keywordOptionsModel;
+            let editor = keywordOptionsEditorForModel(model);
+            let instance = model?.managerInstances?.find(candidate => candidate.instanceId === instanceId);
+            if (!model || !editor || !instance || model.stale) return false;
+            if (model.managerScope === 'project' && model.managerScopeStatus !== 'ready') return false;
+            const line = Number(instance.line);
+            if (!Number.isInteger(line) || line < 0) return false;
+            if (instance.instanceId !== model.selectedInstanceId) {
+                const transition = await confirmKeywordManagerTransition();
+                if (!transition) return false;
+                model = keywordOptionsModel;
+                editor = keywordOptionsEditorForModel(model);
+                instance = model?.managerInstances?.find(candidate => candidate.instanceId === instanceId) || instance;
+                if (!model || !editor) return false;
+            }
+            const targetEditor = await openKeywordManagerInstanceEditor(instance, editor);
+            if (!targetEditor) return false;
+            const refreshed = await refreshKeywordOptionsView(targetEditor, line, {
+                fieldDrafts: {},
+                dynamicCardsSelected: false,
+                selectedFieldId: null,
+                pinned: keywordOptionsPinned,
+                scope: keywordManagerScope,
+                managerInstances: keywordManagerScope === 'project' ? keywordManagerProjectInstanceCache : undefined,
+                provisional: true,
+            });
+            if (refreshed && typeof targetEditor.revealRange === 'function') {
+                const range = new vscode.Range(line, 0, line, 0);
+                targetEditor.selection = new vscode.Selection(range.start, range.start);
+                targetEditor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+            }
+            return !!refreshed;
+        },
+        selectField: request => keywordManagerReadFieldHelp(
+            keywordOptionsModel, keywordOptionsEditorForModel(keywordOptionsModel), request),
+        updateField: async (fieldId, value) => {
+            const editor = await validKeywordOptionsModel();
+            const field = keywordOptionsModel?.managerCards?.flatMap(card => card.fields)
+                .find(candidate => candidate.fieldId === fieldId);
+            if (!editor || !field?.editable || typeof value !== 'string') return false;
+            if (keywordOptionsModel.helpContext?.branchEvidence === 'record-selection' ||
+                keywordOptionsModel.targetLayout?.records?.some(record =>
+                    record.sharedByteEditing === 'native-shared-bytes-v1' &&
+                    record.fields?.some(candidate => candidate.fieldMigrationId === fieldId))) {
+                const staged = keywordManagerEditField(keywordOptionsModel, fieldId, value);
+                if (!staged) return false;
+                return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                    targetKeyword: keywordOptionsModel.targetKeyword,
+                    selection: keywordOptionsModel.selection,
+                    targetPostCount: keywordOptionsModel.targetPostCount,
+                    ...staged,
+                    selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                    selectedFieldId: fieldId,
+                    pinned: keywordOptionsPinned,
+                    provisional: true,
+                });
+            }
+            const fieldDrafts = { ...keywordOptionsModel.fieldDrafts };
+            if (value.trim() === String(field.value || '').trim()) delete fieldDrafts[fieldId];
+            else fieldDrafts[fieldId] = value;
+            return !!await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: fieldId,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        selectScope: async scope => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor || (scope !== 'file' && scope !== 'project')) return false;
+            const scopeGeneration = ++keywordManagerScopeGeneration;
+            const scopeUri = keywordOptionsModel.uri;
+            if (scope === 'file') return await restoreKeywordManagerFileScope();
+            if (!keywordIndexProvider || typeof keywordIndexProvider.scan !== 'function') return false;
+            keywordManagerScope = 'project';
+            keywordManagerScopeStatus = 'loading';
+            keywordManagerScopeMessage = i18n.get('keywordManagerScopeLoading');
+            await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                scope: 'project',
+                scopeStatus: 'loading',
+                provisional: true,
+            });
+            try {
+                const completed = await keywordIndexProvider.scan({
+                    onPartial: async ({ filesScanned }) => {
+                        if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project' ||
+                            keywordOptionsModel?.uri !== scopeUri) return;
+                        const currentEditor = keywordOptionsEditorForModel(keywordOptionsModel);
+                        if (!currentEditor) return;
+                        keywordManagerScopeStatus = 'partial';
+                        keywordManagerScopeMessage = i18n.get('scannedFilesProgress', filesScanned);
+                        await refreshKeywordOptionsView(currentEditor, keywordOptionsModel.keywordLine, {
+                            targetKeyword: keywordOptionsModel.targetKeyword,
+                            selection: keywordOptionsModel.selection,
+                            targetPostCount: keywordOptionsModel.targetPostCount,
+                            fieldDrafts: keywordOptionsModel.fieldDrafts,
+                            recordDrafts: keywordOptionsModel.recordDrafts,
+                            selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                            dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                            selectedFieldId: keywordOptionsModel.selectedFieldId,
+                            pinned: keywordOptionsPinned,
+                            scope: 'project',
+                            scopeStatus: 'partial',
+                            scopeMessage: keywordManagerScopeMessage,
+                            managerInstances: [],
+                            provisional: true,
+                        });
+                    },
+                });
+                if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project') return false;
+                if (keywordOptionsModel?.uri !== scopeUri) {
+                    await restoreKeywordManagerFileScope();
+                    return false;
+                }
+                if (completed !== true) {
+                    await restoreKeywordManagerFileScope();
+                    return false;
+                }
+            } catch (_error) {
+                if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project') return false;
+                await restoreKeywordManagerFileScope('unavailable', i18n.get('keywordManagerScopeUnavailable'));
+                return false;
+            }
+            if (keywordIndexProvider.mode !== 'recursive') {
+                await restoreKeywordManagerFileScope();
+                return false;
+            }
+            const currentEditor = keywordOptionsEditorForModel(keywordOptionsModel);
+            if (!currentEditor) return false;
+            keywordManagerProjectInstanceCache = keywordManagerProjectInstances(
+                keywordIndexProvider.listSearchEntries(),
+                currentEditor.document,
+                keywordOptionsModel.keywordLine,
+            );
+            keywordManagerScopeStatus = 'ready';
+            keywordManagerScopeMessage = '';
+            return !!await refreshKeywordOptionsView(currentEditor, keywordOptionsModel.keywordLine, {
+                targetKeyword: keywordOptionsModel.targetKeyword,
+                selection: keywordOptionsModel.selection,
+                targetPostCount: keywordOptionsModel.targetPostCount,
+                fieldDrafts: keywordOptionsModel.fieldDrafts,
+                recordDrafts: keywordOptionsModel.recordDrafts,
+                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
+                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
+                selectedFieldId: keywordOptionsModel.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                scope: 'project',
+                managerInstances: keywordManagerProjectInstanceCache,
+                provisional: true,
+            });
+        },
+        locateSource: async () => {
+            const model = keywordOptionsModel;
+            const editor = keywordOptionsEditorForModel(model);
+            if (!model || !editor) return false;
+            const line = keywordManagerRefreshLine(model, editor.document);
+            if (line === null) {
+                vscode.window.showInformationMessage(i18n.get('keywordManagerRelocateSource'));
+                return false;
+            }
+            if (!model.stale) return locateKeywordManagerSource(model, editor);
+            const source = await vscode.window.showTextDocument(editor.document, { preserveFocus: false });
+            source.selection = new vscode.Selection(line, 0, line, 0);
+            source.revealRange(new vscode.Range(line, 0, line, 0));
+            return true;
+        },
+        openManual: async (conditionId, evidenceId) => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor) return false;
+            if (conditionId !== undefined || evidenceId !== undefined) {
+                const group = keywordOptionsModel.manualConditions?.find(item => item.id === conditionId);
+                const evidence = group?.evidence.find(item => item.evidenceId === evidenceId);
+                if (!evidence) return false;
+                const result = await handleOpenSemanticEvidenceCommand(context, {
+                    keyword: keywordOptionsModel.manualConditionKeyword, ruleId: evidence.ruleId, evidenceId: evidence.evidenceId });
+                return result?.status === 'resolved';
+            }
+            return openKeywordManagerManual(keywordOptionsModel);
+        },
+        apply: async () => {
+            const editor = await validKeywordOptionsModel();
+            if (!editor) return false;
+            const keywordLine = keywordOptionsModel.keywordLine;
+            if (!await applyKeywordOptionViewModel(keywordOptionsModelAdapter, editor)) return false;
+            return !!await refreshKeywordOptionsView(editor, keywordLine, {
+                fieldDrafts: {},
+                draftControlState: {},
+                dynamicCardsSelected: false,
+                selectedFieldId: null,
+                pinned: keywordOptionsPinned,
+                provisional: true,
+            });
+        },
+        reset: async () => !!await refreshSelectedKeywordOptions(),
+        togglePin: () => {
+            return true;
+        },
+        panelDisposed: () => { keywordOptionsRefreshGeneration++; keywordManagerDirectoryTask = null; },
+    }, keywordOptionEmptyViewState(false));
+    context.subscriptions.push(keywordOptionsWebviewProvider);
+    refreshKeywordOptionsProductView = () => {
+        if (keywordOptionsModel) keywordOptionsWebviewProvider.publish(buildKeywordOptionsViewState(keywordOptionsModel));
+        else keywordOptionsWebviewProvider.publish(keywordOptionEmptyViewState(keywordOptionsPinned));
+    };
+    keywordOptionsViewControllerRef = {
+        open: async (editor = vscode.window.activeTextEditor, requestedLine = null) => {
+            const requested = Number.isInteger(requestedLine)
+                ? requestedLine : editor?.selection?.active?.line ?? 0;
+            const nextKeywordLine = editor && isKeywordLineText(editor.document.lineAt(requested).text)
+                ? requested : editor ? findKeywordLineForLine(editor.document, requested) : null;
+            const sameDraftBlock = keywordManagerHasStaging(keywordOptionsModel) && editor &&
+                documentUriIdentity(editor.document) === keywordOptionsModel.uri &&
+                nextKeywordLine === keywordOptionsModel.keywordLine &&
+                keywordOptionsModel.session?.blockSha256 === keywordOptionBlockSha256(
+                    editor.document, keywordOptionsModel.keywordLine, keywordOptionsModel.blockEnd,
+                );
+            if (sameDraftBlock) {
+                const resumeDirectory = keywordOptionsModel.managerScope === 'file' && keywordOptionsModel.directoryStatus !== 'ready';
+                if (resumeDirectory) keywordOptionsModel.directoryStatus = 'loading';
+                keywordOptionsWebviewProvider.publish(buildKeywordOptionsViewState(keywordOptionsModel));
+                keywordOptionsWebviewProvider.showPanel(i18n.get('keywordManagerTitle'));
+                if (resumeDirectory) completeKeywordManagerDirectory(editor.document, readyCardEditBlockIndex(editor.document));
+                return keywordOptionsModel;
+            }
+            if (keywordManagerHasStaging(keywordOptionsModel) && !await confirmKeywordManagerTransition()) return null;
+            keywordOptionsWebviewProvider.publish({ ...keywordOptionEmptyViewState(keywordOptionsPinned), status: 'loading' });
+            const openingGeneration = keywordOptionsRefreshGeneration + 1;
+            try {
+                keywordOptionsWebviewProvider.showPanel(i18n.get('keywordManagerTitle'));
+                const model = await refreshKeywordOptionsView(editor, requestedLine, { pinned: keywordOptionsPinned });
+                if (!model && openingGeneration === keywordOptionsRefreshGeneration) {
+                    keywordOptionsWebviewProvider.publish(keywordOptionEmptyViewState(keywordOptionsPinned));
+                    vscode.window.showInformationMessage(i18n.get('noKeywordAtCursor'));
+                }
+                return model;
+            } catch (error) {
+                console.warn(`[lsdyna] Keyword Manager panel unavailable: ${String(error)}`);
+                if (openingGeneration === keywordOptionsRefreshGeneration) keywordOptionsWebviewProvider.publish({
+                    ...keywordOptionEmptyViewState(keywordOptionsPinned), status: 'error',
+                    message: `${i18n.get('keywordManagerTitle')}: ${String(error)}`,
+                });
+                return null;
+            }
+        },
+    };
+    context.subscriptions.push({ dispose: () => {
+        keywordOptionsViewControllerRef = null;
+    } });
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.keywordOptions.stage', async choiceId => {
+            const model = keywordOptionsModel;
+            const editor = vscode.window.activeTextEditor;
+            if (!model || !editor || model.stale || documentUriIdentity(editor.document) !== model.uri ||
+                editor.document.version !== model.documentVersion) {
+                keywordOptionsModelAdapter.markStale();
+                return null;
+            }
+            const choice = model.choices.find(candidate => candidate.id === choiceId);
+            if (!choice?.enabled) return null;
+            const staged = {
+                targetKeyword: choice.kind === 'spelling' ? choice.targetKeyword : model.targetKeyword,
+                targetPostCount: choice.kind === 'post-range' ? choice.targetPostCount : model.targetPostCount,
+                selection: choice.kind === 'spelling' ? undefined : model.selection,
+                fieldDrafts: model.fieldDrafts,
+                dynamicCardsSelected: model.dynamicCardsSelected,
+                selectedFieldId: model.selectedFieldId,
+                pinned: keywordOptionsPinned,
+                provisional: model.provisional === true,
+            };
+            return await refreshKeywordOptionsView(editor, model.keywordLine, staged);
+        }),
+        vscode.commands.registerCommand('extension.keywordOptions.apply', async () => {
+            const editor = await validKeywordOptionsModel();
+            return editor ? applyKeywordOptionViewModel(keywordOptionsModelAdapter, editor) : false;
+        }),
+        vscode.commands.registerCommand('extension.keywordOptions.reset', refreshSelectedKeywordOptions),
+        vscode.commands.registerCommand('extension.keywordOptions.refresh', async () => {
+            if (keywordManagerHasStaging(keywordOptionsModel) && !await confirmKeywordManagerTransition()) return null;
+            return await refreshSelectedKeywordOptions();
+        }),
+        vscode.commands.registerCommand('extension.keywordOptions.togglePin', () => {
+            return true;
+        }),
+        vscode.commands.registerCommand('extension.keywordOptions.openEvidence', () => {
+            const model = keywordOptionsModel;
+            return model ? vscode.commands.executeCommand('extension.manual.pickPackChapter', model.targetKeyword, 'reader') : null;
+        }),
+        vscode.workspace.onDidChangeTextDocument(event => {
+            const model = keywordOptionsModel;
+            if (!model || documentUriIdentity(event.document) !== model.uri || !event.contentChanges.length) return;
+            keywordOptionsRefreshGeneration++;
+            keywordManagerDirectoryTask = null;
+            trackKeywordManagerSourceChange(model, event);
+            if (!model.stale) keywordOptionsModelAdapter.markStale(model.uri);
+        }),
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    entityReferenceProvider = new LsdynaEntityReferenceProvider({
+        workspaceState: context.workspaceState,
+    });
+    context.subscriptions.push(entityReferenceProvider);
     const projectDiagnostics = vscode.languages.createDiagnosticCollection('lsdyna-project');
     context.subscriptions.push(projectDiagnostics);
     const projectDiagnosticStore = createProjectDiagnosticStore(projectDiagnostics, {
@@ -6857,11 +8139,17 @@ async function activate(context) {
     });
     projectDiagnosticStoreRef = projectDiagnosticStore;
     context.subscriptions.push(projectDiagnosticStore);
-
     const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
-    indexClient.loadProjectSnapshot = async (rootFile, options = {}, onProgress = null) => {
-        const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress);
-        cacheFileIndexesFromSnapshot(snapshot);
+    // Read through the existing loader without retaining an oversized project or
+    // publishing unrelated UI updates on every Hover request.
+    referenceSnapshotLoader = originalLoadProjectSnapshot;
+    context.subscriptions.push({ dispose() { referenceSnapshotLoader = null; } });
+    indexClient.loadProjectSnapshot = async (rootFile, options: any = {}, onProgress = null, cancellationToken = null) => {
+        const requestEpoch = activeProjectCacheEpoch;
+        const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress, cancellationToken);
+        if (snapshot?.scope === 'single-file' || options?.singleFileOnly === true) return snapshot;
+        if (requestEpoch !== activeProjectCacheEpoch) return snapshot;
+        entityReferenceProvider.markStaleForRoot(snapshot.rootFile);
         cacheReferenceIndexFromSnapshot(snapshot);
         refreshMainDeckContextUi();
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
@@ -6870,6 +8158,7 @@ async function activate(context) {
     const originalInvalidate = indexClient.invalidate.bind(indexClient);
     indexClient.invalidate = async (rootFile) => {
         clearEffectiveSearchPathsForRoot(rootFile);
+        entityReferenceProvider.markStaleForRoot(rootFile);
         if (!fs.existsSync(rootFile)) {
             clearReferenceIndexForRoot(rootFile);
             projectDiagnosticStore.clear(rootFile);
@@ -6877,7 +8166,445 @@ async function activate(context) {
         }
         return originalInvalidate(rootFile);
     };
+    const entityReferenceRefreshState = { revision: 0 };
+    const refreshStoredObjectReference = (target, options: any = {}) =>
+        refreshStoredEntityReferenceQuery(
+            indexClient,
+            entityReferenceProvider,
+            entityReferenceRefreshState,
+            target,
+            options,
+    );
+    const refreshEntityReferenceScopeContext = () => {
+        if (!entityReferencesWebviewProvider) return;
+        const filePath = validEntityQueryFilePath(getActiveUri()?.fsPath);
+        const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
+        entityReferencesWebviewProvider.setScopeContext({
+            filePath: filePath || undefined,
+            projectRoot: contextState?.state !== 'ambiguous' && contextState?.project
+                ? contextState.rootFile
+                : undefined,
+        });
+    };
+    const scopeIdentityForPreference = preference => {
+        const filePath = validEntityQueryFilePath(getActiveUri()?.fsPath);
+        if (preference === 'file') {
+            return filePath ? { kind: 'single-file', filePath } : null;
+        }
+        if (preference === 'project') {
+            const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
+            return contextState?.state !== 'ambiguous' && contextState?.project
+                ? { kind: 'project', rootFile: contextState.rootFile }
+                : null;
+        }
+        return undefined;
+    };
+    let manualObjectReferenceQueries = 0;
+    const runObjectReferenceQuery = async (target, scopePreference = 'auto', options: any = {}) => {
+        if (scopePreference === 'auto') scopePreference = entityReferencesWebviewProvider?.getScopePreference() === 'project' ? 'project' : 'file';
+        if (!options.automatic) {
+            stopObjectReferenceFollow();
+            lastObjectFollowKey = '';
+            objectReferenceNavigation = null;
+        }
+        const normalized = target?.targetKind && normalizeIndexedEntityId(target?.id)
+            ? { ...target, id: normalizeIndexedEntityId(target.id) }
+            : null;
+        if (!normalized) {
+            entityReferencesWebviewProvider?.setMessage(i18n.get('entityReferencesCursorUnavailable'));
+            entityReferencesWebviewProvider?.focusForm();
+            return null;
+        }
+        const scopeIdentity = scopeIdentityForPreference(scopePreference);
+        if ((scopePreference === 'file' || scopePreference === 'project') && !scopeIdentity) {
+            entityReferencesWebviewProvider?.setMessage(i18n.get(
+                scopePreference === 'project' ? 'entityIdQuerySourceInactive' : 'entityIdQuerySourceMissing',
+            ));
+            return null;
+        }
+        entityReferencesWebviewProvider?.setInput(
+            normalized.targetKind,
+            normalized.id,
+            scopePreference,
+        );
+        refreshEntityReferenceScopeContext();
+        const request = beginEntityReferenceRefresh(entityReferenceRefreshState);
+        if (!options.automatic) manualObjectReferenceQueries++;
+        return handleIndexedEntityIdQueryCommand(indexClient, normalized, {
+            entityReferenceProvider,
+            isCurrentRequest: () => request.isCurrent() && (options.isCurrent?.() ?? true),
+            presentResult: false,
+            silentStatus: true,
+            preserveResultsWhileLoading: options.automatic === true,
+            ...(options.automatic ? { runWithProgress: operation => operation(null, options.cancellationToken) } : {}),
+            ...(scopeIdentity ? { scopeIdentity } : {}),
+        }).finally(() => { if (!options.automatic) manualObjectReferenceQueries--; });
+    };
+    const offerActiveLargeFile = () => {
+        const uri = activeUnsynchronizedLargeFileUri();
+        if (!uri) {
+            entityReferencesWebviewProvider?.setLargeFileOffer();
+            return false;
+        }
+        entityReferencesWebviewProvider?.setMessage('');
+        entityReferencesWebviewProvider?.setLargeFileOffer(
+            uri,
+            i18n.get('entityReferencesLargeFileReason'),
+        );
+        entityReferencesWebviewProvider?.focusForm();
+        return true;
+    };
+    const inferAndQueryObjectReference = async () => {
+        stopObjectReferenceFollow();
+        manualObjectReferenceQueries++;
+        try { await prepareReferenceDirectory(); }
+        finally { manualObjectReferenceQueries--; }
+        const largeFileUri = activeLargeFileViewerUri();
+        const largeFileTarget = largeFileUri
+            ? largeFileViewerProvider?.selectedQueryTarget(largeFileUri)
+            : null;
+        if (largeFileTarget) {
+            return runObjectReferenceQuery(
+                largeFileTarget,
+                entityReferencesWebviewProvider?.getScopePreference?.() || 'auto',
+            ).then(Boolean);
+        }
+        if (offerActiveLargeFile()) return Promise.resolve(false);
+        const editor = resolveEntityReferenceCursorEditor(lastEntityReferenceCursorEditor);
+        if (editor) lastEntityReferenceCursorEditor = editor;
+        const target = inferIndexedEntityQueryTarget(editor);
+        if (!target) {
+            entityReferencesWebviewProvider?.setMessage(i18n.get('entityReferencesCursorUnavailable'));
+            entityReferencesWebviewProvider?.focusForm();
+            return Promise.resolve(false);
+        }
+        return runObjectReferenceQuery(
+            target,
+            entityReferencesWebviewProvider?.getScopePreference?.() || 'auto',
+        ).then(Boolean);
+    };
+    let objectFollowTimer: ReturnType<typeof setTimeout> | undefined;
+    let objectFollowGeneration = 0;
+    let objectFollowCancellation: InstanceType<typeof vscode.CancellationTokenSource> | undefined;
+    const stopObjectReferenceFollow = () => {
+        clearTimeout(objectFollowTimer);
+        objectFollowGeneration++;
+        objectFollowCancellation?.cancel();
+        objectFollowCancellation?.dispose();
+        objectFollowCancellation = undefined;
+    };
+    let lastObjectFollowKey = '';
+    let objectReferenceOpening = 0;
+    let objectReferenceNavigation: any = null;
+    const scheduleObjectReferenceFollow = () => {
+        stopObjectReferenceFollow();
+        const generation = objectFollowGeneration;
+        if (objectReferenceOpening || manualObjectReferenceQueries || !entityReferencesWebviewProvider?.isFollowingCursor()) return;
+        objectFollowTimer = setTimeout(async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (manualObjectReferenceQueries || !editor || !isLsdynaFile(editor.document) || editor.document.isClosed ||
+                shouldSkipAutomaticDocumentScan(editor.document) ||
+                !entityReferencesWebviewProvider?.isFollowingCursor()) return;
+            if (isEntityReferenceNavigationPosition(editor, objectReferenceNavigation)) return;
+            objectReferenceNavigation = null;
+            const version = editor.document.version;
+            const position = editor.selection.active;
+            const cancellation = new vscode.CancellationTokenSource();
+            objectFollowCancellation = cancellation;
+            const isCurrent = () => generation === objectFollowGeneration &&
+                !cancellation.token.isCancellationRequested && editor === vscode.window.activeTextEditor &&
+                !editor.document.isClosed && editor.document.version === version &&
+                editor.selection.active.line === position.line && editor.selection.active.character === position.character &&
+                entityReferencesWebviewProvider?.isFollowingCursor();
+            try { await prepareReferenceDirectory(); } catch (error) { logDebug(`Object reference preparation failed: ${error}`); return; }
+            if (!isCurrent()) return;
+            const target = inferIndexedEntityQueryTarget(editor, { requireUnambiguous: true });
+            if (!target) return; // Whitespace and unrelated fields keep the last useful result.
+            const preference = entityReferencesWebviewProvider.getScopePreference();
+            const scope = preference === 'auto' ? 'file' : preference;
+            const scopeIdentity = scopeIdentityForPreference(scope);
+            if (!scopeIdentity) return;
+            const key = JSON.stringify([target.targetKind, target.id, scopeIdentity, editor.document.version]);
+            const current = entityReferenceProvider.getActiveSession?.();
+            if (key === lastObjectFollowKey && current?.identity.targetKind === target.targetKind &&
+                String(current.identity.id) === String(target.id) && ['ready', 'partial'].includes(current.state)) return;
 
+            try {
+                const result = await runObjectReferenceQuery(target, scope, { automatic: true, isCurrent, cancellationToken: cancellation.token });
+                if (result && isCurrent()) lastObjectFollowKey = key;
+            } catch (error) {
+                logDebug(`Object reference follow failed: ${error}`);
+            }
+        }, 250);
+    };
+    context.subscriptions.push({ dispose: stopObjectReferenceFollow });
+    const refreshCurrentObjectReference = () => {
+        stopObjectReferenceFollow();
+        const session = entityReferenceProvider.getActiveSession?.();
+        if (!session) return inferAndQueryObjectReference();
+        manualObjectReferenceQueries++;
+        return refreshStoredObjectReference(session, {
+            queryOptions: { presentResult: false, silentStatus: true },
+        }).finally(() => { manualObjectReferenceQueries--; });
+    };
+    const openLsdynaLocation = async (
+        filePath,
+        line = 0,
+        side = false,
+        startCharacter = 0,
+        endCharacter = startCharacter,
+    ) => {
+        const uri = vscode.Uri.file(filePath);
+        try {
+            const stat = await fs.promises.stat(filePath);
+            if (stat.size >= LARGE_FILE_THRESHOLD_BYTES) {
+                return largeFileViewerProvider.openAt(
+                    uri,
+                    Math.max(0, Number(line) || 0),
+                    side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+                );
+            }
+        } catch {
+            return false;
+        }
+        const lineNumber = Math.max(0, Number(line) || 0);
+        const start = new vscode.Position(lineNumber, Math.max(0, Number(startCharacter) || 0));
+        const end = new vscode.Position(lineNumber, Math.max(start.character, Number(endCharacter) || 0));
+        await vscode.commands.executeCommand('vscode.open', uri, {
+            selection: new vscode.Range(start, end),
+            ...(side ? { viewColumn: vscode.ViewColumn.Beside } : {}),
+        });
+        return true;
+    };
+    const openEntityReferenceNode = async (node, side) => {
+        let activeNode = node;
+        if (['stale', 'needs-refresh'].includes(node?.session?.state)) {
+            const roleIndex = (node.session.locations || [])
+                .slice(0, node.index + 1)
+                .filter(location => location.role === node.role)
+                .length - 1;
+            const refreshed = await refreshStoredObjectReference(node);
+            if (!refreshed) return false;
+            const locations = refreshed?.querySession?.locations || [];
+            const sameRole = locations.filter(location => location.role === node.role);
+            const location = roleIndex >= 0 ? sameRole[roleIndex] : null;
+            if (location) {
+                activeNode = {
+                    ...node,
+                    session: refreshed.querySession,
+                    location,
+                };
+            } else {
+                entityReferenceProvider.markNeedsRefresh(
+                    refreshed?.querySession || node.session,
+                    ['entity-reference-location-changed'],
+                );
+                return false;
+            }
+        }
+        const args = LsdynaEntityReferenceProvider.openArguments(activeNode, side);
+        if (!args) {
+            vscode.window.showWarningMessage(i18n.get('entityReferencesRefreshBeforeOpen'));
+            return false;
+        }
+        entityReferenceProvider.setActive(activeNode);
+        stopObjectReferenceFollow();
+        const navigation = activeNode.location;
+        objectReferenceNavigation = navigation;
+        objectReferenceOpening++;
+        let opened = false;
+        try {
+            opened = await openLsdynaLocation(
+                navigation.filePath, navigation.line, side,
+                navigation.startCharacter, navigation.endCharacter,
+            );
+            return opened;
+        } finally {
+            objectReferenceOpening--;
+            if (!opened && objectReferenceNavigation === navigation) objectReferenceNavigation = null;
+        }
+    };
+    largeFileViewerProvider = new LargeFileViewerProvider(
+        context.extensionPath,
+        context.workspaceState,
+        {
+            loadFileIndex: async (filePath, cancellationToken) => {
+                const snapshot = await indexClient.loadProjectSnapshot(
+                    filePath,
+                    { singleFileOnly: true },
+                    null,
+                    cancellationToken,
+                );
+                return lookupNormalizedFileIndex(
+                    new Map(fileIndexScopeEntries(snapshot?.fileIndexes)),
+                    filePath,
+                );
+            },
+            queryObject: target => {
+                void vscode.commands.executeCommand('lsdynaEntityReferences.focus');
+                return runObjectReferenceQuery(
+                    target,
+                    entityReferencesWebviewProvider?.getScopePreference?.() || 'auto',
+                ).then(Boolean);
+            },
+        },
+    );
+    context.subscriptions.push(
+        largeFileViewerProvider,
+        typeof vscode.window.registerCustomEditorProvider === 'function'
+            ? vscode.window.registerCustomEditorProvider(
+                LARGE_FILE_VIEW_TYPE,
+                largeFileViewerProvider,
+                { supportsMultipleEditorsPerDocument: false },
+            )
+            : { dispose() {} },
+        vscode.commands.registerCommand('extension.openLsdynaLargeFileViewer', async target => {
+            const uri = target instanceof vscode.Uri ? target
+                : target?.uri instanceof vscode.Uri ? target.uri
+                    : getActiveUri();
+            if (!uri || uri.scheme !== 'file' || !isLsdynaUri(uri)) return false;
+            return largeFileViewerProvider.openAt(
+                uri,
+                Math.max(0, Number(target?.line) || 0),
+                target?.side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+            );
+        }),
+    );
+    entityReferencesWebviewProvider = new EntityReferencesWebviewProvider(
+        context.extensionPath,
+        entityReferenceProvider,
+        () => indexedEntityKinds(),
+        {
+            stopFollow: stopObjectReferenceFollow,
+            follow: () => { lastObjectFollowKey = ''; objectReferenceNavigation = null; scheduleObjectReferenceFollow(); },
+            query: (targetKind, id, scopePreference) =>
+                runObjectReferenceQuery({ targetKind, id }, scopePreference).then(Boolean),
+            infer: inferAndQueryObjectReference,
+            refresh: refreshCurrentObjectReference,
+            togglePin: async sessionKey => {
+                const session = entityReferenceProvider.getSession(sessionKey);
+                if (!session) return false;
+                if (session.pinned) {
+                    const result = Boolean(await entityReferenceProvider.unpin(session));
+                    lastObjectFollowKey = '';
+                    scheduleObjectReferenceFollow();
+                    return result;
+                }
+                const pinned = await entityReferenceProvider.pin(session);
+                if (!pinned.ok && pinned.reason === 'limit') {
+                    vscode.window.showWarningMessage(i18n.get('entityReferencesPinnedLimit', pinned.limit));
+                }
+                return pinned.ok;
+            },
+            selectSession: sessionKey => {
+                const session = entityReferenceProvider.setActive(sessionKey);
+                if (!session) return false;
+                entityReferencesWebviewProvider.setInput(
+                    session.identity.targetKind,
+                    session.identity.id,
+                    session.identity.scope.kind === 'project' ? 'project' : 'file',
+                );
+                return true;
+            },
+            removeSession: sessionKey => entityReferenceProvider.remove(sessionKey),
+            clear: () => entityReferenceProvider.clear().then(() => true),
+            open: (session, location, side) => {
+                const index = (session.locations || []).indexOf(location);
+                return openEntityReferenceNode({
+                    type: 'location', session, location, index,
+                    role: location.role,
+                }, side);
+            },
+            openLargeFile: uri => largeFileViewerProvider.openAt(uri, 0),
+        },
+        prepareReferenceDirectory,
+    );
+    context.subscriptions.push(
+        entityReferencesWebviewProvider,
+        vscode.window.registerWebviewViewProvider(
+            'lsdynaEntityReferences',
+            entityReferencesWebviewProvider,
+        ),
+        vscode.window.onDidChangeActiveTextEditor(editor => {
+            if (editor && isLsdynaFile(editor.document)) lastEntityReferenceCursorEditor = editor;
+            entityReferencesWebviewProvider.setLargeFileOffer();
+            refreshEntityReferenceScopeContext();
+            scheduleObjectReferenceFollow();
+        }),
+        vscode.window.onDidChangeTextEditorSelection(event => {
+            if (event.textEditor === vscode.window.activeTextEditor &&
+                isLsdynaFile(event.textEditor.document)) {
+                lastEntityReferenceCursorEditor = event.textEditor;
+                scheduleObjectReferenceFollow();
+            }
+        }),
+        vscode.workspace.onDidCloseTextDocument(document => {
+            keywordIndexProvider?.disposeDocument(document);
+            keywordManagerInstanceDirectories.delete(document);
+            if (lastEntityReferenceCursorEditor?.document === document) {
+                lastEntityReferenceCursorEditor = null;
+                stopObjectReferenceFollow();
+            }
+        }),
+        vscode.window.tabGroups.onDidChangeTabs?.(() => {
+            entityReferencesWebviewProvider.setLargeFileOffer();
+            refreshEntityReferenceScopeContext();
+        }) || { dispose() {} },
+    );
+    refreshEntityReferenceScopeContext();
+    const markEntityReferenceQueriesStaleForFile = filePath => {
+        if (!filePath) return;
+        stopObjectReferenceFollow();
+        entityReferenceProvider.markStaleForPath(filePath);
+        const contextState = getMainDeckContextForDocumentPath(filePath);
+        if (contextState?.state !== 'ambiguous' && contextState?.rootFile) {
+            entityReferenceProvider.markStaleForRoot(contextState.rootFile);
+        }
+    };
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.queryLsdynaEntityId', target => {
+            entityReferencesWebviewProvider.focusForm();
+            if (!target?.targetKind) return inferAndQueryObjectReference();
+            const normalized = normalizeIndexedEntityId(target?.id) ? target : null;
+            if (normalized) return runObjectReferenceQuery(normalized, 'auto');
+            entityReferencesWebviewProvider.setMessage(i18n.get('entityReferencesCursorUnavailable'));
+            return null;
+        }),
+        vscode.commands.registerCommand(
+            'extension.entityReferences.refresh',
+            refreshCurrentObjectReference,
+        ),
+        vscode.commands.registerCommand('extension.entityReferences.pin', async target => {
+            const pinned = await entityReferenceProvider.pin(target);
+            if (!pinned.ok && pinned.reason === 'limit') {
+                vscode.window.showWarningMessage(i18n.get('entityReferencesPinnedLimit', pinned.limit));
+            }
+            return pinned;
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.unpin', target => entityReferenceProvider.unpin(target)),
+        vscode.commands.registerCommand('extension.entityReferences.remove', target => entityReferenceProvider.remove(target)),
+        vscode.commands.registerCommand('extension.entityReferences.clear', () => entityReferenceProvider.clear()),
+        vscode.commands.registerCommand('extension.entityReferences.openSide', node => openEntityReferenceNode(node, true)),
+        vscode.commands.registerCommand('extension.entityReferences.openCurrent', node => openEntityReferenceNode(node, false)),
+        vscode.commands.registerCommand('extension.entityReferences.next', async () => {
+            const next = entityReferenceProvider.nextReference();
+            return next ? openEntityReferenceNode({ ...next, type: 'location', role: 'reference' }, false) : false;
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.previous', async () => {
+            const previous = entityReferenceProvider.previousReference();
+            return previous ? openEntityReferenceNode({ ...previous, type: 'location', role: 'reference' }, false) : false;
+        }),
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'extension.clearProjectIndexCaches',
+            () => handleClearProjectIndexCachesCommand(indexClient, {
+                projectDiagnosticStore,
+                includeTreeProvider,
+                keywordIndexProvider,
+            }),
+        )
+    );
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
@@ -6891,6 +8618,7 @@ async function activate(context) {
         },
         onInvalidatedRoots(roots) {
             for (const rootFile of roots) {
+                entityReferenceProvider.markStaleForRoot(rootFile);
                 enqueueProjectSnapshotRefresh(rootFile);
             }
         },
@@ -6898,15 +8626,24 @@ async function activate(context) {
     workspaceWatcherManager = createWorkspaceWatcherManager({
         createWatcher: glob => vscode.workspace.createFileSystemWatcher(glob),
         onFileEvent: uri => {
+            if (uri?.fsPath) markEntityReferenceQueriesStaleForFile(uri.fsPath);
             invalidateChangedProjectRoots(uri);
             refreshActiveIncludeDecorations();
         },
         logWarning: message => logDebug(message),
     });
     workspaceWatcherManager.rebuild(
-        getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna', '.asc'])
+        getLsdynaConfigurationValue('additionalExtensions', ['.k', '.key', '.dyna'])
     );
     context.subscriptions.push(workspaceWatcherManager);
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(event => {
+            if (event?.document?.uri?.fsPath && isLsdynaUri(event.document.uri)) {
+                markEntityReferenceQueriesStaleForFile(event.document.uri.fsPath);
+            }
+        })
+    );
+    await new Promise(resolve => setTimeout(resolve, 0));
     includeTreeProvider = new LsdynaIncludeTreeProvider({
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -6916,6 +8653,7 @@ async function activate(context) {
         treeDataProvider: includeTreeProvider
     });
     includeTreeView.title = i18n.get('includeTreeTitle');
+    includeTreeProvider.attachTreeView(includeTreeView);
     context.subscriptions.push(includeTreeView);
 
     fileDecorationProvider = new LsdynaFileDecorationProvider(includeTreeProvider);
@@ -6923,14 +8661,42 @@ async function activate(context) {
         vscode.window.registerFileDecorationProvider(fileDecorationProvider)
     );
 
+    const scanIncludeTreeAndRefreshEntityQuery = async () => {
+        const scanResult = await includeTreeProvider.scan();
+        fileDecorationProvider.refresh();
+        if (statusDashboardRef && typeof statusDashboardRef.scheduleRefresh === 'function') {
+            statusDashboardRef.scheduleRefresh();
+        }
+        refreshEntityReferenceScopeContext();
+        if (entityReferencesWebviewProvider.getScopePreference() === 'auto') {
+            await refreshCurrentEntityQueryAfterProjectScan(
+                scanResult,
+                entityReferenceProvider,
+                (session, completedScan) => refreshStoredObjectReference(session, {
+                    queryOptions: {
+                        presentResult: false,
+                        silentStatus: true,
+                        scope: {
+                            kind: 'project',
+                            rootFile: completedScan.rootFile,
+                            snapshot: completedScan.snapshot,
+                            label: i18n.get(
+                                'entityIdQueryProjectScopeSummary',
+                                path.basename(completedScan.rootFile),
+                                completedScan.snapshot.files?.length || 0,
+                            ),
+                        },
+                    },
+                }),
+            );
+        }
+        return scanResult;
+    };
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.scanIncludeTree', async () => {
-            await includeTreeProvider.scan();
-            fileDecorationProvider.refresh();
-            if (statusDashboardRef && typeof statusDashboardRef.scheduleRefresh === 'function') {
-                statusDashboardRef.scheduleRefresh();
-            }
-        })
+        vscode.commands.registerCommand(
+            'extension.scanIncludeTree',
+            scanIncludeTreeAndRefreshEntityQuery,
+        )
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.searchIncludeTree', async () => {
@@ -6979,12 +8745,51 @@ async function activate(context) {
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         invalidateProjectSnapshot: indexClient.invalidate,
+        workspaceState: context.workspaceState,
     });
+    cardEditKeywordIndexProviderRef = keywordIndexProvider;
+    context.subscriptions.push({
+        dispose: () => {
+            if (cardEditKeywordIndexProviderRef === keywordIndexProvider) {
+                cardEditKeywordIndexProviderRef = null;
+            }
+        },
+    });
+    if (typeof keywordIndexProvider.onDidChangeTreeData === 'function') {
+        context.subscriptions.push(keywordIndexProvider.onDidChangeTreeData(() => {
+            if (keywordManagerScope === 'project' && keywordManagerScopeStatus === 'ready' &&
+                keywordOptionsModel && !keywordOptionsModel.stale) {
+                keywordOptionsRefreshGeneration++;
+                keywordManagerDirectoryTask = null;
+                keywordOptionsModelAdapter.markStale();
+            }
+        }));
+    }
     keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
-        treeDataProvider: keywordIndexProvider
+        treeDataProvider: keywordIndexProvider,
+        showCollapseAll: true,
     });
     keywordTreeView.title = i18n.get('keywordIndexTitle');
     context.subscriptions.push(keywordTreeView);
+keywordIndexProvider.attachTreeView(keywordTreeView);
+    context.subscriptions.push(keywordTreeView.onDidChangeVisibility?.(() => {
+        keywordIndexProvider.stopAutomaticWork();
+        if (keywordTreeView.visible) {
+            const editor = vscode.window.activeTextEditor;
+            void keywordIndexProvider.refreshAutomatically(editor?.document || getActiveUri())
+                .then(() => keywordIndexProvider.scheduleReveal(editor));
+        }
+    }) || { dispose() {} }, { dispose: () => keywordIndexProvider.stopAutomaticWork() });
+    context.subscriptions.push(
+        vscode.commands.registerCommand('extension.keywordIndexChooseScope', () => keywordIndexProvider.chooseScope()),
+        vscode.commands.registerCommand('extension.keywordIndexRefresh', () => keywordIndexProvider.refreshScope())
+    );
+context.subscriptions.push(
+        vscode.commands.registerCommand('extension.keywordIndexChooseLayout', () => keywordIndexProvider.chooseLayout())
+    );
+context.subscriptions.push(
+        vscode.commands.registerCommand('extension.keywordIndexToggleFollow', () => keywordIndexProvider.toggleFollowCursor())
+    );
     vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', 'local');
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.scanKeywordIndex', () => keywordIndexProvider.scan())
@@ -7023,14 +8828,17 @@ async function activate(context) {
 
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
+            keywordIndexProvider.stopAutomaticWork();
+            includeTreeProvider.refresh();
             logDebug(`onDidChangeActiveTextEditor: editor=${editor ? editor.document.uri.toString() : 'none'}, languageId=${editor ? editor.document.languageId : 'none'}`);
             if (editor) {
-                keywordIndexProvider.refreshFromUriOrDocument(editor.document);
+                Promise.resolve(keywordIndexProvider.refreshAutomatically(editor.document))
+                    .finally(() => keywordIndexProvider.scheduleReveal(editor));
             } else {
                 const uri = getActiveUri();
                 logDebug(`onDidChangeActiveTextEditor callback fallback: getActiveUri=${uri ? uri.toString() : 'null'}`);
                 if (uri) {
-                    keywordIndexProvider.refreshFromUriOrDocument(uri);
+                    keywordIndexProvider.refreshAutomatically(uri);
                 }
             }
         })
@@ -7042,7 +8850,7 @@ async function activate(context) {
                 const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
                 logDebug(`onDidChangeTabs: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
                 if (uri) {
-                    keywordIndexProvider.refreshFromUriOrDocument(uri);
+                    keywordIndexProvider.refreshAutomatically(uri);
                 }
             })
         );
@@ -7051,13 +8859,13 @@ async function activate(context) {
         () => vscode.window.activeTextEditor?.document || getActiveUri(),
         uriOrDoc => {
             logDebug(`Debounced keyword index refresh triggered`);
-            keywordIndexProvider.refreshFromUriOrDocument(uriOrDoc);
+            keywordIndexProvider.refreshAutomatically(uriOrDoc);
         }
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
+            keywordIndexProvider.updateDocumentAutomatically(e.document, e);
             if (vscode.window.activeTextEditor?.document === e.document) {
-                keywordIndexProvider.updateDocumentIndex(e.document, e);
                 scheduleKeywordIndexRefresh(e.document);
             }
         })
@@ -7065,7 +8873,7 @@ async function activate(context) {
     const initialUri = getActiveUri();
     logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);
     if (initialUri) {
-        keywordIndexProvider.refreshFromUriOrDocument(initialUri);
+        keywordIndexProvider.refreshAutomatically(initialUri);
     }
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.goToKeywordUsage', async (filePath, lineIndex) => {
@@ -7378,7 +9186,7 @@ async function activate(context) {
             const btnCancel = i18n.get('btnCancel');
 
             const choice = await vscode.window.showInformationMessage(hasPack, btnYes, btnDownload, btnCancel);
-            
+
             if (choice === btnDownload) {
                 vscode.env.openExternal(vscode.Uri.parse('https://github.com/hqyyqh/vscode-lsdyna/releases'));
                 return;
@@ -7401,7 +9209,7 @@ async function activate(context) {
                 } catch (err) {
                     vscode.window.showErrorMessage(i18n.get('failedToSaveGlobalConfig', err.message));
                 }
-                
+
                 if (process.platform === 'win32') {
                     const fs = require('fs');
                     const path = require('path');
@@ -7421,7 +9229,14 @@ async function activate(context) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.lsdynaChooseKeywordOptions', async (lineNum) => {
-            return chooseKeywordOptionsForEditor(vscode.window.activeTextEditor, lineNum);
+            const editor = vscode.window.activeTextEditor;
+            if (lineNum && typeof lineNum === 'object') {
+                if (!editor || editor.document.isClosed || lineNum.uri !== documentUriIdentity(editor.document) ||
+                    lineNum.documentVersion !== editor.document.version || !Number.isInteger(lineNum.keywordLine) ||
+                    lineNum.keywordLine < 0 || lineNum.keywordLine >= editor.document.lineCount) return false;
+                lineNum = lineNum.keywordLine;
+            }
+            return chooseKeywordOptionsForEditor(editor, lineNum);
         })
     );
 
@@ -7430,17 +9245,31 @@ async function activate(context) {
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
-            activeFileIndexCache.delete(normalizeFileIndexKey(e.document.uri.fsPath));
+            updateActiveFileIndexForDocumentChange(e);
             updateDiagnostics(e.document);
         })
     );
     context.subscriptions.push(
-        vscode.workspace.onDidCloseTextDocument(doc => diagnostics.delete(doc.uri))
+        vscode.workspace.onDidCloseTextDocument(doc => {
+            documentPresentationCache.delete(doc);
+            includeDirectiveCache.delete(doc);
+            keywordManagerInstanceDirectories.delete(doc);
+            if (inlineEditChoiceSession?.document === doc) {
+                clearInlineEditChoiceSession(inlineEditChoiceSession.id);
+            }
+            clearCardCellTypingSession(doc);
+            cardCellCompositions.delete(doc);
+            structureDiagnostics.clear(doc);
+            keywordStructureAnalysisCache.delete(doc);
+            keywordSchema.clearFieldContextCache(doc);
+            releaseLiveFileIndexForClosedDocument(doc);
+            diagnostics.delete(doc.uri);
+        })
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (!e || typeof e.affectsConfiguration !== 'function') return;
-            if (!e.affectsConfiguration('lsdyna.include.pathCaseCheck')) return;
+            if (!e.affectsConfiguration('lsdyna')) return;
             for (const doc of vscode.workspace.textDocuments) {
                 updateDiagnostics(doc);
             }
@@ -7602,6 +9431,7 @@ async function activate(context) {
         };
     }
 
+    await new Promise(resolve => setTimeout(resolve, 0));
     const statusBarAlignment = vscode.StatusBarAlignment && vscode.StatusBarAlignment.Left !== undefined
         ? vscode.StatusBarAlignment.Left
         : undefined;
@@ -7638,6 +9468,45 @@ async function activate(context) {
     });
     statusDashboardRef = statusDashboard;
     context.subscriptions.push(statusDashboard);
+    const officialChoiceStatusItem = vscode.window.createStatusBarItem(statusBarAlignment, 51);
+    const activeFieldChoiceController = createActiveFieldChoiceController({
+        statusBarItem: officialChoiceStatusItem,
+        getActiveEditor: () => vscode.window.activeTextEditor,
+        isLsdynaDocument: isLsdynaFile,
+        documentIdentity: documentUriIdentity,
+        getStatusBarLevel: document => getLsdynaConfigurationValue(
+            'statusBar.level',
+            'simple',
+            document?.uri,
+        ),
+        plan: (document, position, planOptions) =>
+            planPreparedOfficialFieldChoices(document, position, planOptions),
+        translate: (key, ...args) => i18n.get(key, ...args),
+        getLanguage: () => i18n.getLanguage(),
+        presentEvidence: (evidence, plan) => {
+            const target = semanticEvidenceLocationPresentation(evidence, plan?.ruleId);
+            return target ? semanticEvidenceTargetLabel(target) : null;
+        },
+        setContext: (key, value) => vscode.commands.executeCommand('setContext', key, value),
+        globalState: context.globalState,
+        showInformationMessage: (...args) => vscode.window.showInformationMessage(...args),
+        executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+    });
+    context.subscriptions.push(activeFieldChoiceController);
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument(event => {
+            if (event?.document === vscode.window.activeTextEditor?.document) {
+                activeFieldChoiceController.scheduleRefresh();
+            }
+        })
+    );
+    if (keywordIndexProvider && typeof keywordIndexProvider.onDidChangeTreeData === 'function') {
+        context.subscriptions.push(
+            keywordIndexProvider.onDidChangeTreeData(() =>
+                activeFieldChoiceController.scheduleRefresh()
+            )
+        );
+    }
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.lsdynaStatusDashboard', () => statusDashboard.showMenu())
     );
@@ -7659,11 +9528,15 @@ async function activate(context) {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(editor => {
             statusDashboard.scheduleRefresh();
+            activeFieldChoiceController.scheduleRefresh();
             maybeShowHealthNoticeForEditor(editor);
         })
     );
     context.subscriptions.push(
-        vscode.window.onDidChangeTextEditorSelection(() => statusDashboard.scheduleRefresh())
+        vscode.window.onDidChangeTextEditorSelection(() => {
+            statusDashboard.scheduleRefresh();
+            activeFieldChoiceController.scheduleRefresh();
+        })
     );
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
@@ -7679,6 +9552,7 @@ async function activate(context) {
             ) {
                 healthService.invalidate();
                 statusDashboard.scheduleRefresh();
+                activeFieldChoiceController.scheduleRefresh();
                 maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
             }
         })
@@ -7689,6 +9563,7 @@ async function activate(context) {
         );
     }
     statusDashboard.refresh();
+    activeFieldChoiceController.refreshNow();
     maybeShowHealthNoticeForEditor(vscode.window.activeTextEditor);
 
     context.subscriptions.push(
@@ -7712,25 +9587,30 @@ async function activate(context) {
     context.subscriptions.push(missingPathDecoration, missingIndicatorDecoration, keywordDecoration);
     const includeDecorationRequests = createLatestDocumentRequestGuard();
 
-    function updateDecorations(editor) {
+    function updateDecorations(editor, documentEdit = false) {
         if (!editor || !isLsdynaFile(editor.document)) return;
         const document = editor.document;
+        const cached = documentPresentationCache.get(document);
+        if (documentEdit && cached?.skipDecorationsVersion === document.version) return;
         const requestId = includeDecorationRequests.begin(document);
-        collectIncludeDecorationSets(document).then(({ missing, missingIndicators }) => {
-            if (
-                includeDecorationRequests.isLatest(document, requestId)
-                && vscode.window.activeTextEditor
-                && vscode.window.activeTextEditor.document === document
-            ) {
-                editor.setDecorations(missingPathDecoration, missing);
-                editor.setDecorations(missingIndicatorDecoration, missingIndicators);
-            }
-        }).catch(error => {
-            logDebug(`collectIncludeDecorationSets failed: ${error && error.message ? error.message : error}`);
-        });
-
-        const keywordRanges = collectKeywordDecorationRanges(document);
-        editor.setDecorations(keywordDecoration, keywordRanges);
+        const current = createDocumentReadGuard(document);
+        const canPublish = () => current() && includeDecorationRequests.isLatest(document, requestId) &&
+            vscode.window.activeTextEditor === editor;
+        if (!cached?.ready || cached.version !== document.version) {
+            editor.setDecorations(missingPathDecoration, []);
+            editor.setDecorations(missingIndicatorDecoration, []);
+            editor.setDecorations(keywordDecoration, []);
+        }
+        void (async () => {
+            const prepared = await prepareDocumentPresentation(document);
+            if (!canPublish() || !prepared) return;
+            const { missing, missingIndicators } = await collectIncludeDecorationSets(document);
+            if (!canPublish()) return;
+            editor.setDecorations(missingPathDecoration, missing);
+            editor.setDecorations(missingIndicatorDecoration, missingIndicators);
+            editor.setDecorations(keywordDecoration, prepared.ranges);
+            prepared.painted = true;
+        })().catch(error => logDebug(`collectIncludeDecorationSets failed: ${error?.message || error}`));
     }
 
     refreshActiveIncludeDecorations = () => updateDecorations(vscode.window.activeTextEditor);
@@ -7745,7 +9625,7 @@ async function activate(context) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(event => {
             if (vscode.window.activeTextEditor?.document === event.document) {
-                updateDecorations(vscode.window.activeTextEditor);
+                updateDecorations(vscode.window.activeTextEditor, true);
             }
         })
     );
@@ -7764,11 +9644,17 @@ async function activate(context) {
 
     updateDecorations(vscode.window.activeTextEditor);
 
-    function updateIncludeLineContext(editor) {
+    async function updateIncludeLineContext(editor) {
         if (!editor || !isLsdynaFile(editor.document)) {
             vscode.commands.executeCommand('setContext', 'lsdyna.onIncludeLine', false);
             return;
         }
+        const current = createDocumentReadGuard(editor.document);
+        const position = editor.selection.active;
+        try {
+            if (!await prepareDocumentPresentation(editor.document) || !current() ||
+                vscode.window.activeTextEditor !== editor || editor.selection.active.line !== position.line) return;
+        } catch (_) { return; }
         const currentLine = editor.selection.active.line;
         const onInclude = isIncludeLine(editor.document, currentLine);
         vscode.commands.executeCommand('setContext', 'lsdyna.onIncludeLine', onInclude);
@@ -7778,6 +9664,9 @@ async function activate(context) {
         vscode.window.onDidChangeTextEditorSelection(e => {
             handleSelectionChange(e);
             updateIncludeLineContext(e.textEditor);
+            if (keywordIndexProvider) {
+                keywordIndexProvider.scheduleReveal(e.textEditor);
+            }
         })
     );
 
@@ -7824,6 +9713,14 @@ async function activate(context) {
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.lsdynaCellDeleteRight', () => handleCardCellDelete('right')),
         vscode.commands.registerCommand('extension.lsdynaCellDeleteLeft', () => handleCardCellDelete('left')),
+        vscode.commands.registerCommand(
+            'extension.lsdynaApplyInlineEditChoice',
+            (sessionId, choiceId) => applyInlineEditChoice(sessionId, choiceId),
+        ),
+        vscode.commands.registerCommand(
+            'extension.lsdynaCancelInlineEditChoice',
+            (sessionId = null) => cancelInlineEditChoiceSession(sessionId),
+        ),
         vscode.commands.registerCommand('type', (args) => handleCardCellType(args)),
         vscode.workspace.onDidChangeTextDocument(event => {
             void handleCardCellPostEdit(event);
@@ -7835,187 +9732,144 @@ async function activate(context) {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
             const document = editor.document;
-            let selections = editor.selections;
-            
-            if (typeof lineNumArg === 'number') {
-                try {
-                    const startLine = startLineOfCurrentKeywordFromLineReader(
-                        document.lineCount,
-                        i => document.lineAt(i).text,
-                        lineNumArg
-                    );
-                    const endLine = endLineOfCurrentKeywordFromLineReader(
-                        document.lineCount,
-                        i => document.lineAt(i).text,
-                        lineNumArg
-                    );
-                    selections = [new vscode.Selection(
-                        new vscode.Position(startLine, 0),
-                        document.lineAt(endLine).range.end,
-                    )];
-                } catch (e) {
-                    // Fallback
-                }
-            }
-
-            const selectedLineRanges = selections
-                .map(selection => {
-                    const excludesEndLine = (
-                        !selection.isEmpty &&
-                        selection.end.character === 0 &&
-                        selection.end.line > selection.start.line
-                    );
-                    return {
-                        start: selection.start.line,
-                        end: selection.end.line - (excludesEndLine ? 1 : 0),
-                    };
-                })
-                .sort((a, b) => a.start - b.start || a.end - b.end);
-            const mergedLineRanges = [];
-            for (const range of selectedLineRanges) {
-                const previous = mergedLineRanges[mergedLineRanges.length - 1];
-                if (previous && range.start <= previous.end) {
-                    previous.end = Math.max(previous.end, range.end);
-                } else {
-                    mergedLineRanges.push({ ...range });
-                }
-            }
-
-            const plannedEdits = [];
-            let hasConflictingEdits = false;
-            const planEdit = (range, newText) => {
-                for (const existing of plannedEdits) {
-                    if (
-                        range.start.isEqual(existing.range.start) &&
-                        range.end.isEqual(existing.range.end)
-                    ) {
-                        if (newText !== existing.newText) {
-                            hasConflictingEdits = true;
-                        }
-                        return;
-                    }
-                    if (
-                        range.start.isBefore(existing.range.end) &&
-                        existing.range.start.isBefore(range.end)
-                    ) {
-                        hasConflictingEdits = true;
-                        return;
-                    }
-                }
-                plannedEdits.push({ range, newText });
+            const capturedVersion = document.version;
+            const capturedUri = document.uri?.toString?.() || document.uri?.fsPath || '';
+            const capturedSelections = Array.from(editor.selections || []) as any[];
+            const stillValid = () => {
+                const active = vscode.window.activeTextEditor;
+                const currentUri = document.uri?.toString?.() || document.uri?.fsPath || '';
+                return active === editor &&
+                    active?.document === document &&
+                    document.version === capturedVersion &&
+                    currentUri === capturedUri;
             };
 
-            for (const selectedRange of mergedLineRanges) {
-                for (
-                    let lineNum = selectedRange.start;
-                    lineNum <= selectedRange.end;
-                    lineNum++
-                ) {
-                    const line = document.lineAt(lineNum);
-                    const text = line.text;
-                    const trimmed = text.trimStart();
-                    let currentKwText = null;
-                    let currentKwLine = null;
-                    for (let i = lineNum; i >= 0; i--) {
-                        const t = document.lineAt(i).text;
-                        const classification = classifyKeywordLine(t);
-                        if (classification.isKeyword) {
-                            currentKwText = classification.normalizedKeyword;
-                            currentKwLine = i;
-                            break;
-                        }
-                    }
-                    if (currentKwText && currentKwText.startsWith('*PARAMETER')) continue;
+            if (
+                document.languageId !== 'lsdyna' ||
+                document.isUntitled === true ||
+                (document.uri?.scheme && document.uri.scheme !== 'file')
+            ) return;
+            if (await isDocumentReadonlyForAutomaticEdit(document)) return;
+            if (!stillValid()) return;
 
-                    const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
-                    const isCommentLine = trimmed.startsWith('$');
-                    const isFieldHeaderLine = isFieldHeaderCommentLine(text);
-                    if (isCommentLine && !isFieldHeaderLine) continue;
-
-                    if (
-                        !isCommentLine &&
-                        (
-                            currentKwText === '*INCLUDE_PATH' ||
-                            currentKwText === '*INCLUDE_PATH_RELATIVE'
-                        )
-                    ) {
-                        const pathEdit = createPathEntryFormatEdit(
-                            document,
-                            lineNum,
-                            currentKwLine,
-                        );
-                        if (pathEdit.range) {
-                            planEdit(pathEdit.range, pathEdit.newText);
-                            lineNum = pathEdit.range.end.line;
-                        }
-                        continue;
-                    }
-
-                    let targetLineNum = lineNum;
-                    if (isFieldHeaderLine) {
-                        const nextDataLine = findNextDataLineInKeywordBlock(
-                            document,
-                            lineNum + 1,
-                        );
-                        if (nextDataLine === null) continue;
-                        targetLineNum = nextDataLine;
-                    }
-
-                    if (targetLineNum !== lineNum || isCardLine) {
-                        const card = getCardFieldsForLine(document, targetLineNum);
-                        if (card && card.length > 0) {
-                            if (
-                                !isCommentLine &&
-                                isIncludeFileKeyword(currentKwText) &&
-                                isSingleEightyColumnCard(card)
-                            ) {
-                                const pathEdit = createPathEntryFormatEdit(
-                                    document,
-                                    lineNum,
-                                    currentKwLine,
-                                );
-                                if (pathEdit.range) {
-                                    planEdit(pathEdit.range, pathEdit.newText);
-                                    lineNum = pathEdit.range.end.line;
-                                }
-                                continue;
-                            }
-                            const alignment = planAlignedLine(
-                                text,
-                                card,
-                                isFieldHeaderLine,
-                            );
-                            if (alignment.status === 'unsafe') {
-                                notifyUnsafeFormatOnce(document);
-                                continue;
-                            }
-                            const alignedText = alignment.text;
-                            if (alignedText !== text) {
-                                const range = new vscode.Range(
-                                    new vscode.Position(lineNum, 0),
-                                    new vscode.Position(lineNum, text.length),
-                                );
-                                planEdit(range, alignedText);
-                            }
-                        }
-                    }
+            const ignoredKeywords = getLsdynaConfigurationValue(
+                'ignoreFormattingKeywords',
+                [],
+                document.uri,
+            ) || [];
+            const shouldSkipKeyword = (keywordText, globalLongFormat) => {
+                const upper = String(keywordText || '').trim().toUpperCase();
+                if (ignoredKeywords.some(prefix => upper.startsWith(String(prefix).toUpperCase()))) {
+                    return true;
                 }
-            }
+                const inputFormat = keywordInputFormat(
+                    keywordText,
+                    globalLongFormat ? 'long' : 'standard',
+                );
+                if (inputFormat !== 'standard') {
+                    notifyLongFormatOnce(
+                        document,
+                        keywordText,
+                    );
+                    return true;
+                }
+                return false;
+            };
 
-            if (hasConflictingEdits) return;
-            await editor.edit(editBuilder => {
-                for (const edit of plannedEdits) {
-                    editBuilder.replace(edit.range, edit.newText);
+            const plan = await planLsdynaFormatting({
+                document,
+                selections: capturedSelections,
+                lineArgument: typeof lineNumArg === 'number' ? lineNumArg : undefined,
+                fileIndex: getFileIndexForDocument(document),
+            }, {
+                classifyKeywordLine,
+                resolveCard: ({
+                    lineNum,
+                    keywordLine,
+                    dataLineOrdinal,
+                    observedDataLines,
+                    globalInputFormat,
+                    readLine,
+                }) => keywordSchema.getCardInfoForDocumentLine(
+                    document,
+                    lineNum,
+                    getFieldData(),
+                    {
+                        keywordLine,
+                        dataLineOrdinal,
+                        observedDataLines,
+                        globalInputFormat,
+                        readLine,
+                    },
+                ),
+                alignLine: planAlignedLine,
+                splitIncludePathEntry,
+                shouldSkipKeyword,
+                isLongFormatKeyword: keywordSchema.isLongFormatKeyword,
+                isStillValid: stillValid,
+                resolveOpaqueState: position => getOpaqueCommentLocation(
+                    document,
+                    position,
+                    { requireLiveSnapshot: true },
+                ).state,
+            });
+
+            if (plan.status === 'rejected') {
+                if (plan.reason === 'unsafe-line') notifyUnsafeFormatOnce(document);
+                if (plan.reason !== 'cancelled') {
+                    vscode.window.setStatusBarMessage(
+                        i18n.get('formatSelectionRejected', plan.reason),
+                        6000,
+                    );
+                }
+                return;
+            }
+            if (!stillValid() || plan.edits.length === 0) return;
+
+            const mappedSelections = capturedSelections.map(selection => {
+                const anchor = mapPositionThroughFormattingEdits(
+                    selection.anchor || selection.start,
+                    plan.edits,
+                );
+                const active = mapPositionThroughFormattingEdits(
+                    selection.active || selection.end,
+                    plan.edits,
+                );
+                return new vscode.Selection(
+                    new vscode.Position(anchor.line, anchor.character),
+                    new vscode.Position(active.line, active.character),
+                );
+            });
+
+            const applied = await editor.edit(editBuilder => {
+                for (const edit of plan.edits) {
+                    editBuilder.replace(
+                        new vscode.Range(
+                            edit.startLine,
+                            edit.startCharacter,
+                            edit.endLine,
+                            edit.endCharacter,
+                        ),
+                        edit.newText,
+                    );
                 }
             });
+            if (!applied) {
+                vscode.window.setStatusBarMessage(i18n.get('formatSelectionApplyFailed'), 6000);
+                return;
+            }
+            if (vscode.window.activeTextEditor === editor && editor.document === document) {
+                editor.selections = mappedSelections;
+            }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.openIncludeFile', () => {
+        vscode.commands.registerCommand('extension.openIncludeFile', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) return;
             try {
+                if (!await prepareDocumentPresentation(editor.document)) return;
                 const fullPath = searchFileFromPaths(
                     getFilenameFromDocument(editor.document, editor.selection.active.line),
                     getSearchPath(editor.document)
@@ -8129,11 +9983,16 @@ async function activate(context) {
         })
     );
 
+
+
     if (process.env.LSDYNA_EDITOR_SAFETY_WORKSPACE) {
         return {
             _internals: {
                 waitForCardCellPostEdit,
                 ensureCardCellEditGuard,
+                setFileIndexForTesting,
+                planOfficialFieldChoicesForDocument,
+                analyzeKeywordStructureForDocument,
             },
         };
     }
@@ -8147,7 +10006,7 @@ function deactivate() {
 
 /**
  * Creates an invalidation trigger that flushes caches mapping to modified files.
- * 
+ *
  * @param {Object} params - Options.
  * @param {Object} params.indexClient - Index client handle.
  * @param {function} [params.findAffectedRoots] - Roots mapping function.
@@ -8181,7 +10040,7 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
 
 /**
  * Creates a debounced invalidation trigger that groups file modifications into batched updates.
- * 
+ *
  * @param {Object} params - Options.
  * @param {Object} params.indexClient - Index client.
  * @param {function} [params.findAffectedRoots] - Affected roots resolver.
@@ -8273,7 +10132,7 @@ function createBatchedManifestInvalidator({
 
 /**
  * Creates a sequential execution queue for rebuilding project snapshots, deduplicating rapid triggers.
- * 
+ *
  * @param {Object} params - Options.
  * @param {function(string): Promise<any>} params.loadProjectSnapshot - Loader function.
  * @param {function(Error, string): void} [params.onError] - Error callback.
@@ -8347,7 +10206,7 @@ function createProjectSnapshotRefreshQueue({
 
 /**
  * Factory helper to construct the persistent L2 cache in globalStorage.
- * 
+ *
  * @param {Object} params - Options.
  * @param {import('vscode').Uri|null} [params.storageUri] - VS Code global storage directory URI.
  * @param {function(Object): import('./core/cache/diskSnapshotStore').DiskSnapshotStore} [params.createStore] - Store factory.
@@ -8358,7 +10217,7 @@ function createProjectSnapshotPersistentCache({
     createStore = createDiskSnapshotStore,
 }: {
     storageUri?: any;
-    createStore?: (options: { cacheDirectory: string; maxCacheBytes: number }) => any;
+    createStore?: (options: { cacheDirectory: string; maxCacheBytes: number; maxEntryAgeMs: number }) => any;
 } = {}) {
     if (!storageUri || typeof storageUri.fsPath !== 'string' || storageUri.fsPath.trim() === '') {
         return null;
@@ -8367,13 +10226,14 @@ function createProjectSnapshotPersistentCache({
     return createStore({
         cacheDirectory: path.join(storageUri.fsPath, 'project-snapshots'),
         maxCacheBytes: PROJECT_SNAPSHOT_DISK_CACHE_BYTES,
+        maxEntryAgeMs: 30 * CACHE_DAY_MS,
     });
 }
 
 /**
  * Collects diagnostic warnings and errors (missing files, circular dependencies)
  * mapped to project snapshot results without mutating a collection.
- * 
+ *
  * @param {import('./core/project/projectIndexer').ProjectIndexResult} snapshot - snapshot to translate.
  * @returns {Map<string, import('vscode').Diagnostic[]>} Diagnostics grouped by source file.
  */
@@ -8524,10 +10384,4968 @@ function openManualPdf(context, pdfPath, pageNum) {
     openManualExternal(pdfPath, pageNum);
 }
 
+const { LargeFileViewerProvider, LARGE_FILE_VIEW_TYPE } = require('./client/LargeFileViewerProvider');
+
+const {
+    globalInputFormatFromKeywordLine,
+    keywordInputFormat,
+    stripKeywordInputFormatMarker,
+} = require('./core/parser/inputFormat');
+
+const { classifyOpaqueCommentDirective } = require('./core/parser/opaqueCommentRange');
+
+const { LARGE_FILE_THRESHOLD_BYTES } = require('./core/scanner/largeFileWindowReader');
+
+const {
+    collectBlocksFromLineReader,
+    collectBlocksFromLineReaderAsync,
+} = require('./core/parser/blockScanner');
+
+const {
+    isColumnZeroKeywordBoundary,
+    classifyInlineCommentedKeyword,
+    resolveOpaqueLocationFromBlocks,
+    resolveOpaqueLocationBounded,
+} = require('./core/parser/opaqueCommentRange');
+
+const { getDefinitionRegistryCatalog } = require('./core/references/definitionRegistry');
+
+const { familyDefinitionKeywords, prepareFamilyDefinitionScannerCatalog } = require('./core/references/familyDefinitionScannerCatalog');
+
+async function prepareReferenceDirectory() {
+    await Promise.all([getDefinitionRegistryCatalog().prepare(), prepareFamilyDefinitionScannerCatalog()]);
+}
+
+const {
+    collectRegistryReferenceMatches,
+    definitionAtPosition,
+    definitionLocations,
+    queryFromReferenceSource,
+} = require('./core/references/registryReferenceNetwork');
+
+const {
+    buildReferenceNavigation,
+} = require('./core/references/referenceNavigation');
+
+const {
+    buildWorkspaceSearchFilesToInclude,
+    effectiveWorkspaceSearchId,
+} = require('./core/references/workspaceReferenceSearch');
+
+const {
+    mergeOnDemandDefinitions,
+    queryOnDemandDefinitionAtPosition,
+    runtimeDefinitionKeywords,
+    scanBlockLinesFromDisk,
+    scanOnDemandDefinitions,
+} = require('./core/references/onDemandDefinitionScanner');
+
+const {
+    indexedEntityKinds,
+    normalizeIndexedEntityId,
+    queryIndexedEntityId,
+} = require('./core/references/indexedEntityQuery');
+
+const { EntityReferenceQueryService } = require('./core/references/entityReferenceQueryService');
+
+const {
+    TABLE_3D_VIEWS,
+    normalizeTable3dView,
+} = require('./core/references/curvePlotRenderer');
+
+const {
+    getCatalogFieldReferenceInfo,
+    scanRegistryReferenceOccurrencesFromFileIndex,
+} = require('./core/references/registryReferenceScanner');
+
+const { scanParameterEventsFromFileIndex } = require('./core/references/parameterDefinitionScanner');
+
+const CACHE_MEBIBYTE = 1024 * 1024;
+
+const CACHE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const CLIENT_PROJECT_SEMANTIC_CACHE_BYTES = 32 * CACHE_MEBIBYTE;
+
+const activeProjectScopeCache = new Map();
+
+const activeProjectCacheMetadata = new Map();
+
+const activeFileIndexOwners = new Map();
+
+let activeProjectCacheAccessSequence = 0;
+
+let activeProjectCacheEpoch = 0;
+
+let activeOnDemandReferenceLookupCache = new WeakMap();
+
+const ON_DEMAND_LOOKUP_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+
+const MAX_TABLE_PREVIEW_VIEW_STATES = 256;
+
+const tablePreviewViewByReference = new Map();
+
+const entityReferenceQueryService = new EntityReferenceQueryService();
+
+function buildTablePreviewReferenceKey(documentPath, lineIndex, fieldName) {
+    if (typeof documentPath !== 'string' || !documentPath) return '';
+    if (!Number.isInteger(lineIndex) || lineIndex < 0) return '';
+    if (typeof fieldName !== 'string' || !fieldName) return '';
+    return `${normalizeFileIndexKey(documentPath)}:${lineIndex}:${fieldName.toUpperCase()}`;
+}
+
+function getTablePreviewViewForReference(key) {
+    return normalizeTable3dView(tablePreviewViewByReference.get(key));
+}
+
+function setTablePreviewViewForReference(key, view) {
+    if (typeof key !== 'string' || !key || key.length > 4096) return false;
+    if (!TABLE_3D_VIEWS.includes(view)) return false;
+
+    // Refresh insertion order so the oldest inactive entries are evicted first.
+    tablePreviewViewByReference.delete(key);
+    tablePreviewViewByReference.set(key, view);
+    while (tablePreviewViewByReference.size > MAX_TABLE_PREVIEW_VIEW_STATES) {
+        const oldestKey = tablePreviewViewByReference.keys().next().value;
+        tablePreviewViewByReference.delete(oldestKey);
+    }
+    return true;
+}
+
+function clearTablePreviewViewsForTesting() {
+    tablePreviewViewByReference.clear();
+}
+
+async function handleSetTablePreviewViewCommand(arg) {
+    const target = Array.isArray(arg) ? arg[0] : arg;
+    if (!target || !setTablePreviewViewForReference(target.key, target.view)) return false;
+    if (typeof target.filePath !== 'string' || !target.filePath) return true;
+
+    const targetFileKey = normalizeFileIndexKey(target.filePath);
+    const matchingEditor = vscode.window.activeTextEditor;
+    const editorPath = matchingEditor?.document?.uri?.fsPath;
+    if (typeof editorPath !== 'string' || normalizeFileIndexKey(editorPath) !== targetFileKey) {
+        return true;
+    }
+
+    const lineIndex = Number.isInteger(target.lineIndex) ? Math.max(0, target.lineIndex) : 0;
+    const character = Number.isInteger(target.character) ? Math.max(0, target.character) : 0;
+    const selections = matchingEditor.selections;
+    const position = new vscode.Position(lineIndex, character);
+    const previewSelection = new vscode.Selection(position, position);
+    try {
+        // showHover anchors at the caret, even when invoked from a mouse hover.
+        // Restore every selection after VS Code has captured the preview anchor.
+        matchingEditor.selection = previewSelection;
+        await Promise.resolve(vscode.commands.executeCommand('editor.action.hideHover'));
+        await Promise.resolve(vscode.commands.executeCommand('editor.action.showHover', { focus: 'autoFocusImmediately' }));
+    } finally {
+        const current = matchingEditor.selection;
+        if (matchingEditor.selections.length === 1 &&
+            current.anchor.line === lineIndex && current.anchor.character === character &&
+            current.active.line === lineIndex && current.active.character === character) {
+            matchingEditor.selections = selections;
+        }
+    }
+    return true;
+}
+
+function getReadyKeywordBlocksForDocument(document, { allowDiskSnapshot = true } = {}) {
+    const fileIndex = getFileIndexForDocument(document);
+    if (!fileIndex || !Array.isArray(fileIndex.keywordBlocks)) return null;
+    if (Number.isInteger(fileIndex.documentVersion)) {
+        return fileIndex.documentVersion === document.version ? fileIndex.keywordBlocks : null;
+    }
+    if (!allowDiskSnapshot || document.isDirty === true) return null;
+    return fileIndex.keywordBlocks;
+}
+
+function getOpaqueCommentLocation(document, position, options: any = {}) {
+    const line = Number(position?.line);
+    const character = Number(position?.character);
+    if (!document || !Number.isInteger(line) || line < 0 || line >= document.lineCount
+        || !Number.isInteger(character) || character < 0) {
+        return { state: 'unknown', reason: 'invalid-position' };
+    }
+    const blocks = getReadyKeywordBlocksForDocument(document, {
+        allowDiskSnapshot: options.requireLiveSnapshot !== true,
+    });
+    if (blocks) return resolveOpaqueLocationFromBlocks(blocks, line, character);
+    const readLine = typeof options.readLine === 'function'
+        ? options.readLine
+        : index => document.lineAt(index).text;
+    return resolveOpaqueLocationBounded(
+        readLine,
+        line,
+        character,
+        options.budget,
+    );
+}
+
+function isActiveLsdynaSemanticLocation(document, position, options: any = {}) {
+    return getOpaqueCommentLocation(document, position, options).state === 'active';
+}
+
+function trackKeywordManagerSourceChange(model, event) {
+    const header = model.liveKeywordLine ?? model.keywordLine;
+    const selected = model.liveSelectionLine ?? model.managerSelectionLine ?? header;
+    let headerDelta = 0, selectionDelta = 0;
+    for (const change of event.contentChanges) {
+        const { start, end } = change.range;
+        const delta = countInsertedLineBreaks(change.text) - (end.line - start.line);
+        const insertsLinesBefore = line => start.line === line && end.line === line &&
+            start.character === 0 && end.character === 0 && /(?:\r\n|\r|\n)$/.test(change.text);
+        if (end.line < header || insertsLinesBefore(header)) headerDelta += delta;
+        else if (start.line <= header) model.sourceAnchorInvalid = true;
+        if (end.line < selected || insertsLinesBefore(selected)) selectionDelta += delta;
+        else if (start.line <= selected && (start.line !== end.line || delta !== 0)) model.sourceAnchorInvalid = true;
+    }
+    model.liveKeywordLine = header + headerDelta;
+    model.liveSelectionLine = selected + selectionDelta;
+}
+
+function keywordManagerRefreshLine(model, document) {
+    const header = model.liveKeywordLine ?? model.keywordLine;
+    const line = model.liveSelectionLine ?? model.managerSelectionLine ?? header;
+    if (model.sourceAnchorInvalid || !Number.isInteger(header) || header < 0 || header >= document.lineCount ||
+        !Number.isInteger(line) || line < header || line >= document.lineCount ||
+        keywordSpellingFromLine(document.lineAt(header).text) !== model.currentKeyword ||
+        findKeywordLineForLine(document, line) !== header) return null;
+    return line;
+}
+
+function countInsertedLineBreaks(text) {
+    const matches = String(text || '').match(/\r\n|\r|\n/g);
+    return matches ? matches.length : 0;
+}
+
+function updateKeywordBlocksAfterDocumentChange(document, keywordBlocks, contentChanges) {
+    if (!document || !Array.isArray(keywordBlocks) || !Array.isArray(contentChanges)) return null;
+    if (contentChanges.length === 0) return keywordBlocks;
+
+    const changes = contentChanges.map(change => {
+        const range = change && change.range;
+        const startLine = range?.start?.line;
+        const startCharacter = range?.start?.character;
+        const endLine = range?.end?.line;
+        const endCharacter = range?.end?.character;
+        if (
+            !Number.isInteger(startLine) || startLine < 0 ||
+            !Number.isInteger(startCharacter) || startCharacter < 0 ||
+            !Number.isInteger(endLine) || endLine < startLine ||
+            !Number.isInteger(endCharacter) || endCharacter < 0
+        ) return null;
+        const insertedLineBreaks = countInsertedLineBreaks(change.text);
+        return {
+            startLine,
+            startCharacter,
+            endLine,
+            endCharacter,
+            text: String(change.text || ''),
+            insertedLineBreaks,
+            lineDelta: insertedLineBreaks - (endLine - startLine),
+        };
+    });
+    if (changes.some(change => !change)) return null;
+    changes.sort((left, right) =>
+        left.startLine - right.startLine || left.startCharacter - right.startCharacter
+    );
+
+    const opaqueBlocks = keywordBlocks.filter(block => !!block?.opaqueKind);
+    if (opaqueBlocks.length > 0) {
+        for (const change of changes) {
+            const touchesOpaqueControl = opaqueBlocks.some(block =>
+                block.startLine >= change.startLine && block.startLine <= change.endLine
+            );
+            const canChangePhysicalBoundaries = change.startCharacter === 0
+                || change.startLine !== change.endLine
+                || /\r|\n/.test(String(change.text || ''));
+            if (touchesOpaqueControl || canChangePhysicalBoundaries) return null;
+        }
+    }
+
+    // This mapper intentionally carries only existing metadata.  A newly created COMMENT
+    // control must be rebuilt by the comment-aware scanner rather than published briefly as
+    // an ordinary keyword block.
+    let precedingInspectionDelta = 0;
+    for (const change of changes) {
+        const finalStartLine = change.startLine + precedingInspectionDelta;
+        const finalEndLine = finalStartLine + change.insertedLineBreaks;
+        for (
+            let line = Math.max(0, finalStartLine);
+            line <= Math.min(document.lineCount - 1, finalEndLine);
+            line++
+        ) {
+            if (classifyOpaqueCommentDirective(document.lineAt(line).text)) return null;
+        }
+        precedingInspectionDelta += change.lineDelta;
+    }
+
+    const retained = [];
+    for (const block of keywordBlocks) {
+        const oldStart = Number(block?.startLine);
+        if (!Number.isInteger(oldStart) || oldStart < 0) continue;
+        let mappedStart = oldStart;
+        let touched = false;
+
+        for (const change of changes) {
+            if (oldStart < change.startLine) continue;
+
+            // A multi-line range ending at column zero is end-exclusive: the
+            // content of that physical line survives and only its line number
+            // changes.  A zero-length insertion on the same line is different
+            // and must be reclassified.
+            const untouchedEndBoundary =
+                change.startLine < change.endLine &&
+                oldStart === change.endLine &&
+                change.endCharacter === 0;
+            if (oldStart > change.endLine || untouchedEndBoundary) {
+                mappedStart += change.lineDelta;
+                continue;
+            }
+            touched = true;
+        }
+
+        if (touched || mappedStart < 0 || mappedStart >= document.lineCount) continue;
+        const classification = classifyKeywordLine(document.lineAt(mappedStart).text);
+        if (!classification.isKeyword) continue;
+        retained.push({ ...block, startLine: mappedStart });
+    }
+
+    // Content-change ranges are expressed in the pre-change document.  Map the
+    // start of each changed span into the final document using deltas from
+    // preceding edits, then inspect only the lines the replacement produced.
+    let precedingLineDelta = 0;
+    const rescanned = [];
+    for (const change of changes) {
+        const finalStartLine = change.startLine + precedingLineDelta;
+        const finalEndLine = finalStartLine + change.insertedLineBreaks;
+        for (
+            let line = Math.max(0, finalStartLine);
+            line <= Math.min(document.lineCount - 1, finalEndLine);
+            line++
+        ) {
+            const text = document.lineAt(line).text;
+            const classification = classifyKeywordLine(text);
+            if (!classification.isKeyword) continue;
+            rescanned.push({
+                filePath: document.uri?.fsPath,
+                keyword: classification.normalizedKeyword,
+                rawKeyword: text.trim(),
+                startLine: line,
+                endLine: line,
+                keywordStartChar: Math.max(0, text.search(/\S/)),
+            });
+        }
+        precedingLineDelta += change.lineDelta;
+    }
+
+    const byStartLine = new Map();
+    for (const block of retained) byStartLine.set(block.startLine, block);
+    for (const block of rescanned) byStartLine.set(block.startLine, block);
+    const blocks = [...byStartLine.values()].sort((left, right) => left.startLine - right.startLine);
+    for (let index = 0; index < blocks.length; index++) {
+        blocks[index].endLine = index + 1 < blocks.length
+            ? blocks[index + 1].startLine - 1
+            : document.lineCount - 1;
+    }
+    return blocks;
+}
+
+function updateActiveFileIndexForDocumentChange(event) {
+    const document = event?.document;
+    const filePath = document?.uri?.fsPath;
+    if (!filePath) return false;
+    const key = normalizeFileIndexKey(filePath);
+    const cached = activeFileIndexCache.get(key);
+    if (!cached || !Array.isArray(cached.keywordBlocks)) {
+        activeFileIndexCache.delete(key);
+        return false;
+    }
+
+    const keywordBlocks = updateKeywordBlocksAfterDocumentChange(
+        document,
+        cached.keywordBlocks,
+        event.contentChanges || [],
+    );
+    if (!keywordBlocks) {
+        activeFileIndexCache.delete(key);
+        return false;
+    }
+
+    // Keep only the live structural index.  Reference/include/parameter data is
+    // derived from document contents and must not survive an edit as stale data.
+    activeFileIndexCache.set(key, {
+        filePath,
+        keywordBlocks,
+        documentVersion: Number.isInteger(document.version) ? document.version : undefined,
+    });
+    return true;
+}
+
+function releaseLiveFileIndexForClosedDocument(document) {
+    const filePath = document?.uri?.fsPath;
+    if (!filePath) return false;
+    const key = normalizeFileIndexKey(filePath);
+    const cached = activeFileIndexCache.get(key);
+    if (!cached || !Number.isInteger(cached.documentVersion)) return false;
+    activeFileIndexCache.delete(key);
+    return true;
+}
+
+function estimateClientCacheBytes(value, maxBytes = CLIENT_PROJECT_SEMANTIC_CACHE_BYTES) {
+    // Cache admission must not serialize a whole vehicle model on the UI thread.
+    // Conservatively reject entries whose size cannot be established within a
+    // bounded walk; the worker remains the source for uncached project queries.
+    const deadline = performance.now() + 25;
+    const seen = new Set();
+    let bytes = 0;
+    let nodes = 0;
+    const visit = (current, depth = 0) => {
+        if (++nodes > 50000 || depth > 64 ||
+            (nodes % 256 === 0 && performance.now() > deadline)) return false;
+        if (typeof current === 'string') bytes += 24 + current.length * 6;
+        else if (current === null || typeof current !== 'object') bytes += 16;
+        else {
+            if (seen.has(current)) {
+                bytes += 8; // Retained container slots still occupy space for shared objects.
+                return bytes <= maxBytes;
+            }
+            seen.add(current);
+            bytes += 64;
+            if (bytes > maxBytes) return false;
+            if (Array.isArray(current) || current instanceof Set) {
+                for (const item of current) if (!visit(item, depth + 1)) return false;
+            } else if (current instanceof Map) {
+                for (const [key, item] of current) {
+                    if (!visit(key, depth + 1) || !visit(item, depth + 1)) return false;
+                }
+            } else {
+                for (const key in current) {
+                    if (Object.prototype.hasOwnProperty.call(current, key) &&
+                        (!visit(key, depth + 1) || !visit(current[key], depth + 1))) return false;
+                }
+            }
+        }
+        return bytes <= maxBytes;
+    };
+    return visit(value) ? bytes : Number.POSITIVE_INFINITY;
+}
+
+function compactClientProjectSnapshot(snapshot) {
+    const sourceGraph = snapshot.graph || {};
+    return {
+        rootFile: snapshot.rootFile,
+        files: Array.isArray(snapshot.files) ? [...snapshot.files] : [],
+        graph: {
+            includeOccurrences: Array.isArray(sourceGraph.includeOccurrences)
+                ? sourceGraph.includeOccurrences.map(occurrence => ({ ...occurrence }))
+                : [],
+            includeOccurrencesComplete: sourceGraph.includeOccurrencesComplete !== false,
+        },
+        fileIndexes: snapshot.fileIndexes instanceof Map
+            ? snapshot.fileIndexes
+            : new Map(Object.entries(snapshot.fileIndexes || {})),
+    };
+}
+
+function removeClientProjectRoot(rootFileOrKey, {
+    preserveMainDeckSelection = false,
+    preserveProjectScope = false,
+} = {}) {
+    if (!rootFileOrKey) return false;
+    const rootKey = activeProjectCacheMetadata.has(rootFileOrKey)
+        ? rootFileOrKey
+        : normalizeSnapshotRootKey(rootFileOrKey);
+    const metadata = activeProjectCacheMetadata.get(rootKey);
+    const cached = activeProjectReferenceIndexCache.get(rootKey);
+    const scope = activeProjectScopeCache.get(rootKey);
+    if (!metadata && !cached && !scope) return false;
+
+    const rootFile = metadata?.rootFile || cached?.snapshot?.rootFile || scope?.rootFile;
+    for (const fileKey of metadata?.fileKeys || []) {
+        const owners = activeFileIndexOwners.get(fileKey);
+        if (!owners) continue;
+        owners.delete(rootKey);
+        if (owners.size > 0) continue;
+        activeFileIndexOwners.delete(fileKey);
+        const fileIndex = activeFileIndexCache.get(fileKey);
+        if (!Number.isInteger(fileIndex?.documentVersion)) {
+            activeFileIndexCache.delete(fileKey);
+        }
+    }
+    activeProjectCacheMetadata.delete(rootKey);
+    activeProjectReferenceIndexCache.delete(rootKey);
+    if (!preserveProjectScope) activeProjectScopeCache.delete(rootKey);
+    if (rootFile) {
+        activeEffectiveSearchPathCache.clearRoot(rootFile);
+        if (!preserveMainDeckSelection) activeMainDeckContextSelector.clearRoot(rootFile);
+    }
+    return true;
+}
+
+function clientProjectCacheStats(maxBytes = CLIENT_PROJECT_SEMANTIC_CACHE_BYTES) {
+    let totalBytes = 0;
+    for (const metadata of activeProjectCacheMetadata.values()) totalBytes += metadata.byteSize;
+    return {
+        entryCount: activeProjectCacheMetadata.size,
+        totalBytes,
+        maxBytes,
+    };
+}
+
+function evictClientProjectsIfNeeded(protectedRootKey = null, maxBytes = CLIENT_PROJECT_SEMANTIC_CACHE_BYTES) {
+    let stats = clientProjectCacheStats(maxBytes);
+    while (stats.totalBytes > maxBytes) {
+        const candidates = [...activeProjectCacheMetadata.entries()]
+            .filter(([rootKey]) => rootKey !== protectedRootKey)
+            .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt);
+        const victimKey = candidates.length > 0 ? candidates[0][0] : protectedRootKey;
+        if (!victimKey || !removeClientProjectRoot(victimKey, {
+            preserveMainDeckSelection: true,
+            preserveProjectScope: true,
+        })) break;
+        stats = clientProjectCacheStats(maxBytes);
+    }
+}
+
+function clampedFiniteNumber(value, fallback, minimum, maximum) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.min(maximum, Math.max(minimum, numeric));
+}
+
+function cacheLimitBytes(key, fallbackMiB, minimumMiB, maximumMiB) {
+    return Math.floor(clampedFiniteNumber(
+        getLsdynaConfigurationValue(key, fallbackMiB),
+        fallbackMiB,
+        minimumMiB,
+        maximumMiB,
+    ) * CACHE_MEBIBYTE);
+}
+
+function cacheLimitMilliseconds(key, fallbackDays, minimumDays, maximumDays) {
+    return Math.floor(clampedFiniteNumber(
+        getLsdynaConfigurationValue(key, fallbackDays),
+        fallbackDays,
+        minimumDays,
+        maximumDays,
+    ) * CACHE_DAY_MS);
+}
+
+function clearClientProjectSemanticCaches() {
+    activeProjectCacheEpoch += 1;
+    const projectCount = activeProjectReferenceIndexCache.size;
+    for (const rootKey of [...new Set([
+        ...activeProjectCacheMetadata.keys(),
+        ...activeProjectScopeCache.keys(),
+    ])]) removeClientProjectRoot(rootKey);
+    let fileIndexCount = 0;
+    for (const [cacheKey, fileIndex] of [...activeFileIndexCache.entries()]) {
+        if (Number.isInteger(fileIndex?.documentVersion)) continue;
+        activeFileIndexCache.delete(cacheKey);
+        fileIndexCount += 1;
+    }
+    activeProjectCacheMetadata.clear();
+    activeFileIndexOwners.clear();
+    activeProjectReferenceIndexCache.clear();
+    activeProjectScopeCache.clear();
+    activeEffectiveSearchPathCache.clearAll();
+    activeMainDeckContextSelector.clearAll();
+    activeOnDemandReferenceLookupCache = new WeakMap();
+    refreshMainDeckContextUi();
+    return { fileIndexCount, projectCount };
+}
+
+function cacheRemovalTotals(result) {
+    const memory = result?.memory || {};
+    const projectDisk = result?.projectSnapshotDisk || {};
+    const fileDisk = result?.fileScanDisk || {};
+    return {
+        entryCount: Number(memory.cachedSnapshotCount || 0)
+            + Number(projectDisk.entryCount || 0)
+            + Number(fileDisk.entryCount || 0),
+        totalBytes: Number(memory.totalSnapshotBytes || 0)
+            + Number(projectDisk.totalBytes || 0)
+            + Number(fileDisk.totalBytes || 0),
+    };
+}
+
+async function handleClearProjectIndexCachesCommand(indexClient, {
+    projectDiagnosticStore = null,
+    includeTreeProvider = null,
+    keywordIndexProvider = null,
+} = {}) {
+    if (!indexClient || typeof indexClient.clearCaches !== 'function') return null;
+
+    // Increment the epoch before the LSP round trip so an older response cannot
+    // repopulate client caches after the explicit clear has begun.
+    clearClientProjectSemanticCaches();
+    let localCleanupError = null;
+    for (const cleanup of [
+        () => projectDiagnosticStore?.clearAll?.(),
+        () => includeTreeProvider?.clearProjectSnapshot?.(),
+        () => keywordIndexProvider?.setLocal?.(),
+    ]) {
+        try {
+            await Promise.resolve(cleanup());
+        } catch (error) {
+            localCleanupError ||= error;
+            console.error('[lsdyna] Failed to clear one client project view:', error);
+        }
+    }
+    try {
+        const execute = () => indexClient.clearCaches();
+        const result = typeof vscode.window.withProgress === 'function'
+            ? await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: i18n.get('projectCacheClearProgress'),
+                cancellable: false,
+            }, execute)
+            : await execute();
+        const totals = cacheRemovalTotals(result);
+        vscode.window.setStatusBarMessage(localCleanupError
+            ? i18n.get('projectCacheClearFailed')
+            : i18n.get('projectCacheCleared', totals.entryCount, formatBytes(totals.totalBytes)), 8000);
+        return result;
+    } catch (error) {
+        vscode.window.setStatusBarMessage(i18n.get('projectCacheClearFailed'), 8000);
+        console.error('[lsdyna] Failed to clear project index caches:', error);
+        return null;
+    }
+}
+
+function decorateDocumentKeywordBlocks(document, blocks) {
+    return blocks.map(block => {
+        const text = document.lineAt(block.startLine).text;
+        const classification = classifyKeywordLine(text);
+        return {
+            ...block,
+            filePath: document.uri.fsPath,
+            keyword: `*${block.keyword}`,
+            rawKeyword: classification.rawKeyword || text.trim(),
+            keywordStartChar: classification.indent || 0,
+            startOffset: 0,
+            endOffset: 0,
+        };
+    });
+}
+
+async function parseKeywordBlocksFromDocumentAsync(document, cancellationToken = null) {
+    const isCurrent = createDocumentReadGuard(document, cancellationToken);
+    const blocks = await collectBlocksFromLineReaderAsync(
+        document.lineCount,
+        line => document.lineAt(line).text,
+        {
+            cancellationToken,
+            shouldCancel: () => !isCurrent() === true,
+        },
+    );
+    return blocks && isCurrent() ? decorateDocumentKeywordBlocks(document, blocks) : null;
+}
+
+const parameterSymbolCache = new WeakMap<object, { version: number; value: ReturnType<typeof scanParameterSymbols> }>();
+
+function getDocumentParameterSymbols(document) {
+    const cacheable = Number.isInteger(document.version);
+    const cached = cacheable ? parameterSymbolCache.get(document) : undefined;
+    if (cached && cached.version === document.version) return cached.value;
+    const value = scanParameterSymbols(document.lineCount, line => document.lineAt(line).text);
+    if (cacheable) parameterSymbolCache.set(document, { version: document.version, value });
+    return value;
+}
+
+function workspaceReferenceSearchPosition(editor, target) {
+    if (!editor || !editor.document) return null;
+    const payload = target && typeof target === 'object' ? target : null;
+    if (!payload) return editor.selection && editor.selection.active || null;
+
+    const documentPath = editor.document.uri && editor.document.uri.fsPath;
+    if (typeof payload.filePath !== 'string' || !documentPath ||
+        normalizeFileIndexKey(payload.filePath) !== normalizeFileIndexKey(documentPath)) {
+        return null;
+    }
+    if (Number.isInteger(payload.documentVersion) &&
+        Number.isInteger(editor.document.version) &&
+        payload.documentVersion !== editor.document.version) {
+        return null;
+    }
+    if (!Number.isInteger(payload.lineIndex) || !Number.isInteger(payload.character) ||
+        payload.lineIndex < 0 || payload.lineIndex >= editor.document.lineCount ||
+        payload.character < 0) {
+        return null;
+    }
+    return new vscode.Position(payload.lineIndex, payload.character);
+}
+
+function resolveWorkspaceReferenceSearch(document, position, options: any = {}) {
+    const source = fieldReferenceAtPosition(document, position, options);
+    if (!source) return null;
+
+    const mainDeckContext = getMainDeckContextForDocumentPath(document.uri.fsPath);
+    let analysis = null;
+    if (mainDeckContext.state !== 'ambiguous' && mainDeckContext.project) {
+        analysis = analyzeReference(
+            mainDeckContext.project.referenceIndex,
+            source.referenceValue,
+            source.referenceValue.targetKinds || source.referenceInfo.targetKinds,
+            {
+                projectScoped: true,
+                documentPath: document.uri.fsPath,
+                lineIndex: position.line,
+                targetDefinitions: source.referenceValue.targetDefinitions ||
+                    source.referenceInfo.targetDefinitions,
+            }
+        );
+    } else if (source.referenceValue.kind === 'parameter') {
+        const fileIndex = getFileIndexForDocument(document);
+        const liveIndexIsCurrent = !document.isDirty ||
+            (fileIndex && Number.isInteger(fileIndex.documentVersion) &&
+                fileIndex.documentVersion === document.version);
+        if (fileIndex && liveIndexIsCurrent && Array.isArray(fileIndex.parameterEvents)) {
+            const referenceIndex = buildProjectReferenceIndex({
+                rootFile: document.uri.fsPath,
+                files: [document.uri.fsPath],
+                fileIndexes: new Map([[document.uri.fsPath, fileIndex]]),
+            });
+            analysis = analyzeReference(
+                referenceIndex,
+                source.referenceValue,
+                source.referenceValue.targetKinds || source.referenceInfo.targetKinds,
+                {
+                    projectScoped: false,
+                    documentPath: document.uri.fsPath,
+                    lineIndex: position.line,
+                    targetDefinitions: source.referenceValue.targetDefinitions ||
+                        source.referenceInfo.targetDefinitions,
+                }
+            );
+        }
+    }
+    let id = effectiveWorkspaceSearchId(source.referenceValue, analysis);
+    // Provisional workspace search may still use the literal numeric cell when
+    // project roots are ambiguous; no semantic target is claimed by this search.
+    if (id === null && !analysis && source.referenceValue.kind === 'numeric') {
+        const literal = Number.parseInt(String(source.rawValue || '').trim(), 10);
+        if (Number.isSafeInteger(literal) && literal > 0) id = literal;
+    }
+    if (id === null) {
+        return { source, analysis, unavailableReason: 'reference-id-unresolved' };
+    }
+    return { source, analysis, id };
+}
+
+async function handleWorkspaceReferenceSearchCommand(target = null) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || !isLsdynaFile(editor.document)) {
+        vscode.window.setStatusBarMessage(i18n.get('workspaceReferenceSearchSourceInactive'), 6000);
+        return null;
+    }
+    const position = workspaceReferenceSearchPosition(editor, target);
+    if (!position) {
+        vscode.window.setStatusBarMessage(i18n.get('workspaceReferenceSearchSourceInactive'), 6000);
+        return null;
+    }
+    if (target && typeof target.projectRootFile === 'string' && target.projectRootFile) {
+        const currentContext = getMainDeckContextForDocumentPath(editor.document.uri.fsPath);
+        if (!currentContext.project ||
+            normalizeFileIndexKey(currentContext.rootFile) !==
+                normalizeFileIndexKey(target.projectRootFile)) {
+            vscode.window.setStatusBarMessage(i18n.get('workspaceReferenceSearchUnavailable'), 6000);
+            return null;
+        }
+    }
+
+    const resolved = resolveWorkspaceReferenceSearch(editor.document, position);
+    if (!resolved || !Number.isSafeInteger(resolved.id)) {
+        const key = resolved && resolved.unavailableReason === 'project-root-ambiguous'
+            ? 'workspaceReferenceSearchAmbiguousContext'
+            : 'workspaceReferenceSearchUnavailable';
+        vscode.window.setStatusBarMessage(i18n.get(key), 6000);
+        return null;
+    }
+
+    const configuredExtensions = getLsdynaConfigurationValue(
+        'additionalExtensions',
+        ['.k', '.key', '.dyna'],
+        editor.document.uri
+    );
+    const filesToInclude = buildWorkspaceSearchFilesToInclude(configuredExtensions);
+    vscode.window.setStatusBarMessage(
+        i18n.get('workspaceReferenceSearchStatus', resolved.id),
+        8000
+    );
+    const searchArgs = {
+        query: String(resolved.id),
+        triggerSearch: true,
+        isRegex: false,
+        isCaseSensitive: false,
+        matchWholeWord: true,
+        filesToInclude,
+    };
+    try {
+        await vscode.commands.executeCommand('workbench.action.findInFiles', searchArgs);
+    } catch (error) {
+        logDebug(`workspace reference search failed: ${error && error.message ? error.message : error}`);
+        vscode.window.setStatusBarMessage(i18n.get('workspaceReferenceSearchFailed'), 6000);
+        return null;
+    }
+    return { id: resolved.id, searchArgs };
+}
+
+function validEntityQueryFilePath(filePath) {
+    if (typeof filePath !== 'string' || !filePath.trim()) return null;
+    const resolved = path.resolve(filePath);
+    try {
+        if (!fs.statSync(resolved).isFile() || !isLsdynaUri(vscode.Uri.file(resolved))) return null;
+    } catch (_error) {
+        return null;
+    }
+    return resolved;
+}
+
+async function resolveIndexedEntityQueryScope(target, indexClient, cancellationToken = null, options: any = {}) {
+    if (options.scope?.snapshot) return options.scope;
+    const requestedScope = options.scopeIdentity;
+    if (requestedScope?.kind === 'project' && requestedScope.rootFile) {
+        const rootFile = validEntityQueryFilePath(requestedScope.rootFile);
+        if (!rootFile) {
+            return { unavailableReason: 'entity-query-source-missing', identityScope: requestedScope };
+        }
+        const snapshot = await indexClient.loadProjectSnapshot(rootFile, {}, null, cancellationToken);
+        return snapshot ? {
+            kind: 'project',
+            rootFile,
+            snapshot,
+            label: i18n.get('entityIdQueryProjectScopeSummary', path.basename(rootFile), snapshot.files?.length || 0),
+        } : null;
+    }
+    if (requestedScope?.kind === 'single-file' && requestedScope.filePath) {
+        const filePath = validEntityQueryFilePath(requestedScope.filePath);
+        if (!filePath) {
+            return { unavailableReason: 'entity-query-source-missing', identityScope: requestedScope };
+        }
+        const snapshot = await indexClient.loadProjectSnapshot(
+            filePath,
+            { singleFileOnly: true },
+            null,
+            cancellationToken,
+        );
+        return snapshot?.scope === 'single-file' ? {
+            kind: 'single-file',
+            filePath,
+            snapshot,
+            label: i18n.get('entityIdQueryCurrentFile', path.basename(filePath)),
+        } : null;
+    }
+    if (typeof target?.rootFile === 'string') {
+        const rootKey = normalizeSnapshotRootKey(target.rootFile);
+        const project = activeProjectReferenceIndexCache.get(rootKey) ||
+            activeProjectScopeCache.get(rootKey);
+        if (project) {
+            const snapshot = project.snapshot || await indexClient.loadProjectSnapshot(
+                project.rootFile || target.rootFile,
+                {},
+                null,
+                cancellationToken,
+            );
+            return {
+                kind: 'project',
+                rootFile: snapshot.rootFile,
+                snapshot,
+                label: i18n.get('entityIdQueryProject', path.basename(snapshot.rootFile)),
+            };
+        }
+    }
+    const requestedFile = validEntityQueryFilePath(target?.filePath);
+    const activeFile = validEntityQueryFilePath(getActiveUri()?.fsPath);
+    const filePath = requestedFile || activeFile;
+    if (!filePath) {
+        return { unavailableReason: 'entity-query-source-inactive' };
+    }
+    const mainDeckContext = getMainDeckContextForDocumentPath(filePath);
+    if (mainDeckContext.state !== 'ambiguous' && mainDeckContext.project) {
+        const snapshot = mainDeckContext.project.snapshot || await indexClient.loadProjectSnapshot(
+            mainDeckContext.rootFile,
+            {},
+            null,
+            cancellationToken,
+        );
+        return {
+            kind: 'project',
+            rootFile: mainDeckContext.rootFile,
+            snapshot,
+            label: i18n.get(
+                'entityIdQueryProjectScopeSummary',
+                path.basename(mainDeckContext.rootFile),
+                snapshot.files?.length || 0,
+            ),
+        };
+    }
+    const loadSnapshot = options.loadSnapshot || ((filePath, token) =>
+        indexClient.loadProjectSnapshot(
+            filePath,
+            { singleFileOnly: true },
+            null,
+            token,
+        ));
+    const snapshot = await loadSnapshot(filePath, cancellationToken);
+    if (snapshot?.scope !== 'single-file') return null;
+    return {
+        kind: 'single-file',
+        filePath,
+        snapshot,
+        label: i18n.get('entityIdQueryCurrentFile', path.basename(filePath)),
+    };
+}
+
+async function prepareIndexedEntityQuerySnapshot(snapshot, cancellationToken = null) {
+    const inputGuards = (vscode.workspace.textDocuments || []).map(doc => createDocumentReadGuard(doc, cancellationToken));
+    if (!snapshot?.fileIndexes) {
+        return { state: 'incomplete', snapshot: null, reasons: ['entity-query-snapshot-unavailable'] };
+    }
+    const fileIndexes = new Map(fileIndexScopeEntries(snapshot.fileIndexes));
+    const indexedPaths = new Set([...fileIndexes.keys()].map(normalizeFileIndexKey));
+    const dirtyDocuments = (vscode.workspace.textDocuments || []).filter(document =>
+        document?.isDirty === true && document?.uri?.fsPath &&
+        indexedPaths.has(normalizeFileIndexKey(document.uri.fsPath))
+    );
+    for (const document of dirtyDocuments) {
+        if (cancellationToken?.isCancellationRequested) {
+            return { state: 'cancelled', snapshot: null, reasons: ['cancelled'] };
+        }
+        const existing = lookupNormalizedFileIndex(fileIndexes, document.uri.fsPath);
+        const live = await buildLiveRegistryReferenceFileIndex(
+            document,
+            existing,
+            cancellationToken,
+        );
+        if (!live) return { state: 'cancelled', snapshot: null, reasons: ['cancelled'] };
+        if (live.incompleteReason) {
+            return {
+                state: 'incomplete',
+                snapshot: null,
+                reasons: [`${document.uri.fsPath}:${live.incompleteReason}`],
+            };
+        }
+        replaceNormalizedFileIndex(fileIndexes, document.uri.fsPath, live);
+    }
+    if (inputGuards.some(current => !current())) return { state: 'cancelled', snapshot: null, reasons: ['document-version-changed'] };
+    return { state: 'ready', snapshot: { ...snapshot, fileIndexes }, reasons: [] };
+}
+
+function indexedEntityResultItems(result) {
+    return (result?.locations || []).map(location => {
+        const roleLabel = i18n.get(location.role === 'definition'
+            ? 'entityIdQueryDefinition'
+            : 'entityIdQueryReference');
+        const identity = [location.keyword, location.fieldName].filter(Boolean).join('/') || roleLabel;
+        return {
+            label: `$(${location.role === 'definition' ? 'symbol-field' : 'references'}) ${roleLabel}: ${identity}`,
+            description: `${path.basename(location.filePath)}:${location.line + 1}`,
+            detail: location.filePath,
+            location,
+        };
+    });
+}
+
+function isEntityReferenceNavigationPosition(editor, location) {
+    const position = editor?.selection?.active;
+    return !!location && !!position && !!editor.document?.uri?.fsPath &&
+        normalizeFileIndexKey(editor.document.uri.fsPath) === normalizeFileIndexKey(location.filePath) &&
+        position.line === location.line &&
+        position.character >= (location.startCharacter || 0) &&
+        position.character <= (location.endCharacter ?? location.startCharacter ?? 0);
+}
+
+function inferIndexedEntityQueryTarget(editor = vscode.window.activeTextEditor, options: { requireUnambiguous?: boolean } = {}) {
+    if (!editor || !isLsdynaFile(editor.document)) return null;
+    const position = editor.selection?.active;
+    const kinds = indexedEntityKinds();
+    if (!position) return null;
+
+    // References are preferred when the cursor is on a reference field.
+    const resolved = resolveWorkspaceReferenceSearch(editor.document, position, {
+        semanticScope: "keyword-catalog",
+    });
+    if (resolved) {
+        const targetKinds = [
+            ...(resolved.source.referenceValue.targetKinds || []),
+            ...(resolved.source.referenceInfo.targetKinds || []),
+        ];
+        const supportedKinds = [...new Set(targetKinds)]
+            .map(value => kinds.find(kind => kind.toLowerCase() === String(value).toLowerCase()))
+            .filter(Boolean);
+        if (options.requireUnambiguous && new Set(supportedKinds).size !== 1) return null;
+        const targetKind = supportedKinds[0];
+        const id = normalizeIndexedEntityId(resolved.id);
+        if (targetKind && id) return {
+            targetKind,
+            id,
+            filePath: editor.document.uri.fsPath,
+            line: position.line,
+            character: position.character,
+        };
+    }
+
+    // Definition IDs use the same scanner descriptors as the project index.
+    const keywordLine = findEnclosingKeywordLine(editor.document, position.line);
+    if (keywordLine === null) return null;
+    const keyword = classifyKeywordLine(editor.document.lineAt(keywordLine).text);
+    const descriptorKeyword = String(keyword.normalizedKeyword || '').replace(/^\*/, '');
+    const definitionKeywords = runtimeDefinitionKeywords();
+    const descriptor = definitionKeywords?.generic?.[descriptorKeyword] ||
+        definitionKeywords?.onDemand?.[descriptorKeyword] ||
+        getDefinitionRegistryCatalog().definitionDescriptorForKeyword(descriptorKeyword);
+    if (!descriptor) return null;
+    const cardInfo = getCardInfoForLine(editor.document, position.line);
+    const lineText = String(editor.document.lineAt(position.line).text || '');
+    const expectedFieldIndex = descriptor.physicalSelector?.fieldIndex ?? descriptor.fieldIndex;
+    const geometricFieldIndex = Array.isArray(cardInfo?.card)
+        ? cardCellModel.fieldIndexAt(lineText, cardInfo.card, position.character)
+        : -1;
+    const boundaryFieldIndex = Array.isArray(cardInfo?.card)
+        ? cardCellModel.fieldIndexForTabNav(lineText, cardInfo.card, position.character)
+        : -1;
+    const fieldIndex = geometricFieldIndex === expectedFieldIndex
+        ? geometricFieldIndex
+        : boundaryFieldIndex;
+    if (!Number.isInteger(fieldIndex) || fieldIndex !== expectedFieldIndex) return null;
+
+    const recordMode = descriptor.physicalSelector?.recordMode || descriptor.recordMode;
+    if (recordMode === 'exact-data-record-ordinal') {
+        let dataLineOrdinal = -1;
+        for (let line = keywordLine + 1; line <= position.line; line++) {
+            const text = String(editor.document.lineAt(line).text || '').trim();
+            if (!text || text.startsWith('$') || text.startsWith('*')) continue;
+            dataLineOrdinal += 1;
+        }
+        const expectedOrdinal = (descriptor.titleCardCount || 0) +
+            (descriptor.physicalSelector?.dataRecordOrdinal ?? descriptor.dataRecordOrdinal ?? 0);
+        if (dataLineOrdinal !== expectedOrdinal) return null;
+    }
+
+    const field = cardInfo.card[fieldIndex];
+    const rawValue = lineText.slice(field.p, field.p + field.w);
+    const id = normalizeIndexedEntityId(rawValue);
+    const targetKind = kinds.find(kind =>
+        kind.toLowerCase() === String(descriptor.targetKind || '').toLowerCase()
+    );
+    return targetKind && id ? {
+        targetKind,
+        id,
+        filePath: editor.document.uri.fsPath,
+        line: position.line,
+        character: position.character,
+    } : null;
+}
+
+function resolveEntityReferenceCursorEditor(lastEditor = null) {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor && isLsdynaFile(activeEditor.document)) return activeEditor;
+    const activeUri = getActiveUri();
+    const visibleEditor = activeUri && (vscode.window.visibleTextEditors || []).find(editor =>
+        isLsdynaFile(editor.document) &&
+        documentUriIdentity(editor.document) === documentUriIdentity({ uri: activeUri })
+    );
+    if (visibleEditor) return visibleEditor;
+    if (!lastEditor || !isLsdynaFile(lastEditor.document)) return null;
+    const openDocuments = vscode.workspace.textDocuments;
+    return !Array.isArray(openDocuments) || openDocuments.includes(lastEditor.document)
+        ? lastEditor
+        : null;
+}
+
+async function presentIndexedEntityQueryResult(result, target = null) {
+    const locations = (result?.locations || []).map(location => new vscode.Location(
+        vscode.Uri.file(location.filePath),
+        new vscode.Range(location.line, location.startCharacter, location.line, location.endCharacter),
+    ));
+    if (locations.length === 0) return false;
+    if (locations.length === 1) {
+        await vscode.commands.executeCommand('vscode.open', locations[0].uri, {
+            viewColumn: vscode.ViewColumn.Active,
+            preview: true,
+            selection: locations[0].range,
+        });
+        return true;
+    }
+    const editor = vscode.window.activeTextEditor;
+    const sourceUri = editor?.document?.uri || vscode.Uri.file(target?.filePath || result.locations[0].filePath);
+    const sourcePosition = editor?.selection?.active || new vscode.Position(
+        Number.isInteger(target?.line) ? target.line : 0,
+        Number.isInteger(target?.character) ? target.character : 0,
+    );
+    await vscode.commands.executeCommand('editor.action.peekLocations', sourceUri, sourcePosition, locations, 'peek');
+    return true;
+}
+
+async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null, options: any = {}) {
+    if (!indexClient || typeof indexClient.loadProjectSnapshot !== 'function') return null;
+    const isCurrentRequest = typeof options.isCurrentRequest === 'function'
+        ? options.isCurrentRequest
+        : () => true;
+    await prepareReferenceDirectory();
+    if (!isCurrentRequest()) return null;
+    const kinds = indexedEntityKinds();
+    let normalizedTarget = kinds.includes(String(target?.targetKind || '').trim()) &&
+        normalizeIndexedEntityId(target?.id)
+        ? { ...target, targetKind: String(target.targetKind).trim(), id: normalizeIndexedEntityId(target.id) }
+        : (options.inferTarget || inferIndexedEntityQueryTarget)();
+    if (!normalizedTarget) {
+        options.onInputRequired?.();
+        return null;
+    }
+    if (!normalizedTarget) return null;
+    target = { ...(target || {}), ...normalizedTarget };
+    const targetKind = normalizedTarget.targetKind;
+    const entityId = normalizedTarget.id;
+
+    let loadingSession, loadingLocations;
+    const operation = async (_progress = null, cancellationToken = null) => {
+        if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+        const scope = await resolveIndexedEntityQueryScope(
+            target,
+            indexClient,
+            cancellationToken,
+            options,
+        );
+        if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+        if (scope?.unavailableReason || !scope?.snapshot || cancellationToken?.isCancellationRequested) {
+            if (scope?.unavailableReason && !cancellationToken?.isCancellationRequested &&
+                options.silentStatus !== true) {
+                vscode.window.showWarningMessage(i18n.get(
+                    scope.unavailableReason === 'project-root-ambiguous'
+                        ? 'entityIdQueryAmbiguousContext'
+                        : scope.unavailableReason === 'entity-query-source-missing'
+                            ? 'entityIdQuerySourceMissing'
+                            : 'entityIdQuerySourceInactive',
+                ));
+            }
+            if (scope?.identityScope && options.entityReferenceProvider) {
+                const session = options.entityReferenceProvider.publish(
+                    { targetKind, id: entityId, scope: scope.identityScope },
+                    { state: 'incomplete', locations: [], reasons: [scope.unavailableReason] },
+                );
+                return { state: 'incomplete', locations: [], reasons: [scope.unavailableReason], querySession: session };
+            }
+            return null;
+        }
+        const identityScope = scope.kind === 'project'
+            ? { kind: 'project', rootFile: scope.rootFile }
+            : { kind: 'single-file', filePath: scope.filePath };
+        if (!options.preserveResultsWhileLoading) loadingSession = options.entityReferenceProvider?.publish(
+            { targetKind, id: entityId, scope: identityScope },
+            { state: 'loading', locations: [], reasons: [] },
+        );
+        loadingLocations = loadingSession?.locations;
+        const prepared = await (options.prepareSnapshot || prepareIndexedEntityQuerySnapshot)(
+            scope.snapshot,
+            cancellationToken,
+        );
+        if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+        if (prepared?.state !== 'ready') {
+            const incomplete = {
+                state: prepared?.state === 'cancelled' ? 'cancelled' : 'incomplete',
+                id: entityId,
+                targetKind,
+                locations: [],
+                reasons: prepared?.reasons || ['entity-query-snapshot-unavailable'],
+            };
+            const session = options.entityReferenceProvider?.publish(
+                { targetKind, id: entityId, scope: identityScope },
+                incomplete,
+            );
+            if (incomplete.state !== 'cancelled' && options.silentStatus !== true) {
+                vscode.window.showWarningMessage(i18n.get(
+                    'entityIdQueryIncomplete',
+                    incomplete.reasons.map(uncertaintyReasonLabel).join(', '),
+                ));
+            }
+            return { ...incomplete, querySession: session };
+        }
+        const queryArguments = {
+            snapshot: prepared.snapshot,
+            id: entityId,
+            targetKind,
+            cancellationToken,
+            scanBlockLines: options.scanBlockLines || scanReferenceBlockLines,
+        };
+        const result = options.query
+            ? await options.query(queryArguments)
+            : await entityReferenceQueryService.queryById(
+                prepared.snapshot,
+                entityId,
+                targetKind,
+                queryArguments,
+            );
+        if (!result || cancellationToken?.isCancellationRequested || !isCurrentRequest()) return null;
+        const querySession = options.entityReferenceProvider?.publish(
+            { targetKind, id: entityId, scope: identityScope },
+            result,
+        );
+        if (options.silentStatus !== true && result.state === 'partial') {
+            vscode.window.showWarningMessage(i18n.get(
+                'entityIdQueryPartial',
+                (result.reasons?.length ? result.reasons : [result.state]).map(uncertaintyReasonLabel).join(', '),
+            ));
+        } else if (options.silentStatus !== true && !['complete', 'exact', 'ambiguous', 'missing'].includes(result.state)) {
+            vscode.window.showWarningMessage(i18n.get(
+                'entityIdQueryIncomplete',
+                (result.reasons?.length ? result.reasons : [result.state]).map(uncertaintyReasonLabel).join(', '),
+            ));
+        } else if (options.silentStatus !== true && (result.state === 'missing' || result.locations.length === 0)) {
+            vscode.window.showInformationMessage(i18n.get(
+                'entityIdQueryNoResults',
+                targetKind,
+                entityId,
+            ));
+        }
+        if (options.presentResult !== false && result.locations?.length > 0) {
+            const present = options.presentResult || presentIndexedEntityQueryResult;
+            await present(result, target);
+        }
+        return { ...result, querySession };
+    };
+
+    try {
+        if (typeof options.runWithProgress === 'function') return await options.runWithProgress(operation);
+        if (typeof vscode.window.withProgress === 'function') {
+            return await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: i18n.get('entityIdQueryScanning'),
+                cancellable: true,
+            }, operation);
+        }
+        return await operation();
+    } finally {
+        // Only finish the loading state installed by this request, never a newer query's state.
+        if (loadingSession?.state === 'loading' && loadingSession.locations === loadingLocations &&
+            options.entityReferenceProvider?.getSession(loadingSession) === loadingSession) {
+            options.entityReferenceProvider.markNeedsRefresh(loadingSession, ['entity-reference-query-interrupted']);
+        }
+    }
+}
+
+function beginEntityReferenceRefresh(state) {
+    state.revision = Number.isInteger(state.revision) ? state.revision + 1 : 1;
+    const revision = state.revision;
+    return { revision, isCurrent: () => state.revision === revision };
+}
+
+async function refreshCurrentEntityReferenceQuery(
+    indexClient,
+    entityReferenceProvider,
+    refreshState,
+    options: any = {},
+) {
+    const request = beginEntityReferenceRefresh(refreshState);
+    const inferTarget = options.inferTarget || inferIndexedEntityQueryTarget;
+    const target = inferTarget();
+    if (!target) {
+        entityReferenceProvider?.clearCurrent?.();
+        return null;
+    }
+    const current = entityReferenceProvider?.getCurrentSession?.();
+    if (current) entityReferenceProvider.markLoading(current);
+    const runQuery = options.runQuery || handleIndexedEntityIdQueryCommand;
+    try {
+        const result = await runQuery(indexClient, target, {
+            ...(options.queryOptions || {}),
+            entityReferenceProvider,
+            presentResult: false,
+            isCurrentRequest: request.isCurrent,
+        });
+        if (!request.isCurrent()) return null;
+        if (!result) entityReferenceProvider?.clearCurrent?.();
+        return result;
+    } catch (error) {
+        if (!request.isCurrent()) return null;
+        entityReferenceProvider?.clearCurrent?.();
+        (options.logError || console.error)(
+            '[lsdyna] Failed to refresh the current object-reference query:', error,
+        );
+        return null;
+    }
+}
+
+async function refreshStoredEntityReferenceQuery(
+    indexClient,
+    entityReferenceProvider,
+    refreshState,
+    target,
+    options: any = {},
+) {
+    const session = entityReferenceProvider?.getSession?.(target);
+    if (!session) return null;
+    const request = beginEntityReferenceRefresh(refreshState);
+    entityReferenceProvider.markLoading(session);
+    const runQuery = options.runQuery || handleIndexedEntityIdQueryCommand;
+    try {
+        const result = await runQuery(
+            indexClient,
+            { targetKind: session.identity.targetKind, id: session.identity.id },
+            {
+                ...(options.queryOptions || {}),
+                entityReferenceProvider,
+                scopeIdentity: session.identity.scope,
+                presentResult: false,
+                isCurrentRequest: request.isCurrent,
+            },
+        );
+        if (!request.isCurrent()) return null;
+        if (!result) {
+            entityReferenceProvider.markNeedsRefresh(
+                session,
+                ['entity-reference-refresh-cancelled'],
+            );
+        }
+        return result;
+    } catch (error) {
+        if (!request.isCurrent()) return null;
+        entityReferenceProvider.markNeedsRefresh(
+            session,
+            ['entity-reference-refresh-failed'],
+        );
+        (options.logError || console.error)(
+            '[lsdyna] Failed to refresh the stored object-reference query:', error,
+        );
+        return null;
+    }
+}
+
+async function refreshCurrentEntityQueryAfterProjectScan(
+    scanResult,
+    entityReferenceProvider,
+    refreshQuery,
+) {
+    if (!scanResult?.rootFile || !scanResult?.snapshot ||
+        !entityReferenceProvider || typeof refreshQuery !== 'function') return null;
+    const session = entityReferenceProvider.getActiveSession?.();
+    if (!session || session.pinned) return null;
+    const scope = session.identity?.scope;
+    const priorScopePath = scope?.kind === 'project' ? scope.rootFile : scope?.filePath;
+    if (!priorScopePath ||
+        normalizeFileIndexKey(priorScopePath) !== normalizeFileIndexKey(scanResult.rootFile)) return null;
+    return refreshQuery(session, scanResult);
+}
+
+function shouldResolveParameterDefinitionAtPosition(document, position) {
+    if (!document || !position || !Number.isInteger(position.line) ||
+        position.line < 0 || position.line >= document.lineCount) return false;
+    const text = String(document.lineAt(position.line).text || '');
+    const ampersandPattern = /-?&[A-Za-z_][A-Za-z0-9_]{0,8}/g;
+    let match;
+    while ((match = ampersandPattern.exec(text)) !== null) {
+        if (position.character >= match.index &&
+            position.character < match.index + match[0].length) return true;
+    }
+
+    const bareNamePattern = /[A-Za-z_][A-Za-z0-9_]{0,8}/g;
+    let bareMatch = null;
+    while ((match = bareNamePattern.exec(text)) !== null) {
+        if (position.character >= match.index &&
+            position.character < match.index + match[0].length) {
+            bareMatch = match;
+            break;
+        }
+    }
+    if (!bareMatch) return false;
+
+    const keywordLine = findEnclosingKeywordLine(document, position.line);
+    if (keywordLine === null) return false;
+    const keyword = classifyKeywordLine(document.lineAt(keywordLine).text);
+    return keyword.isKeyword && keyword.normalizedKeyword.startsWith('*PARAMETER');
+}
+
+function fieldReferenceAuthorityScope(referenceInfo, semanticScope = 'prefer-registry') {
+    if (semanticScope === "keyword-catalog") {
+        return referenceInfo?.source === "keyword-catalog" ? "keyword-catalog" : null;
+    }
+    const registryAvailable = !!referenceInfo?.definitionRegistry;
+    if (semanticScope === 'registry-approved') return registryAvailable ? 'definition-registry' : null;
+    if (semanticScope === 'manual-runtime') return 'manual-runtime';
+    if (semanticScope !== 'prefer-registry') return null;
+    return registryAvailable ? 'definition-registry' : 'manual-runtime';
+}
+
+function fieldReferenceAtPosition(document, position, options: any = {}) {
+    if (!document || !position || !Number.isInteger(position.line) ||
+        position.line < 0 || position.line >= document.lineCount) return null;
+    if (!isActiveLsdynaSemanticLocation(document, position)) return null;
+    const text = String(document.lineAt(position.line).text || '');
+    const trimmed = text.trimStart();
+    if (trimmed.startsWith('*') || trimmed.startsWith('$') || text.includes(',')) return null;
+
+    const keywordLine = findEnclosingKeywordLine(document, position.line);
+    if (keywordLine === null) return null;
+    const keywordText = String(document.lineAt(keywordLine).text || '');
+    if (keywordUsesNonStandardInputFormat(document, keywordText)) {
+        return null;
+    }
+
+    const cardInfo = getCardInfoForLine(document, position.line);
+    if (!cardInfo || cardInfo.isTextCard || !Array.isArray(cardInfo.card) ||
+        !cardCellModel.isSafeCardGeometry(cardInfo.card)) return null;
+    const fieldIndexes = [
+        cardCellModel.fieldIndexAt(text, cardInfo.card, position.character),
+        cardCellModel.fieldIndexForTabNav(text, cardInfo.card, position.character),
+    ].filter((fieldIndex, index, values) => fieldIndex >= 0 && values.indexOf(fieldIndex) === index);
+    for (const fieldIndex of fieldIndexes) {
+        const field = cardInfo.card[fieldIndex];
+        if (!field || (field.nativeIdentity && !field.nativeStaticBinding) || text.length < field.p) continue;
+
+        let referenceInfo;
+        try {
+            const resolveReferenceInfo = options.semanticScope === "keyword-catalog"
+                ? getCatalogFieldReferenceInfo
+                : getActionableFieldReferenceInfo;
+            referenceInfo = resolveReferenceInfo({
+                keyword: cardInfo.keywordName,
+                cardIndex: cardInfo.cardIndex,
+                field,
+            });
+        } catch (_error) {
+            continue;
+        }
+        if (!referenceInfo) continue;
+        const authorityScope = fieldReferenceAuthorityScope(
+            referenceInfo,
+            options.semanticScope || 'prefer-registry',
+        );
+        if (!authorityScope) continue;
+        const rawValue = text.slice(field.p, field.p + field.w);
+        const referenceValue = parseFieldReferenceValue(rawValue, referenceInfo);
+        if (!referenceValue) continue;
+        return {
+            cardInfo,
+            field,
+            rawValue,
+            referenceInfo,
+            referenceValue,
+            authorityScope,
+            sourceRange: {
+                line: position.line,
+                startCharacter: field.p,
+                endCharacter: field.p + field.w,
+            },
+        };
+    }
+    return null;
+}
+
+function activeUnsynchronizedLargeFileUri() {
+    const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    if (activeTab?.input?.viewType === LARGE_FILE_VIEW_TYPE) return null;
+    const uri = getActiveUri();
+    if (!uri || uri.scheme !== 'file' || !isLsdynaUri(uri)) return null;
+    if (vscode.window.activeTextEditor &&
+        documentUriIdentity(vscode.window.activeTextEditor.document) === documentUriIdentity({ uri })) {
+        return null;
+    }
+    try {
+        return fs.statSync(uri.fsPath).size >= LARGE_FILE_THRESHOLD_BYTES ? uri : null;
+    } catch {
+        return null;
+    }
+}
+
+function activeLargeFileViewerUri() {
+    const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+    if (activeTab?.input?.viewType !== LARGE_FILE_VIEW_TYPE) return null;
+    return activeTab.input.uri || activeTab.input.resource || null;
+}
+
+function fileIndexScopeEntries(fileIndexes) {
+    if (!fileIndexes) return [];
+    return fileIndexes instanceof Map
+        ? [...fileIndexes.entries()]
+        : Object.entries(fileIndexes);
+}
+
+function replaceNormalizedFileIndex(scope, filePath, fileIndex) {
+    const key = normalizeFileIndexKey(filePath);
+    for (const candidatePath of [...scope.keys()]) {
+        if (normalizeFileIndexKey(candidatePath) === key) scope.delete(candidatePath);
+    }
+    scope.set(filePath, fileIndex);
+}
+
+function buildOnDemandFileIndexScope(referenceIndexState) {
+    const scope = new Map(fileIndexScopeEntries(referenceIndexState?.snapshot?.fileIndexes));
+    if (scope.size === 0) {
+        for (const filePath of referenceIndexState?.referenceIndex?.files || []) {
+            const cached = activeFileIndexCache.get(normalizeFileIndexKey(filePath));
+            if (cached) scope.set(filePath, cached);
+        }
+    }
+
+    const reasons = [];
+    let cacheable = true;
+    for (const document of vscode.workspace.textDocuments || []) {
+        const filePath = document?.uri?.fsPath;
+        if (!filePath) continue;
+        const inScope = [...scope.keys()].some(candidatePath =>
+            normalizeFileIndexKey(candidatePath) === normalizeFileIndexKey(filePath)
+        );
+        if (!inScope) continue;
+        const liveIndex = getFileIndexForDocument(document);
+        if (document.isDirty) {
+            cacheable = false;
+            if (!liveIndex || liveIndex.documentVersion !== document.version) {
+                for (const candidatePath of [...scope.keys()]) {
+                    if (normalizeFileIndexKey(candidatePath) === normalizeFileIndexKey(filePath)) {
+                        scope.delete(candidatePath);
+                    }
+                }
+                reasons.push('on-demand-live-structure-unavailable');
+                continue;
+            }
+        }
+        if (liveIndex && Number.isInteger(liveIndex.documentVersion)) {
+            cacheable = false;
+            replaceNormalizedFileIndex(scope, filePath, liveIndex);
+        }
+    }
+    if ([...scope.values()].some(index => Number.isInteger(index?.documentVersion))) {
+        cacheable = false;
+    }
+    return { fileIndexes: scope, cacheable, reasons: [...new Set(reasons)] };
+}
+
+function findOpenDocumentByPath(filePath) {
+    const key = normalizeFileIndexKey(filePath);
+    return (vscode.workspace.textDocuments || []).find(document =>
+        document?.uri?.fsPath && normalizeFileIndexKey(document.uri.fsPath) === key
+    ) || null;
+}
+
+async function scanReferenceBlockLines(block, visitLine, cancellationToken = null) {
+    const document = findOpenDocumentByPath(block.filePath);
+    if (!document || !Number.isInteger(block.startLine) || !Number.isInteger(block.endLine)) {
+        return scanBlockLinesFromDisk(block, visitLine, cancellationToken);
+    }
+    const startLine = Math.max(0, block.startLine + 1);
+    const endLine = Math.min(document.lineCount - 1, block.endLine);
+    const keywordLineText = block.startLine >= 0 && block.startLine < document.lineCount
+        ? String(document.lineAt(block.startLine).text || '')
+        : String(block.rawKeyword || block.keyword || '');
+    let lineCount = 0;
+    for (let lineIndex = startLine; lineIndex <= endLine; lineIndex++) {
+        if ((lineIndex & 255) === 0 && cancellationToken?.isCancellationRequested) {
+            return { complete: false, cancelled: true, lineCount };
+        }
+        if (lineIndex > startLine && ((lineIndex - startLine) & 4095) === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+            if (cancellationToken?.isCancellationRequested) {
+                return { complete: false, cancelled: true, lineCount };
+            }
+        }
+        const pending = visitLine(
+            String(document.lineAt(lineIndex).text || ''),
+            lineIndex,
+            { keywordLineText }
+        );
+        if (pending && typeof pending.then === 'function') await pending;
+        lineCount += 1;
+    }
+    return { complete: true, lineCount, keywordLineText };
+}
+
+function onDemandLookupCacheKey(analysis, targetKinds, targetDefinitions) {
+    return JSON.stringify({
+        id: analysis?.id,
+        targetKinds: [...new Set(targetKinds || [])].sort(),
+        targetDefinitions: [...new Set(targetDefinitions || [])]
+            .map(value => String(value || '').toUpperCase())
+            .sort(),
+    });
+}
+
+function estimateOnDemandLookupBytes(lookup) {
+    let bytes = 256 + (lookup?.reasons || []).join('\0').length * 2;
+    for (const definition of lookup?.definitions || []) {
+        bytes += 320 + String(definition.filePath || '').length * 2;
+        bytes += (definition.occurrencePathLabels || []).join('\0').length * 2;
+    }
+    return bytes;
+}
+
+function getCachedOnDemandLookup(referenceIndex, key) {
+    const bucket = referenceIndex && activeOnDemandReferenceLookupCache.get(referenceIndex);
+    if (!bucket || !bucket.entries.has(key)) return null;
+    const entry = bucket.entries.get(key);
+    bucket.entries.delete(key);
+    bucket.entries.set(key, entry);
+    return entry.lookup;
+}
+
+function cacheOnDemandLookup(referenceIndex, key, lookup) {
+    if (!referenceIndex || !key || lookup?.state !== 'complete') return;
+    let bucket = activeOnDemandReferenceLookupCache.get(referenceIndex);
+    if (!bucket) {
+        bucket = { entries: new Map(), totalBytes: 0 };
+        activeOnDemandReferenceLookupCache.set(referenceIndex, bucket);
+    }
+    const byteSize = estimateOnDemandLookupBytes(lookup);
+    if (byteSize > ON_DEMAND_LOOKUP_CACHE_MAX_BYTES) return;
+    const prior = bucket.entries.get(key);
+    if (prior) {
+        bucket.totalBytes -= prior.byteSize;
+        bucket.entries.delete(key);
+    }
+    bucket.entries.set(key, { lookup, byteSize });
+    bucket.totalBytes += byteSize;
+    while (bucket.totalBytes > ON_DEMAND_LOOKUP_CACHE_MAX_BYTES && bucket.entries.size > 0) {
+        const oldestKey = bucket.entries.keys().next().value;
+        const oldest = bucket.entries.get(oldestKey);
+        bucket.entries.delete(oldestKey);
+        bucket.totalBytes -= oldest.byteSize;
+    }
+}
+
+async function resolveOnDemandFieldDefinitions(
+    document,
+    source,
+    analysis,
+    referenceIndexState,
+    cancellationToken = null,
+    options: any = {},
+) {
+    const targetKinds = source.referenceValue.targetKinds || source.referenceInfo.targetKinds || [];
+    const targetDefinitions = source.referenceValue.targetDefinitions ||
+        source.referenceInfo.targetDefinitions || [];
+    const scope = buildOnDemandFileIndexScope(referenceIndexState);
+    const cacheKey = onDemandLookupCacheKey(analysis, targetKinds, targetDefinitions);
+    if (scope.cacheable) {
+        const cached = getCachedOnDemandLookup(referenceIndexState.referenceIndex, cacheKey);
+        if (cached) return { ...cached, cacheHit: true };
+    }
+    const lookup = await scanOnDemandDefinitions({
+        referenceIndex: referenceIndexState.referenceIndex,
+        fileIndexes: scope.fileIndexes,
+        effectiveId: analysis.id,
+        targetKinds,
+        targetDefinitions,
+        projectScoped: !!referenceIndexState.projectScoped,
+        cancellationToken,
+        scanBlockLines: scanReferenceBlockLines,
+        definitionKeywords: runtimeDefinitionKeywords({
+            allowCandidate: options.allowFamilyCandidate === true,
+        }),
+    });
+    if (scope.reasons.length > 0 && lookup.state !== 'cancelled') {
+        lookup.state = 'partial';
+        lookup.reasons = [...new Set([...(lookup.reasons || []), ...scope.reasons])];
+        lookup.cacheable = false;
+    }
+    if (scope.cacheable && lookup.cacheable !== false) {
+        cacheOnDemandLookup(referenceIndexState.referenceIndex, cacheKey, lookup);
+    }
+    return lookup;
+}
+
+async function resolveFieldReferenceNavigation(
+    document,
+    position,
+    cancellationToken = null,
+    options: any = {},
+) {
+    const isCurrent = createReferenceReadGuard(document, cancellationToken);
+    if (!isCurrent()) return null;
+    const source = fieldReferenceAtPosition(document, position, options);
+    if (!source || !isCurrent()) return null;
+    const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
+    if (referenceIndexState?.unavailable) return null;
+    if (!referenceIndexState || !isCurrent()) return null;
+    let analysis = analyzeReference(
+        referenceIndexState.referenceIndex,
+        source.referenceValue,
+        source.referenceValue.targetKinds || source.referenceInfo.targetKinds,
+        {
+            projectScoped: !!referenceIndexState.projectScoped,
+            documentPath: document.uri.fsPath,
+            lineIndex: position.line,
+            targetDefinitions: source.referenceValue.targetDefinitions ||
+                source.referenceInfo.targetDefinitions,
+        }
+    );
+    const candidateDefinitionKeywords = runtimeDefinitionKeywords({
+        allowCandidate: options.allowFamilyCandidate === true,
+    });
+    const hasOnDemandDescriptor = Object.values(candidateDefinitionKeywords.onDemand || {})
+        .some((descriptor: any) => {
+            const targetKinds = source.referenceValue.targetKinds || source.referenceInfo.targetKinds || [];
+            const targetDefinitions = (source.referenceValue.targetDefinitions ||
+                source.referenceInfo.targetDefinitions || []).map(normalizeReferenceTargetKeyword);
+            return targetKinds.includes(descriptor.targetKind) ||
+                targetDefinitions.includes(normalizeReferenceTargetKeyword(
+                    descriptor.target || descriptor.targetToken || descriptor.keyword
+                ));
+        });
+    if (hasOnDemandDescriptor && analysis.reasons && analysis.reasons.some(reason =>
+        [
+            'target-kind-on-demand',
+            'target-definition-on-demand',
+            'target-kind-unindexed',
+            'target-definition-unindexed',
+        ].includes(reason)
+    )) {
+        const lookup = await resolveOnDemandFieldDefinitions(
+            document,
+            source,
+            analysis,
+            referenceIndexState,
+            cancellationToken,
+            options,
+        );
+        if ((lookup && lookup.state === 'cancelled') || !isCurrent()) {
+            return null;
+        }
+        if (lookup) {
+            analysis = mergeOnDemandDefinitions(analysis, lookup);
+            if (source.referenceValue.isSignedSwitch &&
+                (lookup.definitions || []).some(definition =>
+                    Number.isSafeInteger(definition.idfoffOffset) &&
+                    definition.idfoffOffset !== 0
+                )) {
+                analysis = {
+                    ...analysis,
+                    state: 'uncertain',
+                    reasons: [...new Set([
+                        ...(analysis.reasons || []),
+                        'signed-switch-transform-unverified',
+                    ])],
+                };
+            }
+        }
+    }
+    const unifiedQuery = entityReferenceQueryService.queryFromSource(
+        referenceIndexState.referenceIndex,
+        source,
+        {
+            rootFile: referenceIndexState.rootFile,
+            documentPath: document.uri.fsPath,
+            lineIndex: position.line,
+            documentVersion: document.version,
+        },
+    );
+    return {
+        ...buildReferenceNavigation(analysis),
+        analysis,
+        referenceIndexState,
+        source,
+        authorityScope: source.authorityScope,
+        queryIdentity: unifiedQuery.queryIdentity,
+        unifiedQuery,
+    };
+}
+
+function normalizeReferenceTargetKeyword(value) {
+    return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0]
+        .replace(/[+%\-]$/, '');
+}
+
+function dirtyReferenceNetworkDocuments(referenceIndexState) {
+    const indexed = new Set((referenceIndexState?.referenceIndex?.files || []).map(normalizeFileIndexKey));
+    return (vscode.workspace.textDocuments || [])
+        .filter(document => document?.isDirty === true && document?.uri?.fsPath &&
+            indexed.has(normalizeFileIndexKey(document.uri.fsPath)));
+}
+
+function hasIncludeControlBlock(fileIndex) {
+    return (fileIndex?.keywordBlocks || []).some(block =>
+        String(block.keyword || '').trim().replace(/^\*/, '').toUpperCase()
+            .split(/[\s,$]/)[0].startsWith('INCLUDE')
+    );
+}
+
+function lookupNormalizedFileIndex(fileIndexes, filePath) {
+    const key = normalizeFileIndexKey(filePath);
+    for (const [candidatePath, fileIndex] of fileIndexScopeEntries(fileIndexes)) {
+        if (normalizeFileIndexKey(candidatePath) === key) return fileIndex;
+    }
+    return null;
+}
+
+async function readLiveReferenceBlock(document, block, cancellationToken = null) {
+    const isCurrent = createDocumentReadGuard(document, cancellationToken);
+    const lines = [];
+    for (let line = block.startLine; line <= block.endLine; line++) {
+        if ((line & 255) === 0 && !isCurrent()) return null;
+        if (line > block.startLine && ((line - block.startLine) & 4095) === 0) {
+            await new Promise(resolve => setImmediate(resolve));
+            if (!isCurrent()) return null;
+        }
+        lines.push(document.lineAt(line).text);
+    }
+    return lines.join('\n');
+}
+
+async function buildLiveRegistryReferenceFileIndex(
+    document,
+    existingFileIndex,
+    cancellationToken = null,
+    options: any = {},
+) {
+    const isCurrent = createDocumentReadGuard(document, cancellationToken);
+    const blocks = await parseKeywordBlocksFromDocumentAsync(document, cancellationToken);
+    if (!blocks || !isCurrent()) return null;
+    if (!options.allowIncludeControlBlocks &&
+        (hasIncludeControlBlock(existingFileIndex) || hasIncludeControlBlock({ keywordBlocks: blocks }))) {
+        return {
+            incompleteReason: options.includeIncompleteReason || 'dirty-include-graph-unverified',
+        };
+    }
+    const input = { filePath: document.uri.fsPath, keywordBlocks: blocks };
+    const readBlock = block => readLiveReferenceBlock(document, block, cancellationToken);
+    const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
+        input,
+        readBlock,
+        undefined,
+        { cancellationToken },
+    );
+    if (referenceDefinitions.cancelled || !isCurrent()) return null;
+    const registryReferences = await scanRegistryReferenceOccurrencesFromFileIndex(
+        { ...input, referenceDefinitions },
+        readBlock,
+        { cancellationToken },
+    );
+    if (registryReferences.cancelled || !isCurrent()) return null;
+    const parameterEvents = await scanParameterEventsFromFileIndex(
+        input,
+        readBlock,
+        { cancellationToken },
+    );
+    if (!isCurrent()) return null;
+    return {
+        ...existingFileIndex,
+        filePath: document.uri.fsPath,
+        keywordBlocks: blocks,
+        referenceDefinitions,
+        registryReferences,
+        parameterEvents,
+        documentVersion: document.version,
+        liveReferenceOverlay: true,
+    };
+}
+
+async function buildSingleDocumentRegistryReferenceIndexState(
+    document,
+    referenceIndexState,
+    cancellationToken = null,
+) {
+    if (referenceIndexState?.mainDeckContextState === 'ambiguous') {
+        return { state: 'incomplete', reasons: ['project-root-ambiguous'] };
+    }
+    const existing = lookupNormalizedFileIndex(
+        referenceIndexState?.snapshot?.fileIndexes,
+        document.uri.fsPath,
+    );
+    const live = await buildLiveRegistryReferenceFileIndex(
+        document,
+        existing,
+        cancellationToken,
+        { allowIncludeControlBlocks: true },
+    );
+    if (!live) return { state: 'cancelled', reasons: ['cancelled'] };
+    if (live.incompleteReason) {
+        return { state: 'incomplete', reasons: [live.incompleteReason] };
+    }
+    const snapshot = {
+        rootFile: document.uri.fsPath,
+        files: [document.uri.fsPath],
+        graph: { includeOccurrences: [] },
+        fileIndexes: new Map([[document.uri.fsPath, live]]),
+    };
+    return {
+        state: 'ready',
+        referenceIndexState: {
+            ...referenceIndexState,
+            snapshot,
+            referenceIndex: buildProjectReferenceIndex(snapshot),
+            rootFile: document.uri.fsPath,
+            projectScoped: false,
+            singleDocumentScoped: true,
+            liveReferenceOverlay: true,
+        },
+    };
+}
+
+async function overlayDirtyRegistryReferenceFiles(referenceIndexState, cancellationToken = null) {
+    const inputGuards = (vscode.workspace.textDocuments || []).map(doc => createDocumentReadGuard(doc, cancellationToken));
+    const dirtyDocuments = dirtyReferenceNetworkDocuments(referenceIndexState);
+    if (dirtyDocuments.length === 0) return { state: 'ready', referenceIndexState };
+    const snapshot = referenceIndexState.snapshot;
+    if (!snapshot?.fileIndexes) {
+        return { state: 'incomplete', reasons: ['dirty-reference-snapshot-unavailable'] };
+    }
+    const fileIndexes = new Map(fileIndexScopeEntries(snapshot.fileIndexes));
+    for (const document of dirtyDocuments) {
+        if (cancellationToken?.isCancellationRequested) return { state: 'cancelled', reasons: ['cancelled'] };
+        const existing = lookupNormalizedFileIndex(fileIndexes, document.uri.fsPath);
+        if (existing?.liveReferenceOverlay && existing.documentVersion === document.version) continue;
+        const live = await buildLiveRegistryReferenceFileIndex(document, existing, cancellationToken);
+        if (!live) return { state: 'cancelled', reasons: ['cancelled'] };
+        if (live.incompleteReason) {
+            return {
+                state: 'incomplete',
+                reasons: [`${document.uri.fsPath}:${live.incompleteReason}`],
+            };
+        }
+        replaceNormalizedFileIndex(fileIndexes, document.uri.fsPath, live);
+    }
+    if (inputGuards.some(current => !current())) return { state: 'cancelled', snapshot: null, reasons: ['document-version-changed'] };
+    const liveSnapshot = { ...snapshot, fileIndexes };
+    return {
+        state: 'ready',
+        referenceIndexState: {
+            ...referenceIndexState,
+            snapshot: liveSnapshot,
+            referenceIndex: buildProjectReferenceIndex(liveSnapshot),
+            liveReferenceOverlay: true,
+        },
+    };
+}
+
+function mergePhysicalReferenceLocations(...groups) {
+    const seen = new Set();
+    const result = [];
+    for (const location of groups.flat()) {
+        if (!location?.filePath || !Number.isInteger(location.line) ||
+            !Number.isInteger(location.startCharacter) || !Number.isInteger(location.endCharacter)) continue;
+        const key = [
+            normalizeFileIndexKey(location.filePath),
+            location.line,
+            location.startCharacter,
+            location.endCharacter,
+        ].join(':');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(location);
+    }
+    return result.sort((left, right) =>
+        normalizeFileIndexKey(left.filePath).localeCompare(normalizeFileIndexKey(right.filePath)) ||
+        left.line - right.line || left.startCharacter - right.startCharacter
+    );
+}
+
+async function resolveRegistryReferenceNetwork(
+    document,
+    position,
+    context: any = {},
+    cancellationToken = null,
+    options: any = {},
+) {
+    const isCurrent = createReferenceReadGuard(document, cancellationToken);
+    if (!isCurrent() ||
+        !isActiveLsdynaSemanticLocation(document, position)) return null;
+    const keywordLine = findEnclosingKeywordLine(document, position.line);
+    if (keywordLine !== null && require('./core/semantics/nativeFieldResolution').nativeFieldDisplayOnly(
+        classifyKeywordLine(document.lineAt(keywordLine).text).normalizedKeyword.replace(/^\*/, ''),
+    )) return { state: 'disabled', locations: [], reasons: ['native-reference-binding-unverified'] };
+    const registry = getDefinitionRegistryCatalog();
+    if (!options.allowWhenPermissionDisabled && !registry.permission('referenceProviderPermission')) {
+        return { state: 'disabled', locations: [], reasons: ['reference-provider-not-authorized'] };
+    }
+    let referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
+    if (!referenceIndexState || !isCurrent()) return null;
+    if (referenceIndexState.unavailable) return { state: 'incomplete', locations: [], reasons: referenceIndexState.incompleteReasons };
+    if (!referenceIndexState.projectScoped) {
+        const local = await buildSingleDocumentRegistryReferenceIndexState(
+            document,
+            referenceIndexState,
+            cancellationToken,
+        );
+        if (local.state !== 'ready') {
+            return {
+                state: local.state,
+                locations: [],
+                reasons: local.reasons || [],
+                referenceIndexState,
+            };
+        } else {
+            referenceIndexState = local.referenceIndexState;
+        }
+    }
+    const completenessReasons = referenceIndexState.referenceIndex?.completenessReasons || [];
+    if (completenessReasons.length > 0) {
+        return {
+            state: 'incomplete',
+            locations: [],
+            reasons: [...new Set(completenessReasons)].sort(),
+            referenceIndexState,
+        };
+    }
+    const liveOverlay = (referenceIndexState as any).singleDocumentScoped
+        ? { state: 'ready', referenceIndexState }
+        : await overlayDirtyRegistryReferenceFiles(referenceIndexState, cancellationToken);
+    if (liveOverlay.state !== 'ready') {
+        return {
+            state: liveOverlay.state,
+            locations: [],
+            reasons: liveOverlay.reasons || [],
+            referenceIndexState,
+        };
+    }
+    referenceIndexState = liveOverlay.referenceIndexState;
+
+    const source = fieldReferenceAtPosition(
+        document,
+        position,
+        { semanticScope: 'registry-approved' },
+    );
+    let queryState = source
+        ? queryFromReferenceSource(referenceIndexState.referenceIndex, source, {
+            documentPath: document.uri.fsPath,
+            lineIndex: position.line,
+        })
+        : definitionAtPosition(
+            referenceIndexState.referenceIndex,
+            document.uri.fsPath,
+            position,
+        );
+    if (!source && queryState?.state === 'none') {
+        const fileIndex = lookupNormalizedFileIndex(
+            referenceIndexState.snapshot?.fileIndexes,
+            document.uri.fsPath,
+        );
+        if (fileIndex && (!Number.isInteger(fileIndex.documentVersion) ||
+            fileIndex.documentVersion === document.version)) {
+            queryState = queryOnDemandDefinitionAtPosition({
+                referenceIndex: referenceIndexState.referenceIndex,
+                fileIndex,
+                filePath: document.uri.fsPath,
+                position,
+                projectScoped: true,
+                lineAt: line => line >= 0 && line < document.lineCount
+                    ? document.lineAt(line).text
+                    : undefined,
+                definitionKeywords: {
+                    onDemand: familyDefinitionKeywords({
+                        allowCandidate: options.allowWhenPermissionDisabled === true,
+                        requiredPermission: 'referenceProviderPermission',
+                    }).onDemand,
+                },
+            });
+        } else if (fileIndex) {
+            queryState = {
+                state: 'incomplete',
+                query: null,
+                definitions: [],
+                declarations: [],
+                reasons: ['definition-origin-live-structure-stale'],
+            };
+        }
+    }
+    if (!queryState || queryState.state !== 'ready') {
+        return {
+            state: queryState?.state === 'none' ? 'none' : 'incomplete',
+            locations: [],
+            reasons: queryState?.reasons || [],
+            queryState,
+            referenceIndexState,
+            source,
+        };
+    }
+    const matches = collectRegistryReferenceMatches(
+        referenceIndexState.referenceIndex,
+        queryState.query,
+        { cancellationToken },
+    );
+    if (matches.state !== 'complete' || !isCurrent()) {
+        return {
+            state: matches.state,
+            locations: [],
+            reasons: matches.reasons,
+            matches,
+            queryState,
+            referenceIndexState,
+            source,
+        };
+    }
+    const declarations = context?.includeDeclaration
+        ? mergePhysicalReferenceLocations(
+            definitionLocations(referenceIndexState.referenceIndex, queryState.query),
+            queryState.declarations || [],
+        )
+        : [];
+    return {
+        state: 'complete',
+        locations: mergePhysicalReferenceLocations(declarations, matches.locations),
+        references: matches.locations,
+        declarations,
+        reasons: [],
+        matches,
+        queryState,
+        referenceIndexState,
+        source,
+    };
+}
+
+function documentUriIdentity(document) {
+    const uri = document?.uri;
+    if (!uri) return '';
+    try {
+        // Command URIs decode their JSON query before dispatch. Keep the nested
+        // document URI unescaped so Windows drive separators, spaces, and other
+        // path characters have one stable representation on both sides of that
+        // boundary (for example file:///c:/..., not file:///c%3A/...). The full
+        // JSON payload is still encoded by each command-link builder.
+        const serialized = uri.toString?.(true);
+        if (serialized && serialized !== '[object Object]') return String(serialized);
+    } catch (_error) {
+        // Fall back to fsPath for the small test/document shims that do not expose Uri#toString.
+    }
+    return typeof uri.fsPath === 'string' ? uri.fsPath : '';
+}
+
+const nativeParameterContexts = new WeakMap<object, { version: number; source: object; reason: string; context: any }>();
+
+const nativeParameterDiskChecks = new WeakMap<object, { version: number; index: object; matches: boolean }>();
+
+const nativeParameterSourceIdentities = new WeakMap<object, object>();
+
+function nativeParameterSourceIdentity(source) {
+    if (!source) return null;
+    let identity = nativeParameterSourceIdentities.get(source);
+    if (!identity) nativeParameterSourceIdentities.set(source, identity = {});
+    return identity;
+}
+
+function nativeParameterContextForDocument(document) {
+    const path = document?.uri?.fsPath;
+    const main = getMainDeckContextForDocumentPath(path);
+    const project = main.project;
+    const local = project ? null : getFileIndexForDocument(document);
+    const source = project?.referenceIndex || local;
+    const sourceIdentity = nativeParameterSourceIdentity(source);
+    let reason = main.state === 'ambiguous' ? 'parameter-main-file-ambiguous' : '';
+    if (!Number.isInteger(document.version)) reason ||= 'parameter-document-version-unavailable';
+    if (!source) reason ||= 'parameter-context-unavailable';
+    const current = (open, index) => {
+        if (!index) return false;
+        if (Number.isInteger(index.documentVersion)) return index.documentVersion === open.version;
+        if (open.isDirty !== false) return false;
+        const checked = nativeParameterDiskChecks.get(open);
+        const indexIdentity = nativeParameterSourceIdentity(index);
+        if (checked?.version === open.version && checked.index === indexIdentity) return checked.matches;
+        let matches = false;
+        try {
+            const stat = fs.statSync(open.uri.fsPath);
+            matches = stat.size === index.size && stat.mtimeMs === index.mtimeMs;
+        } catch { /* No current disk identity: keep the parameter unknown. */ }
+        nativeParameterDiskChecks.set(open, { version: open.version, index: indexIdentity, matches });
+        return matches;
+    };
+    if (project) {
+        const files = new Set((project.snapshot?.files || []).map(normalizeFileIndexKey));
+        const documents = new Set([document, ...(vscode.workspace.textDocuments || [])
+            .filter(open => files.has(normalizeFileIndexKey(open.uri?.fsPath || '')))]);
+        for (const open of documents) {
+            if (!current(open, lookupNormalizedFileIndex(project.snapshot?.fileIndexes, open.uri?.fsPath))) reason ||= 'parameter-context-stale';
+        }
+        if (project.referenceIndex?.completenessReasons?.length) reason ||= 'parameter-project-context-incomplete';
+    } else if (local && (!current(document, local) || !Array.isArray(local.parameterEvents))) {
+        reason ||= 'parameter-context-stale';
+    } else if (local && hasIncludeControlBlock(local)) {
+        reason ||= 'parameter-project-context-unavailable';
+    }
+    const previous = nativeParameterContexts.get(document);
+    if (previous && previous.version === document.version && previous.source === sourceIdentity && previous.reason === reason) return previous.context;
+    const index = reason ? null : project?.referenceIndex || buildProjectReferenceIndex({
+        rootFile: path, files: [path], graph: { includeOccurrences: [] }, fileIndexes: new Map([[path, local]]),
+    });
+    const context = require('./core/semantics/nativeParameterContext').createNativeParameterContext(index, path, document.version, reason || undefined);
+    nativeParameterContexts.set(document, { version: document.version, source: sourceIdentity, reason, context });
+    return context;
+}
+
+function fieldContextForLine(document, lineNum, schema, options: any = {}) {
+    const block = findReadyFieldBlock(document, lineNum);
+    const keywordLine = Number.isInteger(options.keywordLine) ? options.keywordLine : block?.startLine;
+    const result = keywordSchema.readCardContext(document, lineNum, schema, {
+        keywordLine, keywordBlockEnd: block && block.startLine === keywordLine ? block.endLine : undefined,
+        includeCommentHeaders: options.includeCommentHeaders === true,
+        cancellationToken: options.cancellationToken,
+    });
+    if (result.status === 'resolved' && (result.context.currentText.includes('&') || result.context.observedDataLines.some(text => text.includes('&')))) {
+        result.context.parameterContext = nativeParameterContextForDocument(document);
+    }
+    return result;
+}
+
+async function getCardInfoForDocumentLineWithSuggestAsync(document, lineNum, schema, options: any = {}) {
+    const version = document.version;
+    for (;;) {
+        if (options.cancellationToken?.isCancellationRequested) return { cardInfo: null, reason: 'field-context-cancelled' };
+        if (document.version !== version) return { cardInfo: null, reason: 'field-context-version-changed' };
+        const result = getCardInfoForDocumentLineWithSuggest(document, lineNum, schema, options);
+        if (document.version !== version) return { cardInfo: null, reason: 'field-context-version-changed' };
+        if (result.reason !== 'field-context-checkpoint-pending') return result;
+        await new Promise<void>(resolve => setImmediate(resolve));
+    }
+}
+
+function findReadyFieldBlock(document, lineNum) {
+    const blocks = getReadyKeywordBlocksForDocument(document, { allowDiskSnapshot: false });
+    if (!blocks) return null;
+    let low = 0, high = blocks.length - 1;
+    let candidate = null;
+    while (low <= high) {
+        const middle = (low + high) >>> 1;
+        if (blocks[middle].startLine < lineNum) { candidate = blocks[middle]; low = middle + 1; }
+        else high = middle - 1;
+    }
+    return candidate && lineNum <= candidate.endLine ? candidate : null;
+}
+
+function findEnclosingKeywordLine(document, lineNum, options: any = {}) {
+    if (!document || lineNum <= 0 || lineNum >= document.lineCount) return null;
+    if (!isActiveLsdynaSemanticLocation(document, { line: lineNum, character: 0 })) return null;
+
+    // Project scans already provide block starts. A live edit can only reuse the
+    // indexed position when the keyword still exists there with the same name.
+    const blocks = getReadyKeywordBlocksForDocument(document, { allowDiskSnapshot: false });
+    if (Array.isArray(blocks) && blocks.length > 0) {
+        let low = 0;
+        let high = blocks.length - 1;
+        let candidateBlock = null;
+        while (low <= high) {
+            const middle = (low + high) >> 1;
+            const start = blocks[middle]?.startLine;
+            if (!Number.isInteger(start)) break;
+            if (start < lineNum) {
+                candidateBlock = blocks[middle];
+                low = middle + 1;
+            } else {
+                high = middle - 1;
+            }
+        }
+        const candidate = candidateBlock?.startLine;
+        if (Number.isInteger(candidate) && candidate >= 0 && candidate < document.lineCount) {
+            if (Number.isInteger(candidateBlock?.endLine) && lineNum <= candidateBlock.endLine) {
+                const current = classifyKeywordLine(document.lineAt(candidate).text);
+                const expected = classifyKeywordLine(String(candidateBlock?.keyword || ''));
+                if (
+                    current.isKeyword &&
+                    (!expected.isKeyword || current.normalizedKeyword === expected.normalizedKeyword)
+                ) return candidate;
+            }
+        }
+    }
+
+    if (options.indexedOnly) return null;
+    const minimumLine = Math.max(0, lineNum - 256);
+    let kwLine = null;
+    for (let i = lineNum - 1; i >= minimumLine; i--) {
+        if (isKeywordLineText(document.lineAt(i).text)) { kwLine = i; break; }
+    }
+    return typeof kwLine === 'number' ? kwLine : null;
+}
+
+function getCardInfoForKnownKeywordLine(document, lineNum, keywordLine, schema, keywordText = null) {
+    const context = fieldContextForLine(document, lineNum, schema, { keywordLine });
+    return context.status === 'resolved'
+        ? keywordSchema.resolveCardFromContext(context.context, schema).cardInfo || null : null;
+}
+
+function getCardInfoForLine(document, lineNum) {
+    const text = document?.lineAt(lineNum)?.text || '';
+    if (!isActiveLsdynaSemanticLocation(document, { line: lineNum, character: text.length })) return null;
+    return getCardInfoForKnownKeywordLine(document, lineNum, null, getFieldData());
+}
+
+const globalInputFormatCache = new WeakMap();
+
+function documentGlobalInputFormat(document) {
+    if (!document) return 'standard';
+    const cached = globalInputFormatCache.get(document);
+    if (cached && cached.version === document.version) return cached.mode;
+
+    let mode = 'standard';
+    const maxScan = Math.min(document.lineCount, 200);
+    for (let i = 0; i < maxScan; i++) {
+        const text = document.lineAt(i).text;
+        if (!isKeywordLineText(text)) continue;
+        const kw = classifyKeywordLine(text).normalizedKeyword;
+        if (kw === '*KEYWORD') {
+            mode = globalInputFormatFromKeywordLine(text, mode);
+        }
+        // First keyword line decides whether a deck header is present.
+        break;
+    }
+
+    globalInputFormatCache.set(document, { version: document.version, mode });
+    return mode;
+}
+
+function keywordUsesNonStandardInputFormat(document, keywordText) {
+    return keywordInputFormat(keywordText, documentGlobalInputFormat(document)) !== 'standard';
+}
+
+const {
+    getKeywordSemanticAdvice,
+    predicateFieldsForCardAdvice,
+} = require('./core/semantics/manualSemanticAdvisor');
+
+const {
+    buildSemanticDocumentContext,
+} = require('./core/semantics/semanticDocumentContext');
+
+const {
+    getManualSemanticCatalog,
+} = require('./core/semantics/manualSemanticCatalog');
+
+const {
+    getRelaxedModelEvidenceV1Catalog,
+} = require('./core/semantics/relaxedModelEvidenceV1');
+
+const {
+    resolveProvisionalFieldHelp,
+} = require('./core/semantics/provisionalFieldHelp');
+
+const {
+    SemanticEvidenceResolver,
+} = require('./core/semantics/semanticEvidenceResolver');
+
+const {
+    semanticEvidenceTargets,
+    semanticEvidenceTargetLabel,
+} = require('./core/semantics/semanticEvidencePresentation');
+
+const {
+    DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+    KeywordStructureCatalog,
+    analyzeKeywordStructureLines,
+} = require('./core/structure');
+
+const semanticEvidenceResolver = new SemanticEvidenceResolver();
+
+const keywordStructureCatalog = new KeywordStructureCatalog();
+
+const KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+
+const KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES = 64;
+
+let keywordStructureAnalysisCache = new WeakMap();
+
+function estimateKeywordStructureAnalysisBytes(result) {
+    const block = result?.block;
+    let bytes = 512 + 2 * String(result?.keyword || '').length;
+    for (const record of block?.records || []) {
+        bytes += 192 + 2 * String(record?.text || '').length;
+        for (const comment of record?.comments || []) {
+            bytes += 96 + 2 * String(comment?.text || '').length;
+        }
+    }
+    for (const comment of block?.trailingComments || []) {
+        bytes += 96 + 2 * String(comment?.text || '').length;
+    }
+    for (const metadata of block?.preprocessorMetadata || []) {
+        bytes += 64 + 2 * String(metadata?.text || '').length;
+    }
+    for (const collection of [
+        result?.diagnostics,
+        result?.alternativeDiagnostics,
+        result?.dependencies,
+        result?.repairCandidates,
+        result?.details,
+    ]) {
+        if (!collection) continue;
+        try {
+            bytes += 2 * JSON.stringify(collection).length;
+        } catch (_error) {
+            return KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES + 1;
+        }
+    }
+    return Math.max(512, bytes);
+}
+
+function getCachedKeywordStructureAnalysis(document, key) {
+    const cache = keywordStructureAnalysisCache.get(document);
+    const entry = cache?.values?.get(key);
+    if (!entry) return null;
+    cache.values.delete(key);
+    cache.values.set(key, entry);
+    return entry.result;
+}
+
+function cacheKeywordStructureAnalysis(document, key, result) {
+    const bytes = estimateKeywordStructureAnalysisBytes(result);
+    if (bytes > KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES) return;
+    let cache = keywordStructureAnalysisCache.get(document);
+    if (!cache) {
+        cache = { bytes: 0, values: new Map() };
+        keywordStructureAnalysisCache.set(document, cache);
+    }
+    const previous = cache.values.get(key);
+    if (previous) {
+        cache.bytes -= previous.bytes;
+        cache.values.delete(key);
+    }
+    cache.values.set(key, { bytes, result });
+    cache.bytes += bytes;
+    while (cache.values.size > KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES ||
+        cache.bytes > KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES) {
+        const oldestKey = cache.values.keys().next().value;
+        const oldest = cache.values.get(oldestKey);
+        cache.values.delete(oldestKey);
+        cache.bytes -= oldest?.bytes || 0;
+    }
+}
+
+function buildProvisionalManualContext(field, context: any = {}) {
+    const keyword = context.keyword || context.keywordName;
+    if (!keyword) return null;
+    try {
+        const structured = getStructuredManualContext(keyword);
+        if (!structured || !structured.locations?.length) return null;
+        const location = structured.locations[0];
+        const chapter = getManualChapterPresentation(structured.repository, location);
+        return {
+            manualLabel: chapter.manualLabel,
+            manualId: location.manualId,
+            sectionId: location.sectionId,
+            sectionTitle: i18n.getLanguage() === 'zh-cn' ? chapter.titleZh || chapter.titleEn : chapter.titleEn,
+            pdfPage: chapter.pdfPage,
+            keyword,
+            cardIndex: context.cardIndex,
+            fieldName: field?.n,
+            position: field?.p,
+            width: field?.w,
+        };
+    } catch (_error) {
+        return null;
+    }
+}
+
+const keywordSemanticAdviceCache = new WeakMap();
+
+let cardEditKeywordIndexProviderRef = null;
+
+function getKeywordSemanticAdviceForDocument(document, keywordLine, lookup = null) {
+    if (!lookup && document && Number.isInteger(keywordLine)) lookup = lookupKeywordInfo(document.lineAt(keywordLine).text.trim());
+    if (!document || !lookup || !Number.isInteger(keywordLine)) return null;
+    const version = Number.isInteger(document.version) ? document.version : null;
+    const cached = version === null ? null : keywordSemanticAdviceCache.get(document);
+    const parameterContext = nativeParameterContextForDocument(document);
+    const cacheKey = `${keywordLine}:${lookup.canonicalName}:${(lookup.activeOptions || []).join(',')}`;
+    if (cached && cached.version === version && cached.key === cacheKey && cached.parameterContext === parameterContext) return cached.advice;
+
+    let advice;
+    try {
+        const catalogKeyword = `*${lookup.canonicalName}`;
+        const optionContext = { keywordOptions: (lookup.activeOptions || []).slice() };
+        const initial = getKeywordSemanticAdvice(catalogKeyword, optionContext);
+        const predicateFields = predicateFieldsForCardAdvice(initial.cards);
+        advice = { ...initial, contextReason: 'unsupported-format', unresolvedFields: predicateFields };
+
+        // Fixed-width offsets are unsafe in effective long/I10 input. The current
+        // keyword's `-` override can restore standard geometry under a long deck.
+        const keywordText = String(document.lineAt(keywordLine).text || '');
+        if (predicateFields.length > 0 &&
+            !keywordUsesNonStandardInputFormat(document, keywordText)) {
+            const built = buildSemanticDocumentContext(
+                document,
+                keywordLine,
+                getFieldData(),
+                predicateFields,
+                { globalInputFormat: documentGlobalInputFormat(document), parameterContext },
+            );
+            if (built.catalogKeyword === catalogKeyword) {
+                advice = { ...getKeywordSemanticAdvice(catalogKeyword, built.context),
+                    contextReason: built.truncated ? 'scan-truncated' : built.unsupportedFormat ? 'unsupported-format' : 'field-unresolved',
+                    unresolvedFields: built.unresolvedFields || [] };
+            }
+        }
+    } catch (_error) {
+        // Hover advice is auxiliary. A missing/corrupt optional catalog must not
+        // interrupt ordinary field help or editing.
+        return null;
+    }
+
+    if (version !== null) keywordSemanticAdviceCache.set(document, {
+        version,
+        key: cacheKey,
+        parameterContext,
+        advice,
+    });
+    return advice;
+}
+
+function inlineSemanticLabel(value) {
+    return `\`${String(value || '').replace(/`/g, "'")}\``;
+}
+
+function semanticApplicabilityPresentation(applicability) {
+    if (applicability === 'applicable') {
+        return { icon: '$(pass-filled)', label: i18n.get('semanticApplicable') };
+    }
+    if (applicability === 'not-applicable') {
+        return { icon: '$(circle-slash)', label: i18n.get('semanticNotApplicable') };
+    }
+    return { icon: '$(question)', label: i18n.get('semanticIndeterminate') };
+}
+
+function semanticEvidencePageLinks(keyword, items, options: any = {}) {
+    let summary = options.catalogSummary;
+    if (summary === undefined) {
+        try { summary = getManualSemanticCatalog().summary(); } catch (_error) { summary = null; }
+    }
+    const currentAuthority = options.currentAuthority !== undefined
+        ? options.currentAuthority
+        : manualPackManagerRef
+            ? manualPackManagerRef.peekCurrentAuthority()
+            : undefined;
+    const targets = semanticEvidenceTargets(
+        items,
+        currentAuthority,
+        summary?.evidenceAuthority || null,
+    );
+    return targets.map(target => {
+        const args = encodeURIComponent(JSON.stringify([{
+            keyword,
+            ruleId: target.ruleId,
+            evidenceId: target.evidenceId,
+        }]));
+        return `[$(file-pdf) ${semanticEvidenceTargetLabel(target)}]` +
+            `(command:extension.openSemanticEvidence?${args} "${i18n.get('openSemanticEvidence')}")`;
+    });
+}
+
+function semanticEvidenceLocationPresentation(evidence, ruleId = 'presentation') {
+    let summary;
+    try { summary = getManualSemanticCatalog().summary(); } catch (_error) { return null; }
+    const currentAuthority = manualPackManagerRef
+        ? manualPackManagerRef.peekCurrentAuthority()
+        : undefined;
+    return semanticEvidenceTargets(
+        [{ ruleId, evidence: [evidence] }],
+        currentAuthority,
+        summary?.evidenceAuthority || null,
+    )[0] || null;
+}
+
+function buildControlConditionMarkdown(document, keywordLine, fieldNames) {
+    const advice = getKeywordSemanticAdviceForDocument(document, keywordLine);
+    const names = new Set(fieldNames.map(name => String(name).toUpperCase()));
+    return groupConditionalAdvice(advice).filter(group => group.fields.some(name => names.has(name.toUpperCase())))
+        .map(group => `${inlineSemanticLabel(group.condition || group.cards.join(', '))} → ${group.cards.map(inlineSemanticLabel).join(', ')} · ${semanticApplicabilityPresentation(group.applicability).label}`)
+        .join('\n\n');
+}
+
+function buildKeywordSemanticAdviceMarkdown(advice) {
+    if (!advice) return '';
+    const optionSlots = Array.isArray(advice.optionSlots) ? advice.optionSlots : [];
+    if (optionSlots.length === 0) return '';
+
+    const lines = ['---'];
+    if (optionSlots.length > 0) {
+        lines.push(`**${i18n.get('officialKeywordOptionSlots')}:**`);
+        const isZh = i18n.getLanguage() === 'zh-cn';
+        for (const slot of optionSlots) {
+            const requirement = slot.required
+                ? i18n.get('semanticRequired')
+                : i18n.get('semanticOptional');
+            let summaryText = slot.summary;
+            if (isZh) {
+                const localized = keywordSchema.getLocalizedHelpForText(slot.summary);
+                if (localized) {
+                    const id = stashFieldHelpEnglish(slot.summary);
+                    const originalLink = `[${i18n.get('fieldHelpEnglishOriginal')}](command:extension.showFieldHelpEnglish?${encodeURIComponent(JSON.stringify([id]))})`;
+                    summaryText = `${localized} · ${originalLink}`;
+                } else {
+                    summaryText = `${slot.summary} *(${i18n.get('fieldHelpUntranslatedInline')})*`;
+                }
+            }
+            lines.push(`- ${inlineSemanticLabel(slot.slot)} — **${requirement}** · ${summaryText}`);
+        }
+    }
+
+    const evidencePages = semanticEvidencePageLinks(advice.keyword, optionSlots);
+    if (evidencePages.length > 0) {
+        lines.push('', evidencePages.join(' · '));
+    }
+    return lines.join('\n');
+}
+
+function readyCardEditBlockIndex(document, provider = cardEditKeywordIndexProviderRef) {
+    if (!provider || typeof provider.getDocumentBlockIndexIfReady !== 'function') return null;
+    try {
+        return provider.getDocumentBlockIndexIfReady(document);
+    } catch (_error) {
+        return null;
+    }
+}
+
+function semanticEvidenceFailureMessage(status) {
+    if (status === 'pdf-integrity-mismatch') {
+        return i18n.get('semanticEvidencePdfMismatch');
+    }
+    return i18n.get('semanticEvidenceUnavailable');
+}
+
+async function handleOpenSemanticEvidenceCommand(context, request, options: any = {}) {
+    const resolver = options.resolver || semanticEvidenceResolver;
+    const catalog = options.catalog || getManualSemanticCatalog();
+    const packRoot = options.manualPackRoot || resolveManualPackRoot(context);
+    const openPdf = options.openPdf || openManualPdf;
+    const result = await resolver.resolve(request, catalog, packRoot);
+    if (result.status === 'resolved') {
+        openPdf(context, result.pdfPath, result.page);
+        return result;
+    }
+    if (options.showMessage !== false) {
+        vscode.window.showWarningMessage(semanticEvidenceFailureMessage(result.status));
+    }
+    return result;
+}
+
+function keywordOptionIsSupported(option, canonicalName) {
+    if (parseKeywordOptionOrder(option).position !== 'pre') return true;
+    return keywordSchema.keywordPrefixOptionDecision(
+        canonicalName,
+        normalizeOptionName(option.n),
+    ) !== 'deny';
+}
+
+function supportedKeywordOptions(entry, canonicalName) {
+    return (entry.o || []).filter(option => keywordOptionIsSupported(option, canonicalName));
+}
+
+const MAXIMUM_PREFIX_CARD_POSITION_LINES = 32;
+
+function collectBoundedPrefixDataRecords(document, keywordLine) {
+    const records = [];
+    const end = Math.min(
+        document.lineCount,
+        keywordLine + MAXIMUM_PREFIX_CARD_POSITION_LINES + 1,
+    );
+    for (let line = keywordLine + 1; line < end && records.length < 8; line++) {
+        const text = String(document.lineAt(line).text || '');
+        if (classifyKeywordLine(text).isKeyword) break;
+        if (isKeywordCommentLine(text)) continue;
+        records.push({ text, line });
+    }
+    return records;
+}
+
+function cardCommentNoticeAppliesToField(notice, field) {
+    if (!notice) return false;
+    if (notice.kind !== 'definition-mismatch') return false;
+    if (!field) return true;
+    return notice.differences.some(difference =>
+        difference.position === field.p && difference.width === field.w,
+    );
+}
+
+const CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES = 256;
+
+const CARD_COMMENT_REWRITE_MAX_DATA_LINES = 64;
+
+const KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES = 32;
+
+function cardCommentRewriteRequest(document, keywordLine, line) {
+    const uri = documentUriIdentity(document);
+    if (!uri || !Number.isInteger(keywordLine) || !Number.isInteger(line) ||
+        !Number.isInteger(document?.version)) return null;
+    return { uri, keywordLine, line, documentVersion: document.version };
+}
+
+function buildCardCommentNoticeMarkdown(cardInfo, document, keywordLine, line, field = null) {
+    const notice = cardInfo?.cardCommentNotice;
+    if (!cardCommentNoticeAppliesToField(notice, field)) return '';
+    const request = cardCommentRewriteRequest(document, keywordLine, line);
+    const label = i18n.get(
+        notice.kind === 'definition-mismatch'
+            ? 'cardCommentVersionHint'
+            : 'cardCommentShiftHint',
+    );
+    if (!request) return `$(info) ${label}`;
+    const args = encodeURIComponent(JSON.stringify([request]));
+    const action = i18n.get(
+        notice.kind === 'definition-mismatch'
+            ? 'cardCommentUpdateCurrentAction'
+            : 'cardCommentRebuildAction',
+    );
+    const tooltip = i18n.get(
+        notice.kind === 'definition-mismatch'
+            ? 'cardCommentUpdateCurrentTooltip'
+            : 'cardCommentRebuildTooltip',
+    );
+    return `$(info) ${label} &nbsp;·&nbsp; ` +
+        `[$(wrench) ${action}]` +
+        `(command:extension.rebuildCardComments?${args} "${tooltip}")`;
+}
+
+function boundedCardCommentRewriteEnd(document, keywordLine, options: any = {}) {
+    const maximumPhysicalLines = Number.isFinite(options.maximumPhysicalLines)
+        ? Math.max(1, Math.floor(Number(options.maximumPhysicalLines)))
+        : CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES;
+    const blockIndex = options.blockIndex !== undefined
+        ? options.blockIndex
+        : readyCardEditBlockIndex(document, options.keywordIndexProvider);
+    const indexed = blockIndex && blockIndex.lineCount === document.lineCount
+        ? blockIndex.findBlockAtLine?.(keywordLine)
+        : null;
+    if (indexed && indexed.startLine === keywordLine && Number.isInteger(indexed.endLine)) {
+        if (indexed.endLine - keywordLine > maximumPhysicalLines) return null;
+        return Math.min(indexed.endLine, document.lineCount - 1);
+    }
+
+    const lastBudgetLine = Math.min(
+        document.lineCount - 1,
+        keywordLine + maximumPhysicalLines,
+    );
+    let endLine = keywordLine;
+    for (let line = keywordLine + 1; line <= lastBudgetLine; line++) {
+        const text = String(document.lineAt(line).text || '');
+        if (classifyKeywordLine(text).isKeyword) return line - 1;
+        endLine = line;
+    }
+    return endLine === document.lineCount - 1 ? endLine : null;
+}
+
+function analyzeKeywordStructureForDocument(document, keywordLine, options: any = {}): any {
+    const currentAuthority = manualPackManagerRef?.peekCurrentAuthority?.();
+    const profileSelection = options.sourceProfileId !== undefined
+        ? { sourceProfileId: options.sourceProfileId, origin: 'explicit' }
+        : currentAuthority?.sourceProfileId
+            ? { sourceProfileId: currentAuthority.sourceProfileId, origin: 'manual-pack' }
+            : {
+                sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+                origin: 'builtin-default',
+            };
+    const { sourceProfileId } = profileSelection;
+    const fail = (reason, keyword = '') => ({
+        status: 'unsupported-input',
+        reason,
+        keyword,
+        sourceProfileId: sourceProfileId || undefined,
+        sourceProfileOrigin: profileSelection.origin,
+        observedDataRecords: 0,
+        records: [],
+        diagnostics: [],
+        dependencies: [],
+        repairCandidates: [],
+        keywordLine,
+    });
+    if (!document || !Number.isInteger(keywordLine) || keywordLine < 0 ||
+        keywordLine >= document.lineCount) {
+        return fail('invalid-keyword-line');
+    }
+    if (options.expectedDocumentVersion !== undefined &&
+        document.version !== options.expectedDocumentVersion) {
+        return fail('document-version-changed');
+    }
+    const keywordText = String(document.lineAt(keywordLine).text || '');
+    const classification = classifyKeywordLine(keywordText);
+    if (!classification.isKeyword || keywordInputFormat(
+        keywordText,
+        options.globalInputFormat || documentGlobalInputFormat(document),
+    ) !== 'standard') {
+        return fail('keyword-or-input-format-unavailable', classification.normalizedKeyword || '');
+    }
+    const catalog = options.catalog || keywordStructureCatalog;
+    let verifiedBinding = null;
+    if (typeof catalog?.lookupBinding === 'function') {
+        const binding = catalog.lookupBinding(sourceProfileId, classification.normalizedKeyword);
+        if (binding?.status !== 'verified') {
+            return {
+                ...fail(binding?.reason || 'binding-not-verified', classification.normalizedKeyword),
+                status: binding?.status === 'unsupported-input'
+                    ? 'unsupported-input'
+                    : 'profile-unverified',
+                bindingStatus: binding?.binding?.status,
+                details: binding?.binding?.details,
+            };
+        }
+        verifiedBinding = binding;
+    }
+    const maximumPhysicalLines = Number.isFinite(options.maximumPhysicalLines)
+        ? Math.max(1, Math.floor(Number(options.maximumPhysicalLines)))
+        : KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES;
+    const endLine = boundedCardCommentRewriteEnd(document, keywordLine, {
+        ...options,
+        maximumPhysicalLines,
+    });
+    if (!Number.isInteger(endLine)) return fail('block-line-limit', classification.normalizedKeyword);
+    const cacheKey = JSON.stringify([
+        Number.isInteger(document.version) ? document.version : null,
+        keywordLine,
+        endLine,
+        sourceProfileId,
+        profileSelection.origin,
+        verifiedBinding?.binding?.grammarId || null,
+        maximumPhysicalLines,
+    ]);
+    const cacheEligible = !options.bypassCache && !options.catalog && !options.context &&
+        !options.schema && !options.budgets && options.globalInputFormat === undefined &&
+        Number.isInteger(document.version);
+    if (cacheEligible) {
+        const cached = getCachedKeywordStructureAnalysis(document, cacheKey);
+        if (cached) return cached;
+    }
+    const bodyLines = [];
+    for (let line = keywordLine + 1; line <= endLine; line++) {
+        const text = String(document.lineAt(line).text || '');
+        if (classifyKeywordLine(text).isKeyword) return fail('keyword-block-changed', classification.normalizedKeyword);
+        bodyLines.push({ line, text });
+    }
+    const schema = options.schema || getFieldData();
+    const lookup = keywordSchema.lookupKeywordSchema(classification.normalizedKeyword, schema);
+    const context = {
+        ...(options.context || {}),
+        keywordOptions: options.context?.keywordOptions || lookup?.activeOptions || [],
+    };
+    const analysis = analyzeKeywordStructureLines(keywordText, bodyLines, {
+        catalog,
+        sourceProfileId,
+        context,
+        keywordLine,
+        maximumPhysicalLines,
+        budgets: {
+            maximumRecords: CARD_COMMENT_REWRITE_MAX_DATA_LINES,
+            ...(options.budgets || {}),
+        },
+    });
+    const result = {
+        ...analysis,
+        lookup,
+        endLine,
+        sourceProfileOrigin: profileSelection.origin,
+        records: analysis.block?.records || analysis.records,
+        observedDataLines: analysis.block?.records?.map(record => record.text) || [],
+    };
+    if (cacheEligible) {
+        cacheKeywordStructureAnalysis(document, cacheKey, result);
+    }
+    return result;
+}
+
+function keywordStructureDiagnosticIdentity(analysis) {
+    if (!analysis?.grammarId || !Array.isArray(analysis.repairCandidates) ||
+        analysis.repairCandidates.length === 0) return '';
+    return JSON.stringify({
+        grammarId: analysis.grammarId,
+        diagnostics: (analysis.diagnostics || []).map(edit => [
+            edit.kind,
+            edit.observedIndex,
+            edit.expectedIndex,
+            edit.nodeId,
+        ]),
+        repairs: analysis.repairCandidates.map(candidate => [
+            candidate.insertionRecordIndex,
+            candidate.nodeId,
+        ]),
+    });
+}
+
+function keywordStructureRepairRequest(document, keywordLine, line, analysis) {
+    const base = cardCommentRewriteRequest(document, keywordLine, line);
+    const diagnosticIdentity = keywordStructureDiagnosticIdentity(analysis);
+    if (!base || !analysis?.sourceProfileId || !analysis?.grammarId || !diagnosticIdentity) return null;
+    return {
+        ...base,
+        sourceProfileId: analysis.sourceProfileId,
+        grammarId: analysis.grammarId,
+        diagnosticIdentity,
+    };
+}
+
+function keywordStructureCheckRequest(document, keywordLine) {
+    const uri = documentUriIdentity(document);
+    if (!uri || !Number.isInteger(document?.version)) return null;
+    return { uri, documentVersion: document.version, keywordLine };
+}
+
+function keywordStructureCheckLink(document, keywordLine) {
+    const request = keywordStructureCheckRequest(document, keywordLine);
+    if (!request) return '';
+    const args = encodeURIComponent(JSON.stringify([request]));
+    return `[$(inspect) ${i18n.get('keywordStructureCheckAction')}]` +
+        `(command:extension.checkKeywordStructure?${args} "${i18n.get('keywordStructureCheckTooltip')}")`;
+}
+
+function keywordStructureDefiniteLabel(analysis) {
+    const count = analysis?.diagnostics?.length || 0;
+    if (analysis?.reason === 'missing-required-records') {
+        const labels = [...new Set((analysis.diagnostics || []).map(edit => edit.cardLabel).filter(Boolean))];
+        return labels.length > 0
+            ? i18n.get('keywordStructureMissingNamed', labels.join(', '))
+            : i18n.get('keywordStructureMissingCount', count);
+    }
+    if (analysis?.reason === 'extra-records') return i18n.get('keywordStructureExtraCount', count);
+    return i18n.get('keywordStructureDefiniteMismatch');
+}
+
+function buildKeywordStructureIssueMarkdown(analysis, document, keywordLine, line, options: any = {}) {
+    if (!analysis || analysis.status === 'valid' || analysis.status === 'profile-unverified' ||
+        analysis.status === 'unsupported-input') return '';
+    const checkLink = keywordStructureCheckLink(document, keywordLine);
+    if (analysis.status === 'context-dependent') {
+        return `$(question) ${i18n.get('keywordStructureContextDependent')}` +
+            (checkLink ? ` &nbsp;·&nbsp; ${checkLink}` : '');
+    }
+    if (analysis.status === 'ambiguous') {
+        return `$(info) ${i18n.get('keywordStructureAmbiguous')}` +
+            (checkLink ? ` &nbsp;·&nbsp; ${checkLink}` : '');
+    }
+    if (analysis.status === 'definite-error') {
+        const label = keywordStructureDefiniteLabel(analysis);
+        const request = options.allowRepair === false
+            ? null
+            : keywordStructureRepairRequest(document, keywordLine, line, analysis);
+        let markdown = `$(warning) ${label}`;
+        if (checkLink) markdown += ` &nbsp;·&nbsp; ${checkLink}`;
+        if (!request) return markdown;
+        const args = encodeURIComponent(JSON.stringify([request]));
+        const action = i18n.get('keywordStructureInsertBlankRecords', analysis.repairCandidates.length);
+        const tooltip = i18n.get(
+            'keywordStructureInsertBlankRecordsTooltip',
+            analysis.repairCandidates.length,
+            analysis.observedDataRecords,
+            analysis.expectedDataRecords,
+        );
+        markdown += ` &nbsp;·&nbsp; [$(add) ${action}]` +
+            `(command:extension.insertVerifiedMissingRecords?${args} "${tooltip}")`;
+        return markdown;
+    }
+    return '';
+}
+
+function keywordStructureCheckMessage(analysis) {
+    let message;
+    if (analysis.status === 'valid') {
+        message = i18n.get('keywordStructureCheckValid', analysis.observedDataRecords);
+    } else if (analysis.status === 'definite-error') {
+        message = keywordStructureDefiniteLabel(analysis);
+    } else if (analysis.status === 'context-dependent') {
+        message = i18n.get('keywordStructureContextDependent');
+    } else if (analysis.status === 'ambiguous') {
+        message = i18n.get('keywordStructureAmbiguous');
+    } else if (analysis.status === 'profile-unverified') {
+        message = i18n.get('keywordStructureCheckProfileUnverified', analysis.reason);
+    } else {
+        message = i18n.get('keywordStructureCheckUnsupported', analysis.reason);
+    }
+    return analysis.sourceProfileOrigin === 'builtin-default'
+        ? `${message} · ${i18n.get('keywordStructureCheckBundledProfile')}`
+        : message;
+}
+
+async function handleCheckKeywordStructureCommand(request = null, options: any = {}) {
+    const editor = options.editor || vscode.window.activeTextEditor;
+    const document = editor?.document;
+    const positionLine = Number.isInteger(editor?.selection?.active?.line)
+        ? editor.selection.active.line
+        : 0;
+    const blockIndex = document
+        ? options.blockIndex !== undefined
+            ? options.blockIndex
+            : readyCardEditBlockIndex(document, options.keywordIndexProvider)
+        : null;
+    let keywordLine = Number.isInteger(request?.keywordLine) ? request.keywordLine : null;
+    if (!Number.isInteger(keywordLine) && document) {
+        const indexed = blockIndex?.lineCount === document.lineCount
+            ? blockIndex.findBlockAtLine?.(positionLine)
+            : null;
+        if (Number.isInteger(indexed?.startLine)) {
+            keywordLine = indexed.startLine;
+        } else {
+            const minimumLine = Math.max(
+                0,
+                positionLine - CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES,
+            );
+            for (let line = positionLine; line >= minimumLine; line--) {
+                if (isKeywordLineText(document.lineAt(line).text)) {
+                    keywordLine = line;
+                    break;
+                }
+            }
+        }
+    }
+    if (!document || !isLsdynaFile(document) || !Number.isInteger(keywordLine) || keywordLine < 0 ||
+        keywordLine >= document.lineCount ||
+        !isKeywordLineText(document.lineAt(keywordLine).text) ||
+        (request && (
+            Object.keys(request).sort().join(',') !== 'documentVersion,keywordLine,uri' ||
+            request.uri !== documentUriIdentity(document) ||
+            request.documentVersion !== document.version
+        ))) {
+        (options.showInformationMessage || vscode.window.showInformationMessage)(
+            i18n.get('keywordStructureRepairStale'),
+        );
+        return null;
+    }
+    const analysis = analyzeKeywordStructureForDocument(document, keywordLine, {
+        ...options,
+        bypassCache: true,
+        maximumPhysicalLines: CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES,
+        blockIndex,
+    });
+    keywordStructureDiagnosticsRef?.publishManual(document, keywordLine, analysis, document.version);
+    const message = keywordStructureCheckMessage(analysis);
+    if (analysis.status === 'definite-error') {
+        (options.showWarningMessage || vscode.window.showWarningMessage)(message);
+    } else {
+        (options.showInformationMessage || vscode.window.showInformationMessage)(message);
+    }
+    return analysis;
+}
+
+function buildPrefixLayoutIssueMarkdown(status, unsupportedOptions = []) {
+    if (status === 'unsupported-option') {
+        const options = unsupportedOptions.length
+            ? unsupportedOptions.map(option => `\`${option}\``).join(', ')
+            : i18n.get('keywordHoverOptions');
+        return `$(warning) ${i18n.get('keywordPrefixOptionUnsupported', options)}`;
+    }
+    if (status === 'unverified') {
+        return `$(warning) ${i18n.get('keywordPrefixLayoutUnavailable')}`;
+    }
+    return '';
+}
+
+const { createOfficialFieldChoicePicker } = require('./client/services/officialFieldChoicePicker');
+
+const {
+    createActiveFieldChoiceController,
+    officialFieldChoiceCommandRequest,
+} = require('./client/services/activeFieldChoiceController');
+
+const {
+    planLsdynaFormatting,
+    mapPositionThroughFormattingEdits,
+} = require('./client/services/lsdynaFormatting');
+
+const {
+    planLineCommentToggle: planLineCommentTogglePure,
+    LINE_COMMENT_TOGGLE_LIMITS,
+} = require('./core/edit/lineCommentToggle');
+
+const {
+    planOfficialFieldChoices,
+} = require('./core/semantics/officialFieldChoicePlanner');
+
+const {
+    planVerifiedConditionalCards,
+} = require('./core/semantics/cardEditPlanner');
+
+function buildOfficialFieldChoiceHoverMarkdown(plan, document) {
+    if (plan?.status !== 'ready' || !plan.fieldRange || !Array.isArray(plan.choices) ||
+        plan.choices.length === 0) {
+        return '';
+    }
+    const request = officialFieldChoiceCommandRequest(
+        document,
+        {
+            line: plan.fieldRange.line,
+            character: plan.fieldRange.startCharacter,
+        },
+        documentUriIdentity,
+    );
+    if (!request) return '';
+    const args = encodeURIComponent(JSON.stringify([request]));
+    const closed = plan.domainKind === 'closed';
+    const action = i18n.get(
+        closed ? 'officialFieldChoiceHoverClosedAction' : 'officialFieldChoiceHoverMixedAction',
+    );
+    const tooltip = i18n.get(
+        closed ? 'officialFieldChoiceHoverClosedTooltip' : 'officialFieldChoiceHoverMixedTooltip',
+    );
+    const items = [
+        `[$(list-selection) ${action}](command:extension.pickOfficialFieldValue?${args} "${tooltip}")`,
+    ];
+    if (!closed) {
+        items.push(`$(info) ${i18n.get('officialFieldChoiceHoverMixedIncomplete')}`);
+    }
+    const evidenceLinks = semanticEvidencePageLinks(plan.catalogKeyword, [{
+        ruleId: plan.ruleId,
+        evidence: plan.evidence,
+    }]);
+    if (evidenceLinks.length > 0) {
+        items.push(...evidenceLinks);
+    }
+    return items.join(' &nbsp;·&nbsp; ');
+}
+
+function cardNumbersLabel(cards, isZh = i18n.getLanguage() === 'zh-cn') {
+    const numbers = (Array.isArray(cards) ? cards : [])
+        .map(card => Number(card?.physicalCardIndex))
+        .filter(Number.isInteger)
+        .sort((left, right) => left - right);
+    if (numbers.length === 0) return '';
+    const prefix = isZh ? '卡片 ' : (numbers.length === 1 ? 'Card ' : 'Cards ');
+    if (numbers.length === 1) return `${prefix}${numbers[0]}`;
+    const contiguous = numbers.every((value, index) => index === 0 || value === numbers[index - 1] + 1);
+    return contiguous
+        ? `${prefix}${numbers[0]}–${numbers[numbers.length - 1]}`
+        : `${prefix}${numbers.join(isZh ? '、' : ', ')}`;
+}
+
+function buildVerifiedConditionalCardEditMarkdown(plan, document, keywordLine) {
+    if (plan?.status !== 'ready' || !plan.insertion || !Array.isArray(plan.cardsToAppend) ||
+        plan.cardsToAppend.length === 0) {
+        return '';
+    }
+    const uri = documentUriIdentity(document);
+    if (!uri || !Number.isInteger(keywordLine) || !Number.isInteger(document?.version) ||
+        !plan.layoutId || !plan.ruleId) {
+        return '';
+    }
+    const requiredPredecessors = plan.cardsToAppend.filter(card => card.relation === 'required-predecessor');
+    const conditionalCards = plan.cardsToAppend.filter(card => card.relation === 'conditional');
+    const payload = {
+        uri,
+        keywordLine,
+        documentVersion: document.version,
+        layoutId: plan.layoutId,
+        ruleId: plan.ruleId,
+    };
+    const args = encodeURIComponent(JSON.stringify([payload]));
+    const lines = [
+        '---',
+        `#### $(add) ${i18n.get('verifiedCardEditSection')}`,
+        '',
+        `- ${i18n.get('verifiedCardEditWillAppend', inlineSemanticLabel(cardNumbersLabel(plan.cardsToAppend)))}`,
+    ];
+    if (requiredPredecessors.length > 0) {
+        lines.push(`- ${i18n.get(
+            'verifiedCardEditRequiredPredecessors',
+            inlineSemanticLabel(cardNumbersLabel(requiredPredecessors)),
+        )}`);
+    }
+    if (conditionalCards.length > 0) {
+        lines.push(`- ${i18n.get(
+            'verifiedCardEditConditionalCards',
+            inlineSemanticLabel(cardNumbersLabel(conditionalCards)),
+        )}`);
+    }
+    lines.push(
+        `- ${i18n.get('verifiedCardEditBlankOnly')}`,
+        `- ${i18n.get('verifiedCardEditLccmpAdvisory')}`,
+        '',
+        `[$(add) ${i18n.get('verifiedCardEditAction')}](command:extension.addVerifiedConditionalCards?${args} "${i18n.get('verifiedCardEditActionTooltip')}")`,
+    );
+    return lines.join('\n');
+}
+
+function planVerifiedConditionalCardsForDocument(document, keywordLine, options: any = {}) {
+    try {
+        return (options.plan || planVerifiedConditionalCards)(
+            document,
+            keywordLine,
+            options.schema || getFieldData(),
+            {
+                globalInputFormat: options.globalInputFormat || documentGlobalInputFormat(document),
+                blockIndex: options.blockIndex !== undefined
+                    ? options.blockIndex
+                    : readyCardEditBlockIndex(document, options.keywordIndexProvider),
+                ...(options.expectedDocumentVersion !== undefined
+                    ? { expectedDocumentVersion: options.expectedDocumentVersion }
+                    : {}),
+                ...(options.expectedLayoutId !== undefined
+                    ? { expectedLayoutId: options.expectedLayoutId }
+                    : {}),
+                ...(options.expectedRuleId !== undefined
+                    ? { expectedRuleId: options.expectedRuleId }
+                    : {}),
+            },
+        );
+    } catch (_error) {
+        return null;
+    }
+}
+
+function showVerifiedCardEditStatus(key, ...args) {
+    try {
+        vscode.window.setStatusBarMessage(i18n.get(key, ...args), 7000);
+    } catch (_error) {
+        // Status is best-effort; card editing must remain fail-open.
+    }
+}
+
+async function handleAddVerifiedConditionalCardsCommand(request, options: any = {}) {
+    const editor = options.editor || vscode.window.activeTextEditor;
+    const document = editor?.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    if (!document || !isLsdynaFile(document)) {
+        showVerifiedCardEditStatus('verifiedCardEditSourceInactive');
+        return null;
+    }
+
+    const fromHover = request !== undefined && request !== null;
+    let keywordLine;
+    let expectedDocumentVersion;
+    let expectedLayoutId;
+    let expectedRuleId;
+    if (fromHover) {
+        if (!request || typeof request !== 'object' || Array.isArray(request) ||
+            request.uri !== documentUriIdentity(document) ||
+            !Number.isInteger(request.keywordLine) ||
+            !Number.isInteger(request.documentVersion) ||
+            typeof request.layoutId !== 'string' || !request.layoutId ||
+            typeof request.ruleId !== 'string' || !request.ruleId ||
+            request.documentVersion !== document.version) {
+            showVerifiedCardEditStatus('verifiedCardEditSourceInactive');
+            return null;
+        }
+        keywordLine = request.keywordLine;
+        expectedDocumentVersion = request.documentVersion;
+        expectedLayoutId = request.layoutId;
+        expectedRuleId = request.ruleId;
+    } else {
+        keywordLine = editor.selection?.active?.line;
+        if (!Number.isInteger(keywordLine) || keywordLine < 0 || keywordLine >= document.lineCount ||
+            !isKeywordLineText(document.lineAt(keywordLine).text)) {
+            showVerifiedCardEditStatus('verifiedCardEditUnavailable');
+            return null;
+        }
+    }
+
+    const plan = planVerifiedConditionalCardsForDocument(document, keywordLine, {
+        ...options,
+        expectedDocumentVersion,
+        expectedLayoutId,
+        expectedRuleId,
+    });
+    if (plan?.status !== 'ready' || !plan.insertion ||
+        plan.documentVersion !== (Number.isInteger(document.version) ? document.version : null)) {
+        showVerifiedCardEditStatus('verifiedCardEditUnavailable');
+        return null;
+    }
+
+    const insertion = plan.insertion;
+    if (!Number.isInteger(insertion.line) || !Number.isInteger(insertion.character) ||
+        insertion.line < 0 || insertion.line >= document.lineCount || insertion.character < 0 ||
+        typeof insertion.text !== 'string' || insertion.text.length === 0) {
+        showVerifiedCardEditStatus('verifiedCardEditUnavailable');
+        return null;
+    }
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return null;
+    const edit = new vscode.WorkspaceEdit();
+    const range = new vscode.Range(
+        insertion.line,
+        insertion.character,
+        insertion.line,
+        insertion.character,
+    );
+    edit.replace(document.uri, range, insertion.text);
+    try {
+        const applyEdit = options.applyEdit || ((workspaceEdit) => vscode.workspace.applyEdit(workspaceEdit));
+        const applied = await applyEdit(edit);
+        if (!applied) {
+            showVerifiedCardEditStatus('verifiedCardEditApplyFailed');
+            return null;
+        }
+    } catch (_error) {
+        showVerifiedCardEditStatus('verifiedCardEditApplyFailed');
+        return null;
+    }
+
+    showVerifiedCardEditStatus('verifiedCardEditApplied', cardNumbersLabel(plan.cardsToAppend));
+    return { plan, edit };
+}
+
+function showOfficialFieldChoiceStatus(key, ...args) {
+    try {
+        vscode.window.setStatusBarMessage(i18n.get(key, ...args), 7000);
+    } catch (_error) {
+        // Status is best-effort; official choices always remain optional.
+    }
+}
+
+async function handlePickOfficialFieldValueCommand(context, request, options: any = {}) {
+    const picker = options.picker || createOfficialFieldChoicePicker({
+        vscode: options.vscode || vscode,
+        getActiveEditor: options.getActiveEditor || (() => vscode.window.activeTextEditor),
+        isLsdynaDocument: options.isLsdynaDocument || isLsdynaFile,
+        documentIdentity: options.documentIdentity || documentUriIdentity,
+        plan: options.plan || ((document, position, planOptions) =>
+            planPreparedOfficialFieldChoices(document, position, planOptions)),
+        translate: options.translate || ((key, ...args) => i18n.get(key, ...args)),
+        openEnglish: options.openEnglish || (text => vscode.commands.executeCommand(
+            'extension.showFieldHelpEnglish', stashFieldHelpEnglish(text))),
+        getLanguage: options.getLanguage || (() => i18n.getLanguage()),
+        presentEvidence: options.presentEvidence || ((evidence, plan) => {
+            const target = semanticEvidenceLocationPresentation(evidence, plan?.ruleId);
+            return target ? {
+                label: semanticEvidenceTargetLabel(target),
+                tooltip: i18n.get(
+                    'officialFieldChoiceOpenEvidence',
+                    target.manualLabel,
+                    target.page,
+                ),
+            } : null;
+        }),
+        showStatus: options.showStatus || showOfficialFieldChoiceStatus,
+        applyEdit: options.applyEdit,
+        pickChoice: options.pickChoice,
+        openEvidence: options.openEvidence || (evidenceRequest =>
+            handleOpenSemanticEvidenceCommand(context, evidenceRequest)),
+    });
+    return picker.pick(request);
+}
+
+const CARD_COMMENT_REWRITE_MAX_EDITS = 64;
+
+const CARD_COMMENT_REWRITE_MAX_TEXT_BYTES = 16 * 1024;
+
+function cardCommentLabelCase(text) {
+    const letters = String(text || '').match(/[A-Za-z]/g) || [];
+    let upper = 0;
+    let lower = 0;
+    for (const letter of letters) {
+        if (letter === letter.toUpperCase()) upper++;
+        if (letter === letter.toLowerCase()) lower++;
+    }
+    return upper > lower ? 'upper' : 'lower';
+}
+
+function mostCommonCardCommentValue(values, fallback) {
+    const counts = new Map();
+    for (const value of values) counts.set(value, (counts.get(value) || 0) + 1);
+    let best = fallback;
+    let bestCount = 0;
+    for (const [value, count] of counts) {
+        if (count > bestCount) {
+            best = value;
+            bestCount = count;
+        }
+    }
+    return best;
+}
+
+function planCardCommentRewriteForDocument(document, keywordLine, options: any = {}): any {
+    const unsupported = reason => ({ status: 'unsupported', reason, edits: [] });
+    if (!document || !Number.isInteger(keywordLine) || keywordLine < 0 ||
+        keywordLine >= document.lineCount) return unsupported('invalid-keyword-line');
+    if (options.expectedDocumentVersion !== undefined &&
+        document.version !== options.expectedDocumentVersion) {
+        return { status: 'stale', reason: 'document-version-changed', edits: [] };
+    }
+
+    const keywordText = String(document.lineAt(keywordLine).text || '');
+    const classification = classifyKeywordLine(keywordText);
+    if (!classification.isKeyword) return unsupported('keyword-line-changed');
+    if (keywordInputFormat(
+        keywordText,
+        options.globalInputFormat || documentGlobalInputFormat(document),
+    ) !== 'standard') return unsupported('non-standard-input');
+
+    const schema = options.schema || getFieldData();
+    const lookup = keywordSchema.lookupKeywordSchema(classification.normalizedKeyword, schema);
+    if (!lookup) return unsupported('unknown-keyword');
+    if (Array.isArray(lookup.entry.tc) && lookup.entry.tc.length > 0) {
+        return unsupported('text-card-layout');
+    }
+
+    const initialPrefix = keywordSchema.getVerifiedPrefixLayout(lookup);
+    if (initialPrefix.status !== 'none' && initialPrefix.status !== 'verified') {
+        return unsupported('prefix-layout-unverified');
+    }
+    const endLine = boundedCardCommentRewriteEnd(document, keywordLine, options);
+    if (!Number.isInteger(endLine)) return unsupported('block-line-limit');
+
+    const records = [];
+    let pendingComments = [];
+    for (let line = keywordLine + 1; line <= endLine; line++) {
+        const text = String(document.lineAt(line).text || '');
+        if (classifyKeywordLine(text).isKeyword) return unsupported('keyword-block-changed');
+        if (isKeywordCommentLine(text)) {
+            pendingComments.push({ line, text });
+            continue;
+        }
+        if (text.includes(',')) return unsupported('free-format-data');
+        records.push({ line, text, comments: pendingComments });
+        pendingComments = [];
+        if (records.length > CARD_COMMENT_REWRITE_MAX_DATA_LINES) {
+            return unsupported('data-line-limit');
+        }
+    }
+    if (records.length === 0) return unsupported('no-data-records');
+
+    const observedDataLines = records.map(record => record.text);
+    const prefix = keywordSchema.getVerifiedPrefixLayout(lookup, observedDataLines);
+    if (prefix.status !== 'none' && prefix.status !== 'verified') {
+        return unsupported('prefix-layout-unverified');
+    }
+    const structure = analyzeKeywordStructureForDocument(document, keywordLine, {
+        ...options,
+        schema,
+        maximumPhysicalLines: Number.isFinite(options.maximumPhysicalLines)
+            ? options.maximumPhysicalLines
+            : CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES,
+    });
+    if (structure.status === 'definite-error') {
+        return {
+            status: 'structure-error',
+            reason: structure.reason,
+            structure,
+            edits: [],
+        };
+    }
+    const finiteCards = keywordSchema.getFiniteRenderedCardsForLookup(
+        lookup,
+        observedDataLines,
+    );
+    if (finiteCards.length === 0 || records.length > finiteCards.length) {
+        return unsupported('repeat-or-extra-data');
+    }
+
+    for (let index = 0; index < records.length; index++) {
+        const record = records[index];
+        const info = keywordSchema.getCardInfoForDocumentLine(document, record.line, schema, {
+            keywordLine,
+            dataLineOrdinal: index + 1,
+
+            observedDataLines,
+        });
+        if (!info || info.isTextCard || !Array.isArray(info.card) || info.card.length === 0 ||
+            info.card.some(field => !Number.isInteger(field?.p) || !Number.isInteger(field?.w) ||
+                field.w < 1)) return unsupported('card-layout-unresolved');
+        record.card = info.card;
+    }
+
+    const recognized = [];
+    for (const record of records) {
+        record.recognizedComments = [];
+        for (const comment of record.comments) {
+            const analysis = keywordSchema.analyzeCardCommentHeader(comment.text, finiteCards);
+            if (!analysis) continue;
+            const item = {
+                ...comment,
+                analysis,
+                labelCase: cardCommentLabelCase(comment.text),
+            };
+            record.recognizedComments.push(item);
+            recognized.push(item);
+        }
+    }
+    const dominantStyle = mostCommonCardCommentValue(
+        recognized.map(item => item.analysis.style),
+        'dollar-hash-fixed',
+    );
+    const dominantCase = mostCommonCardCommentValue(
+        recognized.map(item => item.labelCase),
+        'lower',
+    );
+
+    const edits = [];
+    let generatedBytes = 0;
+    for (const record of records) {
+        const exact = record.recognizedComments.filter(comment => {
+            const analysis = keywordSchema.analyzeCardCommentHeader(comment.text, [record.card]);
+            return !!analysis?.exactMatch;
+        });
+        const keeper = exact[exact.length - 1]
+            || record.recognizedComments[record.recognizedComments.length - 1]
+            || null;
+        if (keeper && exact.length === 0) {
+            const replacementText = generateCommentLine(
+                record.card,
+                keeper.analysis.style,
+                keeper.labelCase,
+            );
+            if (!replacementText) return unsupported('comment-generation-failed');
+            if (replacementText !== keeper.text) {
+                edits.push({
+                    kind: 'replace-line',
+                    line: keeper.line,
+                    sourceText: keeper.text,
+                    replacementText,
+                });
+                generatedBytes += Buffer.byteLength(replacementText, 'utf8');
+            }
+        }
+        for (const comment of record.recognizedComments) {
+            if (comment === keeper) continue;
+            edits.push({
+                kind: 'delete-line',
+                line: comment.line,
+                sourceText: comment.text,
+                replacementText: '',
+            });
+        }
+        if (!keeper) {
+            const replacementText = generateCommentLine(
+                record.card,
+                dominantStyle,
+                dominantCase,
+            );
+            if (!replacementText) return unsupported('comment-generation-failed');
+            edits.push({
+                kind: 'insert-before-line',
+                line: record.line,
+                replacementText,
+            });
+            generatedBytes += Buffer.byteLength(replacementText, 'utf8');
+        }
+        if (edits.length > CARD_COMMENT_REWRITE_MAX_EDITS ||
+            generatedBytes > CARD_COMMENT_REWRITE_MAX_TEXT_BYTES) {
+            return unsupported('edit-budget-exceeded');
+        }
+    }
+
+    if (edits.length === 0) return { status: 'no-change', reason: 'comments-current', edits: [] };
+    return {
+        status: 'ready',
+        documentVersion: Number.isInteger(document.version) ? document.version : null,
+        keywordLine,
+        endLine,
+        keyword: classification.normalizedKeyword,
+        dataLineCount: records.length,
+        scannedPhysicalLines: endLine - keywordLine,
+        generatedBytes,
+        edits,
+    };
+}
+
+function showCardCommentRewriteStatus(key, ...args) {
+    try {
+        vscode.window.setStatusBarMessage(i18n.get(key, ...args), 5000);
+    } catch (_error) {
+        // Explicit comment maintenance remains optional; status is best-effort.
+    }
+}
+
+async function handleRebuildCardCommentsCommand(request, options: any = {}) {
+    const editor = options.editor || vscode.window.activeTextEditor;
+    const document = editor?.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    const keys = request && typeof request === 'object' && !Array.isArray(request)
+        ? Object.keys(request).sort()
+        : [];
+    if (!document || !isLsdynaFile(document) ||
+        keys.join(',') !== 'documentVersion,keywordLine,line,uri' ||
+        request.uri !== documentUriIdentity(document) ||
+        request.documentVersion !== document.version ||
+        !Number.isInteger(request.keywordLine) || !Number.isInteger(request.line) ||
+        request.keywordLine < 0 || request.keywordLine >= request.line ||
+        request.line >= document.lineCount ||
+        !isKeywordLineText(document.lineAt(request.keywordLine).text)) {
+        (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteStale');
+        return null;
+    }
+
+    const resolved = getCardInfoForDocumentLineWithSuggest(
+        document,
+        request.line,
+        options.schema || getFieldData(),
+        { keywordLine: request.keywordLine },
+    );
+    const notice = resolved.cardInfo?.cardCommentNotice;
+    if (!notice) {
+        (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteStale');
+        return null;
+    }
+
+    const plan = planCardCommentRewriteForDocument(document, request.keywordLine, {
+        ...options,
+        schema: options.schema || getFieldData(),
+        expectedDocumentVersion: request.documentVersion,
+        blockIndex: options.blockIndex !== undefined
+            ? options.blockIndex
+            : readyCardEditBlockIndex(document, options.keywordIndexProvider),
+    });
+    if (plan?.status !== 'ready' || plan.documentVersion !== document.version) {
+        (options.showStatus || showCardCommentRewriteStatus)(
+            plan?.status === 'stale' || plan?.status === 'no-change'
+                ? 'cardCommentRewriteStale'
+                : 'cardCommentRewriteUnavailable',
+        );
+        return null;
+    }
+
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return null;
+    const edit = new vscode.WorkspaceEdit();
+    const eol = options.eol || (document.eol === 2 ? '\r\n' : '\n');
+    for (const operation of plan.edits) {
+        if (operation.kind !== 'insert-before-line' &&
+            document.lineAt(operation.line).text !== operation.sourceText) {
+            (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteStale');
+            return null;
+        }
+        if (operation.kind === 'insert-before-line') {
+            const position = new vscode.Position(operation.line, 0);
+            edit.replace(document.uri, new vscode.Range(position, position), operation.replacementText + eol);
+        } else if (operation.kind === 'delete-line') {
+            if (operation.line + 1 >= document.lineCount) {
+                (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteUnavailable');
+                return null;
+            }
+            edit.replace(
+                document.uri,
+                new vscode.Range(operation.line, 0, operation.line + 1, 0),
+                '',
+            );
+        } else {
+            edit.replace(
+                document.uri,
+                new vscode.Range(
+                    operation.line,
+                    0,
+                    operation.line,
+                    operation.sourceText.length,
+                ),
+                operation.replacementText,
+            );
+        }
+    }
+    try {
+        const applyEdit = options.applyEdit || (workspaceEdit => vscode.workspace.applyEdit(workspaceEdit));
+        if (!await applyEdit(edit)) {
+            (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteApplyFailed');
+            return null;
+        }
+    } catch (_error) {
+        (options.showStatus || showCardCommentRewriteStatus)('cardCommentRewriteApplyFailed');
+        return null;
+    }
+    (options.showStatus || showCardCommentRewriteStatus)(
+        'cardCommentRewriteApplied',
+        plan.edits.length,
+    );
+    return { notice, plan, edit };
+}
+
+async function handleInsertVerifiedMissingRecordsCommand(request, options: any = {}) {
+    const editor = options.editor || vscode.window.activeTextEditor;
+    const document = editor?.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    const showStatus = options.showStatus || showCardCommentRewriteStatus;
+    const keys = request && typeof request === 'object' && !Array.isArray(request)
+        ? Object.keys(request).sort()
+        : [];
+    if (!document || !isLsdynaFile(document) ||
+        keys.join(',') !== 'diagnosticIdentity,documentVersion,grammarId,keywordLine,line,sourceProfileId,uri' ||
+        request.uri !== documentUriIdentity(document) ||
+        request.documentVersion !== document.version ||
+        typeof request.sourceProfileId !== 'string' ||
+        typeof request.grammarId !== 'string' ||
+        typeof request.diagnosticIdentity !== 'string' ||
+        !Number.isInteger(request.keywordLine) || !Number.isInteger(request.line) ||
+        request.keywordLine < 0 || request.keywordLine > request.line ||
+        request.line >= document.lineCount ||
+        !isKeywordLineText(document.lineAt(request.keywordLine).text)) {
+        showStatus('keywordStructureRepairStale');
+        return null;
+    }
+    const activeSourceProfileId = options.sourceProfileId !== undefined
+        ? options.sourceProfileId
+        : manualPackManagerRef?.peekCurrentAuthority?.()?.sourceProfileId ||
+            DEFAULT_STRUCTURE_SOURCE_PROFILE_EN;
+    if (!activeSourceProfileId || activeSourceProfileId !== request.sourceProfileId) {
+        showStatus('keywordStructureRepairStale');
+        return null;
+    }
+    const analysis = analyzeKeywordStructureForDocument(document, request.keywordLine, {
+        ...options,
+        bypassCache: true,
+        sourceProfileId: activeSourceProfileId,
+        expectedDocumentVersion: request.documentVersion,
+        maximumPhysicalLines: CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES,
+        blockIndex: options.blockIndex !== undefined
+            ? options.blockIndex
+            : readyCardEditBlockIndex(document, options.keywordIndexProvider),
+    });
+    const repairs = analysis?.repairCandidates || [];
+    const insertionIndexes = repairs.map(candidate => candidate.insertionRecordIndex);
+    const expectedStart = analysis?.observedDataRecords;
+    const contiguousSuffix = insertionIndexes.length > 0 && insertionIndexes.every((value, index) =>
+        value === expectedStart + index);
+    if (analysis?.status !== 'definite-error' ||
+        analysis.reason !== 'missing-required-records' ||
+        analysis.verificationStatus !== 'verified-full' ||
+        analysis.grammarId !== request.grammarId ||
+        analysis.sourceProfileId !== request.sourceProfileId ||
+        keywordStructureDiagnosticIdentity(analysis) !== request.diagnosticIdentity ||
+        analysis.dependencies?.length > 0 || !contiguousSuffix ||
+        repairs.some(candidate => candidate.kind !== 'insert-blank-record' ||
+            candidate.format !== 'fixed' || typeof candidate.text !== 'string' ||
+            candidate.text.length < 1 || candidate.text.length > 1024 ||
+            candidate.text.trim() !== '') ||
+        !Number.isInteger(analysis.endLine) ||
+        (request.line !== request.keywordLine && request.line > analysis.endLine)) {
+        showStatus(
+            analysis?.reason === 'document-version-changed'
+                ? 'keywordStructureRepairStale'
+                : 'keywordStructureRepairUnavailable',
+        );
+        return null;
+    }
+    const eol = options.eol || (document.eol === 2 ? '\r\n' : '\n');
+    const beforeNextLine = analysis.endLine + 1 < document.lineCount;
+    const position = beforeNextLine
+        ? new vscode.Position(analysis.endLine + 1, 0)
+        : new vscode.Position(
+            analysis.endLine,
+            String(document.lineAt(analysis.endLine).text || '').length,
+        );
+    const insertionText = beforeNextLine
+        ? `${repairs.map(candidate => candidate.text).join(eol)}${eol}`
+        : `${eol}${repairs.map(candidate => candidate.text).join(eol)}`;
+    if (!await canApplyDocumentEdit(document, editIsCurrent)) return null;
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+        document.uri,
+        new vscode.Range(position, position),
+        insertionText,
+    );
+    try {
+        const applyEdit = options.applyEdit || (workspaceEdit => vscode.workspace.applyEdit(workspaceEdit));
+        if (!await applyEdit(edit)) {
+            showStatus('keywordStructureRepairApplyFailed');
+            return null;
+        }
+    } catch (_error) {
+        showStatus('keywordStructureRepairApplyFailed');
+        return null;
+    }
+    showStatus('keywordStructureRecordsInserted', repairs.length);
+    return { analysis, edit };
+}
+
+function shouldPreserveTextCardLine(document, lineNum) {
+    const info = getCardInfoForLine(document, lineNum);
+    if (!info) return false;
+    if (info.isTextCard) return true;
+    if (!Array.isArray(info.card) || info.card.length !== 1) return false;
+
+    const field = info.card[0];
+    const fieldType = String(field?.t || '').toLowerCase();
+    const keywordName = String(info.keywordName || '').toUpperCase();
+    return Number(field?.w) >= 40 &&
+        (fieldType === 'string' || fieldType === 'character' || fieldType === 'char') &&
+        !keywordName.startsWith('INCLUDE');
+}
+
+function officialChoiceRoleLabel(role) {
+    if (role === 'sentinel') return i18n.get('officialChoiceRoleSentinel');
+    if (role === 'reference') return i18n.get('officialChoiceRoleReference');
+    if (role === 'literal') return i18n.get('officialChoiceRoleLiteral');
+    return i18n.get('officialChoiceRoleEnum');
+}
+
+function editorQuickSuggestionsOtherEnabled(document) {
+    try {
+        const configured = vscode.workspace
+            .getConfiguration('editor', document?.uri)
+            .get('quickSuggestions', false);
+        if (configured === true) return true;
+        if (!configured || typeof configured !== 'object') return false;
+        const other = configured.other;
+        return other === true || other === 'on' || other === 'inline';
+    } catch (_error) {
+        return false;
+    }
+}
+
+async function prepareFieldInteraction(document, position, options: any = {}) {
+    const current = createDocumentReadGuard(document, options.cancellationToken);
+    if (!current()) return false;
+    try {
+        await keywordSchema.prepareKeywordSchema();
+        if (!current()) return false;
+        let keywordLine = options.keywordLine;
+        if (!Number.isInteger(keywordLine)) {
+            const ready = readyCardEditBlockIndex(document);
+            const presentation = documentPresentationCache.get(document);
+            const block = ready?.findBlockAtLine(position.line) ||
+                (presentation?.ready && presentation.version === document.version
+                    ? presentationBlockAtLine(presentation.blocks, position.line) : null);
+            keywordLine = block?.startLine;
+            if (!Number.isInteger(keywordLine)) {
+                const limit = options.maximumKeywordLookback ?? 256;
+                for (let line = position.line; line >= Math.max(0, position.line - limit); line--) {
+                    if (classifyKeywordLine(document.lineAt(line).text).isKeyword) { keywordLine = line; break; }
+                }
+            }
+        }
+        if (!Number.isInteger(keywordLine) || keywordLine < 0 || keywordLine >= document.lineCount) return false;
+        const name = keywordLineNameFromText(document.lineAt(keywordLine).text);
+        if (!name) return false;
+        const canonical = keywordSchema.lookupKeywordSchema(name, getFieldData())?.canonicalName;
+        for (const keyword of new Set([name, canonical].filter(Boolean))) {
+            await getCatalogInputFormCatalogV4().prepareKeyword(
+                require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword));
+            if (!current()) return false;
+            await getManualSemanticCatalog().prepareKeyword(keyword);
+            if (!current()) return false;
+        }
+        return true;
+    } catch (error) {
+        logDebug(`Field preparation failed: ${error?.message || error}`);
+        return false;
+    }
+}
+
+async function planPreparedOfficialFieldChoices(document, position, options: any = {}) {
+    if (!await prepareFieldInteraction(document, position, options)) return null;
+    return planOfficialFieldChoicesForDocument(document, position, options);
+}
+
+function planOfficialFieldChoicesForDocument(document, position, options: any = {}) {
+    try {
+        return (options.plan || planOfficialFieldChoices)(
+            document,
+            position,
+            options.schema || getFieldData(),
+            {
+                blockIndex: options.blockIndex !== undefined
+                    ? options.blockIndex
+                    : readyCardEditBlockIndex(document, options.keywordIndexProvider),
+                keywordLine: options.keywordLine,
+                globalInputFormat: options.globalInputFormat || documentGlobalInputFormat(document),
+                expectedDocumentVersion: options.expectedDocumentVersion,
+                maximumKeywordLookback: options.maximumKeywordLookback,
+                maximumHeaderLookback: options.maximumHeaderLookback,
+                maximumChoices: options.maximumChoices,
+                rulesForField: options.rulesForField,
+            },
+        );
+    } catch (_error) {
+        return null;
+    }
+}
+
+function buildOfficialFieldChoiceCompletionItems(document, position, context, _cardInfo, resolvedKeywordLine = null) {
+    const keywordLine = Number.isInteger(resolvedKeywordLine)
+        ? resolvedKeywordLine
+        : findEnclosingKeywordLine(document, position.line);
+    if (keywordLine === null) return [];
+    const plan = planOfficialFieldChoicesForDocument(document, position, { keywordLine });
+    if (!plan || plan.status !== 'ready' || !plan.fieldRange) return [];
+    const invokeKind = vscode.CompletionTriggerKind?.Invoke ?? 0;
+    const invokedWithoutAutomaticQuickSuggestions = context?.triggerKind === invokeKind &&
+        !editorQuickSuggestionsOtherEnabled(document);
+    // VS Code reports both Ctrl+Space and quick-suggestion sessions as Invoke.
+    // With the extension's default quickSuggestions=false, Invoke is explicit.
+    // If a user enables automatic suggestions we cannot distinguish the two, so
+    // open/mixed domains stay hidden while small closed enums remain available.
+    const automatic = plan.domainKind === 'closed' && plan.choices.length <= 12;
+    if (!automatic && !invokedWithoutAutomaticQuickSuggestions) return [];
+
+    const range = new vscode.Range(
+        plan.fieldRange.line,
+        plan.fieldRange.startCharacter,
+        plan.fieldRange.line,
+        plan.fieldRange.endCharacter,
+    );
+    const evidenceLinks = semanticEvidencePageLinks(plan.catalogKeyword, [{
+        ruleId: plan.ruleId,
+        evidence: plan.evidence,
+    }]);
+    return plan.choices.map((choice, index) => {
+        const item = new vscode.CompletionItem(
+            choice.valueText,
+            vscode.CompletionItemKind.EnumMember ||
+                vscode.CompletionItemKind.Value ||
+                vscode.CompletionItemKind.Field,
+        );
+        item.detail = i18n.get(
+            'officialFieldChoiceDetail',
+            plan.fieldName,
+            officialChoiceRoleLabel(choice.role),
+        );
+        const isZh = i18n.getLanguage() === 'zh-cn';
+        let summaryDoc = plan.summary;
+        if (isZh) {
+            const localized = plan.localizedSummary || (plan.summary ? keywordSchema.getLocalizedHelpForText(plan.summary) : null);
+            if (localized) {
+                summaryDoc = `${localized}\n\n> **${i18n.get('fieldHelpEnglishOriginal')}:** ${plan.summary}`;
+            } else if (plan.summary) {
+                summaryDoc = `${plan.summary} *(${i18n.get('fieldHelpUntranslatedInline')})*`;
+            }
+        }
+        const documentation = [
+            `**${i18n.get('officialDocumentedValue')}**`,
+            summaryDoc,
+            evidenceLinks.length > 0
+                ? `${i18n.get('semanticEvidencePages')}: ${evidenceLinks.join(' · ')}`
+                : '',
+        ].filter(Boolean).join('\n\n');
+        item.documentation = new vscode.MarkdownString(documentation);
+        item.documentation.isTrusted = HOVER_TRUST;
+        item.documentation.supportThemeIcons = true;
+        item.filterText = choice.valueText;
+        item.insertText = choice.replacementText;
+        item.range = range;
+        item.sortText = `0c_${String(index).padStart(3, '0')}`;
+        return item;
+    });
+}
+
+function hasDeclaredDefault(field) {
+    return !!field && field.d !== undefined && field.d !== null &&
+        (!field.definitionSource || field.definitionSource.alignmentMayOmit === true);
+}
+
+function canOmitTrailingFields(card, valueCount) {
+    return valueCount >= 0 &&
+        valueCount <= card.length &&
+        card.slice(valueCount).every(hasDeclaredDefault);
+}
+
+function parseTabValueOrder(text) {
+    const source = String(text || '');
+    if (source.includes(',')) {
+        return {
+            delimiter: 'comma',
+            values: source.split(',').map(value => value.trim()),
+        };
+    }
+    return {
+        delimiter: 'whitespace',
+        values: extractSmartTokens(source),
+    };
+}
+
+function analyzeTabLineInterpretation(text, card) {
+    const originalText = String(text || '');
+    if (!card || card.length === 0) {
+        return { status: 'unsafe', reason: 'no-card', candidates: [] };
+    }
+
+    // A card with overlapping/invalid field geometry has no unique fixed-grid
+    // meaning.  Do not let Tab bypass the cell guard by treating its tokens as
+    // a repairable value-order line.
+    if (!cardCellModel.isSafeCardGeometry(card)) {
+        return { status: 'unsafe', reason: 'unsafe-card-geometry', candidates: [] };
+    }
+
+    if (cardCellModel.classifyGrid(originalText, card) === 'intact') {
+        return { status: 'intact', candidates: [] };
+    }
+
+    const parsed = parseTabValueOrder(originalText);
+    if (parsed.values.length === 0 || parsed.values.length > card.length) {
+        return { status: 'unsafe', reason: 'field-count', candidates: [] };
+    }
+
+    const alignment = planAlignedLine(originalText, card, false, {
+        allowAmbiguousTrailing: true,
+        forceValueOrder: true,
+    });
+    if (alignment.status === 'unsafe') {
+        return { status: 'unsafe', reason: alignment.reason, candidates: [] };
+    }
+
+    const candidate = {
+        semantic: 'valueOrder',
+        text: alignment.text,
+        values: parsed.values,
+        delimiter: parsed.delimiter,
+    };
+    const missingRequiredTrailing =
+        parsed.values.length < card.length &&
+        !canOmitTrailingFields(card, parsed.values.length);
+
+    // Commas explicitly express a free-format style, while omitted required
+    // fields could represent either trailing omissions or an internal blank.
+    // Both require a human choice before conversion to fixed columns.
+    if (parsed.delimiter === 'comma' || missingRequiredTrailing) {
+        return {
+            status: 'ambiguous',
+            reason: parsed.delimiter === 'comma' ? 'free-format-comma' : 'missing-fields',
+            candidates: [candidate],
+        };
+    }
+
+    return { status: 'repairable', candidate, candidates: [candidate] };
+}
+
+function valueOrderFieldIndexAtCaret(text, caretColumn, delimiter) {
+    const source = String(text || '');
+    const col = Math.max(0, Math.min(source.length, Number(caretColumn) || 0));
+    if (delimiter === 'comma') {
+        return source.slice(0, col).split(',').length - 1;
+    }
+
+    const ranges = [];
+    const matcher = /\S+/g;
+    let match;
+    while ((match = matcher.exec(source)) !== null) {
+        ranges.push({ start: match.index, end: match.index + match[0].length });
+    }
+    if (ranges.length === 0) return 0;
+    for (let index = 0; index < ranges.length; index++) {
+        if (col <= ranges[index].end) return index;
+    }
+    return ranges.length - 1;
+}
+
+function tabMeaningCandidateDetail(candidate, card) {
+    return candidate.values
+        .map((value, index) => `${card[index]?.n || index + 1}=${value || '∅'}`)
+        .join(' · ');
+}
+
+let inlineEditChoiceSequence = 0;
+
+let inlineEditChoiceSession = null;
+
+function clearInlineEditChoiceSession(sessionId = null) {
+    if (
+        inlineEditChoiceSession &&
+        (sessionId === null || inlineEditChoiceSession.id === sessionId)
+    ) {
+        inlineEditChoiceSession = null;
+        void Promise.resolve(vscode.commands.executeCommand(
+            'setContext',
+            'lsdyna.inlineEditChoiceActive',
+            false,
+        ));
+        return true;
+    }
+    return false;
+}
+
+function cancelInlineEditChoiceSession(sessionId = null) {
+    const cleared = clearInlineEditChoiceSession(sessionId);
+    if (cleared) {
+        void Promise.resolve(vscode.commands.executeCommand('hideSuggestWidget'));
+    }
+    return cleared;
+}
+
+function isInlineEditChoiceSessionValid(session, document = session?.document, position = null) {
+    if (!session || !document || session.document !== document) return false;
+    if (document.isClosed) return false;
+    if (
+        Number.isInteger(session.version) &&
+        Number.isInteger(document.version) &&
+        document.version !== session.version
+    ) return false;
+    if (session.lineNum < 0 || session.lineNum >= document.lineCount) return false;
+    if (document.lineAt(session.lineNum).text !== session.sourceText) return false;
+    if (position && (
+        position.line !== session.position.line ||
+        position.character !== session.position.character
+    )) return false;
+    const editor = session.editor;
+    if (!editor || editor.document !== document) return false;
+    if (vscode.window.activeTextEditor && vscode.window.activeTextEditor !== editor) return false;
+    const active = editor.selection?.active;
+    if (
+        active &&
+        (active.line !== session.position.line || active.character !== session.position.character)
+    ) return false;
+    return true;
+}
+
+function compactLinePreview(text, maxLength = 42) {
+    const source = String(text || '').replace(/\t/g, '⇥');
+    if (source.length <= maxLength) return source;
+    const head = Math.max(8, Math.floor((maxLength - 1) / 2));
+    const tail = Math.max(8, maxLength - head - 1);
+    return `${source.slice(0, head)}…${source.slice(-tail)}`;
+}
+
+function fixedCellPreview(text, card, centerIndex, fieldCount = 2) {
+    if (!card || card.length === 0) return compactLinePreview(text);
+    const start = Math.max(0, Math.min(card.length - 1, centerIndex));
+    const end = Math.min(card.length, start + Math.max(1, fieldCount));
+    const padded = cardCellModel.padLineToCard(text, card);
+    return card.slice(start, end)
+        .map(field => `[${padded.slice(field.p, field.p + field.w)}]`)
+        .join('');
+}
+
+function startInlineEditChoiceSession(
+    editor,
+    lineNum,
+    sourceText,
+    choices,
+    options: { onType?: (...args: any[]) => any } = {},
+) {
+    if (!editor || !editor.document || !Array.isArray(choices) || choices.length === 0) {
+        return Promise.resolve();
+    }
+    const position = editor.selection?.active || editor.selection?.start;
+    if (!position || position.line !== lineNum) return Promise.resolve();
+
+    const session = {
+        id: `edit-choice-${++inlineEditChoiceSequence}`,
+        editor,
+        document: editor.document,
+        version: editor.document.version,
+        lineNum,
+        sourceText,
+        position: new vscode.Position(position.line, position.character),
+        choices,
+        onType: typeof options.onType === 'function' ? options.onType : null,
+        presented: false,
+    };
+    inlineEditChoiceSession = session;
+    void Promise.resolve(vscode.commands.executeCommand(
+        'setContext',
+        'lsdyna.inlineEditChoiceActive',
+        true,
+    ));
+    try {
+        return Promise.resolve(vscode.commands.executeCommand('editor.action.triggerSuggest'))
+            .catch(error => {
+                clearInlineEditChoiceSession(session.id);
+                console.error('[lsdyna] Failed to open inline edit choices:', error);
+            });
+    } catch (error) {
+        clearInlineEditChoiceSession(session.id);
+        console.error('[lsdyna] Failed to open inline edit choices:', error);
+        return Promise.resolve();
+    }
+}
+
+class LsdynaEditChoiceCompletionProvider {
+    provideCompletionItems(document, position) {
+        const session = inlineEditChoiceSession;
+        if (!session || session.presented) return [];
+        if (!isInlineEditChoiceSessionValid(session, document, position)) {
+            clearInlineEditChoiceSession(session.id);
+            return [];
+        }
+        session.presented = true;
+        const items = session.choices.map((choice, index) => {
+            const label = {
+                label: choice.label,
+                description: choice.preview || '',
+            };
+            const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Field);
+            item.detail = choice.detail || '';
+            // The suggestion itself must not edit the document. Its command owns
+            // the complete, version-checked, single-undo operation.
+            item.insertText = '';
+            item.range = new vscode.Range(position, position);
+            item.sortText = `0000_${String(index).padStart(2, '0')}`;
+            item.filterText = '';
+            item.preselect = choice.preselect === true;
+            item.command = {
+                command: 'extension.lsdynaApplyInlineEditChoice',
+                title: choice.label,
+                arguments: [session.id, choice.id],
+            };
+            return item;
+        });
+        return new vscode.CompletionList(items, false);
+    }
+}
+
+async function applyInlineEditChoice(sessionId, choiceId) {
+    const session = inlineEditChoiceSession;
+    if (!session || session.id !== sessionId) return;
+    if (!isInlineEditChoiceSessionValid(session)) {
+        clearInlineEditChoiceSession(sessionId);
+        return;
+    }
+    const choice = session.choices.find(candidate => candidate.id === choiceId);
+    clearInlineEditChoiceSession(sessionId);
+    if (!choice || typeof choice.apply !== 'function') return;
+    return choice.apply();
+}
+
+const cardCellTypingSessions = new WeakMap();
+
+function clearCardCellTypingSession(document) {
+    if (document) cardCellTypingSessions.delete(document);
+}
+
+function canContinueCardCellTypingSession(editor, lineNum, fieldIndex, caret) {
+    const document = editor?.document;
+    const session = document ? cardCellTypingSessions.get(document) : null;
+    if (!session || session.editor !== editor) return false;
+    if (session.lineNum !== lineNum || session.fieldIndex !== fieldIndex) return false;
+    if (session.caret !== caret) return false;
+    if (
+        Number.isInteger(session.version) &&
+        Number.isInteger(document.version) &&
+        session.version !== document.version
+    ) return false;
+    return true;
+}
+
+function rememberCardCellTypingSession(editor, lineNum, fieldIndex, caret) {
+    const document = editor?.document;
+    if (!document) return;
+    cardCellTypingSessions.set(document, {
+        editor,
+        lineNum,
+        fieldIndex,
+        caret,
+        version: Number.isInteger(document.version) ? document.version : undefined,
+    });
+}
+
+function hasRecentCardCellSelectionGrace(document) {
+    if (!document || !cardCellASelectionGrace) return false;
+    const documentKey = document.uri && document.uri.toString();
+    return cardCellASelectionGrace.until > Date.now() &&
+        cardCellASelectionGrace.uri === documentKey &&
+        Number.isInteger(document.version) &&
+        document.version >= cardCellASelectionGrace.version &&
+        document.version <= cardCellASelectionGrace.version + 1;
+}
+
+async function executeNativeTab(direction) {
+    if (direction === 1) return vscode.commands.executeCommand('tab');
+    if (direction === -1) return vscode.commands.executeCommand('outdent');
+}
+
+function isTabSelectionEligible(editor, selection) {
+    if (!editor || !selection) return false;
+    const anchor = selection.anchor || selection.start;
+    const active = selection.active || selection.end;
+    if (!anchor || !active) return false;
+    if (anchor.line !== active.line) return false;
+    if (anchor.character === active.character) return true;
+
+    // Tab itself selects a complete guarded cell.  That exact A selection may
+    // continue navigating; arbitrary partial/cross-field selections belong to
+    // normal VS Code indentation and must never be collapsed into one cell.
+    const nav = ensureCardCellEditGuard().getNav();
+    if (!nav || nav.mode !== 'A') return false;
+    const documentKey = editor.document?.uri?.toString?.();
+    if (nav.uri && documentKey && nav.uri !== documentKey) return false;
+    if (nav.line !== anchor.line) return false;
+    if (
+        Number.isInteger(nav.version) &&
+        Number.isInteger(editor.document?.version) &&
+        nav.version !== editor.document.version
+    ) return false;
+    const start = Math.min(anchor.character, active.character);
+    const end = Math.max(anchor.character, active.character);
+    return start === nav.expectedStart && end === nav.expectedEnd;
+}
+
+function startEmptyCellBoundaryTypeChoice(editor, target, text, guard) {
+    const document = editor.document;
+    const lineNum = target.lineNum;
+    const sourceText = document.lineAt(lineNum).text;
+    const card = getCardFieldsForLine(document, lineNum);
+    const previousIndex = target.ambiguousPreviousFieldIndex;
+    const nextIndex = target.fieldIndex;
+    if (
+        !card ||
+        !Number.isInteger(previousIndex) || previousIndex < 0 ||
+        nextIndex !== previousIndex + 1 || nextIndex >= card.length
+    ) return Promise.resolve();
+
+    const previousValue = cardCellModel.readCellValue(sourceText, card, previousIndex);
+    const previousText = cardCellModel.writeCellR1(
+        sourceText,
+        card,
+        previousIndex,
+        previousValue + text,
+    );
+    const nextValue = cardCellModel.readCellValue(sourceText, card, nextIndex);
+    const nextInsertIndex = cardCellModel.valueIndexAtCaret(
+        sourceText,
+        card,
+        nextIndex,
+        target.caretCol,
+    );
+    const nextText = cardCellModel.writeCellR1(
+        sourceText,
+        card,
+        nextIndex,
+        nextValue.slice(0, nextInsertIndex) + text + nextValue.slice(nextInsertIndex),
+    );
+
+    const applyResult = async (fieldIndex, newText) => {
+        const caret = cardCellModel.caretAfterCellValue(newText, card, fieldIndex);
+        await applyCardCellLineEdit(
+            editor,
+            lineNum,
+            newText,
+            caret,
+            caret,
+            { undoStopBefore: true, undoStopAfter: false },
+        );
+        guard.markAp(document, lineNum, fieldIndex, caret);
+        rememberCardCellTypingSession(editor, lineNum, fieldIndex, caret);
+        vscode.commands.executeCommand(
+            'setContext',
+            'lsdyna.cellEditActive',
+            guard.shouldCellEditActive(editor),
+        );
+    };
+
+    return startInlineEditChoiceSession(editor, lineNum, sourceText, [
+        {
+            id: 'append-previous-field',
+            label: i18n.get('cellTypeAppendPrevious'),
+            preview: `→ ${fixedCellPreview(previousText, card, previousIndex, 2)}`,
+            detail: i18n.get('cellTypeAppendPreviousDetail'),
+            apply: () => applyResult(previousIndex, previousText),
+        },
+        {
+            id: 'start-next-field',
+            label: i18n.get('cellTypeStartNext'),
+            preview: `→ ${fixedCellPreview(nextText, card, previousIndex, 2)}`,
+            detail: i18n.get('cellTypeStartNextDetail'),
+            apply: () => applyResult(nextIndex, nextText),
+        },
+    ], {
+        onType: async (additionalText, session) => {
+            if (!isInlineEditChoiceSessionValid(session)) {
+                clearInlineEditChoiceSession(session?.id || null);
+                return;
+            }
+            const combinedText = text + String(additionalText || '');
+            clearInlineEditChoiceSession(session.id);
+            await Promise.resolve(vscode.commands.executeCommand('hideSuggestWidget'));
+
+            const refreshedTarget = guard.getEmptyCellTypeTarget(
+                document,
+                editor.selection,
+                combinedText,
+            );
+            if (!refreshedTarget) {
+                clearCardCellTypingSession(document);
+                vscode.window.setStatusBarMessage(i18n.get('cellInputTooWide'), 3000);
+                return;
+            }
+            if (Number.isInteger(refreshedTarget.ambiguousPreviousFieldIndex)) {
+                return startEmptyCellBoundaryTypeChoice(
+                    editor,
+                    refreshedTarget,
+                    combinedText,
+                    guard,
+                );
+            }
+
+            guard.markAp(
+                document,
+                refreshedTarget.lineNum,
+                refreshedTarget.fieldIndex,
+                refreshedTarget.caretCol,
+            );
+            return handleCardCellTypeWithNavigation(
+                { text: combinedText },
+                combinedText,
+                editor,
+                guard,
+            );
+        },
+    });
+}
+
+async function handleCardCellTypeWithNavigation(args, text, editor, guard) {
+    const waitedForPostEdit = editor?.document
+        ? await waitForPendingCardCellPostEdit(editor.document)
+        : false;
+    if (waitedForPostEdit) {
+        if (vscode.window.activeTextEditor !== editor || editor.document.isClosed) return;
+    }
+    if (!isActiveLsdynaSemanticLocation(
+        editor.document,
+        editor.selection.active,
+        { requireLiveSnapshot: true },
+    )) {
+        guard.clearNav();
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    if (!editor.selections || editor.selections.length !== 1) {
+        guard.clearNav();
+        vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', false);
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    if (cardCellCompositions.has(editor.document)) {
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    // Navigation may have been cleared while awaiting a native paste repair.
+    const nav = guard.getNav();
+    if (!nav) {
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    if (/^[A-Za-z]$/.test(text) || /[^\u0000-\u007f]/.test(text)) {
+        clearCardCellTypingSession(editor.document);
+        const state = {
+            editor,
+            lineNum: nav.line,
+            fieldIndex: nav.fieldIndex,
+            mode: nav.mode,
+            keepSeparator: nav.keepSeparator,
+            originalLine: nav.originalLine,
+            expectedStart: nav.expectedStart,
+            expectedEnd: nav.expectedEnd,
+            phase: 'starting',
+            lastLine: nav.originalLine,
+            lastInsertedText: '',
+            sawMetadataEvent: false,
+            sawUnattributedSelection: false,
+        };
+        cardCellCompositions.set(editor.document, state);
+        try {
+            await vscode.commands.executeCommand('default:type', args);
+        } catch (error) {
+            if (cardCellCompositions.get(editor.document) === state) {
+                cardCellCompositions.delete(editor.document);
+            }
+            throw error;
+        }
+        if (cardCellCompositions.get(editor.document) !== state) return;
+        if (
+            state.lineNum < 0 ||
+            state.lineNum >= editor.document.lineCount
+        ) {
+            cardCellCompositions.delete(editor.document);
+            return;
+        }
+        state.lastLine = editor.document.lineAt(state.lineNum).text;
+        state.phase = 'composing';
+        if (!state.sawMetadataEvent || state.sawUnattributedSelection) {
+            await finalizeCardCellComposition(editor.document, state);
+        }
+        return;
+    }
+    const plan = guard.planType(editor.document, editor.selection, text);
+    if (!plan) {
+        clearCardCellTypingSession(editor.document);
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    if (plan.blocked) {
+        clearCardCellTypingSession(editor.document);
+        vscode.window.setStatusBarMessage(i18n.get('cellInputTooWide'), 3000);
+        return;
+    }
+    if (plan.escape) {
+        clearCardCellTypingSession(editor.document);
+        guard.clearNav();
+        return vscode.commands.executeCommand('default:type', args);
+    }
+    const invokingCaret = editor.selection?.active?.character ?? plan.caret;
+    const continuesTyping = canContinueCardCellTypingSession(
+        editor,
+        plan.lineNum,
+        plan.fieldIndex,
+        invokingCaret,
+    );
+    await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.caret, plan.caret, {
+        undoStopBefore: !continuesTyping,
+        undoStopAfter: false,
+    });
+    if (plan.markAp) {
+        guard.markAp(editor.document, plan.lineNum, plan.fieldIndex, plan.caret);
+    }
+    rememberCardCellTypingSession(editor, plan.lineNum, plan.fieldIndex, plan.caret);
+    vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', guard.shouldCellEditActive(editor));
+}
+
+const nodeCrypto = require('crypto');
+
+const { resolveKeywordCategory } = require('./core/keywordCategory');
+
+const {
+    getCatalogInputFormCatalogV4,
+} = require("./core/semantics/catalogInputFormCatalogV4");
+
+const {
+    loadKeywordOptionGrammarRuntime,
+    lookupKeywordOptionGrammar,
+} = require('./core/options/keywordOptionGrammarCatalog');
+
+const {
+    OPTION_SWITCH_MAX_BYTES,
+    planOptionSwitch,
+    planProvisionalOptionSwitch,
+} = require('./core/options/optionSwitchPlanner');
+
+const { evaluateOptionGrammar } = require('./core/options/optionGrammarEvaluator');
+
+const { evaluatePredicate } = require('./core/semantics/predicateEvaluator');
+
+const { getLegalSelectorValues, resolveSelectorPriorScore, resolveFormRulePriorScore } = require("./core/semantics/catalogPriorRules");
+
+const keywordRecordSerializer = require('./core/edit/keywordRecordSerializer');
+
+function legacyOptionRecord(card, recordMigrationId, generatedComment = false) {
+    return {
+        recordMigrationId,
+        occurrence: { kind: 'exactly-once' },
+        fields: (card || []).map((field, fieldIndex) => ({
+            fieldMigrationId: `${recordMigrationId}:field:${fieldIndex}`,
+            name: field.n,
+            type: field.t,
+            position: field.p,
+            width: field.w,
+        })),
+        generatedComment: generatedComment ? generateCommentLine(card) : undefined,
+    };
+}
+
+function lookupOperationalKeywordOptionGrammar(spelling) {
+    const runtimeGrammar = lookupKeywordOptionGrammar(spelling);
+    if (runtimeGrammar) return runtimeGrammar;
+    const lookup = lookupKeywordInfo(String(spelling || '').replace(/^\*/, ''));
+    const postOptions = lookup ? postKeywordOptions(lookup.entry) : [];
+    if (!lookup || postOptions.length === 0) return null;
+    const keyword = `*${lookup.canonicalName}`.toUpperCase();
+    const prefix = keywordSchema.getVerifiedPrefixLayout(lookup);
+    if (prefix.status !== 'verified' && prefix.status !== 'none') return null;
+    const canonical = String(lookup.canonicalName || '').toUpperCase();
+    const prefixOptions = titleKeywordOptions(lookup.entry, canonical);
+    const variants = [{ spelling: canonical, active: [] }, ...Object.entries(lookup.entry.v || {}).map(([spelling, value]: any) => ({
+        spelling: String(spelling).toUpperCase(),
+        active: Array.isArray(value?.active) ? value.active.map(normalizeOptionName) : [],
+    }))];
+    const targets = variants.map(variant => {
+        const activePrefix = prefixOptions.filter(option => variant.active.includes(normalizeOptionName(option.n)));
+        const prefixRecords = activePrefix.slice().sort((left, right) =>
+            parseKeywordOptionOrder(right).index - parseKeywordOptionOrder(left).index).flatMap(option =>
+            (option.c || []).map((card, index) => legacyOptionRecord(
+                card, `legacy-option:${canonical}:pre:${normalizeOptionName(option.n)}:${index}`)));
+        const baseRecords = (lookup.entry.c || []).map((card, index) =>
+            legacyOptionRecord(card, `legacy-option:${canonical}:base:${index}`));
+        const layouts = [];
+        for (let count = 0; count <= postOptions.length; count++) {
+            const postRecords = postOptions.slice(0, count).flatMap(option =>
+                (option.c || []).map((card, cardIndex) => legacyOptionRecord(
+                    card,
+                    `legacy-option:${canonical}:post:${normalizeOptionName(option.n)}:${cardIndex}`,
+                    true,
+                )));
+            layouts.push({
+                postCount: count,
+                layout: {
+                    profileId: `legacy-option-layout:${variant.spelling}:${count}`,
+                    keyword: `*${variant.spelling}`,
+                    inputFormat: 'standard-fixed',
+                    sourceIdentity: { canonicalKeyword: canonical, fieldSchema: 'field-data-runtime' },
+                    records: [...prefixRecords, ...baseRecords, ...postRecords],
+                },
+                bindings: [],
+            });
+        }
+        return {
+            spelling: `*${variant.spelling}`,
+            selection: { slots: { 'official-prefix-options': variant.active } },
+            writePermission: true,
+            applicationMode: 'layout-migration',
+            layouts,
+        };
+    });
+    return {
+        grammarId: `legacy-option-grammar:${canonical}`,
+        manualId: 'field-data-runtime',
+        canonicalSectionId: canonical,
+        grammarKind: 'ordered-subset',
+        status: 'editable',
+        permissions: { evaluate: true, mutate: true },
+        slots: [{
+            slotId: 'continuous-optional-cards',
+            label: i18n.get('chooseConsecutiveOptionalCards'),
+            selectionMode: 'ordered',
+        }],
+        targets,
+    };
+}
+
+function legacyPrefixOptionCards(options) {
+    return options
+        .filter(option => parseKeywordOptionOrder(option).position === 'pre')
+        .slice()
+        .sort((a, b) => parseKeywordOptionOrder(b).index - parseKeywordOptionOrder(a).index)
+        .flatMap(option => option.c || []);
+}
+
+function keywordCardsManagedLines(cards, startCardIndex = 0) {
+    const lines = [];
+    for (const card of cards.slice(startCardIndex)) {
+        lines.push(managedCommentLineForCard(card));
+        lines.push(keywordOptionCardSkeleton(card));
+    }
+    return lines;
+}
+
+function lookupWithActiveTitleOptions(lookup, titleOptions, selectedTitleNames) {
+    const titleNameSet = new Set(titleOptions.map(option => normalizeOptionName(option.n)));
+    const retained = (lookup.activeOptions || [])
+        .map(normalizeOptionName)
+        .filter(name => !titleNameSet.has(name));
+    return {
+        ...lookup,
+        activeOptions: [...retained, ...selectedTitleNames.map(normalizeOptionName)],
+    };
+}
+
+function verifiedPrefixCardsForSelection(lookup, preserveConditionalMarker = false) {
+    const required = keywordSchema.getVerifiedPrefixLayout(lookup);
+    if (required.status !== 'verified' || !preserveConditionalMarker) return required;
+    const syntheticRecords = Array(required.requiredCardCount + 1).fill('');
+    syntheticRecords[required.requiredCardCount] = '&';
+    return keywordSchema.getVerifiedPrefixLayout(lookup, syntheticRecords);
+}
+
+function managedPrefixCommentReplacements(
+    document,
+    keywordLine,
+    dataLines,
+    currentCards,
+    selectedCards,
+    legacyCurrentCards,
+) {
+    const replacements = [];
+    const retained = Math.min(currentCards.length, selectedCards.length, dataLines.length);
+    for (let index = 0; index < retained; index++) {
+        const dataLine = dataLines[index];
+        const commentLine = dataLine.line - 1;
+        if (commentLine <= keywordLine) continue;
+        const source = document.lineAt(commentLine).text;
+        if (!source.trimStart().startsWith('$#')) continue;
+        const acceptedCards = [currentCards[index], legacyCurrentCards[index]].filter(Boolean);
+        if (!acceptedCards.some(card => isStrictManagedCommentForCard(source, card))) continue;
+        const replacementText = managedCommentLineForCard(selectedCards[index]);
+        if (strictCommentKey(source) === strictCommentKey(replacementText)) continue;
+        replacements.push({ line: commentLine, replacementText });
+    }
+    return replacements;
+}
+
+async function chooseKeywordOptionsQuickPickLegacy(editor = vscode.window.activeTextEditor, requestedLine = null) {
+    if (!editor || !editor.document) return;
+    const document = editor.document;
+    const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    const requireSameActiveEditor = vscode.window.activeTextEditor === editor;
+    const activeLine = Number.isInteger(requestedLine)
+        ? requestedLine
+        : (editor.selection && editor.selection.active ? editor.selection.active.line : 0);
+    if (!isActiveLsdynaSemanticLocation(
+        document,
+        { line: activeLine, character: 0 },
+        { requireLiveSnapshot: true },
+    )) return;
+    const keywordLine = findKeywordLineForLine(document, activeLine);
+    if (keywordLine === null) {
+        vscode.window.showInformationMessage(i18n.get('noKeywordAtCursor'));
+        return;
+    }
+
+    const keywordText = document.lineAt(keywordLine).text;
+    if (classifyOpaqueCommentDirective(keywordText)) return;
+    const initialDocumentVersion = Number.isInteger(document.version) ? document.version : null;
+    const sessionIsCurrent = () => {
+        if (!editIsCurrent()) return false;
+        if (editor.document !== document) return false;
+        if (requireSameActiveEditor && vscode.window.activeTextEditor !== editor) return false;
+        if (initialDocumentVersion !== null && document.version !== initialDocumentVersion) return false;
+        if (keywordLine < 0 || keywordLine >= document.lineCount) return false;
+        return document.lineAt(keywordLine).text === keywordText;
+    };
+    const lookup = lookupKeywordInfo(keywordLineNameFromText(keywordText));
+    if (!lookup || !lookup.entry.o || lookup.entry.o.length === 0) {
+        vscode.window.showInformationMessage(i18n.get('noKeywordOptionsAvailable'));
+        return;
+    }
+
+    const entry = lookup.entry;
+    const activeOptionSet = new Set((lookup.activeOptions || []).map(normalizeOptionName));
+    const deniedActiveOptions = (entry.o || [])
+        .filter(option => activeOptionSet.has(normalizeOptionName(option.n)))
+        .filter(option => parseKeywordOptionOrder(option).position === 'pre')
+        .filter(option => keywordSchema.keywordPrefixOptionDecision(
+            lookup.canonicalName,
+            normalizeOptionName(option.n),
+        ) === 'deny')
+        .map(option => normalizeOptionName(option.n));
+    if (deniedActiveOptions.length) {
+        vscode.window.showInformationMessage(i18n.get(
+            'keywordPrefixOptionUnsupported',
+            deniedActiveOptions.join(', '),
+        ));
+        return;
+    }
+
+    const nonWritableActiveOptions = (entry.o || [])
+        .filter(option => activeOptionSet.has(normalizeOptionName(option.n)))
+        .filter(option => (option.to || 0) > 0 && (option.c || []).length > 0)
+        .filter(option => !writableKeywordOptions(entry, lookup.canonicalName).includes(option));
+    if (nonWritableActiveOptions.length) {
+        vscode.window.showInformationMessage(i18n.get('keywordPrefixLayoutUnavailable'));
+        return;
+    }
+    if (writableKeywordOptions(entry, lookup.canonicalName).length === 0) {
+        vscode.window.showInformationMessage(i18n.get('noKeywordOptionsAvailable'));
+        return;
+    }
+
+    const titleOptions = titleKeywordOptions(entry, lookup.canonicalName);
+    const postOptions = postKeywordOptions(entry);
+    const currentTitleNames = lookup.activeOptions
+        .filter(name => titleOptions.some(option => normalizeOptionName(option.n) === name));
+
+    const blockEnd = findKeywordBlockEnd(document, keywordLine);
+    const dataLines = collectKeywordDataLines(document, keywordLine, blockEnd);
+    const currentLookup = lookupWithActiveTitleOptions(lookup, titleOptions, currentTitleNames);
+    const currentPrefixLayout = keywordSchema.getVerifiedPrefixLayout(
+        currentLookup,
+        dataLines.map(line => line.text),
+    );
+    if (currentPrefixLayout.status === 'unsupported-option') {
+        vscode.window.showInformationMessage(i18n.get(
+            'keywordPrefixOptionUnsupported',
+            currentPrefixLayout.unsupportedOptions.join(', '),
+        ));
+        return;
+    }
+    if (currentPrefixLayout.status === 'unverified') {
+        vscode.window.showInformationMessage(i18n.get('keywordPrefixLayoutUnavailable'));
+        return;
+    }
+    const currentPreCards = currentPrefixLayout.status === 'verified'
+        ? currentPrefixLayout.cards
+        : [];
+    const currentPreLineCount = currentPreCards.length;
+
+    let selectedTitleNames = currentTitleNames;
+    if (titleOptions.length) {
+        const currentSet = new Set(currentTitleNames);
+        const titleItems = titleOptions.map(option => {
+            const name = normalizeOptionName(option.n);
+            return {
+                label: name,
+                picked: currentSet.has(name),
+                optionName: name,
+            };
+        });
+        const picked = await vscode.window.showQuickPick(titleItems, {
+            canPickMany: true,
+            placeHolder: i18n.get('chooseKeywordTitleOptions'),
+        });
+        if (!picked) return;
+        if (!sessionIsCurrent()) return;
+        selectedTitleNames = picked.map(item => item.optionName || normalizeOptionName(item.label));
+    }
+
+    const selectedLookup = lookupWithActiveTitleOptions(lookup, titleOptions, selectedTitleNames);
+    const keepConditionalMarker = currentPrefixLayout.status === 'verified'
+        && currentPrefixLayout.conditionalMarkerPresent
+        && currentPrefixLayout.activePreOptions.includes('MPP')
+        && selectedLookup.activeOptions.includes('MPP');
+    const selectedPrefixLayout = verifiedPrefixCardsForSelection(
+        selectedLookup,
+        keepConditionalMarker,
+    );
+    if (selectedPrefixLayout.status === 'unsupported-option') {
+        vscode.window.showInformationMessage(i18n.get(
+            'keywordPrefixOptionUnsupported',
+            selectedPrefixLayout.unsupportedOptions.join(', '),
+        ));
+        return;
+    }
+    if (selectedPrefixLayout.status === 'unverified') {
+        vscode.window.showInformationMessage(i18n.get('keywordPrefixLayoutUnavailable'));
+        return;
+    }
+    const selectedPreCards = selectedPrefixLayout.status === 'verified'
+        ? selectedPrefixLayout.cards
+        : [];
+    const selectedPreLineCount = selectedPreCards.length;
+
+    const currentPostCount = inferCurrentPostOptionCount(
+        entry,
+        currentPreLineCount,
+        dataLines.length,
+    );
+    let selectedPostCount = currentPostCount;
+    if (postOptions.length) {
+        const postItems = [{ label: keywordOptionRangeLabel(postOptions, 0), postCount: 0, picked: currentPostCount === 0 }];
+        for (let index = 0; index < postOptions.length; index++) {
+            postItems.push({
+                label: keywordOptionRangeLabel(postOptions, index + 1),
+                postCount: index + 1,
+                picked: currentPostCount === index + 1,
+            });
+        }
+        const picked = await vscode.window.showQuickPick(postItems, {
+            placeHolder: i18n.get('chooseConsecutiveOptionalCards'),
+        });
+        if (!picked) return;
+        if (!sessionIsCurrent()) return;
+        selectedPostCount = picked.postCount || 0;
+    }
+
+    const currentTitleOptions = titleOptions.filter(option => currentTitleNames.includes(normalizeOptionName(option.n)));
+    const selectedTitleOptions = titleOptions.filter(option => selectedTitleNames.includes(normalizeOptionName(option.n)));
+    const currentPostLineCount = keywordOptionCardCount(postOptions.slice(0, currentPostCount));
+    const selectedPostLineCount = keywordOptionCardCount(postOptions.slice(0, selectedPostCount));
+    const currentPostCards = keywordOptionCards(postOptions.slice(0, currentPostCount));
+
+    const removedLines = [];
+    if (selectedPreLineCount < currentPreLineCount) {
+        removedLines.push(...dataLines.slice(selectedPreLineCount, currentPreLineCount));
+    }
+    if (selectedPostLineCount < currentPostLineCount) {
+        removedLines.push(...dataLines.slice(dataLines.length - (currentPostLineCount - selectedPostLineCount)));
+    }
+    if (!(await confirmRemoveNonEmptyOptionLines(removedLines))) return;
+    if (!sessionIsCurrent()) return;
+
+    const selectedTitleNamesInOrder = titleOptions
+        .map(option => normalizeOptionName(option.n))
+        .filter(name => selectedTitleNames.includes(name));
+    const nextKeywordLine = buildKeywordLineWithTitleOptions(keywordText, lookup.canonicalName, selectedTitleNamesInOrder);
+    const preLinesToInsert = keywordCardsManagedLines(selectedPreCards, currentPreLineCount);
+    const postLinesToInsert = keywordOptionManagedLines(postOptions.slice(0, selectedPostCount), currentPostLineCount);
+    const deletionRanges = [];
+    const legacyCurrentPreCards = legacyPrefixOptionCards(currentTitleOptions);
+    const prefixCommentReplacements = managedPrefixCommentReplacements(
+        document,
+        keywordLine,
+        dataLines,
+        currentPreCards,
+        selectedPreCards,
+        legacyCurrentPreCards,
+    );
+
+    if (selectedPreLineCount < currentPreLineCount) {
+        const removedDataLines = dataLines.slice(selectedPreLineCount, currentPreLineCount);
+        const removedCards = currentPreCards.slice(selectedPreLineCount, currentPreLineCount);
+        removedDataLines.forEach((line, index) => {
+            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
+        });
+    }
+    if (selectedPostLineCount < currentPostLineCount) {
+        const count = currentPostLineCount - selectedPostLineCount;
+        const removedDataLines = dataLines.slice(dataLines.length - count);
+        const removedCards = currentPostCards.slice(selectedPostLineCount);
+        removedDataLines.forEach((line, index) => {
+            addManagedDataLineDeletionRange(deletionRanges, document, keywordLine, line, removedCards[index]);
+        });
+    }
+
+    if (!await canApplyDocumentEdit(document, sessionIsCurrent)) return;
+    await editor.edit(editBuilder => {
+        if (nextKeywordLine !== keywordText) {
+            editBuilder.replace(lineWholeRange(document, keywordLine), nextKeywordLine);
+        }
+        for (const replacement of prefixCommentReplacements) {
+            editBuilder.replace(
+                lineWholeRange(document, replacement.line),
+                replacement.replacementText,
+            );
+        }
+        removeLineDeletionRanges(editBuilder, document, deletionRanges);
+        if (postLinesToInsert.length) {
+            insertLinesAt(editBuilder, document, blockEnd, postLinesToInsert);
+        }
+        if (preLinesToInsert.length) {
+            const insertAt = insertionLineForDataIndex(document, keywordLine, dataLines, currentPreLineCount, keywordLine + 1);
+            insertLinesAt(editBuilder, document, insertAt, preLinesToInsert);
+        }
+    });
+}
+
+let keywordOptionsViewControllerRef = null;
+
+const {
+    blockedKeywordOptionSwitchPlan,
+    OPTION_SWITCH_MAX_PHYSICAL_LINES,
+    OPTION_SWITCH_MAX_DATA_RECORDS,
+    collectOptionSwitchBlock,
+    keywordOptionTarget,
+    keywordOptionLayoutProfile,
+    keywordOptionLayoutCandidate,
+    optionSwitchCardFromRecord,
+    optionSwitchCommentAnalysis,
+    optionSwitchCommentLine,
+    keywordSpellingFromLine,
+    keywordOptionBlockSha256,
+    keywordOptionsEditorForModel,
+    locateKeywordManagerSource,
+    openKeywordManagerManual,
+    openKeywordManagerInstanceEditor,
+    keywordManagerDisplayName,
+    keywordManagerReadonlyUri,
+    keywordManagerInstanceFileState,
+    nativeFileLayoutKind,
+    nativeFileLayoutCards,
+    readNativeFileField,
+    selectVerifiedSourceRecords,
+    nativeBatchFixedBinding,
+    keywordManagerNativeFileSelection,
+    keywordManagerNativeInstanceCounts,
+    keywordManagerExpandNativeInstances,
+    keywordManagerInstanceDirectories,
+    keywordManagerInstances,
+    prepareKeywordManagerInstances,
+    completeKeywordManagerInstances,
+    keywordManagerProjectInstances,
+    keywordManagerCatalogCatalogFailure,
+    isKeywordManagerUnauditedCatalogAllowed,
+    keywordManagerCatalogCatalogForm,
+    keywordManagerCatalogRules,
+    keywordManagerCatalogFormFingerprint,
+    keywordManagerCatalogNativeFormRules,
+    keywordManagerCatalogNativeFormRule,
+    keywordManagerCatalogEffectiveFormRules,
+    keywordManagerCatalogEquivalentSpellings,
+    keywordManagerCatalogSelectorRule,
+    keywordManagerCatalogSelectorSpelling,
+    keywordManagerCatalogSourceRecordCompatible,
+    keywordManagerCatalogHeaderEvidence,
+    keywordManagerResolveCatalogSelectorState,
+    keywordManagerInferCatalogSelectorSelections,
+    keywordManagerCatalogExplicitSpellingSelections,
+    keywordManagerPrepareCatalogSelectorLayout,
+    keywordManagerPrepareCatalogInputFormLayout,
+    keywordManagerPrepareCatalogInputFormLayoutForRule,
+    keywordManagerFieldProjection,
+    keywordManagerResolveSchemaField,
+    managerHelpLookups,
+    keywordManagerReadFieldHelp,
+    keywordManagerHelpState,
+    keywordManagerHasStaging,
+    keywordManagerCapabilityProjection,
+    keywordManagerEditField,
+    keywordManagerStageFieldDrafts,
+    buildKeywordOptionSwitchPlan,
+    buildKeywordManagerCatalogPlan,
+    buildKeywordOptionViewModel,
+    keywordOptionProductLabels,
+    keywordOptionEmptyViewState,
+    keywordOptionPlanDetails,
+    buildKeywordOptionsViewState,
+    keywordLineWithTargetSpelling,
+    optionSwitchReplacement,
+    keywordManagerCatalogAllowsWrite,
+} = require('./client/services/keywordManager').createKeywordManagerServices({
+    getKeywordSemanticAdviceForDocument,
+    readyCardEditBlockIndex,
+    isKeywordLineText,
+    cardCommentLabelCase,
+    documentUriIdentity,
+    nativeParameterContextForDocument,
+    documentGlobalInputFormat,
+    legacyOptionRecord,
+    getFieldData,
+    lookupOperationalKeywordOptionGrammar,
+    isLsdynaFile,
+    isActiveLsdynaSemanticLocation,
+    findKeywordLineForLine,
+});
+
+const {
+    applyKeywordOptionViewModel,
+} = require('./client/services/keywordManagerApply').createKeywordManagerApply({
+    keywordManagerCatalogAllowsWrite,
+    keywordOptionsEditorForModel,
+    documentUriIdentity,
+    isDocumentReadonlyForAutomaticEdit,
+    buildKeywordManagerCatalogPlan,
+    keywordManagerPrepareCatalogInputFormLayout,
+    keywordManagerPrepareCatalogSelectorLayout,
+    keywordManagerStageFieldDrafts,
+    keywordOptionBlockSha256,
+    optionSwitchReplacement,
+});
+
 module.exports = { activate, deactivate };
 
 // Exported for unit testing
 module.exports._internals = {
+    prepareKeywordManagerInstances,
+    completeKeywordManagerInstances,
     planLineCommentToggle,
     handleLineCommentToggle,
     startLanguageClient,
@@ -8643,6 +15461,144 @@ module.exports._internals = {
     splitIncludePathEntry,
     formatPathEntryIfNeeded,
     LsdynaKeywordCompletionProvider,
-    LsdynaDocumentFormattingEditProvider,
     buildStatusDashboardDiagnosticItems,
 };
+
+
+Object.assign(module.exports._internals, {
+    startLanguageClient,
+    publishProjectDiagnostics,
+    collectProjectDiagnostics,
+    collectIncludeDecorationSets,
+    createIncludeDecorationTypes,
+    createLatestDocumentRequestGuard,
+    collectKeywordDecorationRanges,
+    collectIncludeDocumentLinks,
+    collectLineLengthDiagnostics,
+    getOpaqueCommentLocation,
+    isActiveLsdynaSemanticLocation,
+    cacheFileIndexesFromSnapshot,
+    cacheEffectiveSearchPathsFromSnapshot,
+    cacheReferenceIndexFromSnapshot,
+    clientProjectCacheStats,
+    getFileIndexForDocument,
+    clearClientProjectSemanticCaches,
+    cacheRemovalTotals,
+    handleClearProjectIndexCachesCommand,
+    cacheLimitBytes,
+    cacheLimitMilliseconds,
+    clearReferenceIndexCacheForTesting,
+    clearReferenceIndexForRoot,
+    getMainDeckContextForDocumentPath,
+    setMainDeckContextForDocument,
+    clearMainDeckContextForDocument,
+    handleSelectMainDeckContextCommand,
+    buildMainDeckContextHoverMarkdown,
+    clearEffectiveSearchPathCacheForTesting,
+    getEffectiveSearchPaths,
+    findParameterDefinitions,
+    findParameterReferences,
+    LsdynaDefinitionProvider,
+    fieldReferenceAtPosition,
+    resolveFieldReferenceNavigation,
+    resolveRegistryReferenceNetwork,
+    resolveWorkspaceReferenceSearch,
+    handleWorkspaceReferenceSearchCommand,
+    workspaceReferenceSearchPosition,
+    resolveIndexedEntityQueryScope,
+    indexedEntityResultItems,
+    inferIndexedEntityQueryTarget,
+    isEntityReferenceNavigationPosition,
+    resolveEntityReferenceCursorEditor,
+    activeUnsynchronizedLargeFileUri,
+    activeLargeFileViewerUri,
+    presentIndexedEntityQueryResult,
+    handleIndexedEntityIdQueryCommand,
+    refreshCurrentEntityReferenceQuery,
+    refreshStoredEntityReferenceQuery,
+    prepareIndexedEntityQuerySnapshot,
+    refreshCurrentEntityQueryAfterProjectScan,
+    shouldResolveParameterDefinitionAtPosition,
+    LsdynaReferenceProvider,
+    LsdynaRenameProvider,
+    findIncludeFileLines,
+    LsdynaIncludeTreeProvider,
+    documentUriIdentity,
+    buildTablePreviewReferenceKey,
+    getTablePreviewViewForReference,
+    setTablePreviewViewForReference,
+    clearTablePreviewViewsForTesting,
+    handleSetTablePreviewViewCommand,
+    LsdynaKeywordSymbolProvider,
+    LsDynaFoldingProvider,
+    getSearchPath,
+    getParameterAtCursor,
+    isIncludeLine,
+    isLsdynaUri,
+    shouldSkipAutomaticDocumentScan,
+    setFileIndexForTesting,
+    updateKeywordBlocksAfterDocumentChange,
+    updateActiveFileIndexForDocumentChange,
+    releaseLiveFileIndexForClosedDocument,
+    searchFileFromPaths,
+    createManifestDrivenInvalidator,
+    createBatchedManifestInvalidator,
+    createProjectSnapshotRefreshQueue,
+    createProjectSnapshotPersistentCache,
+    normalizePathKey,
+    getCardInfoForDocumentLineWithSuggest,
+    resolveKeywordLookupWithSuggest,
+    cardCellModel,
+});
+
+module.exports._internals.HOVER_TRUST = HOVER_TRUST;
+
+Object.assign(module.exports._internals, { setReferenceSnapshotLoaderForTesting, getReferenceIndexForDocument, parseKeywordBlocksFromDocumentAsync, buildLiveRegistryReferenceFileIndex });
+
+Object.assign(module.exports._internals, { buildControlConditionMarkdown, buildFieldHelpMarkdown, getRelaxedModelEvidenceV1Catalog, buildProvisionalManualContext, resolveProvisionalFieldHelp, getKeywordSemanticAdviceForDocument, keywordSemanticAdviceCache, getKeywordSemanticAdvice, predicateFieldsForCardAdvice, buildSemanticDocumentContext, inlineSemanticLabel, semanticApplicabilityPresentation, semanticEvidencePageLinks, getManualSemanticCatalog, semanticEvidenceTargets, semanticEvidenceTargetLabel, semanticEvidenceLocationPresentation, buildKeywordSemanticAdviceMarkdown, semanticEvidenceFailureMessage, handleOpenSemanticEvidenceCommand, semanticEvidenceResolver, SemanticEvidenceResolver, keywordHoverMarkdown, supportedKeywordOptions, keywordOptionIsSupported, getStructuredManualContext, getManualChapterPresentation, appendManualLinks, cardCommentNoticeAppliesToField, buildCardCommentNoticeMarkdown, cardCommentRewriteRequest, analyzeKeywordStructureForDocument, DEFAULT_STRUCTURE_SOURCE_PROFILE_EN, KeywordStructureCatalog, analyzeKeywordStructureLines, keywordStructureCatalog, KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES, boundedCardCommentRewriteEnd, CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES, readyCardEditBlockIndex, cardEditKeywordIndexProviderRef, getCachedKeywordStructureAnalysis, keywordStructureAnalysisCache, CARD_COMMENT_REWRITE_MAX_DATA_LINES, cacheKeywordStructureAnalysis, estimateKeywordStructureAnalysisBytes, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES, buildKeywordStructureIssueMarkdown, keywordStructureCheckLink, keywordStructureCheckRequest, keywordStructureDefiniteLabel, keywordStructureRepairRequest, keywordStructureDiagnosticIdentity, keywordStructureCheckMessage, handleCheckKeywordStructureCommand, buildPrefixLayoutIssueMarkdown, buildUnknownKeywordHoverMarkdown, LsdynaFieldHoverProvider, collectBoundedPrefixDataRecords, MAXIMUM_PREFIX_CARD_POSITION_LINES });
+
+function keywordStructureAnalysisCacheStatsForTesting(document) {
+    const cache = keywordStructureAnalysisCache.get(document);
+    return {
+        entries: cache?.values?.size || 0,
+        bytes: cache?.bytes || 0,
+        maximumEntries: KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES,
+        maximumBytes: KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES,
+    };
+}
+module.exports._internals.keywordStructureAnalysisCacheStatsForTesting = keywordStructureAnalysisCacheStatsForTesting;
+
+Object.assign(module.exports._internals, { createActiveFieldChoiceController, officialFieldChoiceCommandRequest, planLsdynaFormatting, mapPositionThroughFormattingEdits, buildOfficialFieldChoiceHoverMarkdown, buildVerifiedConditionalCardEditMarkdown, cardNumbersLabel, planVerifiedConditionalCardsForDocument, planVerifiedConditionalCards, showVerifiedCardEditStatus, handleAddVerifiedConditionalCardsCommand, showOfficialFieldChoiceStatus, handlePickOfficialFieldValueCommand, createOfficialFieldChoicePicker, planOfficialFieldChoicesForDocument, planOfficialFieldChoices, buildCardCommentNoticeMarkdown, planCardCommentRewriteForDocument, cardCommentLabelCase, mostCommonCardCommentValue, CARD_COMMENT_REWRITE_MAX_EDITS, CARD_COMMENT_REWRITE_MAX_TEXT_BYTES, showCardCommentRewriteStatus, handleRebuildCardCommentsCommand, handleInsertVerifiedMissingRecordsCommand, LsdynaFieldHoverProvider, getCardFieldsForLine, buildOfficialFieldChoiceCompletionItems, editorQuickSuggestionsOtherEnabled, officialChoiceRoleLabel, LsdynaFieldCompletionProvider, inlineEditChoiceSession, LsdynaKeywordCompletionProvider, generateCommentLine, handleEnterIndentationRemoval, extractSmartTokens, hasDeclaredDefault, canOmitTrailingFields, planAlignedLine, alignLineText, parseTabValueOrder, analyzeTabLineInterpretation, valueOrderFieldIndexAtCaret, tabMeaningCandidateDetail, inlineEditChoiceSequence, clearInlineEditChoiceSession, cancelInlineEditChoiceSession, isInlineEditChoiceSessionValid, compactLinePreview, fixedCellPreview, startInlineEditChoiceSession, LsdynaEditChoiceCompletionProvider, applyInlineEditChoice, getPathEntryRange, splitIncludePathEntry, isIncludeFileKeyword, isSingleEightyColumnCard, formatPathEntryIfNeeded, createPathEntryFormatEdit, isFormattingLine, formatLineErrorObserverForTesting, setFormatLineErrorObserverForTesting, matchesConfiguredReadonlyPattern, isDocumentReadonlyForAutomaticEdit, formatLineIfNeeded, shouldPreserveTextCardLine, cardCellEditGuard, cardCellOwnedEditDepth, cardCellPostEditBarriers, cardCellTypingSessions, cardCellCompositions, cardCellASelectionGrace, CARD_CELL_A_SELECTION_GRACE_MS, clearCardCellTypingSession, canContinueCardCellTypingSession, rememberCardCellTypingSession, beginCardCellOwnedEdit, endCardCellOwnedEdit, isCardCellOwnedEdit, beginCardCellPostEditBarrier, waitForCardCellPostEdit, hasRecentCardCellSelectionGrace, waitForPendingCardCellPostEdit, ensureCardCellEditGuard, markCardCellA, cardCellASelectionGraceRemaining, executeNativeTab, isTabSelectionEligible, handleTabAlignment, lastActiveLineNum, lastActiveDoc, lastActiveDocumentVersion, activeEditorWasUndefined, cellSelectionSyncGeneration, cellSelectionSyncTimer, CELL_SELECTION_QUIET_MS, CARD_NATIVE_EDIT_SETTLE_MS, CARD_IME_CANCEL_SETTLE_MS, waitForCellSelectionQuietPeriod, handleSelectionChange, isDocumentStillOpenInTextTab, handleActiveEditorChangeForFormatting, applyCardCellLineEdit, applyCardCellLineDelete, handleCardCellDelete, readCardCellCompositionText, planCardCellComposition, finalizeCardCellComposition, cancelCardCellComposition, startEmptyCellBoundaryTypeChoice, handleCardCellTypeWithNavigation, handleCardCellType, handleCardCellPostEdit, planLineCommentToggle, planLineCommentTogglePure, LINE_COMMENT_TOGGLE_LIMITS, handleLineCommentToggle });
+
+Object.assign(module.exports._internals, { optionSwitchReplacement, keywordLineWithTargetSpelling });
+
+function writableKeywordOptions(entry, canonicalName) {
+    return supportedKeywordOptions(entry, canonicalName).filter(option => {
+        const order = parseKeywordOptionOrder(option);
+        if (order.position === 'post') return true;
+        if (order.position !== 'pre') return false;
+        return keywordSchema.keywordPrefixOptionDecision(
+            canonicalName,
+            normalizeOptionName(option.n),
+        ) === 'allow';
+    });
+}
+
+async function canApplyDocumentEdit(document, isCurrent) {
+    if (!isCurrent()) return false;
+    const readonly = await isDocumentReadonlyForAutomaticEdit(document);
+    if (!isCurrent()) return false;
+    if (readonly) {
+        vscode.window.setStatusBarMessage(i18n.get('editReadonly'), 5000);
+        return false;
+    }
+    return true;
+}
+
+Object.assign(module.exports._internals, { chooseKeywordOptionsQuickPickLegacy, lookupWithActiveTitleOptions, verifiedPrefixCardsForSelection, keywordCardsManagedLines, legacyPrefixOptionCards, managedPrefixCommentReplacements, LsdynaKeywordOptionsCodeLensProvider, keywordOptionsViewControllerRef, chooseKeywordOptionsForEditor, blockedKeywordOptionSwitchPlan, OPTION_SWITCH_MAX_PHYSICAL_LINES, OPTION_SWITCH_MAX_DATA_RECORDS, collectOptionSwitchBlock, OPTION_SWITCH_MAX_BYTES, planOptionSwitch, planProvisionalOptionSwitch, keywordOptionTarget, keywordOptionLayoutProfile, keywordOptionLayoutCandidate, optionSwitchCardFromRecord, optionSwitchCommentAnalysis, optionSwitchCommentLine, keywordSpellingFromLine, keywordLineWithTargetSpelling, keywordOptionBlockSha256, nodeCrypto, keywordOptionsEditorForModel, locateKeywordManagerSource, openKeywordManagerManual, openKeywordManagerInstanceEditor, keywordManagerDisplayName, keywordManagerReadonlyUri, keywordManagerInstanceFileState, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding, keywordManagerNativeFileSelection, keywordRecordSerializer, keywordManagerNativeInstanceCounts, keywordManagerExpandNativeInstances, keywordManagerCatalogNativeFormRules, keywordManagerCatalogRules, keywordManagerCatalogCatalogForm, isKeywordManagerUnauditedCatalogAllowed, getCatalogInputFormCatalogV4, keywordManagerCatalogCatalogFailure, keywordManagerInstanceDirectories, keywordManagerInstances, resolveKeywordCategory, keywordManagerProjectInstances, keywordManagerCatalogFormFingerprint, keywordManagerCatalogNativeFormRule, keywordManagerCatalogEffectiveFormRules, keywordManagerCatalogEquivalentSpellings, keywordManagerCatalogSelectorRule, keywordManagerCatalogSelectorSpelling, keywordManagerCatalogSourceRecordCompatible, keywordManagerResolveCatalogSelectorState, legacyOptionRecord, getLegalSelectorValues, resolveSelectorPriorScore, resolveFormRulePriorScore, keywordManagerInferCatalogSelectorSelections, keywordManagerCatalogExplicitSpellingSelections, keywordManagerPrepareCatalogSelectorLayout, keywordManagerPrepareCatalogInputFormLayout, keywordManagerPrepareCatalogInputFormLayoutForRule, evaluatePredicate, keywordManagerFieldProjection, keywordManagerResolveSchemaField, managerHelpLookups, keywordManagerReadFieldHelp, keywordManagerHelpState, keywordManagerHasStaging, keywordManagerCapabilityProjection, keywordManagerEditField, keywordManagerStageFieldDrafts, buildKeywordOptionSwitchPlan, loadKeywordOptionGrammarRuntime, lookupKeywordOptionGrammar, lookupOperationalKeywordOptionGrammar, buildKeywordManagerCatalogPlan, buildKeywordOptionViewModel, keywordOptionProductLabels, keywordOptionEmptyViewState, keywordOptionPlanDetails, buildKeywordOptionsViewState, evaluateOptionGrammar, optionSwitchReplacement, applyKeywordOptionViewModel });
+
+Object.assign(module.exports._internals, { trackKeywordManagerSourceChange, keywordManagerRefreshLine });
+
+Object.assign(module.exports._internals, { prepareDocumentPresentation, updateDocumentPresentationAfterChange });
+
+Object.assign(module.exports._internals, { prepareFieldInteraction, planPreparedOfficialFieldChoices });

@@ -12,18 +12,23 @@
  */
 
 const path = require('path');
+const { createFileScanCacheStore } = require('../core/cache/fileScanCacheStore');
 const { createWorkerPool } = require('./workerPool');
 
 type ProjectIndexLoader = {
-    buildProjectIndex(rootFile: string, options?: object, onProgress?: ((snapshot: object) => void) | null): Promise<object>;
+    buildProjectIndex(rootFile: string, options?: object, onProgress?: ((snapshot: object) => void) | null, cancellationToken?: any): Promise<object>;
     dispose(): Promise<void>;
+    clearPersistentCache(): Promise<{entryCount: number, totalBytes: number}>;
     isDisposed?: () => boolean;
 };
 
 type ProjectIndexLoaderOptions = {
-    createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null }) => ProjectIndexLoader;
+    createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number }) => ProjectIndexLoader;
+    createFileScanCache?: (options: object) => any;
     workerPath?: string;
     fileScanCacheDirectory?: string | null;
+    fileScanCacheOptions?: object;
+    fileScanMemoryCacheBytes?: number;
 };
 
 /**
@@ -41,12 +46,16 @@ type ProjectIndexLoaderOptions = {
  */
 function createProjectIndexLoader({
     createPool = createWorkerPool,
+    createFileScanCache = createFileScanCacheStore,
     workerPath = path.join(__dirname, 'scanWorker.js'),
     fileScanCacheDirectory = null,
+    fileScanCacheOptions = {},
+    fileScanMemoryCacheBytes = 16 * 1024 * 1024,
 }: ProjectIndexLoaderOptions = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
     let disposed = false;
+    let clearPromise = null;
 
     /**
      * Checks if the worker pool has been disposed.
@@ -71,7 +80,12 @@ function createProjectIndexLoader({
             workerPool = null;
         }
         if (!workerPool) {
-            workerPool = createPool({ workerPath, fileScanCacheDirectory });
+            workerPool = createPool({
+                workerPath,
+                fileScanCacheDirectory,
+                fileScanCacheOptions,
+                fileScanMemoryCacheBytes,
+            });
         }
         return workerPool;
     }
@@ -85,15 +99,46 @@ function createProjectIndexLoader({
          * @param {function(Object): void} [onProgress] - Optional progress callback.
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Scanned project snapshot.
          */
-        async buildProjectIndex(rootFile, options = {}, onProgress = null) {
+        async buildProjectIndex(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+            if (clearPromise) await clearPromise;
             const pool = getWorkerPool();
             try {
-                return await pool.buildProjectIndex(rootFile, options, onProgress);
+                return await pool.buildProjectIndex(rootFile, options, onProgress, cancellationToken);
             } catch (error) {
                 if (!disposed && workerPool === pool && isPoolDisposed(pool)) {
                     workerPool = null;
                 }
                 throw error;
+            }
+        },
+
+        /**
+         * Stops the current worker before deleting its persistent per-file
+         * cache.  A later scan creates a fresh worker lazily.
+         */
+        async clearPersistentCache() {
+            if (disposed) {
+                throw new Error('project index loader has been disposed');
+            }
+            if (clearPromise) return clearPromise;
+
+            const operation = (async () => {
+                const closingPool = workerPool;
+                workerPool = null;
+                if (closingPool) await closingPool.dispose();
+                if (!fileScanCacheDirectory) return { entryCount: 0, totalBytes: 0 };
+
+                const store = createFileScanCache({
+                    cacheDirectory: fileScanCacheDirectory,
+                    ...fileScanCacheOptions,
+                });
+                return await store.invalidateAll();
+            })();
+            clearPromise = operation;
+            try {
+                return await operation;
+            } finally {
+                if (clearPromise === operation) clearPromise = null;
             }
         },
 
@@ -105,6 +150,8 @@ function createProjectIndexLoader({
         async dispose() {
             if (disposed) return;
             disposed = true;
+            const pendingClear = clearPromise;
+            if (pendingClear) await pendingClear;
             const closingPool = workerPool;
             workerPool = null;
             if (closingPool) {

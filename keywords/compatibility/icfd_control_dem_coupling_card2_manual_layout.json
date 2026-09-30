@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "icfd-control-dem-coupling-card2-manual-layout",
+  "version": 1,
+  "policy": "official-pdf-required-card2-layout-v1",
+  "scope": "Restore the documented Card 2 of ICFD_CONTROL_DEM_COUPLING when the pinned upstream schema exposes only Card 1.",
+  "keywords": [
+    "ICFD_CONTROL_DEM_COUPLING"
+  ],
+  "upstreamGap": {
+    "expectedCardCount": 1,
+    "expectedFieldCount": 8,
+    "prefixSignatureSha256": "1092834a29c36a6caeeecc39bd9406058e05cbc5fc6554c7e23ccbb0890e6945"
+  },
+  "alternateUpstreamGaps": [
+    {
+      "expectedCardCount": 1,
+      "expectedFieldCount": 6,
+      "prefixSignatureSha256": "8d42fbdf615862492384441caf9b4f949dbbb64878aad2f24fa61611e34db1f5"
+    }
+  ],
+  "card": {
+    "physicalCardIndex": 1,
+    "fields": [
+      {
+        "name": "NITBS",
+        "position": 0,
+        "width": 10,
+        "type": "integer",
+        "english": "Number of time steps between particle searches. The default is 50 in explicit analysis and 1 in implicit. Increasing this number can reduce the computational time at the expense of possible less accurate particle tracking.",
+        "chinese": "粒子搜索之间的时间步数。显式分析中的默认值为 50，隐式分析中的默认值为 1。增大该数值可以减少计算时间，但可能降低粒子跟踪的准确性。"
+      }
+    ]
+  },
+  "source": {
+    "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+    "pdfSha256": "3f17ea1c4511030dbc24981af6e4ecd718d700b2b519021fa82c5d1a0ad0ef77",
+    "pdfSize": 4460313,
+    "toolVersion": "24.03.0",
+    "textCommand": "pdftotext -layout -enc UTF-8",
+    "renderCommand": "pdftoppm -r 144 -png -singlefile",
+    "pages": [
+      {
+        "physicalPage": 634,
+        "textSha256": "00488c691e65bb2da65b5960a786ff16ba125fc5b394238d3f9b7f9a1ff1b15a",
+        "renderSha256": "2eeba47ef6f7103c157be40ce19be5a156480ada39fadeef2bf2c55c9cf3aecc"
+      },
+      {
+        "physicalPage": 635,
+        "textSha256": "83fc88b3a9e3c50b7cd9dc0ac2da6f44bc328b8d29b46a1df93b88239c1312cd",
+        "renderSha256": "46ff7f1d69f94eca6891688bee9a65e0fcd1d1dec37f74192604cffa992e97dd"
+      }
+    ]
+  },
+  "evidence": {
+    "requiredCardNumbers": [1, 2],
+    "card2FieldNames": ["NITBS"],
+    "card2Description": "Number of time steps between particle searches. The default is 50 in explicit analysis and 1 in implicit. Increasing this number can reduce the computational time at the expense of possible less accurate particle tracking.",
+    "directFieldLayout": true,
+    "optionEvidence": false,
+    "inferenceUsed": false
+  },
+  "permissions": {
+    "schemaCardAddition": true,
+    "schemaTypeCorrection": false,
+    "referenceApproval": false,
+    "optionMutation": false,
+    "automaticValueMutation": false
+  }
+}

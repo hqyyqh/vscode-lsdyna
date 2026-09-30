@@ -15,11 +15,14 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const { FILE_SCAN_CACHE_SCHEMA_VERSION } = require('./fileScanCacheStore');
 const { hydrateProjectSnapshot, serializeProjectSnapshot } = require('./snapshotSerializer');
 
 const INDEX_FILE_NAME = 'index.json';
 const PAYLOAD_DIRECTORY_NAME = 'payloads';
-const SNAPSHOT_SCHEMA_VERSION = 1;
+const SNAPSHOT_SCHEMA_VERSION = `project-snapshot-v2:${FILE_SCAN_CACHE_SCHEMA_VERSION}`;
+const DEFAULT_MAX_CACHE_BYTES = 256 * 1024 * 1024;
+const DEFAULT_MAX_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type FileSignature = {
     mtimeMs: number;
@@ -43,7 +46,8 @@ type DiskStoreOptions = {
     getFileSignature?: (filePath: string) => Promise<FileSignature>;
     now?: () => number;
     maxCacheBytes?: number;
-    schemaVersion?: number;
+    maxEntryAgeMs?: number;
+    schemaVersion?: string | number;
 };
 
 /**
@@ -72,6 +76,7 @@ type DiskStoreOptions = {
  * @property {function(string): Promise<FileSignature>} [getFileSignature] - Optional custom file signature reader.
  * @property {function(): number} [now] - Optional timestamp provider.
  * @property {number} [maxCacheBytes] - Optional maximum size of the cache before eviction occurs.
+ * @property {number} [maxEntryAgeMs] - Optional maximum idle age before an entry is removed.
  * @property {number} [schemaVersion] - Optional schema version to enforce.
  */
 
@@ -179,6 +184,7 @@ function normalizeTrackedFiles(trackedFiles = []) {
  * @returns {{
  *   persist: function({snapshot: Object, trackedFiles: TrackedFileEntry[]}): Promise<void>,
  *   restore: function(string): Promise<{snapshot: Object, trackedFiles: TrackedFileEntry[]}|null>,
+ *   clear: function(): Promise<{entryCount: number, totalBytes: number}>,
  *   getStats: function(): {entryCount: number, totalBytes: number},
  *   listEntries: function(): DiskCacheEntry[]
  * }} The disk snapshot store API instance.
@@ -187,7 +193,8 @@ function createDiskSnapshotStore({
     cacheDirectory,
     getFileSignature = readFileSignature,
     now = Date.now,
-    maxCacheBytes = Number.POSITIVE_INFINITY,
+    maxCacheBytes = DEFAULT_MAX_CACHE_BYTES,
+    maxEntryAgeMs = DEFAULT_MAX_ENTRY_AGE_MS,
     schemaVersion = SNAPSHOT_SCHEMA_VERSION,
 }: DiskStoreOptions = {}) {
     if (typeof cacheDirectory !== 'string' || cacheDirectory.trim() === '') {
@@ -201,6 +208,9 @@ function createDiskSnapshotStore({
     }
     if (typeof maxCacheBytes !== 'number' || Number.isNaN(maxCacheBytes) || maxCacheBytes <= 0) {
         throw new TypeError('createDiskSnapshotStore requires maxCacheBytes to be a positive number');
+    }
+    if (typeof maxEntryAgeMs !== 'number' || Number.isNaN(maxEntryAgeMs) || maxEntryAgeMs <= 0) {
+        throw new TypeError('createDiskSnapshotStore requires maxEntryAgeMs to be a positive number');
     }
 
     const resolvedCacheDirectory = path.resolve(cacheDirectory);
@@ -297,6 +307,76 @@ function createDiskSnapshotStore({
         return state;
     }
 
+    function isEntryExpired(entry, currentTime = now()) {
+        return Number.isFinite(maxEntryAgeMs)
+            && (!Number.isFinite(entry.lastAccessedAt)
+                || currentTime - entry.lastAccessedAt >= maxEntryAgeMs);
+    }
+
+    async function removeEntryPayload(entry) {
+        await removeFileIfExists(path.join(payloadDirectoryPath, entry.payloadFileName));
+    }
+
+    async function removeExpiredEntries(currentState, currentTime = null) {
+        if (currentState.entries.size === 0) return false;
+        const effectiveTime = currentTime ?? now();
+        const expiredEntries = [...currentState.entries.values()]
+            .filter(entry => isEntryExpired(entry, effectiveTime));
+        if (expiredEntries.length === 0) return false;
+        for (const entry of expiredEntries) {
+            currentState.entries.delete(getRootCacheKey(entry.rootFile));
+            await removeEntryPayload(entry);
+        }
+        await writeIndex(currentState);
+        return true;
+    }
+
+    async function reconcilePayloadFiles(currentState) {
+        let names = [];
+        try {
+            names = await fs.promises.readdir(payloadDirectoryPath);
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+        }
+        const available = new Set(names);
+        const referenced = new Set();
+        let changed = false;
+        for (const [rootCacheKey, entry] of [...currentState.entries.entries()]) {
+            if (!available.has(entry.payloadFileName)) {
+                currentState.entries.delete(rootCacheKey);
+                changed = true;
+                continue;
+            }
+            referenced.add(entry.payloadFileName);
+            try {
+                const stat = await fs.promises.stat(path.join(payloadDirectoryPath, entry.payloadFileName));
+                if (!stat.isFile()) {
+                    currentState.entries.delete(rootCacheKey);
+                    referenced.delete(entry.payloadFileName);
+                    changed = true;
+                    continue;
+                }
+                if (entry.byteSize !== stat.size) {
+                    entry.byteSize = stat.size;
+                    changed = true;
+                }
+            } catch (_error) {
+                currentState.entries.delete(rootCacheKey);
+                referenced.delete(entry.payloadFileName);
+                changed = true;
+            }
+        }
+        for (const name of names) {
+            if (referenced.has(name)) continue;
+            try {
+                const orphanPath = path.join(payloadDirectoryPath, name);
+                const stat = await fs.promises.stat(orphanPath);
+                if (stat.isFile()) await removeFileIfExists(orphanPath);
+            } catch (_error) { /* best-effort orphan cleanup */ }
+        }
+        return changed;
+    }
+
     /**
      * Reads index catalog from disk, bootstrapping state.
      * 
@@ -317,7 +397,14 @@ function createDiskSnapshotStore({
 
                 state = {
                     entries: new Map(parsedIndex.entries
-                        .filter(entry => entry && typeof entry.rootFile === 'string' && typeof entry.payloadFileName === 'string')
+                        .filter(entry => entry
+                            && typeof entry.rootFile === 'string'
+                            && typeof entry.payloadFileName === 'string'
+                            && path.basename(entry.payloadFileName) === entry.payloadFileName
+                            && Number.isFinite(entry.byteSize)
+                            && entry.byteSize >= 0
+                            && Number.isFinite(entry.lastAccessedAt)
+                            && entry.lastAccessedAt >= 0)
                         .map(entry => {
                             const rootFile = resolveRootFile(entry.rootFile);
                             return [
@@ -331,6 +418,9 @@ function createDiskSnapshotStore({
                             ];
                         })),
                 };
+                if (await reconcilePayloadFiles(state)) await writeIndex(state);
+                await removeExpiredEntries(state);
+                await evictEntriesIfNeeded(state, null);
                 return state;
             } catch (error) {
                 if (error.code === 'ENOENT') {
@@ -355,7 +445,7 @@ function createDiskSnapshotStore({
      */
     async function removeEntry(currentState, entry) {
         currentState.entries.delete(getRootCacheKey(entry.rootFile));
-        await removeFileIfExists(path.join(payloadDirectoryPath, entry.payloadFileName));
+        await removeEntryPayload(entry);
         await writeIndex(currentState);
     }
 
@@ -448,6 +538,8 @@ function createDiskSnapshotStore({
                     throw new TypeError('disk snapshot persistence requires a snapshot object');
                 }
                 const currentState = await loadState();
+                const accessedAt = now();
+                await removeExpiredEntries(currentState, accessedAt);
                 const rootFile = resolveRootFile(snapshot.rootFile);
                 const rootCacheKey = getRootCacheKey(rootFile);
                 const normalizedTrackedFiles = normalizeTrackedFiles(trackedFiles);
@@ -470,7 +562,7 @@ function createDiskSnapshotStore({
                     rootFile,
                     payloadFileName,
                     byteSize: Buffer.byteLength(payloadContent, 'utf8'),
-                    lastAccessedAt: now(),
+                    lastAccessedAt: accessedAt,
                 });
                 await evictEntriesIfNeeded(currentState, rootCacheKey);
                 await writeIndex(currentState);
@@ -489,9 +581,15 @@ function createDiskSnapshotStore({
                 const rootCacheKey = getRootCacheKey(rootFile);
                 const entry = currentState.entries.get(rootCacheKey);
                 if (!entry) return null;
+                const accessedAt = now();
+                if (isEntryExpired(entry, accessedAt)) {
+                    await removeEntry(currentState, entry);
+                    return null;
+                }
 
                 try {
                     const rawPayload = await fs.promises.readFile(path.join(payloadDirectoryPath, entry.payloadFileName), 'utf8');
+                    entry.byteSize = Buffer.byteLength(rawPayload, 'utf8');
                     const payload = JSON.parse(rawPayload);
                     if (!payload || payload.schemaVersion !== schemaVersion || !Array.isArray(payload.trackedFiles)) {
                         await removeEntry(currentState, entry);
@@ -502,16 +600,32 @@ function createDiskSnapshotStore({
                         return null;
                     }
 
-                    entry.lastAccessedAt = now();
+                    entry.lastAccessedAt = accessedAt;
+                    await evictEntriesIfNeeded(currentState, rootCacheKey);
                     await writeIndex(currentState);
+                    const snapshot = hydrateProjectSnapshot(payload.snapshot);
+                    await require('../references/referenceMetadata').restoreReferenceMetadata(snapshot.fileIndexes.values());
                     return {
-                        snapshot: hydrateProjectSnapshot(payload.snapshot),
+                        snapshot,
                         trackedFiles: payload.trackedFiles,
                     };
                 } catch (_error) {
                     await removeEntry(currentState, entry);
                     return null;
                 }
+            });
+        },
+
+        /**
+         * Removes every persisted project snapshot and returns the amount removed.
+         * In-flight callers are serialized through the same mutation queue.
+         */
+        async clear() {
+            return runExclusive(async () => {
+                const currentState = await loadState();
+                const removed = getStateStats(currentState);
+                await resetStorage();
+                return removed;
             });
         },
 
@@ -539,6 +653,8 @@ function createDiskSnapshotStore({
 
 module.exports = {
     createDiskSnapshotStore,
+    DEFAULT_MAX_CACHE_BYTES,
+    DEFAULT_MAX_ENTRY_AGE_MS,
     SNAPSHOT_SCHEMA_VERSION,
 };
 
