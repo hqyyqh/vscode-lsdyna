@@ -1,4 +1,0 @@
-*TERMINATION_SENSOR
-$#    swid
-         ?
-$

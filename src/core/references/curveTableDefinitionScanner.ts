@@ -1,8 +1,9 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const { parseNumericInput, numericInputValue } = require('./referenceInputValue');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
-const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
+const loadedReferenceIndex = require(keywordDataPath("references/field_reference_index.json"));
 
 function normalizeKeyword(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];

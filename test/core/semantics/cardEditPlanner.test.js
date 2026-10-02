@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 
-const fieldData = require('../../../keywords/field_data.json');
+const fieldData = require("../../../keywords/runtime/schema/field_data.json");
 const {
     cardEditSchemaSignature,
     fixedWidthCardHeader,

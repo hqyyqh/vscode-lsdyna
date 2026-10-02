@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 /**
@@ -13,7 +14,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const referenceIndex = require('../../../keywords/field_reference_index.json');
+const referenceIndex = require(keywordDataPath("references/field_reference_index.json"));
 const { SCANNER_VERSION } = require('../scanner/scannerContracts');
 
 const INDEX_FILE_NAME = 'file-scan-index.json';

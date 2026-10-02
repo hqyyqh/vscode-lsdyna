@@ -1,7 +1,8 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
-import runtimeTableLayoutCorrections = require('../runtimeTableLayoutCorrections.json');
-import runtimeSemanticRelationCorrections = require('../runtimeSemanticRelationCorrections.json');
+const runtimeTableLayoutCorrections = require(keywordDataPath("engineering/runtimeTableLayoutCorrections.json"));
+const runtimeSemanticRelationCorrections = require(keywordDataPath("engineering/runtimeSemanticRelationCorrections.json"));
 
 const crypto = require('crypto');
 

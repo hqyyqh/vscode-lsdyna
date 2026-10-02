@@ -1,12 +1,13 @@
+import { keywordDataPath } from "../keywordDataPath";
 import type { NativeFileRecord } from "./catalogNativeFileLayout";
 
 /** Sequential file-reader branches. These rules are transcribed from native file
  * functions and checked against archived reads, not GUI visibility snapshots. */
-const data = require('../../../keywords/lspp-conditional-layout-readers.json');
-const optionalFormHeaders = require('../../../keywords/lspp-optional-form-header-readers.json');
-const singleCardReaders = require('../../../keywords/lspp-single-card-readers.json');
-const standardRepeatReaders = require('../../../keywords/lspp-standard-repeat-readers.json');
-const tailRepeatReaders = require('../../../keywords/lspp-tail-repeat-readers.json');
+const data = require(keywordDataPath("native-readers/lspp-conditional-layout-readers.json"));
+const optionalFormHeaders = require(keywordDataPath("native-readers/lspp-optional-form-header-readers.json"));
+const singleCardReaders = require(keywordDataPath("native-readers/lspp-single-card-readers.json"));
+const standardRepeatReaders = require(keywordDataPath("native-readers/lspp-standard-repeat-readers.json"));
+const tailRepeatReaders = require(keywordDataPath("native-readers/lspp-tail-repeat-readers.json"));
 if (optionalFormHeaders.sourceSha256 !== data.sourceSha256) throw new Error('Optional form header source mismatch');
 if (singleCardReaders.sourceSha256 !== data.sourceSha256) throw new Error('Single-card reader source mismatch');
 if (tailRepeatReaders.sourceSha256 !== data.sourceSha256) throw new Error('Tail-repeat reader source mismatch');

@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const { fakeDoc, vscodeMock } = require('../../helpers');
+const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const keywordValidator = require('../../../src/core/parser/keywordValidator');
 
 // The validator needs a built-in keyword set injected via init(); the schema

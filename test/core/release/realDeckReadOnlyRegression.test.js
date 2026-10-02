@@ -18,7 +18,7 @@ const {
     diffSnapshots,
     normalizeRelativePath,
     snapshotDirectory,
-} = require('../../editor-safety/fileOracle');
+} = require("../../support/editor-safety/fileOracle");
 
 const FIXTURE_ROOT = path.resolve(__dirname, '..', '..', 'Bolt_A_Explicit');
 const ROOT_DECK = path.join(FIXTURE_ROOT, 'mainboltaexpl.k');

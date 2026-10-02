@@ -1,0 +1,37 @@
+{
+  "generator": {
+    "path": "scripts/generate-family-definition-scanner-runtime.cjs",
+    "sha256": "c9a36360357cdb44d0468258a11542556f06750867d0e5e6a5032649bca8000b",
+    "size": 6067
+  },
+  "kind": "dynasense-family-definition-scanner-runtime-report",
+  "output": {
+    "compressedBytes": 56701,
+    "contentSha256": "6c5c27f73cc412096e639fb4002f3d2784973c5d7845b42a0e325b180ded6d36",
+    "path": "keywords/family_definition_scanner.runtime.json.gz",
+    "sha256": "04c9f15771aa50731771905d37f0b02d8bbec8b248f23183295837bf0258926e",
+    "uncompressedBytes": 1221740
+  },
+  "permissions": {
+    "catalogLoadPermission": true,
+    "completenessClaimPermission": false,
+    "definitionProviderPermission": true,
+    "definitionRegistryPermission": true,
+    "referenceProviderPermission": true,
+    "scannerExecutionPermission": true
+  },
+  "schemaVersion": 1,
+  "source": {
+    "exactHandoffContentSha256": "6f4a79956f099197b0cbfbcb23bdef466c2c45b4e10f519690a96873bcf073aa",
+    "handoffContentSha256": "f5cdb08a3ae0c7c24bbf234f7eaa4f32bc497a3953d37065153e3365baa75c9e",
+    "implementationContractVersion": 2
+  },
+  "summary": {
+    "base": 861,
+    "descriptors": 1678,
+    "exact": 5,
+    "integerOnly": 19,
+    "labelCapable": 1659,
+    "title": 817
+  }
+}

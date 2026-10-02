@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const vscodeMock = require('../../vscode-mock');
+const vscodeMock = require("../../support/vscode-mock");
 
 const {
     buildOfficialFieldChoiceQuickPickItems,

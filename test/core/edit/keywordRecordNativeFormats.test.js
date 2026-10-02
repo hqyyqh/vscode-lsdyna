@@ -8,12 +8,12 @@ const { detectRecordFormat, formattedFields, readRecordField, writeRecordField, 
 const { globalInputFormatFromKeywordLine, keywordInputFormat } = require('../../../out/core/parser/inputFormat');
 
 const fixtures = {
-    standard: path.join(__dirname, '../../fixtures/lspp-native-formats/native-standard.k'),
-    long: path.join(__dirname, '../../fixtures/lspp-native-formats/native-long.k'),
-    i10: path.join(__dirname, '../../fixtures/lspp-native-formats/native-i10.k'),
-    free: path.join(__dirname, '../../fixtures/lspp-native-formats/native-free.k'),
-    mixedInput: path.join(__dirname, '../../fixtures/lspp-native-formats/i10-mixed-input.k'),
-    mixedReopened: path.join(__dirname, '../../fixtures/lspp-native-formats/i10-mixed-reopened.k'),
+    standard: path.join(__dirname, "../../fixtures/public-behavior/native-formats/native-standard.k"),
+    long: path.join(__dirname, "../../fixtures/public-behavior/native-formats/native-long.k"),
+    i10: path.join(__dirname, "../../fixtures/public-behavior/native-formats/native-i10.k"),
+    free: path.join(__dirname, "../../fixtures/public-behavior/native-formats/native-free.k"),
+    mixedInput: path.join(__dirname, "../../fixtures/public-behavior/native-formats/i10-mixed-input.k"),
+    mixedReopened: path.join(__dirname, "../../fixtures/public-behavior/native-formats/i10-mixed-reopened.k"),
 };
 function fields(widths, integerIndexes = []) {
     let position = 0;

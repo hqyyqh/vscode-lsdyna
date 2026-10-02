@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 
-const { fakeDoc, vscodeMock } = require('../helpers');
+const { fakeDoc, vscodeMock } = require("../support/helpers");
 const i18n = require('../../src/core/i18n');
 
 describe('keyword aliases and default valid keywords', () => {
@@ -48,7 +48,7 @@ describe('keyword aliases and default valid keywords', () => {
 
     it('accepts exact manual spellings backed by the locked LS-PrePost card layout', () => {
         const { getAliases } = require('../../src/core/keywordUtils');
-        const source = require('../../src/core/keywordSpellingAliases.json');
+        const source = require("../../keywords/authoring/engineering/keywordSpellingAliases.json");
         for (const item of source.aliases) {
             assert.ok(getAliases(item.manualKeyword).includes(item.schemaKeyword), item.manualKeyword);
             assert.ok(getAliases(item.schemaKeyword).includes(item.manualKeyword), item.schemaKeyword);

@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 import { descriptorIdentityAt } from './descriptorIdentity';
 /** File reader contracts are distinct from GUI descriptor pools.
  * Keep the verified dataset and record identity bindings together;
@@ -6,17 +7,17 @@ import { descriptorIdentityAt } from './descriptorIdentity';
 import { readRecordField, type RecordField } from '../edit/keywordRecordSerializer';
 import { nativeConditionalBinding, nativeConditionalSource } from './nativeConditionalLayout';
 import { nativeCountedOccurrenceBinding, nativeCountedOccurrenceSource } from './nativeCountedOccurrenceLayout';
-const sectionFixed = require('../../../keywords/lspp-section-fixed-readers.json');
-const genericReaders = require('../../../keywords/lspp-generic-file-readers.json');
-const optionalTailReaders = require('../../../keywords/lspp-optional-tail-readers.json');
-const eosSpecialReaders = require('../../../keywords/lspp-eos-special-readers.json');
-const ordinalReaders = require('../../../keywords/lspp-ordinal-file-readers.json');
-const ordinalConditional = require('../../../keywords/lspp-ordinal-conditional-readers.json');
-const batchFixed = require('../../../keywords/lspp-batch-fixed-readers.json');
-const suffixFixed = require('../../../keywords/lspp-suffix-fixed-readers.json');
-const spellingReaders = require('../../../keywords/lspp-spelling-file-readers.json');
-const contactIdMppFixed = require('../../../keywords/lspp-contact-id-mpp-fixed-readers.json');
-const contactMppTail = require('../../../keywords/lspp-contact-mpp-tail-readers.json');
+const sectionFixed = require(keywordDataPath("native-readers/lspp-section-fixed-readers.json"));
+const genericReaders = require(keywordDataPath("native-readers/lspp-generic-file-readers.json"));
+const optionalTailReaders = require(keywordDataPath("native-readers/lspp-optional-tail-readers.json"));
+const eosSpecialReaders = require(keywordDataPath("native-readers/lspp-eos-special-readers.json"));
+const ordinalReaders = require(keywordDataPath("native-readers/lspp-ordinal-file-readers.json"));
+const ordinalConditional = require(keywordDataPath("native-readers/lspp-ordinal-conditional-readers.json"));
+const batchFixed = require(keywordDataPath("native-readers/lspp-batch-fixed-readers.json"));
+const suffixFixed = require(keywordDataPath("native-readers/lspp-suffix-fixed-readers.json"));
+const spellingReaders = require(keywordDataPath("native-readers/lspp-spelling-file-readers.json"));
+const contactIdMppFixed = require(keywordDataPath("native-readers/lspp-contact-id-mpp-fixed-readers.json"));
+const contactMppTail = require(keywordDataPath("native-readers/lspp-contact-mpp-tail-readers.json"));
 const spellingFileCards = new Map<string, any[]>(Object.values<any>(spellingReaders.bindings)
     .filter(binding => binding.fileCards).map(binding => [binding.baseKeyword, binding.fileCards]));
 export function nativeSpellingBinding(keyword: string): any {
@@ -29,11 +30,11 @@ export function nativeSpellingFieldHelp(address: string): string | undefined {
 export function nativeSpellingGap(keyword: string): any {
     return spellingReaders.gaps?.[keyword.replace(/^\*/, '')];
 }
-const elementReaders = require('../../../keywords/lspp-element-readers.json');
-const nodeReaders = require('../../../keywords/lspp-node-readers.json');
-const partCompositeReaders = require('../../../keywords/lspp-part-composite-readers.json');
-const partStandaloneReaders = require('../../../keywords/lspp-part-standalone-readers.json');
-const partModularReaders = require('../../../keywords/lspp-part-modular-readers.json');
+const elementReaders = require(keywordDataPath("native-readers/lspp-element-readers.json"));
+const nodeReaders = require(keywordDataPath("native-readers/lspp-node-readers.json"));
+const partCompositeReaders = require(keywordDataPath("native-readers/lspp-part-composite-readers.json"));
+const partStandaloneReaders = require(keywordDataPath("native-readers/lspp-part-standalone-readers.json"));
+const partModularReaders = require(keywordDataPath("native-readers/lspp-part-modular-readers.json"));
 export function nativePartCompositeBinding(keyword: string): any {
     return partCompositeReaders.bindings[keyword.replace(/^\*/, '')];
 }
@@ -149,7 +150,7 @@ export function nativeGenericControlValue(branch: { blankValue: number }, raw: s
     const value = Number(text);
     return Number.isInteger(value) && value >= -2147483648 && value <= 2147483647 ? value : NaN;
 }
-export const NATIVE_FILE_SOURCE = "f910b467c00e88ba068c9384f50efe0fff24331c48fe901959672852f2563e2b";
+export const NATIVE_FILE_SOURCE = "68aa1f658eaeed8dc2b33eb9687eb349cf754d1f3fc51959a2364b9fdb071423";
 export function hasNativeSectionFixedReader(keyword: string): boolean {
     return Object.prototype.hasOwnProperty.call(sectionFixed.bindings, keyword.replace(/_TITLE$/, ''));
 }

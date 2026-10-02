@@ -1,3 +1,4 @@
+import { keywordDataPath } from "./keywordDataPath";
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,8 +14,8 @@ import {
     classifyParameterKeyword,
     type ParameterDefinitionOptions,
 } from './parser/parameterSyntax';
-import keywordSpellingAliases from './keywordSpellingAliases.json';
-import keywordLayoutCorrections from './keywordLayoutCorrections.json';
+const keywordSpellingAliases = require(keywordDataPath("engineering/keywordSpellingAliases.json"));
+const keywordLayoutCorrections = require(keywordDataPath("engineering/keywordLayoutCorrections.json"));
 import { resolveNativeFieldCard, nativeFieldsNeedOnlyOrdinal, hasNativeFileReader, nativeFieldDisplayOnly, type NativeFieldIdentity } from './semantics/nativeFieldResolution';
 import type { RecordFormat } from './edit/keywordRecordSerializer';
 import { nativeFieldDefinitions } from './semantics/nativeFieldDefinitions';
@@ -299,7 +300,7 @@ export function isLongFormatKeyword(keywordLineText: string): boolean {
 }
 
 function schemaDir(): string {
-    return path.join(__dirname, '..', '..', 'keywords');
+    return keywordDataPath("schema");
 }
 
 function runtimeDataDir(): string {

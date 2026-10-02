@@ -1,10 +1,10 @@
 'use strict';
 
 const assert = require('assert');
-const fieldData = require('../../keywords/field_data.json');
-const crosswalk = require('../../keywords/keyword_category_crosswalk.json');
-const runtimeCatalog = require('../../keywords/lspp_keyword_categories.runtime.json');
-const { buildArtifacts } = require('../../scripts/generate-keyword-category-crosswalk.cjs');
+const fieldData = require("../../keywords/runtime/schema/field_data.json");
+const crosswalk = require("../../keywords/runtime/categories/keyword_category_crosswalk.json");
+const runtimeCatalog = require("../../keywords/runtime/categories/lspp_keyword_categories.runtime.json");
+const { buildArtifacts } = require("../../scripts/build/generate-keyword-category-crosswalk.cjs");
 const {
     getKeywordCategory,
     listKeywordCategories,

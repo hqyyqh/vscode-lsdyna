@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "DynaSense: Extension Development Host",
+            "type": "extensionHost",
+            "request": "launch",
+            "preLaunchTask": "build extension",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--disable-extensions",
+                "--skip-welcome",
+                "--skip-release-notes"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ]
+        }
+    ]
+}
+

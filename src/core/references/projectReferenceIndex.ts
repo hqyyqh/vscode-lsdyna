@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const path = require('path');
@@ -12,7 +13,7 @@ const {
 } = require('./parameterEnvironment');
 const { resolveReferenceValueSemantics } = require('./fieldReferenceClassifier');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
-const definitionLayoutIndex = require('../../../keywords/field_reference_index.json');
+const definitionLayoutIndex = require(keywordDataPath("references/field_reference_index.json"));
 const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog');
 const { isEntityIdentity, isLabelIdentity } = require('./entityIdentity');
 

@@ -1,4 +1,0 @@
-*CONTACT_INTERIOR
-$#    psid
-         ?
-$

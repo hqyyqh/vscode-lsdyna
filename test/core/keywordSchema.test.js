@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const { fakeDoc } = require('../helpers');
+const { fakeDoc } = require("../support/helpers");
 
 describe('keywordSchema resolver', () => {
     it('resolves every mixed-case catalog key without replacing its help objects', () => {
@@ -254,7 +254,7 @@ describe('keywordSchema resolver', () => {
             loadKeywordSchema,
             lookupKeywordSchema,
         } = require('../../src/core/keywordSchema');
-        const source = require('../../src/core/keywordSpellingAliases.json');
+        const source = require("../../keywords/authoring/engineering/keywordSpellingAliases.json");
         const schema = loadKeywordSchema(() => 'en');
 
         assert.equal(source.policy.fuzzyAliasPermission, false);
@@ -292,8 +292,8 @@ describe('keywordSchema resolver', () => {
     it('repairs the source-locked IGA card only while the complete bad source shape matches', () => {
         const { getCardInfoForDocumentLine, getRenderedCardsForLookup, loadKeywordSchema, lookupKeywordSchema } = require('../../src/core/keywordSchema');
         const { readCellValue, writeCellR1 } = require('../../src/core/edit/cardCellModel');
-        const { fakeDoc } = require('../helpers');
-        const source = require('../../src/core/keywordLayoutCorrections.json');
+        const { fakeDoc } = require("../support/helpers");
+        const source = require("../../keywords/authoring/engineering/keywordLayoutCorrections.json");
         const schema = loadKeywordSchema(() => 'en');
         const correction = source.corrections[0];
 

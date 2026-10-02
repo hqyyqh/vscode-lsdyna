@@ -1,9 +1,9 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc } = require('../helpers');
-const vscode = require('../vscode-mock');
+const { fakeDoc } = require("../support/helpers");
+const vscode = require("../support/vscode-mock");
 const schema = require('../../out/core/keywordSchema');
-const { buildHelpTextIndex } = require('../../scripts/generate-field-help-runtime.cjs');
+const { buildHelpTextIndex } = require("../../scripts/build/generate-field-help-runtime.cjs");
 
 describe('source-bound help translations', function () {
     this.timeout(20000);

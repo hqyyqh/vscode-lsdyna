@@ -1,0 +1,27 @@
+name: Feature suggestion / 功能建议
+description: Propose a concrete workflow improvement / 提出具体的工作流程改进
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem and current workflow / 用户问题与当前流程
+      description: Describe a concrete example without confidential data / 用不含保密数据的具体示例说明
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior / 建议行为
+      description: Explain how users would observe success / 说明用户如何判断改进生效
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Existing workarounds or alternatives / 现有变通方法或替代方案
+  - type: textarea
+    id: data
+    attributes:
+      label: Data source and permission, when applicable / 涉及数据时的来源与许可
+      description: Local corrections must retain the original source identity / 本地修正须保留原始来源身份
+

@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { fakeDoc, vscodeMock: vscode } = require('../../helpers');
+const { fakeDoc, vscodeMock: vscode } = require("../../support/helpers");
 const { createKeywordManagerApply } = require('../../../src/client/services/keywordManagerApply');
 const { keywordOptionsEditorForModel } = require('../../../src/extension')._internals;
 const i18n = require('../../../src/core/i18n');

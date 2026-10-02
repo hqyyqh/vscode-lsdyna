@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { fakeDoc } = require('../../helpers');
+const { fakeDoc } = require("../../support/helpers");
 const schemaApi = require('../../../src/core/keywordSchema');
 const { buildSemanticDocumentContext } = require('../../../src/core/semantics/semanticDocumentContext');
 const schema = { TEST: { c: [

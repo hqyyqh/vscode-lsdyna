@@ -13,7 +13,7 @@ const {
     getRegistryApprovedFieldReferenceInfo,
     parseFieldReferenceValue,
 } = require('../../../out/core/references/fieldReferenceClassifier');
-const registry = require('../../../keywords/definition_registry.json');
+const registry = require("../../../keywords/runtime/definitions/definition_registry.json");
 const { getDefinitionRegistryCatalog } = require('../../../out/core/references/definitionRegistry');
 const keywordSchema = require('../../../out/core/keywordSchema');
 const { getSemanticRuntimeCatalogV2 } = require('../../../out/core/semantics/semanticRuntimeV2');

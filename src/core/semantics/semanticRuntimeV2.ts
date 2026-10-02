@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 import * as crypto from 'node:crypto';
@@ -181,7 +182,7 @@ function assertContract(condition: any, message: string): asserts condition {
 }
 
 export function semanticRuntimeV2Root(): string {
-    return path.resolve(__dirname, '..', '..', '..', 'keywords', 'semantic_runtime_v2');
+    return keywordDataPath("semantic-v2");
 }
 
 function validateManifest(raw: any): SemanticRuntimeCatalogV2Manifest {

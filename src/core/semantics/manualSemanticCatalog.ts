@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,7 +12,7 @@ export function normalizeSemanticKeyword(value: string): string {
 }
 
 function defaultRuntimeRoot(): string {
-    return path.join(__dirname, '..', '..', '..', 'keywords', 'manual_semantics');
+    return keywordDataPath("manual-semantics");
 }
 
 function sha256(value: Buffer): string {

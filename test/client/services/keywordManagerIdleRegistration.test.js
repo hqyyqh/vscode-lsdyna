@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc, vscodeMock: vscode } = require('../../helpers');
+const { fakeDoc, vscodeMock: vscode } = require("../../support/helpers");
 const extension = require('../../../src/extension');
 const { KeywordOptionsWebviewProvider } = require('../../../src/client/KeywordOptionsWebviewProvider');
 

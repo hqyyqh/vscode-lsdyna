@@ -1,72 +1,63 @@
 # Public source development / 对外源码开发
 
-The public `dev` branch receives reviewed final source; `master` is the stable release branch.
+The public `dev` branch accepts reviewed contributions; `master` is the stable release branch.
 
-公开 `dev` 分支接收经审查的最终源码，`master` 为稳定发布分支。
+公开 `dev` 分支接收经审查的贡献，`master` 为稳定发布分支。
 
 Run inside the candidate:
 
 ```sh
 npm ci
+python -m pip install -r requirements-dev.txt
 npm run build
+npm run data:check
+npm run update:source-manifest -- --check
 npm run check:contracts
 npm test
 npm run test:webview
+python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
 npm run check:field-data-zh
 npm run check:native-help-zh
 npm run check:manual-semantics-zh
+npm audit
 npm run package
 ```
 
-`public-source-manifest.json` lists each included file, its SHA-256 and purpose.
-The private report lists each omitted maintenance file and its reason. Public builds verify the exact
-set and bytes of final data before generating field schema/help and copying the
-verified Input Form runtime manifest. They do not perform native collection or
-replay internal extraction. Product language, registration, geometry, runtime
-permission and shard-integrity checks remain required. Internal producer replay
-remains a separate gate in the complete maintenance checkout; passing a public build does not certify a new
-producer or authorize a data update.
+Read [CONTRIBUTING.md](../CONTRIBUTING.md) for F5 and review requirements, and
+[DATA_REGENERATION.md](../DATA_REGENERATION.md) for editable engineering data.
+The four-role manifest records the complete public inventory and actual bytes.
+Its updater can accept source changes, local authoring changes and verified
+deterministic output; it cannot change an original snapshot or manufacture new
+native-source certification. Boundary checks scan current files, including newly
+added source not yet listed in the manifest.
 
-公开清单逐文件记录保留内容、SHA-256 和用途；内部报告列出省略的维护文件及原因。公开构建
-先验证最终数据文件集合和字节，再生成字段 schema、帮助分片并复制已核验的表单清单。
-语言、命令注册、字段位置、运行时权限和分片完整性仍须检查。内部生产者复验继续在
-完整维护工作区中执行；公开构建通过不能替代生产者复验，也不授权更新数据来源。
+F5 与审查要求见 [CONTRIBUTING.md](../CONTRIBUTING.md)，工程数据维护见
+[DATA_REGENERATION.md](../DATA_REGENERATION.md)。四职责清单记录完整公开文件集合
+及真实字节。更新器可接收源码、本地作者数据和经确定性重建核验的输出，但不能改写
+原快照或制造新的原生来源认证。边界检查扫描当前文件，包括尚未写入清单的新增源码。
 
-Mixed tests must retain product behavior assertions. For standard and tail repeat
-records, public fixtures preserve observed field geometry, input decks, formats
-and counts; maintenance-only fixture source checks independently
-compare the fixtures against verified native evidence in the complete maintenance checkout. Removing an
-internal replay from a public candidate is not permission to remove reading,
-editing, reopening, comment preservation or refusal-condition tests.
+A public projection has its own real content identity. Source quotations, required
+licenses, engineering behavior, permission limits and old source identities remain
+truthful. Original protected evidence is retained internally; the private inverse
+ledger proves the transformation. The relaxed-model public fixture retains all 16
+shard bytes and has a distinct, statically pinned manifest identity. The 17-file
+fixture is preserved as evidence; ordinary regression fixtures remain editable.
 
-混合测试必须保留产品行为断言。标准重复记录和尾部重复记录的公开 fixture 保留已观察
-的字段位置、输入文件、格式及记录数；内部来源测试在完整维护工作区中对照已核验的原生证据。
-省略内部复验不意味着可以删除读取、修改、重新打开、注释保留或拒绝修改的测试。
+公开投影具有独立且真实的内容身份。来源引文、必要许可、工程行为、权限限制及原来源
+身份必须保持真实。受保护的原始证据在内部完整保留，私密逆向记录验证转换。
+relaxed-model 公开行为样例保留全部 16 个分片字节，使用独立且静态绑定的清单身份。
+包含 17 个文件的样例作为证据保留；普通回归样例仍可编辑。
 
-Any retained extraction archive is explicitly listed in the private report;
-`acceptance.unresolvedInternalEvidenceCount` records the count. The candidate remains
-`unverified-boundary` until those mixed consumers are separated and revalidated.
-Do not mark such a candidate ready for distribution. No commit, push, tag or
-publication is performed by export.
+Source export records `requires-independent-validation` until the candidate is
+independently built and checked. CI packages one real candidate and exercises that
+same VSIX on the three-platform, two-version host matrix. The manual renderer uses
+an original synthetic fixture; it does not certify an official manual. Record
+actual passed, failed and unverified results. Export, package creation, local
+validation and pull requests do not perform or authorize a push, stable merge,
+tag or release.
 
-The relaxed-model behavior fixture has a distinct public manifest identity. Export
-omits only its five production-path fields, retains all sixteen shard bytes,
-records, policy and population checks, and recomputes the actual manifest and
-content hashes. An internal source proof validates the original fixed identity
-and the inverse transformation. `acceptance.independentlyProjectedBehaviorFixtureCount`
-records its seventeen files separately from collection archives. Public builds
-have no implicit private sibling root. Explicit `DYNASENSE_RELAXED_MODEL_ROOT`
-configuration still accepts either the original or public fixed identity tuple;
-mixed hashes, changed policy or damaged shards fail closed. Neither identity
-authorizes runtime semantics or editing, and callers cannot override expected hashes.
+在独立构建和验证前，导出记录 `requires-independent-validation`。CI 打包真实候选，
+在三个平台及两个版本的宿主矩阵中使用同一份 VSIX。手册渲染使用原创合成样例，不认证
+官方手册。应记录实际通过、失败和未验证结果。导出、打包、本地验证和拉取请求不执行
+或授权推送、稳定分支合并、打标签或发布。
 
-仍被混合测试依赖的提取档案逐项列在内部报告中，公开清单只记录其数量；在拆分
-消费者并完成复验前，候选状态为 `unverified-boundary`，不能视为对外分发已验收。
-导出不会提交、推送、打标签或发布。
-
-relaxed-model 行为 fixture 使用独立的公开 manifest 身份。导出只省略五个生产路径字段，
-保留全部十六个分片字节、记录、策略及数量校验，并真实重算 manifest 和内容摘要。
-内部来源证明复验原始固定身份及逆变换；`acceptance.independentlyProjectedBehaviorFixtureCount`
-单独记录其十七个文件。公开构建取消隐式私有同级目录，显式配置
-`DYNASENSE_RELAXED_MODEL_ROOT` 仍可读取原始或公开的固定身份组合；摘要混配、策略变化
-或分片损坏都拒绝使用。两种身份都不授权运行时语义或编辑，调用方不能覆盖预期摘要。

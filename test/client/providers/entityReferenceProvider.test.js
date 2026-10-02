@@ -102,14 +102,15 @@ describe('LsdynaEntityReferenceProvider', () => {
     it('evicts result coordinates by LRU while retaining query identities', async () => {
         let tick = 0;
         const sampleBytes = 1_000;
+        const fixtureRoot = path.join(path.parse(process.cwd()).root, 'lru');
         const provider = new LsdynaEntityReferenceProvider({
             workspaceState: memoryState(),
             resultBudgetBytes: sampleBytes,
             clock: () => ++tick,
         });
-        const first = provider.publish(identity(1), result(path.resolve('a.key'), 1));
+        const first = provider.publish(identity(1), result(path.join(fixtureRoot, 'a.key'), 1));
         await provider.pin(first);
-        const second = provider.publish(identity(2), result(path.resolve('b.key'), 1));
+        const second = provider.publish(identity(2), result(path.join(fixtureRoot, 'b.key'), 1));
 
         assert.equal(provider.getSession(first.key).state, 'needs-refresh');
         assert.deepEqual(provider.getSession(first.key).locations, []);

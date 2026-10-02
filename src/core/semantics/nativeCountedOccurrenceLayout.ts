@@ -1,6 +1,7 @@
+import { keywordDataPath } from "../keywordDataPath";
 import type { NativeFileRecord } from "./catalogNativeFileLayout";
 
-const data = require('../../../keywords/lspp-occurrence-readers.json');
+const data = require(keywordDataPath("native-readers/lspp-occurrence-readers.json"));
 
 export function nativeCountedOccurrenceBinding(keyword: string): any {
     return data.bindings[keyword.replace(/^\*/, '')];

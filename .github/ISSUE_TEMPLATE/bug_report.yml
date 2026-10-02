@@ -1,0 +1,26 @@
+name: Bug report / 问题报告
+description: Report reproducible product behavior / 报告可复现的产品问题
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities use the private contact in SECURITY.md. 安全漏洞请使用 SECURITY.md 中的私密联系方式。"
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior / 预期与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and minimal synthetic example / 步骤与最小合成示例
+      description: Remove confidential data and local paths / 删除保密数据和本机路径
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Extension, VS Code, OS and language versions / 扩展、VS Code、系统与语言版本
+    validations:
+      required: true
+

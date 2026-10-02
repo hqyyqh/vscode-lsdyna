@@ -12,7 +12,7 @@ const {
 describe('projectReferenceIndex', () => {
     it('does not load relation coverage while importing the extension', () => {
         require('node:child_process').execFileSync(process.execPath, ['-e', `
-            require('./test/register-out');
+            require('./test/support/register-out');
             const registry = require('./out/core/references/definitionRegistry');
             registry.getDefinitionRegistryCatalog = () => { throw Error('eager relation catalog'); };
             require('./out/extension');

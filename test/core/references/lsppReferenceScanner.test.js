@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const referenceIndex = require('../../../keywords/field_reference_index.json');
+const referenceIndex = require("../../../keywords/runtime/references/field_reference_index.json");
 const { buildFileIndex } = require('../../../out/core/scanner/fileIndexBuilder');
 const { indexedEntityKinds, queryIndexedEntityId } =
     require('../../../out/core/references/indexedEntityQuery');

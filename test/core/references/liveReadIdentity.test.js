@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc, vscodeMock } = require('../../helpers');
+const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const { analyzeReference } = require('../../../out/core/references/projectReferenceIndex');
 const {
     getReferenceIndexForDocument, getFileIndexForDocument,

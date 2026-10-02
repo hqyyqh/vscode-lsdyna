@@ -12,9 +12,9 @@ const {
 const { SemanticRuntimeCatalogV2, getSemanticRuntimeCatalogV2 } = require('../../../out/core/semantics/semanticRuntimeV2');
 const { getManualSemanticCatalog } = require('../../../out/core/semantics/manualSemanticCatalog');
 
-const registry = require(path.resolve(__dirname, '..', '..', '..', 'keywords', 'definition_registry.json'));
-const proofReport = require(path.resolve(__dirname, '..', '..', '..', 'keywords', 'definition_registry.proof-report.json'));
-const fieldReferenceIndex = require(path.resolve(__dirname, '..', '..', '..', 'keywords', 'field_reference_index.json'));
+const registry = require(path.resolve(__dirname, "../../../keywords/runtime/definitions/definition_registry.json"));
+const proofReport = require(path.resolve(__dirname, "../../../keywords/provenance/definition-registry/definition_registry.proof-report.json"));
+const fieldReferenceIndex = require(path.resolve(__dirname, "../../../keywords/runtime/references/field_reference_index.json"));
 
 describe('Definition Registry runtime', () => {
     it('shares asynchronous preparation and retains all validated relations and permissions', async function () {
@@ -166,7 +166,7 @@ describe('Definition Registry runtime', () => {
     });
 
     it('fails closed without exposing partial relations when integrity validation fails', () => {
-        const source = path.resolve(__dirname, '..', '..', '..', 'keywords', 'semantic_runtime_v2');
+        const source = path.resolve(__dirname, "../../../keywords/runtime/semantic-v2");
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-runtime-v2-'));
         fs.cpSync(source, root, { recursive: true });
         const shard = path.join(root, 'references', '0.json.gz');

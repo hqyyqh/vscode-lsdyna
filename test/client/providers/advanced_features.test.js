@@ -1,9 +1,9 @@
 'use strict';
 
 const assert = require('assert');
-const fieldData = require('../../../keywords/field_data.json');
+const fieldData = require("../../../keywords/runtime/schema/field_data.json");
 const path = require('path');
-const { fakeDoc, vscodeMock } = require('../../helpers');
+const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const i18n = require('../../../src/core/i18n');
 const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
@@ -2624,6 +2624,43 @@ describe('adjacent field merge choice', () => {
     });
 
 describe('empty fixed-width field typing', () => {
+        for (const transition of ['unchanged', 'focus-changed', 'document-closed']) {
+            it(`waits for native cell repair before typing (${transition})`, async () => {
+                const document = fakeDoc('native edit pending', '/project/pending-repair.key');
+                document.languageId = 'plaintext';
+                const position = new vscodeMock.Position(0, 0);
+                const editor = { document, selection: new vscodeMock.Selection(position, position) };
+                const originalEditor = vscodeMock.window.activeTextEditor;
+                const originalExecuteCommand = vscodeMock.commands.executeCommand;
+                const delegated = [];
+                const args = { text: 'X' };
+                const release = require('../../../src/extension')._internals
+                    .beginCardCellPostEditBarrier(document);
+                vscodeMock.window.activeTextEditor = editor;
+                vscodeMock.commands.executeCommand = async (...commandArgs) => {
+                    delegated.push(commandArgs);
+                };
+                try {
+                    const typing = handleCardCellType(args);
+                    await Promise.resolve();
+                    assert.deepStrictEqual(delegated, [], 'typing must not bypass pending repair');
+                    if (transition === 'focus-changed') {
+                        vscodeMock.window.activeTextEditor = { document };
+                    } else if (transition === 'document-closed') {
+                        document.isClosed = true;
+                    }
+                    release();
+                    await typing;
+                    assert.deepStrictEqual(delegated, transition === 'unchanged'
+                        ? [['default:type', args]] : []);
+                } finally {
+                    release();
+                    vscodeMock.window.activeTextEditor = originalEditor;
+                    vscodeMock.commands.executeCommand = originalExecuteCommand;
+                }
+            });
+        }
+
         it('keeps an established edit choice visible without a second semantic-index gate', async () => {
             const document = fakeDoc('fixed row', '/project/pending-choice.key');
             document.languageId = 'plaintext';

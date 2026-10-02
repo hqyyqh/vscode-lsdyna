@@ -1,5 +1,5 @@
 const assert=require('assert'),path=require('path');
-const handoff=require('../../../keywords/exact_definition_scanner_handoff.json');
+const handoff=require("../../../keywords/sources/semantic-inputs/exact_definition_scanner_handoff.json");
 const {queryOnDemandDefinitionAtPosition,scanOnDemandDefinitions}=require('../../../out/core/references/onDemandDefinitionScanner');
 function rendered(v,m){if(m==='comma-delimited')return`${v},0`;return String(v).padStart(m==='long-fixed'?20:10,' ')}
 function keyword(d,m){return`*${d.keyword}${m==='long-fixed'?'+':m==='i10-fixed'?'%':''}`}

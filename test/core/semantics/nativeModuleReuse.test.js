@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),Module=require('node:module'),path=re
 const root=path.resolve(__dirname,'../../..');
 const catalogModule=require(path.join(root,"out/core/semantics/catalogInputFormCatalogV4"));
 const schemaModule=require(path.join(root,'out/core/keywordSchema'));
-const fieldSchema=require(path.join(root,'keywords/field_data.json'));
+const fieldSchema=require(path.join(root,"keywords/runtime/schema/field_data.json"));
 function loadsMatching(pattern,run){
     const original=Module._load;let calls=0;
     Module._load=function(request,...args){if(pattern.test(request))calls++;return original.call(this,request,...args);};

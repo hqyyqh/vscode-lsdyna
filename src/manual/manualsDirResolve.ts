@@ -68,7 +68,7 @@ function resolveManualDirectoryCandidates({
 
     // 2) appRoot is usually resources/app; install root is two levels up
     if (appRoot) {
-        candidates.push(pathModule.resolve(appRoot, '../../', manualsDir));
+        candidates.push(pathModule.resolve(appRoot, "../..", manualsDir));
         candidates.push(pathModule.resolve(appRoot, manualsDir));
     }
 

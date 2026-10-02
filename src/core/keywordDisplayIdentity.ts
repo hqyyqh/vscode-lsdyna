@@ -1,3 +1,4 @@
+import { keywordDataPath } from "./keywordDataPath";
 'use strict';
 
 /**
@@ -15,7 +16,7 @@ const {
     loadKeywordSchema,
     lookupKeywordSchema,
 } = require('./keywordSchema');
-const referenceIndex = require('../../keywords/field_reference_index.json');
+const referenceIndex = require(keywordDataPath("references/field_reference_index.json"));
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');

@@ -10,7 +10,7 @@ const {
 } = require('../../../out/core/semantics/manualSemanticCatalog');
 const path = require('path');
 
-const runtimeRoot = path.resolve(__dirname, '..', '..', '..', 'keywords', 'manual_semantics');
+const runtimeRoot = path.resolve(__dirname, "../../../keywords/runtime/manual-semantics");
 
 function fakeCatalog(rules) {
     return {

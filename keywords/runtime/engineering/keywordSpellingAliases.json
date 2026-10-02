@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-locked-keyword-spelling-aliases",
+  "policy": {
+    "matching": "exact-explicit-pair-only",
+    "layoutGate": "complete-card-field-name-type-position-width",
+    "fuzzyAliasPermission": false,
+    "optionInferencePermission": false
+  },
+  "aliases": [
+    {
+      "manualKeyword": "IGA_MASS_SET_POINT_UVW",
+      "schemaKeyword": "IGA_MASS_SETPOINT_UVW",
+      "authoringRelationId": "authoring-relation:0a5ef087360ecece827f81e8",
+      "physicalTableId": "global-manual-card-grid:768c4cd01e2c4e10e10e48b9",
+      "evidenceId": "evidence:cbb5007c1cb3834f90c303e7",
+      "manualPage": 2969,
+      "quoteSha256": "43f39f3a88bc4772e39794466f9d03acdc99a1bd3a7aab772656bd2571f4d379",
+      "cardIndex": 1,
+      "card": [
+        { "name": "ID", "type": "integer", "position": 0, "width": 10 },
+        { "name": "TMASS", "type": "real", "position": 10, "width": 10 },
+        { "name": "DMASS", "type": "real", "position": 20, "width": 10 }
+      ]
+    },
+    {
+      "manualKeyword": "IGA_MASS_SET_FACE_XYZ",
+      "schemaKeyword": "IGA_MASS_SETFACE_XYZ",
+      "authoringRelationId": "authoring-relation:bde050c0f10dc68ab3b9066f",
+      "physicalTableId": "global-manual-card-grid:768c4cd01e2c4e10e10e48b9",
+      "evidenceId": "evidence:cbb5007c1cb3834f90c303e7",
+      "manualPage": 2969,
+      "quoteSha256": "43f39f3a88bc4772e39794466f9d03acdc99a1bd3a7aab772656bd2571f4d379",
+      "cardIndex": 1,
+      "card": [
+        { "name": "ID", "type": "integer", "position": 0, "width": 10 },
+        { "name": "TMASS", "type": "real", "position": 10, "width": 10 },
+        { "name": "DMASS", "type": "real", "position": 20, "width": 10 }
+      ]
+    },
+    {
+      "manualKeyword": "IGA_MASS_SET_EDGE_UVW",
+      "schemaKeyword": "IGA_MASS_SETEDGE_UVW",
+      "authoringRelationId": "authoring-relation:65d079821a7b650f8e91c442",
+      "physicalTableId": "global-manual-card-grid:768c4cd01e2c4e10e10e48b9",
+      "evidenceId": "evidence:cbb5007c1cb3834f90c303e7",
+      "manualPage": 2969,
+      "quoteSha256": "43f39f3a88bc4772e39794466f9d03acdc99a1bd3a7aab772656bd2571f4d379",
+      "cardIndex": 1,
+      "card": [
+        { "name": "ID", "type": "integer", "position": 0, "width": 10 },
+        { "name": "TMASS", "type": "real", "position": 10, "width": 10 },
+        { "name": "DMASS", "type": "real", "position": 20, "width": 10 }
+      ]
+    },
+    {
+      "manualKeyword": "DEFINE_STOCHASTIC_ELEMENT_SHELL_VARIATION",
+      "schemaKeyword": "DEFINE_STOCHASTIC_ELEMENT_SHELL_VARIATON",
+      "authoringRelationId": "authoring-relation:5df239b974e0752c520bb9dc",
+      "physicalTableId": "global-manual-card-grid:06334abb5a8c09910c7d58d7",
+      "evidenceId": "evidence:7acb9e4720241914e6d168ba",
+      "manualPage": 2566,
+      "quoteSha256": "77509169722ba68006103d7765a1e526248073f4113290577c631aa44adc477b",
+      "cardIndex": 1,
+      "card": [
+        { "name": "IDE", "type": "integer", "position": 0, "width": 10 },
+        { "name": "VARSY", "type": "real", "position": 10, "width": 10 },
+        { "name": "VARF", "type": "real", "position": 20, "width": 10 },
+        { "name": "VARRO", "type": "real", "position": 30, "width": 10 },
+        { "name": "VARE", "type": "real", "position": 40, "width": 10 }
+      ]
+    },
+    {
+      "manualKeyword": "DEFINE_STOCHASTIC_ELEMENT_SOLID_VARIATION",
+      "schemaKeyword": "DEFINE_STOCHASTIC_ELEMENT_SOLID_VARIATON",
+      "authoringRelationId": "authoring-relation:dc43e7738eb58468d49e06dd",
+      "physicalTableId": "global-manual-card-grid:06334abb5a8c09910c7d58d7",
+      "evidenceId": "evidence:7acb9e4720241914e6d168ba",
+      "manualPage": 2566,
+      "quoteSha256": "77509169722ba68006103d7765a1e526248073f4113290577c631aa44adc477b",
+      "cardIndex": 1,
+      "card": [
+        { "name": "IDE", "type": "integer", "position": 0, "width": 10 },
+        { "name": "VARSY", "type": "real", "position": 10, "width": 10 },
+        { "name": "VARF", "type": "real", "position": 20, "width": 10 },
+        { "name": "VARRO", "type": "real", "position": 30, "width": 10 },
+        { "name": "VARE", "type": "real", "position": 40, "width": 10 }
+      ]
+    }
+  ]
+}

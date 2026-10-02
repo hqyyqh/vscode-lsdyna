@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc, vscodeMock } = require('../../helpers');
+const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const MarkdownIt = require('markdown-it');
 const { buildDefinitionHoverSection, buildReferenceHoverSection } = require('../../../out/core/references/fieldReferenceHover');
 const { HOVER_TRUST, LsdynaFieldHoverProvider, clearReferenceIndexCacheForTesting, setFileIndexForTesting } = require('../../../out/extension')._internals;

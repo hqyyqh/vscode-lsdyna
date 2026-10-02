@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const vscode = require('../../vscode-mock');
+const vscode = require("../../support/vscode-mock");
 
 describe('LS-DYNA formatting registration boundary', () => {
     it('registers neither a document formatter nor a range formatter', async () => {

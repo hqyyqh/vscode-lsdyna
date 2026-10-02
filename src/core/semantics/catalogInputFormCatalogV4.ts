@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 import { isDescriptorIdentity, descriptorIdentityAt } from './descriptorIdentity';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -15,7 +16,7 @@ function normalizeKeyword(value: string): string {
 }
 
 function defaultRuntimeRoot(): string {
-    return path.join(__dirname, '..', '..', '..', 'keywords', 'lspp-input-form');
+    return keywordDataPath("input-form");
 }
 
 import { ByteLru } from '../cache/byteLru';
@@ -292,7 +293,7 @@ export class CatalogInputFormCatalogV4 {
         const manifest = this.loadManifest();
         let normalized = normalizeKeyword(keyword);
         if (!manifest.keywords[normalized]) {
-            const alias = require('../../../keywords/lspp-node-readers.json')?.bindings?.[normalized]?.aliasOf;
+            const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf;
             if (alias && manifest.keywords[alias]) normalized = alias;
         }
         const index = manifest.keywords[normalized];
@@ -368,7 +369,7 @@ export class CatalogInputFormCatalogV4 {
         let index = manifest.keywords[normalized];
         if (!index) {
             try {
-                const nodeReaders = require('../../../keywords/lspp-node-readers.json');
+                const nodeReaders = require(keywordDataPath("native-readers/lspp-node-readers.json"));
                 const node = nodeReaders?.bindings?.[normalized];
                 if (node?.aliasOf && manifest.keywords[node.aliasOf]) {
                     normalized = node.aliasOf;

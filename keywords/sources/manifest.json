@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "kind": "dynasense-portable-data-sources",
+  "sourceIdentity": {
+    "pydyna": {
+      "repository": "ansys/pydyna",
+      "commit": "367fea6c13ca7c8d2e28bd290d943395d84e77a3"
+    },
+    "nativeExecutableSha256": "c90d0936a75f16ba3a60ebbaa329b56b5e3a6d8f37dca9a226096f9ada7d571a",
+    "schemaBaseline": "reviewed-generated-schema-including-eight-compatibility-overlays",
+    "externalReplay": "not-run-by-checkpoint-import",
+    "projection": {
+      "kind": "dynasense-public-logical-projection",
+      "externalProducerReplay": "unverified",
+      "claim": "Distinct projected container identities; original upstream identities remain historical declarations"
+    }
+  },
+  "checkpointPolicy": "inherited-logical-content; external-producer-replay-is-separate",
+  "compatibility": [
+    {
+      "path": "keywords/authoring/compatibility/cese_mat_002_card1_manual_layout.json",
+      "sha256": "2e832f5a26db8433d43cdec91e9b0f4e932e7b9bafd22f06e08c753d9691a4a2"
+    },
+    {
+      "path": "keywords/authoring/compatibility/component_joint_did_official_float.json",
+      "sha256": "b999368c142d82ec1900787261a6338289d1e5d05d40ea388c59c680d3949fe4"
+    },
+    {
+      "path": "keywords/authoring/compatibility/constrained_soil_pile_card2_manual_layout.json",
+      "sha256": "1c3002b3e57c53fd3d09614437d0fe516052bd99f3c530a98f836bd0d6cd74c1"
+    },
+    {
+      "path": "keywords/authoring/compatibility/define_control_volume_flow_area_card1_manual_layout.json",
+      "sha256": "272918639cd66c9ac883850eb221e60940bf85f37666480a501e9978fe384ea4"
+    },
+    {
+      "path": "keywords/authoring/compatibility/em_solver_fembem_monolithic_card2_3_manual_layout.json",
+      "sha256": "cb34fc4e3d20d62467b379c5251ff1139c95aabb786320936648b1f338984ca9"
+    },
+    {
+      "path": "keywords/authoring/compatibility/icfd_control_dem_coupling_card2_manual_layout.json",
+      "sha256": "63717dc6b00650a8f393e2f8eba0d602d2217b274f9493c7e86859b9a44c911a"
+    },
+    {
+      "path": "keywords/authoring/compatibility/mat_072_card8_manual_layout.json",
+      "sha256": "e319b1e64c9480f106fff3dd058d46fb3a51b2d3d290b1e9d8faa93c3c3dd5e7"
+    },
+    {
+      "path": "keywords/authoring/compatibility/mat_add_erosion_legacy_fields.json",
+      "sha256": "8f38e05ce43ad53e6c5e623d65b86dae34038bb909767bfc7f78c78b07a15c75"
+    }
+  ],
+  "bundles": [
+    {
+      "bundle": "schema",
+      "path": "keywords/sources/schema/logical.json.gz",
+      "sha256": "0660c76e56f9bcbbd91c2330e2217ce3ef0fc74645d51e568b8bc6b478e0af0d",
+      "contentSha256": "ff81b34be1375eb30209c833d15036e0bb04ef3d49a0fb461506a2955312c699",
+      "outputRoot": "keywords/runtime/schema"
+    },
+    {
+      "bundle": "references",
+      "path": "keywords/sources/references/logical.json.gz",
+      "sha256": "149df27de79860b2c80fd37010e22e1b27c09277dc17b5818474261a4f3b9ef3",
+      "contentSha256": "19c59dce75d2970bb59071a8447c672aa61ac18b5a1c65a1013f46e0a441a4a7",
+      "outputRoot": "keywords/runtime/references"
+    },
+    {
+      "bundle": "structure-v2",
+      "path": "keywords/sources/structure-v2/logical.json.gz",
+      "sha256": "f63fb0d34ee71cca14b5aab8daacf04e238ed5a5d2a4448f8b895f7e1ac1208a",
+      "contentSha256": "5038591382f3e831aacf123309e43efc581e05e8facf7edcbd71656420ba2d9e",
+      "outputRoot": "keywords/runtime/structure-v2"
+    },
+    {
+      "bundle": "categories",
+      "path": "keywords/sources/categories/logical.json.gz",
+      "sha256": "1cf72251717ab3d6e7ac229bdc858063dfda790ee4aa7c47b282aa9cc3ce4411",
+      "contentSha256": "74f98d42f4c82e552661bcd363376a47f02fbb4fb73ca1c047635e303d47cb68",
+      "outputRoot": "keywords/runtime/categories"
+    },
+    {
+      "bundle": "native-readers",
+      "path": "keywords/sources/native-readers/logical.json.gz",
+      "sha256": "611323243ec4a68135a6f5011171a48201b9d2e32993d325d08e739cd445ef49",
+      "contentSha256": "931beb5f49c512daf427500ea8050a44ee4296523e423bdc8cce2535475d9e06",
+      "outputRoot": "keywords/runtime/native-readers"
+    },
+    {
+      "bundle": "native-help",
+      "path": "keywords/sources/native-help/logical.json.gz",
+      "sha256": "cfa77cf701e1aec5201cb1a7bfbff936fbad86d6895117749e61b64e01e65bc3",
+      "contentSha256": "f6c15e5b9dccbbb47721bafbe5865bbe7c28c16e70d26ea3629f7f4c44f033e1",
+      "outputRoot": "keywords/runtime/native-help"
+    },
+    {
+      "bundle": "input-form",
+      "path": "keywords/sources/input-form/logical.json.gz",
+      "sha256": "2e4e025d0104f9ad677a4552ae52626b36714ba6bacd874f4f3516b4da2c0588",
+      "contentSha256": "e998913f9657f43fdbfecf6b9d1aea9cb775f2505d02d317c2d3b089481c88f4",
+      "outputRoot": "keywords/runtime/input-form"
+    },
+    {
+      "bundle": "manual-semantics",
+      "path": "keywords/sources/manual-semantics/logical.json.gz",
+      "sha256": "5f4c40172e0be8e67c96dd78c9019ccad1cec562bbf880d1c52692ccfd8ddde3",
+      "contentSha256": "ecee854ccf0fdada98ad8381f2e8367b18adf5ebfe3302c7ec3ab38efb0562e2",
+      "outputRoot": "keywords/runtime/manual-semantics"
+    },
+    {
+      "bundle": "semantic-v2",
+      "path": "keywords/sources/semantic-v2/logical.json.gz",
+      "sha256": "34c358848f8f48ae878e74d70ae4c66b788c09e806fb2c38cd40ba7cef6c3d3c",
+      "contentSha256": "bcde1e4021dd1ba03b45e2fbd59c741b0de0b128794525e35477671def8611d9",
+      "outputRoot": "keywords/runtime/semantic-v2"
+    },
+    {
+      "bundle": "snippets",
+      "path": "keywords/sources/snippets/logical.json.gz",
+      "sha256": "4fa2c3df12f3a38b414116c7364e05499e5166f03b8ff12a20e64991d43ffeb7",
+      "contentSha256": "9f5607714cecb37b222a11ed62e42cc2847b5a647c168e9577c370d1852cc157",
+      "outputRoot": "snippets"
+    }
+  ],
+  "compilerInputs": [
+    {
+      "path": "keywords/sources/definition-registry/authoring.json.gz",
+      "sha256": "f2a5a3ef2701cc50498773fa4149c02c3759b59b0689fe06fb7cc5f466ce4fdb",
+      "contentSha256": "dae32abaf5712c2fe33ff214eaa83559df9af2e0eb1434fbd1fb643b9714a2ec"
+    },
+    {
+      "path": "keywords/sources/definition-scanners/authoring.json.gz",
+      "sha256": "807cd5891831069683ae3caf6fbbc3786e77401904a43f880598c4d5c326c0a6",
+      "contentSha256": "fa4ae0d6f39c49f3ecf52cfbcf982e76dc7c56bbd4b32ef85c8e945efb71289f"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.json.gz",
+      "sha256": "0b6a33c8b495b27faaa8550d9c3d9cdf3e9f4cb52c0259fe3d6a97cb0654d7b1",
+      "contentSha256": "4e616ed376c89d4c91aa17f4014576ac3b44e045821c5388cdc4e8a07cfc1df5"
+    },
+    {
+      "path": "keywords/sources/engineering/approved.json.gz",
+      "sha256": "c6d8cbaa709720062c8634b34a4c8c1c180e62ba5cb98a4f610f4ed3ce6c6516",
+      "contentSha256": "6632785741a25f4132bf93269095d5f0e38679a6509bc080cb20ef22310a9e9b",
+      "policy": "unchanged-approved-engineering-records-only; changed-authority-requires-independent-validation"
+    }
+  ],
+  "engineeringAuthorityInput": "keywords/sources/engineering/approved.json.gz"
+}

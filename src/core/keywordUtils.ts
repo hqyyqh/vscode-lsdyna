@@ -1,3 +1,4 @@
+import { keywordDataPath } from "./keywordDataPath";
 'use strict';
 
 const fs = require('fs');
@@ -42,7 +43,7 @@ function loadGeneratedAliases() {
     if (GENERATED_ALIASES) return GENERATED_ALIASES;
     GENERATED_ALIASES = {};
     try {
-        const schemaPath = path.join(__dirname, '..', '..', 'keywords', 'field_data.json');
+        const schemaPath = keywordDataPath("schema/field_data.json");
         const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
         for (const [keyword, entry] of Object.entries(schema)) {
             const item = entry as any;
@@ -56,7 +57,7 @@ function loadGeneratedAliases() {
                 addAliasPair(GENERATED_ALIASES, canonical, String(keyword).toUpperCase());
             }
         }
-        const spellingAliases = require('./keywordSpellingAliases.json');
+        const spellingAliases = require(keywordDataPath("engineering/keywordSpellingAliases.json"));
         for (const item of spellingAliases.aliases || []) {
             const canonical = String(item.schemaKeyword || '').toUpperCase();
             const alias = String(item.manualKeyword || '').toUpperCase();

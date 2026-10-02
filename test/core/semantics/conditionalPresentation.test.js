@@ -5,7 +5,7 @@ const { ManualSemanticCatalog } = require('../../../out/core/semantics/manualSem
 const path = require('node:path');
 describe('conditional presentation', () => {
     it('groups BARLAT manual rules by structured predicates, not card prose or native ordinals', () => {
-        const catalog = new ManualSemanticCatalog({ rootDir: path.resolve('keywords/manual_semantics') });
+        const catalog = new ManualSemanticCatalog({ rootDir: path.resolve("keywords/runtime/manual-semantics") });
         const advice = getKeywordSemanticAdvice('*MAT_BARLAT_YLD2000', { fields: { FIT: 0, HARD: 3 } }, catalog);
         const groups = groupConditionalAdvice(advice);
         const fit = groups.find(group => group.condition === 'FIT = 1');

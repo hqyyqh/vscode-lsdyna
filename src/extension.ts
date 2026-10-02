@@ -6231,7 +6231,7 @@ async function cancelCardCellComposition(document, state) {
  * Type intercept only for Tab-established nav A/Ap (strict A-gate).
  * No nav / * / $ / free click-typing → default:type (never R1-pad keywords/comments).
  */
-function handleCardCellType(args) {
+async function handleCardCellType(args) {
     const text = args && args.text != null ? String(args.text) : '';
     const editor = vscode.window.activeTextEditor;
     const pendingIndent = editor?.document && autoIndentEditBarriers.get(editor.document);
@@ -6242,6 +6242,14 @@ function handleCardCellType(args) {
             return handleCardCellType(args);
         });
     }
+    const document = editor?.document;
+    const waitedForPostEdit = document
+        ? await waitForPendingCardCellPostEdit(document)
+        : false;
+    if (waitedForPostEdit && (
+        vscode.window.activeTextEditor !== editor ||
+        editor.document !== document || document.isClosed
+    )) return;
     if (
         inlineEditChoiceSession &&
         editor &&
@@ -6507,7 +6515,7 @@ async function handleCardCellPostEdit(event) {
         }
 
         if (!plan.blocked) {
-            await applyCardCellLineEdit(
+            const applied = await applyCardCellLineEdit(
                 editor,
                 plan.lineNum,
                 plan.newText,
@@ -6518,6 +6526,7 @@ async function handleCardCellPostEdit(event) {
                     undoStopAfter: true,
                 },
             );
+            if (applied === false) return;
         }
 
         if (plan.blocked && plan.restoreMode === 'A') {
@@ -6536,6 +6545,9 @@ async function handleCardCellPostEdit(event) {
             const caret = new vscode.Position(plan.lineNum, plan.caret);
             editor.selection = new vscode.Selection(caret, caret);
             guard.markAp(document, plan.lineNum, plan.fieldIndex, plan.caret);
+            if (!plan.blocked) {
+                rememberCardCellTypingSession(editor, plan.lineNum, plan.fieldIndex, plan.caret);
+            }
             if (plan.blocked) {
                 vscode.window.setStatusBarMessage(i18n.get('cellPasteRejected'), 3000);
             }

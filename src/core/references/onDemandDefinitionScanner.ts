@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const fs = require('fs');
@@ -11,7 +12,7 @@ const {
     globalInputFormatFromKeywordLine,
     keywordInputFormat,
 } = require('../parser/inputFormat');
-const loadedReferenceIndex = require('../../../keywords/field_reference_index.json');
+const loadedReferenceIndex = require(keywordDataPath("references/field_reference_index.json"));
 const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog');
 
 const DEFAULT_MAX_STORED_MATCHES = 256;

@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc } = require('../helpers');
+const { fakeDoc } = require("../support/helpers");
 const { LsdynaFieldHoverProvider, getCardInfoForDocumentLineWithSuggest: resolve } = require('../../out/extension')._internals;
 const { nativeFileReadContext } = require('../../out/core/semantics/nativeFileReadContext');
 const { getCatalogInputFormCatalogV4, reloadCatalogInputFormCatalogV4 } = require("../../out/core/semantics/catalogInputFormCatalogV4");
@@ -111,7 +111,7 @@ describe("conditional layout reading, editing and uncertainty boundaries", funct
             }
     });
     it("preserves phase signed-zero branches and requires complete counted records", async function () {
-        const binding = require('../../keywords/lspp-conditional-layout-readers.json').bindings.MAT_254;
+        const binding = require("../../keywords/runtime/native-readers/lspp-conditional-layout-readers.json").bindings.MAT_254;
         assert.equal(binding.steps.at(-1).maxRecords, 10);
         for (const [end, cards] of [['0', [1, 2, 3, 4, 5, 6, 8]], ['-0', [1, 2, 4, 5, 6, 8]]]) {
             const rows = cards.map(card => card === 1 ? row([1, 1, 8, 1, 0.3]) : card === 2 ? row([1, end]) : row(Array(8).fill(0)));
@@ -230,7 +230,7 @@ describe("conditional layout reading, editing and uncertainty boundaries", funct
         assert.equal(missing.failureKind, 'input-uncertain');
     });
     it("keeps all 28 aliases bound to their reviewed conditional readers", async () => {
-        const runtime = require('../../keywords/lspp-conditional-layout-readers.json').bindings;
+        const runtime = require("../../keywords/runtime/native-readers/lspp-conditional-layout-readers.json").bindings;
         const cards = new Set(keywords.map(keyword => runtime[keyword].cardSetId));
         const bindings = Object.keys(runtime).filter(keyword => cards.has(runtime[keyword].cardSetId));
         const expected = require('../fixtures/public-behavior/conditional-alias-bindings.json').bindings;

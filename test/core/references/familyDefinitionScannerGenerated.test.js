@@ -1,5 +1,5 @@
 const assert=require('assert'),path=require('path');
-const handoff=require('../../../keywords/family_definition_scanner_handoff.json');
+const handoff=require("../../../keywords/sources/semantic-inputs/family_definition_scanner_handoff.json");
 const {mergeOnDemandDefinitions,queryOnDemandDefinitionAtPosition,scanOnDemandDefinitions,selectOnDemandDefinitionDescriptors}=require('../../../out/core/references/onDemandDefinitionScanner');
 const {buildReferenceNavigation}=require('../../../out/core/references/referenceNavigation');
 

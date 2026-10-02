@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { fakeDoc } = require('../../helpers');
+const { fakeDoc } = require("../../support/helpers");
 const api = require('../../../src/extension')._internals;
 const schema = require('../../../src/core/keywordSchema');
 const text = '*KEYWORD\n*MAT_ELASTIC\n         7    7.8e-9    210000       0.3\n*END';
@@ -11,7 +11,7 @@ function document() {
 }
 describe('asynchronous native manager directory preparation', () => {
     it('keeps repeated native record identity when opening on a later instance or its comment', async () => {
-        const { documentFor, editorFor } = require('../../keyword-manager/conditional-fixtures.cjs')({
+        const { documentFor, editorFor } = require("../../support/keyword-manager/conditional-fixtures.cjs")({
             vscode: require('vscode'), generateCommentLine: api.generateCommentLine });
         const lines = ['*DATABASE_BINARY_RUNRSF', '$ first', '101,1,1,1,1,,1', '$ misleading', '202,1,1,1,1,,1', '*END'];
         for (const line of [0, 3, 4]) {
@@ -26,7 +26,7 @@ describe('asynchronous native manager directory preparation', () => {
         }
     });
     it('makes the selected native instance available without reading unrelated blocks and merges only the directory', async () => {
-        const { documentFor, editorFor } = require('../../keyword-manager/conditional-fixtures.cjs')({
+        const { documentFor, editorFor } = require("../../support/keyword-manager/conditional-fixtures.cjs")({
             vscode: require('vscode'), generateCommentLine: api.generateCommentLine });
         const lines = ['*KEYWORD', '*DATABASE_BINARY_BLSTFOR', '7,1,1,1,1',
             ...Array.from({ length: 40 }, () => ['*MAT_ELASTIC', '         7    7.8e-9    210000       0.3']).flat(), '*END'];

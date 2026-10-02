@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
-const { fakeDoc, vscodeMock } = require('../../helpers');
+const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
 
 function modelDocument(filePath = path.join('project', 'model.k')) {

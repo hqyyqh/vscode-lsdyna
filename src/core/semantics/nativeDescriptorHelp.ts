@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 import { isDescriptorIdentity, descriptorIdentityGroup } from './descriptorIdentity';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -5,8 +6,8 @@ import * as zlib from 'zlib';
 import { createHash } from 'crypto';
 import { ByteLru } from '../cache/byteLru';
 
-const root = path.join(__dirname, '..', '..', '..', 'keywords', 'lspp-field-help');
-const source = "f910b467c00e88ba068c9384f50efe0fff24331c48fe901959672852f2563e2b";
+const root = keywordDataPath("native-help");
+const source = "68aa1f658eaeed8dc2b33eb9687eb349cf754d1f3fc51959a2364b9fdb071423";
 const cache = new ByteLru<Record<string, any>>(8 * 1024 * 1024);
 let manifest: any;
 let manifestSha: string;

@@ -4,13 +4,13 @@ const numberedAliasContract = require('../../fixtures/public-behavior/reference-
 const aliasKeywords = new Set(numberedAliasContract.numberedAliases);
 const keywordSchema = require('../../../out/core/keywordSchema');
 const componentJointDidOverlay = require(
-    '../../../keywords/compatibility/component_joint_did_official_float.json'
+    "../../../keywords/authoring/compatibility/component_joint_did_official_float.json"
 );
 const runtimeTableLayoutCorrections = require(
-    '../../../src/core/runtimeTableLayoutCorrections.json'
+    "../../../keywords/authoring/engineering/runtimeTableLayoutCorrections.json"
 );
 const runtimeSemanticRelationCorrections = require(
-    '../../../src/core/runtimeSemanticRelationCorrections.json'
+    "../../../keywords/authoring/engineering/runtimeSemanticRelationCorrections.json"
 );
 const {
     applyRuntimeSemanticRelationCorrection,
@@ -716,7 +716,7 @@ describe('fieldReferenceClassifier', () => {
     });
 
     it('locks each spelling alias to one exact runtime relation and manual evidence identity', () => {
-        const aliases = require('../../../src/core/keywordSpellingAliases.json').aliases;
+        const aliases = require("../../../keywords/authoring/engineering/keywordSpellingAliases.json").aliases;
         const catalog = require('../../../out/core/semantics/semanticRuntimeV2')
             .getSemanticRuntimeCatalogV2();
 
@@ -746,7 +746,7 @@ describe('fieldReferenceClassifier', () => {
     });
 
     it('locks the corrected IGA card to its exact runtime and rendered PDF evidence', () => {
-        const correction = require('../../../src/core/keywordLayoutCorrections.json').corrections[0];
+        const correction = require("../../../keywords/authoring/engineering/keywordLayoutCorrections.json").corrections[0];
         const catalog = require('../../../out/core/semantics/semanticRuntimeV2')
             .getSemanticRuntimeCatalogV2();
         const record = catalog.referenceRecordsForKeyword(correction.keyword).find(candidate =>
@@ -2304,7 +2304,7 @@ describe('fieldReferenceClassifier', () => {
     });
 
     it('accepts exact official MAT/SECTION labels only on direct identity relations', () => {
-        const records = require('../../../keywords/definition_registry.json').byKeyword.PART;
+        const records = require("../../../keywords/runtime/definitions/definition_registry.json").byKeyword.PART;
         for (const fieldName of ['MID', 'SECID', 'TMID']) {
             const record = records.find(item =>
                 item.kind === 'entity-reference' && item.field.fieldName === fieldName

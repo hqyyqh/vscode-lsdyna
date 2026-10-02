@@ -44,7 +44,7 @@ describe('manualsDirResolve (portable Code.exe-first)', () => {
         });
         assert.strictEqual(candidates[0], '/portable/lsdyna_manual_pack');
         assert.ok(candidates.includes('/portable/resources/app/../../lsdyna_manual_pack')
-            || candidates.includes(pathModule.resolve('/portable/resources/app', '../../', 'lsdyna_manual_pack')));
+            || candidates.includes(pathModule.resolve('/portable/resources/app', "../..", 'lsdyna_manual_pack')));
         assert.ok(candidates.includes('/ws/lsdyna_manual_pack'));
         assert.ok(candidates.indexOf('/portable/lsdyna_manual_pack')
             < candidates.indexOf('/ws/lsdyna_manual_pack'));

@@ -12,7 +12,7 @@ const {
 
 const repositoryRoot = require('path').resolve(__dirname, '..', '..', '..');
 const catalog = new KeywordStructureCatalog({
-    runtimeRoot: require('path').join(repositoryRoot, 'keywords', 'keyword-structure-v2'),
+    runtimeRoot: require('path').join(repositoryRoot, "keywords/runtime/structure-v2"),
 });
 
 function fixed(values = []) {

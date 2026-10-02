@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { fakeDoc } = require('../../helpers');
+const { fakeDoc } = require("../../support/helpers");
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
 
 describe('live block index editing boundary', () => {

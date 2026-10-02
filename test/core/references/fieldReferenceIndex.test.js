@@ -3,7 +3,7 @@ const path = require('path');
 
 describe('field reference index', () => {
     it('contains source-locked LS-PrePost relations and compact definition layouts', () => {
-        const index = require(path.join('..', '..', '..', 'keywords', 'field_reference_index.json'));
+        const index = require(path.join('..', '..', '..', 'keywords', 'runtime', 'references', 'field_reference_index.json'));
 
         assert.equal(index.schemaVersion, 2);
         assert.ok(Object.keys(index.references).length > 0);
@@ -31,8 +31,8 @@ describe('field reference index', () => {
     });
 
     it('keeps every definition descriptor aligned with a unique rendered schema field', () => {
-        const index = require(path.join('..', '..', '..', 'keywords', 'field_reference_index.json'));
-        const schema = require(path.join('..', '..', '..', 'keywords', 'field_data.json'));
+        const index = require(path.join('..', '..', '..', 'keywords', 'runtime', 'references', 'field_reference_index.json'));
+        const schema = require(path.join('..', '..', '..', 'keywords', 'runtime', 'schema', 'field_data.json'));
         const { getRenderedCards, lookupKeywordSchema } = require('../../../out/core/keywordSchema');
         const descriptors = {
             ...index.definitionKeywords.generic,

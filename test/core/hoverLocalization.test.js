@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { vscodeMock } = require('../helpers');
+const { vscodeMock } = require("../support/helpers");
 const i18n = require('../../out/core/i18n');
 const schema = require('../../out/core/keywordSchema');
 const { buildFieldHelpMarkdown, keywordHoverMarkdown, buildKeywordSemanticAdviceMarkdown } = require('../../out/extension')._internals;

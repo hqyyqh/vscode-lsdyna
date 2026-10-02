@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), zlib = require('node:zlib');
-const { fakeDoc } = require('../helpers');
+const { fakeDoc } = require("../support/helpers");
 const schema = require('../../out/core/keywordSchema');
 const { LsdynaFieldHoverProvider, getCardFieldsForLine, buildKeywordOptionViewModel,
     buildKeywordOptionsViewState, LsdynaFieldCompletionProvider } = require('../../out/extension')._internals;
@@ -8,7 +8,7 @@ const plain = value => String(value || '').replace(/<\/?(?:span|br|p|em|strong|c
     .replace(/\\([*_`])/g, '$1').replace(/\s+/g, ' ').trim();
 
 describe('descriptor reader provider replay and editing boundaries', function () {
-    this.timeout(360000);
+    this.timeout(900000); // 682154 retained queries: measured warm ~0.5-0.7 ms/query plus cold catalogs and CI I/O.
     it('replays every retained input against expected field titles, help and physical ranges', async () => {
         const file = path.join(__dirname, '../fixtures/public-behavior/conditional-hover-replay.json.gz');
         const payload = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)));

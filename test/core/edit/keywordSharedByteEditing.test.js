@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const fixture = require('../../fixtures/lspp-shared-byte-cases.json');
+const fixture = require("../../fixtures/public-behavior/shared-byte-cases.json");
 const serializer = require('../../../out/core/edit/keywordRecordSerializer');
 const vscode = require('vscode');
 const { getCatalogInputFormCatalogV4 } = require("../../../out/core/semantics/catalogInputFormCatalogV4");

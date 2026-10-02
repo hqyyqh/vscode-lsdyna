@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { vscodeMock } = require('../../helpers');
+const { vscodeMock } = require("../../support/helpers");
 const i18n = require('../../../src/core/i18n');
 const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
 

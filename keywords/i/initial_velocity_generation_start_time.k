@@ -1,4 +1,0 @@
-*INITIAL_VELOCITY_GENERATION_START_TIME
-$#   stime
-         ?
-$

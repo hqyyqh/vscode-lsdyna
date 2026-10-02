@@ -291,7 +291,7 @@ describe('option-switch comment preservation', () => {
     it('serializes orphan comments before existing block-tail comments without a fake data row', function () {
         this.timeout(10000);
         const { optionSwitchReplacement } = require('../../../src/extension')._internals;
-        const { fakeDoc } = require('../../helpers');
+        const { fakeDoc } = require("../../support/helpers");
         const document = fakeDoc('*A\n          \n*END');
         const replacement = optionSwitchReplacement(document, { keywordLine: 0 }, {
             plan: { targetKeyword: '*B', replacementRecords: [], trailingComments: ['$ orphan'] },

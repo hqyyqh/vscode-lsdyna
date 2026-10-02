@@ -13,7 +13,7 @@ const {
 } = require('../../../src/core/structure');
 
 const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
-const runtimeRoot = path.join(repositoryRoot, 'keywords', 'keyword-structure-v2');
+const runtimeRoot = path.join(repositoryRoot, "keywords/runtime/structure-v2");
 
 describe('KeywordStructureCatalog', () => {
     it('selects exact source profiles and does not load a shard for inventory-only lookups', () => {

@@ -17,7 +17,7 @@ describe('scanCurveTableDefinitionsFromFileIndex', () => {
     it('preserves curve points and scaling in all four native format fixtures', () => {
         const { parseCurveBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
         for (const mode of ['standard', 'long', 'i10', 'free']) {
-            const text = fs.readFileSync(path.join(__dirname, `../../fixtures/lspp-native-formats/native-${mode}.k`), 'ascii');
+            const text = fs.readFileSync(path.join(__dirname, `../../fixtures/public-behavior/native-formats/native-${mode}.k`), 'ascii');
             const blockText = text.slice(text.indexOf('*DEFINE_CURVE_TITLE'), text.indexOf('*ELEMENT_SHELL'));
             const result = parseCurveBlock({ keyword: 'DEFINE_CURVE_TITLE', startLine: 0 }, blockText);
             assert.equal(result.points.length, 2, mode);

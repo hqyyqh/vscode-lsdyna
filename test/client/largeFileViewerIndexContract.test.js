@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { vscodeMock: vscode } = require('../helpers');
+const { vscodeMock: vscode } = require("../support/helpers");
 const { LargeFileViewerProvider } = require('../../src/client/LargeFileViewerProvider');
 const { buildFileIndex } = require('../../src/core/scanner/fileIndexBuilder');
 

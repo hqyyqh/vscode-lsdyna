@@ -6,7 +6,7 @@ const {
     ManualSemanticCatalog,
 } = require('../../../out/core/semantics/manualSemanticCatalog');
 
-const runtimeRoot = path.resolve(__dirname, '..', '..', '..', 'keywords', 'manual_semantics');
+const runtimeRoot = path.resolve(__dirname, "../../../keywords/runtime/manual-semantics");
 
 describe('manual semantic catalog', () => {
     it('shares asynchronous preparation, preserves values and reloads evicted shards', async () => {
@@ -122,26 +122,25 @@ describe('manual semantic catalog', () => {
         );
     });
 
-    it('keeps the committed build report consistent with the runtime manifest', () => {
-        const manifest = JSON.parse(fs.readFileSync(path.join(runtimeRoot, 'manifest.json'), 'utf8'));
-        const report = JSON.parse(fs.readFileSync(
-            path.resolve(runtimeRoot, '..', 'manual_semantics.build-report.json'),
-            'utf8',
-        ));
-        assert.equal(report.runtimeId, manifest.runtimeId);
-        assert.deepEqual(report.counts, manifest.counts);
+    it('binds the current runtime manifest and conserves the protected checkpoint counts', () => {
+        const crypto = require('node:crypto');
+        const zlib = require('node:zlib');
+        const repoRoot = path.resolve(__dirname, '../../..');
+        const manifestFile = 'keywords/runtime/manual-semantics/manifest.json';
+        const sourceFile = 'keywords/sources/manual-semantics/logical.json.gz';
+        const manifestBytes = fs.readFileSync(path.join(repoRoot, manifestFile));
+        const sourceBytes = fs.readFileSync(path.join(repoRoot, sourceFile));
+        const manifest = JSON.parse(manifestBytes);
+        const checkpoint = JSON.parse(zlib.gunzipSync(sourceBytes)).manifest.value;
+        const lineage = JSON.parse(fs.readFileSync(path.join(repoRoot, 'keywords/provenance/current-data.json')));
+        const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+        assert.equal(lineage.outputs[manifestFile], sha(manifestBytes));
+        assert.equal(lineage.inputs[sourceFile], sha(sourceBytes));
+        assert.deepEqual(manifest.counts, checkpoint.counts);
+        assert.deepEqual(manifest.sourceRuntime.counts, checkpoint.sourceRuntime.counts);
         assert.equal(manifest.counts.sourceRules, manifest.sourceRuntime.counts.rules);
-        assert.equal(
-            manifest.counts.packagedRules + manifest.counts.blockedRules,
-            manifest.counts.sourceRules,
-        );
-        assert.equal(
-            manifest.counts.mappedFieldRules + manifest.counts.keywordRules,
-            manifest.counts.packagedRules,
-        );
-        assert.equal(report.blocked.length, manifest.counts.blockedRules);
-        for (const [reason, count] of Object.entries(manifest.counts.blockedByReason)) {
-            assert.equal(report.blocked.filter(item => item.reason === reason).length, count);
-        }
+        assert.equal(manifest.counts.packagedRules + manifest.counts.blockedRules, manifest.counts.sourceRules);
+        assert.equal(manifest.counts.mappedFieldRules + manifest.counts.keywordRules, manifest.counts.packagedRules);
+        assert.equal(Object.values(manifest.counts.blockedByReason).reduce((sum, count) => sum + count, 0), manifest.counts.blockedRules);
     });
 });

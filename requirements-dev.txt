@@ -1,0 +1,3 @@
+# Public build tools; native extraction dependencies are maintained separately.
+Pillow==12.2.0
+

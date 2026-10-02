@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Private security and conduct reports / 私密安全与行为报告
+    url: mailto:hqysmail@gmail.com
+    about: Please do not publish sensitive reports in issues / 请勿在公开 issue 中发布敏感报告
+

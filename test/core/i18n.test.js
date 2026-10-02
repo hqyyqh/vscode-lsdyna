@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const vscode = require('../vscode-mock');
+const vscode = require("../support/vscode-mock");
 const i18n = require('../../src/core/i18n');
 
 describe('Runtime UI language', () => {

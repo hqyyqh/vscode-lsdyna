@@ -12,7 +12,7 @@ const {
     scanOnDemandDefinitions,
     selectOnDemandDefinitionDescriptors,
 } = require('../../../out/core/references/onDemandDefinitionScanner');
-const familyScannerHandoff = require('../../../keywords/family_definition_scanner_handoff.json');
+const familyScannerHandoff = require("../../../keywords/sources/semantic-inputs/family_definition_scanner_handoff.json");
 
 const NODE_DESCRIPTOR = {
     keyword: 'NODE',

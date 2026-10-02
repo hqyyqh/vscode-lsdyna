@@ -2,17 +2,17 @@
 
 ## Sources and output
 
-- English structure source: `keywords/field_data.json`
-- Chinese authoring source: `keywords/field_data_zh.json`
-- Native/overridden help translations: `keywords/native_field_help_zh.json`
-- Manual condition, choice, dependency and keyword-option translations: `keywords/manual_semantics_zh.json`
+- English structure source: `keywords/runtime/schema/field_data.json`
+- Chinese authoring source: `keywords/authoring/field_data_zh.json`
+- Native/overridden help translations: `keywords/authoring/native_field_help_zh.json`
+- Manual condition, choice, dependency and keyword-option translations: `keywords/authoring/manual_semantics_zh.json`
 - Runtime output: `out/runtime/field_help/manifest.json` and `shards/*.json.gz`
-- Structure/content validator: `keywords/validate_field_data_translation.py`
-- Final quality gate: `keywords/audit_field_data_quality.py`
-- Generation boundary and Unicode sanitizer: `keywords/text_sanitization.py`
-- PyDYNA adapter/generator: `keywords/pydyna_schema_adapter.py`,
-  `keywords/generate_from_pydyna.py`
-- Reviewed compatibility source: `keywords/compatibility/mat_add_erosion_legacy_fields.json`
+- Structure/content validator: `scripts/build/keywords/validate_field_data_translation.py`
+- Final quality gate: `scripts/build/keywords/audit_field_data_quality.py`
+- Generation boundary and Unicode sanitizer: `scripts/build/keywords/text_sanitization.py`
+- PyDYNA adapter/generator: `scripts/build/keywords/pydyna_schema_adapter.py`,
+  `scripts/build/keywords/generate_from_pydyna.py`
+- Reviewed compatibility source: `keywords/authoring/compatibility/mat_add_erosion_legacy_fields.json`
 
 The extension treats the English file as the schema authority. The Chinese file is
 a reviewable authoring mirror. Compilation produces deterministic, hash-bound
@@ -71,10 +71,10 @@ Use established terms consistently, for example 节点、单元、部件、集�
 Run all of the following against the same English and Chinese files:
 
 ```bash
-python -m pip install -r keywords/requirements-codegen.txt
-python keywords/validate_field_data_translation.py --check-content
-python keywords/audit_field_data_quality.py
-python -m unittest discover -s keywords/tests -p "test_*.py" -v
+python -m pip install -r scripts/build/keywords/requirements-codegen.txt
+python scripts/build/keywords/validate_field_data_translation.py --check-content
+python scripts/build/keywords/audit_field_data_quality.py
+python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
 npm run build:field-help-runtime
 npm run check:native-help-zh
 npm run check:manual-semantics-zh
@@ -155,7 +155,7 @@ geometry descriptions are localized separately.
 
 `manual_semantics_zh.json` stores `{english, localized, sourceIssue}` rows for
 conditional card, field-choice, field-dependency and keyword-option summaries in
-`keywords/manual_semantics/shards/`. It uses the same complete-English matching
+`keywords/runtime/manual-semantics/shards/`. It uses the same complete-English matching
 and whitespace normalization as native help, but keeps its source membership
 separate. Do not add these rows to the native help corpus or modify generated
 English rules to make translations match.
@@ -210,15 +210,15 @@ external input, not a repository artifact. It must contain `kwd.json`,
 generation command is:
 
 ```bash
-python keywords/generate_from_pydyna.py \
+python scripts/build/keywords/generate_from_pydyna.py \
   --codegen-dir <frozen-pydyna>/codegen --dry-run
 ```
 
 The generator reads those files plus the compatibility overlay and writes only
-the final English schema `keywords/field_data.json`, snippets
+the final English schema `keywords/runtime/schema/field_data.json`, snippets
 `snippets/lsdyna.json`, and an optional statistics file. The orchestrator then
-derives `keywords/field_reference_index.json` and records the source/tool and
-artifact hashes in `keywords/pydyna-source.json`. It does not generate or track
+derives `keywords/runtime/references/field_reference_index.json` and records the source/tool and
+artifact hashes in `keywords/provenance/schema/pydyna-source.json`. It does not generate or track
 a Chinese candidate, review report, or intermediate package. After a source
 update, record the new commit and input hashes in the provenance file, compare
 keyword/field statistics, regenerate the English artifacts, then run the
@@ -228,10 +228,10 @@ or changed Chinese suffixes.
 The minimum Unicode/content check sequence is:
 
 ```bash
-python keywords/generate_from_pydyna.py --codegen-dir <frozen-pydyna>/codegen --dry-run
-python keywords/validate_field_data_translation.py --check-content
-python keywords/audit_field_data_quality.py
-python -m unittest discover -s keywords/tests -p "test_*.py"
+python scripts/build/keywords/generate_from_pydyna.py --codegen-dir <frozen-pydyna>/codegen --dry-run
+python scripts/build/keywords/validate_field_data_translation.py --check-content
+python scripts/build/keywords/audit_field_data_quality.py
+python -m unittest discover -s test/scripts/build/keywords -p "test_*.py"
 ```
 
 For `*MAT_ADD_EROSION`, the compatibility overlay retains the historical

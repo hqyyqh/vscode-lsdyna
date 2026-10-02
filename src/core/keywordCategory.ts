@@ -1,9 +1,10 @@
+import { keywordDataPath } from "./keywordDataPath";
 'use strict';
 
 /** Runtime resolver for the LS-PrePost Keyword Manager category catalog. */
 
-const catalog = require('../../keywords/lspp_keyword_categories.runtime.json');
-const crosswalk = require('../../keywords/keyword_category_crosswalk.json');
+const catalog = require(keywordDataPath("categories/lspp_keyword_categories.runtime.json"));
+const crosswalk = require(keywordDataPath("categories/keyword_category_crosswalk.json"));
 const { lookupKeywordSchema } = require('./keywordSchema');
 const { normalizeKeyword } = require('./keywordDisplayIdentity');
 

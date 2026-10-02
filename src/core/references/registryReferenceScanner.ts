@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const crypto = require('node:crypto');
@@ -14,7 +15,7 @@ const {
     resolveReferenceValueSemantics,
 } = require('./fieldReferenceClassifier');
 const { getSemanticRuntimeCatalogV2 } = require('../semantics/semanticRuntimeV2');
-const fieldReferenceIndex = require('../../../keywords/field_reference_index.json');
+const fieldReferenceIndex = require(keywordDataPath("references/field_reference_index.json"));
 const { parseNumericInput } = require('./referenceInputValue');
 const { evaluatePredicate } = require('../semantics/predicateEvaluator');
 const {
@@ -63,7 +64,7 @@ function lsppReferenceRecordsForKeyword(keyword) {
 function loadCatalogBlockedReferences() {
     const descriptor = fieldReferenceIndex.lsppBlockedReferences;
     if (!descriptor?.file || !/^[0-9a-f]{64}$/.test(descriptor.sha256 || '')) return {};
-    const encoded = fs.readFileSync(path.resolve(__dirname, '..', '..', '..', descriptor.file));
+    const encoded = fs.readFileSync(keywordDataPath('references/' + path.basename(descriptor.file)));
     if (encoded.length !== descriptor.compressedBytes ||
         crypto.createHash('sha256').update(encoded).digest('hex') !== descriptor.sha256) {
         throw new Error('reference blocker runtime integrity mismatch');

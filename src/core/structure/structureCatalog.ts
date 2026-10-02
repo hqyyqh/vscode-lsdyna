@@ -1,3 +1,4 @@
+import { keywordDataPath } from "../keywordDataPath";
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -219,14 +220,7 @@ export class KeywordStructureCatalog {
     private shardReads = 0;
 
     constructor(options: StructureCatalogOptions = {}) {
-        this.runtimeRoot = path.resolve(options.runtimeRoot || path.join(
-            __dirname,
-            '..',
-            '..',
-            '..',
-            'keywords',
-            'keyword-structure-v2',
-        ));
+        this.runtimeRoot = path.resolve(options.runtimeRoot || keywordDataPath("structure-v2"));
         this.maximumManifestBytes = options.maximumManifestBytes || DEFAULT_MANIFEST_BYTES;
         this.maximumShardBytes = options.maximumShardBytes || DEFAULT_SHARD_BYTES;
         this.cache = new ByteLru(options.cacheBytes || DEFAULT_CACHE_BYTES);
