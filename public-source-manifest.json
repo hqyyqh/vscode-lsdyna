@@ -370,7 +370,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "ba967275e28d5a9d898a216b27c0674c3b2e52856e0e79253c9483f935d888c6",
+      "sha256": "3b4ff60f3e4921491642d2a738497af6b3ee822a877f42513eb2f8d4a87b889b",
       "reason": "public-contribution-workflow"
     },
     {
@@ -3262,7 +3262,7 @@
     {
       "path": "src/core/keywordDisplayIdentity.ts",
       "role": "editable-source",
-      "sha256": "8da6e185d5245ef8d7ac8270327bf4a2ac7248036e5371d3fe8fc6c062777015",
+      "sha256": "bd49b4d1e6e951de80683441c49fdca1fe6d5a98f31e7a74f2f7de2d7881edc5",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4726,7 +4726,7 @@
     {
       "path": "test/core/keywordDisplayIdentity.test.js",
       "role": "editable-source",
-      "sha256": "cdc893b66b1fa1f331135c7267e0058fd33b3f024c05c276b8143ec5e13db848",
+      "sha256": "87cb2e9fb9907f8c8315fab4bee08bd8c4dc1d4751daca25c1cb4fcdc5d71c79",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

@@ -60,6 +60,9 @@ jobs:
           npm run update:source-manifest -- --check
           npm run check:contracts
       - run: npm test
+        env:
+          # Full source-data replay shares one test process; installed hosts keep their default heap.
+          NODE_OPTIONS: --max-old-space-size=4096
       - run: npm run test:webview
       - name: Public Python regression tests
         run: python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v

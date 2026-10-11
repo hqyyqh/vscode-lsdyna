@@ -16,9 +16,6 @@ const {
     lookupKeywordSchema,
 } = require('./keywordSchema');
 const { getReferenceRuleCatalog } = require('./references/referenceRuleCatalog');
-const fs = require('fs');
-const path = require('path');
-const zlib = require('zlib');
 const { StringDecoder } = require('node:string_decoder');
 const { formattedFields } = require('./edit/keywordRecordSerializer');
 
@@ -27,33 +24,8 @@ const {
     keywordInputFormat,
 } = require('./parser/inputFormat');
 
-const KEYWORD_LAYOUT_RUNTIME_FORMAT_VERSION = 1;
-const KEYWORD_LAYOUT_RUNTIME_FILE = 'field_schema.runtime.json.gz';
-let keywordLayoutSchemaCache = null;
-
-function loadKeywordLayoutSchema() {
-    if (keywordLayoutSchemaCache) return keywordLayoutSchemaCache;
-    try {
-        const encoded = fs.readFileSync(path.join(
-            __dirname,
-            '..',
-            'runtime',
-            KEYWORD_LAYOUT_RUNTIME_FILE,
-        ));
-        const runtime = JSON.parse(zlib.gunzipSync(encoded).toString('utf8'));
-        if (!runtime || runtime.formatVersion !== KEYWORD_LAYOUT_RUNTIME_FORMAT_VERSION
-            || !runtime.schema || typeof runtime.schema !== 'object' || Array.isArray(runtime.schema)
-            || !Number.isSafeInteger(runtime.keywordCount)
-            || runtime.keywordCount !== Object.keys(runtime.schema).length) {
-            throw new Error('invalid keyword layout runtime contract');
-        }
-        keywordLayoutSchemaCache = runtime.schema;
-    } catch (error) {
-        console.warn(`[DynaSense] Compact keyword layout runtime unavailable: ${error?.message || error}`);
-        keywordLayoutSchemaCache = loadKeywordSchema();
-    }
-    return keywordLayoutSchemaCache;
-}
+// Identity extraction only reads the same compact schema used by field lookup.
+const loadKeywordLayoutSchema = loadKeywordSchema;
 
 const MAX_CAPTURED_DATA_LINES = 32;
 const MAX_CAPTURED_BYTES = 8 * 1024;

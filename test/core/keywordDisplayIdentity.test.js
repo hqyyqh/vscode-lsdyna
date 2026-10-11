@@ -10,6 +10,20 @@ const {
 } = require('../../src/core/keywordDisplayIdentity');
 
 describe('keyword display identity', () => {
+    it('reuses the prepared field schema without rereading the layout runtime', () => {
+        const schema = require('../../src/core/keywordSchema').loadKeywordSchema();
+        const fs = require('fs'), originalRead = fs.readFileSync;
+        fs.readFileSync = function (filePath, ...args) {
+            assert.ok(!String(filePath).replace(/\\/g, '/').endsWith('/runtime/field_schema.runtime.json.gz'),
+                'identity extraction must reuse the prepared schema');
+            return originalRead.call(this, filePath, ...args);
+        };
+        try {
+            assert.strictEqual(require('../../src/core/keywordDisplayIdentity').loadKeywordLayoutSchema(), schema);
+            const result = summarizeKeywordIdentity('PART', ['Front Rail', '      1201        12        24']);
+            assert.deepEqual(result.identity, { field: 'PID', value: '1201' });
+        } finally { fs.readFileSync = originalRead; }
+    });
     it('rejects an array layout runtime and uses the existing source fallback', () => {
         const repoRoot = path.resolve(__dirname, '..', '..');
         const child = childProcess.spawnSync(process.execPath, ['-e', String.raw`
