@@ -31,7 +31,7 @@ function write(root, relative, bytes) {
 function encode(value, storage = {}) {
     const logical = storage.sorted ? canonical(value) : value;
     const raw = Buffer.from(JSON.stringify(logical, null, storage.indent || undefined) + (storage.newline ? '\n' : ''));
-    return { raw, bytes: storage.gzip ? zlib.gzipSync(raw, { level: 9, mtime: 0 }) : raw };
+    return { raw, bytes: storage.gzip ? require('../deterministic-gzip.cjs')(raw, { level: 9 }) : raw };
 }
 
 function readSources(root = ROOT) {
@@ -160,7 +160,8 @@ function updateDescriptors(value, descriptors) {
     if (Array.isArray(value)) return value.map(item => updateDescriptors(item, descriptors));
     if (!value || typeof value !== 'object') return value;
     const next = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, updateDescriptors(item, descriptors)]));
-    const descriptor = descriptors.get(value.path || value.file);
+    const location = value.path || value.file;
+    const descriptor = descriptors.get(typeof location === 'string' ? location.replace(/^card_conditions\.v4\//, '') : location);
     if (descriptor) {
         for (const key of ['sha256', 'compressedBytes', 'uncompressedBytes']) if (key in value) next[key] = descriptor[key];
         for (const key of ['uncompressedSha256', 'contentSha256']) if (key in value) next[key] = descriptor.contentSha256;
@@ -361,7 +362,7 @@ function rebuild(root = ROOT, destination) {
         }
     }
     collect(path.join(destination,'out/runtime'));
-    const compilerTools = Object.fromEntries(['keywords/data.cjs','publish-files.cjs','generate-field-schema-runtime.cjs','generate-field-help-runtime.cjs',
+    const compilerTools = Object.fromEntries(['keywords/data.cjs','publish-files.cjs','deterministic-gzip.cjs','generate-field-schema-runtime.cjs','generate-field-help-runtime.cjs',
         'generate-field-help-zh-delta.cjs','generate-semantic-runtime-v2.cjs','generate-manual-semantic-runtime.cjs',
         'generate-keyword-structure-runtime-v2.cjs','generate-definition-registry.cjs','generate-family-definition-scanner-runtime.cjs',
         'generate-field-reference-index.cjs','generate-lspp-input-form-runtime.cjs','compile-contact-thermal.cjs']

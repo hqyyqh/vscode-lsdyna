@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { ByteLru } from '../cache/byteLru';
 
 const root = keywordDataPath("native-help");
-const source = "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0";
+const source = "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb";
 const cache = new ByteLru<Record<string, any>>(8 * 1024 * 1024);
 let manifest: any;
 let manifestSha: string;

@@ -3,7 +3,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
 
 const FORMAT_VERSION = 1;
 const repoRoot = path.resolve(__dirname, "../..");
@@ -120,7 +119,7 @@ function buildFieldHelpDelta(englishText, localizedText) {
 }
 
 function encodeFieldHelpDelta(delta) {
-    return zlib.gzipSync(Buffer.from(JSON.stringify(delta), 'utf8'), { level: 9 });
+    return require('./deterministic-gzip.cjs')(Buffer.from(JSON.stringify(delta), 'utf8'), { level: 9 });
 }
 
 function generateFieldHelpDelta({

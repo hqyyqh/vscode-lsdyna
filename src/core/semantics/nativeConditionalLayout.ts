@@ -45,7 +45,7 @@ export function nativeConditionalBinding(keyword: string): any {
     // scope must not reject the independently verified formats.
     const seatbelt = standardRepeatReaders.bindings[name];
     if (name === 'ELEMENT_SEATBELT' && standardRepeatReaders.sourceSha256 ===
-        "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0" &&
+        "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb" &&
         seatbelt?.kind === 'fixed-instances' && seatbelt.cardSetId === "record:1786cdc8dc093e114e364515:d23a0768da66a245c955bbc9" && seatbelt.cardCount === 1)
         return { ...seatbelt, supportedFormats: ['standard', 'comma', 'long', 'i10'] };
     

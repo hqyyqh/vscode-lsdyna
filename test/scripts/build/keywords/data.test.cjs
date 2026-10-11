@@ -9,6 +9,30 @@ const zlib = require('node:zlib');
 const { applyHelpCorrections, publish, obsolete, readSources,validateEngineeringSource, engineeringRuntimeBytes } = require('../../../../scripts/build/keywords/data.cjs');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 
+test('rebinds legacy form shard paths to the actual compressed and decoded bytes', () => {
+    const { updateDescriptors } = require('../../../../scripts/build/keywords/data.cjs');
+    const original = { file: 'card_conditions.v4/shard.json.gz', sha256: 'old', uncompressedSha256: 'content', compressedBytes: 20, uncompressedBytes: 30 };
+    const result = updateDescriptors(original, new Map([['shard.json.gz', { sha256: 'new', contentSha256: 'content', compressedBytes: 21, uncompressedBytes: 30 }]]));
+    assert.deepEqual(result, { ...original, sha256: 'new', compressedBytes: 21 });
+    assert.equal(original.sha256, 'old');
+});
+
+test('generated gzip bytes are independent of the Windows, Unix and macOS header marker', () => {
+    const compress = require('../../../../scripts/build/deterministic-gzip.cjs');
+    const original = zlib.gzipSync, source = Buffer.from('same generated engineering data');
+    let expected;
+    try {
+        for (const host of [3, 10, 19]) {
+            zlib.gzipSync = (...args) => { const bytes = original(...args); bytes[9] = host; return bytes; };
+            const actual = compress(source, { level: 9 });
+            assert.equal(actual[9], 255);
+            assert.deepEqual(zlib.gunzipSync(actual), source);
+            if (expected) assert.deepEqual(actual, expected);
+            expected = actual;
+        }
+    } finally { zlib.gzipSync = original; }
+});
+
 test('native definition namespaces rebind explicit targets without changing signed, contextual or permission semantics', () => {
     const { rebindReferenceNamespaces } = require('../../../../scripts/build/keywords/data.cjs');
     const source = { kind: 'entity-reference', sourceRuleId: 'original', field: { keyword: '*ICFD_PART', fieldName: 'SECID' },

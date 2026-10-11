@@ -61,8 +61,8 @@
     {
       "bundle": "references",
       "path": "keywords/sources/references/logical.json.gz",
-      "sha256": "9d824e9b9dab28f261cebf080518f87f901efde46782b0eb8b5cf169c1b4f4f6",
-      "contentSha256": "e22a7fa04ea988b342554953b082d0edaf88cb295b3960de2b50fd15b7bb6c1d",
+      "sha256": "2909af0af2c5c6569b5524ae32a0f27e778cd3bbf1f8226cde5dbeeb91fb2e90",
+      "contentSha256": "9a5a63b0c2e99f97266d270e7922a55e6e5ac1f31d5711ba4908896e7d423cb1",
       "outputRoot": "keywords/runtime/references"
     },
     {
@@ -75,43 +75,43 @@
     {
       "bundle": "categories",
       "path": "keywords/sources/categories/logical.json.gz",
-      "sha256": "73fa3622314e7cc42989fde43effb2aa73666ffb63996ea9d9e4cdce9f229499",
-      "contentSha256": "ee51954b843d034535488ab3594c48f0f9d506f1838545343aba97160cd83d93",
+      "sha256": "9b52376ebf425e1027830219a17a09ed54eb28adc64b8b4939daa36cda62badd",
+      "contentSha256": "4a7a700bb2ca8f9e53e689203da7c38838ac6eef37094435eb8b49b2b51da76e",
       "outputRoot": "keywords/runtime/categories"
     },
     {
       "bundle": "native-readers",
       "path": "keywords/sources/native-readers/logical.json.gz",
-      "sha256": "64dd20cd02d4d5cd3875e9433e2d474923bddc50ff551a2e268461b796c7b736",
-      "contentSha256": "b406fa7beb0792a7784e1ffc84a637d3f6b64e445c2790c325b668a28d4a9d8e",
+      "sha256": "0190692a70ffacbf3e8d54fefa7e80a44239091a25f7a8ec438ea5dca7ed89ce",
+      "contentSha256": "6593b92036a05d36afbdc953e1b2066c715c721a0700f22dade689002f7c7609",
       "outputRoot": "keywords/runtime/native-readers"
     },
     {
       "bundle": "native-help",
       "path": "keywords/sources/native-help/logical.json.gz",
-      "sha256": "e4bd47bf21da14f086ed5126cff01f53546db7de2e17394073a04b8ca4bc618f",
-      "contentSha256": "40fdb21e30139aabf6cffc8cdbee68e07ec5031c9b9e1aa81c504ef3052015a9",
+      "sha256": "bf7b416bd09d5e3ae855d6bb3d6ff90e720d964b51299ac69fc88f2a995dbd23",
+      "contentSha256": "bd8a18360435c07892cdf33edd58a81b5e53cd37a1c0ca2840f9d6e88696aa99",
       "outputRoot": "keywords/runtime/native-help"
     },
     {
       "bundle": "input-form",
       "path": "keywords/sources/input-form/logical.json.gz",
-      "sha256": "84cdbf364d30aaedebe0fa6cd14023979a117629370c412aade544d7248b8e94",
-      "contentSha256": "37c9d0f01235f1cc1bf4db09553cc5bb5a330a8a54398b1dd7a7ec8c1122ae29",
+      "sha256": "533c41699fc2e077121c63c6d7cbc1a16bff4a7752affc86e66eac2ccdab8798",
+      "contentSha256": "e09d40b6e5ee52cd486e272259c33b01e84da721e6a15374edaca520eb52344a",
       "outputRoot": "keywords/runtime/input-form"
     },
     {
       "bundle": "manual-semantics",
       "path": "keywords/sources/manual-semantics/logical.json.gz",
-      "sha256": "7e3c1e529be828912ebef4b81e9a75ba09354085a07554b43cc5f4eec7c44479",
-      "contentSha256": "3b61beac79141e712f8b3c4385d3ddc713c9089fde83bf8e880f11d7e7658fed",
+      "sha256": "9bfe365c72741d89479828a9ca9e8f0479455ddbe19d3d43d2c68c2a601d436a",
+      "contentSha256": "c54b672e65218fd5d94aabab7e358314093dd77981770f47d98db81bf43327e3",
       "outputRoot": "keywords/runtime/manual-semantics"
     },
     {
       "bundle": "semantic-v2",
       "path": "keywords/sources/semantic-v2/logical.json.gz",
-      "sha256": "9a66d0ca465da12bb5c56167432efae44acea941e69781e94b77878081bae4ba",
-      "contentSha256": "8932372294c0b2031d5aa8f35920d320e24526f8c4e2383ac40bfba9c2b3bc12",
+      "sha256": "2aa130eb70735770256740c5ea4c7df6ad1be53015790f593ad2fecec1f6fda1",
+      "contentSha256": "254cbdace8512d10f692d8acb858c2fbcabb261e14a5f413e99ac5db1ed5aafa",
       "outputRoot": "keywords/runtime/semantic-v2"
     },
     {
@@ -146,14 +146,14 @@
     },
     {
       "path": "keywords/sources/contact-thermal/import-v1.json",
-      "sha256": "25fc9054acfe910c8aca1a751a1ece3d8756655ce9d257ed6605fe464c26a7b1",
-      "contentSha256": "25fc9054acfe910c8aca1a751a1ece3d8756655ce9d257ed6605fe464c26a7b1",
+      "sha256": "ae24d58c7f0a9a2ec97b1ece29f190577d9792858f12bee6f520defe2e95e71e",
+      "contentSha256": "ae24d58c7f0a9a2ec97b1ece29f190577d9792858f12bee6f520defe2e95e71e",
       "policy": "supplemental-manual-composition; preserves-original-native-checkpoints"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v2.json",
-      "sha256": "2163511e862967fb4014b08aa29bbaa2f6247e6c7b8df89b0efb09cf26cf78e3",
-      "contentSha256": "2163511e862967fb4014b08aa29bbaa2f6247e6c7b8df89b0efb09cf26cf78e3",
+      "sha256": "7832467e80a79d99108b1914c0f6b557f91524f1262aecdc42c4b2a539f4e46a",
+      "contentSha256": "7832467e80a79d99108b1914c0f6b557f91524f1262aecdc42c4b2a539f4e46a",
       "policy": "supplemental-manual-composition-and-contact-applicability; preserves-original-native-checkpoints"
     },
     {
@@ -542,8 +542,8 @@
     },
     {
       "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz",
-      "sha256": "ebf8ef4b5ddbe0d950e34fbe67890f8a4924905071f0f2dd09f9e2e6e7741337",
-      "contentSha256": "2a34ff305ddff882dd8a663c479b6d630c97f8387ab48937fa9508033d0cdfa6",
+      "sha256": "7c5567ada44eef1f739c9ab0a3022ad1b931cf5b93cfb299a11185bdd5a3799d",
+      "contentSha256": "4d708c2303d74c86a982c1c1c31692d6c16ab611b6f537caf7ef20259206d6f8",
       "policy": "Preserves v38 definitions, source partitions, blocked identities and all other relations including ANG and FRICTION. Changes only EM_CONTROL_SOLUTION/DIST to non-reference by explicit user adjudication; previous 355 bindings update only checkpoint provenance. No completeness claim."
     },
     {
@@ -554,8 +554,8 @@
     },
     {
       "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz",
-      "sha256": "2a541d0f561d838c26c4d521420419ab3a7c5754424c465666bfd9a377e0b12f",
-      "contentSha256": "a78745d072af101cec09480f3c8e9637833340ef9e15f959e6ecd19f06039e80",
+      "sha256": "b4f9272bfaa0698372fdee54edf7abf4ee14be551ed483df9f2fc35cc99ced06",
+      "contentSha256": "e0fe79dbe8fe3784b45490f0adc29fba95b040f2c5c04e000d2b551e735c4a20",
       "policy": "Preserves all v1 static exclusions. Adds exact DEFINE_FRICTION/TITLE PID_I/PTYPEI and PID_J/PTYPEJ help-confirmed PART/PSET branches, with blank retaining the existing PART role. Other strings and parameters remain indeterminate; no native-consumer verification claim."
     }
   ],

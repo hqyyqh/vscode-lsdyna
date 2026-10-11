@@ -42,7 +42,7 @@ describe('generate field reference index', () => {
                 { format: 'long', mode: 'fixed', position: 0, width: 20 },
                 { format: 'i10', mode: 'fixed', position: 0, width: 10 },
                 { format: 'comma', mode: 'comma', fieldIndex: 0 }] };
-        const source = { datasetSha256: "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0" };
+        const source = { datasetSha256: "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb" };
         const read = value => buildIndex({}, [], {}, { source, definitions: { NATIVE_TITLE: value }, references: {}, blocked: [] })
             .definitionKeywords.generic.NATIVE_TITLE;
         assert.deepEqual(read(descriptor), descriptor);

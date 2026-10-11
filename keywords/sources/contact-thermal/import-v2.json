@@ -3,9 +3,9 @@
   "kind": "manual-contact-thermal-composition",
   "definitionsFrom": "keywords/sources/contact-thermal/import-v1.json",
   "source": {
-    "nativeExecutableSha256": "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0",
+    "nativeExecutableSha256": "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb",
     "schemaCheckpointSha256": "0660c76e56f9bcbbd91c2330e2217ce3ef0fc74645d51e568b8bc6b478e0af0d",
-    "inputFormCheckpointSha256": "84cdbf364d30aaedebe0fa6cd14023979a117629370c412aade544d7248b8e94",
+    "inputFormCheckpointSha256": "533c41699fc2e077121c63c6d7cbc1a16bff4a7752affc86e66eac2ccdab8798",
     "manual": {
       "sha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
       "revision": "master@82cac4671 (06/12/26)",

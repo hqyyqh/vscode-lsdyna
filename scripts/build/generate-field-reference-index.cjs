@@ -85,7 +85,7 @@ function writeBlockedRuntime(blockedReferences, destinationPath) {
         kind: 'dynasense-lspp-reference-blockers',
         blockedReferences,
     });
-    const encoded = zlib.gzipSync(Buffer.from(`${JSON.stringify(payload)}\n`), { level: 9, mtime: 0 });
+    const encoded = require('./deterministic-gzip.cjs')(Buffer.from(`${JSON.stringify(payload)}\n`), { level: 9 });
     fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
     fs.writeFileSync(destinationPath, encoded);
     return {
@@ -336,7 +336,7 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
 function sourceBoundDefinition(descriptor, source) {
     const address = value => require('../../out/core/semantics/descriptorIdentity').isDescriptorIdentity(value, true);
     const formats = descriptor.formatContracts || [];
-    return source?.datasetSha256 === "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0" &&
+    return source?.datasetSha256 === "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb" &&
         descriptor.source === "keyword-catalog" && descriptor.fieldType === 'integer' &&
         (descriptor.recordMode === 'exact-data-record-ordinal' || descriptor.recordMode === 'repeat-data-record-template' &&
             Number.isSafeInteger(descriptor.recordStride) && descriptor.recordStride > 0 && descriptor.dataRecordOrdinal < descriptor.recordStride) &&

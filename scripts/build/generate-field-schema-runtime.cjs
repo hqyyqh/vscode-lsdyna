@@ -3,7 +3,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
 
 const FORMAT_VERSION = 1;
 const repoRoot = path.resolve(__dirname, "../..");
@@ -67,9 +66,8 @@ function buildFieldSchemaRuntime(fieldDataText) {
 }
 
 function encodeRuntime(runtime) {
-    return zlib.gzipSync(Buffer.from(JSON.stringify(runtime), 'utf8'), {
+    return require('./deterministic-gzip.cjs')(Buffer.from(JSON.stringify(runtime), 'utf8'), {
         level: 9,
-        mtime: 0,
     });
 }
 

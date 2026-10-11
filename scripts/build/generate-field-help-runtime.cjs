@@ -3,7 +3,6 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
 
 const { buildFieldSchemaRuntime } = require('./generate-field-schema-runtime.cjs');
 const { buildFieldHelpDelta } = require('./generate-field-help-zh-delta.cjs');
@@ -61,9 +60,8 @@ function sha256(value) {
 }
 
 function encodeRuntime(value) {
-    return zlib.gzipSync(Buffer.from(JSON.stringify(value), 'utf8'), {
+    return require('./deterministic-gzip.cjs')(Buffer.from(JSON.stringify(value), 'utf8'), {
         level: 9,
-        mtime: 0,
     });
 }
 
