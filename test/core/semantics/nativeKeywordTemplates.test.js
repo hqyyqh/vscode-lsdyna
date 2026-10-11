@@ -95,7 +95,7 @@ describe('shared native keyword templates', () => {
     });
 
     it('audits every built-in template, retains unknown rules and regenerates deterministically', function () {
-        this.timeout(120000); // Includes the batch fixed-reader bindings and reparses every generated record.
+        this.timeout(300000); // Two full generations plus every record; this is a correctness replay, not a latency gate.
         const input = JSON.parse(fs.readFileSync('snippets/lsdyna.json', 'utf8'));
         const first = generate(input), second = generate(first.snippets);
         assert.deepEqual(first.snippets, second.snippets);

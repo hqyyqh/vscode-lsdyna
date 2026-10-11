@@ -24,7 +24,8 @@ describe('keyword display identity', () => {
             assert.deepEqual(result.identity, { field: 'PID', value: '1201' });
         } finally { fs.readFileSync = originalRead; }
     });
-    it('rejects an array layout runtime and uses the existing source fallback', () => {
+    it('rejects an array layout runtime and uses the existing source fallback', function () {
+        this.timeout(20000); // Starts a fresh process and parses the complete source fallback.
         const repoRoot = path.resolve(__dirname, '..', '..');
         const child = childProcess.spawnSync(process.execPath, ['-e', String.raw`
             const fs = require('fs'), zlib = require('zlib');

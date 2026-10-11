@@ -3091,17 +3091,22 @@ describe('large document guards', () => {
             const strictLinks = await collectIncludeDocumentLinks(doc, { mode: 'strict' });
             const openLinks = await collectIncludeDocumentLinks(doc, { mode: 'crossPlatform' });
             assert.equal(strictLinks.filter(l => l.target && l.target.fsPath).length, 0);
-            const norm = (p) => process.platform === 'win32'
-                ? path.normalize(p).toLowerCase()
-                : path.normalize(p);
-            assert.ok(openLinks.some(l => l.target && norm(l.target.fsPath) === norm(realFile)));
+            const deckPath = path.join(tempRoot, 'part.k');
+            const hostResolvesDeckPath = fs.existsSync(deckPath);
+            if (hostResolvesDeckPath) {
+                assert.ok(openLinks.some(l => l.target && path.normalize(l.target.fsPath) === deckPath));
+            } else {
+                assert.equal(openLinks.length, 0, 'case-sensitive filesystems cannot open the mismatched path');
+            }
 
             const strictDeco = await collectIncludeDecorationSets(doc, { mode: 'strict' });
             assert.equal(strictDeco.resolved.length, 0);
             assert.ok(strictDeco.missing.length >= 1);
             assert.equal(strictDeco.missingIndicators.length, 1);
             assert.equal(strictDeco.missingIndicators[0].hoverMessage,
-                i18n.get('includePathCaseMismatch', 'part.k', 'Part.k'));
+                hostResolvesDeckPath
+                    ? i18n.get('includePathCaseMismatch', 'part.k', 'Part.k')
+                    : i18n.get('includeDecorationMissingLocal', 'part.k'));
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
         }
@@ -7222,6 +7227,7 @@ describe('file reveal commands', () => {
 });
 
 describe('extension.openManual command', () => {
+    const hostPath = value => path.resolve(value.replace(/\\/g, '/'));
     let originalPlatform;
     let originalExec;
     let originalSpawn;
@@ -7374,17 +7380,17 @@ describe('extension.openManual command', () => {
 
     it('uses absolute manualsDir path to resolve SumatraPDF.exe when present', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.manualsDir = 'C:\\custom\\manuals';
-        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = hostPath('C:\\custom\\manuals');
+        mockExistsMap[hostPath('C:\\custom\\manuals\\SumatraPDF.exe')] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.deepStrictEqual(spawnCalls, [{
-            exe: 'C:\\custom\\manuals\\SumatraPDF.exe',
+            exe: hostPath('C:\\custom\\manuals\\SumatraPDF.exe'),
             args: ['-reuse-instance', '-page', '12', pdfPath],
             options: { shell: false, detached: true, stdio: 'ignore', windowsHide: false },
         }]);
@@ -7394,33 +7400,33 @@ describe('extension.openManual command', () => {
 
     it('uses SumatraPDF.exe from a packaged pdf subdirectory', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.manualsDir = 'C:\\manual-pack';
-        mockExistsMap['C:\\manual-pack\\pdf\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = hostPath('C:\\manual-pack');
+        mockExistsMap[hostPath('C:\\manual-pack\\pdf\\SumatraPDF.exe')] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
-        await openManual('C:\\manual-pack\\pdf\\Volume I.pdf', 8);
+        await openManual(hostPath('C:\\manual-pack\\pdf\\Volume I.pdf'), 8);
 
         assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\manual-pack\\pdf\\SumatraPDF.exe');
-        assert.deepStrictEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '8', 'C:\\manual-pack\\pdf\\Volume I.pdf']);
+        assert.strictEqual(spawnCalls[0].exe, hostPath('C:\\manual-pack\\pdf\\SumatraPDF.exe'));
+        assert.deepStrictEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '8', hostPath('C:\\manual-pack\\pdf\\Volume I.pdf')]);
         assert.strictEqual(openExternalCalls.length, 0);
     });
 
     it('uses relative manualsDir next to Code.exe before workspaceFolders', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'relative/manuals';
-        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: hostPath('C:\\workspace') } }];
         // Only workspace has Sumatra — still works as fallback when install root misses it.
-        mockExistsMap['C:\\workspace\\relative\\manuals\\SumatraPDF.exe'] = true;
+        mockExistsMap[hostPath('C:\\workspace\\relative\\manuals\\SumatraPDF.exe')] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 1);
-        assert.strictEqual(spawnCalls[0].exe, 'C:\\workspace\\relative\\manuals\\SumatraPDF.exe');
+        assert.strictEqual(spawnCalls[0].exe, hostPath('C:\\workspace\\relative\\manuals\\SumatraPDF.exe'));
         assert.deepStrictEqual(spawnCalls[0].args, ['-reuse-instance', '-page', '12', pdfPath]);
         assert.strictEqual(execCalls.length, 0);
         assert.strictEqual(openExternalCalls.length, 0);
@@ -7429,14 +7435,14 @@ describe('extension.openManual command', () => {
     it('prefers Code.exe-relative manualsDir over workspace when both have Sumatra', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'relative/manuals';
-        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: hostPath('C:\\workspace') } }];
         const exeDir = path.dirname(process.execPath);
         const exeSumatra = path.join(exeDir, 'relative', 'manuals', 'SumatraPDF.exe');
         mockExistsMap[exeSumatra] = true;
-        mockExistsMap['C:\\workspace\\relative\\manuals\\SumatraPDF.exe'] = true;
+        mockExistsMap[hostPath('C:\\workspace\\relative\\manuals\\SumatraPDF.exe')] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
-        await openManual('C:\\path\\to\\manual.pdf', 12);
+        await openManual(hostPath('C:\\path\\to\\manual.pdf'), 12);
 
         assert.strictEqual(spawnCalls.length, 1);
         assert.strictEqual(spawnCalls[0].exe, exeSumatra);
@@ -7445,22 +7451,22 @@ describe('extension.openManual command', () => {
     it('uses the viewer from the reader-selected workspace pack over an earlier empty candidate', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'relative/manuals';
-        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: hostPath('C:\\workspace') } }];
         const exeRoot = path.join(path.dirname(process.execPath), 'relative', 'manuals');
-        const selected = path.join('C:\\workspace', 'relative', 'manuals');
+        const selected = path.join(hostPath('C:\\workspace'), 'relative', 'manuals');
         mockExistsMap[path.join(exeRoot, 'SumatraPDF.exe')] = true;
         mockExistsMap[path.join(selected, 'indexes')] = true;
         mockExistsMap[path.join(selected, 'pdf', 'SumatraPDF.exe')] = true;
-        await registeredCommands.get('extension.openManual')('C:\\model\\manual.pdf', 1);
+        await registeredCommands.get('extension.openManual')(hostPath('C:\\model\\manual.pdf'), 1);
         assert.equal(spawnCalls[0].exe, path.join(selected, 'pdf', 'SumatraPDF.exe'));
     });
     it('uses the system viewer when the selected pack has no Sumatra even if another candidate does', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'relative/manuals';
-        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: hostPath('C:\\workspace') } }];
         mockExistsMap[path.join(path.dirname(process.execPath), 'relative', 'manuals', 'indexes')] = true;
-        mockExistsMap[path.join('C:\\workspace', 'relative', 'manuals', 'SumatraPDF.exe')] = true;
-        await registeredCommands.get('extension.openManual')('C:\\model\\manual.pdf', 1);
+        mockExistsMap[path.join(hostPath('C:\\workspace'), 'relative', 'manuals', 'SumatraPDF.exe')] = true;
+        await registeredCommands.get('extension.openManual')(hostPath('C:\\model\\manual.pdf'), 1);
         assert.equal(spawnCalls.length, 0);
         assert.equal(openExternalCalls.length, 1);
     });
@@ -7475,7 +7481,7 @@ describe('extension.openManual command', () => {
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 1);
@@ -7492,7 +7498,7 @@ describe('extension.openManual command', () => {
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
@@ -7502,13 +7508,13 @@ describe('extension.openManual command', () => {
 
     it('returns null and falls back when SumatraPDF.exe does not exist in manualsDir', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.manualsDir = 'C:\\custom\\manuals';
-        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = false;
+        mockConfig.manualsDir = hostPath('C:\\custom\\manuals');
+        mockExistsMap[hostPath('C:\\custom\\manuals\\SumatraPDF.exe')] = false;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 0);
@@ -7518,15 +7524,15 @@ describe('extension.openManual command', () => {
 
     it('falls back to the system PDF handler when Sumatra launch fails', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.manualsDir = 'C:\\custom\\manuals';
-        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = hostPath('C:\\custom\\manuals');
+        mockExistsMap[hostPath('C:\\custom\\manuals\\SumatraPDF.exe')] = true;
 
         mockSpawnError = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path\\to\\manual.pdf';
+        const pdfPath = hostPath('C:\\path\\to\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 1);
@@ -7536,13 +7542,13 @@ describe('extension.openManual command', () => {
 
     it('passes shell metacharacters in PDF paths as opaque arguments', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
-        mockConfig.manualsDir = 'C:\\custom\\manuals';
-        mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
+        mockConfig.manualsDir = hostPath('C:\\custom\\manuals');
+        mockExistsMap[hostPath('C:\\custom\\manuals\\SumatraPDF.exe')] = true;
 
         const openManual = registeredCommands.get('extension.openManual');
         assert.ok(openManual);
 
-        const pdfPath = 'C:\\path & 100%!\\manual.pdf';
+        const pdfPath = hostPath('C:\\path & 100%!\\manual.pdf');
         await openManual(pdfPath, 12);
 
         assert.strictEqual(spawnCalls.length, 1);
@@ -7570,8 +7576,8 @@ describe('extension.openManual command', () => {
         it(`observes a ${failure} system PDF open result without blocking the command`, async () => {
             Object.defineProperty(process, 'platform', { value: failure === 'rejected' || failure === 'thrown' ? 'win32' : 'darwin' });
             if (failure === 'thrown') {
-                mockConfig.manualsDir = 'C:\\custom\\manuals';
-                mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
+                mockConfig.manualsDir = hostPath('C:\\custom\\manuals');
+                mockExistsMap[hostPath('C:\\custom\\manuals\\SumatraPDF.exe')] = true;
                 mockSpawnError = true;
             }
             extensionModule._internals.clearSumatraPathCache();

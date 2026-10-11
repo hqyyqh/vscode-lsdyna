@@ -8,11 +8,14 @@ const script = path.join(repo, 'scripts/host/vsix-host.cjs');
 describe('installed host diagnostic failure propagation', () => {
     async function scenario({ failure, hostError, development = false } = {}) {
         const root = create(path.join(os.tmpdir(), 'vsix-diagnostic-test-'));
-        const executable = path.join(root, 'Code.exe'), extensions = path.join(root, 'extensions');
+        const executable = path.join(root, process.platform === 'darwin' ? 'Code.app/Contents/MacOS/Electron' : 'Code.exe');
+        const extensions = path.join(root, 'extensions');
         const profile = path.join(root, 'profile'), evidence = path.join(root, 'evidence');
         const vsix = path.join(root, 'fixture.vsix');
-        fs.mkdirSync(path.join(root, 'resources/app/out'), { recursive: true });
-        fs.writeFileSync(path.join(root, 'resources/app/out/cli.js'), '');
+        const cli = path.join(root, process.platform === 'darwin'
+            ? 'Code.app/Contents/Resources/app/out/cli.js' : 'resources/app/out/cli.js');
+        fs.mkdirSync(path.dirname(cli), { recursive: true });
+        fs.writeFileSync(cli, '');
         fs.writeFileSync(vsix, 'synthetic install identity; subprocess verification is stubbed');
         const saveError = Object.assign(Error('Injected diagnostic failure'), { code: 'ENOSPC' });
         let hostFinished = false, calls = 0, resultFile;

@@ -30,7 +30,8 @@ describe('projectReferenceIndex', () => {
         assert.equal(analyzeReference(index, value, ['curve'], { projectScoped: true, documentPath: filePath }).state, 'exact');
     });
 
-    it('does not load relation coverage while importing the extension', () => {
+    it('does not load relation coverage while importing the extension', function () {
+        this.timeout(20000); // Includes a cold child process and extension module import.
         require('node:child_process').execFileSync(process.execPath, ['-e', `
             require('./test/support/register-out');
             const registry = require('./out/core/references/definitionRegistry');

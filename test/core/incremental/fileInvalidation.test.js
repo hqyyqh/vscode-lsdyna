@@ -45,7 +45,7 @@ describe('findAffectedProjectRoots', () => {
         assert.deepEqual(affectedRoots, [rootA, rootB]);
     });
 
-    it('matches changed file aliases case-insensitively on windows-style paths', () => {
+    it('uses host case sensitivity when matching changed file aliases', () => {
         const { findAffectedProjectRoots } = require('../../../src/core/incremental/fileInvalidation');
         const rootFile = path.resolve('project', 'main.k');
         const trackedFile = path.resolve('project', 'Sub', 'PART.KEY');
@@ -58,6 +58,6 @@ describe('findAffectedProjectRoots', () => {
             },
         ]);
 
-        assert.deepEqual(affectedRoots, [rootFile]);
+        assert.deepEqual(affectedRoots, process.platform === 'win32' ? [rootFile] : []);
     });
 });

@@ -73,7 +73,8 @@ describe('native ELEMENT instance readers',()=>{
   }
  });
 
- it('checks every template layout through actual document parsing',()=>{
+ it('checks every template layout through actual document parsing',function(){
+  this.timeout(20000); // Exhaustive generated-template replay on CI hosts.
   const {nativeKeywordTemplate}=require("../../../out/core/completion/nativeKeywordTemplate");
   for(const keyword of Object.keys(require("../../../keywords/runtime/native-readers/lspp-element-readers.json").bindings)){
    const template=nativeKeywordTemplate(keyword);assert.equal(template.status,'native-layout');

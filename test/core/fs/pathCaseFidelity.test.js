@@ -161,6 +161,10 @@ describe('pathCaseFidelity', () => {
         });
 
         const result = await resolveIncludeWithCaseCheck('sub\\part.k', [root], { fs: io });
+        if (path.sep !== '\\') {
+            assert.equal(result.status, 'missing', 'POSIX treats a backslash as a literal filename character');
+            return;
+        }
         assert.equal(result.status, 'case-mismatch');
         assert.equal(result.diskRelative, 'Sub\\Part.k');
     });
@@ -188,6 +192,10 @@ describe('pathCaseFidelity', () => {
                 [parent]: ['Shared'], [path.join(parent, 'Shared')]: ['Part.k'],
             } });
             const result = await resolveIncludeWithCaseCheck(raw, [root], { fs: io });
+            if (path.sep !== '\\' && raw.includes('\\')) {
+                assert.equal(result.status, 'missing', 'OS resolution must retain POSIX path semantics');
+                continue;
+            }
             assert.equal(result.status, 'case-mismatch');
             assert.deepEqual(result.diffs, [{ index: 1, deck: 'shared', disk: 'Shared' },
                 { index: 2, deck: 'part.k', disk: 'Part.k' }]);
@@ -227,7 +235,7 @@ describe('pathCaseFidelity', () => {
     });
 
     it('checks repeated parent segments against the actual filesystem', async () => {
-        const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-path-case-'));
+        const temporary = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-path-case-')));
         try {
             const base = path.join(temporary, 'deck', 'nested');
             fs.mkdirSync(base, { recursive: true });

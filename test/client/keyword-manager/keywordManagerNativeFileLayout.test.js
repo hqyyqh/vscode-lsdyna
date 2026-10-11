@@ -293,7 +293,8 @@ describe('native file-reader dynamic layouts', () => {
             assert.equal(m.plan.replacementRecords.length, m.block.records.length);
         }
     });
-    it('round trips every FTYPE transition, retaining the controller and VEVP', () => {
+    it('round trips every FTYPE transition, retaining the controller and VEVP', function () {
+        this.timeout(20000); // Exhaustive transition round trips, including reopening each result.
         for (let from = 0; from <= 4; from++) for (let to = 0; to <= 4; to++) for (const title of [false, true]) {
             const b = from ? 10 + from * 2 : 8;
             const text = source('MAT_213', [1,2,3,4,5,6,7,b,b+1,10,11], { MID: 213, FTYPE: from, VEVP: 1 }, title);

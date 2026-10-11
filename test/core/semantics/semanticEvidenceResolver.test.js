@@ -196,7 +196,8 @@ describe('semantic evidence resolver', () => {
                 replacementMtimeMs: replaced.mtimeMs, statuses }));
             assert.deepStrictEqual(statuses, ['resolved', 'pdf-integrity-mismatch', 'resolved']);
             assert.equal(opensAfterReplacement, 1, 'changed bytes must not reach the PDF opener');
-            assert.deepStrictEqual(opened, [fs.realpathSync(pdfPath), fs.realpathSync(pdfPath)]);
+            const canonicalPdfPath = await fs.promises.realpath(pdfPath);
+            assert.deepStrictEqual(opened, [canonicalPdfPath, canonicalPdfPath]);
         });
     }
 
@@ -332,7 +333,7 @@ describe('semantic evidence resolver', () => {
             assert.equal(result.status, 'resolved');
             assert.equal(result.page, 7);
             assert.equal(result.manualId, 'manual-vol-i');
-            assert.equal(result.pdfPath, fs.realpathSync(path.join(fixture.root, 'pdf', 'vol-i.pdf')));
+            assert.equal(result.pdfPath, await fs.promises.realpath(path.join(fixture.root, 'pdf', 'vol-i.pdf')));
         }
     });
 

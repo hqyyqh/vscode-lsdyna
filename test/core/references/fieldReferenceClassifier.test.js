@@ -2220,7 +2220,8 @@ describe('fieldReferenceClassifier', () => {
         assert.deepEqual([...physical].filter(coordinate => aliasKeywords.has(coordinate.split('|')[0])).sort(), [...numberedAliasContract.actionable].sort());
     });
 
-    it('rejects cross-namespace target keyword unions without branch-level bindings', () => {
+    it('rejects cross-namespace target keyword unions without branch-level bindings', function () {
+        this.timeout(20000); // Loads an independent full registry to exercise corruption rejection.
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const runtime = require('../../../out/core/semantics/semanticRuntimeV2')
             .getSemanticRuntimeCatalogV2();

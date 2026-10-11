@@ -3,6 +3,8 @@ const fs = require('node:fs'), path = require('node:path');
 const esbuild = require('esbuild'), ts = require('typescript');
 
 async function bundleRelease(stage) {
+    // esbuild resolves source symlinks; use the same root for relative resource paths.
+    stage = fs.realpathSync(stage);
     const entries = ['out/extension.js', 'out/server/server.js', 'out/worker/scanWorker.js'];
     const inputs = new Set(), outputs = new Map(), reports = {}, externalFiles = new Set();
     for (const entry of entries) {

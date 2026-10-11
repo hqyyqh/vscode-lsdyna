@@ -16,7 +16,7 @@ describe('includeTreeCopy', () => {
         });
 
         it('includes basename and absolute path', () => {
-            const abs = path.normalize('D:\\ws\\models\\a.k');
+            const abs = path.resolve('ws', 'models', 'a.k');
             const choices = buildIncludeCopyChoices(abs);
             assert.ok(choices.some(c => c.id === 'basename' && c.value === 'a.k'));
             assert.ok(choices.some(c => c.id === 'absolute' && c.value === abs));
@@ -24,7 +24,7 @@ describe('includeTreeCopy', () => {
         });
 
         it('includes workspace-relative when distinct from absolute', () => {
-            const abs = path.normalize('D:\\ws\\models\\a.k');
+            const abs = path.resolve('ws', 'models', 'a.k');
             const choices = buildIncludeCopyChoices(abs, {
                 asRelativePath: () => 'models/a.k',
             });
@@ -34,7 +34,7 @@ describe('includeTreeCopy', () => {
         });
 
         it('skips workspace-relative when equal to absolute path', () => {
-            const abs = path.normalize('D:\\ws\\a.k');
+            const abs = path.resolve('ws', 'a.k');
             const choices = buildIncludeCopyChoices(abs, {
                 asRelativePath: (p) => p,
             });

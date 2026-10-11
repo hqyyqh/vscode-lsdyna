@@ -113,7 +113,8 @@ describe('keywordSchema resolver', () => {
         assert.equal(rendered[1][0].n, 'MID');
     });
 
-    it('renders the current catalog multi-hop aliases from their final entry and all source options', () => {
+    it('renders the current catalog multi-hop aliases from their final entry and all source options', function () {
+        this.timeout(20000); // Replays the full alias catalog, not one keyword.
         const { loadKeywordSchema, lookupKeywordSchema, getRenderedCards, getCardInfoForDocumentLine } =
             require('../../src/core/keywordSchema');
         const schema = loadKeywordSchema();

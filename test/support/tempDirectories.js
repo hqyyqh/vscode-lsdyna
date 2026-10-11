@@ -9,7 +9,7 @@ function trackTempDirectories() {
         const errors = [];
         for (const root of roots) {
             try {
-                assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
+                assert.equal(path.dirname(fs.existsSync(root) ? fs.realpathSync(root) : root), fs.realpathSync(os.tmpdir()));
                 fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
                 assert.equal(fs.existsSync(root), false, `Temporary fixture remains: ${root}`);
                 roots.delete(root);
@@ -19,7 +19,7 @@ function trackTempDirectories() {
     });
     return prefix => {
         assert.equal(path.dirname(path.resolve(prefix)), path.resolve(os.tmpdir()));
-        const root = fs.mkdtempSync(prefix);
+        const root = fs.realpathSync(fs.mkdtempSync(prefix));
         roots.add(root);
         return root;
     };

@@ -370,7 +370,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "3b4ff60f3e4921491642d2a738497af6b3ee822a877f42513eb2f8d4a87b889b",
+      "sha256": "fc5770671558c938027cc988381210976983258acf99799d35716c264478b929",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2746,7 +2746,7 @@
     {
       "path": "scripts/release/bundle-release.cjs",
       "role": "editable-source",
-      "sha256": "dd16225e1284199b11cacfcfb8026fbcb0ac71bf0f13dc4b88cd0385af20a87b",
+      "sha256": "633959e73b33f1008a935833bc98122fe41d160390c9cc8dbb038eed4521932f",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -4282,7 +4282,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerNativeFileLayout.test.js",
       "role": "editable-source",
-      "sha256": "bf436fad7a8ac8252f3c6efaf5e72e618fbc0a24046c5f1fa3f6451efaa6a72f",
+      "sha256": "d538b1b15e822cf68adb013d529e73cc7afa820debe14e3bba3f639146599631",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4432,7 +4432,7 @@
     {
       "path": "test/client/services/includeTreeCopy.test.js",
       "role": "editable-source",
-      "sha256": "f57d5c094fdf28b3bf33565dd9170ec6dd05120c48d083015363f3d91c3fb0fb",
+      "sha256": "61824d31eb14f82ac01ebf65cb781b043cf02b496c8fa75050fb481053629c68",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4648,7 +4648,7 @@
     {
       "path": "test/core/fs/pathCaseFidelity.test.js",
       "role": "editable-source",
-      "sha256": "6427c2376ce5083efe4ea9c062a1b556aa1d0352d799bb6df5275eb787e44898",
+      "sha256": "c9c5ba4d41655d67e065176f923e6254f9c30f0fbbce66d31c91d0846412e935",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4690,7 +4690,7 @@
     {
       "path": "test/core/incremental/fileInvalidation.test.js",
       "role": "editable-source",
-      "sha256": "a5d42b1dcf9f5ebb7a61c039dd394a33debabb5e91f662f459bbe413c16ed609",
+      "sha256": "413538adaec71c1d2942e5e2b7a17c392a2002ca4f44eee9688bcc0147de0d10",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4726,7 +4726,7 @@
     {
       "path": "test/core/keywordDisplayIdentity.test.js",
       "role": "editable-source",
-      "sha256": "87cb2e9fb9907f8c8315fab4bee08bd8c4dc1d4751daca25c1cb4fcdc5d71c79",
+      "sha256": "42b8228d6c70da4f7dbdf80ca9df7097dae2127fa754f67270e329bec04e40c5",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4750,7 +4750,7 @@
     {
       "path": "test/core/keywordSchema.test.js",
       "role": "editable-source",
-      "sha256": "5a6de43298c8323ec114739582aa02e5e20032addec3cd80886913fa2be3dbc5",
+      "sha256": "f2285d7016d8d5062e53986e20a11769d143a64cd2766b677ca9abd6fc77d8b4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4768,7 +4768,7 @@
     {
       "path": "test/core/manualIndexer.test.js",
       "role": "editable-source",
-      "sha256": "b022eb71724b93c874a302e209721bda9705e316b18bb031cc94d54ae2867ab8",
+      "sha256": "3a47cee19183bfa178cdd9520fefe173e2a94a1ab52e59a4434a6c702985376f",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4960,7 +4960,7 @@
     {
       "path": "test/core/references/fieldReferenceClassifier.test.js",
       "role": "editable-source",
-      "sha256": "5c19fcd96cf681948da40c83cffd778e2a0dc3fdcb5798f4c859425bbb0c9de2",
+      "sha256": "30acf292777fc8630e3be6bc511a2166b9349096c73c5213b1dcaafd6f537ae0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5140,7 +5140,7 @@
     {
       "path": "test/core/references/projectReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "4c9674e10de99349de7474b6efac35cd2abf2dc79439ad6c4a0f1420aea91e87",
+      "sha256": "7195f4143517f569de9fbf45662f6034f7bdab6ac9309c62a2fc2bc40d990164",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5320,7 +5320,7 @@
     {
       "path": "test/core/semantics/nativeElementReaders.test.js",
       "role": "editable-source",
-      "sha256": "a3b0daafc67ce3fe1699cacab846b68c5649cdc21cf386ba1f7744e489afedab",
+      "sha256": "ae0a0ef1086fa28b8ef7347b08fd52f577d9384000fe59042b35ee9795680ae9",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5374,7 +5374,7 @@
     {
       "path": "test/core/semantics/nativeKeywordTemplates.test.js",
       "role": "editable-source",
-      "sha256": "1b0c725e1b9ec6828823e30dc5b0a124333749c9783a6866d7f62d4ddad0fbae",
+      "sha256": "cab709867fe3933764f2a14013d7be682224b29b6c831e78cfb4dfc478862000",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5542,7 +5542,7 @@
     {
       "path": "test/core/semantics/semanticEvidenceResolver.test.js",
       "role": "editable-source",
-      "sha256": "cf14b6bc895939984a4a1f55779caf9f9b0da1254dbb9314066c779e5b877855",
+      "sha256": "a6a60af9690cc48a8448035d2f52ac53644029addb8cadd5cacb5c10ed802b54",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6514,7 +6514,7 @@
     {
       "path": "test/integration/extension.test.js",
       "role": "editable-source",
-      "sha256": "62867aa63e2f87a1a010b38f4a4688f2cbd87bf2c6d979b578162abf8a1d029d",
+      "sha256": "426e550f78584f04ac868bceb4696b56954db8ee97970aaf10ab4cff82755d2f",
       "reason": "public-product-entry-regression"
     },
     {
@@ -6538,7 +6538,7 @@
     {
       "path": "test/manual/manualReaderPanel.test.js",
       "role": "editable-source",
-      "sha256": "58b12fce806a2cd699bc7d48431357f1535155315b4a008bfcd757f7fbea9737",
+      "sha256": "0acd15158005b068d134876733cf3c667f695f2f4a463f617cd249e38fd91d04",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6634,7 +6634,7 @@
     {
       "path": "test/scripts/build/keywords/dataConsumption.test.js",
       "role": "editable-source",
-      "sha256": "87261aef196f0bd6febe22d2e3e7d8338a11288c44b4650e1c5fcb54b552225c",
+      "sha256": "2753068b8074a2b0c6f8b296da2eb1f5d1203816e8757edb9584684d1c7e50d8",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6682,7 +6682,7 @@
     {
       "path": "test/scripts/host/vsixHost.test.js",
       "role": "editable-source",
-      "sha256": "d1d43a596841199e2447995e0826bd52feda2f512923dd433ac4bb5c834c91d1",
+      "sha256": "a2d1d2de0c6ad927d1fd3c0a29711949c83a57d12c60e5684c622b3e22926427",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6694,7 +6694,7 @@
     {
       "path": "test/scripts/release/bundleRelease.test.js",
       "role": "editable-source",
-      "sha256": "415f06a9ac27ee2d6891618020f6c484a7ac2b255af6ccac8d62cbc866264c3c",
+      "sha256": "777a00fa79b80a4a20f104390ed47b0bd177ccc93cb947ac8841cf4afac9562f",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6862,7 +6862,7 @@
     {
       "path": "test/support/tempDirectories.js",
       "role": "editable-source",
-      "sha256": "5f6cda5b736a67fb6cc8ac07a36f0daa9b0592888046eafa7471fb699194e7fc",
+      "sha256": "6a225c8f69b71020f8e7e7ae6778bc7bd3058884c361bf42dada0e0a1fb99367",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

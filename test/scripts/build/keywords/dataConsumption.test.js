@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '../../../..');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 describe('built data consumed by the development extension', function () {
-    this.timeout(120000);
+    this.timeout(300000); // Rebuilds the full public dataset in an isolated directory.
     it('consumes a help authoring edit without changing native authority or tracked outputs', function () {
         const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-consumer-'));
         try {

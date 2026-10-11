@@ -521,6 +521,8 @@ trailer
                     mockState.clear();
                     await initialize(mockContext);
                     const before = fs.statSync(mockPdfPath);
+                    // Keep the replacement outside the filesystem's timestamp tick.
+                    await new Promise(resolve => setTimeout(resolve, 25));
                     const replacement = originalBytes.toString('binary').replace('*NODE_TITLE', '*PART_TITLE') + (larger ? '\n' : '');
                     fs.writeFileSync(mockPdfPath, replacement, 'binary');
                     fs.utimesSync(mockPdfPath, fixedTime, fixedTime);

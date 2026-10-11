@@ -38,7 +38,7 @@ describe('ManualReaderPanel React host', () => {
         // Chinese VS Code UI enables language toggle + Alt sentence pairs.
         vscode.env.language = 'zh-cn';
         i18n.updateLanguage();
-        root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-manual-reader-'));
+        root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-manual-reader-')));
         const indexes = path.join(root, 'indexes');
         fs.mkdirSync(indexes, { recursive: true });
         for (const language of ['en', 'zh']) {
