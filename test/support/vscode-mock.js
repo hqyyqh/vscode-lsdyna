@@ -108,8 +108,8 @@ class WorkspaceEdit {
         this.edits = [];
     }
 
-    replace(uri, range, text) {
-        this.edits.push({ uri, range, text });
+    replace(uri, range, text, metadata) {
+        this.edits.push({ uri, range, text, ...(metadata ? { metadata } : {}) });
     }
 }
 
@@ -161,6 +161,7 @@ module.exports = {
     SnippetString,
     CompletionList,
     WorkspaceEdit,
+    EndOfLine: { LF: 1, CRLF: 2 },
     TextEdit,
     CodeAction,
     CodeActionKind,

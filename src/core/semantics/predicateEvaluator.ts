@@ -171,14 +171,14 @@ export function selectSemanticBranch(branches: any[], context: PredicateContext 
         state: evaluatePredicate(branch.when, context),
     }));
     const matches = evaluations.filter(item => item.state === 'true');
-    if (matches.length === 1) {
-        return { state: 'resolved', branch: matches[0].branch, evaluations };
-    }
     if (matches.length > 1) {
         return { state: 'indeterminate', reason: 'overlapping-branches', evaluations };
     }
     if (evaluations.some(item => item.state === 'indeterminate')) {
         return { state: 'indeterminate', reason: 'predicate-indeterminate', evaluations };
+    }
+    if (matches.length === 1) {
+        return { state: 'resolved', branch: matches[0].branch, evaluations };
     }
     return { state: 'unmatched', evaluations };
 }
@@ -193,7 +193,7 @@ export function applyReferenceIdTransform(rawValue: unknown, transform: string =
         : transform === 'negate' ? -input.value
             : transform === 'identity' ? input.value
                 : Number.NaN;
-    return Number.isSafeInteger(transformed) && transformed > 0 ? transformed : null;
+    return transformed > 0 ? transformed : null;
 }
 
 export function resolveValueRole(relation: any, rawValue: unknown, context: PredicateContext = {}): any {
@@ -205,6 +205,7 @@ export function resolveValueRole(relation: any, rawValue: unknown, context: Pred
             role: relation?.kind === 'entity-reference' ? 'reference' : relation?.otherwise || 'unknown',
             targetKinds: relation?.targetKinds || (relation?.targetKind ? [relation.targetKind] : []),
             targetKeywords: relation?.targetKeywords || [],
+            ...(relation?.targetSearch ? { targetSearch: relation.targetSearch } : {}),
             idTransform: relation?.idTransform || 'identity',
         };
     }
@@ -216,6 +217,8 @@ export function resolveValueRole(relation: any, rawValue: unknown, context: Pred
             targetKinds: selection.branch.targetKinds || relation?.targetKinds ||
                 (relation?.targetKind ? [relation.targetKind] : []),
             targetKeywords: selection.branch.targetKeywords || relation?.targetKeywords || [],
+            ...(selection.branch.targetSearch || relation?.targetSearch
+                ? { targetSearch: selection.branch.targetSearch || relation.targetSearch } : {}),
             idTransform: selection.branch.idTransform || 'identity',
         };
     }

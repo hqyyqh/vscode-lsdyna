@@ -3,7 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
-import { remarkBilingual } from './remarkBilingual';
+import { remarkBilingual, rehypeBilingualComparison, type SentencePair } from './remarkBilingual';
 import { protectLsdynaMathSource, remarkLsdynaMath } from './remarkLsdynaMath';
 import { remarkManualTables } from './remarkManualTables';
 import { scrollRegionClassName } from './tableLayout';
@@ -13,8 +13,9 @@ import { ImageLightbox } from './ImageLightbox';
 
 export interface MarkdownDocumentProps {
     markdown: string;
+    comparison?: boolean;
     chunkBaseUri: string;
-    sentencePairs: Array<{ primary: string; secondary: string }>;
+    sentencePairs: SentencePair[];
     onOpenLink: (href: string) => void;
     tableLabel?: string;
     translationHint?: string;
@@ -64,8 +65,9 @@ function overlayPosition(target: HTMLElement): { left: number; top: number } {
 
 interface MarkdownContentProps {
     markdown: string;
+    comparison?: boolean;
     chunkBaseUri: string;
-    sentencePairs: Array<{ primary: string; secondary: string }>;
+    sentencePairs: SentencePair[];
     onOpenLink: (href: string) => void;
     tableLabel: string;
     translationHint: string;
@@ -76,7 +78,7 @@ interface MarkdownContentProps {
 }
 
 const MarkdownContent = React.memo(function MarkdownContent({
-    markdown, chunkBaseUri, sentencePairs, onOpenLink, tableLabel, translationHint, onPreview, onPreviewLeave, openImageLabel, onOpenImage,
+    markdown, comparison, chunkBaseUri, sentencePairs, onOpenLink, tableLabel, translationHint, onPreview, onPreviewLeave, openImageLabel, onOpenImage,
 }: MarkdownContentProps): React.JSX.Element {
     const components = useMemo<Components>(() => ({
         a: ({ node: _node, href, onClick: _onClick, ...props }) => <a {...props} href={href || undefined} onClick={event => {
@@ -107,10 +109,18 @@ const MarkdownContent = React.memo(function MarkdownContent({
             const kindClass = `reader-table--${kind}`;
             const tableClass = [className, kindClass].filter(Boolean).join(' ');
             return <div className={scrollRegionClassName(kind)} role="region" aria-label={tableLabel} tabIndex={0}>
-                <table {...props} className={tableClass || undefined} data-manual-table={kind}>{children}</table>
+                <table {...props} className={tableClass} data-manual-table={kind}>{children}</table>
             </div>;
         },
         span: ({ node: _node, className, onMouseEnter, onMouseLeave, onFocus, onBlur, onClick, onKeyDown, ...props }) => {
+            if (className?.split(/\s+/).includes('bilingual-secondary')) {
+                return <span className={className} lang="en"><ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkLsdynaMath]}
+                    rehypePlugins={[[rehypeKatex, { strict: 'ignore', trust: false }]]}
+                    components={{ p: ({ children }) => <span>{children}</span>, img: () => null,
+                        a: ({ children, href }) => <a href={href} onClick={event => { event.preventDefault(); if (href) onOpenLink(href); }}>{children}</a> }}
+                >{String(props.children || '')}</ReactMarkdown></span>;
+            }
             const bilingual = className?.split(/\s+/).includes('bilingual-text');
             const attributes = props as typeof props & { 'data-translation'?: unknown };
             const secondary = typeof attributes['data-translation'] === 'string' ? attributes['data-translation'] : null;
@@ -142,14 +152,15 @@ const MarkdownContent = React.memo(function MarkdownContent({
     const shielded = useMemo(() => protectLsdynaMathSource(markdown), [markdown]);
 
     return <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkManualTables, remarkLsdynaMath, [remarkBilingual, { sentencePairs }]]}
-        rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: 'ignore', trust: false }]]}
+        remarkPlugins={[remarkGfm, remarkManualTables, remarkLsdynaMath, [remarkBilingual, { sentencePairs, comparison }]]}
+        rehypePlugins={[rehypeRaw, [rehypeBilingualComparison, { sentencePairs, comparison }], [rehypeKatex, { strict: 'ignore', trust: false }]]}
         components={components}
     >{shielded}</ReactMarkdown>;
 });
 
 export function MarkdownDocument({
     markdown,
+    comparison,
     chunkBaseUri,
     sentencePairs,
     onOpenLink,
@@ -203,7 +214,7 @@ export function MarkdownDocument({
         };
     }, []);
 
-    useEffect(() => { setPreview(null); setLightbox(null); }, [chunkBaseUri, markdown, sentencePairs]);
+    useEffect(() => { setPreview(null); setLightbox(null); }, [chunkBaseUri, markdown, sentencePairs, comparison]);
     useEffect(() => {
         describedTarget.current?.removeAttribute('aria-describedby');
         describedTarget.current = null;
@@ -221,11 +232,12 @@ export function MarkdownDocument({
         return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update); };
     }, [visible]);
 
-    const showTranslationChrome = sentencePairs.length > 0 && Boolean(translationHint);
+    const showTranslationChrome = !comparison && sentencePairs.length > 0 && Boolean(translationHint);
     return <div className={`markdown-body${altHeld && showTranslationChrome ? ' translation-peek' : ''}`}>
         {showTranslationChrome ? <div className="reader-translation-hint">{translationHint}</div> : null}
         <MarkdownContent
             markdown={markdown}
+            comparison={comparison}
             chunkBaseUri={chunkBaseUri}
             sentencePairs={sentencePairs}
             onOpenLink={onOpenLink}

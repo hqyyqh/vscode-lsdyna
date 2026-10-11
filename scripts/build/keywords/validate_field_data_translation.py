@@ -429,7 +429,10 @@ def sync_translation_file(
     english_path: Path = DEFAULT_ENGLISH_PATH,
     localized_path: Path = DEFAULT_LOCALIZED_PATH,
     previous_english_path: Path | None = None,
+    *,
+    check_content: bool = False,
 ) -> list[str]:
+    """Publish only a validated candidate; validation failure preserves old bytes."""
     english = load_json(english_path)
     localized = load_json(localized_path) if localized_path.exists() else {}
     previous_english = (
@@ -439,13 +442,17 @@ def sync_translation_file(
     )
     synced = sync_translation_data(english, localized, previous_english)
     apply_reviewed_compatibility_localizations(english, synced)
-    write_json(localized_path, synced)
-    return [
+    errors = [
         *compare_field_data_structure(english, synced),
         *find_invalid_bilingual_help(english, synced),
         *find_help_text_character_errors(english, synced),
         *find_compatibility_localization_errors(english, synced),
     ]
+    if check_content:
+        errors.extend(find_untranslated_help(english, synced))
+    if not errors:
+        write_json(localized_path, synced)
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -469,11 +476,8 @@ def main(argv: list[str] | None = None) -> int:
             args.english,
             args.localized,
             args.previous_english,
+            check_content=args.check_content,
         )
-        english = load_json(args.english)
-        localized = load_json(args.localized)
-        if args.check_content:
-            errors.extend(find_untranslated_help(english, localized))
     else:
         english = load_json(args.english)
         localized = load_json(args.localized)

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 const handoff = require("../../fixtures/public-behavior/database-records.json");
-const { buildKeywordOptionViewModel, keywordManagerEditField, keywordManagerHelpState, keywordManagerProjectInstances } = require("../../../out/extension")._internals;
+const { buildKeywordOptionViewModel, keywordManagerEditField, keywordManagerHelpState, keywordManagerInstances } = require("../../../out/extension")._internals;
 const nativeFile = fs.readFileSync(path.join(__dirname, "../../fixtures/public-behavior/native-inputs/database-native-output.k"), 'utf8');
 const nativeIdFile = fs.readFileSync(path.join(__dirname, "../../fixtures/public-behavior/native-inputs/database-id-native-input.k"), 'utf8');
 const rowsFor = (keyword, input = nativeFile) => input.replace(/\r\n/g, '\n').split(`*${keyword}\n`)[1].split('\n*')[0].split('\n')
@@ -158,7 +158,7 @@ describe('native DATABASE proven record boundaries', () => {
         const reopenedDocument = documentFor(keyword, saved);
         const reopened = buildKeywordOptionViewModel({ document: reopenedDocument, selection: { active: new vscode.Position(4, 0) } }, 4);
         assert.equal(reopened.managerCards[0].fields[0].value, '42');
-        const project = keywordManagerProjectInstances([{ keyword, usages: [{ filePath: document.uri.fsPath, lineIndex: 0, endLine: 4 }] }], document, 4, [document]);
+        const project = keywordManagerInstances(document, 4);
         assert.equal(project.length, 2);
         assert.equal(project.filter(item => item.selected).length, 1);
         assert.equal(project.find(item => item.selected).line, 4);

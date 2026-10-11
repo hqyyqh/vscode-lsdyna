@@ -10,6 +10,26 @@ const {
 } = require('../../../out/core/references/projectReferenceIndex');
 
 describe('projectReferenceIndex', () => {
+    it('keeps project source transformations unconfirmed when occurrence context is unavailable', () => {
+        const filePath = path.resolve('model', 'context.k');
+        const index = buildProjectReferenceIndex({
+            rootFile: filePath, files: [filePath], graph: { includeOccurrences: [], includeOccurrencesComplete: true }, fileIndexes: new Map([[filePath, {
+                referenceDefinitions: { curves: [{ kind: 'curve', id: 17, filePath,
+                    keyword: '*DEFINE_CURVE', startLine: 0, endLine: 2, points: [] }], tables: [] },
+            }]]),
+        });
+        const value = { kind: 'numeric', id: 17, raw: '17' };
+        for (const options of [{ projectScoped: true }, { projectScoped: true, documentPath: path.resolve('model', 'unknown.k') }]) {
+            const result = analyzeReference(index, value, ['curve'], options);
+            assert.equal(result.state, 'uncertain');
+            assert.equal(result.transformResolution.resolved, false);
+            assert.equal(result.transformResolution.offset, undefined);
+            assert.ok(result.reasons.includes('reference-source-context-unavailable'));
+        }
+        assert.equal(analyzeReference(index, value, ['curve']).state, 'exact');
+        assert.equal(analyzeReference(index, value, ['curve'], { projectScoped: true, documentPath: filePath }).state, 'exact');
+    });
+
     it('does not load relation coverage while importing the extension', () => {
         require('node:child_process').execFileSync(process.execPath, ['-e', `
             require('./test/support/register-out');
@@ -679,6 +699,16 @@ describe('projectReferenceIndex', () => {
         assert.equal(sharedReference.resolved, false);
         assert.ok(sharedReference.reasons.includes('parameter-occurrence-ambiguous'));
         assert.deepEqual(sharedReference.results.map(result => result.value), [100, 200]);
+        const contexts = require('../../../out/core/references/projectReferenceIndex')
+            .parameterContextsForDocument(index, childFile);
+        for (const [context, value] of contexts.map((context, i) => [context, [100, 200][i]])) {
+            const scoped = analyzeReference(index,
+                { kind: 'parameter', parameterName: 'CID', raw: '&CID' }, ['curve'],
+                { projectScoped: true, documentPath: childFile, lineIndex: 0, occurrenceId: context.occurrenceId });
+            assert.equal(scoped.parameterResolution.resolved, true);
+            assert.equal(scoped.id, value);
+            assert.equal(scoped.transformResolution.results.length, 1);
+        }
     });
 
     it('keeps parameterized definitions uncertain after unsupported scope control', () => {
@@ -1052,8 +1082,8 @@ describe('projectReferenceIndex', () => {
             index.parameterContextsByFile.get(nodeFile)
                 .map(context => [context.occurrenceId, context.inputFormatMode]),
             [
-                ['root:long', 'long'],
-                ['root:standard', 'standard'],
+                ['root > root:long', 'long'],
+                ['root > root:standard', 'standard'],
             ],
         );
     });

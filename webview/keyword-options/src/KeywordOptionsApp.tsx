@@ -1,12 +1,13 @@
 import { userFacingReason } from '../../../src/core/userFacingReason';
 import { createPortal } from 'react-dom';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type {
     KeywordManagerFieldState,
     KeywordManagerHelpState,
     KeywordOptionsViewState,
 } from '../../../src/client/keywordOptionsProtocol';
 import type { KeywordOptionsTransport } from './transport';
+import { InstanceSelector } from './InstanceSelector';
 import { ManagerIcon } from './ManagerIcon';
 import { ManagerDialog } from './ManagerDialog';
 import './styles.css';
@@ -80,98 +81,95 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
     </div>;
 }
 
-function FieldHelp({ help, field, locale, value, collapsed, onReset, busy, resetLabel }: {
+function FieldHelp({ help, field, locale, collapsed, showEnglish }: {
     help: KeywordManagerHelpState;
     field: KeywordManagerFieldState;
     locale: 'en' | 'zh';
-    value: string; collapsed: boolean; onReset: () => void;
-    busy: boolean; resetLabel: string;
+    collapsed: boolean;
+    showEnglish: boolean;
 }) {
     const matches = help.fieldId === field.fieldId;
     const status = matches ? help.status : 'loading';
-    const description = locale === 'zh' ? help.localized || help.english : help.english;
-    const defaultValue = matches && status === 'ready' ? help.defaultValue ?? field.defaultValue : field.defaultValue;
+    const defaultValue = status === 'ready' ? help.defaultValue ?? field.defaultValue : field.defaultValue;
     const isZh = locale === 'zh';
     const typeLabel = ({ integer: ['整数', 'Integer'], float: ['实数', 'Real'], real: ['实数', 'Real'],
         double: ['实数', 'Real'], string: ['文本', 'Text'], bool: ['布尔值', 'Boolean'],
-        '1': ['整数', 'Integer'], '-1': ['整数', 'Integer'], '0': ['文本', 'Text'], '-2': ['文本', 'Text'],
+        '1': ['整数', 'Integer'], '-1': ['整数', 'Integer'], '2': ['实数', 'Real'], '0': ['文本', 'Text'], '-2': ['文本', 'Text'],
     } as Record<string, string[]>)[field.type.toLowerCase()]?.[isZh ? 0 : 1];
-    const messages = {
-        'form-unresolved': ['实际记录尚不能唯一确定字段布局。', 'The source records do not determine a unique field layout.'],
-        'branch-unverified': ['当前分支尚未确认。', 'The current branch has not been verified.'],
-        'branch-help-missing': ['当前分支尚无对应说明。', 'Help is unavailable for the current branch.'],
-        'field-unmatched': ['尚未关联到该字段的帮助。', 'Help has not been matched to this field.'],
-        'description-missing': ['暂无字段说明。', 'No field description is available.'],
+    const messages: Record<string, string> = {
+        'form-unresolved': isZh ? '实际记录尚不能唯一确定字段布局。' : 'The source records do not determine a unique field layout.',
+        'branch-unverified': isZh ? '当前分支尚未确认。' : 'The current branch has not been verified.',
+        'branch-help-missing': isZh ? '当前分支尚无对应说明。' : 'Help is unavailable for the current branch.',
+        'field-unmatched': isZh ? '尚未关联到该字段的帮助。' : 'Help has not been matched to this field.',
+        'description-missing': isZh ? '暂无字段说明。' : 'No field description is available.',
     };
-    const unavailable = matches && help.reason
-        ? messages[help.reason]?.[locale === 'zh' ? 0 : 1]
-        : (locale === 'zh' ? '暂无字段帮助。' : 'Help unavailable.');
-    return <aside className="fieldHelp" aria-label={locale === 'zh' ? '字段帮助' : 'Field help'}>
-        <div className="fieldHelpHeader">
-            <div className="fieldHelpTitle">
-                <strong>{field.name}{matches && help.schemaName && help.schemaName !== field.name
-                    ? `（${help.schemaName}）` : ''}</strong>
-                {typeLabel && <span className="fieldHelpBadge">{typeLabel}</span>}
-                {!field.editable && <span className="fieldHelpBadge">{isZh ? '只读' : 'Read-only'}</span>}
-                {value !== field.value && <span className="draftBadge">{isZh ? '未应用' : 'Unapplied'}</span>}
-                <span className="fieldContext">{isZh ? '卡片' : 'Card'} C{field.cardIndex} · {isZh ? '第 ' : 'Line '}{field.line + 1}{isZh ? ' 行' : ''}</span>
-            </div>
-            <div className="helpActions">
-                {value !== field.value && <button className="iconButton resetField" disabled={busy || !field.editable}
-                    title={resetLabel} aria-label={`${resetLabel} ${field.name}`}
-                    onMouseDown={event => event.preventDefault()} onClick={onReset}>{resetLabel}</button>}
-            </div>
-        </div>
+    const unavailable = (matches && help.reason && messages[help.reason]) || (isZh ? '暂无字段帮助。' : 'Help unavailable.');
+    const hasEnglish = isZh && matches && status === 'ready' && !!help.localized && !!help.english && help.english !== help.localized;
+    const description = (showEnglish && hasEnglish) ? help.english : (isZh ? help.localized || help.english : help.english);
+
+    const textToDisplay = description || unavailable;
+    const lines = textToDisplay.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const mainDesc = lines[0] || unavailable;
+    const ruleLines = lines.slice(1);
+
+    return <aside className="fieldHelp" aria-label={isZh ? '字段帮助' : 'Field help'}>
         <div id="field-help-body" className="fieldHelpBody" tabIndex={0} hidden={collapsed}
-            aria-label={locale === 'zh' ? '字段说明' : 'Field description'}>
-            <dl className="fieldValues">
-                {value !== field.value && <div><dt>{isZh ? '原值' : 'Original value'}</dt><dd><code>{field.value || (isZh ? '（空）' : '(empty)')}</code></dd></div>}
-                <div className="fullValue"><dt>{value !== field.value ? (isZh ? '修改值' : 'Edited value') : (isZh ? '文件值' : 'File value')}</dt><dd><code>{value || (isZh ? '（空）' : '(empty)')}</code></dd></div>
-                {defaultValue !== undefined && <div className="helpMeta"><dt>{isZh ? '默认值' : 'Default'}</dt><dd><code>{defaultValue || (isZh ? '（空）' : '(empty)')}</code></dd></div>}
-            </dl>
-            {!field.editable && <p>{locale === 'zh' ? '该字段当前不可编辑，请在源文件中查看或修改。' : 'This field is not editable here. Inspect or edit it in the source file.'}</p>}
-            {!field.editable && field.reason && <details><summary>{locale === 'zh' ? '技术详情' : 'Technical details'}</summary><p>{userFacingReason(field.reason, locale)}</p></details>}
-            {status === 'loading' && <p>{locale === 'zh' ? '正在加载…' : 'Loading…'}</p>}
-            {(status === 'none' || status === 'unavailable') && <p>{unavailable}</p>}
-            {status === 'ready' && <>
-                {locale === 'zh' && !help.localized && help.english &&
-                    <p className="fieldHelpFallbackNotice">暂无已核对中文说明，显示英文原文：</p>}
-                <p className="fieldHelpLocalized">{description || unavailable}</p>
-                {locale === 'zh' && help.localized && help.english && help.english !== help.localized &&
-                    <details><summary>English</summary><p>{help.english}</p></details>}
-                {!!help.choices?.length && <details>
-                    <summary>{locale === 'zh' ? '可选值' : 'Choices'} ({help.choices.length})</summary>
-                    <p>{help.choices.join(', ')}</p>
-                </details>}
-            </>}
+            aria-label={isZh ? '字段说明' : 'Field description'}>
+            {!field.editable && <p className="fieldNotice">{field.reason === 'document-readonly'
+                ? (isZh ? '该文件只读，无法应用修改。' : 'This file is read-only. Changes cannot be applied.')
+                : <>{isZh ? '该字段只读，请在源文件中修改。' : 'This field is read-only.'}{field.reason ? ` (${userFacingReason(field.reason, locale)})` : ''}</>}</p>}
+            <div className="fieldHelpContent">
+                <span className="fieldHelpName">{field.name}{matches && help.schemaName && help.schemaName !== field.name ? `（${help.schemaName}）` : ''}</span>
+                {typeLabel && <span className="fieldHelpType"> ({typeLabel})</span>}:{' '}
+                {status === 'loading' ? (
+                    <span className="fieldHelpText loading">{isZh ? '正在加载…' : 'Loading…'}</span>
+                ) : status === 'ready' ? (
+                    <>
+                        <span className="fieldHelpText">{mainDesc}</span>
+                        {defaultValue !== undefined && <span className="helpMeta">
+                            <span>{isZh ? '默认值' : 'Default'}</span><code>{defaultValue || (isZh ? '（空）' : '(empty)')}</code>
+                        </span>}
+                        {!!help.choices?.length && <span className="fieldHelpChoices">
+                            <span>{isZh ? '可选值' : 'Choices'} ({help.choices.length})</span>: <code>{help.choices.join(', ')}</code>
+                        </span>}
+                        {ruleLines.map((rule, idx) => (
+                            <div key={idx} className="fieldHelpRule">{rule}</div>
+                        ))}
+                    </>
+                ) : (
+                    <span className="fieldHelpText">{unavailable}</span>
+                )}
+            </div>
         </div>
     </aside>;
 }
 
 export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTransport }) {
     const [state, setState] = useState<KeywordOptionsViewState | null>(null);
-    const [instanceQuery, setInstanceQuery] = useState('');
-    const [instanceDialogOpen, setInstanceDialogOpen] = useState(false);
-    const [review, setReview] = useState<{ instanceId: string | null; revision: number } | null>(null);
+    const [startupFailed, setStartupFailed] = useState(false);
+    const [startupAttempt, setStartupAttempt] = useState(0);
     const [helpCollapsed, setHelpCollapsed] = useState(false);
     const [detailTopic, setDetailTopic] = useState<'field' | 'conditions'>('field');
     const detailBody = useRef<HTMLDivElement>(null);
     const applicationPending = useRef(false);
-    const reviewTrigger = useRef<HTMLButtonElement | null>(null);
     const [pendingMutations, setPendingMutations] = useState(0);
     const [localDraftCount, setLocalDraftCount] = useState(0);
     const [localResetVersion, setLocalResetVersion] = useState(0);
     const [cancelBlurVersion, setCancelBlurVersion] = useState(0);
     const resetPending = useRef(false);
     const [interactionMessage, setInteractionMessage] = useState('');
+    const [showEnglish, setShowEnglish] = useState(false);
     const { selectedFieldId, help, message: helpSelectionMessage, selectField } = useFieldHelp(state, transport);
+    useLayoutEffect(() => {
+        setShowEnglish(false);
+    }, [selectedFieldId, help.contextKey, state?.selectedInstanceId]);
     useLayoutEffect(() => {
         if (detailTopic === 'field' && detailBody.current) detailBody.current.scrollTop = 0;
     }, [selectedFieldId, detailTopic, help.contextKey]);
     useLayoutEffect(() => {
         if (detailBody.current) detailBody.current.scrollTop = 0;
     }, [state?.selectedInstanceId]);
-    const instanceTrigger = useRef<HTMLButtonElement>(null);
+    const switchPending = useRef(false);
     const stateRef = useRef<KeywordOptionsViewState | null>(null);
     const localFieldDrafts = useRef(new Map<string, { value: string; hostValue: string; instanceId: string | null }>());
     const fieldSubmissions = useRef(new Map<string, { value: string; result: Promise<boolean> }>());
@@ -181,11 +179,9 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
             stateRef.current.directoryStatus !== 'loading' && next.directoryStatus === 'loading') {
             next = { ...next, instances: stateRef.current.instances, directoryStatus: stateRef.current.directoryStatus };
         }
-        if (stateRef.current?.selectedInstanceId !== next.selectedInstanceId) {
-            setReview(null);
-        }
-        if (next.selectedInstanceId && !next.instances.some(instance => instance.instanceId === next.selectedInstanceId)) setReview(null);
         stateRef.current = next;
+        document.documentElement.lang = next.locale === 'zh' ? 'zh-CN' : 'en';
+        setStartupFailed(false);
         setState(next);
     }, []);
     const mutate = useCallback(async (operation: () => ReturnType<KeywordOptionsTransport['apply']>) => {
@@ -193,7 +189,8 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         try {
             const result = await operation();
             update(result.state);
-            setInteractionMessage(result.accepted ? '' : result.state.message ||
+            setInteractionMessage(result.accepted || result.reason === 'cancelled' ? '' : result.reason === 'applied-reselect' ?
+                result.state.labels.selectorAppliedReselect : result.state.message ||
                 (result.state.locale === 'zh' ? '操作未完成，请重试。' : 'The operation was not completed. Please retry.'));
             return result.accepted;
         } catch (_error) {
@@ -207,22 +204,25 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
     useEffect(() => {
         let live = true;
         const dispose = transport.onStateChanged(update);
-        void transport.ready().then(next => { if (live) update(next); });
+        void transport.ready().then(next => { if (live) update(next); }, () => {
+            if (live && (!stateRef.current || stateRef.current.status === 'loading')) setStartupFailed(true);
+        });
         return () => { live = false; dispose(); };
-    }, [transport, update]);
-    const instances = useMemo(() => {
-        const normalized = instanceQuery.trim().toUpperCase();
-        return (state?.instances || []).filter(instance => !normalized ||
-            `${instance.keyword} ${instance.displayName} ${instance.fileName || ''} ${instance.filePath || ''}`
-                .toUpperCase().includes(normalized));
-    }, [instanceQuery, state?.instances]);
+    }, [transport, update, startupAttempt]);
     if (!state || state.status === 'loading') {
         const isZh = typeof document !== 'undefined' &&
             document.documentElement.lang.toLowerCase().startsWith('zh');
+        if (startupFailed) return <main className="empty" role="alert">
+            <p className="emptyMessage">{isZh ? '无法加载关键字管理器，请重试。' : 'Could not load Keyword Manager. Try again.'}</p>
+            <button className="primary" type="button" onClick={() => {
+                setStartupFailed(false);
+                setStartupAttempt(attempt => attempt + 1);
+            }}>{isZh ? '重试' : 'Retry'}</button>
+        </main>;
         return (
             <main className="empty" aria-busy="true">
                 <p className="emptyMessage" role="status">
-                    {isZh ? '正在加载关键字选项…' : 'Loading keyword options…'}
+                    {isZh ? '正在加载关键字管理器…' : 'Loading Keyword Manager…'}
                 </p>
             </main>
         );
@@ -292,36 +292,20 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         if (!await flushLocalFields()) return false;
         return mutate(() => operation(stateRef.current?.revision ?? state.revision));
     };
-    const needsReview = (current: KeywordOptionsViewState) =>
-        current.preview?.reviewLevel === 'destructive' || !!current.preview?.sharedByteChanges?.length;
-    const canSubmit = (current: KeywordOptionsViewState) =>
-        current.canApply && !['stale', 'error', 'applying'].includes(current.status);
-    const apply = async (inspect = false) => {
+    const apply = async () => {
         if (applicationPending.current || busy || ['stale', 'error', 'applying'].includes(stateRef.current!.status)) return;
         applicationPending.current = true;
         try {
             if (!await flushLocalFields()) return;
             const current = stateRef.current!;
-            if (inspect || needsReview(current)) {
-                setInstanceDialogOpen(false);
-                setReview({ instanceId: current.selectedInstanceId, revision: current.revision });
+            if (current.preview?.sharedByteChanges?.length && (current.revision !== state.revision
+                || current.selectedInstanceId !== state.selectedInstanceId)) {
+                setInteractionMessage(current.locale === 'zh'
+                    ? '修改预览已更新。请核对后再次点击“应用”。'
+                    : 'The preview has changed. Review it, then select Apply again.');
                 return;
             }
-            if (canSubmit(current)) await mutate(() => transport.apply(current.revision));
-        } finally { applicationPending.current = false; }
-    };
-    const confirmReview = async () => {
-        const current = stateRef.current!;
-        if (!review || busy || applicationPending.current || !canSubmit(current)) return;
-        if (review.instanceId !== current.selectedInstanceId) { setReview(null); return; }
-        if (review.revision !== current.revision) {
-            setReview({ instanceId: current.selectedInstanceId, revision: current.revision });
-            setInteractionMessage(state.locale === 'zh' ? '修改内容已更新，请重新核对后应用。' : 'The proposed changes have been updated. Review them again before applying.');
-            return;
-        }
-        applicationPending.current = true;
-        try {
-            if (await mutate(() => transport.apply(review.revision))) setReview(null);
+            if (current.canApply) await mutate(() => transport.apply(current.revision));
         } finally { applicationPending.current = false; }
     };
     const reset = async () => {
@@ -338,173 +322,103 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         } finally { resetPending.current = false; }
     };
 
-    const closeInstanceDialog = () => {
-        setInstanceDialogOpen(false);
-        setTimeout(() => instanceTrigger.current?.focus(), 0);
+    const selectInstance = async (id: string) => {
+        if (switchPending.current || busy) return false;
+        if (id === stateRef.current?.selectedInstanceId) return true;
+        switchPending.current = true;
+        setCancelBlurVersion(version => version + 1);
+        try {
+            if (!await flushLocalFields()) return false;
+            return await mutate(() => transport.selectInstance(stateRef.current!.revision, id));
+        } finally { switchPending.current = false; }
     };
     const sendDimension = (dimensionId: string, values: string[]) =>
         run(revision => transport.selectDimension(revision, dimensionId, values));
     const cards = state.cards || [];
     const fields = cards.flatMap(card => card.fields || []);
     const selectedField = fields.find(field => field.fieldId === selectedFieldId);
-    const selectedValue = selectedField ? localFieldDrafts.current.get(selectedField.fieldId)?.value ?? selectedField.draft ?? selectedField.value : '';
-    const resetSelectedField = async () => {
-        if (!selectedField || busy) return;
-        setCancelBlurVersion(version => version + 1);
-        const pending = localFieldDrafts.current.get(selectedField.fieldId);
-        if (pending && !localDraftIsCurrent(selectedField.fieldId, pending.hostValue, pending.instanceId)) return;
-        if (selectedField.draft !== undefined && !await submitField(selectedField.fieldId, selectedField.value)) return;
-        if (localFieldDrafts.current.get(selectedField.fieldId) === pending) localFieldDrafts.current.delete(selectedField.fieldId);
-        setLocalDraftCount(localFieldDrafts.current.size);
-        setLocalResetVersion(version => version + 1);
-    };
     const instancesList = state.instances || [];
     const selectedInstance = instancesList.find(instance => instance.instanceId === state.selectedInstanceId);
-    const instanceIndex = Math.max(0, instancesList.findIndex(instance => instance.instanceId === state.selectedInstanceId));
     const visibleCards = cards.filter(card => (card.fields || []).length > 0);
-    const previewDetailLabels = {
-        keyword: state.labels.keywordLine,
-        cards: state.labels.cards,
-        fields: state.labels.fields,
-        migrated: state.labels.migrated,
-        added: state.labels.added,
-        discarded: state.labels.discarded,
-        comments: state.labels.comments,
-    };
-    const preview = state.preview;
-    const reviewLevel = preview?.reviewLevel || 'none';
-    const reviewSummary = localDraftCount > 0
-        ? (state.locale === 'zh' ? `正在编辑 ${localDraftCount} 个字段` : `${localDraftCount} ${localDraftCount === 1 ? 'field' : 'fields'} being edited`)
-        : !preview || reviewLevel === 'none'
-        ? (state.locale === 'zh' ? '没有修改' : 'No changes')
-        : reviewLevel === 'field'
-            ? (state.locale === 'zh' ? `已修改 ${preview.changedFields} 个字段` : `${preview.changedFields} ${preview.changedFields === 1 ? 'field' : 'fields'} changed`)
-            : reviewLevel === 'destructive'
-                ? (state.locale === 'zh' ? `将丢弃 ${preview.discarded} 个非空字段` : `${preview.discarded} non-empty ${preview.discarded === 1 ? 'field' : 'fields'} will be discarded`)
-                : preview.targetKeyword !== state.currentKeyword
-                    ? (state.locale === 'zh' ? `关键字将改为 ${preview.targetKeyword}` : `Keyword will change to ${preview.targetKeyword}`)
-                    : (state.locale === 'zh' ? '卡片结构将调整' : 'Card structure will change');
-    const seenDetails = new Set<string>();
-    const details = preview ? [
-        ['linked', preview.sharedByteChanges || []] as const,
-        ...Object.entries(preview.details),
-    ].map(([kind, values]) => [kind, values.filter(value => {
-        if (seenDetails.has(value)) return false;
-        seenDetails.add(value); return true;
-    })] as const).filter(([, values]) => values.length > 0) : [];
     const isZh = state.locale === 'zh';
+    const hasEnglish = isZh && !!selectedField && help.fieldId === selectedField.fieldId && help.status === 'ready' && !!help.localized && !!help.english && help.english !== help.localized;
     const conditions = state.manualConditions || [];
-    const pendingConditions = conditions.filter(group => !['applicable', 'not-applicable'].includes(group.applicability)).length;
-    const applicableConditions = conditions.filter(group => group.applicability === 'applicable').length;
+    const conditionsHasEnglish = isZh && conditions.some(group => group.summaries.some((item: any) => typeof item !== 'string' && item.localized && item.english && item.english !== item.localized));
     const conditionSummary = isZh
-        ? `待确认 ${pendingConditions} · 适用 ${applicableConditions} · 不适用 ${conditions.length - pendingConditions - applicableConditions}`
-        : `Unresolved ${pendingConditions} · Applicable ${applicableConditions} · Not applicable ${conditions.length - pendingConditions - applicableConditions}`;
+        ? `${conditions.length} 个说明`
+        : `${conditions.length} conditions`;
     const showingConditions = detailTopic === 'conditions' && conditions.length > 0;
     const toggleDetailLabel = showingConditions
         ? (isZh ? (helpCollapsed ? '展开卡片条件' : '折叠卡片条件') : (helpCollapsed ? 'Expand card conditions' : 'Collapse card conditions'))
         : (isZh ? (helpCollapsed ? '展开字段帮助' : '折叠字段帮助') : (helpCollapsed ? 'Expand field help' : 'Collapse field help'));
 
-
-    const showFooter = localDraftCount > 0 || state.hasDrafts || reviewLevel !== 'none' || state.status === 'applying';
-
     return <main aria-busy={busy}>
         <header>
             <div className="headerIdentity">
-                <div className="keyword" title={state.currentKeyword}>{state.currentKeyword
-                    ? state.currentKeyword.split('_').map((part, index) => <Fragment key={index}>{index > 0 && <>_<wbr /></>}{part}</Fragment>) : '-'}</div>
-                {selectedInstance?.displayName && <div className="instanceIdentity" title={selectedInstance.displayName}>{selectedInstance.displayName}</div>}
+                <span className="keyword" title={state.currentKeyword}>{state.currentKeyword
+                    ? state.currentKeyword.split('_').map((part, index) => <Fragment key={index}>{index > 0 && <>_<wbr /></>}{part}</Fragment>) : '-'}</span>
+                {selectedInstance?.displayName && <span className="instanceIdentity" title={selectedInstance.displayName}>{selectedInstance.displayName}</span>}
             </div>
-                {state.instances.length > 0 && <button ref={instanceTrigger} className="headerButton instanceTrigger"
-                    aria-haspopup="dialog" aria-expanded={instanceDialogOpen}
-                    disabled={busy || state.status === 'stale' || state.directoryStatus === 'loading' || state.directoryStatus === 'error'}
-                    onClick={() => { setReview(null); setInstanceDialogOpen(true); }}>
-                    {state.directoryStatus === 'loading' ? (isZh ? '正在加载实例…' : 'Loading instances…') :
-                        state.directoryStatus === 'error' ? (isZh ? '实例加载失败' : 'Instance loading failed') :
-                        `${isZh ? '实例' : 'Instance'} ${instanceIndex + 1}/${state.instances.length}`}
-                    <ManagerIcon name="expand" />
-                </button>}
-            <div className="headerContext">
-                <button className="sourceLocation" title={selectedInstance?.filePath || state.labels.locateSource} aria-label={state.labels.locateSource} disabled={busy} onClick={() => void transport.locateSource(state.revision)}>
-                    {selectedInstance ? <><span>{selectedInstance.displayPath || selectedInstance.fileName || selectedInstance.filePath || ''}</span><span>:{selectedInstance.line + 1}</span></> : state.labels.locateSource}
-                </button>
+            
             <div className="headerActions">
-                <button className="headerButton" title={isZh ? '重新读取当前实例；有草稿时请先取消修改' : 'Reload this instance; cancel drafts first'}
+                <button className="iconButton" title={selectedInstance?.filePath || state.labels.locateSource} aria-label={state.labels.locateSource} disabled={busy} onClick={() => void transport.locateSource(state.revision)}>
+                    <ManagerIcon name="locate" />
+                </button>
+                <div className="toolbarDivider" aria-hidden="true" style={{ margin: '0 2px' }}>|</div>
+                
+                <InstanceSelector state={state} transport={transport} busy={busy} onSelect={selectInstance} onReload={async () => { if (await flushLocalFields()) await reset(); }} />
+                <button className="iconButton" title={isZh ? '重新读取当前实例' : 'Reload this instance'}
                     disabled={busy || state.hasDrafts || localDraftCount > 0} onClick={() => void reset()}>
-                    <span>{isZh ? '刷新' : 'Refresh'}</span>
+                    <ManagerIcon name="reset" />
                 </button>
-                <button className="headerButton manualButton" title={state.labels.openManual} aria-label={state.labels.openManual} disabled={busy} onClick={() => void transport.openManual(state.revision)}>
-                    <ManagerIcon name="manual" /><span>{isZh ? '手册' : 'Manual'}</span>
+                <button className="iconButton" title={state.labels.openManual} aria-label={state.labels.openManual} disabled={busy} onClick={() => void transport.openManual(state.revision)}>
+                    <ManagerIcon name="manual" />
                 </button>
-
-            </div>
             </div>
         </header>
 
         <div className="formScroll">
 
-        {instanceDialogOpen && <ManagerDialog className="instanceDialog" onClose={closeInstanceDialog}
-                label={state.locale === 'zh' ? '选择关键字实例' : 'Select keyword instance'}>
-                <div className="dialogHeader">
-                    <strong>{state.locale === 'zh' ? '选择关键字实例' : 'Select keyword instance'}</strong>
-                    <button className="closeButton" aria-label={state.locale === 'zh' ? '关闭' : 'Close'}
-                        onClick={closeInstanceDialog}><ManagerIcon name="close" /></button>
-                </div>
-                <div className="scopeSegments" role="group" aria-label={state.labels.scope}>
-                    <button className={state.scope === 'file' ? 'selected' : ''}
-                        disabled={busy || state.status === 'stale'}
-                        onClick={() => run(revision => transport.selectScope(revision, 'file'))}>{state.labels.currentFile}</button>
-                    <button className={state.scope === 'project' ? 'selected' : ''}
-                        disabled={busy || state.scopeStatus === 'loading' || state.scopeStatus === 'partial'}
-                        title={isZh ? '主文件及其引用文件' : 'Main deck and its include files'}
-                        onClick={() => run(revision => transport.selectScope(revision, 'project'))}>{state.labels.currentProject}</button>
-                </div>
-                {state.scopeStatus !== 'ready' && <p className="scopeMessage" role="status">
-                    {state.scopeMessage || (state.scopeStatus === 'loading' ? state.labels.scopeLoading : '')}
-                </p>}
-                <input data-initial-focus type="search" value={instanceQuery} aria-label={state.labels.search}
-                    placeholder={state.labels.search} onChange={event => setInstanceQuery(event.target.value)} />
-                <nav className="instanceList" aria-label={state.locale === 'zh' ? '关键字实例' : 'Keyword instances'}>
-                    {instances.map(instance => <button key={instance.instanceId} title={instance.filePath}
-                        disabled={busy || (state.scope === 'project' && state.scopeStatus !== 'ready')}
-                        aria-current={instance.selected ? 'true' : undefined} className={instance.selected ? 'selected' : ''}
-                        onClick={async () => {
-                            if (await run(revision => transport.selectInstance(revision, instance.instanceId))) closeInstanceDialog();
-                        }}>
-                        <span>{instance.keyword}</span>
-                        <small>{[instance.displayName, instance.displayPath || instance.fileName || instance.filePath,
-                            `${state.locale === 'zh' ? '行' : 'Line'} ${instance.line + 1}`,
-                            instance.dirty ? state.labels.dirty : '', instance.readonly ? state.labels.readonly : '']
-                            .filter(Boolean).join(' · ')}</small>
-                    </button>)}
-                    {instances.length === 0 && <p className="emptyList">
-                        {state.locale === 'zh' ? '没有匹配的实例。' : 'No matching instances.'}
-                    </p>}
-                </nav>
-        </ManagerDialog>}
+        {(state.directoryStatus === 'error' || state.directoryStatus === 'loading' || !state.instances.length) && <p className="instanceDirectoryNotice" role="status">
+            {state.directoryStatus === 'error' ? state.labels.selectorError : state.directoryStatus === 'loading' ? state.labels.selectorLoading : state.labels.selectorEmpty}
+            {state.directoryStatus === 'error' && <button className="headerButton" disabled={busy} onClick={async () => {
+                if (await flushLocalFields()) await reset();
+            }}>{state.labels.selectorReload}</button>}
+        </p>}
 
         {state.mode === 'dimensions' && (state.dimensions || []).length > 0 && <section className="options" aria-label="options">
             <div className="controlsGrid">
-                {(state.dimensions || []).map(dimension => <div className="dimension" key={dimension.dimensionId}>
-                    {!(dimension.selectionMode === 'multiple' && dimension.values.length === 1) &&
-                        <label className="dimensionLabel" title={dimension.label}>{dimension.label}</label>}
-                    {dimension.selectionMode === 'single' ?
-                        <select value={dimension.values.find(value => value.selected)?.valueId || ''} disabled={busy || state.status === 'stale'}
-                            title={`${dimension.label}: ${dimension.values.find(value => value.selected)?.label || '-'}`}
-                            onChange={event => sendDimension(dimension.dimensionId, event.target.value ? [event.target.value] : [])}>
-                            {!dimension.required && <option value="">-</option>}
-                            {dimension.values.map(value => <option key={value.valueId} value={value.valueId}
-                                disabled={!value.enabled}>{value.label}</option>)}
-                        </select> :
-                        <div className="checks">{dimension.values.map(value => <label key={value.valueId}
-                            className={value.enabled ? '' : 'disabled'} title={value.label}>
-                            <input type="checkbox" checked={value.selected} disabled={busy || state.status === 'stale' || !value.enabled}
-                                onChange={event => {
-                                    const selected = new Set(dimension.values.filter(item => item.selected).map(item => item.valueId));
-                                    if (event.target.checked) selected.add(value.valueId); else selected.delete(value.valueId);
-                                    sendDimension(dimension.dimensionId, [...selected]);
-                                }} /> {value.label}
-                        </label>)}</div>}
-                </div>)}
+                {(state.dimensions || []).map(dimension => {
+                    const isSingle = dimension.selectionMode === 'single';
+                    const selectedValue = dimension.values.find(value => value.selected);
+                    const isActive = isSingle && selectedValue && selectedValue.valueId !== '';
+                    const showLabel = !(dimension.selectionMode === 'multiple' && dimension.values.length === 1);
+
+                    return <div className={`dimension ${isSingle ? 'tagSelect' : 'checkGroup'} ${isActive ? 'active' : 'inactive'}`} key={dimension.dimensionId}>
+                        {isSingle ? <>
+                            {showLabel && <span className="dimensionName">{dimension.label}</span>}
+                            <select value={selectedValue?.valueId || ''} disabled={busy || state.status === 'stale'}
+                                title={`${dimension.label}: ${selectedValue?.label || '-'}`}
+                                aria-label={dimension.label}
+                                onChange={event => sendDimension(dimension.dimensionId, event.target.value ? [event.target.value] : [])}>
+                                {!dimension.required && <option value="">-</option>}
+                                {dimension.values.map(value => <option key={value.valueId} value={value.valueId}
+                                    disabled={!value.enabled}>{value.label}</option>)}
+                            </select>
+                        </> : <>
+                            {showLabel && <span className="dimensionLabel" title={dimension.label}>{dimension.label}</span>}
+                            <div className="checks">{dimension.values.map(value => <label key={value.valueId}
+                                className={value.enabled ? '' : 'disabled'} title={value.label}>
+                                <input type="checkbox" checked={value.selected} disabled={busy || state.status === 'stale' || !value.enabled}
+                                    onChange={event => {
+                                        const selected = new Set(dimension.values.filter(item => item.selected).map(item => item.valueId));
+                                        if (event.target.checked) selected.add(value.valueId); else selected.delete(value.valueId);
+                                        sendDimension(dimension.dimensionId, [...selected]);
+                                    }} /> {value.label}
+                            </label>)}</div>
+                        </>}
+                    </div>;
+                })}
             </div>
         </section>}
         {state.mode === 'search' && (state.targets || []).length > 1 && <section className="options">
@@ -534,8 +448,10 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         {(state.controls || []).some(control => control.visible && control.kind !== 'field') &&
         <section className="options" aria-label={isZh ? "表单选项" : "Form controls"}>
             <div className="controlsGrid">
-                {(state.controls || []).filter(control => control.visible && control.kind !== 'field').map(control =>
-                    <div className="dimension" key={control.controlId}>
+                {(state.controls || []).filter(control => control.visible && control.kind !== 'field').map(control => {
+                    const isSelector = control.kind === 'selector';
+                    const isActive = isSelector && control.value != null && control.value !== '';
+                    return <div className={`dimension ${isSelector ? 'tagSelect' : ''} ${isSelector ? (isActive ? 'active' : 'inactive') : ''}`} key={control.controlId}>
                         {control.kind === 'boolean' ?
                                 <label className="dynamicToggle" title={control.label}>
                                     <input type="checkbox" checked={control.value === true} disabled={busy || state.status === 'stale' || !control.enabled}
@@ -545,22 +461,22 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                                         }} />
                                     <span>{control.label}</span>
                                 </label> : <>
-                                    <label className="dimensionLabel" htmlFor={`inputForm-${control.controlId}`} title={control.label}>
-                                        {control.label}
-                                    </label>
+                                    <span className="dimensionName">{control.label}</span>
                                     <select id={`inputForm-${control.controlId}`} value={String(control.value ?? '')}
                                         disabled={busy || state.status === 'stale' || !control.enabled}
-                                        title={`${control.label}: ${String(control.value ?? '-')}`}
+                                        title={`${control.label}: ${control.choices?.find(choice => choice.value === control.value)?.label || control.emptyLabel || String(control.value ?? '-')}`}
+                                        aria-label={control.label}
                                         onChange={event => {
                                             const value = event.target.value;
                                             run(revision => transport.updateControl(revision, control.controlId, value));
                                         }}>
-                                        <option value="">-</option>
+                                        <option value="">{control.emptyLabel || '-'}</option>
                                         {(control.choices || []).map(value => <option key={value.value} value={value.value}
                                             disabled={!value.enabled}>{value.label}</option>)}
                                     </select>
                                 </>}
-                    </div>)}
+                    </div>;
+                })}
             </div>
         </section>}
         {(state.postChoices || []).length > 1 && !(state.controls || []).some(control => control.kind === 'selector') &&
@@ -575,12 +491,16 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                     value={choice.targetPostCount} disabled={!choice.enabled} title={choice.reason}>{choice.label}</option>)}
             </select>
         </section>}
+        {(interactionMessage || state.message) && state.status !== 'no-options'  && state.status !== 'empty' &&
+            <p className={`message ${state.status}`} role="status">{interactionMessage || ((state.layoutDiagnostics || []).length > 0 && !['stale', 'error'].includes(state.status) ? (isZh ? '请核对卡片结构。' : 'Check the card layout.') : state.message)}</p>}
+        {((state.layoutDiagnostics || []).length > 0 || (state.unresolvedRecords || []).length > 0) &&
+        <details className="layoutDetails">
+            <summary title={isZh ? '查看解析详情与原文' : 'View parsing details and source'}>{isZh ? '详情' : 'Details'}</summary>
+            {state.message && <p>{state.message}</p>}
         {(state.layoutDiagnostics || []).length > 0 && <button className="layoutDiagnosticLocation"
             onClick={() => void transport.locateSource(state.revision)} disabled={busy || state.status === 'stale'}>
             {state.labels.locateSource}{state.layoutDiagnostics?.[0]?.line !== undefined ? ` · L${state.layoutDiagnostics[0].line + 1}` : ''}
         </button>}
-        {(interactionMessage || state.message) && state.status !== 'no-options'  && state.status !== 'empty' &&
-            <p className={`message ${state.status}`} role="status">{interactionMessage || state.message}</p>}
         {(state.layoutDiagnostics || []).flatMap(diagnostic => diagnostic.controls || []).map(control =>
             <button className="layoutControl" key={control.fieldId} disabled={busy || state.status === 'stale'}
                 onClick={() => void selectField(control.fieldId)}>
@@ -589,17 +509,18 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
             <p className="requiredCard" key={index}>{card.condition} → {card.fields.join(' / ')}</p>)}
         {(state.unresolvedRecords || []).length > 0 && <section className="unresolvedRecords"
             aria-label={state.locale === 'zh' ? '字段归属未确定的原文（只读）' : 'Unresolved source records (read-only)'}>
-            <h3>{state.locale === 'zh' ? '字段归属未确定的原文（只读）' : 'Unresolved source records (read-only)'}</h3>
+            <p>{state.locale === 'zh' ? '字段归属未确定的原文（只读）' : 'Unresolved source records (read-only)'}</p>
             {state.unresolvedRecords!.map(record => <pre key={record.line}><span>L{record.line + 1} </span>{record.text}</pre>)}
         </section>}
+        </details>}
         {visibleCards.length > 0 && <div className="editorLayout">
             <section className="cards" aria-label={isZh ? '卡片与字段' : 'Cards and fields'}>
                 {visibleCards.map(card => {
                     const visibleFields = card.fields.filter(field => field.visible !== false);
-                    const cardTitleFull = `Card ${card.cardIndex}${card.cardIndex === 0 ? ' · ID / TITLE' : ''}${card.occurrenceIndex
+                    const cardTitleFull = card.title || `Card ${card.cardIndex}${card.occurrenceIndex
                         ? ` · ${state.locale === 'zh' ? '记录' : 'Row'} ${card.occurrenceIndex}` : ''}`;
                     const gutterShort = card.cardIndex === 0 ? 'C0' : `C${card.cardIndex}${card.occurrenceIndex ? `.${card.occurrenceIndex}` : ''}`;
-                    return <div className="card" key={`${card.cardIndex}:${card.occurrenceIndex || 0}:${card.line}`}>
+                    return <div className="card" key={card.cardId || card.fields[0]?.fieldId || `source:${card.line}:${card.cardIndex}:${card.occurrenceIndex || 0}:${card.fields[0]?.name || ''}`}>
                         <div className="cardRow">
                             <div className="cardGutter" title={cardTitleFull}>
                                 <span className="gutterShort">{gutterShort}</span>
@@ -636,6 +557,10 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         {(state.status === 'empty' || (state.status === 'no-options' && (state.cards || []).length === 0)) &&
             <p className="emptyMessage">{state.message || state.labels.noOptions}</p>}
         </div>
+        {!!state.preview?.sharedByteChanges?.length && <section className="changePreview" aria-label={isZh ? '修改预览' : 'Change preview'}>
+            <h3>{isZh ? '核对修改' : 'Review changes'}</h3>
+            <ul>{state.preview!.sharedByteChanges!.map((change, index) => <li key={index}>{change}</li>)}</ul>
+        </section>}
         <span className="srOnly" aria-live="polite" aria-atomic="true">{selectedField
             ? `${state.locale === 'zh' ? '字段帮助：' : 'Field help: '}${selectedField.name}` : ''}</span>
         {helpSelectionMessage && <p className="message" role="status">{helpSelectionMessage}</p>}
@@ -649,109 +574,64 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                     aria-pressed={showingConditions} aria-controls="manager-detail-body" title={conditionSummary}
                     onClick={() => { setDetailTopic('conditions'); setHelpCollapsed(false); if (detailBody.current) detailBody.current.scrollTop = 0; }}>
                     {isZh ? '卡片条件' : 'Card conditions'}{' '}
-                    <span className={pendingConditions ? 'conditionCount pending' : 'conditionCount'}>
-                        {pendingConditions ? (isZh ? `待确认 ${pendingConditions}` : `Unresolved ${pendingConditions}`) : conditions.length}
+                    <span className="conditionCount">
+                        {conditions.length}
                     </span></button>}
             </div>
-            <button className="iconButton" title={toggleDetailLabel} aria-label={toggleDetailLabel}
-                aria-expanded={!helpCollapsed} aria-controls="manager-detail-body"
-                onClick={() => setHelpCollapsed(value => !value)}><ManagerIcon name={helpCollapsed ? 'expand' : 'collapse'} /></button>
+            <div className="detailsActions">
+                {(state.hasDrafts || localDraftCount > 0) &&
+                    <button className="iconButton toolbarTextAction" disabled={busy}
+                        title={isZh ? '还原' : 'Reset'} aria-label={isZh ? '还原所有修改' : 'Reset all changes'}
+                        onMouseDown={event => event.preventDefault()} onClick={() => void reset()}>{isZh ? '还原' : 'Reset'}</button>}
+                {(state.hasDrafts || localDraftCount > 0 || state.canApply) &&
+                    <button className="iconButton toolbarTextAction primaryText" disabled={busy || ['stale', 'error'].includes(state.status) || (!state.canApply && localDraftCount === 0)}
+                        onMouseDown={event => event.preventDefault()} onClick={() => void apply()}>{state.status === 'applying'
+                            ? (isZh ? '应用中…' : 'Applying…') : (isZh ? '应用' : 'Apply')}</button>}
+                {(showingConditions ? conditionsHasEnglish : hasEnglish) && <button type="button" className="fieldHelpLangToggle"
+                    title={showEnglish ? (isZh ? '查看中文说明' : 'Show Chinese') : (isZh ? '查看英文原文' : 'Show English')}
+                    aria-label={showEnglish ? (isZh ? '切换至中文' : 'Switch to Chinese') : (isZh ? '切换至英文' : 'Switch to English')}
+                    onClick={() => setShowEnglish(v => !v)}>
+                    {showEnglish ? '[中] 译文' : '[EN] 原文'}
+                </button>}
+                {(showingConditions ? conditionsHasEnglish : hasEnglish) && <span className="toolbarDivider" aria-hidden="true">|</span>}
+                <button type="button" className="fieldHelpLangToggle" title={toggleDetailLabel} aria-label={toggleDetailLabel}
+                    aria-expanded={!helpCollapsed} aria-controls="manager-detail-body"
+                    onClick={() => setHelpCollapsed(value => !value)}>
+                    {helpCollapsed ? (isZh ? '展开' : 'Expand') : (isZh ? '收起' : 'Collapse')}
+                </button>
+            </div>
         </div>
         <div className="detailViewport" id="manager-detail-body" ref={detailBody}>
         <div hidden={showingConditions}>
         {selectedField ? <FieldHelp key={JSON.stringify([state.selectedInstanceId, selectedField.fieldId, help.contextKey])}
-            help={help} field={selectedField} locale={state.locale} value={selectedValue}
-            collapsed={helpCollapsed}
-            onReset={() => void resetSelectedField()} busy={busy} resetLabel={state.labels.resetField} />
-            : <p className="detailEmpty" hidden={helpCollapsed}>{isZh ? '选择字段，查看说明和文件值。' : 'Select a field to see its description and file value.'}</p>}
+            help={help} field={selectedField} locale={state.locale}
+            collapsed={helpCollapsed} showEnglish={showEnglish} />
+            : <p className="detailEmpty" hidden={helpCollapsed}>{isZh ? '选择字段，查看说明。' : 'Select a field to see its description.'}</p>}
         </div>
         <section className="manualConditions" hidden={!showingConditions || helpCollapsed} aria-label={isZh ? '卡片适用条件' : 'Card applicability'}>
-            <p className="conditionContext">{state.hasDrafts || localDraftCount > 0
-                ? (isZh ? '有未应用的修改；条件仍按文件值判断。' : 'Based on file values; unapplied changes are not included.')
-                : (isZh ? '以下条件按文件值判断。' : 'Conditions below use the file values.')}</p>
-            {conditions.map(group => <section className="conditionItem" key={group.id}>
-                <div className="conditionHeading"><strong>{group.condition || (isZh ? '手册条件' : 'Manual condition')}</strong>
-                <span className={`conditionStatus ${['applicable', 'not-applicable'].includes(group.applicability) ? group.applicability : 'pending'}`}>
-                    {group.applicability === 'applicable' ? (isZh ? '适用' : 'Applicable') :
-                    group.applicability === 'not-applicable' ? (isZh ? '不适用' : 'Not applicable') : (isZh ? '待确认' : 'Unresolved')}</span></div>
-                {group.cards.length > 0 && <p className="conditionCards"><span>{isZh ? '相关卡片' : 'Related cards'}: </span>{group.cards.map(c => isZh ? c.replace(/^Cards?\s+(?=[0-9A-Za-z])/i, '卡片 ') : c).join(' · ')}</p>}
-                {group.applicability === 'indeterminate' && <p>{group.reason === 'unsupported-format'
-                    ? (isZh ? '此输入格式尚未验证条件读取。' : 'Condition reading is not verified for this input format.')
-                    : group.reason === 'scan-truncated' ? (isZh ? '读取达到上限，条件上下文不完整。' : 'Reading limit reached; condition context is incomplete.')
-                    : (isZh ? '控制值、参数或关键字选项尚不能可靠求值。' : 'Control values, parameters or keyword options cannot be evaluated reliably.')}
-                    {' '}{group.unresolvedFields.filter(field => group.fields.includes(field)).join(', ')}</p>}
-                {group.summaries.length > 0 && <details className="conditionExplanation"><summary>{isZh ? '查看说明' : 'Show explanation'}</summary>
+            {conditions.map((group, index) => <div className="fieldHelpContent" key={group.id}>
+                <div className="conditionHeader">
+                    <span className="conditionTitle">{group.condition || (isZh ? '手册条件' : 'Manual condition')}</span>
+                    {group.cards.length > 0 && <div className="conditionCards">
+                        {group.cards.map(c => <span key={c} className="cardBadge">{isZh ? c.replace(/^Cards?\s+(?=[0-9A-Za-z])/i, '卡片 ') : c}</span>)}
+                    </div>}
+                </div>
+                
+                <div className="fieldHelpText">
                     {group.summaries.map((item: any) => {
                         const english = typeof item === 'string' ? item : item.english;
                         const localized = typeof item === 'string' ? null : item.localized;
-                        if (isZh) {
-                            if (localized) {
-                                return <div key={english} className="conditionExplanationItem">
-                                    <p>{localized}</p>
-                                    <details className="conditionOriginalEnglish"><summary>English</summary><p>{english}</p></details>
-                                </div>;
-                            }
-                            return <div key={english} className="conditionExplanationItem">
-                                <p>{english}</p>
-                                <p className="conditionUntranslatedHint">（暂无已核对中文说明）</p>
-                            </div>;
-                        }
-                        return <p key={english}>{english}</p>;
-                    })}</details>}
-                <div className="conditionActions">
-                {group.evidence.map(evidence => <button key={evidence.evidenceId} disabled={busy || state.status === 'stale'}
-                    onClick={() => void transport.openManual(state.revision, group.id, evidence.evidenceId)}>
-                    {isZh ? '手册第 ' : 'Manual p. '}{evidence.page}{isZh ? ' 页' : ''}
-                </button>)}
+                        const hasLocalized = !!localized && localized !== english;
+                        
+                        const text = (isZh && hasLocalized && !showEnglish) ? localized : english;
+
+                        return <p key={english} style={{ margin: '6px 0 0' }}>{text}</p>;
+                    })}
                 </div>
-            </section>)}
-            <div className="conditionOverview">{conditionSummary}</div>
-            <details className="conditionExplanation"><summary>{isZh ? '关于卡片编号' : 'About card numbers'}</summary>
-                <p>{isZh ? '手册与编辑表格的卡片编号可能不同。条件适用不代表相关卡片已完整填写。' : 'Card numbers may differ between the manual and the editing table. An applicable condition does not mean the related cards are complete.'}</p></details>
+
+            </div>)}
         </section>
         </div>
         </section>}
-        {showFooter && <footer>
-            <div className={reviewLevel === 'destructive' ? 'reviewSummary danger' : 'reviewSummary'}>
-                <span>{reviewSummary}</span>
-            </div>
-            <div className="footerActions">
-                <button disabled={busy || ['stale', 'error'].includes(state.status)} onMouseDown={event => event.preventDefault()}
-                    onClick={event => { reviewTrigger.current = event.currentTarget; void apply(true); }}>{isZh ? '查看修改' : 'View changes'}</button>
-                <button disabled={busy || (reviewLevel === 'none' && !state.hasDrafts && localDraftCount === 0)}
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={() => void reset()}>
-                    {state.labels.reset}
-                </button>
-                <button className="primary" disabled={busy || ['stale', 'error'].includes(state.status) || (!state.canApply && localDraftCount === 0)}
-                    onMouseDown={event => event.preventDefault()}
-                    onClick={event => { reviewTrigger.current = event.currentTarget; void apply(); }}>{state.status === 'applying'
-                        ? (state.locale === 'zh' ? '正在应用…' : 'Applying…') : needsReview(state) ? (isZh ? '核对并应用' : 'Review and apply') : state.labels.apply}</button>
-            </div>
-        </footer>}
-        {review && <ManagerDialog className="reviewDialog" label={isZh ? '核对修改' : 'Review changes'}
-            busy={busy} restoreFocus={reviewTrigger.current} onClose={() => setReview(null)}>
-            <div className="dialogHeader">
-                <strong tabIndex={-1} data-initial-focus>{isZh ? '核对修改' : 'Review changes'}</strong>
-                <button className="iconButton" disabled={busy} title={isZh ? '关闭' : 'Close'} aria-label={isZh ? '关闭' : 'Close'}
-                    onClick={() => setReview(null)}><ManagerIcon name="close" /></button>
-            </div>
-            <div className="reviewBody">
-                <p className={reviewLevel === 'destructive' ? 'danger' : ''}>{reviewSummary}</p>
-                {reviewLevel === 'destructive' && <p>{isZh ? '继续后还需确认丢弃非空数据。' : 'Continuing requires a final confirmation before discarding non-empty data.'}</p>}
-                {review.revision !== state.revision && <p role="status">{isZh ? '修改内容已更新，请重新核对。' : 'The proposed changes have been updated. Review them again.'}</p>}
-                {(interactionMessage || state.message) && <p role="status">{interactionMessage || state.message}</p>}
-                {details.map(([kind, values]) => <section className="detailGroup" key={kind}
-                    aria-label={kind === 'linked' ? (isZh ? '联动修改' : 'Linked changes') : undefined}>
-                    <strong>{kind === 'linked' ? (isZh ? '联动修改' : 'Linked changes') : previewDetailLabels[kind as keyof typeof previewDetailLabels]}</strong>
-                    <ul>{values.map((value, index) => <li key={index}>{value}</li>)}</ul>
-                </section>)}
-            </div>
-            <div className="dialogActions">
-                <button disabled={busy} onClick={() => setReview(null)}>{isZh ? '返回编辑' : 'Back to editing'}</button>
-                <button className="primary" disabled={busy || !canSubmit(state)} onClick={() => void confirmReview()}>
-                    {busy ? (isZh ? '正在应用…' : 'Applying…') : (isZh ? '应用修改' : 'Apply changes')}</button>
-            </div>
-        </ManagerDialog>}
     </main>;
 }

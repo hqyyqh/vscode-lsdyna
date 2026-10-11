@@ -4,12 +4,30 @@ const assert = require('assert');
 const {
     splitLines,
     computeChangeMarks,
+    computeDeleteAnchors,
     alignLines,
     orderedMarkLines,
 } = require('../../../src/client/changeMarks/changeMarksDiff');
 const { emptyChangeMarks } = require('../../../src/client/changeMarks/types');
 
 describe('changeMarksDiff', () => {
+    it('keeps the exported deletion-anchor API for direct callers', () => {
+        for (const [left, right, expected] of [
+            [['A', 'B', 'C'], ['B', 'C'], [0]],
+            [['A', 'B', 'C'], ['A', 'C'], [1]],
+            [['A', 'B', 'C'], ['A', 'B'], [1]],
+            [['A', 'B', 'C', 'D'], ['A', 'D'], [1]],
+            [['A', 'A', 'A'], ['A', 'A'], [1]],
+            [['A'], [], []],
+            [['A', ''], [''], [0]],
+            [[], ['A'], []],
+            [['A', 'C'], ['A', 'B', 'C'], []],
+        ]) {
+            const before = [left.slice(), right.slice()];
+            assert.deepStrictEqual(computeDeleteAnchors(left, right), expected);
+            assert.deepStrictEqual([left, right], before);
+        }
+    });
     describe('bounded alignment', () => {
         it('preserves all six legacy results within budget away from repeated-line boundaries', () => {
             const fixtures = require('../../fixtures/change-marks/legacy-budget-results.json');

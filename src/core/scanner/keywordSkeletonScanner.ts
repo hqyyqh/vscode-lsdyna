@@ -61,7 +61,7 @@ function extractKeywordFromLine(lineBuffer) {
 
     return {
         keyword: normalizeAsciiKeyword(lineBuffer, tokenStart, index),
-        rawKeyword: lineBuffer.toString('utf8', tokenStart, index),
+        rawKeyword: lineBuffer.toString('utf8', tokenStart).split('$')[0].trimEnd(),
         keywordStartChar: tokenStart,
     };
 }
@@ -194,9 +194,19 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             let nextNewLine = -1;
 
             while ((nextNewLine = combined.indexOf(0x0a, offset)) !== -1) {
-                const lineBuffer = combined.subarray(offset, nextNewLine);
                 const startOffset = combinedStartOffset + offset;
-                processLine(lineBuffer, startOffset, lineIndex);
+                const block = blocks[blocks.length - 1];
+                let dataStart = offset;
+                while (dataStart < nextNewLine && isHorizontalWhitespace(combined[dataStart])) dataStart++;
+                // Once the display prefix is captured, mesh rows only need line/byte positions and a count.
+                if (currentBlockOpen && !opaqueActive && (block.flags.isNodeBlock || block.flags.isElementBlock) &&
+                    (!currentSummaryAccumulator || currentSummaryAccumulator.isCaptureComplete?.()) &&
+                    dataStart < nextNewLine && combined[dataStart] >= 0x30 && combined[dataStart] <= 0x39) {
+                    options.onLineStart?.(lineIndex, startOffset);
+                    block.dataLineCount++;
+                } else {
+                    processLine(combined.subarray(offset, nextNewLine), startOffset, lineIndex);
+                }
                 offset = nextNewLine + 1;
                 lineIndex++;
                 linesProcessed++;

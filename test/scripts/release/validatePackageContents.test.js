@@ -15,6 +15,53 @@ const {
 } = require("../../../scripts/release/validate-package-contents.cjs");
 
 describe('VSIX content contract', () => {
+    const createTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
+
+    it('requires a complete blocker descriptor for a packaged reference index', () => {
+        const { keywordDataPath } = require('../../../out/core/keywordDataPath');
+        const root = createTempDirectory(path.join(os.tmpdir(), 'dynasense-blocker-package-'));
+        const relative = 'keywords/runtime/references/field_reference_index.json';
+        const blocker = 'keywords/runtime/references/lspp_reference_blockers.runtime.json.gz';
+        const bytes = fs.readFileSync(keywordDataPath('references/lspp_reference_blockers.runtime.json.gz'));
+        assert.equal(JSON.parse(require('node:zlib').gunzipSync(bytes)).kind, 'dynasense-lspp-reference-blockers');
+        const index = { lsppBlockedReferences: { file: blocker,
+            sha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
+            compressedBytes: bytes.length } };
+        fs.mkdirSync(path.join(root, path.dirname(relative)), { recursive: true });
+        fs.writeFileSync(path.join(root, blocker), bytes);
+        fs.writeFileSync(path.join(root, relative), JSON.stringify(index));
+        assert.deepEqual(validateStaticRuntimeDependencies([relative, blocker], root), []);
+        for (const descriptor of [undefined, {}, { file: index.lsppBlockedReferences.file },
+            { ...index.lsppBlockedReferences, sha256: 'bad' },
+            { ...index.lsppBlockedReferences, sha256: '' },
+            { ...index.lsppBlockedReferences, file: '' },
+            { ...index.lsppBlockedReferences, file: 7 },
+            ...[undefined, 0, -1, '1', 1.5].map(compressedBytes =>
+                ({ ...index.lsppBlockedReferences, compressedBytes }))]) {
+            fs.writeFileSync(path.join(root, relative), JSON.stringify({ ...index, lsppBlockedReferences: descriptor }));
+            assert.ok(validateStaticRuntimeDependencies([relative, blocker], root).some(error =>
+                /reference blocker descriptor.*missing or invalid/.test(error)));
+        }
+        fs.writeFileSync(path.join(root, relative), JSON.stringify(index));
+        assert.deepEqual(validateStaticRuntimeDependencies([relative], root),
+            [`VSIX is missing reference blocker resource: ${blocker}`]);
+        for (const descriptor of [{ ...index.lsppBlockedReferences, sha256: '0'.repeat(64) },
+            { ...index.lsppBlockedReferences, compressedBytes: bytes.length + 1 }]) {
+            fs.writeFileSync(path.join(root, relative), JSON.stringify({ lsppBlockedReferences: descriptor }));
+            assert.deepEqual(validateStaticRuntimeDependencies([relative, blocker], root),
+                [`VSIX reference blocker resource identity mismatch: ${blocker}`]);
+        }
+        fs.writeFileSync(path.join(root, relative), JSON.stringify(index));
+        const corrupted = Buffer.from(bytes);
+        corrupted[0] ^= 0xff;
+        assert.throws(() => require('node:zlib').gunzipSync(corrupted));
+        fs.writeFileSync(path.join(root, blocker), corrupted);
+        assert.deepEqual(validateStaticRuntimeDependencies([relative, blocker], root),
+            [`VSIX reference blocker resource identity mismatch: ${blocker}`]);
+        fs.writeFileSync(path.join(root, blocker), bytes);
+        assert.deepEqual(validateStaticRuntimeDependencies([relative, blocker], root), []);
+    });
+
     const inputFormManifestPath = 'out/runtime/lspp-input-form/manifest.json';
     const inputFormManifest = JSON.parse(fs.readFileSync(
         path.join(__dirname, "../../..", inputFormManifestPath), 'utf8'));
@@ -260,6 +307,21 @@ describe('VSIX content contract', () => {
             "test/evidence/historical/9c8eaef2471b/root/keywords/required-runtime.json",
         ], root), []);
         fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it('rejects data-path imports omitted from the package, including compiled TypeScript calls', () => {
+        const root = createTempDirectory(path.join(os.tmpdir(), 'package-data-dependencies-'));
+        fs.mkdirSync(path.join(root, 'out'));
+        for (const call of ['keywordDataPath', '(0, keywordDataPath_1.keywordDataPath)']) {
+            fs.writeFileSync(path.join(root, 'out/extension.js'),
+                `require(${call}('engineering/contactThermal.json'));`);
+            assert.deepEqual(validateStaticRuntimeDependencies(['out/extension.js'], root), [
+                'VSIX is missing keyword runtime dependency: engineering/contactThermal.json from out/extension.js',
+            ]);
+            assert.deepEqual(validateStaticRuntimeDependencies([
+                'out/extension.js', 'keywords/runtime/engineering/contactThermal.json',
+            ], root), []);
+        }
     });
 
     it('fully validates every semantic runtime shard before packaging', function () {

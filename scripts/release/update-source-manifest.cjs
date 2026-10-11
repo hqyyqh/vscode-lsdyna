@@ -6,14 +6,15 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 
 const ROLES = new Set(['editable-source', 'authoring-input', 'generated-artifact', 'source-snapshot']);
-const ROOT_FILES = new Set(['.gitattributes', '.gitignore', '.vscodeignore', 'CHANGELOG.md', 'CODE_OF_CONDUCT.md',
-    'CONTRIBUTING.md', 'DATA_REGENERATION.md', 'DEVELOPMENT.md', 'LICENSE', 'README.md', 'README_zh.md',
-    'SECURITY.md', 'SUPPORT.md', 'language-configuration.json', 'language-configuration-lspp-cfile.json',
+const ROOT_FILES = new Set(['.gitattributes', '.gitignore', '.vscodeignore', 'CHANGELOG.md',
+    'CONTRIBUTING.md', 'LICENSE', 'README.md', 'README_zh.md',
+    'language-configuration.json', 'language-configuration-lspp-cfile.json',
     'package.json', 'package-lock.json', 'package.nls.json', 'package.nls.zh-cn.json', 'tsconfig.json',
     'requirements-dev.txt']);
 const OMIT_ROOTS = new Set(['.git', '.artifacts', '.vscode-test', 'node_modules', 'out', 'dist', 'tmp',
     'coverage', 'pydyna']);
 const SHA = /^[0-9a-f]{64}$/;
+const BUILD_ONLY_REFERENCE = 'keywords/runtime/references/field_reference_index.json';
 const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 function safePath(file) {
@@ -44,6 +45,7 @@ function inventory(root) {
                 entry.name.endsWith('.pyc') || entry.name === '.DS_Store') continue;
             const file = relative ? `${relative}/${entry.name}` : entry.name;
             assert.equal(entry.isSymbolicLink(), false, `Symlink in public source: ${file}`);
+            if (file === BUILD_ONLY_REFERENCE) continue;
             if (entry.isDirectory()) visit(file);
             else if (entry.isFile()) files.push(safePath(file));
             else throw Error(`Unsupported public entry: ${file}`);
@@ -123,7 +125,7 @@ function updateSourceManifest(root, { write = false, verifyData = checkData } = 
     }
     return manifest;
 }
-module.exports = { ROLES, sha256, safePath, classifyPath, inventory, readManifest,
+module.exports = { ROLES, BUILD_ONLY_REFERENCE, sha256, safePath, classifyPath, inventory, readManifest,
     checkSnapshotIdentity, updateSourceManifest, checkData };
 if (require.main === module) {
     try {

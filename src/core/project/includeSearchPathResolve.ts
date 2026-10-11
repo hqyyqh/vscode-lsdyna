@@ -32,7 +32,7 @@ export function uniqueSearchPaths(paths: string[]): string[] {
         if (!raw) continue;
         const resolved = path.normalize(String(raw));
         const key = searchPathKey(resolved);
-        if (!key || seen.has(key)) continue;
+        if (seen.has(key)) continue;
         seen.add(key);
         out.push(resolved);
     }

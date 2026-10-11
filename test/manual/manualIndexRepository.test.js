@@ -184,6 +184,53 @@ describe('ManualIndexRepository', () => {
         fs.rmSync(packRoot, { recursive: true, force: true });
     });
 
+    it('keeps distinct chapter tuples and deduplicates only repeated chapters', () => {
+        const first = { manualId: 'a', sectionId: 'b\u0000c', anchorId: 'first', pdfPage: 1 };
+        const second = { manualId: 'a\u0000b', sectionId: 'c', anchorId: 'second', pdfPage: 2 };
+        const sections = [first, second].map((location, index) => ({
+            ...location, level: 1, titleEn: `Chapter ${index + 1}`, anchors: [location.anchorId],
+            pathEn: `documents/en/chapter-${index}.md`, pathZh: `documents/zh/chapter-${index}.md`,
+        }));
+        const indexes = path.join(packRoot, 'indexes');
+        writeJson(path.join(indexes, 'sections.json'), versioned('sections', sections));
+        writeJson(path.join(indexes, 'keywords.json'), versioned('keywords', {
+            '*CUSTOM': { ...first, alternateLocations: [second, { ...first, anchorId: 'duplicate' }] },
+        }));
+        const repository = new ManualIndexRepository(packRoot);
+        const locations = repository.resolveKeywordLocations('*CUSTOM');
+        assert.equal(locations.length, 2);
+        for (const [index, location] of [first, second].entries()) {
+            assert.equal(locations[index].anchorId, location.anchorId);
+            assert.equal(locations[index].title, sections[index].titleEn);
+            assert.deepEqual(repository.getSection(location.manualId, location.sectionId), sections[index]);
+            assert.equal(repository.sectionPath(location.manualId, location.sectionId, 'en'), sections[index].pathEn);
+            assert.equal(repository.sectionPath(location.manualId, location.sectionId, 'zh'), sections[index].pathZh);
+        }
+        writeJson(path.join(indexes, 'sentence-map.json'), versioned('sentences',
+            [first, second].map((location, index) => ({ ...location, unitId: `unit-${index}`, en: `Body ${index}` }))));
+        for (const language of ['en', 'zh']) {
+            writeJson(path.join(indexes, `search-${language}.json`), versioned('docs',
+                [first, second].map(location => ({ ...location, preview: 'shared needle' }))));
+        }
+        assert.deepEqual(repository.getSectionSentences(first.manualId, first.sectionId).map(item => item.unitId), ['unit-0']);
+        assert.deepEqual(repository.getSectionSentences(second.manualId, second.sectionId).map(item => item.unitId), ['unit-1']);
+        const results = repository.search('shared needle', 'both', 100, 'fulltext');
+        assert.deepEqual(results.map(item => item.location.title), sections.map(section => section.titleEn));
+        assert.deepEqual(results.map(item => item.matchedLanguages), [['en', 'zh'], ['en', 'zh']]);
+    });
+
+    it('does not borrow schema aliases from another location with a colliding delimiter key', () => {
+        const first = { manualId: 'a', sectionId: 'b', anchorId: 'c\u0000d', pdfPage: 1 };
+        const second = { manualId: 'a', sectionId: 'b\u0000c', anchorId: 'd', pdfPage: 1 };
+        writeJson(path.join(packRoot, 'indexes', 'keywords.json'), versioned('keywords', {
+            '*CUSTOM': { ...first, alternateLocations: [first, second] },
+            '*MAT_PIECEWISE_LINEAR_PLASTICITY': second,
+        }));
+        const repository = new ManualIndexRepository(packRoot);
+        const locations = repository.resolveKeywordLocations('*CUSTOM_TITLE');
+        assert.deepEqual(locations.map(location => location.matchKind), ['approximate', 'section']);
+    });
+
     it('infers bilingual capabilities for legacy packs with zh indexes', () => {
         const repository = new ManualIndexRepository(packRoot);
         const caps = repository.getCapabilities();
@@ -192,6 +239,28 @@ describe('ManualIndexRepository', () => {
         assert.strictEqual(caps.canToggleLanguage, true);
         assert.strictEqual(caps.features.searchZh, true);
         assert.strictEqual(caps.features.sentenceMap, true);
+    });
+
+    it('opens the imported thermal section for approved full spellings and retains fallback without it', () => {
+        const {contactThermalSource}=require('../../src/core/semantics/contactThermal');
+        const source=contactThermalSource(),file=path.join(packRoot,'indexes/sections.json');
+        const sections=JSON.parse(fs.readFileSync(file,'utf8'));
+        for(const state of Object.values(source.values)) sections.sections.push({
+            manualId:source.source.manual.manualId,sectionId:state.manualSectionId,titleEn:state.suffix,
+            titleZh:state.suffix,level:2,anchors:[],pathEn:'documents/en/thermal.md',pdfPage:state.suffix==='THERMAL'?1196:1199,
+        });
+        writeJson(file,sections);
+        const repository=new ManualIndexRepository(packRoot);
+        for(const [value,state] of Object.entries(source.values)) {
+            const locations=repository.resolveKeywordLocations('*'+source.baseKeyword+'_ID_MPP_'+state.suffix);
+            assert.equal(locations.length,1);
+            assert.equal(locations[0].sectionId,state.manualSectionId,value);
+            assert.equal(locations[0].matchKind,'section');
+            assert.equal(locations[0].pdfPage,state.suffix==='THERMAL'?1196:1199);
+        }
+        assert.equal(repository.resolveKeywordLocations('*'+source.baseKeyword+'_THERMAL_THERMAL').length,0);
+        writeJson(file,{...sections,sections:sections.sections.filter(s=>s.manualId!==source.source.manual.manualId)});
+        assert.equal(new ManualIndexRepository(packRoot).resolveKeywordLocations('*'+source.baseKeyword+'_THERMAL').length,0);
     });
 
     it('loads an English-only pack without requiring zh indexes or sentence-map', () => {

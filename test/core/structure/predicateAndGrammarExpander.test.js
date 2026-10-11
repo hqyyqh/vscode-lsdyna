@@ -72,6 +72,17 @@ describe('three-state predicates and generic grammar expansion', () => {
         assert.equal(evaluatePredicate({ op: 'solver-mode', value: 'MPP' }, fields, { solverMode: 'MPP' }), 'true');
     });
 
+    it('keeps unsupported decoded integers unknown even with stale context or another occurrence', () => {
+        const unsupported = { name: 'COUNT', raw: '9007199254740993', state: 'unsupported', typeCode: 'I' };
+        for (const extra of [[], [{ name: 'COUNT', raw: '2', value: 2, state: 'known', typeCode: 'I' }]]) {
+            const fields = mergeDecodedFields([{ decodedFields: [unsupported, ...extra] }]);
+            for (const op of ['eq', 'ne', 'in', 'not-in', 'gt', 'present', 'blank', 'nonblank']) {
+                assert.equal(evaluatePredicate({ op, field: 'COUNT', value: 2, values: [2] }, fields,
+                    { fields: { COUNT: 2 } }), 'unknown', op);
+            }
+        }
+    });
+
     it('expands sequence, empty, exact/optional choices, conditionals and optional nodes', () => {
         const root = node('sequence', { nodes: [
             record('A'),
@@ -147,6 +158,19 @@ describe('three-state predicates and generic grammar expansion', () => {
                 .map(path => path.records.length),
             [2],
         );
+    });
+
+    it('uses a one-shot option iterable consistently in prefixes, nested nodes and suffixes', () => {
+        const value = grammar(node('sequence', { nodes: [
+            node('prefix', { option: 'TITLE', node: record('NESTED') }),
+            record('BODY'),
+        ] }));
+        value.prefixes = [{ option: 'TITLE', node: record('TITLE') }];
+        value.suffixes = [{ option: 'TAIL', node: record('TAIL') }];
+        const expected = expandGrammar(value, 4, DEFAULT_STRUCTURE_BUDGETS, { keywordOptions: ['title', 'tail'] });
+        function* options() { yield 'title'; yield 'tail'; }
+        assert.deepEqual(expandGrammar(value, 4, DEFAULT_STRUCTURE_BUDGETS, { keywordOptions: options() }), expected);
+        assert.deepEqual(expected[0].records.map(record => record.cardLabel), ['TITLE', 'NESTED', 'BODY', 'TAIL']);
     });
 
     it('fails closed for unknown nodes, epsilon repeats, and expansion budgets', () => {

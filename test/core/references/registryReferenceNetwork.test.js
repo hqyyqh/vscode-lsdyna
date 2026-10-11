@@ -148,6 +148,141 @@ function completeSnapshot(rootFile, sourceFile, definitionFile, occurrence, defi
 }
 
 describe('registryReferenceNetwork', () => {
+    it('selects the primary namespace, then the fallback, without mixing same-ID definitions', () => {
+        const { analyzeReference } = require('../../../src/core/references/projectReferenceIndex');
+        const { mergeOnDemandDefinitions } = require('../../../src/core/references/onDemandDefinitionScanner');
+        const search = [{ targetKinds: ['curve'], targetKeywords: ['*DEFINE_CURVE'] },
+            { targetKinds: ['function'], targetKeywords: ['*DEFINE_FUNCTION'] }];
+        const value = { kind: 'numeric', id: 73, raw: '73', targetSearch: search };
+        const definition = kind => ({ id: 73, targetKind: kind, keyword: kind === 'curve' ? '*DEFINE_CURVE' : '*DEFINE_FUNCTION' });
+        const index = (primary, alternate, covered = true) => ({
+            indexedTargetKinds: new Set(covered ? ['curve', 'function'] : ['function']),
+            indexedTargetDefinitions: new Set(covered ? ['DEFINE_CURVE', 'DEFINE_FUNCTION'] : ['DEFINE_FUNCTION']),
+            curvesById: new Map(primary ? [[73, [definition('curve')]]] : []),
+            entityDefinitionsByKind: new Map([['function', new Map(alternate ? [[73, [definition('function')]]] : [])]]),
+            completenessReasons: [], registryReferenceCoverageGaps: [], registryReferenceOccurrences: [{
+                filePath: 'priority.k', lineIndex: 3, startCharacter: 0, endCharacter: 2,
+                referenceValue: value, targetKinds: ['curve', 'function'], targetDefinitions: [] }],
+            parameterContextsByFile: new Map([['priority.k', [{ idfoffOffset: 0, occurrencePath: [], occurrencePathLabels: [] }]]]),
+        });
+        for (const [primary, alternate] of [[true, true], [true, false], [false, true], [false, false]]) {
+            const current = index(primary, alternate);
+            const result = analyzeReference(current, value, ['curve', 'function']);
+            assert.equal(result.state, primary || alternate ? 'exact' : 'missing');
+            assert.deepEqual(result.definitions.map(item => item.targetKind), primary ? ['curve'] : alternate ? ['function'] : []);
+            for (const kind of ['curve', 'function']) {
+                const matches = collectRegistryReferenceMatches(current, { id: 73, targetKinds: [kind] },
+                    { retainVerifiedMatchesOnIncomplete: true });
+                assert.equal(matches.locations.length, kind === (primary ? 'curve' : alternate ? 'function' : null) ? 1 : 0);
+            }
+        }
+        const unresolved = index(false, true, false);
+        const analysis = analyzeReference(unresolved, value, ['curve', 'function']);
+        assert.equal(analysis.state, 'uncertain');
+        assert.ok(analysis.reasons.includes('lspp-target-priority-unresolved'));
+        assert.equal(collectRegistryReferenceMatches(unresolved, { id: 73, targetKinds: ['function'] },
+            { retainVerifiedMatchesOnIncomplete: true }).locations.length, 0);
+        const alternateDefinition = unresolved.entityDefinitionsByKind.get('function').get(73)[0];
+        const lookup = { state: 'complete', definitions: [definition('curve'), alternateDefinition], reasons: [],
+            descriptors: [{ keyword: 'DEFINE_CURVE', targetKind: 'curve' }, { keyword: 'DEFINE_FUNCTION', targetKind: 'function' }] };
+        assert.deepEqual(mergeOnDemandDefinitions(analysis, lookup, unresolved).definitions.map(item => item.targetKind), ['curve']);
+        assert.deepEqual(mergeOnDemandDefinitions(analysis, { ...lookup, definitions: [alternateDefinition] }, unresolved)
+            .definitions.map(item => item.targetKind), ['function']);
+    });
+    it('retains known reference matches without claiming target definition coverage', () => {
+        const filePath = path.resolve('native-unavailable-definition.k');
+        const occurrence = { ...signedPartOccurrence(filePath), targetDefinitionUnavailable: true };
+        const index = buildProjectReferenceIndex(completeSnapshot(filePath, filePath, filePath, occurrence,
+            { curves: [], tables: [], genericDefinitions: [] }));
+        const query = { id: 17, targetKinds: ['curve'], targetDefinitions: [] };
+        const partial = collectRegistryReferenceMatches(index, query, { retainVerifiedMatchesOnIncomplete: true });
+        assert.equal(partial.locations.length, 1);
+        assert.equal(partial.state, 'partial');
+        assert.ok(partial.reasons.includes('lspp-target-definition-layout-unresolved'));
+        const strict = collectRegistryReferenceMatches(index, query);
+        assert.equal(strict.state, 'incomplete');
+        assert.deepEqual(strict.locations, []);
+    });
+    const createTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
+
+    it('keeps default expression queries incomplete without blocking unrelated namespaces', async () => {
+        const fs = require('node:fs');
+        const os = require('node:os');
+        const { buildProjectIndex } = require('../../../out/core/project/projectIndexer');
+        const root = createTempDirectory(path.join(os.tmpdir(), 'dynasense-expression-network-'));
+        for (const raw of ['<CID>', '<17>', '<min(CID,17)>', '17', '&CID', 'UNKNOWN']) {
+            const file = path.join(root, `case-${raw.replace(/[^A-Za-z0-9]/g, '_')}.k`);
+            const text = `*KEYWORD\n*PARAMETER\niCID,17\n*DEFINE_CURVE\n17,0,1,1,0,0\n0,0\n1,1\n*LOAD_BODY_Z\n${raw},9806,0,0,0,0,0\n*LOAD_BODY_Z\n17,9806,0,0,0,0,0\n*END\n`;
+            fs.writeFileSync(file, text);
+            const snapshot = await buildProjectIndex(file);
+            const index = buildProjectReferenceIndex(snapshot);
+            const query = { id: 17, targetKinds: ['curve'], targetDefinitions: ['DEFINE_CURVE'] };
+            const curve = collectRegistryReferenceMatches(index, query);
+            if (raw.startsWith('<')) {
+                assert.equal(curve.state, 'incomplete', raw);
+                assert.deepEqual(curve.locations, []);
+                assert.ok(curve.reasons.some(reason => reason.endsWith(':9:parameter-expression-unresolved')));
+                const partial = collectRegistryReferenceMatches(index, query,
+                    { retainVerifiedMatchesOnIncomplete: true });
+                assert.equal(partial.state, 'partial');
+                assert.deepEqual(partial.locations.map(location => location.line), [10]);
+                assert.ok(partial.reasons.some(reason => reason.endsWith(':9:parameter-expression-unresolved')));
+                const shifted = collectRegistryReferenceMatches(index, { ...query, id: 9806 },
+                    { retainVerifiedMatchesOnIncomplete: true });
+                assert.deepEqual(shifted.locations, [], 'The scale factor must not become a curve reference');
+            } else {
+                assert.equal(curve.state, 'complete', raw);
+                assert.deepEqual(curve.locations.map(location => location.line),
+                    raw === 'UNKNOWN' ? [10] : [8, 10]);
+            }
+            const node = collectRegistryReferenceMatches(index,
+                { id: 17, targetKinds: ['node'], targetDefinitions: ['NODE'] });
+            assert.equal(node.state, 'complete', raw);
+            assert.deepEqual(node.reasons, []);
+            assert.equal(fs.readFileSync(file, 'utf8'), text);
+        }
+    });
+
+    it('keeps a root loading until all queries settle and preserves later invalidations', async () => {
+        const rootFile = path.resolve('registry-network', 'concurrent.k');
+        const snapshot = { rootFile, files: [rootFile], scope: 'single-file',
+            graph: { includeOccurrences: [], includeOccurrencesComplete: true },
+            fileIndexes: new Map([[rootFile, { keywordBlocks: [], parameterEvents: [],
+                referenceDefinitions: { curves: [], tables: [], genericDefinitions: [] },
+                registryReferences: emptyRegistryReferences() }]]) };
+        const complete = { state: 'complete', definitions: [], reasons: [] };
+        for (const outcome of ['ready', 'stale', 'needs-refresh', 'fail-first', 'fail-last']) {
+            const service = new EntityReferenceQueryService();
+            const callbacks = [];
+            let started;
+            const bothStarted = new Promise(resolve => { started = resolve; });
+            const context = { definitionKeywords: { generic: {}, onDemand: { MAT_TEST: { targetKind: 'material' } } },
+                collectReferences: () => ({ state: 'complete', locations: [], reasons: [] }),
+                scanDefinitions: () => new Promise((resolve, reject) => {
+                    callbacks.push({ resolve, reject });
+                    if (callbacks.length === 2) started();
+                }) };
+            const first = service.queryById(snapshot, 1, 'material', context);
+            const second = service.queryById(snapshot, 2, 'material', context);
+            await bothStarted;
+            assert.equal(callbacks.length, 2);
+            assert.equal(service.lifecycle(rootFile), 'loading');
+            if (outcome === 'fail-first') callbacks[0].reject(new Error('first query failed'));
+            else callbacks[0].resolve(complete);
+            const firstResult = await first;
+            assert.equal(firstResult.lifecycle, outcome === 'fail-first' ? 'failed' : 'ready');
+            assert.equal(service.lifecycle(rootFile), 'loading');
+            if (outcome === 'stale') service.markStale(rootFile);
+            if (outcome === 'needs-refresh') service.markNeedsRefresh(rootFile);
+            if (outcome === 'fail-last') callbacks[1].reject(new Error('last query failed'));
+            else callbacks[1].resolve(complete);
+            await second;
+            assert.equal(service.lifecycle(rootFile), outcome.startsWith('fail-') ? 'failed' : outcome);
+            await service.queryById(snapshot, 3, 'material', { ...context, scanDefinitions: async () => complete });
+            assert.equal(service.lifecycle(rootFile), 'ready');
+        }
+    });
+
     it('resolves an exact HOURGLASS descriptor in both F12 directions', () => {
         const record = registry.byKeyword.PART.find(item =>
             item.kind === 'entity-reference' && item.field.fieldName === 'HGID');
@@ -195,6 +330,15 @@ describe('registryReferenceNetwork', () => {
         assert.equal(matches.state, 'complete');
         assert.deepEqual(matches.locations.map(x => x.authoringRelationId),
             [record.authoringRelationId]);
+        index.completenessReasons = ['registry-reference-preview-byte-limit', 'include-occurrence-incomplete',
+            'registry-reference-preview-byte-limit'];
+        const incomplete = service.queryFromDefinition(index, definitionFile, { line: 2, character: 9 }, { rootFile });
+        assert.equal(incomplete.state, 'indeterminate');
+        assert.deepEqual(incomplete.reasons, [
+            `${rootFile}:2:include-occurrence-incomplete`,
+            `${rootFile}:2:registry-reference-preview-byte-limit`,
+            'include-occurrence-incomplete', 'registry-reference-preview-byte-limit',
+        ]);
     });
 
     it('keeps an exact material label identity closed in forward and reverse navigation', () => {
@@ -488,7 +632,7 @@ describe('registryReferenceNetwork', () => {
         assert.deepEqual(signed.locations, []);
         assert.ok(signed.reasons.some(reason => reason.includes('signed-switch-transform-unverified')));
 
-        index.parameterContextsByFile = new Map();
+        index.parameterContextsByFile.get(occurrence.filePath)[0].idfoffOffset = 0;
         const bounded = collectRegistryReferenceMatches(index, {
             id: 17, targetKinds: ['curve'], targetDefinitions: [],
         }, { maxMatches: 1 });
@@ -515,7 +659,8 @@ describe('registryReferenceNetwork', () => {
                 scope: 'namespaces', targetKinds: ['part'], targetDefinitions: ['PART'],
             }],
             registryReferenceOccurrences: [occurrence],
-            parameterContextsByFile: new Map(), completenessReasons: [],
+            parameterContextsByFile: new Map([[occurrence.filePath, [{ idfoffOffset: 0,
+                occurrencePath: ['root'], occurrencePathLabels: ['root'] }]]]), completenessReasons: [],
             indexedTargetKinds: new Set(['curve', 'part']), indexedTargetDefinitions: new Set(),
             onDemandTargetKinds: new Set(), onDemandTargetDefinitions: new Set(),
             curvesById: new Map(), tablesById: new Map(), genericDefinitionsByKeyword: new Map(),
@@ -554,6 +699,18 @@ describe('registryReferenceNetwork', () => {
             unresolvedCurves: [], unresolvedTables: [],
             unresolvedGenericDefinitionsByKeyword: new Map(), unresolvedEntityDefinitionsByKind: new Map(),
         };
+        const source = {
+            referenceValue: occurrence.referenceValue,
+            referenceInfo: { targetKinds: ['curve'], targetDefinitions: [] },
+        };
+        for (const options of [{}, { documentPath: occurrence.filePath }]) {
+            const unavailable = queryFromReferenceSource(index, source, options);
+            assert.equal(unavailable.state, 'incomplete');
+            assert.equal(unavailable.query, null);
+            assert.ok(unavailable.reasons.includes('reference-source-context-unavailable'));
+        }
+        index.parameterContextsByFile.set(occurrence.filePath, [{ idfoffOffset: 0,
+            occurrencePath: ['root'], occurrencePathLabels: ['root'] }]);
         const ready = queryFromReferenceSource(index, {
             referenceValue: occurrence.referenceValue,
             referenceInfo: { targetKinds: ['curve'], targetDefinitions: [] },

@@ -130,8 +130,15 @@ function resolveManualsRoot({
     return firstExisting || candidates[0];
 }
 
+function resolveManualSumatraPath(manualRoot: string, fs: any = fsDefault, pathModule: any = pathDefault): string | null {
+    if (!manualRoot) return null;
+    return [pathModule.join(manualRoot, 'SumatraPDF.exe'), pathModule.join(manualRoot, 'pdf', 'SumatraPDF.exe')]
+        .find(file => fs.existsSync(file)) || null;
+}
+
 module.exports = {
     looksLikeManualPack,
     resolveManualDirectoryCandidates,
     resolveManualsRoot,
+    resolveManualSumatraPath,
 };

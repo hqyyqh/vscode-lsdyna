@@ -44,6 +44,24 @@ function compactStage(stage) {
     }
     for (const name of fs.readdirSync(assets)) if (/\.(woff|ttf)$/.test(name)) fs.unlinkSync(path.join(assets, name));
     fs.appendFileSync(path.join(stage, '.vscodeignore'), '\n**/*.d.ts\n**/*.d.mts\n**/*.d.cts\nnode_modules/**/README*\nnode_modules/**/CHANGELOG*\nnode_modules/**/test/**\nnode_modules/**/tests/**\nnode_modules/**/docs/**\n');
+    // The pinned driver loads its bundled .node directly; these are compilation-only packages.
+    // Keep license/notice files even when the package has no runtime files left.
+    for (const directory of ['node_modules/@vscode/sqlite3/node_modules/node-addon-api',
+        'node_modules/tar', 'node_modules/minipass', 'node_modules/minizlib', 'node_modules/@isaacs/fs-minipass']) {
+        const absolute = path.join(stage, directory);
+        if (!fs.existsSync(absolute)) continue;
+        const excluded = [];
+        function visit(root) {
+            for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+                const file = path.join(root, entry.name);
+                if (entry.isDirectory()) visit(file);
+                else if (!/^(license|licence|notice|copyright)([.-]|$)/i.test(entry.name))
+                    excluded.push(path.relative(stage, file).replace(/\\/g, '/'));
+            }
+        }
+        visit(absolute);
+        fs.appendFileSync(path.join(stage, '.vscodeignore'), '\n' + excluded.join('\n') + '\n');
+    }
     return { inputFormShards: expected.size };
 }
 module.exports = { compactStage, pruneInputFormShards, sha };

@@ -6,6 +6,7 @@ const {
     resolveManualDirectoryCandidates,
     resolveManualsRoot,
     looksLikeManualPack,
+    resolveManualSumatraPath,
 } = require('../../manual/manualsDirResolve');
 
 type HealthState = 'ready' | 'warning' | 'info';
@@ -69,7 +70,7 @@ function isDocumentInWorkspace(filePath: string, workspaceFolders: any[] = [], p
         const root = folder && folder.uri && folder.uri.fsPath;
         if (!root) return false;
         const relative = pathModule.relative(root, filePath);
-        return relative === '' || (!relative.startsWith('..') && !pathModule.isAbsolute(relative));
+        return relative !== '..' && !relative.startsWith('..' + pathModule.sep) && !pathModule.isAbsolute(relative);
     });
 }
 
@@ -91,13 +92,9 @@ function inspectManualDirectories({
         || existingDirs.find(dir => looksLikeManualPack(dir, fs, pathModule))
         || existingDirs[0]
         || '';
-    // Scan preferred root first so Sumatra/PDF counts match the active pack.
-    const scanOrder = preferred
-        ? [preferred, ...existingDirs.filter(d => d !== preferred)]
-        : existingDirs;
-
+    // PDFs and the viewer belong to the same selected root as the reader/indexer.
     const pdfFiles: string[] = [];
-    let sumatraPath = '';
+    const sumatraPath = safeCall(() => resolveManualSumatraPath(preferred, fs, pathModule), null) || '';
 
     // Align with manualIndexer: when a pack manifest declares PDFs, count only
     // those. Otherwise one readdir of root + optional pdf/ (legacy layout).
@@ -108,22 +105,19 @@ function inspectManualDirectories({
         discoverManualPdfFiles = null;
     }
 
-    // Single readdir collects both PDFs and Sumatra (matches prior readdir budget).
-    const scanDir = (dir: string, collectPdfs: boolean) => {
+    const scanDir = (dir: string) => {
         const entries = safeCall(() => fs.readdirSync(dir), []);
         for (const entry of entries) {
             if (typeof entry !== 'string') continue;
             const fullPath = pathModule.resolve(dir, entry);
-            if (collectPdfs && entry.toLowerCase().endsWith('.pdf')) {
+            if (entry.toLowerCase().endsWith('.pdf')) {
                 if (!pdfFiles.includes(fullPath)) pdfFiles.push(fullPath);
-            }
-            if (entry.toLowerCase() === 'sumatrapdf.exe' && !sumatraPath) {
-                sumatraPath = fullPath;
             }
         }
     };
 
-    for (const dir of scanOrder) {
+    if (preferred) {
+        const dir = preferred;
         const manifestFile = pathModule.join(dir, 'manifest.json');
         let declared: string[] = [];
         if (
@@ -138,17 +132,11 @@ function inspectManualDirectories({
                 const resolved = pathModule.resolve(fullPath);
                 if (!pdfFiles.includes(resolved)) pdfFiles.push(resolved);
             }
-            // Viewer may still sit at root or under pdf/.
-            scanDir(dir, false);
-            const pdfSubdir = pathModule.join(dir, 'pdf');
-            if (safeCall(() => fs.existsSync(pdfSubdir), false)) {
-                scanDir(pdfSubdir, false);
-            }
         } else {
-            scanDir(dir, true);
+            scanDir(dir);
             const pdfSubdir = pathModule.join(dir, 'pdf');
             if (safeCall(() => fs.existsSync(pdfSubdir), false)) {
-                scanDir(pdfSubdir, true);
+                scanDir(pdfSubdir);
             }
         }
     }

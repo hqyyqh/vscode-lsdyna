@@ -13,6 +13,7 @@ export function createKeywordManagerApply(host: {
     keywordManagerStageFieldDrafts: (...args: any[]) => any;
     keywordOptionBlockSha256: (...args: any[]) => any;
     optionSwitchReplacement: (...args: any[]) => any;
+    keywordManagerReplacementMatchesTarget: (...args: any[]) => boolean;
     keywordManagerCatalogAllowsWrite: (...args: any[]) => boolean;
 }) {
     const {
@@ -25,6 +26,7 @@ export function createKeywordManagerApply(host: {
         keywordManagerStageFieldDrafts,
         keywordOptionBlockSha256,
         optionSwitchReplacement,
+        keywordManagerReplacementMatchesTarget,
         keywordManagerCatalogAllowsWrite,
     } = host;
 
@@ -56,7 +58,10 @@ export function createKeywordManagerApply(host: {
             }
         }
         if (model.readonly || model.plan?.status === 'blocked' || !keywordManagerCatalogAllowsWrite(model.currentKeyword)) {
-            vscode.window.showInformationMessage(i18n.get('keywordOptionsTargetUnavailable'));
+            const draftLayoutUnavailable = !model.readonly && model.plan?.status === 'blocked' &&
+                model.plan.reason === 'lspp-input-form-field-draft-invalid' && keywordManagerCatalogAllowsWrite(model.currentKeyword);
+            vscode.window.showInformationMessage(i18n.get(draftLayoutUnavailable
+                ? 'keywordManagerDraftLayoutUnavailable' : 'keywordManagerApplyUnavailable'));
             return null;
         }
         const provisional = model.provisional === true || model.plan?.provisional === true;
@@ -79,14 +84,18 @@ export function createKeywordManagerApply(host: {
             model.recordDrafts || {},
             model.selectedFormRuleId || null,
         );
-        keywordManagerPrepareCatalogSelectorLayout(document, model.keywordLine, result, model.resolvedTargetState || {});
+        keywordManagerPrepareCatalogSelectorLayout(document, model.keywordLine, result, model.resolvedTargetState || {}, false, model.fieldDrafts || {});
+        const unavailableMessage = () => i18n.get(
+            result.plan?.reason === 'lspp-input-form-field-draft-invalid' ? 'keywordManagerDraftLayoutUnavailable'
+                : ['unmodeled-source-text', 'source-record-coverage-unproven'].includes(result.plan?.reason)
+                    ? 'keywordManagerRecordContentUnverified' : 'keywordOptionsTargetUnavailable');
         const session = model.session;
         const hasFieldDrafts = model.fieldDrafts && Object.keys(model.fieldDrafts).length > 0;
         const hasRecordDrafts = model.recordDrafts && Object.keys(model.recordDrafts).length > 0;
         if ((hasFieldDrafts || hasRecordDrafts) &&
             !keywordManagerStageFieldDrafts(result, model.fieldDrafts || {}, model.recordDrafts || {})) {
             provider.markStale(model.uri);
-            vscode.window.showInformationMessage(i18n.get('keywordOptionsTargetUnavailable'));
+            vscode.window.showInformationMessage(unavailableMessage());
             return null;
         }
         const plan = result.plan;
@@ -101,7 +110,7 @@ export function createKeywordManagerApply(host: {
             session.currentLayoutProfileId === (result.currentLayout?.profileId || null) &&
             session.targetLayoutProfileId === (result.targetLayout?.profileId || null)
         );
-        if (document && plan.status === 'no-change' &&
+        if (plan.status === 'no-change' &&
             plan.documentVersion === document.version && sessionMatches) {
             try {
                 await vscode.window.showTextDocument(document, editor.viewColumn, false);
@@ -111,16 +120,16 @@ export function createKeywordManagerApply(host: {
             }
             return null;
         }
-        if (!document || plan.status !== 'ready' || plan.documentVersion !== document.version || !sessionMatches) {
+        if (plan.status !== 'ready' || plan.documentVersion !== document.version || !sessionMatches) {
             provider.markStale(model.uri);
-            vscode.window.showInformationMessage(i18n.get('keywordOptionsTargetUnavailable'));
+            vscode.window.showInformationMessage(unavailableMessage());
             return null;
         }
         if (plan.requiresLossConfirmation && plan.discardedFields?.length) {
             const details = plan.discardedFields.slice(0, 8)
                 .map(field => `${field.name || field.fieldMigrationId}=${field.value}`).join(', ');
             const choice = await vscode.window.showWarningMessage(
-                i18n.get('keywordOptionsTreeDiscardWarning', plan.discardedFields.length, details),
+                i18n.get(plan.discardedFields.length === 1 ? 'keywordOptionsTreeDiscardWarningSingle' : 'keywordOptionsTreeDiscardWarning', plan.discardedFields.length, details),
                 { modal: true },
                 i18n.get('keywordOptionsTreeDiscardConfirm'),
             );
@@ -132,6 +141,10 @@ export function createKeywordManagerApply(host: {
             }
         }
         const replacement = optionSwitchReplacement(document, model, result);
+        if (!keywordManagerReplacementMatchesTarget(document, model, result, replacement)) {
+            vscode.window.showInformationMessage(i18n.get('keywordManagerReplacementMismatch'));
+            return null;
+        }
         // Permission changes and panel/model transitions can occur during a dialog.
         if (!isCurrent() || await isDocumentReadonlyForAutomaticEdit(document) || !isCurrent() ||
             !keywordManagerCatalogAllowsWrite(model.currentKeyword)) {

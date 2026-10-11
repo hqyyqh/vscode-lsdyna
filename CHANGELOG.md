@@ -5,34 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.0] - Unreleased / 尚未发布
 
-### Changed
-- **Sidebar following:** Keyword Index and Entity References start with cursor following off on every extension launch. Hidden views defer their work; explicit queries and refresh remain available.
-- **Entity references:** Clearer notices for ambiguous, incomplete and interrupted queries, with recovery actions and fewer repeated details. Internal diagnostic names are no longer shown as ordinary help.
-- **Repeated records:** Keyword Manager editing now supports verified standard-format records in `*LOAD_POINT_UVW`, `*LOAD_POINT_UVW_SET`, `*INTERFACE_COMPENSATION_3D_FLANGE`, `*ELEMENT_SEATBELT` and `*ELEMENT_TSHELL`. This does not extend those rules to LONG, I10 or comma formats.
-- **Editor responsiveness:** Initial field preparation runs asynchronously, and change-mark comparisons focus on edited regions. Extensive rewrites may use approximate line marks; file contents, Save and Undo are unchanged.
-- **Documentation:** English and Chinese workflows use current action names, explain language settings and editing limits, and separate everyday guidance from implementation details.
+### Added / 新增
 
-These changes are not a publication or release-acceptance announcement.
+- **Manual reading:** Bilingual reading mode displays paired Chinese and English content when the manual pack supports it. The manual action remains available in Hover before setup; the setup picker offers bilingual/English downloads in Chinese and an English-pack download in English.
+- **手册阅读：** 手册包支持时，可使用中英对照模式阅读。未配置手册时，悬停卡片仍保留手册入口；中文引导提供双语版和英文版下载，英文引导直接提供英文包下载。
+- **Keyword maintenance:** Actions for checking keyword card structure and updating field comments help maintain a deck after keyword-header changes. Keyword Manager supports separate drafts, previews and explicit application, with checks for unsupported layouts and stale documents.
+- **关键字维护：** 新增卡片结构检查及字段注释更新入口，方便修改关键字头后维护卡片。关键字管理器支持独立草稿、预览及显式应用，并检查不支持的布局和已变化的文档。
+- **Persistent object indexes:** On-demand indexes reuse queries and file facts, persist reusable data in SQLite and return reference results in pages from the background worker. SQLite is bundled with the platform-specific extension; no separate database installation is needed.
+- **持久化对象索引：** 按需建立索引，复用查询成果和文件数据，通过 SQLite 持久化可复用数据，并由后台进程分页返回引用结果。平台专用插件包自带 SQLite，无需另行安装数据库。
 
-## [3.2.0] - Local release candidate
+### Changed / 改进
 
-### Added
-- Native field layouts and source-bound semantic data, project reference queries, manual evidence and structural checks.
-- Keyword Manager with native forms, separate drafts, shared-byte previews and explicit application.
-- Read-only large-file windows, search, ID queries, paged keyword layouts and cursor following.
+- **Large-file viewer:** Improved buffered scrolling, syntax colors, line and search-target highlighting, and keyword match counts. A compact search bar switches between keyword and full-text search; keyword search is the default.
+- **大文件视图：** 改进滚动缓冲、语法着色、行跳转与搜索目标高亮，增加关键字匹配计数。紧凑搜索栏可切换关键字与全文查找，默认使用关键字搜索。
+- **Entity references and sidebars:** Prioritized common entity types and remembered selections. Scope/follow icons reflect their state; cursor following starts off, and hidden views defer work. Empty result groups and passive query warnings no longer occupy the results area; stale-position navigation guards and explicit action-failure feedback remain.
+- **对象引用与侧边栏：** 优先排列常用对象类型并记忆选择；范围及跟随图标反映当前状态。启动时默认关闭光标跟随，隐藏视图延后处理。空结果分组及被动查询警告不再占用结果区，仍保留过期位置跳转保护和主动操作失败反馈。
+- **Hover and controls:** Restored complete keyword card layouts with aligned, unbolded fields. Compact Codicon actions replace repeated labels; redundant curve data, candidate descriptions and saved/modified notices are removed from Hover.
+- **悬停卡片与控件：** 恢复完整关键字卡片结构，字段规整对齐且不再加粗。使用紧凑的 Codicon 操作入口，移除重复曲线数据、候选说明及已保存／已修改提示。
+- **Package and loading:** Compress static resources, share form rules and load reference-rule shards on demand. Retain the complete editing data while excluding unused build inputs from the VSIX. F5 reuses verified runtime data to reduce repeated build work.
+- **安装包与加载：** 压缩静态资源、共享表单规则并按需加载引用规则分片；保留完整编辑数据，排除无运行时用途的构建文件。F5 复用已验证的运行时数据，减少重复构建。
+- **Editing responsiveness:** Prepare field data asynchronously and compare change marks within edited regions. Extensive rewrites may use approximate line marks; file contents, Save and Undo are unchanged.
+- **编辑响应：** 异步准备字段数据，修改标记优先比较编辑区域；大范围改写时可能采用近似行标记，不改变文件内容、保存或撤销行为。
 
-### Fixed
-- COMMENT boundaries, standard/LONG/I10 handling, empty fields and conditional/repeated records.
-- Automatic edit guards for OS read-only files, stale versions, closed/replaced documents and invalid drafts.
-- Hover command trust, asynchronous scan identity, scanner-version drift and oversized IPC messages.
-- Closed-manager background work, bounded cache admission, runtime manifest size and temporary-file packaging leaks.
-- Six dependency advisories through a separate lockfile update.
+### Fixed / 修复
 
-### Release status
-- This version is a local candidate. No marketplace publication, Git tag or master merge is implied.
-- See `SUPPORT.md` for read/navigation/edit boundaries. Platform and package acceptance are recorded separately.
+- Unified schema-backed keyword recognition across modules, including composed CONTACT variants such as `*CONTACT_AUTOMATIC_SINGLE_SURFACE_MPP_ID` and `*CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET`.
+- 统一各模块基于规则数据的关键字识别，修复上述 CONTACT 等组合选项关键字被误报为未知关键字的问题。
+- Preserve fixed-field alignment when renaming parameter references; resolve the source deck when scanning the Include Tree from Keyword Manager or a field form.
+- 参数引用重命名时保持定宽字段对齐；从关键字管理器或字段表单扫描引用文件树时，正确确定源文件。
+- Corrected scope switching, cancellation sharing, stale query results and asynchronous scan identity. Strengthened edit guards for read-only files, closed/replaced documents, invalid drafts and unsupported card layouts.
+- 修复范围切换、共享请求取消、过期查询结果及异步扫描身份问题；加强只读文件、关闭或替换的文档、无效草稿和不支持卡片布局的编辑保护。
+- Improved COMMENT boundaries and standard/LONG/I10 handling. Verified repeated-record editing is available for `*LOAD_POINT_UVW`, `*LOAD_POINT_UVW_SET`, `*INTERFACE_COMPENSATION_3D_FLANGE`, `*ELEMENT_SEATBELT` and `*ELEMENT_TSHELL` in standard format; this does not extend those rules to LONG, I10 or comma formats.
+- 改进 COMMENT 边界及标准／LONG／I10 格式处理。上述五类关键字已验证的重复记录编辑限于标准格式，不扩展至 LONG、I10 或逗号分隔格式。
+- Aligned automated platform packaging and acceptance with the current runtime, updated release/manual download guidance, and excluded internal maintenance documents from public exports.
+- 自动化平台打包及验收与当前运行时保持一致，更新发布及手册下载说明，并从公开导出中排除内部维护文档。
+
+### Upgrade and release notes / 升级与发布说明
+
+- Requires VS Code **1.100.0 or later**. Install the VSIX matching your operating system and architecture, then reload the window.
+- 需要 VS Code **1.100.0 或更新版本**；安装与系统及架构匹配的 VSIX 后重新加载窗口。
+- Compatible schema-v1 manual packs and existing PDF directories remain supported. A compatible bilingual pack with alignment data is required for paired reading; an English-only pack does not gain Chinese content through an extension update.
+- 继续支持兼容的 schema-v1 手册包及已有 PDF 目录。中英对照阅读需要含对齐数据的兼容双语包；更新插件不会为英文包自动补充中文内容。
+- Index caches may be rebuilt when their format or rule identity changes. Source model files do not require migration. Performance depends on the model and cache state; no fixed speed-up factor is promised.
+- 索引格式或规则身份变化时，缓存可能需要重建，源模型无需迁移。实际性能取决于模型及缓存状态，不承诺固定提速倍数。
+- This entry describes the pending **3.2.0** release. Publication date, platform acceptance and final package hashes will be recorded when released; this entry does not imply a tag, publication or master merge.
+- 本条记录描述待发布的 **3.2.0**。正式发布时再记录发布日期、平台验收及最终安装包摘要；当前记录不表示已打标签、发布或合并到 master。
 
 ## [3.1.5] - 2026-08-06
 

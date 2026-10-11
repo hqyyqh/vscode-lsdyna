@@ -71,12 +71,7 @@ function isCardishHeader(cell: string): boolean {
     if (!n) return false;
     const lower = n.toLowerCase();
     if (lower.startsWith('card') || n.startsWith('卡片') || n.startsWith('卡 ')) return true;
-    if (lower === 'mpp' || lower === 'mpp 1' || lower === 'mpp 2' || lower === 'id' || lower === 'card id') {
-        return true;
-    }
-    if (n === '卡片 ID' || n === '卡片ID') return true;
-    if (/^card\s*[\w.-]+$/i.test(n)) return true;
-    if (/^卡片\s*[\w.-]+$/.test(n)) return true;
+    if (lower === 'id') return true;
     if (/^mpp(\s|$)/i.test(n)) return true;
     if (/^thrm(\s|$)/i.test(n)) return true;
     if (/^orfr(\s|$)/i.test(n)) return true;

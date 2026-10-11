@@ -498,6 +498,8 @@ function* validateOperationalDefinitionRegistrySteps(registry) {
 function* registryFacadeSteps(records = getSemanticRuntimeCatalogV2().allReferenceRecords()) {
     const catalog = getSemanticRuntimeCatalogV2();
     const manifest = catalog.manifest();
+    assertContract(catalog.status().ready, 'Definition Registry semantic catalog is unavailable');
+    assertContract(records.length === manifest.summary.referenceRelations, 'Definition Registry reference population drift');
     const operational = manifest.source?.producerHandoff?.publicationMode === 'operational-defaults';
     const byKeyword: Record<string, any[]> = {};
     for (const record of records) {

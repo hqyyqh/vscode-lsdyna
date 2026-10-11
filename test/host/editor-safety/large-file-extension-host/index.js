@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
 const vscode = require('vscode');
+const { withCpuProfile } = require('../../../support/cpu-profile.cjs');
 
 const workspaceRoot = process.env.LSDYNA_EDITOR_SAFETY_LARGE_WORKSPACE;
 const targetRelativePath = process.env.LSDYNA_EDITOR_SAFETY_LARGE_TARGET;
@@ -36,67 +37,59 @@ function writeProgress(label, state, details = {}) {
 }
 
 async function measureStep(label, operation) {
-    let profiler;
-    if (process.env.LSDYNA_PROFILE_PHASES && new RegExp(process.env.LSDYNA_PROFILE_PHASES).test(label)) {
-        const { Session } = require('node:inspector');
-        profiler = new Session();
-        profiler.connect();
-        await new Promise((resolve, reject) => profiler.post('Profiler.enable', error => error ? reject(error) : resolve()));
-        await new Promise((resolve, reject) => profiler.post('Profiler.start', error => error ? reject(error) : resolve()));
-    }
-    const started = performance.now();
-    const rssBefore = process.memoryUsage().rss;
-    let lastTick = started;
-    let maxEventLoopGapMs = 0;
-    let lastHeartbeat = started;
-    const intervalMs = 25;
-    const interval = setInterval(() => {
-        const now = performance.now();
-        maxEventLoopGapMs = Math.max(maxEventLoopGapMs, now - lastTick - intervalMs);
-        lastTick = now;
-        if (now - lastHeartbeat >= 1000) {
-            lastHeartbeat = now;
-            writeProgress(label, 'heartbeat', {
-                durationMs: Math.round(now - started),
-            });
+    return withCpuProfile(process.env.LSDYNA_PROFILE_PHASES && new RegExp(process.env.LSDYNA_PROFILE_PHASES).test(label),
+        `${resultFile}.${label.replace(/[^a-z0-9]+/gi, '-')}.cpuprofile`, async () => {
+        const started = performance.now();
+        const rssBefore = process.memoryUsage().rss;
+        let lastTick = started;
+        let maxEventLoopGapMs = 0;
+        let lastHeartbeat = started;
+        let rejectStep;
+        const intervalMs = 25;
+        const interval = setInterval(() => {
+            const now = performance.now();
+            maxEventLoopGapMs = Math.max(maxEventLoopGapMs, now - lastTick - intervalMs);
+            lastTick = now;
+            if (now - lastHeartbeat >= 1000) {
+                lastHeartbeat = now;
+                try {
+                    writeProgress(label, 'heartbeat', {
+                        durationMs: Math.round(now - started),
+                    });
+                } catch (error) { rejectStep(error); }
+            }
+        }, intervalMs);
+        let timeout;
+        try {
+            writeProgress(label, 'started');
+            const value = await Promise.race([
+                Promise.resolve().then(operation),
+                new Promise((_, reject) => {
+                    rejectStep = reject;
+                    timeout = setTimeout(
+                        () => reject(new Error(
+                            `${label} made no observable progress for ` +
+                            `${scenarioTimeoutMs} ms`,
+                        )),
+                        scenarioTimeoutMs,
+                    );
+                }),
+            ]);
+            const measurement = {
+                label,
+                durationMs: Math.round(performance.now() - started),
+                maxEventLoopGapMs: Math.max(0, Math.round(maxEventLoopGapMs)),
+                rssBefore,
+                rssAfter: process.memoryUsage().rss,
+            };
+            metrics.push(measurement);
+            writeProgress(label, 'completed', measurement);
+            return value;
+        } finally {
+            clearInterval(interval);
+            clearTimeout(timeout);
         }
-    }, intervalMs);
-    let timeout;
-    writeProgress(label, 'started');
-
-    try {
-        const value = await Promise.race([
-            Promise.resolve().then(operation),
-            new Promise((_, reject) => {
-                timeout = setTimeout(
-                    () => reject(new Error(
-                        `${label} made no observable progress for ` +
-                        `${scenarioTimeoutMs} ms`,
-                    )),
-                    scenarioTimeoutMs,
-                );
-            }),
-        ]);
-        const measurement = {
-            label,
-            durationMs: Math.round(performance.now() - started),
-            maxEventLoopGapMs: Math.max(0, Math.round(maxEventLoopGapMs)),
-            rssBefore,
-            rssAfter: process.memoryUsage().rss,
-        };
-        metrics.push(measurement);
-        writeProgress(label, 'completed', measurement);
-        return value;
-    } finally {
-        clearInterval(interval);
-        clearTimeout(timeout);
-        if (profiler) {
-            const { profile } = await new Promise((resolve, reject) =>
-                profiler.post('Profiler.stop', (error, result) => error ? reject(error) : resolve(result)));
-            profiler.disconnect();
-            fs.writeFileSync(`${resultFile}.${label.replace(/[^a-z0-9]+/gi, '-')}.cpuprofile`, JSON.stringify(profile));
-        }
-    }
+    });
 }
 
 function firstKeywordPosition(document) {

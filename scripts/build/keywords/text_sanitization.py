@@ -277,8 +277,8 @@ def _repair_known_encoding_artifacts(text: str) -> str:
     text = text.replace("Surface emission coefficient ?_rad", "Surface emission coefficient epsilon_rad")
     text = text.replace("Product JWL constant ?", "Product JWL constant omega")
     text = text.replace("Parameter ?_0", "Parameter tau_0")
-    text = text.replace("?_0", "tau_0")
     text = text.replace("Permittivity ?_0", "Permittivity epsilon_0")
+    text = text.replace("?_0", "tau_0")
     text = text.replace("Eigenvalue expansion factor ?.", "Eigenvalue expansion factor tau.")
 
     text = text.replace("kJ.?mol?^(-1)", "kJ*mol^(-1)")

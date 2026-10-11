@@ -1,3 +1,4 @@
+import { codiconAssets } from '../shared/codiconAssets';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -5,7 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
     root: __dirname,
     base: './',
-    plugins: [react()],
+    plugins: [react(), codiconAssets(['search', 'close', 'chevron-right'])],
     build: {
         outDir: path.resolve(__dirname, '../../out/webview/manual-reader'),
         emptyOutDir: true,

@@ -14,6 +14,7 @@
 const path = require('path');
 const { createIndexClient, DEFAULT_MAX_SNAPSHOT_BYTES } = require('../client/services/indexClient');
 const { createProjectIndexLoader } = require('../worker/projectIndexLoader');
+const { entityFileSignature } = require('../core/cache/entityFileRevision');
 const {
     createDiskSnapshotStore,
     DEFAULT_MAX_CACHE_BYTES: DEFAULT_PROJECT_SNAPSHOT_DISK_BYTES,
@@ -25,6 +26,8 @@ const {
 
 type ServerSessionOptions = {
     globalStoragePath?: string;
+    entityMemoryBytes?: number;
+    entityDiskBytes?: number;
     maxCacheBytes?: number;
     maxMemoryCacheBytes?: number;
     maxProjectSnapshotCacheBytes?: number;
@@ -40,6 +43,7 @@ type ServerSessionOptions = {
 class LsdynaServerSession {
     projectIndexLoader: any;
     indexClient: any;
+    private legacySnapshotCache: any;
 
     /**
      * Creates an LsdynaServerSession instance.
@@ -50,6 +54,8 @@ class LsdynaServerSession {
      */
     constructor({
         globalStoragePath,
+        entityMemoryBytes,
+        entityDiskBytes,
         maxCacheBytes,
         maxMemoryCacheBytes = DEFAULT_MAX_SNAPSHOT_BYTES,
         maxProjectSnapshotCacheBytes = maxCacheBytes ?? DEFAULT_PROJECT_SNAPSHOT_DISK_BYTES,
@@ -62,6 +68,9 @@ class LsdynaServerSession {
          * @type {import('../worker/projectIndexLoader').ProjectIndexLoader}
          */
         this.projectIndexLoader = createProjectIndexLoader({
+            entityStorageDirectory: globalStoragePath,
+            entityMemoryBytes,
+            entityDiskBytes,
             fileScanCacheDirectory: globalStoragePath ? path.join(globalStoragePath, 'file-scans') : null,
             fileScanCacheOptions: {
                 maxCacheBytes: maxFileScanCacheBytes,
@@ -70,18 +79,12 @@ class LsdynaServerSession {
             fileScanMemoryCacheBytes: maxFileScanMemoryCacheBytes,
         });
 
-        /**
-         * L2 persistent snapshot cache on disk.
-         * @type {import('../core/cache/diskSnapshotStore').DiskSnapshotStore|null}
-         */
-        let persistentCache = null;
-        if (globalStoragePath) {
-            persistentCache = createDiskSnapshotStore({
-                cacheDirectory: globalStoragePath,
-                maxCacheBytes: maxProjectSnapshotCacheBytes,
-                maxEntryAgeMs: maxCacheAgeMs,
-            });
-        }
+        // Keep the legacy store only for explicit cache cleanup. New sessions restore
+        // shared physical-file facts in the worker instead of duplicating whole projects.
+        this.legacySnapshotCache = globalStoragePath ? createDiskSnapshotStore({
+            cacheDirectory: globalStoragePath, maxCacheBytes: maxProjectSnapshotCacheBytes,
+            maxEntryAgeMs: maxCacheAgeMs,
+        }) : null;
 
         /**
          * Client index loader backing workspace queries.
@@ -90,7 +93,7 @@ class LsdynaServerSession {
         this.indexClient = createIndexClient({
             buildProjectIndex: this.projectIndexLoader.buildProjectIndex,
             maxSnapshotBytes: maxMemoryCacheBytes,
-            persistentCache,
+            getFileSignature: entityFileSignature,
         });
     }
 
@@ -105,8 +108,9 @@ class LsdynaServerSession {
         ]);
         return {
             memory: project.memory,
-            projectSnapshotDisk: project.projectSnapshotDisk,
+            projectSnapshotDisk: this.legacySnapshotCache ? await this.legacySnapshotCache.clear() : project.projectSnapshotDisk,
             fileScanDisk: fileScans,
+            ...(fileScans.entityIndex ? { entityIndex: fileScans.entityIndex } : {}),
         };
     }
 

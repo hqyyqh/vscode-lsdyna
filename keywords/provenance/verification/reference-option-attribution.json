@@ -49,72 +49,35 @@
     "policy": "read-only-deterministic-option-vs-independent-classification-v1",
     "schemaVersion": 1,
     "setNodeNamespace": {
-      "correctedKeywords": [
-        "*BOUNDARY_SLIDING_PLANE",
-        "*CONSTRAINED_GENERALIZED_WELD_BUTT",
-        "*CONSTRAINED_GENERALIZED_WELD_BUTT_ID",
-        "*CONSTRAINED_GENERALIZED_WELD_COMBINED",
-        "*CONSTRAINED_GENERALIZED_WELD_COMBINED_ID",
-        "*CONSTRAINED_GENERALIZED_WELD_CROSS_FILLET",
-        "*CONSTRAINED_GENERALIZED_WELD_CROSS_FILLET_ID",
-        "*CONSTRAINED_GENERALIZED_WELD_FILLET",
-        "*CONSTRAINED_GENERALIZED_WELD_FILLET_ID",
-        "*CONSTRAINED_GENERALIZED_WELD_SPOT",
-        "*CONSTRAINED_GENERALIZED_WELD_SPOT_ID",
-        "*CONSTRAINED_SHELL_TO_SOLID",
-        "*CONTACT_1D",
-        "*DATABASE_NODAL_FORCE_GROUP",
-        "*INITIAL_VELOCITY",
-        "*RIGIDWALL_PLANAR"
-      ],
-      "correctedLogicalCoordinates": 19,
-      "correctedRecords": 29,
-      "correctionIds": [
-        "runtime-semantic-relation-correction-group:set-node-namespace-boundary-sliding-plane",
-        "runtime-semantic-relation-correction-group:set-node-namespace-constrained-shell-to-solid",
-        "runtime-semantic-relation-correction-group:set-node-namespace-contact-1d",
-        "runtime-semantic-relation-correction-group:set-node-namespace-contact-1d-concrete",
-        "runtime-semantic-relation-correction-group:set-node-namespace-database-nodal-force-group",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-butt",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-butt-id",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-combined",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-combined-id",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-cross-fillet",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-cross-fillet-id",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-fillet",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-fillet-id",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-spot",
-        "runtime-semantic-relation-correction-group:set-node-namespace-generalized-weld-spot-id",
-        "runtime-semantic-relation-correction-group:set-node-namespace-initial-velocity",
-        "runtime-semantic-relation-correction-group:set-node-namespace-initial-velocity-exempt",
-        "runtime-semantic-relation-correction-group:set-node-namespace-rigidwall-planar",
-        "runtime-semantic-relation-correction-group:set-node-namespace-rigidwall-planar-exempt"
-      ],
-      "logicalCoordinates": 213,
+      "correctedKeywords": [],
+      "correctedLogicalCoordinates": 0,
+      "correctedRecords": 0,
+      "correctionIds": [],
+      "logicalCoordinates": 15,
       "optionTargetLogicalCoordinates": 110,
       "optionTargetRecords": 222,
-      "remainingContact2DLogicalCoordinates": 168,
-      "remainingContact2DRecords": 504,
-      "remainingLogicalCoordinates": 194,
-      "remainingRecords": 530,
-      "sourceKeywords": 84,
-      "sourceRecords": 559
+      "remainingContact2DLogicalCoordinates": 0,
+      "remainingContact2DRecords": 0,
+      "remainingLogicalCoordinates": 15,
+      "remainingRecords": 15,
+      "sourceKeywords": 15,
+      "sourceRecords": 15
     }
   },
   "change": {
-    "classification": "schema-source-drift",
-    "reason": "Finalize exact-byte current lineage after canonical LF source checkout of the shared runtime resolver. The prior current read-only audit inventory is unchanged; the preserved original f139e33a producer-era checkpoint remains separate. This refresh binds the actual current tools/input/output hashes and grants no native approval or write authority."
+    "classification": "audit-implementation-drift",
+    "reason": "Unify schema-backed keyword recognition and CONTACT option ordering; audit results and source semantics remain unchanged."
   },
   "inputs": {
     "currentDataLineage": {
       "path": "keywords/provenance/current-data.json",
-      "sha256": "ee7ba61fcdcee39384f2c8ca8a08e946291e5a3d4c73679b7536f4a964bddaaf",
-      "size": 46729
+      "sha256": "175b202afb5fec9448c70f0bafb142b3f4a1c25a0351f54598c47a98d8d8a83c",
+      "size": 972075
     },
     "fieldData": {
       "path": "keywords/runtime/schema/field_data.json",
-      "sha256": "6cce4436360fae7ca23fb0b2db85d52225c8079a1168e0814d04924fbd8c02a5",
-      "size": 35179009
+      "sha256": "c0630debe8d47a3a4b286dc6b60d41b6dd3e0865357afbf19a2fb4c8bbca9bcf",
+      "size": 41505269
     },
     "implementation": [
       {
@@ -124,8 +87,8 @@
       },
       {
         "path": "src/core/keywordSchema.ts",
-        "sha256": "b4daac21688afa303573fd0690c623f48e24761c154987934d5ba9c71684a5df",
-        "size": 75205
+        "sha256": "0e0e3e3ce520e871b87223763e165cd7d720c03f947487fec4982a6245223b40",
+        "size": 78851
       },
       {
         "path": "src/core/keywordDataPath.ts",
@@ -134,20 +97,20 @@
       },
       {
         "path": "src/core/semantics/semanticRuntimeV2.ts",
-        "sha256": "60a04b2434fe692cb4eb8a50f8ab83592121bbea54b16c7a9668b03d1721da09",
-        "size": 26840
+        "sha256": "6b7b7c10d6544a00c51737dd68dc77b764d966cb287a58ce966705be5e102f14",
+        "size": 27652
       },
       {
         "path": "src/core/references/fieldReferenceClassifier.ts",
-        "sha256": "3761289524f44e3e38aac7d198fa7ac1bff7ae119e857d4008cda4262f93bd5f",
-        "size": 87728
+        "sha256": "801c8f457f27ab1979f5a0d50225bd0bd62e316ce1727620c12d75a996566fde",
+        "size": 87906
       }
     ],
     "semanticRuntimeManifest": {
-      "contentSha256": "130ea13005a8a53a5eb16f89af2152cf82574d39de91d0de560855c11bb60f4e",
-      "datasetReleaseId": "semantic-dataset:29885db7d81590654a9786fe",
+      "contentSha256": "df3df6734ce6ff5e930bfe2b73c972def8fe5f4c043d8cda01527cbed6e20ad3",
+      "datasetReleaseId": "semantic-dataset:b6a1188d520aeec2aca52838",
       "path": "keywords/runtime/semantic-v2/manifest.json",
-      "sha256": "b243834226ee54ffbfbe0a1a005b84e19829a8e6b921119c211708e7e9170bb6",
+      "sha256": "1230f73a3fd13bcea5aeb3789ffa139697abb44cb39a1e85b075c31996a278d2",
       "size": 290907
     }
   },

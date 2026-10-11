@@ -36,7 +36,7 @@ CONDITION_PAIR_RE = re.compile(
     r"\b([A-Z][A-Z0-9_]*)[ \t]*"
     r"(?:(?:[ \t]+\.[ \t]*(EQ|NE|GT|GE|LT|LE)[ \t]*\.)|"
     r"(>=|<=|!=|<>|=|>|<))[ \t]*"
-    r"([-+]?(?:\d+(?:\.\d+)?|\.\d+))\b"
+    r"([-+]?(?:\d+(?:\.\d+)?|\.\d+))(?![0-9A-Za-z_]|\.\d)"
 )
 OPTION_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9_])(?:(?:OPTION)[ \t]*\.[ \t]*\.?[ \t]*)?"
@@ -449,6 +449,25 @@ def source_condition_pairs(source: str) -> list[tuple[str, str, str]]:
     return list(dict.fromkeys(pairs))
 
 
+UNNEGATED_RELATION_PREFIX = r"(?<![不非未无于或])(?<!没有)(?<!不是)"
+LOCALIZED_RELATIONS = {
+    "EQ": r"(?:(?<![!<>=])=(?!=)|" + UNNEGATED_RELATION_PREFIX + r"(?:等于|设为|设置为|取值为|取(?=\s*[-+]?(?:\d|\.\d))|(?<!设)(?<!设置)(?<!取值)为|是))",
+    "NE": r"(?:!=|<>|≠|" + UNNEGATED_RELATION_PREFIX + r"(?:不等于|非))",
+    "GT": r"(?:(?<![!<>=])>(?!=)|" + UNNEGATED_RELATION_PREFIX + r"(?:大于|高于|超过)(?!或?等于))",
+    "GE": r"(?:>=|≥|" + UNNEGATED_RELATION_PREFIX + r"(?:不小于|大于或等于|至少))",
+    "LT": r"(?:(?<![!<>=])<(?![=>])|" + UNNEGATED_RELATION_PREFIX + r"(?:小于|低于|不足)(?!或?等于))",
+    "LE": r"(?:<=|≤|" + UNNEGATED_RELATION_PREFIX + r"(?:不大于|小于或等于|至多))",
+}
+
+
+def _localized_number_pattern(value: str) -> str:
+    canonical = _canonical_number(value)
+    sign = r"[+-]?" if canonical == "0" else "-" if canonical.startswith("-") else r"\+?"
+    magnitude = canonical.lstrip("-")
+    number = (r"0?" + re.escape(magnitude[1:])) if magnitude.startswith("0.") else re.escape(magnitude)
+    return sign + number + (r"0*" if "." in canonical else r"(?:\.0+)?") + r"(?![0-9A-Za-z_]|\.\d)"
+
+
 def condition_pair_present(name: str, relation_name: str, value: str, suffix: str) -> bool:
     # Keep the solver variable/value pair even when the Chinese prose uses
     # natural wording such as ``PFORM 设为 0`` or ``TBEG 默认值为 0.0``.
@@ -457,50 +476,35 @@ def condition_pair_present(name: str, relation_name: str, value: str, suffix: st
         canonical_value = _canonical_number(value)
     except Exception:
         canonical_value = value
-    numeric_variants = {value, canonical_value}
+    number = r"(?:[-+]?(?:\d+(?:\.\d+)?|\.\d+)[ \t]*(?:[,，、]|或|和|及)[ \t]*)*" + _localized_number_pattern(value)
     name_variants = {name}
-    name_variants.update({
+    name_variants.add({
         "OPTION": "选项",
         "TYPE": "类型",
         "EQ": "EQ",
     }.get(name, ""))
     name_variants.discard("")
-    symbolic_relations = {
-        "EQ": r"(?:=|等于|设为|设置为|取值为|取|为|是)",
-        "NE": r"(?:!=|<>|≠|不等于|非)",
-        "GT": r"(?:>|大于|高于|超过)",
-        "GE": r"(?:>=|≥|不小于|大于或等于|至少)",
-        "LT": r"(?:<|小于|低于|不足)",
-        "LE": r"(?:<=|≤|不大于|小于或等于|至多)",
-    }
-    relation = symbolic_relations[relation_name]
+    relation = LOCALIZED_RELATIONS[relation_name]
     for name_variant in name_variants:
-        for value_variant in numeric_variants:
-            direct = re.compile(
-                r"\b" + re.escape(name_variant) + r"\s*(?:\.\s*"
-                + re.escape(relation_name) + r"\s*\.|" + relation + r")\s*"
-                + re.escape(value_variant) + r"(?![0-9A-Za-z])"
-            )
-            dotted_equal = re.compile(
-                r"\b" + re.escape(name_variant) + r"\s*[.:]\s*"
-                + re.escape(value_variant) + r"(?![0-9A-Za-z])"
-            )
-            natural = re.compile(
-                r"\b" + re.escape(name_variant) + r"[^。；;\n]{0,24}"
-                + relation + r"[^。；;\n]{0,12}" + re.escape(value_variant)
-            )
-            if (
-                direct.search(suffix)
-                or natural.search(suffix)
-                or (relation_name == "EQ" and dotted_equal.search(suffix))
-            ):
-                return True
-        if relation_name == "LT" and canonical_value == "0" and re.search(
-            r"\b" + re.escape(name_variant) + r"[^。；;\n]{0,24}(?:为负|负值)", suffix
+        prefix = r"(?<![A-Za-z0-9_])" + re.escape(name_variant) + r"(?![A-Za-z0-9_])"
+        direct = prefix + r"\s*(?:\.\s*" + re.escape(relation_name) + r"\s*\.|" + relation + r")\s*" + number
+        dotted_equal = prefix + r"\s*[.:]\s*" + number
+        natural = prefix + r"[^。；;\n0-9A-Za-z者不非未无<>=!≠≤≥]{0,24}" + relation + r"\s*" + number
+        if re.search(direct, suffix) or re.search(natural, suffix) or (relation_name == "EQ" and re.search(dotted_equal, suffix)):
+            return True
+        if relation_name == "EQ" and canonical_value.startswith("-") and re.search(
+            prefix + r"\s*为负[（(](?:例如|如)\s*" + _localized_number_pattern(value), suffix
         ):
             return True
-        if relation_name == "GT" and canonical_value == "0" and re.search(
-            r"\b" + re.escape(name_variant) + r"[^。；;\n]{0,24}(?:为正|正值)", suffix
+        if canonical_value == "0" and relation_name in ("LT", "GT"):
+            phrase = r"(?:为负|负值)" if relation_name == "LT" else r"(?:为正|正值)"
+            if re.search(prefix + r"[^。；;\n0-9A-Za-z不非未无正负<>=!≠≤≥]{0,24}" + phrase, suffix):
+                return True
+    # ponytail: explicit two/three-parameter collectives only; extend when another real grouped form needs checking.
+    for group in re.finditer(r"(?<![A-Za-z0-9_])([A-Z][A-Z0-9_]*(?:\s*(?:、|,|，|和|及|与)\s*[A-Z][A-Z0-9_]*)+)[^。；;\nA-Za-z]{0,40}(两者|三者)均", suffix):
+        names = re.findall(r"[A-Z][A-Z0-9_]*", group[1])
+        if name in names and len(names) == (2 if group[2] == "两者" else 3) and re.match(
+            relation + r"\s*" + number, suffix[group.end():]
         ):
             return True
     return False
@@ -555,15 +559,8 @@ def _numeric_option_present(token: str, suffix: str) -> bool:
     if token in _expanded_numeric_option_tokens(suffix):
         return True
     relation_name, value = token.split(".", 1)
-    relation = {
-        "EQ": r"(?:=|等于|设为|设置为|取值为|取|为|是)",
-        "NE": r"(?:!=|<>|≠|不等于|非)",
-        "GT": r"(?:>|大于|高于|超过)",
-        "GE": r"(?:>=|≥|不小于|大于或等于|至少)",
-        "LT": r"(?:<|小于|低于|不足)",
-        "LE": r"(?:<=|≤|不大于|小于或等于|至多)",
-    }[relation_name]
-    return bool(re.search(relation + r"[^。；;\n]{0,12}" + re.escape(value), suffix))
+    relation = LOCALIZED_RELATIONS[relation_name]
+    return bool(re.search(relation + r"\s*" + _localized_number_pattern(value), suffix.replace("−", "-").replace("–", "-")))
 
 
 def _unbalanced_brackets(value: str) -> list[str]:
@@ -648,7 +645,6 @@ def _term_residue(source: str, suffix: str) -> list[str]:
 
 def build_report(english: Any, localized: Any) -> dict[str, Any]:
     rows = list(iter_help_occurrences(english, localized))
-    field_names = dict(iter_help_field_names(english))
     fallbacks: list[str] = []
     invalid_bilingual: list[str] = []
     templates: list[str] = []

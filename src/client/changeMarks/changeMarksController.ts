@@ -10,11 +10,11 @@ const { createChangeMarksRenderer } = require('./changeMarksRenderer');
 const { orderedMarkLines } = require('./changeMarksDiff');
 const { emptyChangeMarks } = require('./types');
 const { DEFAULT_CHANGE_MARKS_CUSTOM_COLORS } = require('../../core/theme/extensionTheme');
+const { randomUUID } = require('node:crypto');
 import type {
     ChangeMarksConfig,
     ChangeMarksDiffResult,
     ChangeMarksSessionSnapshot,
-    ChangeMarkVisualKind,
 } from './types';
 
 export type ChangeMarksControllerDeps = {
@@ -44,35 +44,6 @@ type SaveAsCandidate = {
     createdAt: number;
 };
 
-/**
- * Keep the session-store URI key opaque while it travels through a VS Code
- * virtual-document URI. Query strings and Uri.parse both perform escaping, so
- * passing the key with encodeURIComponent changes Windows drive letters,
- * spaces, and literal plus signs before the content provider sees it.
- */
-function encodeDiffDocumentKey(uriString: string): string {
-    return Buffer.from(uriString, 'utf8').toString('base64url');
-}
-
-function decodeDiffDocumentKey(encoded: string): string | null {
-    if (!encoded || !/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
-    try {
-        const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
-        return encodeDiffDocumentKey(decoded) === encoded ? decoded : null;
-    } catch {
-        return null;
-    }
-}
-
-const HOVER_I18N_KEYS: Record<ChangeMarkVisualKind, string> = {
-    unsavedModified: 'changeMarksHoverUnsavedModified',
-    unsavedInserted: 'changeMarksHoverUnsavedInserted',
-    unsavedDeleted: 'changeMarksHoverUnsavedDeleted',
-    savedModified: 'changeMarksHoverSavedModified',
-    savedInserted: 'changeMarksHoverSavedInserted',
-    savedDeleted: 'changeMarksHoverSavedDeleted',
-};
-
 function defaultConfig(): ChangeMarksConfig {
     return {
         enabled: true,
@@ -95,6 +66,7 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
     const disposables: { dispose: () => void }[] = [];
     const recentlyCreated = new Map<string, number>();
     const saveAsCandidates = new Map<string, SaveAsCandidate>();
+    const diffBaselines = new Map<string, string>();
     let activeDocument: any = vscode.window.activeTextEditor?.document || null;
     let recentlyClosedSource: SaveAsSource | null = null;
 
@@ -107,10 +79,6 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
             showOverviewRuler: c.showOverviewRuler,
             showLineBackground: c.showLineBackground,
             showMinimap: c.showMinimap,
-            getHoverMessage: (kind: ChangeMarkVisualKind) => {
-                const key = HOVER_I18N_KEYS[kind];
-                return deps.getMessage?.(key) || '';
-            },
         });
     }
 
@@ -366,6 +334,7 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
     function onDidClose(document: any) {
         if (!document) return;
         const key = uriKey(document);
+        diffBaselines.delete(key);
         const currentText = safeGetText(document);
         if (key && currentText != null && store.get(key)) {
             store.applyCurrent(key, currentText);
@@ -445,33 +414,14 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         return true;
     }
 
-    function getOriginText(uriString: string): string | null {
-        const rec = store.get(uriString);
-        return rec ? rec.originText : null;
-    }
-
-    function getSavePointText(uriString: string): string | null {
-        const rec = store.get(uriString);
-        return rec ? rec.savePointText : null;
-    }
-
     const contentProvider = {
         provideTextDocumentContent(uri: any): string {
-            try {
-                const q = new URLSearchParams(uri.query || '');
-                const kind = q.get('kind') || String(uri.path || '').replace(/^\//, '');
-                const docUri = decodeDiffDocumentKey(q.get('doc64') || '');
-                if (!docUri) return '';
-                if (kind === 'origin' || String(uri.path || '').includes('origin')) {
-                    return getOriginText(docUri) ?? '';
-                }
-                if (kind === 'savepoint' || String(uri.path || '').includes('savepoint')) {
-                    return getSavePointText(docUri) ?? '';
-                }
-                return '';
-            } catch {
-                return '';
+            const baseline = diffBaselines.get(uriKey({ uri }));
+            if (baseline === undefined) {
+                throw new Error(deps.getMessage?.('changeMarksDiffUnavailable')
+                    || 'The comparison baseline is no longer available. Open the input file and run the comparison again.');
             }
+            return baseline;
         },
     };
 
@@ -540,6 +490,7 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
                 for (const t of timers.values()) clearTimeout(t);
                 timers.clear();
                 store.clearAll();
+                diffBaselines.clear();
                 recentlyCreated.clear();
                 saveAsCandidates.clear();
                 recentlyClosedSource = null;
@@ -570,7 +521,8 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
     async function showDiff(editor: any, kind: 'origin' | 'savepoint'): Promise<void> {
         const document = editor?.document;
         if (!document || !isEligible(document)) return;
-        ensureSession(document);
+        const session = ensureSession(document);
+        if (!session) return;
         const text = safeGetText(document);
         if (text == null) return;
         store.applyCurrent(uriKey(document), text);
@@ -579,16 +531,17 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
         const title = kind === 'origin'
             ? (deps.getMessage?.('changeMarksDiffSinceOpened') || 'Since opened')
             : (deps.getMessage?.('changeMarksDiffUnsaved') || 'Unsaved changes');
-        const encodedDocKey = encodeDiffDocumentKey(docUriStr);
         const left = vscode.Uri.parse(
-            `${SCHEME}:${kind}?kind=${kind}&doc64=${encodedDocKey}`,
+            `${SCHEME}:${kind}?snapshot=${randomUUID()}`,
         );
-        await vscode.commands.executeCommand(
-            'vscode.diff',
-            left,
-            document.uri,
-            title,
-        );
+        const diffKey = uriKey({ uri: left });
+        diffBaselines.set(diffKey, kind === 'origin' ? session.originText : session.savePointText);
+        try {
+            await vscode.commands.executeCommand('vscode.diff', left, document.uri, title);
+        } catch (error) {
+            diffBaselines.delete(diffKey);
+            throw error;
+        }
     }
 
     return {

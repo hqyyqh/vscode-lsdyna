@@ -54,7 +54,7 @@ function validateAuthorityLock(lock) {
     requireCondition(isSha256(source.manifestSha256), 'Invalid authoring handoff manifest SHA-256');
     requireCondition(isSha256(source.contentSha256), 'Invalid authoring handoff content SHA-256');
     requireCondition(
-        Number.isInteger(source.relationShards) && source.relationShards === 16 &&
+        source.relationShards === 16 &&
         Number.isInteger(source.authoringRelations) && source.authoringRelations > 0 &&
         Number.isInteger(source.distinctManualRelations) && source.distinctManualRelations > 0 &&
         source.distinctManualRelations <= source.authoringRelations &&
@@ -244,6 +244,7 @@ function buildRegistry(handoff, authorityLock, authorityLockSha256) {
     return { ...core, contentSha256: registryContentHash(core) };
 }
 
+/** Validate the complete locked registry, including independently supplied runtime data. */
 function validateRegistry(registry, authorityLock, serializedBytes = null) {
     validateAuthorityLock(authorityLock);
     requireCondition(
@@ -273,13 +274,27 @@ function validateRegistry(registry, authorityLock, serializedBytes = null) {
     const { contentSha256, ...core } = registry;
     requireCondition(isSha256(contentSha256) && registryContentHash(core) === contentSha256, 'Definition Registry content hash drift');
     const relations = Object.values(registry.byKeyword || {}).flat();
+    const coordinateCounts = new Map();
+    for (const relation of relations) {
+        coordinateCounts.set(relation.coordinateId, (coordinateCounts.get(relation.coordinateId) || 0) + 1);
+    }
+    const maxRelationsPerCoordinate = Math.max(0, ...coordinateCounts.values());
     requireCondition(
         relations.length === registry.summary?.relations &&
         Object.keys(registry.byKeyword || {}).length === registry.summary?.keywords &&
         new Set(relations.map(item => item.authoringRelationId)).size === relations.length &&
-        new Set(relations.map(item => item.coordinateId)).size === registry.summary?.coordinates,
+        coordinateCounts.size === registry.summary?.coordinates &&
+        maxRelationsPerCoordinate === registry.summary?.maxRelationsPerCoordinate,
         'Definition Registry summary drift',
     );
+    requireCondition(relations.length === authorityLock.source.authoringRelations &&
+        coordinateCounts.size === authorityLock.source.uniqueCoordinates,
+    'Definition Registry source population drift');
+    const capacity = authorityLock.capacity;
+    requireCondition(registry.summary.keywords <= capacity.maxKeywords &&
+        relations.length <= capacity.maxRelations && coordinateCounts.size <= capacity.maxCoordinates &&
+        maxRelationsPerCoordinate <= capacity.maxRelationsPerCoordinate,
+    'Definition Registry capacity exceeded');
     for (const [keyword, keywordRelations] of Object.entries(registry.byKeyword || {})) {
         requireCondition(normalizeKeyword(keyword) === keyword && Array.isArray(keywordRelations), `Invalid registry keyword: ${keyword}`);
         for (const relation of keywordRelations) {

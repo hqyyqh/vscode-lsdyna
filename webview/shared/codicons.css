@@ -1,0 +1,19 @@
+.ui-icon { display: inline-block; flex: 0 0 auto; width: 16px; height: 16px; background-color: currentColor; mask-position: center; mask-size: contain; mask-repeat: no-repeat; vertical-align: middle; }
+.ui-icon--arrow-left { mask-image: url('@vscode/codicons/src/icons/arrow-left.svg'); }
+.ui-icon--arrow-right { mask-image: url('@vscode/codicons/src/icons/arrow-right.svg'); }
+.ui-icon--arrow-up { mask-image: url('@vscode/codicons/src/icons/arrow-up.svg'); }
+.ui-icon--chevron-left { mask-image: url('@vscode/codicons/src/icons/chevron-left.svg'); }
+.ui-icon--chevron-right { mask-image: url('@vscode/codicons/src/icons/chevron-right.svg'); }
+.ui-icon--chevron-down { mask-image: url('@vscode/codicons/src/icons/chevron-down.svg'); }
+.ui-icon--file-pdf { mask-image: url('@vscode/codicons/src/icons/file-pdf.svg'); }
+.ui-icon--search { mask-image: url('@vscode/codicons/src/icons/search.svg'); }
+.ui-icon--close { mask-image: url('@vscode/codicons/src/icons/close.svg'); }
+.ui-icon--zoom-in { mask-image: url('@vscode/codicons/src/icons/zoom-in.svg'); }
+.ui-icon--zoom-out { mask-image: url('@vscode/codicons/src/icons/zoom-out.svg'); }
+.ui-icon--target { mask-image: url('@vscode/codicons/src/icons/target.svg'); }
+.ui-icon--book { mask-image: url('@vscode/codicons/src/icons/book.svg'); }
+.ui-icon--discard { mask-image: url('@vscode/codicons/src/icons/discard.svg'); }
+.ui-icon--check { mask-image: url('@vscode/codicons/src/icons/check.svg'); }
+
+.ui-icon--globe { mask-image: url('@vscode/codicons/src/icons/globe.svg'); }
+.ui-icon--split-horizontal { mask-image: url('@vscode/codicons/src/icons/split-horizontal.svg'); }

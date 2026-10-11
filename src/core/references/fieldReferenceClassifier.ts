@@ -17,7 +17,6 @@ const {
     resolveValueRole,
 } = require('../semantics/predicateEvaluator');
 const { parseNumericInput } = require('./referenceInputValue');
-const { isLabelIdentity } = require('./entityIdentity');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
 const { loadFamilyDefinitionScannerCatalog } = require('./familyDefinitionScannerCatalog');
 const { getSemanticRuntimeCatalogV2 } = require('../semantics/semanticRuntimeV2');
@@ -1120,10 +1119,8 @@ function buildRuntimeTableLayoutIndex(
         const fields = [];
         for (let index = 0; index < group.fieldCount; index++) {
             const signature = group.fields.get(index);
-            if (!signature) { group.invalid = true; break; }
             fields.push(JSON.parse(signature));
         }
-        if (group.invalid) continue;
         const tableSignature = JSON.stringify(fields);
         const matches = cards.map((card, index) => ({
             cardIndex: index + 1,
@@ -1548,9 +1545,7 @@ function hasRealizableNumericReferenceWitness(info, field) {
 }
 
 function getRegistryApprovedFieldReferenceInfo(options) {
-    const info = getActionableFieldReferenceInfo(options);
-    if (info?.definitionRegistry?.approved !== true) return null;
-    return info;
+    return getActionableFieldReferenceInfo(options);
 }
 
 function resolveReferenceValueSemantics(infoOrRelation, rawValue) {
@@ -1565,6 +1560,9 @@ function resolveReferenceValueSemantics(infoOrRelation, rawValue) {
             reason: resolved.reason || 'reference-predicate-indeterminate',
             resolution: resolved,
         };
+    }
+    if (resolved.role === 'unknown') {
+        return { state: 'indeterminate', reason: 'reference-role-unknown', resolution: resolved };
     }
     if (resolved.role !== 'reference') {
         return { state: 'non-reference', role: resolved.role, resolution: resolved };
@@ -1592,6 +1590,7 @@ function resolveReferenceValueSemantics(infoOrRelation, rawValue) {
         state: 'reference',
         id,
         idTransform: resolved.idTransform || 'identity',
+        ...(resolved.targetSearch ? { targetSearch: resolved.targetSearch } : {}),
         ...targets,
         resolution: resolved,
     };
@@ -1624,7 +1623,7 @@ function parseLegacyReferenceValue(input, raw, info) {
 function parseFieldReferenceValue(rawValue, info = null) {
     const raw = String(rawValue || '').trim();
     if (!raw) return null;
-    const input = parseNumericInput(raw, { integerOnly: true, nonZero: true });
+    const input = parseNumericInput(raw, { integerOnly: !info?.relation || !['real', 'float'].includes(info.fieldType), nonZero: true });
 
     // Kept for internal compatibility with callers that parse a value without a semantic rule.
     // Product features always pass an official-manual relation through getFieldReferenceInfo().
@@ -1644,14 +1643,14 @@ function parseFieldReferenceValue(rawValue, info = null) {
         };
     }
     if (input.kind !== 'numeric') {
+        const numberInput = parseNumericInput(raw, { integerOnly: false });
         const targets = referenceTargets(info.relation);
         const labelTargets = new Set(['MAT', 'MAT_THERMAL', 'EOS', 'SECTION']);
         const branches = Array.isArray(info.relation?.branches) ? info.relation.branches : [];
         const labelAllowed = info.relation?.kind === 'entity-reference' && branches.length === 0 &&
             targets.targetDefinitions.some(target => labelTargets.has(normalizeTargetKeyword(target))) &&
-            !raw.startsWith('&') && !(raw.startsWith('<') && raw.endsWith('>')) &&
-            !/^[+-]?\d+$/.test(raw) &&
-            isLabelIdentity(raw);
+            !raw.startsWith('&') && numberInput.kind === 'invalid' &&
+            numberInput.reason === 'unsupported-numeric-input';
         if (!labelAllowed) return null;
         return {
             kind: 'label',
@@ -1678,6 +1677,7 @@ function parseFieldReferenceValue(rawValue, info = null) {
         semanticRelation: info.relation,
         targetKinds: semantic.targetKinds,
         targetDefinitions: semantic.targetDefinitions,
+        ...(semantic.targetSearch ? { targetSearch: semantic.targetSearch } : {}),
     };
 }
 

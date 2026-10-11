@@ -413,6 +413,7 @@ export function expandGrammar(
     budgets: StructureBudgets,
     context: StructureContext = {},
 ): GrammarPath[] {
+    context = { ...context, keywordOptions: keywordOptionSet(context) ?? undefined };
     const state = { observedCount, budgets, context };
     const nodes = [
         ...optionNode(grammar, context, 'prefixes'),

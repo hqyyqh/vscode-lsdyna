@@ -175,11 +175,8 @@ function resolveDashboardLabels(overrides: Partial<DashboardLabels> = {}): Dashb
 }
 
 function formatLabelTemplate(template: string, ...values: Array<string | number>): string {
-    let out = String(template || '');
-    for (let i = 0; i < values.length; i++) {
-        out = out.replace(`{${i}}`, String(values[i]));
-    }
-    return out;
+    return String(template || '').replace(/\{(0|[1-9]\d*)\}/g, (placeholder, index) =>
+        Number(index) < values.length ? String(values[Number(index)]) : placeholder);
 }
 
 function normalizeStatusBarLevel(value: any): StatusBarLevel {
@@ -231,11 +228,11 @@ function formatDashboardText(context: DashboardContext = {}): string {
 
     // P1: deck errors on active file
     if (errorCount > 0) {
-        return `${BRAND} · ${errorCount}✗`;
+        return `${BRAND} · $(error) ${errorCount}`;
     }
     // P2: deck warnings
     if (warningCount > 0) {
-        return `${BRAND} · ${warningCount}⚠`;
+        return `${BRAND} · $(warning) ${warningCount}`;
     }
 
     // P3/P4: keyword (+ detail field / scan short name)
@@ -544,7 +541,7 @@ class LsdynaStatusBarDashboard {
     }
 
     scheduleRefresh(): void {
-        if (this.timer) this.cancel(this.timer);
+        if (this.timer != null) this.cancel(this.timer);
         this.timer = this.schedule(() => {
             this.timer = null;
             this.refresh();
@@ -571,7 +568,7 @@ class LsdynaStatusBarDashboard {
     }
 
     dispose(): void {
-        if (this.timer) {
+        if (this.timer != null) {
             this.cancel(this.timer);
             this.timer = null;
         }

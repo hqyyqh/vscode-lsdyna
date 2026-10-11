@@ -43,6 +43,8 @@ for (const codec of ['gzip', 'br']) describe(`shared Input Form release format (
         const manifest = JSON.parse(fs.readFileSync(manifestPath));
         const oldHash = manifest.keywords.A.shard, old = manifest.shards[oldHash];
         const shard = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(directory, old.file))));
+        shard.kind = 'keyword-input-form-shard';
+        manifest.kind = 'keyword-input-form-manifest';
         shard.datasetSha256 = shard.datasetSha256 || shard[shardSourceKey]; delete shard[shardSourceKey];
         const raw = Buffer.from(JSON.stringify(shard)), bytes = zlib.gzipSync(raw), hash = sha(raw);
         fs.writeFileSync(path.join(directory, hash + '.json.gz'), bytes);
@@ -52,12 +54,16 @@ for (const codec of ['gzip', 'br']) describe(`shared Input Form release format (
             uncompressedBytes: raw.length, uncompressedSha256: hash } };
         for (const item of Object.values(manifest.keywords)) item.shard = hash;
         fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        const released = path.join(root, 'out/runtime/catalog-input-form');
+        fs.renameSync(path.dirname(manifestPath), released);
+        manifestPath = path.join(released, 'manifest.json');
         compactInputForm(root, codec);
         const compact = JSON.parse(fs.readFileSync(manifestPath));
         assert.deepEqual(compact.dataset, manifest.dataset); assert.equal(compact[sourceKey], undefined);
         for (const item of Object.values(compact.shards)) {
             const compressed = fs.readFileSync(path.join(directory, item.file));
             const decoded = JSON.parse(codec === 'br' ? zlib.brotliDecompressSync(compressed) : zlib.gunzipSync(compressed));
+            assert.equal(decoded.kind, shard.kind);
             assert.equal(decoded.datasetSha256, manifest.dataset.sha256); assert.equal(decoded[shardSourceKey], undefined);
             assert.deepEqual(decoded.rules.rule.values, [null, '', 0, false]);
         }

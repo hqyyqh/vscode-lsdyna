@@ -2,6 +2,8 @@
 
 const assert = require('assert');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const { fakeDoc, vscodeMock } = require("../../support/helpers");
 const { LsdynaKeywordIndexProvider } = require('../../../src/client/providers/keywordIndexProvider');
 
@@ -61,6 +63,135 @@ describe('keyword index layouts and cursor following', () => {
     let savedEditor;
     beforeEach(() => { savedEditor = vscodeMock.window.activeTextEditor; });
     afterEach(() => { vscodeMock.window.activeTextEditor = savedEditor; });
+    it('settles a server-cancelled project scan without rejecting the command', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const { ResponseError, LSPErrorCodes } = require('vscode-languageserver-protocol');
+        const client = createIndexClient({ languageClient: {
+            sendNotification() {},
+            sendRequest: async () => { throw new ResponseError(LSPErrorCodes.RequestCancelled, 'Operation cancelled'); },
+        } });
+        const provider = new LsdynaKeywordIndexProvider({ loadProjectSnapshot: client.loadProjectSnapshot });
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        vscodeMock.ProgressLocation = { Notification: 1 };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, { isCancellationRequested: false });
+        try {
+            vscodeMock.window.activeTextEditor = { document: modelDocument(path.resolve('project', 'main.k')) };
+            assert.equal(await provider.setRecursive(), false);
+            assert.equal(provider.mode, 'local');
+            assert.equal(provider.scanState, 'incomplete');
+        } finally {
+            provider.stopAutomaticWork();
+            vscodeMock.window.withProgress = progress;
+            vscodeMock.ProgressLocation = location;
+        }
+    });
+    it('exposes the return-to-file action while scanning and ignores a late project result', async () => {
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        const execute = vscodeMock.commands.executeCommand;
+        const contexts = new Map();
+        let finish;
+        const pending = new Promise(resolve => { finish = resolve; });
+        const document = modelDocument(path.resolve('project', 'main.k'));
+        const provider = new LsdynaKeywordIndexProvider({ loadProjectSnapshot: () => pending });
+        const view = {};
+        provider.attachTreeView(view);
+        vscodeMock.ProgressLocation = { Notification: 1 };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, { isCancellationRequested: false });
+        vscodeMock.commands.executeCommand = async (command, key, value) => {
+            if (command === 'setContext') contexts.set(key, value);
+        };
+        try {
+            vscodeMock.window.activeTextEditor = { document };
+            const scanning = provider.scan();
+            assert.equal(contexts.get('lsdyna.keywordIndexScanning'), true);
+            assert.equal(provider.scanState, 'scanning');
+            await provider.setLocal();
+            assert.equal(contexts.get('lsdyna.keywordIndexScanning'), false);
+            assert.equal(provider.mode, 'local');
+            finish({ files: [document.uri.fsPath], fileIndexes: new Map() });
+            assert.equal(await scanning, false);
+            assert.equal(provider.mode, 'local');
+            assert.ok(provider.findOccurrence(document.uri.fsPath, 2));
+        } finally {
+            finish({ files: [], fileIndexes: new Map() });
+            provider.stopAutomaticWork();
+            vscodeMock.window.withProgress = progress;
+            vscodeMock.ProgressLocation = location;
+            vscodeMock.commands.executeCommand = execute;
+        }
+    });
+    it('clears local lookups and projections when the progress host rejects, then recovers', async () => {
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        const provider = new LsdynaKeywordIndexProvider();
+        const previous = modelDocument(path.resolve('project', 'previous.k'));
+        const next = path.resolve('project', 'next.k');
+        vscodeMock.ProgressLocation = { Window: 1 };
+        try {
+            await provider.refreshFromUriOrDocument(previous);
+            assert.equal(provider.findOccurrence(previous.uri.fsPath, 2)?.keyword, 'PART');
+            vscodeMock.window.withProgress = async () => { throw new Error('controlled progress-host rejection'); };
+            await provider.refreshFromUriOrDocument(vscodeMock.Uri.file(next));
+            assert.equal(provider.scanState, 'incomplete');
+            assert.deepEqual(provider.roots, []);
+            assert.deepEqual(provider.listSearchEntries(), []);
+            assert.equal(provider.findOccurrence(previous.uri.fsPath, 2), null);
+            assert.equal(provider.findOccurrence(next, 0), null);
+            provider.setLayout('category');
+            assert.deepEqual(provider.roots, []);
+            await provider.refreshFromUriOrDocument(modelDocument(next));
+            assert.equal(provider.findOccurrence(next, 2)?.keyword, 'PART');
+            assert.equal(provider.findOccurrence(previous.uri.fsPath, 2), null);
+        } finally {
+            provider.stopAutomaticWork();
+            vscodeMock.window.withProgress = progress;
+            vscodeMock.ProgressLocation = location;
+        }
+    });
+    it('replaces local occurrence state for both legacy project scan inputs', async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-legacy-index-'));
+        const progress = vscodeMock.window.withProgress;
+        const location = vscodeMock.ProgressLocation;
+        const project = path.join(directory, 'main.k');
+        const previous = path.join(directory, 'previous.k');
+        fs.writeFileSync(project, '*NODE\n1,0,0,0\n');
+        vscodeMock.ProgressLocation = { Notification: 1 };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, { isCancellationRequested: false });
+        try {
+            for (const snapshotMode of [false, true]) {
+                const provider = new LsdynaKeywordIndexProvider(snapshotMode ? {
+                    loadProjectSnapshot: async () => ({ files: [project], keywordMap: new Map([
+                        ['NODE', [{ filePath: project, lineIndex: 0 }]],
+                    ]) }),
+                } : { collectIncludeFiles: async () => [project] });
+                try {
+                    const document = mutableDocument(previous, ['*PART', 'Old part', '1,1,1']);
+                    await provider.refreshFromUriOrDocument(document);
+                    assert.ok(provider.findOccurrence(previous, 1));
+                    assert.equal(await provider.scan({ rootFile: project }), true);
+                    assert.equal(provider.mode, 'recursive');
+                    assert.deepEqual(provider.roots.map(item => item.label), ['NODE']);
+                    assert.equal(provider.findOccurrence(previous, 1), null);
+                    assert.equal(provider.findOccurrence(project, 0)?.keyword, 'NODE');
+                    provider.setLayout('category');
+                    assert.deepEqual(provider._occurrences.map(item => item.keyword), ['NODE']);
+                    assert.equal(provider._baseProjectOccurrences.length, 1);
+                    assert.equal(provider._documentOverlays.size, 0);
+                    assert.equal(provider._projectFileOrderByKey.size, 1);
+                    await provider.setLocal();
+                    const liveProject = mutableDocument(project, ['*PART', 'Live part', '2,1,1']);
+                    await provider.refreshFromUriOrDocument(liveProject);
+                    provider.setLayout('alphabetical');
+                    assert.equal(await provider.scan({ rootFile: project }), true);
+                    assert.deepEqual(provider.roots.map(item => item.label), ['PART']);
+                    assert.equal(provider.findOccurrence(project, 1)?.keyword, 'PART');
+                } finally { provider.stopAutomaticWork(); }
+            }
+        } finally {
+            vscodeMock.window.withProgress = progress;
+            vscodeMock.ProgressLocation = location;
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
     it('shows an unfinished Include scan even when no structure was published', () => {
         const { LsdynaIncludeTreeProvider } = require('../../../src/client/providers/includeTreeProvider');
         const i18n = require('../../../src/core/i18n');
@@ -69,12 +200,20 @@ describe('keyword index layouts and cursor following', () => {
         provider.attachTreeView(view);
         provider.markReferencesIncomplete();
         assert.equal(view.message, i18n.get('sidebarIncomplete'));
-        provider.root = { filePath: path.resolve('project', 'main.k'), children: [] };
+        const main = path.resolve('project', 'main.k');
+        provider.root = provider._buildItemFromTreeNode({ filePath: main, missing: true, children: [] });
         provider.scanPhase = 'complete';
         provider.refresh();
-        assert.ok(view.message.includes('main.k'));
-        assert.ok(view.message.includes(i18n.get('sidebarNoIncludes')));
+        assert.equal(view.message, i18n.get('sidebarNoIncludes'));
+        const [root] = provider.getChildren();
+        assert.strictEqual(provider.getTreeItem(root), provider.root);
+        assert.equal(root.label, 'main.k');
+        assert.equal(root.filePath, main);
+        assert.equal(root.resourceUri.fsPath, main);
+        assert.ok(root.tooltip.value.includes(main));
         provider.clearProjectSnapshot();
+        assert.equal(provider.root, null);
+        assert.deepEqual(provider.getChildren(), []);
         assert.ok(!view.message.includes('main.k'));
     });
 

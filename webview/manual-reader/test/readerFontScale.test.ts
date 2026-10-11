@@ -61,4 +61,16 @@ describe('readerFontScale', () => {
         });
         expect(props.get('--reader-font-scale')).toBe('1.4');
     });
+
+    it('recovers when the browser storage getter or its operations throw', () => {
+        const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+        Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('Storage denied'); } });
+        try {
+            expect(loadFontScaleFromStorage()).toBe(FONT_SCALE_DEFAULT);
+            expect(() => saveFontScaleToStorage(1.2)).not.toThrow();
+            expect(loadFontScaleFromStorage(null)).toBe(FONT_SCALE_DEFAULT);
+        } finally { Object.defineProperty(globalThis, 'localStorage', original); }
+        expect(loadFontScaleFromStorage({ getItem() { throw new Error('Read denied'); } })).toBe(FONT_SCALE_DEFAULT);
+        expect(() => saveFontScaleToStorage(1.2, { setItem() { throw new Error('Quota reached'); } })).not.toThrow();
+    });
 });

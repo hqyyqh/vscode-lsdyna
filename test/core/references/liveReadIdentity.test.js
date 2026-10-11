@@ -14,6 +14,16 @@ describe('asynchronous reference input identity', () => {
     const document = () => Object.assign(fakeDoc('*DEFINE_CURVE\n         1\n                 0.0                 0.0\n*END', '/read-identity/main.k'), {
         version: 1, isClosed: false, isDirty: true,
     });
+    it('reads a dirty set definition header without re-reading its member list', async () => {
+        const doc = Object.assign(fakeDoc('*SET_NODE_LIST\n42\n' + '1,2,3,4\n'.repeat(1000) + '*END', '/read-identity/set.k'), {
+            version: 1, isClosed: false, isDirty: true,
+        });
+        const lineAt = doc.lineAt.bind(doc); let memberReads = 0;
+        doc.lineAt = line => { if (line === 500) memberReads++; return lineAt(line); };
+        const result = await buildLiveRegistryReferenceFileIndex(doc, { excludeMeshEntities: true });
+        assert.equal(result.referenceDefinitions.genericDefinitions[0].id, 42);
+        assert.equal(memberReads, 1, 'Only the keyword structure pass should read a distant member');
+    });
     for (const change of ['version', 'close']) {
         it(`does not cache a local scan after a document ${change} change`, async () => {
             const doc = document();

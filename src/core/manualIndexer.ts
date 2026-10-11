@@ -6,7 +6,7 @@
  * 
  * This service parses PDF outlines (bookmarks) using custom low-level binary readers to map
  * LS-DYNA keywords (e.g. *NODE, *ELEMENT) to their corresponding page numbers in PDF manuals.
- * It caches the parsed outlines in the extension's workspaceState using mtime/size checks and 
+ * It caches the parsed outlines in the extension's workspaceState using mtime/size/change-time checks and
  * installs directory watch loops to auto-reload if PDF manuals are added or updated.
  * 
  * Role in System: Provides targets for keyword and field hovers and powers the openManual command
@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
-const { resolveManualDirectoryCandidates } = require('../manual/manualsDirResolve');
+const { resolveManualsRoot } = require('../manual/manualsDirResolve');
 
 /**
  * @typedef {Object} ManualLocation
@@ -55,7 +55,7 @@ const CACHE_VERSION = 2;
 let outputChannel;
 
 /**
- * List of resolved PDF manuals files.
+ * List of PDF manual files successfully loaded from their source or bookmark cache.
  * @type {string[]}
  */
 let pdfFilesList = [];
@@ -104,7 +104,7 @@ function registerLocationKeyword(file, page, keyword) {
 
 function equivalentKeywordsForLocations(locs) {
     const equivalent = new Set();
-    for (const loc of locs || []) {
+    for (const loc of locs) {
         for (const keyword of keywordsByLocation.get(manualLocationKey(loc.file, loc.page)) || []) {
             equivalent.add(keyword);
         }
@@ -445,7 +445,7 @@ async function initialize(context) {
 
         // Shared portable contract: relative manualsDir → Code.exe dir first, then
         // appRoot, workspaces, cwd, extension (exe wins when both exist).
-        const dirsToScan = resolveManualDirectoryCandidates({
+        const manualRoot = resolveManualsRoot({
             manualsDir,
             workspaceFolders: vscode.workspace.workspaceFolders || [],
             cwd: process.cwd(),
@@ -454,7 +454,7 @@ async function initialize(context) {
             extensionPath: context && context.extensionPath ? context.extensionPath : null,
         });
 
-        const uniqueDirs = dirsToScan.filter(d => {
+        const uniqueDirs = [manualRoot].filter(d => {
             const exists = fs.existsSync(d);
             if (exists) {
                 log(`Found existing manuals directory candidate: "${d}"`);
@@ -557,18 +557,24 @@ async function initialize(context) {
             try {
                 const stats = fs.statSync(pdfPath);
                 const mtimeMs = stats.mtimeMs;
+                const { size, ctimeMs } = stats;
                 const fileName = path.basename(pdfPath);
 
                 let bookmarks;
-                if (cache[pdfPath] && cache[pdfPath].version === CACHE_VERSION && cache[pdfPath].mtimeMs === mtimeMs && Array.isArray(cache[pdfPath].bookmarks) && cache[pdfPath].bookmarks.length > 0) {
+                // ponytail: metadata cache identity; use a content digest if a supported filesystem can preserve all three values after replacement.
+                if (cache[pdfPath] && cache[pdfPath].version === CACHE_VERSION
+                    && cache[pdfPath].mtimeMs === mtimeMs && cache[pdfPath].size === size && cache[pdfPath].ctimeMs === ctimeMs
+                    && Array.isArray(cache[pdfPath].bookmarks) && cache[pdfPath].bookmarks.length > 0) {
                     log(`Loading bookmarks for "${fileName}" from cache...`);
                     bookmarks = cache[pdfPath].bookmarks;
                 } else {
                     log(`Parsing bookmarks for "${fileName}" from PDF...`);
-                    bookmarks = parsePdf(pdfPath);
+                    bookmarks = parsePdfContent(fs.readFileSync(pdfPath, 'binary'));
                     cache[pdfPath] = {
                         version: CACHE_VERSION,
                         mtimeMs,
+                        size,
+                        ctimeMs,
                         bookmarks
                     };
                     cacheUpdated = true;
@@ -583,7 +589,7 @@ async function initialize(context) {
                     const matches = titleUpper.match(/\*[A-Z0-9_]+/g);
                     
                     const kwsToRegister = [];
-                    if (matches && matches.length > 0) {
+                    if (matches) {
                         for (const m of matches) {
                             kwsToRegister.push(m);
                         }
@@ -610,6 +616,7 @@ async function initialize(context) {
                         }
                     }
                 }
+                pdfFilesList.push(pdfPath);
                 log(`Registered ${kwCount} keyword mapping(s) from "${fileName}".`);
             } catch (err) {
                 log(`Error processing manual PDF "${pdfPath}": ${err.message}`);
@@ -623,7 +630,6 @@ async function initialize(context) {
             await context.workspaceState.update('manuals_bookmark_cache', cache);
             log("Saved updated bookmarks cache to workspaceState.");
         }
-        pdfFilesList = pdfFiles;
     } catch (e) {
         log(`Error during manualIndexer initialization: ${e.message}`);
         console.error('Error during manualIndexer initialization:', e);
@@ -640,43 +646,35 @@ function getManualLocations(kwName) {
     const cleaned = cleanKeyword(kwName);
     const { getAliases } = require('./keywordUtils');
     const candidatesToCheck = [cleaned, ...getAliases(cleaned)];
-
-    for (const cand of candidatesToCheck) {
-        let locs = keywordMap.get(cand);
-        if (locs && locs.length > 0) {
-            return locs.map(loc => ({
-                ...loc,
-                requestedKeyword: cleaned,
-                matchedKeyword: cand,
-                matchKind: 'exact',
-            }));
+    const locationsFor = (candidate, exact = false) => {
+        const locations = keywordMap.get(candidate);
+        if (!locations) return null;
+        const matchKind = exact ? 'exact'
+            : classifyManualMatch(cleaned, candidate, equivalentKeywordsForLocations(locations));
+        return locations.map(location => ({ ...location, requestedKeyword: cleaned,
+            matchedKeyword: candidate, matchKind }));
+    };
+    // Keep exact bookmarks cheap; schema resolution is only needed for fallback.
+    for (const candidate of candidatesToCheck) {
+        const locations = locationsFor(candidate, true);
+        if (locations) return locations;
+    }
+    const lookup = require('./keywordSchema').lookupKeywordSchema(cleaned);
+    if (lookup) {
+        const canonical = cleanKeyword(lookup.canonicalName);
+        for (const candidate of [canonical, ...getAliases(canonical)]) {
+            const locations = locationsFor(candidate);
+            if (locations) return locations;
+            if (!candidatesToCheck.includes(candidate)) candidatesToCheck.push(candidate);
         }
-
-        const tokens = cand.split('_');
-        for (let i = tokens.length - 1; i >= 1; i--) {
-            const candidate = tokens.slice(0, i).join('_');
-            locs = keywordMap.get(candidate);
-            if (locs && locs.length > 0) {
-                const equivalents = equivalentKeywordsForLocations(locs);
-                return locs.map(loc => ({
-                    ...loc,
-                    requestedKeyword: cleaned,
-                    matchedKeyword: candidate,
-                    matchKind: classifyManualMatch(cand, candidate, equivalents),
-                }));
-            }
-            const subAliases = getAliases(candidate);
-            for (const sa of subAliases) {
-                locs = keywordMap.get(sa);
-                if (locs && locs.length > 0) {
-                    const equivalents = equivalentKeywordsForLocations(locs);
-                    return locs.map(loc => ({
-                        ...loc,
-                        requestedKeyword: cleaned,
-                        matchedKeyword: sa,
-                        matchKind: classifyManualMatch(cand, sa, equivalents),
-                    }));
-                }
+    }
+    for (const candidate of candidatesToCheck) {
+        const tokens = candidate.split('_');
+        for (let length = tokens.length - 1; length >= 1; length--) {
+            const prefix = tokens.slice(0, length).join('_');
+            for (const name of [prefix, ...getAliases(prefix)]) {
+                const locations = locationsFor(name);
+                if (locations) return locations;
             }
         }
     }

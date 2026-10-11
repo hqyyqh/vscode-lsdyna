@@ -3,6 +3,8 @@ import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 
@@ -17,6 +19,7 @@ from validate_field_data_translation import (  # noqa: E402
     find_help_text_character_errors,
     find_untranslated_help,
     load_json,
+    main,
     sync_translation_data,
     sync_translation_file,
 )
@@ -139,6 +142,56 @@ class FieldDataTranslationTest(unittest.TestCase):
             self.assertNotIn(b"\r", written_bytes)
             self.assertIn('\n  "MAT_001":', written)
             self.assertTrue(written.endswith("\n"))
+
+    def test_sync_character_errors_preserve_existing_localized_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            english_path = root / "english.json"
+            localized_path = root / "localized.json"
+            original = b' {"saved": {"h": "old authoring text"}}\r\n'
+            for help_text in ["Material\ufffd ID", "Material ID\\n"]:
+                with self.subTest(help_text=help_text):
+                    english = sample_field_data()
+                    english["MAT_001"]["c"][0][0]["h"] = help_text
+                    english_path.write_text(json.dumps(english), encoding="utf-8")
+                    localized_path.write_bytes(original)
+                    errors = sync_translation_file(english_path, localized_path)
+                    self.assertTrue(errors)
+                    self.assertEqual(original, localized_path.read_bytes())
+
+    def test_sync_content_gate_preserves_existing_or_missing_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            english_path = root / "english.json"
+            english_path.write_text(json.dumps(sample_field_data()), encoding="utf-8")
+            original = b' {"saved": {"h": "old authoring text"}}\r\n'
+            for exists in [True, False]:
+                with self.subTest(exists=exists):
+                    localized_path = root / ("existing.json" if exists else "missing.json")
+                    if exists:
+                        localized_path.write_bytes(original)
+                    stdout, stderr = StringIO(), StringIO()
+                    with redirect_stdout(stdout), redirect_stderr(stderr):
+                        result = main(["--english", str(english_path), "--localized", str(localized_path),
+                            "--sync", "--check-content"])
+                    self.assertEqual(1, result)
+                    self.assertIn("missing Chinese help text", stderr.getvalue())
+                    if exists:
+                        self.assertEqual(original, localized_path.read_bytes())
+                    else:
+                        self.assertFalse(localized_path.exists())
+
+    def test_sync_compatibility_failure_preserves_localized_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            english_path = root / "english.json"
+            localized_path = root / "localized.json"
+            english_path.write_text(json.dumps({"MAT_ADD_EROSION": {"c": []}}), encoding="utf-8")
+            original = b' {"saved": {"h": "old authoring text"}}\r\n'
+            localized_path.write_bytes(original)
+            with self.assertRaisesRegex(ValueError, "compatibility keyword pair is incomplete"):
+                sync_translation_file(english_path, localized_path)
+            self.assertEqual(original, localized_path.read_bytes())
 
     def test_content_reports_help_without_chinese_text(self):
         english = sample_field_data()

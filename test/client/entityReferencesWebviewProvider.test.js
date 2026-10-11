@@ -31,6 +31,19 @@ function actions(calls) {
 }
 
 describe('EntityReferencesWebviewProvider', () => {
+    it('names reference-only query types in both languages and preserves keyword identifiers', () => {
+        const i18n = require('../../out/core/i18n');
+        const original = i18n.getLanguage;
+        const { ENTITY_KIND_LABELS, shortEntityKindLabel } = require('../../out/client/entityKindLabels');
+        try {
+            for (const [language, expected] of [['zh-cn', ['气囊', 'CESE 状态方程', '安全带卷收器']],
+                ['en', ['Airbag', 'CESE equation of state', 'Seatbelt retractor']]]) {
+                i18n.getLanguage = () => language;
+                assert.deepEqual(['airbag-id', 'cese-eos', 'seatbelt-retractor'].map(shortEntityKindLabel), expected);
+                assert.equal(ENTITY_KIND_LABELS['airbag-id'][1], '*AIRBAG_ID');
+            }
+        } finally { i18n.getLanguage = original; }
+    });
     it('mounts the loading UI before preparation and ignores a disposed ready request', async () => {
         let release;
         const pending = new Promise(resolve => { release = resolve; });
@@ -43,6 +56,8 @@ describe('EntityReferencesWebviewProvider', () => {
         await provider.resolveWebviewView(webview, undefined, token);
         assert.equal(provider.isFollowingCursor(), false);
         assert.ok(webview.webview.html.includes('<div id="root">'));
+        assert.ok(webview.webview.html.includes("default-src 'none';"));
+        assert.ok(webview.webview.html.includes('font-src vscode-resource:;'));
         const ready = webview.webview.receive({ id: 'ready', method: 'entityReferences/ready', receiver: { type: 'extension' }, params: { revision: 0 } });
         webview.disposeCallback();
         release(); await ready;
@@ -76,10 +91,156 @@ describe('EntityReferencesWebviewProvider', () => {
         await webview.webview.receive({ id: 'ready', method: 'entityReferences/ready', receiver: { type: 'extension' }, params: { revision: 0 } });
         assert.equal(attempts, 0); assert.equal(follow, 0);
         assert.equal(provider.isFollowingCursor(), false);
-        await assert.rejects(provider.search(), /directory unavailable/);
-        await assert.rejects(provider.search(), /directory unavailable/);
+        assert.equal(await provider.search(), false);
+        assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesIncompleteHint'));
+        assert.equal(await provider.search(), false);
         assert.equal(attempts, 2);
         provider.dispose(); model.dispose();
+    });
+
+    for (const status of ['complete', 'partial', 'missing', 'incomplete']) {
+        it(`queries the selected native scope for ${status} results and rejects unavailable scopes`, async () => {
+            const calls = [], model = new LsdynaEntityReferenceProvider();
+            const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], actions(calls));
+            const filePath = path.resolve('part.k'), projectRoot = path.resolve('main.k');
+            provider.setScopeContext({ filePath, projectRoot });
+            model.publish({ targetKind: 'curve', id: 3, scope: { kind: 'single-file', filePath } }, { state: status, locations: [] });
+            try {
+                assert.equal(await provider.setScopePreference('project'), true);
+                assert.deepEqual(calls, [['query', 'curve', '3', 'project']]);
+                assert.equal(await provider.setScopePreference('file'), true);
+                assert.deepEqual(calls[1], ['query', 'curve', '3', 'file']);
+                provider.setScopeContext({ filePath });
+                assert.equal(await provider.setScopePreference('project'), false);
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesProjectScopeUnavailable'));
+                provider.setScopeContext({});
+                assert.equal(await provider.setScopePreference('project'), false);
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesFileScopeUnavailable'));
+                assert.equal(await provider.setScopePreference('file'), false);
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesFileScopeUnavailable'));
+                assert.equal(calls.length, 2);
+            } finally { provider.dispose(); model.dispose(); }
+        });
+    }
+
+    it('shows progress until a scope query completes, then clears it', async () => {
+        let finish;
+        const pending = new Promise(resolve => { finish = resolve; });
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], {
+            ...actions([]), query: (kind, id, scope) => {
+                provider.setInput(kind, id, scope);
+                return pending;
+            },
+        });
+        const filePath = path.resolve('part.k');
+        provider.setScopeContext({ filePath, projectRoot: path.resolve('main.k') });
+        model.publish({ targetKind: 'curve', id: 3, scope: { kind: 'single-file', filePath } }, { state: 'complete', locations: [] });
+        try {
+            const change = provider.setScopePreference('project');
+            assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesChangingScope'));
+            finish(true);
+            assert.equal(await change, true);
+            assert.equal(provider.viewState().message, '');
+        } finally { finish(false); provider.dispose(); model.dispose(); }
+    });
+
+    for (const failure of [false, 'reject']) {
+        it(`reports native scope failure and retries the selected scope: ${failure}`, async () => {
+            let attempts = 0;
+            const model = new LsdynaEntityReferenceProvider();
+            const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], {
+                ...actions([]), query: async (kind, id, scope) => {
+                    assert.equal(scope, 'project'); attempts++;
+                    if (attempts > 1) return true;
+                    if (failure === 'reject') throw Error('internal-offline');
+                    return false;
+                },
+            });
+            const filePath = path.resolve('part.k');
+            provider.setScopeContext({ filePath, projectRoot: path.resolve('main.k') });
+            model.publish({ targetKind: 'curve', id: 3, scope: { kind: 'single-file', filePath } }, { state: 'complete', locations: [] });
+            try {
+                assert.equal(await provider.setScopePreference('project'), false);
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesIncompleteHint'));
+                assert.equal(await provider.setScopePreference('project'), true);
+                assert.equal(provider.viewState().message, '');
+                assert.equal(attempts, 2);
+            } finally { provider.dispose(); model.dispose(); }
+        });
+        it(`reports native search failure and unlocks a retry: ${failure}`, async () => {
+            const original = vscode.window.createQuickPick;
+            let accept, hide, created = 0, disposed = 0, queries = 0, finish;
+            const picker = { value: 'curve 3', items: [], selectedItems: [],
+                onDidChangeValue() { return { dispose() {} }; },
+                onDidChangeActive() { return { dispose() {} }; },
+                onDidAccept(fn) { accept = fn; return { dispose() {} }; },
+                onDidHide(fn) { hide = fn; return { dispose() {} }; },
+                show() {}, hide() { hide(); }, dispose() { disposed++; },
+            };
+            vscode.window.createQuickPick = () => { created++; return picker; };
+            const model = new LsdynaEntityReferenceProvider();
+            const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], {
+                ...actions([]), query: async () => {
+                    queries++;
+                    if (queries > 1) return true;
+                    if (failure === 'reject') throw Error('internal-offline');
+                    return new Promise(resolve => { finish = resolve; });
+                },
+            });
+            try {
+                const first = provider.search();
+                assert.equal(await provider.search(), true);
+                assert.equal(created, 1, 'only one native picker may be active');
+                picker.selectedItems = [picker.items[0]]; accept();
+                if (failure === false) { await Promise.resolve(); finish(false); }
+                assert.equal(await first, false);
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesIncompleteHint'));
+                assert.equal(disposed, 1);
+                const retry = provider.search();
+                assert.equal(provider.viewState().message, '');
+                picker.selectedItems = [picker.items[0]]; accept();
+                assert.equal(await retry, true);
+                assert.equal(queries, 2); assert.equal(created, 2); assert.equal(disposed, 2);
+            } finally { vscode.window.createQuickPick = original; provider.dispose(); model.dispose(); }
+        });
+    }
+
+    it('synchronizes native pin, scope and follow controls with the active session', async () => {
+        const original = vscode.commands.executeCommand, contexts = new Map();
+        vscode.commands.executeCommand = (command, key, value) => { if (command === 'setContext') contexts.set(key, value); };
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], actions([]));
+        const webview = view(); webview.visible = true;
+        try {
+            await provider.resolveWebviewView(webview);
+            assert.equal(webview.description, require('../../out/core/i18n').get('keywordIndexScopeCurrentFile'));
+            assert.equal(contexts.get('lsdynaEntityReferences.pinned'), false);
+            provider.toggleFollowCursor(); assert.equal(contexts.get('lsdynaEntityReferences.following'), true);
+            const rootFile = path.resolve('main.k');
+            model.publish({ targetKind: 'curve', id: 3, scope: { kind: 'project', rootFile } }, { state: 'complete', locations: [] });
+            provider.refreshUiLanguage(); // The portable VS Code mock does not emit model events; the real host verifies automatic publication.
+            assert.equal(contexts.get('lsdynaEntityReferences.scope'), 'project');
+            assert.equal(webview.description, require('../../out/core/i18n').get('keywordIndexScopeProject'));
+            await model.pin();
+            provider.refreshUiLanguage();
+            assert.equal(contexts.get('lsdynaEntityReferences.pinned'), true);
+            assert.equal(contexts.get('lsdynaEntityReferences.following'), false);
+            provider.toggleFollowCursor(); assert.equal(provider.following, true, 'a pinned session cannot toggle following');
+            await model.unpin();
+            provider.refreshUiLanguage();
+            assert.equal(contexts.get('lsdynaEntityReferences.pinned'), false);
+            assert.equal(contexts.get('lsdynaEntityReferences.following'), true);
+            provider.toggleFollowCursor(); assert.equal(contexts.get('lsdynaEntityReferences.following'), false);
+            const manifest = require('../../package.json');
+            const menu = manifest.contributes.menus['view/title'];
+            for (const name of ['search', 'toggleFollow', 'toggleFollowActive', 'pin', 'unpin', 'setScopeFile', 'setScopeProject', 'refresh']) {
+                const command = `extension.entityReferences.${name}`;
+                assert.ok(manifest.contributes.commands.some(item => item.command === command && item.icon && item.title));
+                assert.ok(menu.some(item => item.command === command && item.when.includes('view == lsdynaEntityReferences')
+                    && item.group.startsWith('navigation@')), `Missing title button: ${command}`);
+            }
+        } finally { provider.dispose(); model.dispose(); vscode.commands.executeCommand = original; }
     });
     it('uses one native picker, validates IDs, and queries only an accepted type', async () => {
         const original = vscode.window.createQuickPick;
@@ -87,6 +248,7 @@ describe('EntityReferencesWebviewProvider', () => {
         const picker = {
             value: '', items: [], selectedItems: [],
             onDidChangeValue(fn) { change = fn; return { dispose() {} }; },
+            onDidChangeActive() { return { dispose() {} }; },
             onDidAccept(fn) { accept = fn; return { dispose() {} }; },
             onDidHide(fn) { hide = fn; return { dispose() {} }; },
             show() {}, hide() { hide(); }, dispose() {},
@@ -119,6 +281,91 @@ describe('EntityReferencesWebviewProvider', () => {
         } finally {
             vscode.window.createQuickPick = original;
             provider.dispose(); model.dispose();
+        }
+    });
+
+    it('keeps engineering order stable and remembers only confirmed workspace search choices', async () => {
+        const original = vscode.window.createQuickPick;
+        let change, active, accept, hide, picker;
+        vscode.window.createQuickPick = () => (picker = {
+            value: '', items: [], activeItems: [], selectedItems: [],
+            onDidChangeValue(fn) { change = fn; return { dispose() {} }; },
+            onDidChangeActive(fn) { active = fn; return { dispose() {} }; },
+            onDidAccept(fn) { accept = fn; return { dispose() {} }; },
+            onDidHide(fn) { hide = fn; return { dispose() {} }; },
+            show() {}, hide() { hide(); }, dispose() {},
+        });
+        let saved = 'material';
+        const writes = [];
+        const state = { get() { return saved; }, update(key, value) {
+            saved = value; writes.push(value); return Promise.resolve();
+        } };
+        const calls = [];
+        const model = new LsdynaEntityReferenceProvider();
+        let directoryError = false;
+        const create = () => new EntityReferencesWebviewProvider(process.cwd(), model,
+            () => {
+                if (directoryError) throw Error('directory unavailable');
+                return ['contact', 'part', 'hourglass', 'material', 'curve', 'node-set'];
+            }, actions(calls), undefined, state);
+        let provider = create();
+        const type = value => { picker.value = value; change(); };
+        try {
+            provider.setInput('contact', '7', 'file');
+            let pending = provider.search();
+            type('1001');
+            const order = ['curve', 'material', 'part', 'node-set', 'contact', 'hourglass'];
+            assert.deepEqual(picker.items.map(item => item.targetKind), order);
+            assert.ok(picker.items.every(item => item.label === '1001'), 'native label sorting must not reorder types');
+            assert.ok(picker.items.find(item => item.targetKind === 'material').description.includes('*MAT'));
+            assert.equal(picker.activeItems[0].targetKind, 'material');
+            picker.activeItems = [picker.items.find(item => item.targetKind === 'part')];
+            active(picker.activeItems);
+            active([]);
+            active([picker.items[0]]); // Native filter resets focus before delivering the value change.
+            picker.value = '10012';
+            active([picker.items[0]]); // Native filtering briefly focuses an item for the old ID.
+            change();
+            assert.equal(picker.activeItems[0].targetKind, 'part', 'typing must preserve manual choice');
+            type('');
+            assert.equal(picker.items.length, 0);
+            type('10012');
+            assert.equal(picker.activeItems[0].targetKind, 'part', 'replacing the ID must preserve manual choice');
+            type('SET_NODE 10012');
+            assert.equal(picker.activeItems[0].targetKind, 'node-set');
+            picker.selectedItems = picker.activeItems; accept();
+            await pending;
+            assert.deepEqual(writes, ['node-set']);
+            assert.deepEqual(calls, [['query', 'node-set', '10012', 'file']]);
+            provider.dispose(); provider = create();
+            pending = provider.search(); type('2000');
+            assert.deepEqual(picker.items.map(item => item.targetKind), order);
+            assert.equal(picker.activeItems[0].targetKind, 'node-set');
+            hide(); await pending;
+            assert.deepEqual(writes, ['node-set'], 'cancellation must not save');
+            provider.dispose(); saved = 'no-longer-supported'; provider = create();
+            pending = provider.search(); type('3000');
+            assert.equal(picker.activeItems[0].targetKind, 'curve');
+            hide(); await pending;
+            const warn = console.warn;
+            const warnings = [];
+            console.warn = (...args) => warnings.push(args);
+            state.update = () => Promise.reject(new Error('storage unavailable'));
+            try {
+                pending = provider.search(); type('MAT 4000');
+                picker.selectedItems = picker.activeItems; accept();
+                assert.equal(await pending, true, 'storage failure must not block the query');
+                assert.deepEqual(calls.at(-1), ['query', 'material', '4000', 'file']);
+                assert.equal(warnings.length, 1);
+            } finally { console.warn = warn; }
+            directoryError = true;
+            assert.equal(await provider.search(), false);
+            directoryError = false;
+            pending = provider.search(); type('5000');
+            assert.equal(picker.items.length, 6, 'directory failure must release the search lock');
+            hide(); await pending;
+        } finally {
+            provider.dispose(); model.dispose(); vscode.window.createQuickPick = original;
         }
     });
 
@@ -204,6 +451,36 @@ describe('EntityReferencesWebviewProvider', () => {
         provider.dispose(); model.dispose();
     });
 
+    it('loads remote pages through the view with total counts distinct from loaded rows', async () => {
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], actions([]));
+        const webview = view(); await provider.resolveWebviewView(webview);
+        const filePath = path.resolve('model.key');
+        const locations = start => Array.from({ length: 200 }, (_, index) => ({ role: 'reference',
+            filePath, line: start + index, startCharacter: 0, endCharacter: 1 }));
+        let calls = 0;
+        model.publish({ targetKind: 'curve', id: 1, scope: { kind: 'single-file', filePath } }, {
+            state: 'complete', revision: 'v1', locations: locations(0),
+            page: { counts: { definition: 0, reference: 400 }, next: { reference: { offset: 200 } } },
+            loadPage: async cursor => {
+                calls++; assert.equal(cursor.offset, 200);
+                return { status: 'ready', revision: 'v1', result: { locations: locations(200),
+                    page: { appendRole: 'reference', next: {} } } };
+            },
+        });
+        const state = provider.viewState();
+        assert.equal(state.activeSession.referenceCount, 400);
+        assert.equal(state.references.length, 200);
+        assert.equal(state.hasMoreReferences, true);
+        await webview.webview.receive({ id: 'more', method: 'entityReferences/loadMore',
+            receiver: { type: 'extension' }, params: { revision: state.revision, role: 'reference' } });
+        assert.equal(calls, 1);
+        const next = provider.viewState();
+        assert.equal(next.references.length, 400);
+        assert.equal(next.hasMoreReferences, false);
+        provider.dispose(); model.dispose();
+    });
+
     it('contributes a webview and projects only bounded result pages', () => {
         const manifest = require('../../package.json');
         const contribution = manifest.contributes.views['lsdyna-includes']
@@ -219,15 +496,22 @@ describe('EntityReferencesWebviewProvider', () => {
         model.publish({ targetKind: 'curve', id: 1,
             scope: { kind: 'single-file', filePath } }, {
             state: 'complete',
-            locations: Array.from({ length: 150 }, (_, line) => ({
+            locations: Array.from({ length: 450 }, (_, line) => ({
                 role: 'reference', filePath, line, startCharacter: 0, endCharacter: 1,
                 keyword: '*LOAD_CURVE', fieldName: 'LCID',
             })),
         });
         const state = provider.viewState();
-        assert.equal(state.references.length, 100);
+        assert.equal(state.references.length, 200);
         assert.equal(state.hasMoreReferences, true);
         assert.equal(state.references.every(item => !('filePath' in item)), true);
+        provider.visibleCounts.set(model.getActiveSession().key, { definition: 200, reference: 400 });
+        const next = provider.viewState({ baseRevision: state.revision, role: 'reference', start: 200 });
+        assert.equal(next.references.length, 200);
+        assert.equal(next.references[0].line, 201);
+        assert.equal(next.definitions.length, 0);
+        assert.equal(next.hasMoreReferences, true);
+        assert.ok(provider.locationsByToken.has(state.references[0].locationId));
         provider.dispose();
         model.dispose();
     });

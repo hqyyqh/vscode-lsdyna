@@ -24,6 +24,52 @@ function createCancellationController() {
 }
 
 describe('createIndexClient', () => {
+    it('omits an absent entity query token for the language client and preserves real tokens', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const received = [];
+        const client = createIndexClient({ languageClient: { sendNotification() {}, sendRequest: async (_method, request, token) => {
+            assert.notStrictEqual(token, null, 'LanguageClient dereferences any supplied token');
+            received.push(token); return { status: 'ready', request };
+        } } });
+        const request = { rootFile: path.resolve('main.k'), scope: 'single-file', targetKind: 'curve', id: 1 };
+        await client.queryEntity(request);
+        await client.queryEntity(request, null);
+        const controller = createCancellationController();
+        await client.queryEntity(request, controller.token);
+        assert.deepStrictEqual(received, [undefined, undefined, controller.token]);
+        controller.cancel();
+        await assert.rejects(client.queryEntity(request, controller.token), { name: 'CancellationError' });
+        assert.equal(received.length, 3);
+    });
+    it('uses the configured estimate budget above the old 48 MiB ceiling', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const root = path.resolve('large.k'); let builds = 0;
+        const client = createIndexClient({ maxSnapshotBytes: 64 * 1024 ** 2,
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            buildProjectIndex: async () => { builds++; return { rootFile: root, files: [root],
+                payload: 'x'.repeat(26 * 1024 ** 2) }; } });
+        const first = await client.loadProjectSnapshot(root);
+        assert.strictEqual(await client.loadProjectSnapshot(root), first);
+        assert.equal(builds, 1);
+        assert.ok(client.getCacheStats().totalSnapshotBytes > 48 * 1024 ** 2);
+    });
+    it('retains worker single-file snapshots without publishing project manifests or disk entries', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const { createCacheManifestStore } = require('../../../src/core/cache/cacheManifestStore');
+        const root = path.resolve('single.k'), manifestStore = createCacheManifestStore();
+        let builds = 0, persisted = 0, restored = 0;
+        const client = createIndexClient({ cacheSingleFileSnapshots: true, manifestStore,
+            getFileSignature: async () => ({ mtimeMs: 1, size: 1 }),
+            persistentCache: { restore: async () => { restored++; return null; }, persist: async () => { persisted++; } },
+            buildProjectIndex: async (_root, options) => { builds++; return { rootFile: root, files: [root],
+                scope: options.singleFileOnly ? 'single-file' : 'project' }; } });
+        const first = await client.loadProjectSnapshot(root, { singleFileOnly: true });
+        assert.strictEqual(await client.loadProjectSnapshot(root, { singleFileOnly: true }), first);
+        assert.equal(builds, 1); assert.equal(persisted, 0); assert.equal(restored, 0);
+        assert.equal((await client.loadProjectSnapshot(root)).scope, 'project');
+        assert.equal(builds, 2); assert.equal(restored, 1);
+    });
+
     it('keeps single-file scans out of project snapshot and manifest caches', async () => {
         const { createIndexClient } = require('../../../src/client/services/indexClient');
         const { createCacheManifestStore } = require('../../../src/core/cache/cacheManifestStore');
@@ -585,6 +631,42 @@ describe('createIndexClient', () => {
         assert.strictEqual(result, snapshot);
         assert.equal(restoreCount, 1);
         assert.equal(buildCount, 1);
+    });
+
+    it('preserves primary scan failures after a recoverable cache restore failure', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'failed-scan.k');
+        const failure = Object.assign(new Error('source cannot be read'), { code: 'EACCES' });
+        let builds = 0;
+        const client = createIndexClient({
+            buildProjectIndex: async () => { builds++; throw failure; },
+            persistentCache: {
+                async restore() { throw new Error('corrupt cache'); },
+                async persist() { assert.fail('a failed scan must not be persisted'); },
+            },
+        });
+        await assert.rejects(client.loadProjectSnapshot(rootFile), error => error === failure);
+        assert.equal(builds, 1);
+        assert.equal(client.getCacheStats().cachedSnapshotCount, 0);
+        assert.deepEqual(client.getManifestEntries(), []);
+    });
+
+    it('rejects a scan whose source signature changed before publication', async () => {
+        const { createIndexClient } = require('../../../src/client/services/indexClient');
+        const rootFile = path.resolve('project', 'changed-scan.k');
+        const client = createIndexClient({
+            buildProjectIndex: async () => ({ rootFile, files: [rootFile],
+                fileIndexes: new Map([[rootFile, { size: 10, mtimeMs: 1 }]]) }),
+            getFileSignature: async () => ({ size: 11, mtimeMs: 2 }),
+            persistentCache: {
+                async restore() { return null; },
+                async persist() { assert.fail('a changed scan must not be persisted'); },
+            },
+        });
+        await assert.rejects(client.loadProjectSnapshot(rootFile), error =>
+            error.name === 'ScanChangedError' && error.message.includes(rootFile));
+        assert.equal(client.getCacheStats().cachedSnapshotCount, 0);
+        assert.deepEqual(client.getManifestEntries(), []);
     });
 
     it('propagates cancellation after disk restore instead of silently rebuilding', async () => {

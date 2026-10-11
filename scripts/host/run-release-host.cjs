@@ -1,14 +1,25 @@
 'use strict';
-const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+const fs = require('node:fs'), path = require('node:path');
 const { runTests } = require('./vsix-host.cjs');
 const { resolveVSCodeExecutable } = require('./run-editor-safety-extension-host.cjs');
 async function main() {
     const phase = process.argv[2] || 'smoke';
-    if (!['smoke', 'activation', 'hover', 'manager', 'choices', 'catalog', 'completion', 'reference-hover'].includes(phase)) throw Error('Unknown release host phase');
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-release-host-'));
+    if (!['smoke', 'activation', 'hover', 'manager', 'experience', 'choices', 'catalog', 'completion', 'reference-hover', 'entity-pages', 'sqlite', 'cache-settings'].includes(phase)) throw Error('Unknown release host phase');
+    if (phase === 'experience') {
+        process.env.LSDYNA_RELEASE_MANUAL_FIXTURE = '1';
+        process.env.LSDYNA_RELEASE_CDP_PORT = String(await new Promise(resolve => {
+            const server = require('node:net').createServer();
+            server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
+        }));
+    }
+    const { createTempRun, finishTempRun } = require('./temp-runs.cjs');
+    const root = createTempRun('dynasense-release-host-');
     const workspace = path.join(root, 'workspace'), profile = path.join(root, 'profile');
     fs.mkdirSync(workspace);
     fs.mkdirSync(path.join(profile, 'User'), { recursive: true });
+    if (process.env.LSDYNA_RELEASE_LOCALE === 'zh-cn' && process.env.LSDYNA_LANGUAGE_EXTENSIONS)
+        require('./language-pack.cjs').copyChineseLanguagePack(root, process.env.LSDYNA_LANGUAGE_EXTENSIONS,
+            process.env.LSDYNA_LANGUAGE_PACK_CACHE);
     fs.writeFileSync(path.join(profile, 'User/settings.json'), JSON.stringify({ 'workbench.startupEditor': 'none' }));
     const node = '       1' + ['0.0', '1.0', '-2.5E-3'].map(value => value.padStart(16)).join('') + '       0       0';
     fs.writeFileSync(path.join(workspace, 'core.k'), `*KEYWORD\n*NODE\n${node}\n*END\n`);
@@ -35,7 +46,8 @@ async function main() {
         extensionTestsEnv: { LSDYNA_RELEASE_HOST_ROOT: root, LSDYNA_RELEASE_HOST_PHASE: phase },
         launchArgs: [workspace, '--new-window', '--disable-extensions', '--disable-gpu', '--disable-workspace-trust',
             '--skip-welcome', '--skip-release-notes', `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
+            ...(process.env.LSDYNA_RELEASE_LOCALE ? [`--locale=${process.env.LSDYNA_RELEASE_LOCALE}`] : []),
             ...(process.env.LSDYNA_RELEASE_CDP_PORT ? ['--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${process.env.LSDYNA_RELEASE_CDP_PORT}`] : [])],
-    });
+    }).catch(error => { if (error.signal || error.runtimeMayBeActive || error.evidenceSaveFailed) finishTempRun(root, { retain: true }); throw error; });
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -30,8 +30,9 @@ const i18n = require('../core/i18n');
 const { normalizeIndexedEntityId } = require('../core/references/indexedEntityQuery');
 
 import { displayPathLabels } from './displayPathLabels';
+import { ENTITY_KIND_LABELS, shortEntityKindLabel } from './entityKindLabels';
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 200;
 
 export type EntityReferencesWebviewActions = {
     follow?: () => void;
@@ -52,26 +53,10 @@ type ScopeContext = {
     projectRoot?: string;
 };
 
-const KIND_LABELS: Record<string, [string, string]> = {
-    'ale-multi-material-set': ['ALE 多材料集合', '*SET_MULTI-MATERIAL_GROUP'],
-    'coordinate-system': ['坐标系', '*DEFINE_COORDINATE'],
-    curve: ['曲线', '*DEFINE_CURVE'],
-    element: ['单元', '*ELEMENT'],
-    'equation-of-state': ['状态方程', '*EOS'],
-    function: ['函数', '*DEFINE_FUNCTION'],
-    hourglass: ['沙漏控制', '*HOURGLASS'],
-    material: ['材料', '*MAT'],
-    node: ['节点', '*NODE'],
-    'node-set': ['节点集合', '*SET_NODE'],
-    part: ['部件', '*PART'],
-    'part-set': ['部件集合', '*SET_PART'],
-    'pblast-air-geometry': ['爆炸空气几何', '*DEFINE_PBLAST_AIRBLAST'],
-    section: ['截面', '*SECTION'],
-    set: ['集合', '*SET'],
-    table: ['表格', '*DEFINE_TABLE'],
-    'thermal-material': ['热材料', '*MAT_THERMAL'],
-    transformation: ['变换', '*DEFINE_TRANSFORMATION'],
-};
+// Engineering defaults, not measured usage frequencies; leave the remaining directory order intact.
+const SEARCH_KIND_PRIORITY = ['curve', 'material', 'part', 'section', 'part-set', 'node-set',
+    'segment-set', 'function', 'table', 'coordinate-system'];
+const LAST_SEARCH_KIND_KEY = 'entityReferences.lastSearchKind';
 
 export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
     private readonly messenger = new Messenger();
@@ -95,6 +80,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
     private kindsReady: boolean;
     private groupedLocations = new WeakMap<any[], { definitions: any[]; references: any[] }>();
     private searchPicker: vscode.QuickPick<any> | undefined;
+    private lastSearchKind: string | undefined;
     private largeFileOffer: { token: string; uri: vscode.Uri; reason: string } | undefined;
 
     constructor(
@@ -103,7 +89,9 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         private readonly targetKinds: () => string[],
         private readonly actions: EntityReferencesWebviewActions,
         private readonly prepareKinds?: () => Promise<unknown>,
+        private readonly workspaceState?: vscode.Memento,
     ) {
+        this.lastSearchKind = workspaceState?.get<string>(LAST_SEARCH_KIND_KEY);
         this.kindsReady = !prepareKinds;
         this.modelSubscription = this.model.onDidChangeTreeData?.(() => {
             if (!this.isFollowingCursor()) this.actions.stopFollow?.();
@@ -113,7 +101,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
 
     async resolveWebviewView(view: vscode.WebviewView, _context?: unknown, token?: vscode.CancellationToken): Promise<void> {
         this.view = view;
-        if (this.disposed || this.view !== view || token?.isCancellationRequested) return;
+        if (this.disposed || token?.isCancellationRequested) return;
         const dist = path.join(this.extensionRoot, 'out', 'webview', 'entity-references');
         view.webview.options = {
             enableScripts: true,
@@ -129,6 +117,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         if (visibility) this.handlers.push(visibility);
         view.onDidDispose(() => this.detach(participant));
         view.webview.html = this.html(view.webview, dist);
+        this.publish();
         if (this.pendingFocus) this.focusForm();
     }
 
@@ -183,6 +172,46 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
 
     getScopePreference(): EntityReferenceScopePreference { return this.input.scopePreference; }
 
+
+    toggleFollowCursor(): void {
+        if (this.model.getActiveSession?.()?.pinned) return;
+        this.following = !this.following;
+        if (this.following && this.view?.visible) {
+            this.actions.follow?.();
+        } else {
+            this.actions.stopFollow?.();
+        }
+        this.publish();
+    }
+
+    async setScopePreference(scope: 'file' | 'project'): Promise<boolean> {
+        if (scope === 'file' ? !this.scopeContext.filePath : !this.scopeContext.projectRoot) {
+            const message = i18n.get(!this.scopeContext.filePath ? 'entityReferencesFileScopeUnavailable' : 'entityReferencesProjectScopeUnavailable');
+            this.setMessage(message);
+            void vscode.window.showInformationMessage(message);
+            return false;
+        }
+        this.input.scopePreference = scope;
+        this.setMessage('');
+        const session = this.model.getActiveSession?.();
+        if (session) {
+            try {
+                const query = this.actions.query(session.identity.targetKind, String(session.identity.id), scope);
+                // Query initialization resets input feedback before its first await.
+                this.setMessage(i18n.get('entityReferencesChangingScope'));
+                const result = await query;
+                this.setMessage(result ? '' : i18n.get('entityReferencesIncompleteHint'));
+                return result;
+            } catch {
+                this.setMessage(i18n.get('entityReferencesIncompleteHint'));
+                return false;
+            }
+        }
+        this.publish();
+        if (this.following) this.actions.follow?.();
+        return true;
+    }
+
     isFollowingCursor(): boolean {
         return !!this.participant && this.view?.visible === true && this.following && !this.searchPending &&
             !this.model.getActiveSession?.()?.pinned;
@@ -192,36 +221,57 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         if (this.searchPending) return true;
         this.searchPending = true;
         this.actions.stopFollow?.();
+        this.setMessage('');
         try { if (this.prepareKinds) await this.prepareKinds(); }
-        catch (error) { this.searchPending = false; throw error; }
+        catch { this.searchPending = false; this.setMessage(i18n.get('entityReferencesIncompleteHint')); return false; }
         this.kindsReady = true;
         if (this.disposed) { this.searchPending = false; return false; }
         const picker = vscode.window.createQuickPick<vscode.QuickPickItem & { targetKind: string; id: string }>();
         this.searchPicker = picker;
         const zh = i18n.getLanguage() === 'zh-cn';
-        picker.title = zh ? '查找对象' : 'Find Object';
+        picker.title = zh ? '查找对象' : 'Find Entity';
         picker.placeholder = zh ? '输入 ID，或“类型 ID”（例如：曲线 1001），选择后按 Enter' : 'Enter an ID or “type ID” (for example: curve 1001), then select and press Enter';
         picker.ignoreFocusOut = true;
         picker.matchOnDescription = true;
+        let kinds: string[] = [];
+        let activeKind: string | undefined;
+        let filteringFocus = false;
         const update = () => {
+            filteringFocus = false;
             const parts = picker.value.trim().split(/\s+/);
             const id = normalizeIndexedEntityId(parts.pop());
             const filter = parts.join(' ').toLowerCase().replace(/^\*/, '');
-            picker.items = id ? this.targetKinds().filter(kind =>
+            picker.items = id ? kinds.filter(kind =>
                 `${kind} ${this.kindLabel(kind)}`.toLowerCase().includes(filter),
             ).map(targetKind => ({
-                label: `${this.shortKindLabel(targetKind)} ${id}`,
-                description: KIND_LABELS[targetKind]?.[1] || targetKind,
+                // Quick Pick sorts matching labels. Equal ID labels preserve our type order.
+                label: String(id),
+                description: `${this.shortKindLabel(targetKind)} · ${ENTITY_KIND_LABELS[targetKind]?.[1] || targetKind}`
+                    + (targetKind === this.lastSearchKind ? (zh ? ' · 上次使用' : ' · Last used') : ''),
                 alwaysShow: true, targetKind, id: String(id),
             })) : [];
+            const preferred = picker.items.find(item => item.targetKind === activeKind)
+                ?? (!filter ? picker.items.find(item => item.targetKind === this.lastSearchKind) : undefined)
+                ?? picker.items[0];
+            picker.activeItems = preferred ? [preferred] : [];
             picker.title = picker.value.trim() && !picker.items.length
                 ? (zh ? '未匹配类型或 ID 格式不正确，例如：曲线 1001' : 'No matching type or invalid ID. Example: curve 1001')
-                : (zh ? '查找对象' : 'Find Object');
+                : (zh ? '查找对象' : 'Find Entity');
         };
         const listeners: vscode.Disposable[] = [];
         try {
+            const availableKinds = this.targetKinds();
+            kinds = [...SEARCH_KIND_PRIORITY.filter(kind => availableKinds.includes(kind)),
+                ...availableKinds.filter(kind => !SEARCH_KIND_PRIORITY.includes(kind))];
             const selected = await new Promise<{ targetKind: string; id: string } | undefined>(resolve => {
                 listeners.push(picker.onDidChangeValue(update),
+                    picker.onDidChangeActive(items => {
+                        const item = items[0];
+                        // Native filtering clears/refocuses the old list before delivering the new value.
+                        if (!item) filteringFocus = true;
+                        if (!filteringFocus && item && item.id === String(normalizeIndexedEntityId(picker.value.trim().split(/\s+/).pop())))
+                            activeKind = item.targetKind;
+                    }),
                     picker.onDidAccept(() => {
                         if (picker.selectedItems[0]) { resolve(picker.selectedItems[0]); picker.hide(); }
                     }),
@@ -230,8 +280,17 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 picker.show();
             });
             if (!selected) return true; // Escape is a normal cancellation, not a query error.
+            this.lastSearchKind = selected.targetKind;
+            // A preference-storage failure must not prevent the requested query.
+            void this.workspaceState?.update(LAST_SEARCH_KIND_KEY, selected.targetKind).then(undefined,
+                error => console.warn('Unable to save entity search preference', error));
             const scope = this.input.scopePreference === 'auto' ? 'file' : this.input.scopePreference;
-            return await this.actions.query(selected.targetKind, selected.id, scope);
+            const result = await this.actions.query(selected.targetKind, selected.id, scope);
+            if (!result) this.setMessage(i18n.get('entityReferencesIncompleteHint'));
+            return result;
+        } catch {
+            this.setMessage(i18n.get('entityReferencesIncompleteHint'));
+            return false;
         } finally {
             listeners.forEach(listener => listener.dispose());
             picker.dispose();
@@ -241,7 +300,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
     }
 
     private shortKindLabel(kind: string): string {
-        return i18n.getLanguage() === 'zh-cn' ? KIND_LABELS[kind]?.[0] || kind : kind;
+        return shortEntityKindLabel(kind);
     }
 
     dispose(): void {
@@ -267,6 +326,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 if (this.disposed || this.participant !== participant || token?.isCancellationRequested)
                     throw new Error('Entity references view closed');
                 if (this.following) this.actions.follow?.();
+                this.visibleCounts.clear();
                 return this.viewState();
             }, sender),
             this.messenger.onRequest(EntityReferencesSearchRequest, request =>
@@ -281,13 +341,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             }, sender),
             this.messenger.onRequest(EntityReferencesScopeRequest, request => {
                 if (!this.accepts(request.revision) || !['file', 'project'].includes(request.scopePreference)) return false;
-                if (request.scopePreference === 'file' ? !this.scopeContext.filePath : !this.scopeContext.projectRoot) return false;
-                this.input.scopePreference = request.scopePreference;
-                const session = this.model.getActiveSession?.();
-                if (session) return this.actions.query(session.identity.targetKind, String(session.identity.id), request.scopePreference);
-                this.publish();
-                if (this.following) this.actions.follow?.();
-                return true;
+                return this.setScopePreference(request.scopePreference);
             }, sender),
             this.messenger.onRequest(EntityReferencesQueryRequestType, async request => {
                 if (!this.accepts(request.revision)) return false;
@@ -300,14 +354,21 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 this.accepts(request.revision) && this.actions.infer(), sender),
             this.messenger.onRequest(EntityReferencesRefreshRequest, request =>
                 this.accepts(request.revision) && this.actions.refresh(), sender),
-            this.messenger.onRequest(EntityReferencesLoadMoreRequestType, request => {
+            this.messenger.onRequest(EntityReferencesLoadMoreRequestType, async request => {
                 if (!this.accepts(request.revision)) return false;
                 const session = this.model.getActiveSession?.();
-                if (!session) return false;
+                if (!session || !['ready', 'partial'].includes(session.state) ||
+                    !['definition', 'reference'].includes(request.role)) return false;
                 const counts = this.visibleCounts.get(session.key) || { definition: PAGE_SIZE, reference: PAGE_SIZE };
+                const start = counts[request.role];
+                const loaded = session.locations.filter(location => location.role === request.role).length;
+                if (loaded <= start && session.page?.next?.[request.role]) {
+                    if (!await this.model.loadNextPage(session, request.role)) return false;
+                    if (!this.accepts(request.revision) || this.model.getActiveSession?.() !== session) return false;
+                }
                 counts[request.role] += PAGE_SIZE;
                 this.visibleCounts.set(session.key, counts);
-                this.publish();
+                this.publish({ baseRevision: request.revision, role: request.role, start });
                 return true;
             }, sender),
             this.messenger.onRequest(EntityReferencesTogglePinRequest, request =>
@@ -355,13 +416,17 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
 
     private sessionSummary(session: any) {
         const groups = this.resultGroups(session);
-        const definitions = groups.definitions.length;
-        const references = groups.references.length;
+        const definitions = session.page?.counts?.definition ?? groups.definitions.length;
+        const references = session.page?.counts?.reference ?? groups.references.length;
         return {
             scopeLabel: i18n.get(session.identity.scope?.kind === 'project' ? 'entityReferencesIncludeProject' : 'entityReferencesCurrentFile'),
             scopePath: session.identity.scope?.rootFile || session.identity.scope?.filePath || '',
             key: session.key,
             label: `${this.shortKindLabel(session.identity.targetKind)} ${session.identity.id}`,
+            entityId: String(session.identity.id),
+            entityKindLabel: this.shortKindLabel(session.identity.targetKind),
+            ...(definitions === 1 ? { entityName: groups.definitions[0].entityName,
+                keyword: groups.definitions[0].keyword } : {}),
             state: session.state === 'ready' ? 'ready' : session.state,
             pinned: !!session.pinned,
             active: this.model.activeKey === session.key,
@@ -371,7 +436,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
     }
 
     private kindLabel(kind: string): string {
-        const mapped = KIND_LABELS[kind];
+        const mapped = ENTITY_KIND_LABELS[kind];
         if (!mapped) return kind;
         return i18n.getLanguage() === 'zh-cn' ? `${mapped[0]} ${mapped[1]}` : `${mapped[1]} (${kind})`;
     }
@@ -392,13 +457,19 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             label: [location.keyword, location.fieldName].filter(Boolean).join(' / ') || roleLabel,
             keyword: location.keyword || undefined,
             fieldName: location.fieldName || undefined,
+            entityId: location.entityId,
+            entityName: location.entityName,
+            entityKind: location.entityKind,
+            entityKindLabel: location.entityKind ? this.shortKindLabel(location.entityKind) : undefined,
             description: `${this.pathLabels.get(location.filePath) || path.basename(location.filePath)} : ${location.line + 1}`,
+            fileLabel: this.pathLabels.get(location.filePath) || path.basename(location.filePath),
+            line: location.line + 1,
             detail: `${location.filePath}:${location.line + 1}`,
         };
     }
 
-    private viewState(): EntityReferencesViewState {
-        this.locationsByToken.clear();
+    private viewState(page?: { baseRevision: number; role: 'definition' | 'reference'; start: number }): EntityReferencesViewState {
+        if (!page) this.locationsByToken.clear();
         for (const key of this.visibleCounts.keys()) {
             if (!this.model.getSession(key)) this.visibleCounts.delete(key);
         }
@@ -420,6 +491,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en',
             following: this.following && !active?.pinned,
             revision: this.revision,
+            ...(page ? { appendPage: { baseRevision: page.baseRevision, role: page.role } } : {}),
             input: this.input,
             kindOptions: this.kindsReady ? this.targetKinds().map(value => ({ value, label: this.kindLabel(value) })) : [],
             scope: {
@@ -432,12 +504,19 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             status,
             ambiguous: active?.resolution === 'ambiguous',
             activeSession: active ? this.sessionSummary(active) : null,
-            definitions: allDefinitions.slice(0, counts.definition).map((location: any) =>
+            definitions: allDefinitions.slice(page ? page.role === 'definition' ? page.start : counts.definition : 0,
+                counts.definition).map((location: any) =>
                 this.locationItem(active, location)),
-            references: allReferences.slice(0, counts.reference).map((location: any) =>
+            references: allReferences.slice(page ? page.role === 'reference' ? page.start : counts.reference : 0,
+                counts.reference).map((location: any) =>
                 this.locationItem(active, location)),
-            hasMoreDefinitions: allDefinitions.length > counts.definition,
-            hasMoreReferences: allReferences.length > counts.reference,
+            referenceGroupCounts: active?.page?.groupCounts || allReferences.reduce((groups: Record<string, number>, location: any) => {
+                const key = location.entityKind || '';
+                groups[key] = (groups[key] || 0) + 1;
+                return groups;
+            }, {}),
+            hasMoreDefinitions: allDefinitions.length > counts.definition || !!active?.page?.next?.definition,
+            hasMoreReferences: allReferences.length > counts.reference || !!active?.page?.next?.reference,
             reasons: [...(active?.reasons || [])],
             pinnedSessions: (this.model.pinnedKeys || [])
                 .map((key: string) => this.model.getSession(key))
@@ -452,28 +531,36 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 },
             } : {}),
             labels: {
+                title: i18n.getLanguage() === 'zh-cn' ? '对象引用' : 'Entity references',
+                name: i18n.getLanguage() === 'zh-cn' ? '名称' : 'Name',
+                field: i18n.getLanguage() === 'zh-cn' ? '字段' : 'Field',
+                referenceLocationsTitle: i18n.getLanguage() === 'zh-cn' ? '引用位置' : 'Reference locations',
+                noReferences: i18n.getLanguage() === 'zh-cn' ? '在所选范围内未找到引用。' : 'No references found in the selected scope.',
+                openLocation: i18n.getLanguage() === 'zh-cn' ? '跳转到位置' : 'Go to location',
+                openDefinition: i18n.getLanguage() === 'zh-cn' ? '转到定义' : 'Go to definition',
+                referenceLocations: i18n.getLanguage() === 'zh-cn' ? '{0} 个引用位置' : 'Reference locations: {0}',
                 ambiguous: i18n.getLanguage() === 'zh-cn' ? '找到多个候选定义，尚不能唯一确定对象。请核对各定义位置。' : 'Multiple candidate definitions were found. Check their locations to identify the intended object.',
                 queryInterrupted: i18n.getLanguage() === 'zh-cn' ? '查询已中断，可重新查询。' : 'The query was interrupted. You can run it again.',
                 queryFailed: i18n.getLanguage() === 'zh-cn' ? '查询未完成，请重试。' : 'The query did not complete. Please try again.',
                 resultsEvicted: i18n.getLanguage() === 'zh-cn' ? '结果已从缓存释放，请重新查询。' : 'Cached results were released. Run the query again.',
                 locationChanged: i18n.getLanguage() === 'zh-cn' ? '结果位置已变化，请刷新后重新选择。' : 'Result locations changed. Refresh and select a location again.',
                 pinHint: i18n.getLanguage() === 'zh-cn' ? '固定对象和查询范围；文件变化后仍需刷新结果。' : 'Pin the object and query scope. Results still need refreshing after file changes.',
-                search: i18n.getLanguage() === 'zh-cn' ? '查找对象' : 'Find Object',
-                follow: i18n.getLanguage() === 'zh-cn' ? '跟随光标' : 'Follow Cursor',
+                search: i18n.getLanguage() === 'zh-cn' ? '查找对象' : 'Find entity',
+                follow: i18n.getLanguage() === 'zh-cn' ? '跟随光标' : 'Follow cursor',
                 resumeFollow: i18n.getLanguage() === 'zh-cn' ? '继续跟随' : 'Resume Following',
                 fixed: i18n.getLanguage() === 'zh-cn' ? '已固定' : 'Pinned',
                 unconfirmed: i18n.getLanguage() === 'zh-cn' ? '待确认' : 'Unconfirmed',
                 zeroResults: i18n.getLanguage() === 'zh-cn' ? '未找到匹配位置。' : 'No matching locations.',
-                referencesNotConfirmed: i18n.getLanguage() === 'zh-cn' ? '暂未确认引用位置。' : 'No reference locations confirmed yet.',
-                definitionsNotConfirmed: i18n.getLanguage() === 'zh-cn' ? '暂未确认定义位置。' : 'No definition locations confirmed yet.',
+                referencesNotConfirmed: i18n.getLanguage() === 'zh-cn' ? '尚不能确定引用位置。' : 'Reference locations are not confirmed.',
+                definitionsNotConfirmed: i18n.getLanguage() === 'zh-cn' ? '尚不能确定定义位置。' : 'Definition locations are not confirmed.',
                 id: 'ID', query: i18n.get('entityReferencesQuery'), infer: i18n.get('entityReferencesFromCursor'),
                 file: i18n.get('entityReferencesCurrentFile'), project: i18n.get('entityReferencesIncludeProject'),
                 empty: i18n.getLanguage() === 'zh-cn' ? '查找对象，或开启跟随光标。' : 'Find an object, or turn on cursor following.', definitions: i18n.get('entityReferencesDefinitionsPlain'),
                 references: i18n.get('entityReferencesReferencesPlain'), loadMore: i18n.get('entityReferencesLoadMore'),
                 pin: i18n.get('entityReferencesPin'), unpin: i18n.get('entityReferencesUnpin'),
                 pinned: i18n.get('entityReferencesPinned'), remove: i18n.get('entityReferencesRemove'),
-                clear: i18n.get('entityReferencesClear'), openSide: i18n.get('entityReferencesOpenSide'),
-                details: i18n.getLanguage() === 'zh-cn' ? '详情' : 'Details', partial: i18n.getLanguage() === 'zh-cn' ? '部分引用尚未确认' : 'Some references are not yet confirmed',
+                clear: i18n.get('entityReferencesClear'), openSide: i18n.getLanguage() === 'zh-cn' ? '侧边打开' : 'Open to side',
+                details: i18n.getLanguage() === 'zh-cn' ? '详情' : 'Details',
                 loading: i18n.get('entityReferencesLoading'), missing: i18n.get('entityReferencesMissing'),
                 invalid: i18n.get('entityReferencesInvalidId'),
                 openLargeFile: i18n.get('entityReferencesOpenLargeFile'),
@@ -489,11 +576,22 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         };
     }
 
-    private publish(): void {
+    private publish(page?: { baseRevision: number; role: 'definition' | 'reference'; start: number }): void {
+        if (!page) this.visibleCounts.clear();
         this.revision++;
+        const active = this.model.getActiveSession?.();
+        if (this.view) {
+            const project = active ? active.identity.scope.kind === 'project' : this.input.scopePreference === 'project';
+            this.view.description = i18n.get(project ? 'keywordIndexScopeProject' : 'keywordIndexScopeCurrentFile');
+        }
+        void vscode.commands.executeCommand('setContext', 'lsdynaEntityReferences.pinned', !!active?.pinned);
+        void vscode.commands.executeCommand('setContext', 'lsdynaEntityReferences.following', this.following && !active?.pinned);
+        void vscode.commands.executeCommand('setContext', 'lsdynaEntityReferences.scope', active
+            ? active.identity.scope.kind === 'project' ? 'project' : 'file'
+            : this.input.scopePreference);
         if (this.participant) {
             this.messenger.sendNotification(EntityReferencesStateChangedNotification,
-                this.participant, this.viewState());
+                this.participant, this.viewState(page));
         }
     }
 
@@ -505,7 +603,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         const css = (entry.css || []).map((file: string) =>
             `<link rel="stylesheet" href="${resource(file)}">`).join('');
         const nonce = crypto.randomBytes(18).toString('base64');
-        const csp = `default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
+        const csp = `default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
         return `<!doctype html><html lang="${i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en'}"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="root"></div><script nonce="${nonce}" type="module" src="${resource(entry.file)}"></script></body></html>`;
     }
 }

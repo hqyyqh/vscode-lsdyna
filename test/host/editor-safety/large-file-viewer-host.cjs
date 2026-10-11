@@ -7,8 +7,9 @@ exports.run = async () => {
     const root = process.env.LARGE_VIEWER_EVIDENCE;
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
     await extension.activate();
+    fs.writeFileSync(path.join(root, 'host.json'), JSON.stringify({ language: vscode.env.language, version: vscode.version }));
     const file = path.join(root, 'large-model.k');
-    assert.equal(await vscode.commands.executeCommand('extension.openLsdynaLargeFileViewer', vscode.Uri.file(file)), true);
+    assert.equal(await vscode.commands.executeCommand('extension.openLsdynaLargeFileViewer', { uri: vscode.Uri.file(file), line: JSON.parse(fs.readFileSync(path.join(root, 'model.json'))).rows + 3, startCharacter: 0, endCharacter: 10 }), true);
     const deadline = Date.now() + 180000;
     while (!fs.existsSync(path.join(root, 'renderer-finished.json'))) {
         if (Date.now() > deadline) throw Error('Large-file viewer renderer validation timed out');

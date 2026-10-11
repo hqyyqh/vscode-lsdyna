@@ -39,6 +39,7 @@ export type KeywordManagerControlState = {
     groupId?: string;
     value?: string | boolean;
     choices?: Array<{ value: string; label: string; enabled: boolean }>;
+    emptyLabel?: string;
     visible: boolean;
     enabled: boolean;
     fieldId?: string;
@@ -65,12 +66,15 @@ export type KeywordManagerInstanceState = {
     occurrenceCount: number;
     category: string;
     displayName: string;
+    typeKey?: string;
+    title?: string;
+    identity?: { field: string; value: string };
+    summary?: Array<{ field: string; value: string }>;
+    recordStartIndex?: number;
     selected: boolean;
     editLevel: 'editable' | 'recovery';
-    scope?: 'file' | 'project';
     dirty?: boolean;
     readonly?: boolean;
-    includeOrder?: number;
     reason?: string;
     message?: string;
 };
@@ -179,14 +183,12 @@ export type KeywordOptionsViewState = {
     formCandidates: Array<{ ruleId: string; label: string }>;
     selectedFormRuleId: string | null;
     instances: KeywordManagerInstanceState[];
+    instanceContext?: Pick<KeywordManagerInstanceState, 'uri' | 'typeKey' | 'filePath' | 'fileName' | 'dirty'>;
     directoryStatus?: 'loading' | 'ready' | 'error';
     selectedInstanceId: string | null;
-    scope: 'file' | 'project';
-    scopeStatus: 'ready' | 'loading' | 'partial' | 'unavailable';
-    scopeMessage: string;
     editLevel: 'editable' | 'recovery';
     capabilities: KeywordManagerCapabilityState[];
-    cards: Array<{ cardIndex: number; occurrenceIndex?: number; line: number; editable: boolean; reason?: string; fields: KeywordManagerFieldState[] }>;
+    cards: Array<{ cardId?: string; title?: string; cardIndex: number; occurrenceIndex?: number; line: number; editable: boolean; reason?: string; fields: KeywordManagerFieldState[] }>;
     layoutDiagnostics?: KeywordManagerDiagnostic[];
     unresolvedRecords?: Array<{ line: number; text: string }>;
     selectedFieldId: string | null;
@@ -196,6 +198,29 @@ export type KeywordOptionsViewState = {
     canApply: boolean;
     message: string;
     labels: {
+        selectorReload: string;
+        selectorAppliedReselect: string;
+        selectorTitle: string;
+        selectorSearch: string;
+        selectorPrevious: string;
+        selectorNext: string;
+        selectorClear: string;
+        selectorClose: string;
+        selectorFileOrder: string;
+        selectorIdOrder: string;
+        selectorSort: string;
+        selectorCurrent: string;
+        selectorLine: string;
+        selectorRecord: string;
+        selectorCount: string;
+        selectorCountSingle: string;
+        selectorSelected: string;
+        selectorMissing: string;
+        selectorNoMatch: string;
+        selectorOutside: string;
+        selectorLoading: string;
+        selectorError: string;
+        selectorEmpty: string;
         current: string;
         result: string;
         search: string;
@@ -212,11 +237,7 @@ export type KeywordOptionsViewState = {
         cards: string;
         fields: string;
         comments: string;
-        scope: string;
         currentFile: string;
-        currentProject: string;
-        scopeLoading: string;
-        projectInstance: string;
         dirty: string;
         readonly: string;
         noOptions: string;
@@ -250,7 +271,6 @@ export type KeywordManagerHelpResult = KeywordManagerHelpRequest & {
     reason?: string;
 };
 export type KeywordManagerFieldValueRequest = KeywordOptionsRevisionRequest & { fieldId: string; value: string };
-export type KeywordManagerScopeRequest = KeywordOptionsRevisionRequest & { scope: 'file' | 'project' };
 export type KeywordManagerFormRequest = KeywordOptionsRevisionRequest & { ruleId: string };
 
 export const KeywordOptionsReadyRequest: RequestType<KeywordOptionsRevisionRequest, KeywordOptionsViewState> =
@@ -271,8 +291,6 @@ export const KeywordManagerSelectFieldRequest:
     RequestType<KeywordManagerHelpRequest, KeywordManagerHelpResult> = { method: 'keywordManager/selectField' };
 export const KeywordManagerUpdateFieldRequest:
     RequestType<KeywordManagerFieldValueRequest, KeywordOptionsMutationResult> = { method: 'keywordManager/updateField' };
-export const KeywordManagerSelectScopeRequest:
-    RequestType<KeywordManagerScopeRequest, KeywordOptionsMutationResult> = { method: 'keywordManager/selectScope' };
 export const KeywordManagerLocateSourceRequest: RequestType<KeywordOptionsRevisionRequest, boolean> =
     { method: 'keywordManager/locateSource' };
 export const KeywordManagerOpenManualRequest: RequestType<KeywordOptionsRevisionRequest & { conditionId?: string; evidenceId?: string }, boolean> =

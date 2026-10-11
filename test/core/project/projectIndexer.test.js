@@ -9,6 +9,75 @@ const { buildProjectIndex, createProjectIndexer, resolveIncludeFromSearchPathsAs
 const { SCANNER_VERSION } = require('../../../src/core/scanner/scannerContracts');
 
 describe('projectIndexer', () => {
+    const temporary = require('../../support/tempDirectories').trackTempDirectories();
+    it('restores structure before scanning after restart and keeps display modes isolated', async () => {
+        const root = temporary(path.join(os.tmpdir(), 'dynasense-structure-restore-'));
+        const file = path.join(root, 'model.k'), stored = new Map();
+        fs.writeFileSync(file, '*KEYWORD\n*DEFINE_CURVE\n1\n0,0\n1,1\n*END\n');
+        const persistentFileScanCache = { get: async file => stored.get(file),
+            set: async (file, signature, result) => { stored.set(file, result); } };
+        const options = { referenceTargetKinds: ['curve'], deferDisplayIdentity: true, excludeMeshEntities: true };
+        const originalStream = fs.createReadStream;
+        let sourceReads = 0;
+        fs.createReadStream = function (source, ...args) {
+            if (path.resolve(String(source)) === file) sourceReads++;
+            return originalStream.call(this, source, ...args);
+        };
+        try {
+            await createProjectIndexer({ persistentFileScanCache }).buildProjectIndex(file, options);
+            assert.equal(sourceReads, 1);
+            const restored = await createProjectIndexer({ persistentFileScanCache }).buildProjectIndex(file, options);
+            assert.equal(sourceReads, 1, 'Restart must not read the model skeleton again');
+            assert.equal(restored.fileIndexes.get(file).referenceDefinitions.curves.length, 1);
+            await createProjectIndexer({ persistentFileScanCache }).buildProjectIndex(file, { ...options, deferDisplayIdentity: false });
+            assert.equal(sourceReads, 2, 'Keyword views still require their complete display summaries');
+        } finally { fs.createReadStream = originalStream; }
+    });
+
+    it('does not cache include access faults or publish them as missing files', async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-include-access-'));
+        const child = path.join(directory, 'child.k'), main = path.join(directory, 'main.k');
+        fs.writeFileSync(child, '*NODE\n1,0,0,0\n');
+        fs.writeFileSync(main, '*INCLUDE\nchild.k\n');
+        const originalAccess = fs.promises.access, originalSync = fs.accessSync;
+        const fault = Object.assign(new Error('controlled include access failure'), { code: 'EACCES' });
+        const cache = new Map();
+        fs.promises.access = async function (file, ...args) {
+            if (path.resolve(String(file)) === child) throw fault;
+            return originalAccess.call(this, file, ...args);
+        };
+        fs.accessSync = function (file, ...args) {
+            if (path.resolve(String(file)) === child) throw fault;
+            return originalSync.call(this, file, ...args);
+        };
+        try {
+            await assert.rejects(resolveIncludeFromSearchPathsAsync('child.k', [directory], cache), error => error === fault);
+            assert.equal(cache.size, 0);
+            const { resolveIncludeFromSearchPaths } = require('../../../src/core/project/projectIndexer');
+            assert.throws(() => resolveIncludeFromSearchPaths('child.k', [directory]), error => error === fault);
+            await assert.rejects(createProjectIndexer().buildProjectIndex(main), error => error === fault);
+            fs.promises.access = originalAccess;
+            fs.accessSync = originalSync;
+            assert.equal(await resolveIncludeFromSearchPathsAsync('child.k', [directory], cache), child);
+            const recovered = await createProjectIndexer().buildProjectIndex(main);
+            assert.deepEqual(recovered.files, [main, child]);
+            assert.deepEqual(recovered.missingFiles, []);
+        } finally {
+            fs.promises.access = originalAccess;
+            fs.accessSync = originalSync;
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+    it('rejects concurrency values that cannot provide a positive integer scan capacity', async () => {
+        for (const concurrency of [0, -1, 1.5, NaN, Infinity, '2', null]) {
+            assert.throws(() => createConcurrencyLimiter(concurrency), /positive integer/);
+            await assert.rejects(
+                createProjectIndexer({ concurrency }).buildProjectIndex(path.resolve('invalid-capacity.k')),
+                /positive integer/,
+            );
+        }
+    });
+
     it('builds an explicit single-file snapshot without traversing Include cards', async () => {
         const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-project-single-file-'));
         const rootFile = path.join(tempRoot, 'main.k');

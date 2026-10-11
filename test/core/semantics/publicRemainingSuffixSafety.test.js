@@ -46,7 +46,9 @@ it('retains native-rejected spellings without static field help', async () => {
             assert.equal(result.status, 'unsupported', keyword);
             assert.equal(result.reason, 'native-file-spelling-rejected', keyword);
             const provider = new (require("../../../out/extension")._internals.LsdynaFieldHoverProvider)();
-            const hover = await provider.provideHover(document, {line:1, character:0}, {isCancellationRequested:false});
+            const compact = await provider.provideHover(document, {line:1, character:0}, {isCancellationRequested:false});
+            assert.ok(!compact.contents.some(content => content.value.includes('no corresponding field help')));
+            const hover = await provider.provideDetailedHover(document, {line:1, character:0}, {isCancellationRequested:false});
             assert.ok(hover.contents.some(content => content.value.includes('This keyword spelling is not supported by the current field rules; no corresponding field help is available.')));
             assert.equal(nativeKeywordTemplate(keyword).reason, 'native-edit-binding-unverified', keyword);
         }

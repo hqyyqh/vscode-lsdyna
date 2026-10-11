@@ -24,15 +24,18 @@ async function run() {
         candidateSource: null,
         restore() {},
     };
-    const entryPath = path.join(extension.extensionPath, 'out/extension.js');
-    const loadedEntry = Object.keys(require.cache).find(file => file.toLowerCase() === entryPath.toLowerCase());
-    assert.ok(loadedEntry, 'use the activated extension module without loading a second Windows path casing');
-    const api = require.cache[loadedEntry].exports._internals;
-    fs.writeFileSync(path.join(root, 'loaded-runtime-modules.json'), JSON.stringify(Object.keys(require.cache)
-        .filter(file => /(?:extension|(?:catalog|lspp)InputFormCatalogV4)\.js$/i.test(file)), null, 2));
-    let restorePreparation, releasePreparation;
+    let restorePreparation, releasePreparation, failure;
     try {
-        if (process.env.KEYWORD_MANAGER_REPEATED === '1') {
+        const entryPath = path.join(extension.extensionPath, 'out/extension.js');
+        const loadedEntry = Object.keys(require.cache).find(file => file.toLowerCase() === entryPath.toLowerCase());
+        assert.ok(loadedEntry, 'use the activated extension module without loading a second Windows path casing');
+        const api = require.cache[loadedEntry].exports._internals;
+        fs.writeFileSync(path.join(root, 'loaded-runtime-modules.json'), JSON.stringify(Object.keys(require.cache)
+            .filter(file => /(?:extension|(?:catalog|lspp)InputFormCatalogV4)\.js$/i.test(file)), null, 2));
+        if (process.env.KEYWORD_MANAGER_INSTANCE_SELECTOR === '1') {
+            await require('./instance-selector-host.cjs')(root, api, results);
+            return;
+        } else if (process.env.KEYWORD_MANAGER_REPEATED === '1') {
             await require('./repeated-host.cjs')(root, api, results);
         } else if (process.env.KEYWORD_MANAGER_EXPLICIT === '1') {
             await require('./explicit-navigation-host.cjs').checkExplicitNavigation(root, api, results);
@@ -204,7 +207,7 @@ async function run() {
             }
             if (shared) {
                 const expectedCards = [...shared.cards];
-                expectedCards[1] = expectedCards[1].slice(0, 30) + '12'.padStart(10) + expectedCards[1].slice(40);
+                expectedCards[0] = expectedCards[0].slice(0, 30) + '12'.padStart(10) + expectedCards[0].slice(40);
                 assert.equal(document.getText(), ['*KEYWORD', `*${shared.keyword}`, ...expectedCards, '*END', ''].join('\n'));
             }
             if (comments) {
@@ -307,18 +310,27 @@ async function run() {
                 }
             }
         }
-    } finally {
-        restorePreparation?.(); releasePreparation?.();
-        injection.restore();
-        fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify({
-            scope: diagnostic ? 'diagnostic Extension Host with unpublished data' : 'published catalog, default product settings, development Extension Host',
-            vscodeVersion: vscode.version, hostLanguage: vscode.env.language,
-            installedVsix: !!process.env.LSDYNA_INSTALLED_EXTENSION_PATH,
-            publishedCatalogUsed: !diagnostic, formalReleaseAccepted: false,
-            candidateSource: injection.candidateSource,
-            manifestSha256: hash(fs.readFileSync(manifestPath)),
-            results,
-        }, null, 2));
+    } catch (error) { failure = error; throw error; }
+    finally {
+        const errors = [];
+        for (const cleanup of [
+            () => restorePreparation?.(), () => releasePreparation?.(), () => injection.restore(),
+            () => fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify({
+                scope: diagnostic ? 'diagnostic Extension Host with unpublished data' : 'published catalog, default product settings, development Extension Host',
+                vscodeVersion: vscode.version, hostLanguage: vscode.env.language,
+                installedVsix: !!process.env.LSDYNA_INSTALLED_EXTENSION_PATH,
+                publishedCatalogUsed: !diagnostic, formalReleaseAccepted: false,
+                candidateSource: injection.candidateSource,
+                manifestSha256: hash(fs.readFileSync(manifestPath)),
+                results,
+            }, null, 2)),
+        ]) {
+            try { cleanup(); } catch (error) { errors.push(error); }
+        }
+        if (errors.length) {
+            if (!failure) throw new AggregateError(errors, 'Keyword host cleanup failed');
+            console.error('Keyword host cleanup failed:', ...errors);
+        }
     }
     const failures = results.filter(item => !item.passed);
     console.log(JSON.stringify({ cases: results.length, passed: results.length - failures.length,

@@ -16,8 +16,10 @@
 const { parentPort, workerData } = require('worker_threads');
 
 const { serializeProjectSnapshot } = require('../core/cache/snapshotSerializer');
-const { createFileScanCacheStore } = require('../core/cache/fileScanCacheStore');
+const { SqliteFileScanCache } = require('../core/cache/sqliteFileScanCache');
 const { createProjectIndexer } = require('../core/project/projectIndexer');
+const { entityFileSignature } = require('../core/cache/entityFileRevision');
+const { EntityQueryWorker } = require('./entityQueryWorker');
 
 /**
  * Converts a standard Error object into a plain serializable JSON object.
@@ -33,25 +35,21 @@ function serializeError(error) {
     };
 }
 
-// Initialize per-file persistent cache if a cache directory is provided
-let persistentFileScanCache = null;
-if (workerData && workerData.fileScanCacheDirectory) {
-    try {
-        persistentFileScanCache = createFileScanCacheStore({
-            cacheDirectory: workerData.fileScanCacheDirectory,
-            ...(workerData.fileScanCacheOptions || {}),
-        });
-    } catch (_error) {
-        // Best-effort: run without persistent cache
-    }
-}
+// One owner and capacity budget for physical-file facts and entity records.
+const persistentFileScanCache = new SqliteFileScanCache(() => entityQueries.indexStore(),
+    Math.floor((workerData?.entityMemoryBytes || 256 * 1024 * 1024) / 8));
 
 // Create indexer with persistent cache support
 const indexer = createProjectIndexer({
     persistentFileScanCache,
     maxFileScanCacheBytes: workerData?.fileScanMemoryCacheBytes,
+    getFileSignature: entityFileSignature,
 });
 const { buildProjectIndex } = indexer;
+const entityQueries = new EntityQueryWorker((rootFile, options, onProgress, cancellationToken) =>
+    buildProjectIndex(rootFile, { ...options, cancellationToken }, onProgress),
+    workerData?.entityStorageDirectory || workerData?.fileScanCacheDirectory,
+    workerData?.entityMemoryBytes, workerData?.entityDiskBytes, undefined, workerData?.fileScanCacheOptions?.maxEntryAgeMs);
 const requestCancellationTokens = new Map();
 
 // Bind message listener on parent port to process requests.
@@ -62,12 +60,28 @@ parentPort.on('message', async (message) => {
         if (token) token.isCancellationRequested = true;
         return;
     }
-    if (message.type !== 'buildProjectIndex') return;
+    if (!['buildProjectIndex', 'queryEntity', 'controlEntityIndex'].includes(message.type)) return;
 
     const cancellationToken = { isCancellationRequested: false };
     requestCancellationTokens.set(message.requestId, cancellationToken);
+    let heartbeat;
 
     try {
+        if (message.type === 'controlEntityIndex') {
+            heartbeat = setInterval(() => parentPort.postMessage({ requestId: message.requestId,
+                type: 'progress', event: { type: 'entity-query-progress' } }), 1000);
+            const result = await entityQueries.control(message.options.action);
+            parentPort.postMessage({ requestId: message.requestId, type: 'result', result });
+            return;
+        }
+        if (message.type === 'queryEntity') {
+            const progress = (event = {}) => parentPort.postMessage({ requestId: message.requestId,
+                type: 'progress', event: { ...event, type: 'entity-query-progress', rootFile: message.rootFile } });
+            heartbeat = setInterval(progress, 1000);
+            const result = await entityQueries.query(message.options, cancellationToken, progress);
+            parentPort.postMessage({ requestId: message.requestId, type: 'result', result });
+            return;
+        }
         const snapshot = await buildProjectIndex(message.rootFile, {
             ...(message.options || {}),
             cancellationToken,
@@ -94,6 +108,7 @@ parentPort.on('message', async (message) => {
             type: 'error',
         });
     } finally {
+        clearInterval(heartbeat);
         requestCancellationTokens.delete(message.requestId);
     }
 });

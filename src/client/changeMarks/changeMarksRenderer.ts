@@ -31,7 +31,6 @@ export type ChangeMarksRendererOpts = {
     showLineBackground?: boolean;
     /** Dual-color minimap (unsaved/saved only). Default true. */
     showMinimap?: boolean;
-    getHoverMessage?: (kind: ChangeMarkVisualKind) => string;
 };
 
 /** Encode #rrggbb as %23rrggbb for use inside an unescaped SVG data URI. */
@@ -168,23 +167,6 @@ export function createChangeMarksRenderer(
     const mapUnsaved = (showMinimap || showOverview) ? makeMapType(orangeHex) : null;
     const mapSaved = (showMinimap || showOverview) ? makeMapType(greenHex) : null;
 
-    const defaultHovers: Record<ChangeMarkVisualKind, string> = {
-        unsavedModified: 'Unsaved · modified (vs last save)',
-        unsavedInserted: 'Unsaved · inserted line',
-        unsavedDeleted: 'Unsaved · deleted line(s) nearby',
-        savedModified: 'Saved · modified since opened',
-        savedInserted: 'Saved · inserted since opened',
-        savedDeleted: 'Saved · deleted line(s) nearby since opened',
-    };
-
-    function hoverFor(kind: ChangeMarkVisualKind): string {
-        try {
-            const custom = opts.getHoverMessage?.(kind);
-            if (custom) return custom;
-        } catch { /* ignore */ }
-        return defaultHovers[kind];
-    }
-
     function lineLengthAt(document: any, line: number): number {
         try {
             if (typeof document.lineAt === 'function') {
@@ -195,13 +177,12 @@ export function createChangeMarksRenderer(
         return 0;
     }
 
-    /** Whole-line ranges (0..1 or 0..0) with hover — isWholeLine paints full row. */
-    function optionsForLines(document: any, lines: number[], kind: ChangeMarkVisualKind): any[] {
+    /** Whole-line ranges (0..1 or 0..0); isWholeLine paints full row. */
+    function optionsForLines(document: any, lines: number[]): any[] {
         if (!document || !lines || lines.length === 0) return [];
         const Range = vscodeApi.Range;
         const Position = vscodeApi.Position;
         const max = Math.max(0, (document.lineCount || 1) - 1);
-        const hover = hoverFor(kind);
         const out = [];
         for (const line of lines) {
             if (line < 0 || line > max) continue;
@@ -209,7 +190,6 @@ export function createChangeMarksRenderer(
             const end = len > 0 ? 1 : 0;
             out.push({
                 range: new Range(new Position(line, 0), new Position(line, end)),
-                hoverMessage: hover,
             });
         }
         return out;
@@ -237,12 +217,12 @@ export function createChangeMarksRenderer(
         const doc = editor.document;
         const m = marks || emptyChangeMarks();
 
-        editor.setDecorations(gutterTypes.unsavedModified, optionsForLines(doc, m.unsavedModifiedLines, 'unsavedModified'));
-        editor.setDecorations(gutterTypes.unsavedInserted, optionsForLines(doc, m.unsavedInsertedLines, 'unsavedInserted'));
-        editor.setDecorations(gutterTypes.unsavedDeleted, optionsForLines(doc, m.unsavedDeletedLines || [], 'unsavedDeleted'));
-        editor.setDecorations(gutterTypes.savedModified, optionsForLines(doc, m.savedModifiedLines, 'savedModified'));
-        editor.setDecorations(gutterTypes.savedInserted, optionsForLines(doc, m.savedInsertedLines, 'savedInserted'));
-        editor.setDecorations(gutterTypes.savedDeleted, optionsForLines(doc, m.savedDeletedLines || [], 'savedDeleted'));
+        editor.setDecorations(gutterTypes.unsavedModified, optionsForLines(doc, m.unsavedModifiedLines));
+        editor.setDecorations(gutterTypes.unsavedInserted, optionsForLines(doc, m.unsavedInsertedLines));
+        editor.setDecorations(gutterTypes.unsavedDeleted, optionsForLines(doc, m.unsavedDeletedLines || []));
+        editor.setDecorations(gutterTypes.savedModified, optionsForLines(doc, m.savedModifiedLines));
+        editor.setDecorations(gutterTypes.savedInserted, optionsForLines(doc, m.savedInsertedLines));
+        editor.setDecorations(gutterTypes.savedDeleted, optionsForLines(doc, m.savedDeletedLines || []));
 
         const unsavedLines = [
             ...(m.unsavedModifiedLines || []),

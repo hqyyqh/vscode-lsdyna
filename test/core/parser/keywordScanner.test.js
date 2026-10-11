@@ -1,4 +1,5 @@
 'use strict';
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
 const assert = require('assert');
 const fs = require('fs');
@@ -18,7 +19,7 @@ describe('keywordScanner', () => {
     });
 
     it('normalizes indented mixed-case keyword usages', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-case-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-keyword-case-'));
         const filePath = path.join(tempDir, 'mixed-case.k');
         fs.writeFileSync(filePath, ' \t*Keyword\ndata\n\t*node\n', 'utf8');
 
@@ -34,7 +35,7 @@ describe('keywordScanner', () => {
     });
 
     it('streams keyword usages with file path and line indexes', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-scanner-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-keyword-scanner-'));
         const filePath = path.join(tempDir, 'keywords.k');
 
         fs.writeFileSync(
@@ -58,7 +59,7 @@ describe('keywordScanner', () => {
     });
 
     it('ignores non-keyword lines while preserving order', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-scanner-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-keyword-scanner-'));
         const filePath = path.join(tempDir, 'mixed.k');
 
         fs.writeFileSync(
@@ -76,7 +77,7 @@ describe('keywordScanner', () => {
     });
 
     it('does not miss middle keywords in large files when fullScanLargeFiles is false', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-large-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-keyword-large-'));
         const filePath = path.join(tempDir, 'large.k');
         const lines = ['*KEYWORD'];
         const filler = '0'.repeat(72);

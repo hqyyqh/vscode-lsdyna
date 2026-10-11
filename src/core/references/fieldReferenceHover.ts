@@ -3,7 +3,6 @@ const i18n = require('../i18n');
 
 const {
     renderCurveSvgDataUri,
-    renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
     TABLE_3D_VIEWS,
     normalizeTable3dView,
@@ -16,8 +15,10 @@ const {
 } = require('./workspaceReferenceSearch');
 
 const MAX_HOVER_DEFINITIONS = 4;
-const MAX_TABLE_ROWS = 8;
+const MAX_CHILD_DIAGNOSTICS = 8;
 const MAX_FUNCTION_LINES = 8;
+// ponytail: 300px previews fit supported 360px hovers; revisit sizing if narrower views are supported.
+const HOVER_PREVIEW_WIDTH = 300;
 
 function markdownText(value) {
     return String(value ?? '').replace(/[\\`*_{}\[\]()#+.!|<>-]/g, '\\$&').replace(/\r?\n/g, ' ');
@@ -27,13 +28,14 @@ function encodeCommandArgs(args) {
     return encodeURIComponent(JSON.stringify([args]));
 }
 
-function definitionLink(definition, title = i18n.get('openDefinition')) {
+function definitionLink(definition, title = i18n.get('openDefinition'), iconOnly = false) {
     const args = encodeCommandArgs({
         filePath: definition.filePath,
         lineIndex: definition.startLine || 0,
         character: 0,
     });
-    return `[$(go-to-file) ${title}](command:extension.openLsdynaReferenceDefinition?${args} "${title}")`;
+    const tooltip = escapeHtmlAttribute(`${title}\n${definition.filePath}`).replace(/\\/g, '\\\\');
+    return `[$(go-to-file) ${iconOnly ? '' : title}](command:extension.openLsdynaReferenceDefinition?${args} "${tooltip}")`;
 }
 
 function workspaceReferenceSearchLink(referenceValue, analysis, candidateCount, context) {
@@ -58,16 +60,6 @@ function workspaceReferenceSearchLink(referenceValue, analysis, candidateCount, 
     const title = i18n.get('workspaceReferenceSearchTooltip');
     const label = i18n.get('workspaceReferenceSearchAction', markdownText(id));
     return `[$(search) ${label}](command:extension.searchLsdynaReferenceInWorkspace?${args} "${title}")`;
-}
-
-function isNavigableDefinition(definition) {
-    return !!(
-        definition &&
-        typeof definition.filePath === 'string' &&
-        definition.filePath.length > 0 &&
-        Number.isInteger(definition.startLine) &&
-        definition.startLine >= 0
-    );
 }
 
 function childDefinitionKindLabel(kind) {
@@ -132,16 +124,12 @@ function tablePreviewViewSelector(context) {
 function appendCurvePreview(lines, definition, renderOptions: any = { isDark: true }) {
     const incomplete = definition.dataCompleteness && definition.dataCompleteness.state !== 'complete';
     if (incomplete) {
-        lines.push('', i18n.get('referenceDataIncomplete'));
+        if (!renderOptions.quiet) lines.push('', i18n.get('referenceDataIncomplete'));
     } else {
         const dataUri = renderCurveSvgDataUri(definition, renderOptions);
         if (dataUri) {
-            lines.push('', `![${i18n.get('curvePreviewAlt')}](${dataUri})`);
+            lines.push('', `![${i18n.get('curvePreviewAlt')}](${dataUri}|width=${HOVER_PREVIEW_WIDTH})`);
         }
-    }
-    const fallback = renderCurveMarkdownFallback(definition);
-    if (fallback) {
-        lines.push('', fallback);
     }
 }
 
@@ -156,36 +144,6 @@ function appendFunctionPreview(lines, definition) {
 
 function childAnalysisForRow(row) {
     return row && row.childAnalysis || null;
-}
-
-function childLink(row) {
-    const raw = markdownCode(row.childIdRaw);
-    const analysis = childAnalysisForRow(row);
-    const definitions = analysis && analysis.definitions || [];
-    if (!analysis || definitions.length === 0) return raw;
-    if (analysis.state === 'exact' && definitions.length === 1) {
-        const [onlyDefinition] = definitions;
-        if (!isNavigableDefinition(onlyDefinition)) return raw;
-        return `${raw} ${definitionLink(
-            onlyDefinition,
-            i18n.get('openChildDefinition', childDefinitionKindLabel(row.childKind))
-        )}`;
-    }
-    const links = definitions
-        .filter(isNavigableDefinition)
-        .slice(0, MAX_HOVER_DEFINITIONS)
-        .map((candidate, index) =>
-            definitionLink(
-                candidate,
-                i18n.get(
-                    'openChildCandidateDefinition',
-                    childDefinitionKindLabel(row.childKind),
-                    index + 1
-                )
-            )
-        );
-    if (links.length === 0) return raw;
-    return `${raw}<br>${links.join('<br>')}`;
 }
 
 function appendTableChildDiagnostics(lines, rows) {
@@ -217,7 +175,7 @@ function appendTableChildDiagnostics(lines, rows) {
             ));
         } else {
             lines.push('', compactStatus(
-                '⚠',
+                '$(warning)',
                 i18n.get('tableChildUncertainCompact', displayId),
                 [
                     i18n.get('tableChildUncertainDetail', displayId),
@@ -238,67 +196,57 @@ function appendTablePreview(lines, definition, renderOptions: any = { isDark: tr
         const analysis = childAnalysisForRow(row);
         return !!analysis && (analysis.definitions || []).length === 1;
     });
-    const tableWithPoints = {
-        ...definition,
-        rows: allRows.map(row => {
-            const analysis = childAnalysisForRow(row);
-            const [uniqueDefinition] = analysis &&
-                analysis.definitions && analysis.definitions.length === 1
-                ? analysis.definitions
-                : [];
-            const points = uniqueDefinition && uniqueDefinition.points || [];
-            return { ...row, points };
-        })
-    };
-
     const incomplete = definition.dataCompleteness && definition.dataCompleteness.state !== 'complete';
     if (incomplete) {
-        lines.push('', i18n.get('referenceDataIncomplete'));
+        if (!renderOptions.quiet) lines.push('', i18n.get('referenceDataIncomplete'));
     } else if (!allChildrenUnique) {
-        lines.push('', compactStatus(
-            '⚠',
+        if (!renderOptions.quiet) lines.push('', compactStatus(
+            '$(warning)',
             i18n.get('tablePreviewHidden'),
             i18n.get('tablePreviewRequiresUniqueChildren')
         ));
+    } else if (requiredChildRows.some(row => {
+        const child = childAnalysisForRow(row).definitions[0];
+        return child.dataCompleteness && child.dataCompleteness.state !== 'complete';
+    })) {
+        if (!renderOptions.quiet) lines.push('', `> ${i18n.get('tablePreviewChildrenIncomplete').replace(/\n/g, '  \n> ')}`);
     } else {
+        const tableWithPoints = {
+            ...definition,
+            rows: allRows.map(row => {
+                const definitions = childAnalysisForRow(row)?.definitions || [];
+                return { ...row, points: definitions.length === 1 ? definitions[0].points || [] : [] };
+            }),
+        };
         const tablePreviewContext = renderOptions.tablePreviewContext || null;
         const view = normalizeTable3dView(tablePreviewContext && tablePreviewContext.view);
         const dataUri = renderTable3dSvgDataUri(tableWithPoints, { ...renderOptions, view });
         if (dataUri) {
             const selector = tablePreviewViewSelector(tablePreviewContext);
             if (selector) lines.push('', selector);
-            lines.push('', `![${i18n.get('table3dPreviewAlt')}](${dataUri})`);
+            lines.push('', `![${i18n.get('table3dPreviewAlt')}](${dataUri}|width=${HOVER_PREVIEW_WIDTH})`);
         }
     }
 
-    const childLabel = definition.tableType === '3d' || definition.tableType === '4d'
-        ? i18n.get('tableIdColumn')
-        : i18n.get('curveIdColumn');
-    if (allRows.length === 0) {
-        return;
-    }
-    const rows = allRows.slice(0, MAX_TABLE_ROWS);
-    lines.push('', `| ${i18n.get('valueColumn')} | ${childLabel} |`, '| ---: | ---: |');
-    for (const row of rows) {
-        lines.push(`| ${markdownCode(row.valueRaw)} | ${childLink(row)} |`);
-    }
-    const omitted = allRows.length - rows.length;
-    if (omitted > 0) {
-        lines.push(`| ... | ${i18n.get('moreRows', omitted)} |`);
-    }
-    appendTableChildDiagnostics(lines, rows);
+    if (!renderOptions.quiet) appendTableChildDiagnostics(lines, allRows.slice(0, MAX_CHILD_DIAGNOSTICS));
 }
 
-function appendDefinition(lines, definition, renderOptions: any = { isDark: true }, candidate = null) {
-    const isPossibleMatch = candidate && candidate.relation === 'possible-match';
-    const locationLines = ['', i18n.get('definitionLocation', markdownText(definition.keyword), markdownCode(definition.filePath))];
-    if (!candidate || candidate.navigable) {
+function appendDefinition(lines, definition, renderOptions: any = { isDark: true }, candidate) {
+    const isPossibleMatch = candidate.relation === 'possible-match';
+    const displayPath = String(definition.filePath ?? '').split(/(?<=[\\/])/).map(markdownCode).join('<wbr>');
+    const locationLines = renderOptions.compactCurve
+        ? ['']
+        : ['', i18n.get('definitionLocation', markdownText(definition.keyword), displayPath)];
+    if (candidate.navigable) {
         locationLines.push(definitionLink(
             definition,
-            isPossibleMatch ? i18n.get('openCandidateDefinition') : i18n.get('openDefinition')
+            isPossibleMatch ? i18n.get('openCandidateDefinition') : i18n.get('openDefinition'),
+            renderOptions.compactCurve
         ));
     }
-    lines.push(...locationLines);
+    if (renderOptions.compactCurve && renderOptions.status) locationLines.push(renderOptions.status);
+    if (renderOptions.compactCurve) lines.push(locationLines.join(' '));
+    else lines.push(...locationLines);
     if (Array.isArray(definition.occurrencePathLabels) && definition.occurrencePathLabels.length > 1) {
         lines.push(i18n.get(
             'definitionOccurrence',
@@ -316,8 +264,8 @@ function appendDefinition(lines, definition, renderOptions: any = { isDark: true
     if (definition.title) {
         lines.push(`_${markdownText(definition.title)}_`);
     }
-    const previewMode = candidate && candidate.previewMode || null;
-    if ((candidate && !candidate.previewAllowed) || previewMode === 'location-only') {
+    const previewMode = candidate.previewMode;
+    if (!candidate.previewAllowed || previewMode === 'location-only') {
         return;
     }
     if (definition.kind === 'curve') {
@@ -369,14 +317,17 @@ function uncertaintyReasonLabel(reason) {
     return key ? i18n.get(key) : userFacingReason(reason, i18n.getLanguage());
 }
 
-function compactReferenceStatus(analysis, presentation, displayValue) {
-    const candidates = presentation.candidates || [];
+function compactReferenceStatus(analysis, presentation, displayValue, iconOnly = false) {
+    const status = (icon, label, details) => compactStatus(
+        icon, iconOnly ? '' : label, iconOnly ? `${label}\n${details}` : details
+    );
+    const candidates = presentation.candidates;
     const reasons = [...new Set(analysis.reasons || [])];
     const reasonDetails = reasons.map(uncertaintyReasonLabel);
 
     if (analysis.state === 'missing') {
-        return compactStatus(
-            '⚠',
+        return status(
+            '$(warning)',
             i18n.get('referenceStatusMissing'),
             i18n.get('referenceStatusMissingDetail', displayValue)
         );
@@ -387,7 +338,7 @@ function compactReferenceStatus(analysis, presentation, displayValue) {
             i18n.get('referenceStatusAmbiguousDetail', candidates.length),
             ...reasonDetails,
         ].join('\n');
-        return compactStatus('⚠', i18n.get('referenceStatusAmbiguous'), details);
+        return status('$(warning)', i18n.get('referenceStatusAmbiguous'), details);
     }
 
     if (analysis.state !== 'uncertain') {
@@ -410,7 +361,7 @@ function compactReferenceStatus(analysis, presentation, displayValue) {
                 !isCurrentFilePreview || reasons[index] !== 'project-scan-unavailable'
             ),
         ].join('\n');
-        return compactStatus('ⓘ', label, details);
+        return status('$(info)', label, details);
     }
 
     if (reasons.includes('project-scan-unavailable')) {
@@ -418,11 +369,11 @@ function compactReferenceStatus(analysis, presentation, displayValue) {
             i18n.get('referenceStatusProjectUnscannedDetail'),
             ...reasonDetails.filter((_, index) => reasons[index] !== 'project-scan-unavailable'),
         ].join('\n');
-        return compactStatus('ⓘ', i18n.get('referenceStatusProjectUnscanned'), details);
+        return status('$(info)', i18n.get('referenceStatusProjectUnscanned'), details);
     }
 
-    return compactStatus(
-        '⚠',
+    return status(
+        '$(warning)',
         i18n.get('referenceStatusUnresolved'),
         reasonDetails.join('\n') || i18n.get('referenceStatusUnresolvedDetail')
     );
@@ -473,16 +424,20 @@ function buildReferenceHoverSection({
     const presentedCandidates = presentation.provisional && presentation.provisionalPrimary
         ? [presentation.provisionalPrimary, ...presentation.provisionalAlternatives]
         : presentation.candidates;
+    const compactCurve = presentedCandidates.length === 1 && presentedCandidates[0].definition.kind === 'curve';
     const renderOptions = {
+        compactCurve,
+        status: '',
         ...hoverRenderOptions(themeKind, isDark),
         tablePreviewContext,
     };
     const displayValue = effectiveReference.kind === 'parameter'
         ? effectiveReference.raw
         : effectiveReference.id;
-    const status = compactReferenceStatus(effectiveAnalysis, presentation, displayValue);
+    const status = compactReferenceStatus(effectiveAnalysis, presentation, displayValue, compactCurve);
+    renderOptions.status = status;
     const statusSuffix = status ? `&nbsp;&nbsp;${status}` : '';
-    const lines = [
+    const lines = compactCurve ? ['', '', '---', ''] : [
         '',
         '',
         '---',
@@ -528,11 +483,11 @@ function buildReferenceHoverSection({
         return lines.join('\n');
     }
 
-    if (presentation.provisional && presentation.provisionalPrimary) {
+    if (!compactCurve && presentation.provisional && presentation.provisionalPrimary) {
         lines.push('', compactStatus(
-            '⚠',
-            'Provisional navigation',
-            `Selection: ${presentation.provisionalSelectionReason || 'candidate'}; strict resolution remains unchanged.`,
+            '$(warning)',
+            i18n.get('referenceCandidateNavigation'),
+            i18n.get('referenceCandidateNavigationDetail'),
         ));
     }
 
@@ -551,17 +506,19 @@ function buildReferenceHoverSection({
 function buildDefinitionHoverSection(
     definition,
     themeOrIsDark: any = true,
-    tablePreviewContext = null
+    tablePreviewContext = null,
+    quiet = false,
 ) {
     const lines = [];
     const renderOptions: any = typeof themeOrIsDark === 'boolean'
         ? { isDark: themeOrIsDark }
         : { themeKind: themeOrIsDark };
     renderOptions.tablePreviewContext = tablePreviewContext;
+    renderOptions.quiet = quiet;
     const titleStr = definition.title ? ` - _${markdownText(definition.title)}_` : '';
     const cleanKeyword = markdownText(definition.keyword.replace(/^\*/, ''));
     const displayId = Number.isFinite(definition.id) ? definition.id : definition.idRaw;
-    lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', markdownText(displayId))}**${titleStr}`);
+    if (!quiet) lines.push(`### $(graph-line) **\\*${cleanKeyword}${i18n.get('definitionIdLabel', markdownText(displayId))}**${titleStr}`);
     if (definition.kind === 'curve') {
         appendCurvePreview(lines, definition, renderOptions);
     } else if (definition.kind === 'functionCurve') {
@@ -572,7 +529,33 @@ function buildDefinitionHoverSection(
     return lines.join('\n');
 }
 
+function hasUncertainTableChildren(definition) {
+    return definition?.kind === 'table' && (definition.rows || []).some(row =>
+        String(row.childIdRaw ?? '').trim() && row.childIdInput?.kind !== 'blank' &&
+        row.childAnalysis?.state !== 'exact');
+}
+
+function buildCompactReferenceHover(analysis, themeKind, tablePreviewContext) {
+    const presentation = buildReferencePresentation(analysis);
+    const candidates = presentation.candidates;
+    if (candidates.length !== 1) return {
+        body: '', actions: '',
+        status: candidates.length > 1 ? i18n.get('hoverCandidates', candidates.length) : '',
+    };
+    const candidate = candidates[0];
+    const definition = candidate.definition;
+    const title = i18n.get(candidate.relation === 'possible-match' ? 'openCandidateDefinition' : 'openDefinition');
+    return {
+        body: candidate.previewAllowed ? buildDefinitionHoverSection(definition, themeKind, tablePreviewContext, true) : '',
+        actions: candidate.navigable ? definitionLink(definition, title, true) : '',
+        status: candidate.relation === 'possible-match' || hasUncertainTableChildren(definition)
+            ? i18n.get('hoverCandidate') : '',
+    };
+}
+
 module.exports = {
+    hasUncertainTableChildren,
+    buildCompactReferenceHover,
     buildReferenceHoverSection,
     buildDefinitionHoverSection,
     definitionLink,

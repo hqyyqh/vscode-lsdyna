@@ -93,7 +93,7 @@ export function planLineCommentToggle(
     const keywordEligible = [];
     const lineEligible = [];
     for (const entry of entries) {
-        const kind = entry.kind || inferKind(entry.text);
+        const kind = entry.kind;
         if (![
             'code', 'line-comment', 'keyword', 'disabled-keyword', 'blank', 'field-header',
             'opaque-control', 'opaque-body', 'unknown',
@@ -146,7 +146,6 @@ export function planLineCommentToggle(
         }
     }
     if (edits.length > budget.maxEdits) return rejected('edit-budget-exceeded');
-    if (edits.length === 0) return { status: 'noop', mode: 'noop', edits: [], eligibleLineCount: eligible.length, reason: 'no-eligible-lines' };
     return { status: 'ready', mode, edits, eligibleLineCount: eligible.length };
 }
 

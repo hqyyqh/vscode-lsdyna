@@ -161,7 +161,7 @@ function choiceValueKind(raw: string): OfficialFieldChoiceCurrentValueKind {
 
 function parameterOrExpressionStatus(raw: string, fieldType: string): OfficialFieldChoicePlanStatus | null {
     if (!raw) return null;
-    if (/(?:^|[^A-Za-z0-9_])-?&[A-Za-z_][A-Za-z0-9_-]{0,8}(?:$|[^A-Za-z0-9_-])/.test(raw) || raw.includes('&')) {
+    if (raw.includes('&')) {
         return 'parameter-controlled';
     }
     if ((raw.startsWith('<') && raw.endsWith('>')) || /[{}()[\]*\/^]/.test(raw)) {

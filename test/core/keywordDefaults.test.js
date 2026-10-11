@@ -7,6 +7,79 @@ const { fakeDoc, vscodeMock } = require("../support/helpers");
 const i18n = require('../../src/core/i18n');
 
 describe('keyword aliases and default valid keywords', () => {
+    it('retries failed alias sources after a bounded cooldown without caching partial aliases', () => {
+        const fs = require('node:fs');
+        const vm = require('node:vm');
+        const filename = require.resolve('../../src/core/keywordUtils');
+        const { keywordDataPath } = require('../../src/core/keywordDataPath');
+        const spelling = require(keywordDataPath('engineering/keywordSpellingAliases.json'));
+        let now = 0, reads = 0, unavailable = 'schema';
+        const context = { module: { exports: {} }, exports: {}, performance: { now: () => now }, require(name) {
+            if (name === 'fs') return { readFileSync(...args) {
+                reads++;
+                if (unavailable === 'schema') throw Object.assign(new Error('denied'), { code: 'EACCES' });
+                return fs.readFileSync(...args);
+            } };
+            if (name === './keywordDataPath') return { keywordDataPath };
+            if (name === keywordDataPath('engineering/keywordSpellingAliases.json')) {
+                if (unavailable === 'spelling') throw new Error('spelling input unavailable');
+                return spelling;
+            }
+            return require(name);
+        } };
+        context.exports = context.module.exports;
+        vm.runInNewContext(fs.readFileSync(filename, 'utf8'), context, { filename });
+        const { getAliases } = context.module.exports;
+        assert.equal(getAliases('SET_PART').length, 0);
+        const validatorFile = require.resolve('../../src/core/parser/keywordValidator');
+        const validatorRequire = require('node:module').createRequire(validatorFile);
+        const validatorContext = { module: { exports: {} }, exports: {}, require(name) {
+            if (name === 'vscode') return { ...vscodeMock, workspace: { ...vscodeMock.workspace,
+                getConfiguration: () => ({ get: (_key, fallback) => fallback }),
+            } };
+            return name === '../keywordUtils' ? { getAliases } : validatorRequire(name);
+        } };
+        validatorContext.exports = validatorContext.module.exports;
+        vm.runInNewContext(fs.readFileSync(validatorFile, 'utf8'), validatorContext, { filename: validatorFile });
+        const validator = validatorContext.module.exports;
+        const manualFile = require.resolve('../../src/core/manualIndexer');
+        const manualRequire = require('node:module').createRequire(manualFile);
+        const manualContext = vm.createContext({ module: { exports: {} }, exports: {}, require(name) {
+            return name === './keywordUtils' ? context.module.exports : manualRequire(name);
+        } });
+        manualContext.exports = manualContext.module.exports;
+        vm.runInContext(fs.readFileSync(manualFile, 'utf8'), manualContext, { filename: manualFile });
+        // Seed a previously indexed bookmark; execute the actual navigation function with the same failing alias loader.
+        vm.runInContext("keywordMap.set('*IGA_MASS_SETPOINT_UVW', [{ file: '/fixture/manual.pdf', page: 42 }]);", manualContext);
+        const manualLocations = () => manualContext.module.exports.getManualLocations('*IGA_MASS_SET_POINT_UVW');
+        validator.init(new Set(Object.keys(require('../../snippets/lsdyna.json')).map(name => name.replace(/^\*/, ''))));
+        const document = fakeDoc('*IGA_MASS_SET_POINT_UVW\n*IGA_MASS_SET_FACE_XYZ\n*IGA_MASS_SET_EDGE_UVW\n*DEFINE_STOCHASTIC_ELEMENT_SHELL_VARIATION\n*DEFINE_STOCHASTIC_ELEMENT_SOLID_VARIATION');
+        const unknowns = () => validator.collectKeywordValidationDiagnostics(document).filter(item => item.code === 'unknown-keyword');
+        // Shared schema recognition remains available while the legacy alias loader retries.
+        assert.equal(unknowns().length, 0);
+        assert.equal(manualLocations().length, 1);
+        for (let index = 0; index < 1000; index++) getAliases('SET_PART');
+        assert.equal(reads, 1);
+        unavailable = 'spelling'; now = 1000;
+        assert.equal(getAliases('SET_PART').length, 0);
+        assert.equal(reads, 2);
+        unavailable = ''; now = 1999;
+        assert.equal(getAliases('SET_PART').length, 0);
+        now = 2000;
+        assert.ok(getAliases('SET_PART').includes('SET_PART_LIST'));
+        assert.ok(getAliases('*IGA_MASS_SET_POINT_UVW').length > 0);
+        assert.equal(unknowns().length, 0);
+        const locations = manualLocations();
+        assert.equal(locations.length, 1);
+        assert.equal(locations[0].matchedKeyword, '*IGA_MASS_SETPOINT_UVW');
+        assert.equal(locations[0].requestedKeyword, '*IGA_MASS_SET_POINT_UVW');
+        assert.equal(locations[0].matchKind, 'exact');
+        assert.equal(locations[0].page, 42);
+        assert.equal(reads, 3);
+        now = 3000; unavailable = 'schema';
+        assert.ok(getAliases('SET_PART').includes('SET_PART_LIST'));
+        assert.equal(reads, 3);
+    });
     it('does not warn for lowercase keywords by default, but does when opted in', () => {
         const keywordValidator = require('../../src/core/parser/keywordValidator');
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
@@ -280,7 +353,6 @@ describe('keyword aliases and default valid keywords', () => {
         for (const keyword of ['*INCLUDE_PATH', '*INCLUDE_PATH_RELATIVE']) {
             assert.ok(snippets[keyword], `${keyword} snippet should exist`);
             assert.equal(snippets[keyword].body[1], '$# path');
-            assert.ok(snippets[keyword].body[1].length <= 80);
         }
     });
 

@@ -547,6 +547,53 @@ describe('changeMarksController', () => {
         controller.dispose();
     });
 
+    it('keeps each diff baseline through source close, reset and reopen, including an empty baseline', async () => {
+        for (const original of ['ORIGINAL', '']) {
+            const doc = createMockDocument(original);
+            const editor = createMockEditor(doc);
+            const vscode = createMockVscode(editor);
+            const controller = createChangeMarksController({ vscode, isLsdynaDocument: () => true,
+                getConfig: () => fullConfig(), getMessage: key => key });
+            controller.register({ subscriptions: [] });
+            const provider = vscode._contentProviders.get('lsdyna-change-marks');
+            doc._setText('CHANGED');
+            await controller.showDiffSinceOpened(editor);
+            const [origin] = vscode._cmdHandlers.get('vscode.diff');
+            await controller.showDiffUnsaved(editor);
+            const [savepoint] = vscode._cmdHandlers.get('vscode.diff');
+            await controller.resetOrigin(editor);
+            vscode._lifecycle.close(doc);
+            vscode._lifecycle.open(doc);
+            for (const baseline of [origin, savepoint]) {
+                assert.strictEqual(provider.provideTextDocumentContent(baseline), original);
+                vscode._lifecycle.close({ uri: baseline });
+                assert.throws(() => provider.provideTextDocumentContent(baseline), /changeMarksDiffUnavailable/);
+            }
+            await controller.showDiffSinceOpened(editor);
+            const [reopened] = vscode._cmdHandlers.get('vscode.diff');
+            assert.notStrictEqual(reopened.toString(), origin.toString());
+            assert.strictEqual(provider.provideTextDocumentContent(reopened), 'CHANGED');
+            controller.dispose();
+            assert.throws(() => provider.provideTextDocumentContent(reopened), /changeMarksDiffUnavailable/);
+        }
+    });
+
+    it('rejects unknown diff URIs and releases a baseline when opening the diff fails', async () => {
+        const doc = createMockDocument('ORIGINAL');
+        const editor = createMockEditor(doc);
+        const vscode = createMockVscode(editor);
+        const controller = createChangeMarksController({ vscode, isLsdynaDocument: () => true,
+            getConfig: () => fullConfig(), getMessage: key => key });
+        controller.register({ subscriptions: [] });
+        const provider = vscode._contentProviders.get('lsdyna-change-marks');
+        assert.throws(() => provider.provideTextDocumentContent(vscode.Uri.parse('lsdyna-change-marks:origin?doc64=bad')), /changeMarksDiffUnavailable/);
+        let requested;
+        vscode.commands.executeCommand = async (_command, left) => { requested = left; throw Error('Open failed'); };
+        await assert.rejects(controller.showDiffSinceOpened(editor), /Open failed/);
+        assert.throws(() => provider.provideTextDocumentContent(requested), /changeMarksDiffUnavailable/);
+        controller.dispose();
+    });
+
     it('creates decoration types with restrained line background by default', () => {
         const doc = createMockDocument('A');
         const editor = createMockEditor(doc);

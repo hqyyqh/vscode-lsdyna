@@ -30,6 +30,7 @@ function stripTitleSuffix(kwName) {
 }
 
 let GENERATED_ALIASES = null;
+let aliasRetryAt = 0;
 
 function addAliasPair(map, left, right) {
     if (!left || !right || left === right) return;
@@ -41,7 +42,8 @@ function addAliasPair(map, left, right) {
 
 function loadGeneratedAliases() {
     if (GENERATED_ALIASES) return GENERATED_ALIASES;
-    GENERATED_ALIASES = {};
+    if (performance.now() < aliasRetryAt) return {};
+    const aliases = {};
     try {
         const schemaPath = keywordDataPath("schema/field_data.json");
         const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
@@ -50,11 +52,11 @@ function loadGeneratedAliases() {
             const canonical = (item && item.x) ? String(item.x).toUpperCase() : String(keyword).toUpperCase();
             if (item && Array.isArray(item.a)) {
                 for (const alias of item.a) {
-                    addAliasPair(GENERATED_ALIASES, canonical, String(alias).toUpperCase());
+                    addAliasPair(aliases, canonical, String(alias).toUpperCase());
                 }
             }
             if (item && item.x) {
-                addAliasPair(GENERATED_ALIASES, canonical, String(keyword).toUpperCase());
+                addAliasPair(aliases, canonical, String(keyword).toUpperCase());
             }
         }
         const spellingAliases = require(keywordDataPath("engineering/keywordSpellingAliases.json"));
@@ -70,11 +72,14 @@ function loadGeneratedAliases() {
                         String(field.t || '').toLowerCase() === String(target.type || '').toLowerCase() &&
                         field.p === target.position && field.w === target.width;
                 });
-            if (layoutMatches) addAliasPair(GENERATED_ALIASES, canonical, alias);
+            if (layoutMatches) addAliasPair(aliases, canonical, alias);
         }
     } catch {
-        GENERATED_ALIASES = {};
+        // ponytail: failed sources retry at most once per second; add explicit invalidation if immediate recovery is required.
+        aliasRetryAt = performance.now() + 1000;
+        return {};
     }
+    GENERATED_ALIASES = aliases;
     return GENERATED_ALIASES;
 }
 
@@ -92,7 +97,7 @@ function getAliases(kwName) {
         name = name.slice(1);
     }
     const aliases = loadGeneratedAliases()[name] || [];
-    return [...new Set(aliases)].map(a => prefix + a);
+    return aliases.map(a => prefix + a);
 }
 
 module.exports = {

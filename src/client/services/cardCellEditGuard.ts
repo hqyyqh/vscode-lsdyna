@@ -79,13 +79,16 @@ function lineSelFromSelection(selection: any): {
  */
 export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
     let nav: NavCellState | null = null;
+    let navDocument: any = null;
 
-    function clearNav() {
+    function clearNav(document?: any) {
+        if (document && document !== navDocument) return;
         nav = null;
+        navDocument = null;
     }
 
     function markA(document: any, line: number, fieldIndex: number, keepSeparator: boolean) {
-        if (!document) return;
+        if (!document || document.isClosed) return;
         const originalLine = String(document.lineAt(line).text || '');
         const card = deps.getCardFieldsForLine(document, line) || [];
         const previousFieldHasValue =
@@ -107,6 +110,7 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
             expectedStart: range?.start ?? -1,
             expectedEnd: range?.end ?? -1,
         };
+        navDocument = document;
     }
 
     function markAp(
@@ -116,12 +120,12 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         caretCol?: number,
         selectionRange?: { start: number; end: number },
     ) {
-        if (!document) return;
+        if (!document || document.isClosed) return;
         const originalLine = String(document.lineAt(line).text || '');
         const card = deps.getCardFieldsForLine(document, line) || [];
         let caret = -1;
         if (Number.isSafeInteger(caretCol)) {
-            caret = Number(caretCol);
+            caret = caretCol;
         } else if (fieldIndex >= 0 && fieldIndex < card.length) {
             caret = cellModel.caretAfterCellValue(originalLine, card, fieldIndex);
         }
@@ -138,14 +142,16 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
             expectedStart,
             expectedEnd,
         };
+        navDocument = document;
     }
 
-    function getNav(): NavCellState | null {
-        return nav;
+    function getNav(document?: any): Readonly<NavCellState> | null {
+        if (!nav || navDocument?.isClosed || (document && document !== navDocument)) return null;
+        return Object.freeze({ ...nav });
     }
 
     function navMatches(document: any, line: number): boolean {
-        if (!nav || !document) return false;
+        if (!nav || !document || document.isClosed || document !== navDocument) return false;
         return nav.uri === uriKey(document) &&
             nav.line === line &&
             nav.version === document.version;
@@ -180,7 +186,7 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
         contentChanges: any[],
         changeReason?: unknown,
     ): PostEditCorrectionPlan | null {
-        if (!nav || !document) return null;
+        if (!nav || !document || document.isClosed || document !== navDocument) return null;
         if (nav.uri !== uriKey(document)) return null;
         // VS Code also emits metadata-only document events with no text changes.
         // They must not consume a valid navigation mark.
@@ -353,7 +359,7 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
     }
 
     function isEligibleDocument(document: any): boolean {
-        if (!document) return false;
+        if (!document || document.isClosed) return false;
         if (deps.isLsdynaDocument && !deps.isLsdynaDocument(document)) return false;
         if (deps.isProtectEnabled && !deps.isProtectEnabled(document)) return false;
         return true;
@@ -412,7 +418,10 @@ export function createCardCellEditGuard(deps: CardCellEditGuardDeps) {
      */
     function onSelectionChange(editor: any) {
         if (!nav || !editor?.document) return;
-        if (uriKey(editor.document) !== nav.uri) {
+        // A queued selection from an older document object cannot consume the
+        // navigation established on its replacement, even for the same URI.
+        if (editor.document !== navDocument) return;
+        if (editor.document.isClosed || uriKey(editor.document) !== nav.uri) {
             clearNav();
             return;
         }

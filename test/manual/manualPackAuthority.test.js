@@ -15,12 +15,11 @@ function hash(bytes) {
     return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
-function createAuthorityPack({ flavor = 'en' } = {}) {
+function createAuthorityPack({ flavor = 'en', pdfFile = flavor === 'bilingual' ? 'pdf/Vol II.zh-CN.pdf' : 'pdf/Vol II.pdf' } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-manual-authority-'));
     fs.mkdirSync(path.join(root, 'indexes'), { recursive: true });
     fs.mkdirSync(path.join(root, 'pdf'), { recursive: true });
     const manualId = 'manual-vol-ii';
-    const pdfFile = flavor === 'bilingual' ? 'pdf/Vol II.zh-CN.pdf' : 'pdf/Vol II.pdf';
     const pdfBytes = Buffer.from(`official-${flavor}-pdf`);
     fs.writeFileSync(path.join(root, pdfFile), pdfBytes);
     const sourceDocumentId = flavor === 'bilingual' ? 'b'.repeat(64) : 'a'.repeat(64);
@@ -69,6 +68,14 @@ function createAuthorityPack({ flavor = 'en' } = {}) {
 }
 
 describe('manual pack authority', () => {
+    it('keeps a valid authority for a root-level leading-dot PDF basename', async () => {
+        const fixture = createAuthorityPack({ pdfFile: '..manual.pdf' });
+        try {
+            assert.equal(loadManualPackAuthoritySync(fixture.root).status, 'ready');
+            assert.equal((await loadManualPackAuthority(fixture.root)).status, 'ready');
+        } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
+    });
+
     it('loads the bounded pack profile and document identity synchronously and asynchronously', async () => {
         const fixture = createAuthorityPack();
         try {

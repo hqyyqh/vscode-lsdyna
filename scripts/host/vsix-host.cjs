@@ -3,13 +3,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 const { runTests: runDevelopmentTests } = require('@vscode/test-electron');
 
 function resolveCliEntry(executable) {
     const root = path.dirname(executable);
     const standard = process.platform === 'darwin'
-        ? path.resolve(root, "../../Resources/app/out/cli.js") : path.join(root, 'resources/app/out/cli.js');
+        ? path.resolve(root, "../Resources/app/out/cli.js") : path.join(root, 'resources/app/out/cli.js');
     if (fs.existsSync(standard)) return standard;
     // Current Windows archives keep app resources under the build commit directory.
     const candidates = fs.readdirSync(root, { withFileTypes: true })
@@ -40,7 +40,8 @@ async function runTests(options) {
     assert.equal(installation.status, 0, installation.error?.message || installation.stderr || installation.stdout);
     const candidates = fs.readdirSync(extensions).map(name => path.join(extensions, name)).filter(dir => {
         try { const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json')));
-            return manifest.publisher === 'hqyyqh' && manifest.name === 'dynasense'; } catch { return false; }
+            return manifest.publisher === 'hqyyqh' && manifest.name === 'dynasense' &&
+                (!process.env.LSDYNA_TEST_PACKAGE_VERSION || manifest.version === process.env.LSDYNA_TEST_PACKAGE_VERSION); } catch { return false; }
     });
     assert.equal(candidates.length, 1, 'Exactly one installed DynaSense must be selected');
     const installed = candidates[0];
@@ -96,9 +97,37 @@ const extension=vscode.extensions.getExtension('hqyyqh.dynasense');
  };
  await require(${JSON.stringify(options.extensionTestsPath)}).run();
 };\n`);
+    // VS Code terminates test mode when Reload Window is invoked. A normal development
+    // driver survives the real reload and exits only after the new host verifies it.
+    const runReload = async () => {
+        const completed = path.join(driver, 'completed.json');
+        fs.writeFileSync(path.join(driver, 'package.json'), JSON.stringify({ name: 'release-test-driver', publisher: 'local',
+            version: '0.0.0', engines: { vscode: '^1.100.0' }, main: './activate.cjs', activationEvents: ['onStartupFinished'] }));
+        fs.writeFileSync(path.join(driver, 'activate.cjs'), `exports.activate=async()=>{
+            const fs=require('node:fs'),vscode=require('vscode');
+            try { await require('./test.cjs').run(); fs.writeFileSync(${JSON.stringify(completed)},JSON.stringify({passed:true})); }
+            catch(error) { fs.writeFileSync(${JSON.stringify(completed)},JSON.stringify({passed:false,error:String(error.stack||error)})); }
+            await vscode.commands.executeCommand('workbench.action.quit');
+        };`);
+        await new Promise((resolve, reject) => {
+            const child = spawn(options.vscodeExecutablePath, [...options.launchArgs.filter(arg => arg !== '--disable-extensions'),
+                `--extensionDevelopmentPath=${driver}`], { env: { ...process.env, ...options.extensionTestsEnv, NODE_PATH: '',
+                    LSDYNA_INSTALLED_EXTENSION_PATH: installed }, stdio: 'inherit', windowsHide: true });
+            const timer = setTimeout(() => { child.kill(); reject(Object.assign(Error('Reload host timeout'), { runtimeMayBeActive: true })); }, 120000);
+            child.once('error', error => { clearTimeout(timer); reject(error); });
+            child.once('close', (code, signal) => {
+                clearTimeout(timer);
+                if (code !== 0 || signal) reject(Object.assign(Error(`Reload host exit ${code}/${signal}`), { runtimeMayBeActive: !!signal }));
+                else resolve();
+            });
+        });
+        const state = JSON.parse(fs.readFileSync(completed, 'utf8'));
+        assert.equal(state.passed, true, state.error);
+    };
     console.log(`Installed VSIX identity: ${JSON.stringify(identity)}`);
+    let hostError;
     try {
-        const result = await runDevelopmentTests({ ...options, extensionDevelopmentPath: driver,
+        const result = options.reloadLifecycle ? await runReload() : await runDevelopmentTests({ ...options, extensionDevelopmentPath: driver,
             extensionTestsPath: entry,
             launchArgs: options.launchArgs.filter(arg => arg !== '--disable-extensions'),
             extensionTestsEnv: { ...options.extensionTestsEnv, NODE_PATH: '', LSDYNA_INSTALLED_EXTENSION_PATH: installed },
@@ -106,12 +135,19 @@ const extension=vscode.extensions.getExtension('hqyyqh.dynasense');
         identity.status = 'passed';
         return result;
     } catch (error) {
+        hostError = error;
         identity.status = 'failed';
         identity.error = String(error);
         throw error;
     } finally {
-        identity.vscodeVersion = JSON.parse(fs.readFileSync(resultFile, 'utf8')).vscodeVersion;
-        fs.writeFileSync(resultFile, JSON.stringify(identity, null, 2));
+        try {
+            identity.vscodeVersion = JSON.parse(fs.readFileSync(resultFile, 'utf8')).vscodeVersion;
+            fs.writeFileSync(resultFile, JSON.stringify(identity, null, 2));
+        } catch (evidenceError) {
+            console.error(`Installed host diagnostics could not be saved: ${resultFile}`, evidenceError);
+            if (hostError) hostError.evidenceError = evidenceError;
+            throw Object.assign(hostError || evidenceError, { evidenceSaveFailed: true });
+        }
     }
 }
 module.exports = { runTests, resolveCliEntry };

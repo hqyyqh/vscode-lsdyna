@@ -1,13 +1,11 @@
 'use strict';
 
-const i18n = require('../i18n');
 const {
     resolveExtensionThemePalette,
     themeKindFromRenderOptions,
 } = require('../theme/extensionTheme');
 
 const MAX_SVG_POINTS = 200;
-const MAX_TABLE_ROWS = 8;
 const MAX_TABLE_CURVES = 16;
 const MAX_TABLE_POINTS_PER_CURVE = 32;
 const TABLE_3D_VIEWS = Object.freeze([
@@ -66,6 +64,7 @@ function xmlEscape(value) {
 
 function markdownCode(value) {
     const text = String(value ?? '').replace(/\r?\n/g, ' ');
+    if (!text) return '';
     const longest = Math.max(0, ...(text.match(/`+/g) || []).map(run => run.length));
     const fence = '`'.repeat(longest + 1);
     const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
@@ -111,7 +110,8 @@ function curvePaletteFromOptions(options = {}) {
 
 function renderCurveSvgDataUri(definition, options = {}) {
     const renderOptions: any = options || {};
-    const maxPoints = typeof renderOptions.maxPoints === 'number' ? renderOptions.maxPoints : MAX_SVG_POINTS;
+    const maxPoints = Number.isFinite(renderOptions.maxPoints)
+        ? Math.max(2, Math.floor(renderOptions.maxPoints)) : MAX_SVG_POINTS;
     const curvePalette = curvePaletteFromOptions(renderOptions);
     
     const points = samplePoints(numericPoints(definition && definition.points), maxPoints);
@@ -120,9 +120,9 @@ function renderCurveSvgDataUri(definition, options = {}) {
     }
 
     const width = 360;
-    const height = 180;
+    const height = 165;
     
-    const paddingTop = 25;
+    const paddingTop = 10;
     const paddingBottom = 30;
     const paddingLeft = 55;
     const paddingRight = 20;
@@ -135,6 +135,7 @@ function renderCurveSvgDataUri(definition, options = {}) {
     const maxY = Math.max(...ys);
     const spanX = maxX === minX ? 1 : maxX - minX;
     const spanY = maxY === minY ? 1 : maxY - minY;
+    if (!Number.isFinite(spanX) || !Number.isFinite(spanY)) return null;
     
     const innerWidth = width - paddingLeft - paddingRight;
     const innerHeight = height - paddingTop - paddingBottom;
@@ -157,7 +158,6 @@ function renderCurveSvgDataUri(definition, options = {}) {
 
     const svg = [
         `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}">`,
-        `<text x="${paddingLeft}" y="16" fill="${textColor}" font-size="11" font-family="sans-serif" font-weight="bold">${title}</text>`,
         `<line x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${width - paddingRight}" y2="${height - paddingBottom}" stroke="${axisColor}" stroke-width="1.5"/>`,
         `<line x1="${paddingLeft}" y1="${paddingTop}" x2="${paddingLeft}" y2="${height - paddingBottom}" stroke="${axisColor}" stroke-width="1.5"/>`,
         `<line x1="${paddingLeft}" y1="${height - paddingBottom}" x2="${paddingLeft}" y2="${height - paddingBottom + 4}" stroke="${axisColor}" stroke-width="1.5"/>`,
@@ -168,31 +168,14 @@ function renderCurveSvgDataUri(definition, options = {}) {
         `<line x1="${paddingLeft - 4}" y1="${paddingTop}" x2="${paddingLeft}" y2="${paddingTop}" stroke-width="1.5"/>`,
         `<text x="${paddingLeft}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(minX)}</text>`,
         `<text x="${midXPos}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(midX)}</text>`,
-        `<text x="${width - paddingRight}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(maxX)}</text>`,
+        `<text x="${width - paddingRight}" y="${height - paddingBottom + 15}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="middle">${formatValue(maxX === minX ? minX + spanX : maxX)}</text>`,
         `<text x="${paddingLeft - 8}" y="${height - paddingBottom}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(minY)}</text>`,
         `<text x="${paddingLeft - 8}" y="${midYPos}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(midY)}</text>`,
-        `<text x="${paddingLeft - 8}" y="${paddingTop}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(maxY)}</text>`,
+        `<text x="${paddingLeft - 8}" y="${paddingTop}" fill="${textColor}" font-size="9" font-family="sans-serif" text-anchor="end" dominant-baseline="middle">${formatValue(maxY === minY ? minY + spanY : maxY)}</text>`,
         `<polyline points="${polyline}" fill="none" stroke="${curveColor}" stroke-width="2"/>`,
         '</svg>',
     ].join('');
     return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
-}
-
-function renderCurveMarkdownFallback(definition, maxRows = MAX_TABLE_ROWS) {
-    const rows = (definition && definition.points || []).slice(0, maxRows);
-    if (rows.length === 0) {
-        return '';
-    }
-    const lines = [
-        '| x | y |',
-        '| ---: | ---: |',
-        ...rows.map(point => `| ${markdownCode(point.xRaw)} | ${markdownCode(point.yRaw)} |`),
-    ];
-    const omitted = (definition.points || []).length - rows.length;
-    if (omitted > 0) {
-        lines.push(`| ... | ${i18n.get('moreRows', omitted)} |`);
-    }
-    return lines.join('\n');
 }
 
 function renderTable3dSvgDataUri(definition, options = {}) {
@@ -249,6 +232,7 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     const spanX = maxX === minX ? 1 : maxX - minX;
     const spanY = maxY === minY ? 1 : maxY - minY;
     const spanZ = maxZ === minZ ? 1 : maxZ - minZ;
+    if (![spanX, spanY, spanZ].every(Number.isFinite)) return null;
 
     function projectRaw(xn, yn, zn) {
         return {
@@ -303,7 +287,6 @@ function renderTable3dSvgDataUri(definition, options = {}) {
     const svgElements = [];
     const title = xmlEscape(definition.title || definition.keyword || 'table');
     svgElements.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${title}" data-table-view="${view}">`);
-    svgElements.push(`<text x="${width / 2}" y="16" fill="${textColor}" font-size="11" font-family="sans-serif" font-weight="bold" text-anchor="middle">${title}</text>`);
 
     function gridLine(start, end) {
         const p1 = project(start[0], start[1], start[2]);
@@ -433,7 +416,6 @@ function renderTable3dSvgDataUri(definition, options = {}) {
 
 module.exports = {
     renderCurveSvgDataUri,
-    renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
     TABLE_3D_VIEWS,
     normalizeTable3dView,

@@ -69,6 +69,10 @@ function tokenSpans(text: string, separator: 'comma' | 'space'): Span[] {
         const spans: Span[] = [];
         let start = 0;
         for (let index = 0; index <= text.length; index++) {
+            if (index === start) {
+                const expression = /^\s*<[^>]*>\s*(?=,|$)/.exec(text.slice(start));
+                if (expression) index += expression[0].length;
+            }
             if (index !== text.length && text[index] !== ',') continue;
             const raw = text.slice(start, index);
             const leading = raw.match(/^\s*/)?.[0].length || 0;
@@ -82,6 +86,11 @@ function tokenSpans(text: string, separator: 'comma' | 'space'): Span[] {
         start: match.index || 0,
         end: (match.index || 0) + match[0].length,
     }));
+}
+
+/** Commas inside a complete angle-bracket expression belong to one field. */
+export function commaRecordSpans(text: string): RecordReadRange[] {
+    return tokenSpans(text, 'comma');
 }
 
 export function detectRecordFormat(

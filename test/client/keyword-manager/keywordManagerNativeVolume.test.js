@@ -85,7 +85,10 @@ describe('native VOLUME prefix plus one GEOM record', () => {
                 assert.equal(help.schemaName, expected[index].name);
                 assert.equal(help.english, /^[\s.-]*$/.test(expected[index].help || '')
                     ? undefined : expected[index].help.trim());
-                const active = model.helpContext.nativeForm.cards.find(card => card.cardIndex === item.cardIndex);
+                // Help resolves the projected editor descriptors; the raw reader pool remains unchanged.
+                const active = require("../../../out/core/semantics/catalogNativeFileLayout")
+                    .nativeFileLayoutCards(model.helpContext.nativeForm, model.currentKeyword)
+                    .find(card => card.cardIndex === item.cardIndex);
                 assert.equal(active.fields[index].fieldRecordId, expected[index].field_record_id);
             }
         }

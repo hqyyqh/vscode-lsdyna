@@ -10,6 +10,9 @@ const {
     queryFromReferenceSource,
 } = require('./registryReferenceNetwork');
 const { queryIndexedEntityId } = require('./indexedEntityQuery');
+import { EntityQueryCache } from './entityQueryCache';
+import { scanIndexedTypeDefinitions } from './entityTypeDefinitionIndex';
+import { queryIndexedTypeReferences } from './entityTypeReferenceIndex';
 
 export type EntityReferenceQueryState =
     'exact' | 'ambiguous' | 'missing' | 'partial' | 'indeterminate' | 'unsupported';
@@ -46,23 +49,33 @@ function result(state: EntityReferenceQueryState, request: any, additions: any =
         query: additions.query || null,
         definitions: additions.definitions || [],
         references: additions.references || [],
-        reasons: [...new Set(additions.reasons || [])].sort(),
         ...additions,
+        reasons: [...new Set(additions.reasons || [])].sort(),
     };
 }
 
 export class EntityReferenceQueryService {
+    private readonly cache: EntityQueryCache;
+    constructor(maxBytes = 512 * 1024 * 1024) { this.cache = new EntityQueryCache(maxBytes); }
+    clear() { this.cache.clear(); }
+    cacheStats() { return this.cache.stats(); }
     private readonly lifecycleByRoot = new Map<string, EntityReferenceLifecycleState>();
+    private readonly pendingByRoot = new Map<string, number>();
 
     lifecycle(rootFile: string): EntityReferenceLifecycleState {
-        return this.lifecycleByRoot.get(String(rootFile || '')) || 'ready';
+        const root = String(rootFile || '');
+        const state = this.lifecycleByRoot.get(root) || 'ready';
+        return this.pendingByRoot.has(root) && state !== 'stale' && state !== 'needs-refresh'
+            ? 'loading' : state;
     }
 
     markStale(rootFile: string): void {
+        this.cache.invalidateQueries();
         this.lifecycleByRoot.set(String(rootFile || ''), 'stale');
     }
 
     markNeedsRefresh(rootFile: string): void {
+        this.cache.invalidateQueries();
         this.lifecycleByRoot.set(String(rootFile || ''), 'needs-refresh');
     }
 
@@ -101,24 +114,57 @@ export class EntityReferenceQueryService {
     async queryById(snapshot: any, id: string | number, targetKind: string, context: any = {}) {
         const request = { kind: 'id', rootFile: snapshot?.rootFile, documentVersion: context.documentVersion,
             id, targetKind };
-        this.lifecycleByRoot.set(String(snapshot?.rootFile || ''), 'loading');
+        if (require('../scanner/scannerContracts').isMeshEntityKind(targetKind) &&
+            (snapshot?.fileIndexes instanceof Map ? [...snapshot.fileIndexes.values()] :
+                Object.values(snapshot?.fileIndexes || {})).some(index => (index as any).excludeMeshEntities)) {
+            return result('unsupported', request, { locations: [], reasons: ['mesh-entity-index-disabled'] });
+        }
+        const root = String(snapshot?.rootFile || '');
+        const pending = this.pendingByRoot.get(root) || 0;
+        if (pending === 0) this.lifecycleByRoot.set(root, 'loading');
+        this.pendingByRoot.set(root, pending + 1);
         try {
-            const indexed = await queryIndexedEntityId({ snapshot, id, targetKind, ...context });
-            const definitions = (indexed.locations || []).filter((item: any) => item.role === 'definition');
-            const references = (indexed.locations || []).filter((item: any) => item.role === 'reference');
+            const revision = this.cache.revision(snapshot);
+            const key = JSON.stringify([revision, id, targetKind,
+                ...['scanBlockLines', 'scanDefinitions', 'queryReferences', 'collectReferences', 'definitionKeywords']
+                    .map(name => this.cache.identity(context[name]))]);
+            const indexed = await this.cache.run(key, context.cancellationToken, async cancellationToken => {
+                const indexKey = 'index:' + revision;
+                let referenceIndex = this.cache.get(indexKey);
+                if (!referenceIndex) {
+                    const started = performance.now();
+                    referenceIndex = buildProjectReferenceIndex(snapshot);
+                    context.onPhase?.({ phase: 'reference-index-build', durationMs: performance.now() - started });
+                    this.cache.set(indexKey, referenceIndex);
+                }
+                return queryIndexedEntityId({ snapshot, id, targetKind, ...context, cancellationToken, referenceIndex,
+                    scanDefinitions: context.scanDefinitions || (options => scanIndexedTypeDefinitions(options, this.cache)),
+                    queryReferences: context.queryReferences || (options => queryIndexedTypeReferences({ ...options, revision }, this.cache)) });
+            }, context.onPhase);
+            const definitions = indexed.locations.filter((item: any) => item.role === 'definition');
+            const references = indexed.locations.filter((item: any) => item.role === 'reference');
             const complete = indexed.state === 'complete';
             const state: EntityReferenceQueryState = indexed.state === 'partial' ? 'partial'
                 : !complete ? 'indeterminate'
                     : definitions.length === 0 && references.length === 0 ? 'missing'
                         : definitions.length > 1 ? 'ambiguous' : 'exact';
-            this.lifecycleByRoot.set(String(snapshot?.rootFile || ''), 'ready');
+            if (this.lifecycleByRoot.get(root) === 'loading') this.lifecycleByRoot.set(root, 'ready');
             return result(state, request, { query: { id, targetKinds: [targetKind], targetDefinitions: [] },
-                definitions, references, locations: indexed.locations || [], reasons: indexed.reasons,
+                definitions, references, locations: indexed.locations, reasons: indexed.reasons,
                 referenceIndex: indexed.referenceIndex, sourceId: id, effectiveId: id });
         } catch (error) {
-            this.lifecycleByRoot.set(String(snapshot?.rootFile || ''), 'failed');
+            const state = this.lifecycleByRoot.get(root);
+            if ((error as any)?.name === 'CancellationError') {
+                if (state === 'loading' && this.pendingByRoot.get(root) === 1) this.lifecycleByRoot.set(root, 'ready');
+                return result('indeterminate', request, { reasons: ['cancelled'] });
+            }
+            if (state !== 'stale' && state !== 'needs-refresh') this.lifecycleByRoot.set(root, 'failed');
             return result('indeterminate', request, { lifecycle: 'failed',
                 reasons: [error instanceof Error ? error.message : String(error)] });
+        } finally {
+            const remaining = this.pendingByRoot.get(root) - 1;
+            if (remaining > 0) this.pendingByRoot.set(root, remaining);
+            else this.pendingByRoot.delete(root);
         }
     }
 

@@ -59,7 +59,7 @@ export async function activate(context) {
             "./client/services/includePathSuggestTrigger", "./client/services/cardCellEditGuard",
             "./client/services/jumpPulse", "./core/theme/extensionTheme",
             "./client/services/customValidKeywords", "./core/keywordSuggest",
-            "./platform/externalProcess", "./core/cache/diskSnapshotStore",
+            "./platform/externalProcess",
             "./core/incremental/fileInvalidation", "./core/parser/includeScanner",
             "./core/parser/keywordScanner", "./core/parser/keywordValidator",
             "./core/parser/keywordLine", "./core/parser/parameterScanner",
@@ -71,7 +71,7 @@ export async function activate(context) {
             "./core/hover/fieldHelpEnglishStore", "./core/project/effectiveSearchPathLookup",
             "./core/completion/fieldComment", "./core/parser/inputFormat",
             "./core/parser/opaqueCommentRange", "./core/scanner/largeFileWindowReader",
-            "./core/parser/blockScanner", "./core/references/definitionRegistry",
+            "./core/scanner/scannerContracts", "./core/parser/blockScanner", "./core/references/definitionRegistry",
             "./core/references/familyDefinitionScannerCatalog", "./core/references/registryReferenceNetwork",
             "./core/references/referenceNavigation", "./core/references/workspaceReferenceSearch",
             "./core/references/entityReferenceQueryService", "./core/references/curvePlotRenderer",
@@ -83,6 +83,8 @@ export async function activate(context) {
             "./core/options/keywordOptionGrammarCatalog", "./core/options/optionSwitchPlanner",
             "./core/options/optionGrammarEvaluator", "./core/semantics/predicateEvaluator",
             "./core/semantics/catalogPriorRules", "./core/edit/keywordRecordSerializer",
+            "./core/cache/entityIndexBudget",
+            "./core/references/entityQueryCache",
         ].map(name => () => entryRequire(name)),
     ];
     let started = performance.now();

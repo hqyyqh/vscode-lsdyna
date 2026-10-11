@@ -16,6 +16,7 @@ function sha256(value) {
 
 function buildFieldSchemaRuntime(fieldDataText) {
     const source = JSON.parse(fieldDataText);
+    if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('invalid field schema source');
     const helpValues = [];
 
     function compact(value) {

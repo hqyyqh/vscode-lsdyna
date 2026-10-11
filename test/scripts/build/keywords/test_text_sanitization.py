@@ -15,6 +15,12 @@ from text_sanitization import (  # noqa: E402
 
 
 class TextSanitizationTests(unittest.TestCase):
+    def test_specific_permittivity_repair_precedes_generic_tau(self):
+        self.assertEqual(
+            "Permittivity epsilon_0; Parameter tau_0; mu_r=mu/mu_0",
+            sanitize_help_text("Permittivity ?_0; Parameter ?_0; ?_r=?/?_0"),
+        )
+
     def test_repairs_deterministic_source_artifacts(self):
         value = (
             "element�s thickness; OPTION = 7, �9; E1, �, E7; "

@@ -5,7 +5,7 @@
             "name": "DynaSense: Extension Development Host",
             "type": "extensionHost",
             "request": "launch",
-            "preLaunchTask": "build extension",
+            "preLaunchTask": "watch debug",
             "args": [
                 "--extensionDevelopmentPath=${workspaceFolder}",
                 "--disable-extensions",

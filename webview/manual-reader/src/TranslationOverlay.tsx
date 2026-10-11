@@ -1,3 +1,4 @@
+import { Codicon } from '../../shared/Codicon';
 import React from 'react';
 
 interface TranslationOverlayProps {
@@ -19,6 +20,6 @@ export function TranslationOverlay({ id, text, pinned, label, closeLabel, positi
         style={{ left: `${position.left}px`, top: `${position.top}px` }}
     >
         <span>{text}</span>
-        {pinned ? <button type="button" aria-label={closeLabel} onClick={onClose}>×</button> : null}
+        {pinned ? <button type="button" aria-label={closeLabel} onClick={onClose}><Codicon name="close" /></button> : null}
     </div>;
 }

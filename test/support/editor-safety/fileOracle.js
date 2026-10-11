@@ -139,7 +139,7 @@ async function copyDirectoryExact(sourcePath, targetPath, options = {}) {
     const source = path.resolve(sourcePath);
     const target = path.resolve(targetPath);
     const relativeTarget = path.relative(source, target);
-    if (!relativeTarget || (!relativeTarget.startsWith('..') && !path.isAbsolute(relativeTarget))) {
+    if (relativeTarget !== '..' && !relativeTarget.startsWith('..' + path.sep) && !path.isAbsolute(relativeTarget)) {
         throw new Error('Isolation target must not be inside the source directory');
     }
 

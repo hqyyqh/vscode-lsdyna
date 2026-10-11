@@ -1,14 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import type { ManualLanguage, ManualLocation, ReaderChromeIdentity, ReaderViewModel } from '../../../src/manual/readerProtocol';
+import type { ManualReadingMode, ManualLocation, ReaderChromeIdentity, ReaderViewModel } from '../../../src/manual/readerProtocol';
 import type { ReaderMessages } from './readerI18n';
-import {
-    IconArrowLeft,
-    IconArrowRight,
-    IconChevronLeft,
-    IconChevronRight,
-    IconPdf,
-    IconSearch,
-} from './ToolbarIcons';
+import { Codicon } from '../../shared/Codicon';
 import { useToolbarHeight } from './useToolbarHeight';
 
 interface ToolbarButtonProps {
@@ -51,8 +44,9 @@ interface ReaderToolbarProps {
     onRequest: (name: string, payload?: Record<string, unknown>) => void;
     onOpenPdf?: () => void;
     /** Document language shown in the pill (may be optimistic until host catches up). */
-    displayLanguage?: ManualLanguage;
-    onToggleLanguage?: () => void;
+    displayLanguage?: ManualReadingMode;
+    languagePending?: boolean;
+    onToggleLanguage?: (mode: ManualReadingMode) => void;
     progress: number;
     fontScalePercentLabel: string;
     canDecreaseFontScale: boolean;
@@ -65,7 +59,7 @@ interface ReaderToolbarProps {
 /** Responsive chrome; measured height keeps anchors and overlays below both rows. */
 export function ReaderToolbar({
     view, messages, searchButtonRef, onOpenSearch, onNavigate, onRequest, onOpenPdf,
-    displayLanguage, onToggleLanguage, progress,
+    displayLanguage, languagePending, onToggleLanguage, progress,
     fontScalePercentLabel, canDecreaseFontScale, canIncreaseFontScale,
     onDecreaseFontScale, onIncreaseFontScale, onResetFontScale,
 }: ReaderToolbarProps): React.JSX.Element {
@@ -84,53 +78,59 @@ export function ReaderToolbar({
     const showLanguageToggle = view.canToggleLanguage !== false;
     const sectionTitle = view.location.title || view.location.sectionId;
     const crumb = formatCrumb(view.chrome);
+    const matchHint = view.location.matchKind === 'approximate'
+        ? `${messages.approximateMatch}: ${view.location.requestedKeyword || ''} → ${view.location.matchedKeyword || sectionTitle}` : '';
     const identityTooltip = crumb ? `${crumb} — ${sectionTitle}` : sectionTitle;
     const language = displayLanguage ?? view.language;
-    const languageLabel = language === 'zh' ? '中文' : 'EN';
-    const languageHint = language === 'zh' ? 'EN' : '中文';
+
 
     return <header ref={toolbarRef} className="reader-toolbar" aria-label={messages.toolbar}>
         <div className="reader-toolbar__navigation">
             <div className="reader-toolbar__cluster" role="group" aria-label={messages.navHistory}>
                 <ToolbarButton label={messages.back} disabled={!view.navigation.canBack} onClick={() => onNavigate('back')}>
-                    <IconArrowLeft />
+                    <Codicon name="arrow-left" className="reader-toolbar__icon" />
                 </ToolbarButton>
                 <ToolbarButton label={messages.forward} disabled={!view.navigation.canForward} onClick={() => onNavigate('forward')}>
-                    <IconArrowRight />
+                    <Codicon name="arrow-right" className="reader-toolbar__icon" />
                 </ToolbarButton>
             </div>
             <div className="reader-toolbar__cluster" role="group" aria-label={messages.navSections}>
                 <ToolbarButton label={messages.previousSection} disabled={!view.navigation.canPreviousSection} onClick={() => onNavigate('previousSection')}>
-                    <IconChevronLeft />
+                    <Codicon name="chevron-left" className="reader-toolbar__icon" />
                 </ToolbarButton>
                 <ToolbarButton label={messages.nextSection} disabled={!view.navigation.canNextSection} onClick={() => onNavigate('nextSection')}>
-                    <IconChevronRight />
+                    <Codicon name="chevron-right" className="reader-toolbar__icon" />
                 </ToolbarButton>
             </div>
         </div>
 
         <div className="reader-toolbar__identity" title={identityTooltip}>
             {crumb ? <span className="reader-toolbar__crumb">{crumb}</span> : null}
-            <span className="reader-toolbar__title">{sectionTitle}</span>
+            <span className="reader-toolbar__title">{matchHint && <span role="img" aria-label={matchHint} title={matchHint}>≈ </span>}{sectionTitle}</span>
         </div>
 
         <div className="reader-toolbar__actions">
             {showLanguageToggle ? (
-                <ToolbarButton
-                    className="reader-toolbar__button--lang"
-                    label={messages.toggleLanguage}
-                    title={`${messages.toggleLanguage} → ${languageHint}`}
-                    onClick={() => (onToggleLanguage ? onToggleLanguage() : onRequest('reader/toggleLanguage'))}
-                >
-                    <span className="reader-toolbar__lang-pill">{languageLabel}</span>
-                </ToolbarButton>
+                <label className="reader-language" title={`${messages.toggleLanguage}: ${language === 'bilingual' ? messages.bilingualLabel : language === 'zh' ? '中文' : 'English'}`}>
+                    <Codicon name={language === 'bilingual' ? 'split-horizontal' : 'globe'} />
+                    <select aria-label={messages.toggleLanguage} value={language} disabled={languagePending}
+                        onChange={event => {
+                            const mode = event.target.value as ManualReadingMode;
+                            if (onToggleLanguage) onToggleLanguage(mode);
+                            else onRequest('reader/toggleLanguage', { mode });
+                        }}>
+                        <option value="zh" aria-label="中文">中</option>
+                        <option value="en" aria-label="English">EN</option>
+                        {view.canCompareLanguages && <option value="bilingual" aria-label={messages.bilingualLabel}>{messages.bilingual}</option>}
+                    </select>
+                </label>
             ) : null}
             <ToolbarButton
                 className="reader-toolbar__button--text"
                 label={messages.openPdf}
                 onClick={() => (onOpenPdf ? onOpenPdf() : onRequest('reader/openPdf'))}
             >
-                <IconPdf />
+                <Codicon name="file-pdf" className="reader-toolbar__icon" />
                 <span className="reader-toolbar__btn-label">PDF</span>
             </ToolbarButton>
             <details ref={settingsRef} className="reader-settings"
@@ -181,7 +181,7 @@ export function ReaderToolbar({
                 onClick={onOpenSearch}
                 buttonRef={searchButtonRef}
             >
-                <IconSearch />
+                <Codicon name="search" className="reader-toolbar__icon" />
             </ToolbarButton>
         </div>
 

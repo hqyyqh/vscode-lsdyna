@@ -37,4 +37,40 @@ describe('profile-backed module reuse without changing reader cache semantics',f
         manager.managerHelpLookups=(...args)=>{seen++;return previous(...args);};
         try{assert.deepEqual(resolve(),initial);assert.equal(seen,1);}finally{manager.managerHelpLookups=previous;}
     });
+    it('reuses verified ordinal decisions without copying the full form for each cursor position',function(){
+        const {nativeFieldsNeedOnlyOrdinal}=require('../../../out/core/semantics/nativeFieldResolution');
+        catalogModule.resetCatalogInputFormCatalogV4ForTesting();
+        const catalog=catalogModule.getCatalogInputFormCatalogV4(),previous=catalog.formForKeyword;let calls=0;
+        catalog.formForKeyword=function(...args){calls++;return previous.apply(this,args);};
+        try{
+            for(const [keyword,expected]of [['DAMPING_GLOBAL',true],['MAT_CONCRETE_EC2',false]]){
+                const before=calls;
+                for(let i=0;i<3;i++)assert.equal(nativeFieldsNeedOnlyOrdinal(keyword),expected,keyword);
+                assert.equal(calls-before,1,keyword+': repeated cursor reads must not clone the form');
+            }
+        }finally{catalog.formForKeyword=previous;catalogModule.resetCatalogInputFormCatalogV4ForTesting();}
+    });
+    it('retries unavailable ordinal authority and rechecks a replacement catalog',function(){
+        const {nativeFieldsNeedOnlyOrdinal}=require('../../../out/core/semantics/nativeFieldResolution');
+        catalogModule.resetCatalogInputFormCatalogV4ForTesting();
+        const catalog=catalogModule.getCatalogInputFormCatalogV4(),previous=catalog.formForKeyword;let mode='throws',calls=0;
+        catalog.formForKeyword=function(...args){
+            calls++;
+            if(mode==='throws')throw new Error('unavailable');
+            if(mode==='missing')return null;
+            const form=previous.apply(this,args);
+            if(mode==='source')form.source.datasetSha256='unverified';
+            if(mode==='diagnostic')form.source.isUnauditedDiagnostic=true;
+            return form;
+        };
+        try{
+            for(mode of ['throws','missing','source','diagnostic'])assert.equal(nativeFieldsNeedOnlyOrdinal('DAMPING_GLOBAL'),false,mode);
+            mode='approved';assert.equal(nativeFieldsNeedOnlyOrdinal('DAMPING_GLOBAL'),true);
+            assert.equal(nativeFieldsNeedOnlyOrdinal('DAMPING_GLOBAL'),true);assert.equal(calls,5);
+        }finally{catalog.formForKeyword=previous;catalogModule.resetCatalogInputFormCatalogV4ForTesting();}
+        const next=catalogModule.getCatalogInputFormCatalogV4(),nextRead=next.formForKeyword;let checked=0;
+        next.formForKeyword=function(...args){checked++;const form=nextRead.apply(this,args);form.source.datasetSha256='unverified';return form;};
+        try{assert.equal(nativeFieldsNeedOnlyOrdinal('DAMPING_GLOBAL'),false);assert.equal(checked,1);}
+        finally{next.formForKeyword=nextRead;catalogModule.resetCatalogInputFormCatalogV4ForTesting();}
+    });
 });

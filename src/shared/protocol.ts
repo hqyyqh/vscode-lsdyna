@@ -15,6 +15,7 @@
  * @type {string}
  */
 const LOAD_PROJECT_SNAPSHOT_REQUEST = 'lsdyna/loadProjectSnapshot';
+const QUERY_ENTITY_REQUEST = 'lsdyna/queryEntity';
 
 /**
  * Notification informing the server that a file changed, invalidating relevant caches.
@@ -48,6 +49,7 @@ const SNAPSHOT_REFERENCES_NOTIFICATION = 'lsdyna/snapshotReferences';
 
 module.exports = {
     LOAD_PROJECT_SNAPSHOT_REQUEST,
+    QUERY_ENTITY_REQUEST,
     INVALIDATE_NOTIFICATION,
     GET_MANIFEST_ENTRIES_REQUEST,
     GET_CACHE_STATS_REQUEST,

@@ -58,5 +58,20 @@ describe('fieldHelpPresentation', () => {
             const md = formatFieldHelpMarkdown({ primary: '行一\n行二', secondary: null });
             assert.strictEqual(md, '行一  \n行二');
         });
+
+        it('offers identifier line breaks without changing complete primary text or conditions', () => {
+            const identifier = 'AUTOMATIC_ONE_WAY_SURFACE_TO_SURFACE_TIEBREAK';
+            for (const primary of [`EQ.2: ${identifier}; SOFT != 2.`, `EQ.2: ${identifier}；SOFT != 2。`]) {
+                const md = formatFieldHelpMarkdown({ primary, secondary: null });
+                assert.ok(md.includes('AUTOMATIC_<wbr>ONE_<wbr>WAY_<wbr>SURFACE_'));
+                assert.strictEqual(md.replaceAll('<wbr>', ''), primary);
+            }
+        });
+
+        it('leaves source URLs and existing code spans intact', () => {
+            const primary = 'https://example.test/AUTOMATIC_ONE_WAY `AUTOMATIC_ONE_WAY`\n'
+                + '```\nAUTOMATIC_ONE_WAY\n``` [Guide](https://example.test/AUTOMATIC_ONE_WAY)';
+            assert.strictEqual(formatFieldHelpMarkdown({ primary, secondary: null }), primary.replace(/\n/g, '  \n'));
+        });
     });
 });

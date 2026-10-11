@@ -30,13 +30,16 @@ export type LargeFileSelectedField = {
     defaultValue: string;
     choices: string[];
     queryable: boolean;
+    object?: { kind: string; kindLabel: string; id: string; name?: string };
 };
 
 export type LargeFileViewerState = {
     revision: number;
+    locale?: 'en' | 'zh';
     fileName: string;
     fileSize: number;
     anchorLine: number;
+    navigationTarget?: { requestId?: string; line: number; startColumn: number; endColumn: number };
     lineCount?: number;
     lines: LargeFileViewerLine[];
     currentKeyword: string;
@@ -44,11 +47,13 @@ export type LargeFileViewerState = {
     indexingMessage: string;
     stale: boolean;
     selectedField: LargeFileSelectedField | null;
+    keywordSearch?: { query: string; count: number; currentIndex: number };
     search: {
         query: string;
         loading: boolean;
         count: number;
         currentIndex: number;
+        currentLine?: number;
         truncated: boolean;
         message: string;
     };
@@ -92,3 +97,6 @@ export const LargeFileReloadRequest:
 export const LargeFileStateChangedNotification: NotificationType<LargeFileViewerState> =
     { method: 'largeFile/stateChanged' };
 
+
+export const LargeFilePositionChanged: NotificationType<LargeFileNavigateRequest> =
+    { method: 'largeFile/positionChanged' };

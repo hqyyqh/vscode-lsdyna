@@ -1,15 +1,6 @@
 /**
- * Precedence and prior scoring rules for LS-PrePost input form selector and layout resolution.
- *
- * Used by the keyword manager to break ties when resolving layouts from source lines
- * in the presence of ambiguous selectors (e.g. non-suffix card selectors like Contact A-G vs Thermal)
- * or multiple form rules with the same card count.
+ * Selector value constraints and form rule precedence for LS-PrePost layout resolution.
  */
-
-export type SelectorPriorScoreResult = {
-    score: number;
-    reasons: string[];
-};
 
 /**
  * Returns the set of valid/legal selector values allowed by LS-DYNA / LS-PrePost grammar constraints.
@@ -27,8 +18,8 @@ export function getLegalSelectorValues(
 
     // 1. ID / TITLE selector
     if (label.includes('ID') && label.includes('TITLE')) {
-        const hasId = /(?:^|_)(?:ID)(?:$|_)/.test(canonical) || canonical.endsWith('_ID');
-        const hasTitle = /(?:^|_)(?:TITLE)(?:$|_)/.test(canonical) || canonical.endsWith('_TITLE');
+        const hasId = /(?:^|_)(?:ID)(?:$|_)/.test(canonical);
+        const hasTitle = /(?:^|_)(?:TITLE)(?:$|_)/.test(canonical);
         if (hasId && values.includes('ID')) return ['ID'];
         if (hasTitle && values.includes('TITLE')) return ['TITLE'];
         return [''];
@@ -47,7 +38,7 @@ export function getLegalSelectorValues(
             if (hasThermalKeyword && values.includes('Thermal')) {
                 return ['Thermal'];
             }
-            return ['', ...values];
+            return [''];
         }
 
         // MPP1 / MPP2
@@ -60,109 +51,10 @@ export function getLegalSelectorValues(
             return ['', ...values.filter((v: string) => /mpp/i.test(v))];
         }
 
-        // A / ABCDEFG mechanical cards
-        const hasCardLetterValue = values.some((v: string) => /^[A-G]+$/.test(v));
-        if (hasCardLetterValue || label.includes('ABCDEFG')) {
-            return ['', ...values];
-        }
-    }
-
-    // 3. ICFD_MAT family selectors (A / AB)
-    if (canonical.startsWith('ICFD_MAT')) {
-        const hasAB = values.some((v: string) => v === 'A' || v === 'AB');
-        if (hasAB) {
-            return ['', ...values];
-        }
     }
 
     // Default fallback: empty plus all declared values
     return ['', ...values];
-}
-
-/**
- * Resolves structural precedence / prior score for a candidate selector state.
- * Evaluates domain semantics to break ties when lexical evidence (comments) is equal or absent.
-
- *
- * Rules:
- * 1. *CONTACT_* family:
- *    - If keyword does not contain THERMAL:
- *      Leaving Thermal/T_Friction empty ("") earns high precedence (+100 points).
- *      Selecting Thermal/T_Friction when keyword is non-thermal earns 0 points.
- *    - If keyword contains THERMAL:
- *      Selecting Thermal earns precedence (+100 points).
- *    - If keyword does not contain MPP:
- *      Leaving MPP empty ("") earns precedence (+100 points).
- *    - Standard mechanical optional cards (A~G):
- *      Selecting standard mechanical cards for structural contact earns +50 points.
- * 2. *ICFD_MAT* family:
- *    - Natural alphabetical card order (A earns +50 points).
- */
-export function resolveSelectorPriorScore(
-    keyword: string,
-    selections: Record<string, string>,
-    selectors: any[],
-): SelectorPriorScoreResult {
-    const canonical = String(keyword || '').replace(/^\*/, '').toUpperCase();
-    let score = 0;
-    const reasons: string[] = [];
-
-    const isContact = canonical.startsWith('CONTACT');
-    const isThermalKeyword = canonical.includes('THERMAL');
-    const isMppKeyword = canonical.includes('MPP');
-
-    for (const selector of selectors || []) {
-        const controlId = String(selector.controlId || '');
-        const val = String(selections[controlId] || '');
-        const values = (selector.values || []).map((v: any) => String(v.value || ''));
-
-        if (isContact) {
-            const hasThermalValue = values.some((v: string) => /thermal|t_friction/i.test(v));
-            if (hasThermalValue) {
-                if (!isThermalKeyword) {
-                    if (!val) {
-                        score += 100;
-                        reasons.push('contact-non-thermal-empty-preferred');
-                    }
-                } else {
-                    if (val) {
-                        score += 100;
-                        reasons.push('contact-thermal-active-preferred');
-                    }
-                }
-            }
-
-            const hasMppValue = values.some((v: string) => /mpp/i.test(v));
-            if (hasMppValue) {
-                if (!isMppKeyword) {
-                    if (!val) {
-                        score += 100;
-                        reasons.push('contact-non-mpp-empty-preferred');
-                    }
-                } else {
-                    if (val) {
-                        score += 100;
-                        reasons.push('contact-mpp-active-preferred');
-                    }
-                }
-            }
-
-            const hasCardLetterValue = values.some((v: string) => /^[A-G]+$/.test(v));
-            if (hasCardLetterValue) {
-                if (val) {
-                    score += 50;
-                    reasons.push(`contact-mechanical-cards-${val}`);
-                }
-            }
-        } else if (canonical.startsWith('ICFD_MAT')) {
-            if (val === 'A') {
-                score += 50;
-                reasons.push('icfd-mat-card-a-preferred');
-            }
-        }
-    }
-
-    return { score, reasons };
 }
 
 /**

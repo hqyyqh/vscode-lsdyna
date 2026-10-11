@@ -175,8 +175,7 @@ function buildArtifacts(catalogBuffer, schemaBuffer) {
         const confidence = primary.score >= 75 ? 'verified' : primary.score >= 50 ? 'inferred' : 'fallback';
         const aliases = values
             .filter(item => item.category !== primary.category)
-            .map(item => item.category)
-            .filter((value, index, array) => array.indexOf(value) === index);
+            .map(item => item.category);
         keywordToCategory[name] = {
             primaryCategory: primary.category,
             aliases,

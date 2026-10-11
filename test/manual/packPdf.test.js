@@ -56,6 +56,17 @@ describe('packPdf resolution', () => {
         assert.strictEqual(resolved, path.resolve(file));
     });
 
+    it('accepts a leading-dot basename while rejecting parent and cross-drive paths', () => {
+        const file = path.join(root, '..manual.pdf');
+        fs.writeFileSync(file, 'pdf');
+        assert.strictEqual(resolveDocumentPdfPath(root, { pdfFile: '..manual.pdf' }), path.resolve(file));
+        assert.strictEqual(resolveDocumentPdfPath(root, { pdfFile: '../outside.pdf' }), null);
+        if (process.platform === 'win32') {
+            const otherDrive = path.parse(root).root.toUpperCase().startsWith('C:') ? 'D:' : 'C:';
+            assert.strictEqual(resolveDocumentPdfPath(root, { pdfFile: otherDrive + '/outside.pdf' }), null);
+        }
+    });
+
     it('listDeclaredPdfPaths skips missing files and dedupes', () => {
         const a = path.join(root, 'pdf', 'a.pdf');
         fs.writeFileSync(a, 'pdf');

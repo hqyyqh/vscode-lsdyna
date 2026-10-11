@@ -18,20 +18,20 @@ exports.checkStartupSafety = async (root, api, results) => {
         const started = new Promise(resolve => { entered = resolve; });
         const seen = [];
         const originals = prototypes.map(prototype => prototype.prepareKeyword);
-        prototypes.forEach((prototype, index) => {
-            prototype.prepareKeyword = async function(keyword) {
-                seen.push(keyword);
-                if (keyword.replace(/^\*/, '') === 'MAT_ELASTIC') { entered(); await gate; }
-                return originals[index].call(this, keyword);
-            };
-        });
-        const file = path.join(root, 'workspace', `startup-${scenario}.k`);
-        const text = '*DATABASE_BINARY_BLSTFOR\n10,1,1,1,1\n*MAT_ELASTIC\n         7    7.8e-9    210000       0.3\n*END\n';
-        fs.writeFileSync(file, text);
-        const doc = await vscode.workspace.openTextDocument(file);
-        const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-        editor.selection = new vscode.Selection(0, 0, 0, 0);
         try {
+            prototypes.forEach((prototype, index) => {
+                prototype.prepareKeyword = async function(keyword) {
+                    seen.push(keyword);
+                    if (keyword.replace(/^\*/, '') === 'MAT_ELASTIC') { entered(); await gate; }
+                    return originals[index].call(this, keyword);
+                };
+            });
+            const file = path.join(root, 'workspace', `startup-${scenario}.k`);
+            const text = '*DATABASE_BINARY_BLSTFOR\n10,1,1,1,1\n*MAT_ELASTIC\n         7    7.8e-9    210000       0.3\n*END\n';
+            fs.writeFileSync(file, text);
+            const doc = await vscode.workspace.openTextDocument(file);
+            const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+            editor.selection = new vscode.Selection(0, 0, 0, 0);
             const model = await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions');
             assert.ok(model);
             assert.equal(model.directoryStatus, 'loading');

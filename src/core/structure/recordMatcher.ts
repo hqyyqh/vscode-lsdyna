@@ -25,7 +25,11 @@ function decodeValue(name: string, rawText: string, typeCodeValue: unknown): Dec
     if (PARAMETER_PATTERN.test(raw)) return { name, raw, state: 'parameter', typeCode };
     if (typeCode === 'I' || typeCode === 'INTEGER') {
         if (!INTEGER_PATTERN.test(raw)) return { name, raw, state: 'invalid', typeCode };
-        return { name, raw, value: Number(raw), state: 'known', typeCode };
+        const value = Number(raw);
+        // This is the parser's exact-integer limit, not a solver input-range rule.
+        return Number.isSafeInteger(value)
+            ? { name, raw, value, state: 'known', typeCode }
+            : { name, raw, state: 'unsupported', typeCode };
     }
     if (typeCode === 'F' || typeCode === 'R' || typeCode === 'REAL' || typeCode === 'FLOAT') {
         if (!REAL_PATTERN.test(raw)) return { name, raw, state: 'invalid', typeCode };
@@ -165,6 +169,9 @@ export function matchObservedRecord(expected: ExpectedRecord, observed: Observed
         }
         const decoded = decodeValue(field.name, field.raw, field.typeCode);
         decodedFields.push(decoded);
+        if (decoded.state === 'unsupported') {
+            return { quality: 'unsupported', reason: `field-integer-unrepresentable:${field.name}`, decodedFields };
+        }
         if (decoded.state === 'invalid') {
             return { quality: 'mismatch', reason: `field-type-mismatch:${field.name}`, decodedFields };
         }

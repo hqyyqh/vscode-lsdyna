@@ -39,24 +39,39 @@ function observed(text, format = text.includes(',') ? 'free' : 'fixed') {
 }
 
 describe('keyword structure record observation and geometry matching', () => {
-    it('counts blank and indented-dollar lines, but never column-one dollar comments', () => {
+    it('skips ASCII-space comments while retaining blank, tab and non-ASCII-space records', () => {
         const result = observeKeywordBlock('*TEST', [
             '$ ordinary comment',
             '$#       ID     VALUE',
+            '   $ indented ordinary comment',
             '         1       2.5',
             '',
-            ' $this-is-data',
+            '\t$this-is-data',
+            '\u00a0$this-is-data',
+            '  $# indented field header',
             '*END',
             'unreachable',
         ], { keywordLine: 20 });
         assert.equal(result.status, 'observed');
-        assert.equal(result.block.records.length, 3);
-        assert.deepEqual(result.block.records.map(record => record.line), [23, 24, 25]);
-        assert.equal(result.block.records[0].comments.length, 2);
+        assert.equal(result.block.records.length, 4);
+        assert.deepEqual(result.block.records.map(record => record.line), [24, 25, 26, 27]);
+        assert.equal(result.block.records[0].comments.length, 3);
         assert.equal(result.block.records[0].comments[1].kind, 'field-header');
+        assert.equal(result.block.records[0].comments[2].text, '   $ indented ordinary comment');
         assert.equal(result.block.records[1].text, '');
-        assert.equal(result.block.records[2].text, ' $this-is-data');
+        assert.equal(result.block.records[2].text, '\t$this-is-data');
+        assert.equal(result.block.records[3].text, '\u00a0$this-is-data');
+        assert.deepEqual(result.block.trailingComments, [
+            { line: 28, text: '  $# indented field header', kind: 'field-header' },
+        ]);
         assert.equal(result.block.boundary, 'next-keyword');
+    });
+
+    it('keeps BEAM records adjacent across an indented comment', () => {
+        const rows = ['         1         2', '   $ indented ordinary comment', '         3         4'];
+        const result = observeKeywordBlock('*SECTION_BEAM', [...rows, '*END'], { keywordLine: 42 });
+        assert.deepEqual(result.block.records.map(row => [row.line, row.text]), [[43, rows[0]], [45, rows[2]]]);
+        assert.equal(result.block.records[1].comments[0].text, rows[1]);
     });
 
     it('separates preprocessor metadata and enforces physical-line and record budgets', () => {
@@ -109,6 +124,29 @@ describe('keyword structure record observation and geometry matching', () => {
         assert.equal(matchObservedRecord({ ...expected(), marker: { kind: 'column-one', value: '&' } },
             observed('&        1       2.0')).quality, 'mismatch',
         'the marker matches, but the integer field still correctly rejects the ampersand payload');
+    });
+
+    it('withholds numeric values for unsupported integers without calling them invalid', () => {
+        for (const typeCode of ['I', 'INTEGER']) {
+            const card = expected({ geometryRef: { kind: 'official-field-signature', fieldWidth: 20,
+                fields: [{ index: 0, name: 'ID', typeCode }] } });
+            for (const raw of ['9007199254740992', '9007199254740993', '-9007199254740993', '9'.repeat(400)]) {
+                for (const text of [raw + ',', raw.padStart(20)]) {
+                    if (!text.includes(',') && text.length > 20) continue;
+                    const result = matchObservedRecord(card, observed(text));
+                    assert.equal(result.quality, 'unsupported', raw);
+                    assert.equal(result.reason, 'field-integer-unrepresentable:ID');
+                    assert.equal(result.decodedFields[0].state, 'unsupported');
+                    assert.equal(result.decodedFields[0].raw, raw);
+                    assert.equal(result.decodedFields[0].value, undefined);
+                }
+            }
+            for (const raw of ['9007199254740991', '-9007199254740991', '+000007', '-0']) {
+                const result = matchObservedRecord(card, observed(raw + ','));
+                assert.equal(result.quality, 'exact');
+                assert.ok(Object.is(result.decodedFields[0].value, Number(raw)));
+            }
+        }
     });
 
     it('creates blanks only from bounded official geometry', () => {

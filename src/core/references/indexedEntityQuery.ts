@@ -9,6 +9,10 @@ const {
     selectOnDemandDefinitionDescriptors,
 } = require('./onDemandDefinitionScanner');
 const { buildProjectReferenceIndex } = require('./projectReferenceIndex');
+const { nativeElementBinding } = require("../semantics/catalogNativeFileLayout");
+const { queryRegistryReferences } = require('./onDemandReferenceScanner');
+const { getReferenceRuleCatalog } = require('./referenceRuleCatalog');
+const { relationNamespaces } = require('./registryReferenceScanner');
 const {
     collectRegistryReferenceMatches,
     definitionLocations,
@@ -20,7 +24,9 @@ function normalizeFilePath(value) {
 }
 
 function normalizeIndexedEntityId(value) {
-    const raw = String(value ?? '').trim();
+    if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 ? value : null;
+    if (typeof value !== 'string') return null;
+    const raw = value.trim();
     if (!raw) return null;
     if (/^\+?\d+$/.test(raw)) {
         const numeric = Number(raw.replace(/^\+/, ''));
@@ -29,7 +35,8 @@ function normalizeIndexedEntityId(value) {
     return /^[A-Za-z][A-Za-z0-9_]{0,19}$/.test(raw) ? raw : null;
 }
 
-function indexedEntityKinds({ definitionKeywords = runtimeDefinitionKeywords() } = {}) {
+function indexedEntityKinds({ definitionKeywords = runtimeDefinitionKeywords(),
+    referenceKeywords = undefined } = {}) {
     const kinds = new Set();
     for (const descriptor of Object.values({
         ...(definitionKeywords?.generic || {}),
@@ -44,6 +51,16 @@ function indexedEntityKinds({ definitionKeywords = runtimeDefinitionKeywords() }
         const kind = record?.relation?.targetKind;
         if (typeof kind === 'string' && kind) kinds.add(kind);
     }
+    const catalog = getReferenceRuleCatalog();
+    const storedKinds = referenceKeywords === undefined ? catalog.referenceKinds() : undefined;
+    if (storedKinds) for (const kind of storedKinds) kinds.add(kind);
+    const records = referenceKeywords === undefined
+        ? (storedKinds ? [] : catalog.keywords().flatMap(keyword => catalog.records(keyword) || []))
+        : Object.values(referenceKeywords || {}).flat();
+    for (const record of records) {
+        if ((record as any)?.relation?.kind === 'non-reference') continue;
+        for (const kind of relationNamespaces(record, undefined, null).targetKinds) kinds.add(kind);
+    }
     return [...kinds].sort();
 }
 
@@ -57,30 +74,18 @@ function locationKey(location) {
     ].join(':');
 }
 
-function occurrenceMetadata(referenceIndex, location) {
-    return (referenceIndex?.registryReferenceOccurrences || []).find(occurrence =>
-        normalizeFilePath(occurrence.filePath) === normalizeFilePath(location.filePath) &&
-        occurrence.lineIndex === location.line &&
-        occurrence.startCharacter === location.startCharacter &&
-        occurrence.endCharacter === location.endCharacter
-    ) || null;
-}
-
-function definitionMetadata(referenceIndex, location) {
-    return (referenceIndex?.allDefinitionOccurrences || []).find(definition =>
-        normalizeFilePath(definition.filePath) === normalizeFilePath(location.filePath) &&
-        definition.idLine === location.line &&
-        definition.idStartChar === location.startCharacter &&
-        definition.idEndChar === location.endCharacter
-    ) || null;
+function hasQueryCoordinates(location) {
+    return typeof location?.filePath === 'string' && location.filePath.length > 0 &&
+        Number.isSafeInteger(location.line) && location.line >= 0 &&
+        Number.isSafeInteger(location.startCharacter) && location.startCharacter >= 0 &&
+        Number.isSafeInteger(location.endCharacter) && location.endCharacter >= location.startCharacter;
 }
 
 function stableQueryLocations(locations) {
     const seen = new Set();
     const unique = [];
     for (const location of locations) {
-        if (!location?.filePath || !Number.isInteger(location.line) ||
-            !Number.isInteger(location.startCharacter) || !Number.isInteger(location.endCharacter)) continue;
+        if (!hasQueryCoordinates(location)) continue;
         const key = locationKey(location);
         if (seen.has(key)) continue;
         seen.add(key);
@@ -106,6 +111,24 @@ function compactIndexedEntityReasons(reasons) {
         .map(([reason, count]) => count > 1 ? `${reason} (${count} occurrences)` : reason);
 }
 
+function indexedEntityDisplay(block, location, entityId, kind, definitionKeywords, definition = null) {
+    const keyword = String(block?.keyword || '').replace(/^\*/, '').toUpperCase().replace(/[+%\-]$/, '');
+    const descriptor = definitionKeywords.generic?.[keyword] || definitionKeywords.onDemand?.[keyword];
+    // A repeated element block's display identity belongs to its first record.
+    const repeated = nativeElementBinding(keyword) || ['repeat-all-data-records', 'repeat-data-record-template'].includes(descriptor?.recordMode);
+    const display = block && location.line <= block.endLine && !repeated ? block.displayIdentity : null;
+    // Display identities describe the owning object, never the referenced ID.
+    const ownerId = descriptor && display?.confidence === 'verified' && display.identity?.field === descriptor.fieldName
+        ? normalizeIndexedEntityId(display.identity.value) : null;
+    return {
+        ...(location.role === 'definition' ? { entityId: String(entityId), entityKind: kind }
+            : { ...(descriptor?.targetKind ? { entityKind: descriptor.targetKind } : {}),
+                ...(ownerId !== null ? { entityId: String(ownerId) } : {}) }),
+        ...(display?.confidence === 'verified' && display.title ? { entityName: display.title }
+            : definition?.title ? { entityName: definition.title } : {}),
+    };
+}
+
 async function queryIndexedEntityId({
     snapshot,
     id,
@@ -115,7 +138,16 @@ async function queryIndexedEntityId({
     scanDefinitions = scanOnDemandDefinitions,
     scanBlockLines = undefined,
     collectReferences = collectRegistryReferenceMatches,
+    queryReferences = queryRegistryReferences,
+    onPhase = undefined,
+    referenceIndex: suppliedReferenceIndex = undefined,
 } = {} as any) {
+    let phaseStarted = performance.now();
+    const phase = (name, details = {}) => {
+        const now = performance.now();
+        onPhase?.({ phase: name, durationMs: now - phaseStarted, ...details });
+        phaseStarted = now;
+    };
     const entityId = normalizeIndexedEntityId(id);
     const kind = String(targetKind || '').trim();
     if (!snapshot?.rootFile || !snapshot.fileIndexes || !isEntityIdentity(entityId) || !kind) {
@@ -125,39 +157,36 @@ async function queryIndexedEntityId({
         return { state: 'cancelled', id: entityId, targetKind: kind, locations: [], reasons: ['cancelled'] };
     }
 
-    const referenceIndex = buildProjectReferenceIndex(snapshot);
+    let referenceIndex = suppliedReferenceIndex || buildProjectReferenceIndex(snapshot);
+    phase('reference-index');
     const query = { id: entityId, targetKinds: [kind], targetDefinitions: [] };
-    const references = collectReferences(referenceIndex, query, {
-        cancellationToken,
-        retainVerifiedMatchesOnIncomplete: true,
-    });
-    if (references.state === 'cancelled') {
-        return {
-            state: 'cancelled',
-            id: entityId,
-            targetKind: kind,
-            locations: [],
-            reasons: references.reasons || ['cancelled'],
-            referenceIndex,
-        };
-    }
-
     const indexedDefinitions = definitionLocations(referenceIndex, query);
-    const descriptors = selectOnDemandDefinitionDescriptors([kind], [], definitionKeywords);
+    const lookupKinds = new Set([kind]);
+    for (const occurrence of referenceIndex.registryReferenceOccurrences || []) {
+        const search = occurrence.referenceValue?.targetSearch || occurrence.referenceValue?.semanticRelation?.targetSearch;
+        if (search?.some(target => target.targetKinds.includes(kind))) {
+            for (const target of search) for (const candidate of target.targetKinds) lookupKinds.add(candidate);
+        }
+    }
+    const descriptors = selectOnDemandDefinitionDescriptors([...lookupKinds], [], definitionKeywords);
     let definitionLookup = { state: 'complete', definitions: [], reasons: [] } as any;
     if (descriptors.length > 0) {
         definitionLookup = await scanDefinitions({
             referenceIndex,
             fileIndexes: snapshot.fileIndexes,
             effectiveId: entityId,
-            targetKinds: [kind],
+            targetKinds: [...lookupKinds],
             targetDefinitions: [],
             projectScoped: snapshot.scope !== 'single-file',
             cancellationToken,
             definitionKeywords,
             ...(typeof scanBlockLines === 'function' ? { scanBlockLines } : {}),
         });
+    } else if (!referenceIndex.indexedTargetKinds?.has(kind)) {
+        definitionLookup = { state: 'incomplete', definitions: [], reasons: ['target-kind-unindexed'] };
     }
+    phase('definitions', { scannedBlocks: definitionLookup.scannedBlockCount || 0,
+        scannedLines: definitionLookup.scannedLineCount || 0 });
     if (definitionLookup.state === 'cancelled' || cancellationToken?.isCancellationRequested) {
         return {
             state: 'cancelled',
@@ -169,17 +198,69 @@ async function queryIndexedEntityId({
             definitionLookup,
         };
     }
+    referenceIndex = { ...referenceIndex, queryDefinitionLookup: { ...definitionLookup, id: entityId,
+        targetKinds: descriptors.map(descriptor => descriptor.targetKind).filter(Boolean),
+        targetDefinitions: descriptors.map(descriptor => descriptor.keyword) } };
+    const references = await queryReferences({ referenceIndex,
+        fileIndexes: snapshot.fileIndexes, query, cancellationToken, collectReferences,
+        retainVerifiedMatchesOnIncomplete: true,
+        ...(typeof scanBlockLines === 'function' ? { scanBlockLines } : {}) });
+    referenceIndex = references.referenceIndex;
+    const referenceLookup = references.referenceLookup;
+    phase('references', { scannedBlocks: referenceLookup?.scannedBlocks || 0,
+        scannedLines: referenceLookup?.scannedLines || 0 });
+    if (references.state === 'cancelled') return { state: 'cancelled', id: entityId, targetKind: kind,
+        locations: [], reasons: references.reasons || ['cancelled'], referenceIndex, definitionLookup };
 
+    const fileBlocks = new Map((snapshot.fileIndexes instanceof Map
+        ? [...snapshot.fileIndexes] : Object.entries(snapshot.fileIndexes))
+        .map(([file, index]: [string, any]) => [normalizeFilePath(file), index.keywordBlocks || []]));
+    const displayEntity = (location, definition = null) => {
+        const blocks: any[] = fileBlocks.get(normalizeFilePath(location.filePath)) || [];
+        let low = 0, high = blocks.length - 1;
+        while (low <= high) {
+            const middle = (low + high) >>> 1;
+            if (blocks[middle].startLine <= location.line) low = middle + 1;
+            else high = middle - 1;
+        }
+        const block = blocks[high];
+        return indexedEntityDisplay(block, location, entityId, kind, definitionKeywords, definition);
+    };
+    const normalizedFiles = new Map();
+    const metadataKey = (file, line, start, end) => {
+        if (!normalizedFiles.has(file)) normalizedFiles.set(file, normalizeFilePath(file));
+        return JSON.stringify([normalizedFiles.get(file), line, start, end]);
+    };
+    const metadataMap = (values, definition, locations) => {
+        const map = new Map<string, any[]>();
+        const wanted = new Set(locations.map(location => metadataKey(location.filePath, location.line,
+            location.startCharacter, location.endCharacter)));
+        if (!wanted.size) return map;
+        for (const item of values || []) {
+            const key = definition ? metadataKey(item.filePath, item.idLine, item.idStartChar, item.idEndChar)
+                : metadataKey(item.filePath, item.lineIndex, item.startCharacter, item.endCharacter);
+            if (!wanted.has(key)) continue;
+            const entries = map.get(key) || []; entries.push(item); map.set(key, entries);
+        }
+        return map;
+    };
+    const definitionsByPosition = metadataMap(referenceIndex.allDefinitionOccurrences, true, indexedDefinitions);
+    const referencesByPosition = metadataMap(references.metadataOccurrences || referenceIndex.registryReferenceOccurrences,
+        false, references.locations);
+    const metadataAt = (map, location) => map.get(metadataKey(location.filePath, location.line,
+        location.startCharacter, location.endCharacter))?.[0];
     const definitionResults = indexedDefinitions.map(location => {
-        const metadata = definitionMetadata(referenceIndex, location);
+        const metadata = metadataAt(definitionsByPosition, location);
         return {
             ...location,
             role: 'definition',
             keyword: metadata?.keyword || metadata?.targetKeyword || '',
             fieldName: metadata?.fieldName || metadata?.idFieldName || 'ID',
+            ...displayEntity({ ...location, role: 'definition' }, metadata),
         };
     });
     for (const definition of definitionLookup.definitions || []) {
+        if (definition.targetKind && definition.targetKind !== kind) continue;
         definitionResults.push({
             filePath: definition.filePath,
             line: definition.idLine,
@@ -188,37 +269,45 @@ async function queryIndexedEntityId({
             role: 'definition',
             keyword: definition.keyword || definition.targetKeyword || '',
             fieldName: definition.fieldName || 'ID',
+            ...displayEntity({ ...definition, line: definition.idLine, role: 'definition' }, definition),
         });
     }
     const referenceResults = references.locations.map(location => {
-        const metadata = occurrenceMetadata(referenceIndex, location);
+        const metadata = metadataAt(referencesByPosition, location);
         return {
             ...location,
             role: 'reference',
             keyword: metadata?.keyword || '',
             fieldName: metadata?.fieldName || '',
+            ...displayEntity({ ...location, role: 'reference' }),
         };
     });
-    const locations = stableQueryLocations([...definitionResults, ...referenceResults]);
-    const partial = references.state !== 'complete' || definitionLookup.state !== 'complete';
+    const candidates = [...definitionResults, ...referenceResults];
+    const locations = stableQueryLocations(candidates);
+    const unavailableLocation = candidates.some(location => !hasQueryCoordinates(location));
+    const partial = references.state !== 'complete' || definitionLookup.state !== 'complete' || unavailableLocation;
+    phase('presentation', { locations: locations.length });
     return {
         state: partial && locations.length > 0 ? 'partial' : partial ? 'incomplete' : 'complete',
         scope: snapshot.scope === 'single-file' ? 'single-file' : 'project',
         id: entityId,
         targetKind: kind,
-        locations: partial && locations.length === 0 ? [] : locations,
+        locations,
         reasons: partial
             ? compactIndexedEntityReasons([
                 ...(references.reasons || []),
                 ...(definitionLookup.reasons || []),
+                ...(unavailableLocation ? ['entity-query-location-unavailable'] : []),
             ])
             : [],
         referenceIndex,
         definitionLookup,
+        referenceLookup,
     };
 }
 
 module.exports = {
+    indexedEntityDisplay,
     indexedEntityKinds,
     compactIndexedEntityReasons,
     normalizeIndexedEntityId,

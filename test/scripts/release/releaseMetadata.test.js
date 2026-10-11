@@ -20,7 +20,8 @@ describe('release metadata boundaries', () => {
             }, auditSha256: 'b'.repeat(64), summary: { safeWriteGaps: 0 } }));
             put('package.json', JSON.stringify({ scripts: { build: 'extract' }, devDependencies: { tool: '1' },
                 main: './out/extension.js', dependencies: { runtime: '1' }, contributes: { languages: [{ id: 'lsprepost-command-file' }] } }));
-            put('out/core/lsppCatalog.js', 'module.exports = 42;');
+            put('out/core/lsppCatalog.js', '// Evidence: docs/' + ['lspp', 'native', 'synthetic.json.gz'].join('-') +
+                '\n// test/fixtures/' + ['lspp', 'native', 'formats'].join('-') + '/provenance.json\nmodule.exports = 42;');
             put('out/extension.js', "exports.value = require('./core/lsppCatalog'); exports.reason = 'lspp-input-form-source-error';");
             put("keywords/runtime/native-readers/lspp-reader.json", '{"evidence":{"sha256":"keep"},"source":"keep"}');
             put("keywords/runtime/references/field_reference_index.json", JSON.stringify({ lsppBlockedReferences: { file: "keywords/runtime/native-readers/lspp-reader.json", sha256: 'keep' } }));
@@ -28,6 +29,8 @@ describe('release metadata boundaries', () => {
             put('.vscodeignore', "!keywords/runtime/native-readers/lspp-reader.json\n!syntaxes/lspp-cfile.tmLanguage.json");
             const baselineMetadata = prepareReleaseMetadata(stage, { renameResources: false });
             assert.equal(baselineMetadata.removedProducer.executable, 'C:/vendor.exe');
+            assert.equal(Object.keys(baselineMetadata.evidenceComments).length, 2);
+            assert.match(fs.readFileSync(path.join(stage, 'out/core/lsppCatalog.js'), 'utf8'), /internal maintenance evidence/);
             assert.ok(fs.existsSync(path.join(stage, 'out/runtime/lspp-input-form/manifest.json')));
             assert.equal(JSON.parse(fs.readFileSync(path.join(stage, 'package.json'))).scripts, undefined);
             assert.equal(JSON.parse(fs.readFileSync(path.join(stage, "keywords/runtime/references/field_reference_index.json"))).lsppBlockedReferences.file,

@@ -28,10 +28,7 @@ function evictIfNeeded(): void {
                 oldestId = id;
             }
         }
-        if (!oldestId) {
-            break;
-        }
-        store.delete(oldestId);
+        store.delete(oldestId!);
     }
 }
 

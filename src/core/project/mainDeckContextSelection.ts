@@ -85,9 +85,7 @@ function createMainDeckContextSelector() {
 
     function select(documentPath, rootFile, containingProjects = []) {
         if (!documentPath || !rootFile) return false;
-        const candidates = sortProjectsByRoot(
-            (containingProjects || []).filter(project => projectRootFile(project))
-        );
+        const candidates = (containingProjects || []).filter(project => projectRootFile(project));
         if (candidates.length < 2) return false;
         const rootKey = normalizeMainDeckContextKey(rootFile);
         if (!candidates.some(project =>

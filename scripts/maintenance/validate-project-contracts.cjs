@@ -101,6 +101,11 @@ const GENERATION_TOOL_PATHS = [
 ];
 
 const INTERNAL_COMMANDS = new Set([
+    // Existing include-tree display controls have no Command Palette contributions.
+    'extension.includeTree.sortByName',
+    'extension.includeTree.sortBySize',
+    'extension.includeTree.sortByTree',
+    'extension.includeTree.toggleSize',
     'extension.keywordOptions.apply',
     'extension.keywordOptions.openEvidence',
     'extension.keywordOptions.refresh',
@@ -108,12 +113,15 @@ const INTERNAL_COMMANDS = new Set([
     'extension.keywordOptions.stage',
     'extension.keywordOptions.togglePin',
     'extension.rebuildCardComments',
+    'extension.updateKeywordCards',
     'extension.insertVerifiedMissingRecords',
     'extension.lsdynaApplyInlineEditChoice',
     'extension.lsdynaCancelInlineEditChoice',
     'extension.openSemanticEvidence',
     'extension.goToKeywordUsage',
     'extension.setLsdynaTablePreviewView',
+    'extension.hoverMore',
+    'extension.toggleHoverDetails',
     'extension.openIncludeFolder',
     'extension.openIncludeNewTab',
     'extension.openIncludeSplit',
@@ -375,36 +383,22 @@ function extractRegisteredCommands(projectRoot) {
 }
 
 function validateWorkflowCoverage(root, errors) {
-    const requiredCommands = [
-        'npm run check:contracts',
-        'npm test',
-        'npm run test:webview',
-        "python -m unittest discover -s test/scripts/build/keywords",
-        "python scripts/build/keywords/validate_field_data_translation.py --check-content",
-        "python scripts/build/keywords/audit_field_data_quality.py",
-        'npm run check:native-help-zh',
-        "node scripts/release/package-hover-release.cjs",
-        'run: npm audit\n',
-        'npm run test:native-python',
-        "node scripts/release/validate-package-contents.cjs --vsix",
-    ];
-    for (const workflowName of ['ci.yml', 'release.yml']) {
-        const workflowPath = path.join(root, '.github', 'workflows', workflowName);
-        const workflow = decodeUtf8Strict(workflowPath).replace(/\r\n/g, '\n');
-        for (const command of requiredCommands) {
-            if (!workflow.includes(command)) {
-                errors.push(`${workflowName} does not run required check: ${command}`);
-            }
-        }
-        for (const sourceLine of [
-            'repository: ansys/pydyna',
-            `ref: ${PINNED_PYDYNA_COMMIT}`,
-            'path: pydyna',
-        ]) {
-            if (!workflow.includes(sourceLine)) {
-                errors.push(`${workflowName} does not prepare pinned PyDYNA input: ${sourceLine}`);
-            }
-        }
+    // Source checkpoints make public builds independent of private native producers.
+    // Both entry points delegate to this one platform build/installed-host workflow.
+    const shared = decodeUtf8Strict(path.join(root, '.github/workflows/public-ci.yml'));
+    for (const command of ['npm run check:contracts', 'npm test', 'npm run test:webview',
+        'python -m unittest discover -s test/scripts/build/keywords', 'npm run check:field-data-zh',
+        'npm run check:native-help-zh', 'npm run check:manual-semantics-zh', 'npm audit',
+        'npm run build:native-sqlite', 'node scripts/release/package-hover-release.cjs',
+        'node scripts/release/validate-package-contents.cjs --vsix', 'run-installed-acceptance.cjs',
+        'benchmark-release-hosts.cjs']) {
+        if (!shared.includes(command)) errors.push(`public-ci.yml does not run required check: ${command}`);
+    }
+    for (const name of ['ci.yml', 'release.yml']) {
+        const file = path.join(root, '.github/workflows', name);
+        if (name === 'ci.yml' && !fs.existsSync(file)) continue; // Internal manual entry point is not exported.
+        if (!decodeUtf8Strict(file).includes('uses: ./.github/workflows/public-ci.yml'))
+            errors.push(`${name} must reuse the platform acceptance workflow`);
     }
 
     const releaseWorkflow = decodeUtf8Strict(path.join(root, '.github', 'workflows', 'release.yml'));
@@ -427,8 +421,9 @@ function validateWorkflowCoverage(root, errors) {
     for (const requiredText of [
         'Install from VSIX',
         'Developer: Reload Window',
-        'lsdyna-manual-pack-en_20260804.zip',
-        'lsdyna-manual-pack-bilingual_20260804.zip',
+        'lsdyna-manual-pack-en.zip',
+        'lsdyna-manual-pack-bilingual.zip',
+        'https://lsdyna.ansys.com/manuals-download/',
         'SumatraPDF is Windows-only',
         'Only the PDF manuals are the official, authoritative reference',
         '从 VSIX 安装',
@@ -647,14 +642,53 @@ function validateFieldHelpPackaging(root, manifest, errors) {
     }
 }
 
+// ponytail: scan maintained Node runners; ignored one-off scripts still require manual review.
+function debugStorageErrors(sources) {
+    const errors = [];
+    const inherited = new Set(['scripts/host/vsix-host.cjs', 'scripts/host/run-editor-safety-large-file-host-worker.cjs']);
+    for (const { file, source } of sources) {
+        if (file === 'scripts/host/temp-runs.cjs') continue; // The sole allocator and ownership implementation.
+        const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+        let rawAllocation = false, profile = false, managed = false, importsManager = false;
+        const walk = node => {
+            if (ts.isCallExpression(node)) {
+                const expression = node.expression;
+                const name = ts.isPropertyAccessExpression(expression) ? expression.name.text
+                    : ts.isIdentifier(expression) ? expression.text
+                    : ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression)
+                        ? expression.argumentExpression.text : '';
+                if (/^mkdtemp(?:Sync)?$/.test(name)) rawAllocation = true;
+                if (name === 'createTempRun') managed = true;
+                if (name === 'require' && node.arguments.some(argument => ts.isStringLiteralLike(argument)
+                    && /(?:^|\/)temp-runs\.cjs$/.test(argument.text))) importsManager = true;
+            }
+            if ((ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
+                && /--(?:user-data-dir|extensions-dir)=/.test(node.text)) profile = true;
+            ts.forEachChild(node, walk);
+        };
+        walk(tree);
+        if (rawAllocation) errors.push(`${file}: unmanaged mkdtemp; use temp-runs.cjs`);
+        if (profile && !(managed && importsManager) && !inherited.has(file))
+            errors.push(`${file}: isolated host profile must use createTempRun`);
+    }
+    return errors;
+}
+
 function validateProjectContracts(projectRoot = process.cwd(), { publicSource = false } = {}) {
     const root = path.resolve(projectRoot);
     const errors = [];
     const packagePath = path.join(root, 'package.json');
     const packageText = decodeUtf8Strict(packagePath);
     const manifest = JSON.parse(packageText);
+    const debugScripts = ['scripts/host', 'scripts/benchmark', 'scripts/native'].flatMap(directory =>
+        collectFiles(path.join(root, directory), file => /\.[cm]?js$/.test(file)));
+    const packageRunner = path.join(root, 'scripts/release/package-hover-release.cjs');
+    if (fs.existsSync(packageRunner)) debugScripts.push(packageRunner);
+    errors.push(...debugStorageErrors(debugScripts.map(file => ({
+        file: path.relative(root, file).replaceAll('\\', '/'), source: decodeUtf8Strict(file),
+    }))));
     validateManifestLocalization(manifest, errors);
-    if (!publicSource) validateWorkflowCoverage(root, errors);
+    validateWorkflowCoverage(root, errors);
     validateFieldHelpPackaging(root, manifest, errors);
     if (!publicSource) {
         validateTrackedSourceBoundaries(root, errors);
@@ -731,6 +765,7 @@ function validateProjectContracts(projectRoot = process.cwd(), { publicSource = 
 }
 
 module.exports = {
+    debugStorageErrors,
     INTERNAL_COMMANDS,
     decodeUtf8Strict,
     extractReadmeSettings,

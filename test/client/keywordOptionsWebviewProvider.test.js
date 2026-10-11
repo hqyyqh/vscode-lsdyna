@@ -9,7 +9,7 @@ function state() {
         revision: 0, status: 'empty', locale: 'en', pinned: false,
         currentKeyword: '', targetKeyword: '', currentPostCount: 0, targetPostCount: 0,
         mode: 'none', dimensions: [], targets: [], postChoices: [],
-        instances: [], selectedInstanceId: null, scope: 'file', scopeStatus: 'ready', scopeMessage: '',
+        instances: [], selectedInstanceId: null,
         editLevel: 'view-only', capabilities: [],
         controls: [], formCandidates: [], selectedFormRuleId: null, cards: [], selectedFieldId: null, help: { status: 'none', fieldId: null }, preview: null,
         hasDrafts: false, canApply: false, message: '',
@@ -18,8 +18,8 @@ function state() {
             apply: 'Apply', reset: 'Reset', pin: 'Pin', unpin: 'Unpin',
             migrated: 'Kept', added: 'Added', discarded: 'Discarded', details: 'Details', noOptions: 'None',
             keywordLine: 'Keyword line', cards: 'Cards and layout', fields: 'Field values', comments: 'Comments',
-            scope: 'Scope', currentFile: 'Current file', currentProject: 'Include project', scopeLoading: 'Loading',
-            projectInstance: 'Project instance', dirty: 'Unsaved', readonly: 'Read only',
+            currentFile: 'Current file',
+            dirty: 'Unsaved', readonly: 'Read only',
             reviewed: 'Reviewed',
             capabilities: 'Capabilities', available: 'Available',
             locateSource: 'Locate source', openManual: 'Open manual', resetField: 'Reset field',
@@ -28,6 +28,24 @@ function state() {
 }
 
 describe('KeywordOptionsWebviewProvider panel host', () => {
+    it('exposes only the active panel current source, not a hidden or disposed source', () => {
+        const provider = new KeywordOptionsWebviewProvider(process.cwd(), {}, {
+            ...state(), instanceContext: { uri: 'file:///model/a.k' },
+        });
+        assert.equal(provider.getActiveSourceUri(), null);
+        const panel = provider.showPanel('Keyword Manager');
+        panel.active = true;
+        assert.equal(provider.getActiveSourceUri().toString(), 'file:///model/a.k');
+        provider.publish({ ...state(), instanceContext: { uri: 'file:///model/b.k' } });
+        assert.equal(provider.getActiveSourceUri().toString(), 'file:///model/b.k');
+        panel.active = false;
+        assert.equal(provider.getActiveSourceUri(), null);
+        panel.active = true;
+        provider.publish(state());
+        assert.equal(provider.getActiveSourceUri(), null);
+        provider.dispose();
+        assert.equal(provider.getActiveSourceUri(), null);
+    });
     it('directory completion preserves the edit revision and current draft state', async () => {
         const initial = { ...state(), directoryStatus: 'loading', hasDrafts: true };
         const provider = new KeywordOptionsWebviewProvider(process.cwd(), {}, initial);
@@ -84,7 +102,7 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
             selectDimension: () => true, selectTarget: () => true, selectPostCount: () => true,
             updateControl: () => true, selectForm: () => true,
             selectInstance: () => true, selectField: () => true, updateField: () => true,
-            selectScope: () => true, locateSource: () => true, openManual: () => true,
+            locateSource: () => true, openManual: () => true,
             apply: () => true, reset: () => true, togglePin: () => true,
             panelDisposed: () => { disposed++; },
         };
@@ -96,6 +114,7 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
         assert.equal(first.viewType, 'lsdynaKeywordManager');
         assert.equal(first.viewColumn, vscode.ViewColumn.Beside);
         assert.match(first.webview.html, /default-src 'none'/);
+        assert.match(first.webview.html, /<html lang="en">/);
         const second = provider.showPanel('Keyword Manager');
         assert.equal(second, first);
         assert.equal(first.revealCount, 1);
@@ -104,6 +123,17 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
         first.dispose();
         assert.equal(provider.isOpen(), false);
         assert.equal(disposed, 1);
+        provider.dispose();
+    });
+
+    it('uses the current Chinese runtime locale when opening or reopening the panel', () => {
+        const provider = new KeywordOptionsWebviewProvider(process.cwd(), {}, state());
+        provider.publish({ ...state(), locale: 'zh' });
+        const chinese = provider.showPanel('关键字管理器');
+        assert.match(chinese.webview.html, /<html lang="zh-CN">/);
+        chinese.dispose();
+        provider.publish({ ...state(), locale: 'en' });
+        assert.match(provider.showPanel('Keyword Manager').webview.html, /<html lang="en">/);
         provider.dispose();
     });
 
@@ -127,7 +157,6 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
             selectInstance: id => called('instance', id),
             selectField: request => { called('field', request.fieldId); return { status: 'ready', fieldId: request.fieldId }; },
             updateField: (id, value) => called('update', id, value),
-            selectScope: scope => called('scope', scope),
             locateSource: () => called('source'),
             openManual: () => called('manual'),
             apply: () => called('apply'), reset: () => called('reset'),
@@ -145,7 +174,7 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
         await request('12', 'keywordManager/selectForm', { ruleId: 'input-form-12' });
         await request('3', 'keywordManager/selectField', { fieldId: 'card:field', instanceId: null, requestId: 1 });
         await request('4', 'keywordManager/updateField', { fieldId: 'card:field', value: '42' });
-        await request('6', 'keywordManager/selectScope', { scope: 'project' });
+        assert.equal(provider.handlers.length, 14); // Retired project scope has no request handler.
         await request('7', 'keywordManager/locateSource');
         await request('8', 'keywordManager/openManual');
         await request('9', 'keywordManager/openManual', { revision: 99 });
@@ -154,13 +183,13 @@ describe('KeywordOptionsWebviewProvider panel host', () => {
         assert.deepEqual(calls, [
             ['post', 6], ['instance', 'file:12'], ['control', 'selector:mpp', 'MPP1'],
             ['form', 'input-form-12'], ['field', 'card:field'],
-            ['update', 'card:field', '42'], ['scope', 'project'], ['source'], ['manual'],
+            ['update', 'card:field', '42'], ['source'], ['manual'],
         ]);
         const results = panel.webview.posted.filter(message => message.id).map(message => message.result);
-        assert.deepEqual(results.slice(0, 7).map(result => result.accepted), [true, true, true, true, true, true, true]);
-        assert.deepEqual(results.slice(7, 10), [true, true, false]);
-        assert.equal(results[10].accepted, false);
-        assert.equal(results[10].reason, 'stale-revision');
+        assert.deepEqual(results.slice(0, 6).map(result => result.accepted), [true, true, true, true, true, true]);
+        assert.deepEqual(results.slice(6, 9), [true, true, false]);
+        assert.equal(results[9].accepted, false);
+        assert.equal(results[9].reason, 'stale-revision');
         provider.dispose();
     });
 

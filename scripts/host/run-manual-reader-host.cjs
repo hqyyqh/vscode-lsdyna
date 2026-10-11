@@ -1,4 +1,5 @@
 'use strict';
+const { fetchJson, openSocket, createCdp } = require('../../test/support/devtools.cjs');
 const fs=require('node:fs'),path=require('node:path'),net=require('node:net'),{spawn}=require('node:child_process');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function main(){
@@ -8,24 +9,27 @@ async function main(){
  const child=spawn(process.execPath,[path.join(__dirname,'run-release-host.cjs'),'smoke'],{env:{...process.env,LSDYNA_RELEASE_CDP_PORT:String(port)},windowsHide:true});
  child.stdout.on('data',bytes=>{process.stdout.write(bytes);stdout+=bytes;root=stdout.match(/Release host evidence: ([^\r\n]+)/)?.[1];});
  child.stderr.on('data',bytes=>process.stderr.write(bytes));
- const host=new Promise(resolve=>{child.on('error',error=>{hostError=error;resolve();});child.on('close',code=>{if(code)hostError=Error('Release host exited '+code);resolve();});});
+ const host=new Promise(resolve=>{
+  child.on('error',error=>{hostError=error;resolve();});
+  child.on('close',(code,signal)=>{
+   if(!hostError&&(signal||code!==0))hostError=Object.assign(Error(`Release host exited ${code} signal ${signal||'none'}`),
+    {exitCode:code,signal:signal||null,runtimeMayBeActive:Boolean(signal||code===null)});
+   resolve();
+  });
+ });
  let socket;const deadline=Date.now()+120000;
  while(!socket&&Date.now()<deadline){
   if(hostError)throw hostError;
-  try{const info=await(await fetch('http://127.0.0.1:'+port+'/json/version')).json();socket=new WebSocket(info.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});}
+  try{const info=await fetchJson('http://127.0.0.1:'+port+'/json/version',Math.min(3000,deadline-Date.now()));socket=await openSocket(info.webSocketDebuggerUrl,Math.min(3000,deadline-Date.now()));}
   catch{socket=null;await delay(100);}
  }
  if(!socket)throw Error('No DevTools endpoint');
-    const pending = new Map(), contexts = new Map(), attached = new Set();
-    let id = 0;
-    const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-        const requestId = ++id;
-        const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timeout: ${method}`)); }, 30000);
-        pending.set(requestId, { resolve, reject, timer });
-        socket.send(JSON.stringify({ id: requestId, method, params, sessionId }));
-    });
+    const contexts = new Map(), attached = new Set();
+    const cdp = createCdp(socket);
+    const call = cdp.call;
     socket.onmessage = event => {
-        const message = JSON.parse(String(event.data));
+        let message;
+        try { message = JSON.parse(String(event.data)); } catch { return; }
         if (message.method === 'Runtime.executionContextCreated') {
             const context = message.params.context;
             contexts.set(`${message.sessionId}:${context.id}`, { contextId: context.id, sessionId: message.sessionId });
@@ -33,11 +37,6 @@ async function main(){
         if (message.method === 'Runtime.executionContextDestroyed') contexts.delete(`${message.sessionId}:${message.params.executionContextId}`);
         if (message.method === 'Runtime.executionContextsCleared') {
             for (const [key, value] of contexts) if (value.sessionId === message.sessionId) contexts.delete(key);
-        }
-        const entry = pending.get(message.id);
-        if (entry) {
-            clearTimeout(entry.timer); pending.delete(message.id);
-            if (message.error) entry.reject(new Error(message.error.message)); else entry.resolve(message.result);
         }
     };
     const evaluate = async (context, expression) => {
@@ -116,6 +115,6 @@ async function main(){
   })()`);
   fs.writeFileSync(path.join(root,'manual-renderer.json'),JSON.stringify(result,null,2));
   await host;if(hostError)throw hostError;console.log(JSON.stringify(result));
- } finally {socket.close();}
+ } finally {cdp.close();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

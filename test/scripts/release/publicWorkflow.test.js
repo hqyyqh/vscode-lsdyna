@@ -1,0 +1,40 @@
+'use strict';
+const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
+const yaml = require('js-yaml');
+const root = path.resolve(__dirname, '../../..');
+const read = file => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8'));
+describe('platform release workflow dependency closure', () => {
+    it('builds SQLite and a target VSIX on each matching runner and tests that artifact twice', () => {
+        const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'], host = workflow.jobs['installed-host'];
+        assert.ok('workflow_call' in workflow.on);
+        const targets = ['win32-x64', 'linux-x64', 'darwin-arm64'];
+        assert.deepEqual(build.strategy.matrix.include.map(row => row.target), targets);
+        assert.deepEqual(host.strategy.matrix.platform.map(row => row.target), targets);
+        assert.deepEqual(host.strategy.matrix.vscode, ['1.100.0', '1.139.1']);
+        const commands = build.steps.map(step => step.run || '').join('\n');
+        assert.ok(commands.indexOf('build:native-sqlite') < commands.indexOf('package-hover-release.cjs'));
+        assert.ok(commands.includes('dist/candidate.vsix "${{ matrix.target }}"'));
+        const upload = build.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
+        const download = host.steps.find(step => step.uses?.startsWith('actions/download-artifact@'));
+        assert.equal(upload.with.name, 'candidate-${{ matrix.target }}');
+        assert.equal(download.with.name, 'candidate-${{ matrix.platform.target }}');
+        assert.ok(upload.with.path.includes('candidate.vsix.baseline.vsix'));
+        const acceptance = host.steps.find(step => step.run?.includes('run-installed-acceptance.cjs'));
+        assert.ok(acceptance.run.includes('benchmark-release-hosts.cjs'));
+    });
+    it('publishes only after the reusable checks and target-specific evidence verification', () => {
+        const release = read('release.yml');
+        assert.equal(release.jobs.build.uses, './.github/workflows/public-ci.yml');
+        assert.ok(release.jobs.publish.needs.includes('build'));
+        const steps = release.jobs.publish.steps;
+        const index = text => steps.findIndex(step => (step.run || '').includes(text));
+        assert.ok(index('verify-release-acceptance.cjs') >= 0);
+        assert.ok(index('verify-release-acceptance.cjs') < index('vsce publish'));
+        assert.ok(index('Missing repository secret: OVSX_PAT') < index('vsce publish'));
+        assert.ok(steps[index('verify-release-acceptance.cjs')].run.includes('"$target"'));
+        assert.ok(!JSON.stringify(release).includes('requirements-codegen'));
+        assert.ok(fs.existsSync(path.join(root, '.github/scripts/marketplace-release.cjs')));
+        assert.ok(fs.existsSync(path.join(root, '.github/release-appendix.md')));
+        assert.ok(read('verify-marketplace.yml').jobs);
+    });
+});

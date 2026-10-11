@@ -17,6 +17,35 @@ function layout(keyword, records) {
 }
 
 describe('official option switch planner', () => {
+    it('protects column-one syntax through creation, retention and removal', () => {
+        const base = { recordMigrationId: 'base', fields: [field('x', 'X', 0, 10)] };
+        const marked = { recordMigrationId: 'mpp2',
+            recordMarker: { kind: 'column-one', value: '&', fieldIndex: 0, evidenceIds: ['manual-contact-mpp'] },
+            fields: [field('marker', '&', 0, 10, { type: 'string' }), field('pensf', 'PENSF', 10, 10)] };
+        const input = { currentKeyword: '*A', targetKeyword: '*B', inputFormat: 'standard',
+            currentLayout: layout('*A', [base]), targetLayout: layout('*B', [marked, base]),
+            records: [{ text: '         7', comments: ['$ keep'] }] };
+        const added = planOptionSwitch(input);
+        assert.equal(added.status, 'ready');
+        assert.equal(added.replacementRecords[0].text, '&'.padEnd(20));
+        assert.equal(added.replacementRecords[1].text, '         7');
+        assert.ok(added.emptyTargetFields.every(item => item.name !== '&'));
+        const retained = planOptionSwitch({ ...input, currentLayout: input.targetLayout,
+            records: added.replacementRecords });
+        assert.equal(retained.replacementRecords[0].text, added.replacementRecords[0].text);
+        const remove = records => planOptionSwitch({ ...input, currentLayout: input.targetLayout,
+            targetLayout: input.currentLayout, records });
+        assert.equal(remove(added.replacementRecords).requiresLossConfirmation, false);
+        const filled = [{ text: '&         ' + '0.5'.padStart(10), comments: [] }, added.replacementRecords[1]];
+        assert.equal(remove(filled).requiresLossConfirmation, true);
+        assert.deepEqual(remove(filled).discardedFields.map(item => item.name), ['PENSF']);
+        for (const text of ['         &', '&extra    ']) {
+            assert.equal(remove([{ text, comments: [] }, added.replacementRecords[1]]).reason,
+                'source-record-marker-mismatch');
+        }
+        assert.equal(planOptionSwitch({ ...input, writeField: () => '         &' }).reason,
+            'target-record-marker-mismatch');
+    });
     it('exports the stable OptionSwitchPlanner facade', () => {
         const one = layout('*A', [{ recordMigrationId: 'r', fields: [field('x', 'X', 0, 10)] }]);
         const plan = new OptionSwitchPlanner().plan({

@@ -36,6 +36,11 @@ function collectHelpIndexes(value, indexes = []) {
 }
 
 describe('generate-field-schema-runtime', () => {
+    it('rejects a non-object schema root before generating runtime artifacts', () => {
+        for (const source of [[], [{ c: [] }], null, 'PART', 1]) {
+            assert.throws(() => buildFieldSchemaRuntime(JSON.stringify(source)), /invalid field schema source/);
+        }
+    });
     it('separates help text while preserving layout, values, references, and identity roles', () => {
         const source = JSON.stringify({
             SAMPLE: {

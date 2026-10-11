@@ -5,6 +5,10 @@ const path = require('path');
 const { releasePath, authoringPath } = require('./release-resource-paths.cjs');
 
 const REQUIRED_FILES = [
+    'node_modules/@vscode/sqlite3/lib/sqlite3.js',
+    'node_modules/@vscode/sqlite3/build/Release/vscode-sqlite3.node',
+    'node_modules/@vscode/sqlite3/build/native-build.json',
+    'node_modules/@vscode/sqlite3/LICENSE',
     'package.json',
     'out/extension.js',
     'out/runtime/field_schema.runtime.json.gz',
@@ -17,6 +21,7 @@ const REQUIRED_FILES = [
     'out/runtime/lspp-input-form/manifest.json',
     "keywords/runtime/schema/keyword_prefix_layouts.json",
     "keywords/runtime/native-readers/lspp-section-fixed-readers.json",
+    "keywords/runtime/native-readers/lspp-constrained-input-format.json",
     "keywords/runtime/native-readers/lspp-generic-file-readers.json",
     "keywords/runtime/native-readers/lspp-conditional-layout-readers.json",
     "keywords/runtime/native-readers/lspp-optional-form-header-readers.json",
@@ -45,6 +50,7 @@ const REQUIRED_FILES = [
     'out/core/theme/extensionTheme.js',
     'keywords/runtime/engineering/keywordSpellingAliases.json',
     'keywords/runtime/engineering/keywordLayoutCorrections.json',
+    'keywords/runtime/engineering/contactThermal.json',
     'keywords/runtime/engineering/runtimeSemanticRelationCorrections.json',
     'keywords/runtime/engineering/runtimeTableLayoutCorrections.json',
     'out/webview/manual-reader/index.html',
@@ -112,7 +118,7 @@ const FORBIDDEN_PREFIXES = [
     'release-audit/',
 ];
 const RELEASE_ROOT_FILES = new Set(['package.json', 'package.nls.json', 'package.nls.zh-cn.json',
-    'readme.md', 'readme_zh.md', 'changelog.md', 'support.md', 'license', 'license.txt',
+    'readme.md', 'readme_zh.md', 'changelog.md', 'license', 'license.txt',
     'language-configuration.json', 'language-configuration-lspp-cfile.json']);
 const RELEASE_DIRECTORIES = ['out/', 'keywords/', 'node_modules/', 'images/', 'snippets/', 'syntaxes/'];
 
@@ -124,6 +130,8 @@ function validatePackageFiles(rawFiles) {
     if (released && fileSet.size !== new Set(rawFiles).size) errors.push('VSIX contains mixed authoring/release resource paths');
     for (const required of REQUIRED_FILES) {
         if (required === 'out/runtime/field_help/text-index.json.gz' && fileSet.has('out/runtime/field_help/text-index.json.br')) continue;
+        if (required === 'keywords/runtime/references/field_reference_index.json' &&
+            fileSet.has('keywords/runtime/references/reference-rules.manifest.json')) continue;
         if (required === 'out/core/theme/extensionTheme.js' && fileSet.has('out/runtime/release-code.json')) continue;
         if (!fileSet.has(required)) errors.push(`VSIX is missing required file: ${required}`);
     }
@@ -157,8 +165,8 @@ function validatePackageFiles(rawFiles) {
     if (!files.some(file => /^out\/runtime\/field_help\/shards\/\d{4}\.json\.(gz|br)$/.test(file))) {
         errors.push('VSIX is missing the field-help runtime shards');
     }
-    if (!files.some(file => /^keywords\/runtime\/semantic-v2\/references\/[0-9a-f]\.json\.gz$/.test(file)) ||
-        !files.some(file => /^keywords\/runtime\/semantic-v2\/options\/[0-9a-f]\.json\.gz$/.test(file))) {
+    if (!files.some(file => /^keywords\/runtime\/semantic-v2\/references\/[0-9a-f]\.json\.(gz|br)$/.test(file)) ||
+        !files.some(file => /^keywords\/runtime\/semantic-v2\/options\/[0-9a-f]\.json\.(gz|br)$/.test(file))) {
         errors.push('VSIX is missing semantic runtime v2 shards');
     }
     for (const file of files) {
@@ -184,7 +192,6 @@ function validatePackageFiles(rawFiles) {
             continue;
         }
         if (file.startsWith("keywords/runtime/input-form/") &&
-            file !== 'out/runtime/lspp-input-form/manifest.json' &&
             !/^keywords\/runtime\/input-form\/[0-9a-f]{64}\.json\.(gz|br)$/.test(file)) {
             errors.push(`VSIX contains non-runtime LS-PrePost Input Form data: ${file}`);
             continue;
@@ -295,10 +302,32 @@ function validateStaticRuntimeDependencies(rawFiles, packageRoot = path.join(__d
             }
         }
     }
-    if (fileSet.has("keywords/runtime/references/field_reference_index.json")) {
-        const reference = JSON.parse(fs.readFileSync(path.join(packageRoot, "keywords/runtime/references/field_reference_index.json")));
+    const referenceManifest = 'keywords/runtime/references/reference-rules.manifest.json';
+    let compactReference;
+    if (fileSet.has(referenceManifest)) {
+        try {
+            if (fileSet.has('keywords/runtime/references/field_reference_index.json')) errors.push('VSIX contains duplicate legacy reference rules');
+            const { ReferenceRuleCatalog } = require('../../out/core/references/referenceRuleCatalog');
+            const catalog = new ReferenceRuleCatalog(path.join(packageRoot, 'keywords/runtime/references'));
+            const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, referenceManifest)));
+            const expected = new Set(Object.values(manifest.parts).map(part => `keywords/runtime/references/${part.file}`));
+            for (const key of Object.keys(manifest.parts)) catalog.metadata(key);
+            for (const keyword of catalog.keywords()) {
+                if (!Array.isArray(catalog.records(keyword))) throw Error(`Missing reference keyword: ${keyword}`);
+            }
+            for (const file of files) if (file.startsWith('keywords/runtime/references/') && file.endsWith('.br') && !expected.has(file))
+                errors.push(`VSIX contains unreferenced reference rules: ${file}`);
+            compactReference = { lsppBlockedReferences: catalog.metadata('lsppBlockedReferences') };
+        } catch (error) { errors.push(`VSIX reference rule integrity mismatch: ${error.message}`); }
+    }
+    if (compactReference || fileSet.has("keywords/runtime/references/field_reference_index.json")) {
+        const reference = compactReference || JSON.parse(fs.readFileSync(path.join(packageRoot, "keywords/runtime/references/field_reference_index.json")));
         const descriptor = reference.lsppBlockedReferences;
-        if (descriptor?.file) {
+        if (typeof descriptor?.file !== 'string' || !descriptor.file ||
+            !/^[0-9a-f]{64}$/.test(descriptor.sha256 || '') ||
+            !Number.isSafeInteger(descriptor.compressedBytes) || descriptor.compressedBytes <= 0) {
+            errors.push('VSIX reference blocker descriptor is missing or invalid');
+        } else {
             const logical = released ? authoringPath(descriptor.file) : descriptor.file;
             if (!fileSet.has(logical)) errors.push(`VSIX is missing reference blocker resource: ${descriptor.file}`);
             else {
@@ -310,6 +339,10 @@ function validateStaticRuntimeDependencies(rawFiles, packageRoot = path.join(__d
     }
     for (const file of files.filter(candidate => candidate.startsWith('out/') && candidate.endsWith('.js'))) {
         const source = fs.readFileSync(path.join(packageRoot, ...file.split('/')), 'utf8');
+        for (const match of source.matchAll(/require\(\s*(?:keywordDataPath|\(0,\s*\w+\.keywordDataPath\))\(\s*(['"])([^'"]+)\1\s*\)/g)) {
+            const resource = `keywords/runtime/${released ? authoringPath(match[2]) : match[2]}`;
+            if (!fileSet.has(resource)) errors.push(`VSIX is missing keyword runtime dependency: ${match[2]} from ${file}`);
+        }
         for (const match of source.matchAll(/require\(\s*(['"])(\.\.?\/[^'"]+)\1\s*\)/g)) {
             const resolved = path.posix.resolve('/', path.posix.dirname(file), match[2]).slice(1);
             const candidates = path.posix.extname(resolved)

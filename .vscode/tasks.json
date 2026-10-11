@@ -5,12 +5,105 @@
             "label": "build extension",
             "type": "npm",
             "script": "vscode:prepublish",
+            "group": "build",
+            "problemMatcher": "$tsc"
+        },
+        {
+            "label": "prepare debug",
+            "type": "npm",
+            "script": "prepare:debug",
+            "dependsOn": "watch extension",
+            "problemMatcher": "$tsc"
+        },
+        {
+            "label": "watch extension",
+            "type": "npm",
+            "script": "watch",
+            "isBackground": true,
+            "problemMatcher": "$tsc-watch"
+        },
+        {
+            "label": "watch keyword-options",
+            "type": "shell",
+            "command": "npm",
+            "windows": { "command": "npm.cmd" },
+            "args": ["run", "build:webview:keyword-options", "--", "--watch"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vite",
+                "pattern": { "regexp": "^$" },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching for file changes|build started...",
+                    "endsPattern": "built in"
+                }
+            }
+        },
+        {
+            "label": "watch manual-reader",
+            "type": "shell",
+            "command": "npm",
+            "windows": { "command": "npm.cmd" },
+            "args": ["run", "build:webview:manual", "--", "--watch"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vite",
+                "pattern": { "regexp": "^$" },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching for file changes|build started...",
+                    "endsPattern": "built in"
+                }
+            }
+        },
+        {
+            "label": "watch entity-references",
+            "type": "shell",
+            "command": "npm",
+            "windows": { "command": "npm.cmd" },
+            "args": ["run", "build:webview:entity-references", "--", "--watch"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vite",
+                "pattern": { "regexp": "^$" },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching for file changes|build started...",
+                    "endsPattern": "built in"
+                }
+            }
+        },
+        {
+            "label": "watch large-file-viewer",
+            "type": "shell",
+            "command": "npm",
+            "windows": { "command": "npm.cmd" },
+            "args": ["run", "build:webview:large-file-viewer", "--", "--watch"],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vite",
+                "pattern": { "regexp": "^$" },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching for file changes|build started...",
+                    "endsPattern": "built in"
+                }
+            }
+        },
+        {
+            "label": "watch debug",
+            "dependsOn": [
+                "prepare debug",
+                "watch keyword-options",
+                "watch manual-reader",
+                "watch entity-references",
+                "watch large-file-viewer"
+            ],
+            "dependsOrder": "parallel",
             "group": {
                 "kind": "build",
                 "isDefault": true
-            },
-            "problemMatcher": "$tsc"
+            }
         }
     ]
 }
-

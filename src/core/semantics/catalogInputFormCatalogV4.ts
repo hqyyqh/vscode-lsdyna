@@ -4,6 +4,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
+import { serialize, deserialize } from 'v8';
+import { contactThermalCatalogKeyword, withContactThermalForm } from './contactThermal';
 
 const DEFAULT_CACHE_BYTES = 64 * 1024 * 1024;
 
@@ -292,8 +294,10 @@ export class CatalogInputFormCatalogV4 {
         }
         const manifest = this.loadManifest();
         let normalized = normalizeKeyword(keyword);
+        if (this.rootDir === path.resolve(defaultRuntimeRoot())) normalized = contactThermalCatalogKeyword(normalized) || normalized;
         if (!manifest.keywords[normalized]) {
-            const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf;
+            const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf ||
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword;
             if (alias && manifest.keywords[alias]) normalized = alias;
         }
         const index = manifest.keywords[normalized];
@@ -362,20 +366,21 @@ export class CatalogInputFormCatalogV4 {
         try { await preparation; } finally { this.preparing.delete(hash); }
     }
 
-    formForKeyword(keyword: string): CatalogInputForm | null {
+    formForKeyword(keyword: string, composeContactThermal = true): CatalogInputForm | null {
         let normalized = normalizeKeyword(keyword);
         if (!normalized) return null;
         const manifest = this.loadManifest();
+        const requested = normalized;
+        const composition = composeContactThermal && this.rootDir === path.resolve(defaultRuntimeRoot());
+        if (composition) normalized = contactThermalCatalogKeyword(normalized) || normalized;
         let index = manifest.keywords[normalized];
         if (!index) {
-            try {
-                const nodeReaders = require(keywordDataPath("native-readers/lspp-node-readers.json"));
-                const node = nodeReaders?.bindings?.[normalized];
-                if (node?.aliasOf && manifest.keywords[node.aliasOf]) {
-                    normalized = node.aliasOf;
-                    index = manifest.keywords[node.aliasOf];
-                }
-            } catch {}
+            const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf ||
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword;
+            if (alias && manifest.keywords[alias]) {
+                normalized = alias;
+                index = manifest.keywords[alias];
+            }
         }
         if (!index || (manifest.storageVersion !== 1 && typeof index.shard !== 'string')) return null;
         const shard = manifest.storageVersion === 1 ? this.compactShard(normalized, index, manifest)
@@ -397,14 +402,16 @@ export class CatalogInputFormCatalogV4 {
             if (!shard.projectedRules.has(ruleId)) {
                 const nativeHelp = !manifest.isUnauditedDiagnostic && this.rootDir === path.resolve(defaultRuntimeRoot())
                     ? require('./nativeDescriptorHelp').withNativeDescriptorHelp : (rule: any) => rule;
-                shard.projectedRules.set(ruleId,
-                    nativeHelp(projectNativeDescriptorExtent(shard.rules[ruleId], manifest.dataset.sha256)));
+                const projected = nativeHelp(projectNativeDescriptorExtent(shard.rules[ruleId], manifest.dataset.sha256));
+                // Serialize legacy projections once; each read still owns its nested values.
+                shard.projectedRules.set(ruleId, manifest.storageVersion === 1 ? projected : serialize(projected));
             }
-            return [ruleId, shard.projectedRules.get(ruleId)];
+            const projected = shard.projectedRules.get(ruleId);
+            return [ruleId, manifest.storageVersion === 1 ? projected : deserialize(projected)];
         }));
-        return {
+        const form: CatalogInputForm = {
             keyword: normalized,
-            reference,
+            reference: manifest.storageVersion === 1 ? reference : structuredClone(reference),
             rules,
             source: {
                 schemaVersion: 4,
@@ -414,6 +421,7 @@ export class CatalogInputFormCatalogV4 {
                 isUnauditedDiagnostic: Boolean(manifest.isUnauditedDiagnostic),
             },
         };
+        return composition ? withContactThermalForm(form, requested) : form;
     }
 
     resolveFormForKeyword(keyword: string): CatalogInputForm | null {

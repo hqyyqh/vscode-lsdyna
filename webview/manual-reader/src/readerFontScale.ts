@@ -24,9 +24,7 @@ export function clampFontScale(value: number): number {
 
 export function parseStoredFontScale(raw: string | null | undefined): number {
     if (raw == null || raw === '') return FONT_SCALE_DEFAULT;
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return FONT_SCALE_DEFAULT;
-    return clampFontScale(n);
+    return clampFontScale(Number(raw));
 }
 
 export function formatFontScalePercent(scale: number): string {
@@ -42,8 +40,9 @@ export function canStepFontScale(scale: number, direction: 1 | -1): boolean {
     return next !== clampFontScale(scale);
 }
 
-export function loadFontScaleFromStorage(storage: Pick<Storage, 'getItem'> | null | undefined = globalThis.localStorage): number {
+export function loadFontScaleFromStorage(storage?: Pick<Storage, 'getItem'> | null): number {
     try {
+        if (storage === undefined) storage = globalThis.localStorage;
         return parseStoredFontScale(storage?.getItem(FONT_SCALE_STORAGE_KEY) ?? null);
     } catch {
         return FONT_SCALE_DEFAULT;
@@ -52,9 +51,10 @@ export function loadFontScaleFromStorage(storage: Pick<Storage, 'getItem'> | nul
 
 export function saveFontScaleToStorage(
     scale: number,
-    storage: Pick<Storage, 'setItem'> | null | undefined = globalThis.localStorage,
+    storage?: Pick<Storage, 'setItem'> | null,
 ): void {
     try {
+        if (storage === undefined) storage = globalThis.localStorage;
         storage?.setItem(FONT_SCALE_STORAGE_KEY, String(clampFontScale(scale)));
     } catch {
         // Quota / private mode — ignore.

@@ -1,4 +1,5 @@
 'use strict';
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
 const assert = require('assert');
 const fs = require('fs');
@@ -9,7 +10,7 @@ const { collectIncludeDirectivesFromFile } = require('../../../src/core/parser/i
 const { collectKeywordsFromFile } = require('../../../src/core/parser/keywordScanner');
 
 function createLargeTailFixture() {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-tail-lines-'));
+    const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-tail-lines-'));
     const filePath = path.join(tempDir, 'large.k');
     const prefix = '1234567890\n'.repeat(100000);
     const tail = ' \t*Include\nmissing.k\n\t*Node\n1,2,3\n';

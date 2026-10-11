@@ -1,4 +1,3 @@
-import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 /**
@@ -14,8 +13,10 @@ import { keywordDataPath } from "../keywordDataPath";
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const referenceIndex = require(keywordDataPath("references/field_reference_index.json"));
+const referenceIndex = require('../references/referenceRuleCatalog').getReferenceRuleCatalog().identity();
 const { SCANNER_VERSION } = require('../scanner/scannerContracts');
+const { getSemanticRuntimeCatalogV2 } = require('../semantics/semanticRuntimeV2');
+const { NATIVE_FEATURE_IDENTITY } = require('../semantics/nativeFeatureContext');
 
 const INDEX_FILE_NAME = 'file-scan-index.json';
 const PAYLOAD_DIR_NAME = 'file-scans';
@@ -24,14 +25,19 @@ const DEFAULT_MAX_ENTRY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const FILE_SCAN_CACHE_SCHEMA_VERSION = [
     'file-scan-v3',
     `scanner-${SCANNER_VERSION}`,
+    NATIVE_FEATURE_IDENTITY,
     `reference-schema-${referenceIndex.schemaVersion || 'unknown'}`,
+    `lspp-handoff-${referenceIndex.generatedFrom?.lsppHandoffContentSha256 || 'unavailable'}`,
+    `reference-policy-${referenceIndex.userReferenceExclusions?.contentSha256 || 'none'}`,
     `manual-runtime-${referenceIndex.generatedFrom?.manualSemanticRuntimeId || 'unknown'}`,
     `manual-manifest-${referenceIndex.generatedFrom?.manualSemanticManifestSha256 || 'unknown'}`,
+    `semantic-runtime-${getSemanticRuntimeCatalogV2().status().datasetReleaseId || 'unavailable'}`,
 ].join(':');
 
 type FileSignature = {
     mtimeMs: number;
     size: number;
+    sourceRevision?: string;
 };
 
 type FileScanCacheIndexEntry = {
@@ -59,14 +65,15 @@ function getPayloadFileName(cacheKey) {
 }
 
 function areSignaturesEqual(left, right) {
-    return left && right && left.mtimeMs === right.mtimeMs && left.size === right.size;
+    return left && right && left.mtimeMs === right.mtimeMs && left.size === right.size && left.sourceRevision === right.sourceRevision;
 }
 
 function isValidSignature(signature) {
     return signature
         && Number.isFinite(signature.mtimeMs)
         && Number.isFinite(signature.size)
-        && signature.size >= 0;
+        && signature.size >= 0
+        && (signature.sourceRevision === undefined || typeof signature.sourceRevision === 'string');
 }
 
 function isSafeIndexEntry(entry) {
@@ -115,11 +122,7 @@ function createFileScanCacheStore({
     }
 
     async function removeFileIfExists(filePath) {
-        try {
-            await fs.promises.rm(filePath, { force: true });
-        } catch (error) {
-            if (error.code !== 'ENOENT') throw error;
-        }
+        await fs.promises.rm(filePath, { force: true });
     }
 
     async function writeFileAtomically(targetPath, content) {
@@ -267,6 +270,7 @@ function createFileScanCacheStore({
                 return resetStorage();
             }
             indexCache = new Map();
+            await reconcilePayloadFiles(indexCache);
             return indexCache;
         }
     }
@@ -330,7 +334,8 @@ function createFileScanCacheStore({
                 await writeFileAtomically(path.join(payloadDirPath, payloadFile), payloadContent);
                 index.set(cacheKey, {
                     payloadFile,
-                    signature: { mtimeMs: signature.mtimeMs, size: signature.size },
+                    signature: { mtimeMs: signature.mtimeMs, size: signature.size,
+                        ...(signature.sourceRevision === undefined ? {} : { sourceRevision: signature.sourceRevision }) },
                     byteSize: Buffer.byteLength(payloadContent, 'utf8'),
                     lastAccessedAt: accessedAt,
                 });

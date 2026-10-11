@@ -20,6 +20,7 @@ export function planUniqueBlankRecordRepairs(
         edits.length === 0 || edits.some(edit => edit.kind !== 'insert')) return [];
     if (policy.mode !== 'append-contiguous-blank-suffix') return [];
     const expectedIndexes = edits.map(edit => edit.expectedIndex).filter(Number.isInteger) as number[];
+    if (expectedIndexes.length !== edits.length) return [];
     expectedIndexes.sort((left, right) => left - right);
     if (expectedIndexes.some((value, index) =>
         index > 0 && value !== expectedIndexes[index - 1] + 1)) return [];

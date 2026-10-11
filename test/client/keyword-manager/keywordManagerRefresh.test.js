@@ -37,8 +37,9 @@ describe('keyword manager refresh boundaries', () => {
         document.isDirty = true;
         const next = keywordManagerInstances(document, 2, null);
         assert.equal(reads(), count);
-        assert.equal(next[0].selected, false);
-        assert.equal(next[1].selected, true);
+        assert.equal(next.length, 1);
+        assert.equal(next[0].selected, true);
+        assert.equal(next[0].keyword, '*DATABASE_BINARY_CPMFOR');
         assert.equal(next[0].dirty, true);
         assert.equal(next[0].editLevel, 'view-only');
         assert.notEqual(next[0].displayName, first[0].displayName);

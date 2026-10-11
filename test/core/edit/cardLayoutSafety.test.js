@@ -77,12 +77,12 @@ describe('editor safety: complete card-layout inventory', () => {
     }
 
     it('locks the complete generated-schema inventory used by this safety pass', () => {
-        assert.strictEqual(Object.keys(fieldData).length, 5362);
-        assert.strictEqual(cards.length, 20783);
-        assert.strictEqual(nonEmptyCards.length, 20729);
+        assert.strictEqual(Object.keys(fieldData).length, 8596);
+        assert.strictEqual(cards.length, 22535);
+        assert.strictEqual(nonEmptyCards.length, 22481);
         assert.strictEqual(
             nonEmptyCards.reduce((sum, { card }) => sum + card.length, 0),
-            117745,
+            129522,
         );
         assert.strictEqual(distinctLayouts.size, 469);
     });

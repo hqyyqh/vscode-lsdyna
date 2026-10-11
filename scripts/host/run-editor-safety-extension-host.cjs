@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const net = require('net');
-const os = require('os');
 const path = require('path');
 const { runTests } = require('./vsix-host.cjs');
 const {
@@ -58,8 +57,13 @@ function reserveLoopbackPort() {
     });
 }
 
-function createFixtureWorkspace() {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-lsdyna-editor-safety-host-'));
+function createFixtureWorkspace(root) {
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(path.join(root, 'rename-alignment.key'), [
+        '*PARAMETER_EXPRESSION', 'I lctmcrv  mxcrvid+8', '*CONTROL_TIMESTEP',
+        '$   DTINIT    TSSFAC      ISDO    TSLIMT     DT2MS      LCTM     ERODE     MS1ST',
+        fixed80(['0.0', '&tssfac', '0', '0.0', '', '&lctmcrv', '1', '0']), '*END', '',
+    ].join('\r\n'));
     const nodeLine = [
         right('1', 8),
         right('0.0', 16),
@@ -87,8 +91,8 @@ function createFixtureWorkspace() {
         path.join(root, 'merge-fields.key'),
         [
             '*KEYWORD',
-            '*SET_PART_LIST_TITLE',
-            'SET_Dummy',
+            '*SET_PART_ADD',
+            '$ SET_Dummy',
             right('8100001', 10),
             '  91200001  91200401  91200601  91201101  91201301  92200001  92200401  92200601',
             '  92201101  92201301  93200101  93700101  95200001  95200301     95200       501',
@@ -97,12 +101,15 @@ function createFixtureWorkspace() {
         ].join('\r\n'),
         'utf8',
     );
+    fs.writeFileSync(path.join(root, 'merge-fields-unverified.key'),
+        fs.readFileSync(path.join(root, 'merge-fields.key'), 'utf8')
+            .replace('*SET_PART_ADD', '*SET_PART_LIST_TITLE').replace('$ SET_Dummy', 'SET_Dummy'));
     fs.writeFileSync(
         path.join(root, 'empty-field-input.key'),
         [
             '*KEYWORD',
-            '*SET_PART_LIST_TITLE',
-            'SET_Dummy',
+            '*SET_PART_ADD',
+            '$ SET_Dummy',
             right('8100001', 10),
             '  92201101  92201301  93200101  93700101  95200001  95200301  95200501',
             '*END',
@@ -525,22 +532,18 @@ function createFixtureWorkspace() {
     return root;
 }
 
-function removeTempDirectory(root, expectedPrefix) {
-    const resolved = path.resolve(root);
-    const tempRoot = path.resolve(os.tmpdir());
-    if (path.dirname(resolved) !== tempRoot ||
-        !path.basename(resolved).startsWith(expectedPrefix)) {
-        throw new Error(`Refusing to remove unexpected temporary directory: ${resolved}`);
-    }
-    fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
-}
-
 async function main() {
-    const workspaceDir = createFixtureWorkspace();
-    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-lsdyna-editor-safety-user-'));
-    const extensionsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-lsdyna-editor-safety-ext-'));
+    const { createTempRun, finishTempRun } = require('./temp-runs.cjs');
+    const root = createTempRun('dynasense-editor-safety-');
+    const workspaceDir = createFixtureWorkspace(path.join(root, 'workspace'));
+    const userDataDir = path.join(root, 'user-data');
+    const extensionsDir = path.join(root, 'extensions');
+    fs.mkdirSync(userDataDir);
+    fs.mkdirSync(extensionsDir);
     const devToolsPort = await reserveLoopbackPort();
     let passed = false;
+    let retainRuntime = false;
+    let hostError;
 
     console.log(`Extension Host fixture: ${workspaceDir}`);
     try {
@@ -571,21 +574,29 @@ async function main() {
             },
         });
         passed = true;
+    } catch (error) {
+        hostError = error;
+        retainRuntime = Boolean(error.signal || error.runtimeMayBeActive || error.evidenceSaveFailed);
+        throw error;
     } finally {
-        if (passed) {
-            removeTempDirectory(workspaceDir, 'vscode-lsdyna-editor-safety-host-');
-            removeTempDirectory(userDataDir, 'vscode-lsdyna-editor-safety-user-');
-            removeTempDirectory(extensionsDir, 'vscode-lsdyna-editor-safety-ext-');
-        } else {
-            console.error(`Extension Host fixture preserved after failure: ${workspaceDir}`);
-            console.error(`Extension Host user data preserved after failure: ${userDataDir}`);
-            console.error(`Extension Host extensions directory preserved after failure: ${extensionsDir}`);
+        try {
+            fs.writeFileSync(path.join(root, 'result.json'), JSON.stringify({ passed }));
+            console.log(`Editor safety evidence: ${root}`);
+        } catch (error) {
+            retainRuntime = true;
+            console.error(`Editor safety diagnostics could not be saved: ${root}`, error);
+            if (hostError) hostError.evidenceError = error;
+            throw Object.assign(hostError || error, { evidenceSaveFailed: true });
+        } finally {
+            if (retainRuntime) {
+                finishTempRun(root, { retain: true });
+                console.error(`Editor safety runtime reservation retained: ${root}`);
+            }
         }
     }
 }
 
 module.exports = {
-    removeTempDirectory,
     resolveVSCodeExecutable,
 };
 

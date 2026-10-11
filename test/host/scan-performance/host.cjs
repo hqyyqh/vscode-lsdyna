@@ -32,7 +32,7 @@ exports.run=async()=>{
         const query=await vscode.commands.executeCommand('extension.queryLsdynaEntityId',{targetKind:'curve',id:String(curve.id)});
         assert.ok(query?.locations?.length>0,'Representative curve definition/references must be found');
         result.query={id:String(curve.id),state:query.state,locations:query.locations.length};result.checks.push('object reference query');
-        const tempFile=path.join(evidence,'workspace','cancel.key');fs.copyFileSync(source,tempFile);
+        const tempFile=path.join(process.env.SCAN_HOST_WORKSPACE,'cancel.key');fs.copyFileSync(source,tempFile);
         const changed=await vscode.workspace.openTextDocument(tempFile);await vscode.window.showTextDocument(changed);
         cancelNext=true;start=performance.now();
         const cancelled=await vscode.commands.executeCommand('extension.scanIncludeTree');

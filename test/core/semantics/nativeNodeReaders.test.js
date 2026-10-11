@@ -2,13 +2,11 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const z = require('node:zlib');
-const crypto = require('node:crypto');
-const base64 = require('node:buffer').Buffer;
 const { fakeDoc } = require("../../support/helpers");
+const assertNativeReaderValue = require('../../support/native-reader-values');
 const { getCardInfoForDocumentLineWithSuggest: resolve, LsdynaFieldHoverProvider,
     buildKeywordOptionViewModel: model } = require("../../../out/extension")._internals;
 
-const nodeReaders = require("../../../keywords/runtime/native-readers/lspp-node-readers.json");
 const tasks = JSON.parse(z.gunzipSync(fs.readFileSync('test/fixtures/public-behavior/node-reader-cases.json.gz')));
 
 describe('native NODE instance readers', () => {
@@ -39,34 +37,28 @@ describe('native NODE instance readers', () => {
                     `${task.keyword} ${task.format} names`
                 );
 
-                // Verify field rawValues
+                // Source tokens are exact; native numeric/default observations are separate.
                 for (let i = 0; i < info.card.length; i++) {
-                    const actual = info.card[i].rawValue;
-                    const expected = record.fields[i].value;
-                    if (actual !== expected) {
-                        const numActual = Number(actual.replace(/[dD]/g, 'e'));
-                        const numExpected = Number(expected.replace(/[dD]/g, 'e'));
-                        assert.ok(
-                            actual === expected || (!isNaN(numActual) && !isNaN(numExpected) && numActual === numExpected),
-                            `${task.keyword} ${task.format} field ${info.card[i].n}: expected ${expected}, got ${actual}`
-                        );
-                    }
+                    assertNativeReaderValue(info.card[i], record.fields[i], `${task.keyword} ${task.format} ${info.card[i].n}`);
                 }
 
-                // Verify hover provides valid markdown and field ranges
-                for (const field of info.card.filter(f => f.nativeRange.end > f.nativeRange.start)) {
-                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.p });
-                    assert.ok(hover?.contents[0].value.includes(field.n), `${task.keyword} ${field.n}`);
-                    assert.equal(hover.range.start.character, field.nativeRange.start);
+                // Shared windows split the hover where the set of identities changes.
+                const boundaries = record.fields.flatMap(field => [field.range.start, field.range.end]);
+                for (const field of record.fields.filter(f => f.range.end > f.range.start)) {
+                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.range.start }, undefined, true);
+                    assert.ok(hover?.contents[0].value.includes(`**${field.name}**`), `${task.keyword} ${field.name}`);
+                    assert.deepEqual([hover.range.start.line, hover.range.start.character, hover.range.end.line, hover.range.end.character],
+                        [record.lineOffset, field.range.start, record.lineOffset, Math.min(...boundaries.filter(value => value > field.range.start))]);
                 }
-            }
 
-            // Verify source manager cards
-            const view = model({ document: doc, selection: { active: { line: 1, character: 0 } } }, 1, {});
-            assert.ok(view?.managerCards?.length, `${task.keyword} manager`);
-            for (const card of view.managerCards) {
-                const record = task.expectedRecords.find(r => r.lineOffset === card.line);
-                assert.ok(record, `Manager card at line ${card.line} for ${task.keyword}`);
+                const view = model({ document: doc, selection: { active: { line: record.lineOffset, character: 0 } } }, record.lineOffset, {});
+                assert.ok(view?.managerCards?.some(card => card.line === record.lineOffset), `${task.keyword} manager line ${record.lineOffset}`);
+                for (const card of view.managerCards) {
+                    const source = task.expectedRecords.find(r => r.lineOffset === card.line);
+                    assert.ok(source, `Manager card at line ${card.line} for ${task.keyword}`);
+                    assert.deepEqual(card.fields.map(f => [f.name, f.type, f.value, f.line]),
+                        source.fields.map(f => [f.name, String(f.type), f.rawValue, source.lineOffset]));
+                }
             }
         }
     });

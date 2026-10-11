@@ -10,6 +10,69 @@ const {
 } = require('../../src/core/keywordDisplayIdentity');
 
 describe('keyword display identity', () => {
+    it('rejects an array layout runtime and uses the existing source fallback', () => {
+        const repoRoot = path.resolve(__dirname, '..', '..');
+        const child = childProcess.spawnSync(process.execPath, ['-e', String.raw`
+            const fs = require('fs'), zlib = require('zlib');
+            const originalRead = fs.readFileSync;
+            fs.readFileSync = function (filePath, ...args) {
+                if (String(filePath).replace(/\\/g, '/').endsWith('/runtime/field_schema.runtime.json.gz')) {
+                    return zlib.gzipSync(JSON.stringify({ formatVersion: 1, baseSha256: 'a'.repeat(64),
+                        keywordCount: 1, helpSlotCount: 0, schema: [{ c: [] }] }));
+                }
+                return originalRead.call(this, filePath, ...args);
+            };
+            const identity = require('./out/core/keywordDisplayIdentity');
+            const schema = identity.loadKeywordLayoutSchema();
+            process.stdout.write(JSON.stringify({ array: Array.isArray(schema), part: !!schema.PART,
+                result: identity.summarizeKeywordIdentity('PART', ['Front Rail', '      1201        12        24']) }));
+        `], { cwd: repoRoot, encoding: 'utf8', windowsHide: true });
+        assert.equal(child.status, 0, child.stderr);
+        const result = JSON.parse(child.stdout);
+        assert.equal(result.array, false);
+        assert.equal(result.part, true);
+        assert.deepEqual(result.result.identity, { field: 'PID', value: '1201' });
+    });
+    it('clips UTF-8 prefixes at complete code points without borrowing later physical lines', () => {
+        for (const character of ['汉', '😀']) {
+            const accumulator = createKeywordIdentityAccumulator('INCLUDE', { maxBytes: 256 });
+            assert.equal(accumulator.acceptLine(character.repeat(256)), true);
+            assert.equal(accumulator.isCaptureComplete(), true);
+            assert.equal(accumulator.acceptLine('later.k'), false);
+            const prefix = character.repeat(Math.floor(256 / Buffer.byteLength(character)));
+            assert.equal(accumulator.finish().path, prefix);
+            assert.ok(Buffer.byteLength(prefix) <= 256);
+            assert.ok(!accumulator.finish().path.includes('\uFFFD'));
+        }
+        const full = createKeywordIdentityAccumulatorFactory()({ keyword: 'INCLUDE' }, '*INCLUDE');
+        assert.equal(full.acceptLine('汉'.repeat(3000)), true);
+        assert.equal(full.isCaptureComplete(), true);
+        assert.equal(full.acceptLine('later.k'), false);
+        const filename = require.resolve('../../src/core/keywordDisplayIdentity');
+        const readFromModule = require('node:module').createRequire(filename);
+        const actualSchema = readFromModule('./keywordSchema');
+        let observedLines;
+        const context = { module: { exports: {} }, exports: {}, Buffer, console, __dirname: path.dirname(filename), require(name) {
+            if (name === './keywordSchema') return { ...actualSchema, getRenderedCardsForLookup(...args) {
+                observedLines = args[1];
+                return actualSchema.getRenderedCardsForLookup(...args);
+            } };
+            return readFromModule(name);
+        } };
+        context.exports = context.module.exports;
+        require('node:vm').runInNewContext(require('node:fs').readFileSync(filename, 'utf8'), context, { filename });
+        const observed = context.module.exports.createKeywordIdentityAccumulatorFactory()({ keyword: 'INCLUDE' }, '*INCLUDE');
+        observed.acceptLine(Buffer.from('汉'.repeat(3000)));
+        observed.finish();
+        assert.equal(Buffer.byteLength(observedLines.join('')), 8190);
+        assert.ok(!observedLines.join('').includes('\uFFFD'));
+
+        const remainder = createKeywordIdentityAccumulator('NODE', { maxBytes: 256 });
+        assert.equal(remainder.acceptLine('a'.repeat(255)), true);
+        assert.equal(remainder.acceptLine('汉'), false);
+        assert.equal(remainder.isCaptureComplete(), true);
+        assert.equal(remainder.acceptLine('b'), false);
+    });
     it('never borrows FIT as MID when the fixed-width identity slot is blank', () => {
         const result = summarizeKeywordIdentity('MAT_BARLAT_YLD2000', [
             ''.padEnd(40) + '1.0'.padStart(10) + ''.padEnd(30),

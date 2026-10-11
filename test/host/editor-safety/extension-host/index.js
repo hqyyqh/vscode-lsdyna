@@ -8,7 +8,8 @@ const path = require('path');
 const { createRequire } = require('node:module');
 const { performance } = require('perf_hooks');
 const vscode = require('vscode');
-const WebSocket = globalThis.WebSocket || require('undici').WebSocket;
+const { fetchJson, openSocket, createCdp } = require('../../../support/devtools.cjs');
+const { hashFile } = require('../../../support/editor-safety/fileOracle.js');
 
 const workspaceRoot = process.env.LSDYNA_EDITOR_SAFETY_WORKSPACE;
 const devToolsPort = Number(process.env.LSDYNA_EDITOR_SAFETY_CDP_PORT || 0);
@@ -30,7 +31,7 @@ function withTimeout(promise, milliseconds, message) {
 }
 
 async function connectWorkbenchDevTools() {
-    if (!devToolsPort || typeof fetch !== 'function' || typeof WebSocket !== 'function') {
+    if (!devToolsPort || typeof fetch !== 'function') {
         throw new Error('VS Code renderer DevTools is unavailable');
     }
 
@@ -38,16 +39,13 @@ async function connectWorkbenchDevTools() {
     let target = null;
     while (Date.now() < deadline && !target) {
         try {
-            const response = await fetch(`http://127.0.0.1:${devToolsPort}/json/list`);
-            if (response.ok) {
-                const targets = await response.json();
-                target = targets.find(item =>
-                    item.type === 'page' &&
-                    typeof item.url === 'string' &&
-                    item.url.includes('/workbench.html') &&
-                    item.webSocketDebuggerUrl
-                );
-            }
+            const targets = await fetchJson(`http://127.0.0.1:${devToolsPort}/json/list`, Math.min(3000, deadline - Date.now()));
+            target = targets.find(item =>
+                item.type === 'page' &&
+                typeof item.url === 'string' &&
+                item.url.includes('/workbench.html') &&
+                item.webSocketDebuggerUrl
+            );
         } catch (_) {
             // Electron may publish its DevTools target after the extension host starts.
         }
@@ -55,58 +53,9 @@ async function connectWorkbenchDevTools() {
     }
     if (!target) throw new Error('VS Code workbench DevTools target was not published');
 
-    const socket = new WebSocket(target.webSocketDebuggerUrl);
-    await withTimeout(
-        new Promise((resolve, reject) => {
-            socket.addEventListener('open', resolve, { once: true });
-            socket.addEventListener('error', reject, { once: true });
-        }),
-        3000,
-        'Timed out connecting to VS Code workbench DevTools',
-    );
-
-    let nextId = 1;
-    const pending = new Map();
-    socket.addEventListener('message', event => {
-        let message;
-        try {
-            message = JSON.parse(String(event.data));
-        } catch (_) {
-            return;
-        }
-        if (!message.id || !pending.has(message.id)) return;
-        const entry = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) {
-            entry.reject(new Error(`${entry.method}: ${message.error.message}`));
-        } else {
-            entry.resolve(message.result || {});
-        }
-    });
-
-    const call = (method, params = {}) => {
-        const id = nextId++;
-        const command = new Promise((resolve, reject) => {
-            pending.set(id, { method, resolve, reject });
-            socket.send(JSON.stringify({ id, method, params }));
-        });
-        return withTimeout(
-            command,
-            3000,
-            `Timed out waiting for CDP ${method}`,
-        );
-    };
-
-    return {
-        call,
-        close() {
-            for (const entry of pending.values()) {
-                entry.reject(new Error('VS Code workbench DevTools connection closed'));
-            }
-            pending.clear();
-            socket.close();
-        },
-    };
+    const socket = await openSocket(target.webSocketDebuggerUrl, Math.min(3000, deadline - Date.now()));
+    const cdp = createCdp(socket, 3000);
+    return { socket, ...cdp };
 }
 
 async function getRendererActiveElement(devTools) {
@@ -343,6 +292,9 @@ async function waitForRendererSuggestionWidget(devTools) {
 }
 
 async function dispatchRendererKey(devTools, key, code, virtualKeyCode, modifiers = 0) {
+    // These editor shortcuts use Command on macOS; Ctrl+Space remains Control.
+    if (process.platform === 'darwin' && (modifiers & 2) && ['KeyA', 'KeyZ', 'Slash', 'Enter'].includes(code))
+        modifiers = (modifiers & ~2) | 4;
     const params = {
         key,
         code,
@@ -455,7 +407,7 @@ async function getRendererVisibleTextElementCenter(
                 const rect = candidate.getBoundingClientRect();
                 const view = candidate.ownerDocument && candidate.ownerDocument.defaultView;
                 const style = view && view.getComputedStyle(candidate);
-                const text = String(candidate.textContent || '').trim();
+                const text = String(candidate.textContent || '').trim() || candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '';
                 const textMatches = ${startsWith ? 'text.startsWith(expected)' : 'text.includes(expected)'};
                 return textMatches && rect.width > 0 && rect.height > 0 &&
                     style && style.display !== 'none' && style.visibility !== 'hidden';
@@ -653,7 +605,7 @@ async function commitRendererComposition(devTools, text) {
 async function captureRendererDiagnostic(devTools, name) {
     const basePath = path.join(
         path.dirname(workspaceRoot),
-        `${path.basename(workspaceRoot)}-${name}`,
+        name,
     );
     const screenshot = await devTools.call('Page.captureScreenshot', {
         format: 'png',
@@ -759,12 +711,12 @@ function hoverMarkdown(hover) {
     ).join('\n');
 }
 
-async function executeHover(document, position, expectedFragment) {
-    const hovers = await vscode.commands.executeCommand(
-        'vscode.executeHoverProvider',
-        document.uri,
-        position,
-    );
+async function executeDetailedHover(document, position, expectedFragment) {
+    // These assertions cover expanded engineering help, available through More.
+    // The compact registered hover and actual rendered UI are checked separately below.
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const { LsdynaFieldHoverProvider } = require(path.join(extension.extensionPath, 'out/extension'))._internals;
+    const hovers = [await new LsdynaFieldHoverProvider().provideDetailedHover(document, position)];
     const hover = (hovers || []).find(candidate =>
         hoverMarkdown(candidate).includes(expectedFragment)
     );
@@ -1165,21 +1117,24 @@ async function assertFunctionalHoverMatrix() {
         { position: new vscode.Position(6, 5), rangeText: '-&AB_CD_EF' },
     ];
     for (const item of parameterCases) {
-        const hover = await executeHover(document, item.position, 'Current-file source definition');
+        const compact = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, item.position);
+        assert.ok(compact.some(hover => hoverMarkdown(hover).includes('command:extension.hoverMore')));
+        assert.ok(compact.every(hover => !hoverMarkdown(hover).includes('Current-file source definition')));
+        const hover = await executeDetailedHover(document, item.position, 'Current-file source definition');
         const markdown = hoverMarkdown(hover);
         assert.ok(markdown.includes('`7`'));
         assert.strictEqual(document.getText(hover.range), item.rangeText);
         assert.ok(!markdown.includes('complete project scan is unavailable'));
     }
 
-    const unresolved = await executeHover(
+    const unresolved = await executeDetailedHover(
         document,
         new vscode.Position(7, 5),
         'complete project scan is unavailable',
     );
     assert.strictEqual(document.getText(unresolved.range), '&UNKNOWN');
 
-    const parameterKeyword = await executeHover(
+    const parameterKeyword = await executeDetailedHover(
         document,
         new vscode.Position(1, 4),
         'PARAMETER_MUTABLE_NOECHO_LOCAL',
@@ -1189,7 +1144,7 @@ async function assertFunctionalHoverMatrix() {
     assert.ok(parameterKeywordMarkdown.includes('Keyword options'));
     assert.ok(parameterKeywordMarkdown.includes('command:extension.selectKeyword'));
 
-    const includeHover = await executeHover(
+    const includeHover = await executeDetailedHover(
         document,
         new vscode.Position(9, 4),
         'command:extension.openIncludeNewTab',
@@ -1199,7 +1154,7 @@ async function assertFunctionalHoverMatrix() {
     assert.ok(includeMarkdown.includes('command:extension.openIncludeSplit'));
     assert.ok(includeMarkdown.includes('command:extension.openIncludeFolder'));
 
-    const missingInclude = await executeHover(
+    const missingInclude = await executeDetailedHover(
         document,
         new vscode.Position(11, 4),
         '$(symbol-field)',
@@ -1208,7 +1163,7 @@ async function assertFunctionalHoverMatrix() {
     assert.ok(missingIncludeMarkdown.includes('FILENAME'));
     assert.ok(!missingIncludeMarkdown.includes('command:extension.openIncludeNewTab'));
 
-    const nodeKeyword = await executeHover(
+    const nodeKeyword = await executeDetailedHover(
         document,
         new vscode.Position(12, 2),
         '$(symbol-keyword)',
@@ -1217,7 +1172,7 @@ async function assertFunctionalHoverMatrix() {
     assert.ok(nodeKeywordMarkdown.includes('**\\*NODE**'));
     assert.ok(nodeKeywordMarkdown.includes('command:extension.lsdynaFormatSelection'));
 
-    const nodeField = await executeHover(
+    const nodeField = await executeDetailedHover(
         document,
         new vscode.Position(13, 2),
         '$(symbol-field)',
@@ -1225,7 +1180,7 @@ async function assertFunctionalHoverMatrix() {
     assert.strictEqual(document.getText(nodeField.range).length, 8);
     assert.ok(hoverMarkdown(nodeField).includes('NID'));
 
-    const unknownKeyword = await executeHover(
+    const unknownKeyword = await executeDetailedHover(
         document,
         new vscode.Position(14, 4),
         'command:extension.addCustomValidKeyword',
@@ -1254,7 +1209,8 @@ async function assertFunctionalHoverMatrix() {
             });
             renderedText = response.result ? String(response.result.value || '') : '';
             assert.ok(renderedText.includes('AB_CD_EF'));
-            assert.ok(renderedText.includes('Current-file source definition'));
+            assert.ok(!renderedText.includes('Current-file source definition'));
+            assert.ok(!renderedText.includes('complete project scan is unavailable'));
         }, 3000);
         await dispatchRendererKey(devTools, 'Escape', 'Escape', 27);
     } finally {
@@ -2213,6 +2169,16 @@ async function assertCellDeleteAndBackspaceAreLocalAndUndoable() {
 }
 
 async function assertAdjacentFieldMergeIsChosenAndUndoable() {
+    // An unverified field layout must use ordinary Backspace, never merge adjacent values.
+    const unverified = await openFixture('merge-fields-unverified.key');
+    const untouched = unverified.document.getText();
+    unverified.editor.selection = new vscode.Selection(5, 77, 5, 77);
+    await vscode.commands.executeCommand('extension.lsdynaCellDeleteLeft');
+    const offset = unverified.document.offsetAt(new vscode.Position(5, 76));
+    assert.equal(unverified.document.getText(), untouched.slice(0, offset) + untouched.slice(offset + 1));
+    await vscode.commands.executeCommand('undo');
+    assert.equal(unverified.document.getText(), untouched);
+    assert.equal(unverified.document.isDirty, false);
     const { document, editor } = await openFixture('merge-fields.key');
     const original = document.getText();
     const sourceLine = document.lineAt(5).text;
@@ -2995,9 +2961,9 @@ async function assertParameterRenameIsDocumentLocalAndUndoable() {
     assert.strictEqual(entries[0][1].length, 3);
 
     assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
-    assert.strictEqual(document.lineAt(2).text, 'R finish 1.0');
+    assert.strictEqual(document.lineAt(2).text, 'R finish  1.0');
     assert.strictEqual(document.lineAt(4).text, 'R dtplot finish/100.0');
-    assert.strictEqual(document.lineAt(6).text, '&finish');
+    assert.strictEqual(document.lineAt(6).text, '   &finish');
     assert.strictEqual(document.eol, vscode.EndOfLine.CRLF);
     assert.deepStrictEqual(fs.readFileSync(otherPath), otherBytes);
 
@@ -3021,6 +2987,37 @@ async function assertParameterRenameIsDocumentLocalAndUndoable() {
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
     assert.deepStrictEqual(fs.readFileSync(otherPath), otherBytes);
+}
+
+async function assertParameterRenameKeepsFixedColumns() {
+    const { document } = await openFixture('rename-alignment.key');
+    await vscode.commands.executeCommand('workbench.action.joinAllGroups');
+    await vscode.commands.executeCommand('workbench.action.closeSidebar');
+    await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+    const original = document.getText();
+    const configuration = vscode.workspace.getConfiguration('lsdyna');
+    const previousLanguage = configuration.inspect('language').globalValue;
+    const devTools = await connectWorkbenchDevTools();
+    try {
+        for (const language of ['zh-cn', 'en']) {
+            await configuration.update('language', language, vscode.ConfigurationTarget.Global);
+            const edit = await vscode.commands.executeCommand('vscode.executeDocumentRenameProvider',
+                document.uri, new vscode.Position(1, 3), 'lctmcrv1');
+            assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+            assert.strictEqual(document.lineAt(1).text, 'I lctmcrv1 mxcrvid+8');
+            const row = document.lineAt(4).text;
+            assert.strictEqual(row.length, 80);
+            assert.strictEqual(row.slice(50, 60), ' &lctmcrv1');
+            assert.strictEqual(row.slice(60), '         1         0');
+            await captureRendererDiagnostic(devTools, `parameter-rename-alignment-${language}`);
+            await vscode.commands.executeCommand('undo');
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        }
+    } finally {
+        devTools.close();
+        await configuration.update('language', previousLanguage, vscode.ConfigurationTarget.Global);
+    }
 }
 
 async function assertParameterRenameRendererCancelAndAcceptAreScoped() {
@@ -3140,9 +3137,9 @@ async function assertParameterRenameRendererCancelAndAcceptAreScoped() {
 
         await settleRenameWidget('finish', 'Enter');
         await waitForAssertion(() => {
-            assert.strictEqual(document.lineAt(2).text, 'R finish 1.0');
+            assert.strictEqual(document.lineAt(2).text, 'R finish  1.0');
             assert.strictEqual(document.lineAt(4).text, 'R dtplot finish/100.0');
-            assert.strictEqual(document.lineAt(6).text, '&finish');
+            assert.strictEqual(document.lineAt(6).text, '   &finish');
         });
         assert.strictEqual(document.isDirty, true);
         assert.strictEqual(document.eol, originalEol);
@@ -3337,12 +3334,14 @@ async function assertStaleIncludeCaseQuickFixFailsClosed() {
             'the test requires the previously published diagnostic to remain observable',
         );
 
-        await vscode.commands.executeCommand('editor.action.codeAction', {
-            kind: vscode.CodeActionKind.QuickFix.value,
-            apply: 'first',
-            preferred: true,
-        });
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Other valid quick fixes (for example field comments) may remain.
+        // Ask the actual host for actions without applying an unrelated first item.
+        const actions = await vscode.commands.executeCommand('vscode.executeCodeActionProvider',
+            document.uri, new vscode.Range(2, 2, 2, 2), vscode.CodeActionKind.QuickFix.value);
+        assert.ok(Array.isArray(actions));
+        assert.ok(!actions.some(action => action.diagnostics?.some(
+            diagnostic => diagnostic.code === 'include-path-case-mismatch')),
+            'A stale Include path diagnostic must not offer a repair');
 
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
@@ -3829,6 +3828,7 @@ async function assertStandardFormattingEntrypointsAreUnclaimed() {
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
 
+    const originalClipboardText = await vscode.env.clipboard.readText();
     await configuration.update(
         'formatOnPaste',
         true,
@@ -3845,11 +3845,13 @@ async function assertStandardFormattingEntrypointsAreUnclaimed() {
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
     } finally {
-        await configuration.update(
-            'formatOnPaste',
-            undefined,
-            vscode.ConfigurationTarget.Global,
-        );
+        try {
+            await configuration.update(
+                'formatOnPaste',
+                undefined,
+                vscode.ConfigurationTarget.Global,
+            );
+        } finally { await writeClipboardText(originalClipboardText); }
     }
 }
 
@@ -4151,18 +4153,19 @@ async function assertOnBlurFormattingCannotModifyOsReadonlyDeck(readonlyFromPerm
     const originalBytes = fs.readFileSync(fixturePath);
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     childProcess.execFileSync('attrib.exe', ['+R', fixturePath]);
-    await filesConfiguration.update(
-        'readonlyFromPermissions',
-        readonlyFromPermissions,
-        vscode.ConfigurationTarget.Global,
-    );
-    await lsdynaConfiguration.update(
-        'autoFormat',
-        'onBlur',
-        vscode.ConfigurationTarget.Global,
-    );
-
+    let failure;
     try {
+        await filesConfiguration.update(
+            'readonlyFromPermissions',
+            readonlyFromPermissions,
+            vscode.ConfigurationTarget.Global,
+        );
+        await lsdynaConfiguration.update(
+            'autoFormat',
+            'onBlur',
+            vscode.ConfigurationTarget.Global,
+        );
+
         assert.throws(
             () => {
                 const descriptor = fs.openSync(fixturePath, 'r+');
@@ -4180,18 +4183,20 @@ async function assertOnBlurFormattingCannotModifyOsReadonlyDeck(readonlyFromPerm
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
         assert.deepStrictEqual(fs.readFileSync(fixturePath), originalBytes);
+    } catch (error) {
+        failure = error;
+        throw error;
     } finally {
-        await lsdynaConfiguration.update(
-            'autoFormat',
-            undefined,
-            vscode.ConfigurationTarget.Global,
-        );
-        await filesConfiguration.update(
-            'readonlyFromPermissions',
-            undefined,
-            vscode.ConfigurationTarget.Global,
-        );
-        childProcess.execFileSync('attrib.exe', ['-R', fixturePath]);
+        const cleanup = await Promise.allSettled([
+            Promise.resolve().then(() => lsdynaConfiguration.update('autoFormat', undefined, vscode.ConfigurationTarget.Global)),
+            Promise.resolve().then(() => filesConfiguration.update('readonlyFromPermissions', undefined, vscode.ConfigurationTarget.Global)),
+            Promise.resolve().then(() => childProcess.execFileSync('attrib.exe', ['-R', fixturePath])),
+        ]);
+        const errors = cleanup.filter(item => item.status === 'rejected').map(item => item.reason);
+        if (errors.length) {
+            if (!failure) throw new AggregateError(errors, 'Could not restore read-only test state');
+            console.error('Read-only test cleanup failed:', ...errors);
+        }
     }
 }
 
@@ -5638,8 +5643,8 @@ async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
         await vscode.commands.executeCommand('editor.action.showHover');
         const hoverChoicePoint = await waitForRendererVisibleTextElementCenter(
             devTools,
-            '.monaco-hover a',
-            'Select value',
+            '.monaco-hover a:has(.codicon-list-selection)',
+            '',
             false,
             3000,
         );
@@ -5667,7 +5672,7 @@ async function assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable() {
     const position = new vscode.Position(1, 5);
     editor.selection = new vscode.Selection(position, position);
 
-    const hover = await executeHover(document, position, 'Add these blank cards');
+    const hover = await executeDetailedHover(document, position, 'Add these blank cards');
     const markdown = hoverMarkdown(hover);
     assert.ok(markdown.includes('Missing Card 5, Card 6, Card 7'));
     assert.ok(markdown.includes('command:extension.checkKeywordStructure'));
@@ -5708,6 +5713,11 @@ async function assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable() {
         editor.selection = new vscode.Selection(position, position);
         await vscode.commands.executeCommand('editor.action.hideHover');
         await vscode.commands.executeCommand('editor.action.showHover');
+        const compact = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, position);
+        const more = compact.map(hoverMarkdown).join('\n').match(/command:extension\.hoverMore\?([^ )"]+)/);
+        assert.ok(more, 'Compact hover must expose its detail action');
+        const [requestId] = JSON.parse(decodeURIComponent(more[1]));
+        assert.equal(await vscode.commands.executeCommand('extension.toggleHoverDetails', requestId), true);
         // Hover content arrives asynchronously. Scroll only after the link exists;
         // a nonzero DOM rectangle can still be clipped outside the scroll viewport.
         await waitForRendererVisibleTextElementCenter(
@@ -5775,18 +5785,18 @@ async function assertUnverifiedTitleVariantStaysReadOnly() {
     const workspaceBefore = workspaceSnapshot();
     const { document } = await openFixture('title-card-position-conflict.key');
     const original = document.getText();
-    const keywordHover = await executeHover(document, new vscode.Position(1, 5), '`TITLE`');
+    const keywordHover = await executeDetailedHover(document, new vscode.Position(1, 5), '`TITLE`');
     const keywordMarkdown = hoverMarkdown(keywordHover);
     assert.ok(keywordMarkdown.includes('(active)'));
     assert.ok(!keywordMarkdown.includes('command:extension.insertVerifiedMissingRecords'));
     assert.ok(!keywordMarkdown.includes('record may be missing'));
 
-    const titleHover = await executeHover(document, new vscode.Position(3, 5), 'TITLE');
+    const titleHover = await executeDetailedHover(document, new vscode.Position(3, 5), 'TITLE');
     const titleMarkdown = hoverMarkdown(titleHover);
     assert.ok(!titleMarkdown.includes('command:extension.insertVerifiedMissingRecords'));
 
     const apparentFlagPosition = new vscode.Position(5, 75);
-    const shiftedHover = await executeHover(
+    const shiftedHover = await executeDetailedHover(
         document,
         new vscode.Position(5, 5),
         '**MID**',
@@ -5860,17 +5870,7 @@ async function assertLargeFileCustomEditorOpensReadonly() {
         fs.closeSync(descriptor);
     }
     const before = fs.statSync(filePath);
-    const readPrefix = () => {
-        const descriptor = fs.openSync(filePath, 'r');
-        const buffer = Buffer.alloc(128);
-        try {
-            const bytes = fs.readSync(descriptor, buffer, 0, buffer.length, 0);
-            return buffer.subarray(0, bytes).toString('utf8');
-        } finally {
-            fs.closeSync(descriptor);
-        }
-    };
-    const prefix = readPrefix();
+    const beforeSha256 = await hashFile(filePath);
     assert.ok(before.size >= 50 * 1024 * 1024);
     assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.fsPath === filePath));
 
@@ -5890,7 +5890,7 @@ async function assertLargeFileCustomEditorOpensReadonly() {
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
         const after = fs.statSync(filePath);
         assert.strictEqual(after.size, before.size);
-        assert.strictEqual(readPrefix(), prefix);
+        assert.strictEqual(await hashFile(filePath), beforeSha256, 'Readonly viewer changed source bytes');
     } finally {
         if (vscode.window.tabGroups.activeTabGroup.activeTab?.input?.viewType ===
             'lsdyna.largeFileViewer') {
@@ -5903,7 +5903,458 @@ async function assertLargeFileCustomEditorOpensReadonly() {
     }
 }
 
-async function run() {
+async function assertCellNavigationBelongsToTheOpenDocument() {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    const fixturePath = path.join(workspaceRoot, 'fixed-stale-nav.key');
+    const originalBytes = fs.readFileSync(fixturePath);
+    const uri = vscode.Uri.file(path.join(workspaceRoot, 'cell-navigation-identity.key')).with({ scheme: 'untitled' });
+    let original = await vscode.workspace.openTextDocument(uri);
+    if (original.languageId !== 'lsdyna') original = await vscode.languages.setTextDocumentLanguage(original, 'lsdyna');
+    const initialEditor = await vscode.window.showTextDocument(original, { preview: false });
+    await initialEditor.edit(builder => builder.insert(new vscode.Position(0, 0), originalBytes.toString('utf8')));
+    const originalText = original.getText();
+    const originalLine = original.lineAt(2).text;
+    const initialVersion = original.version;
+    const events = [];
+    const ids = new WeakMap();
+    let nextId = 0;
+    const id = document => {
+        if (!ids.has(document)) ids.set(document, ++nextId);
+        return ids.get(document);
+    };
+    const observe = (kind, document) => {
+        if (document.uri.toString() === uri.toString()) events.push({
+            kind, id: id(document), version: document.version, closed: document.isClosed,
+        });
+    };
+    id(original);
+    const closeSubscription = vscode.workspace.onDidCloseTextDocument(document => observe('close', document));
+    let lastChange;
+    const changeSubscription = vscode.workspace.onDidChangeTextDocument(event => {
+        observe('change', event.document);
+        if (event.document.uri.toString() === uri.toString() && event.contentChanges.length) lastChange = event;
+    });
+    const { createCardCellEditGuard } = require(path.join(
+        vscode.extensions.getExtension('hqyyqh.dynasense').extensionPath,
+        'out/client/services/cardCellEditGuard.js'));
+    const fields = [{ p: 0, w: 8 }, { p: 8, w: 16 }, { p: 24, w: 16 },
+        { p: 40, w: 16 }, { p: 56, w: 8 }, { p: 64, w: 8 }];
+    const makeGuard = () => createCardCellEditGuard({ getCardFieldsForLine: () => fields,
+        isLsdynaDocument: () => true, isProtectEnabled: () => true });
+    const staleGuard = makeGuard();
+    staleGuard.markA(original, 2, 1, true);
+    const snapshot = staleGuard.getNav();
+    let mutationRejected = false;
+    try { snapshot.fieldIndex = 0; } catch (error) { mutationRejected = error instanceof TypeError; }
+    const snapshotImmutable = mutationRejected && Object.isFrozen(snapshot) && staleGuard.getNav().fieldIndex === 1;
+    staleGuard.markA(original, 2, 1, true);
+    const loadedExtension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const currentModule = Object.values(require.cache).find(entry =>
+        entry.exports?._internals?.ensureCardCellEditGuard === loadedExtension.exports._internals.ensureCardCellEditGuard);
+    assert.ok(currentModule, 'activated extension module must be in the CommonJS cache');
+    assert.equal(fs.realpathSync(currentModule.filename).toLowerCase(),
+        fs.realpathSync(path.join(loadedExtension.extensionPath, 'out/extension.js')).toLowerCase());
+    const internals = currentModule.exports._internals;
+    const singleton = internals.ensureCardCellEditGuard();
+    assert.strictEqual(singleton, loadedExtension.exports._internals.ensureCardCellEditGuard());
+    const clearNav = singleton.clearNav;
+    const scopedClears = [];
+    singleton.clearNav = document => {
+        if (document) scopedClears.push({ id: id(document), closed: document.isClosed });
+        return clearNav(document);
+    };
+    let reopened;
+    try {
+        internals.markCardCellA(singleton, original, 2, 1, true);
+        await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+        await waitForAssertion(() => assert.equal(original.isClosed, true));
+        const closeListenerClearedOwner = scopedClears.some(entry => entry.id === id(original) && entry.closed);
+        reopened = await vscode.workspace.openTextDocument(uri);
+        if (reopened.languageId !== 'lsdyna') reopened = await vscode.languages.setTextDocumentLanguage(reopened, 'lsdyna');
+        const currentEditor = await vscode.window.showTextDocument(reopened, { preview: false });
+        await currentEditor.edit(builder => builder.insert(new vscode.Position(0, 0), originalText));
+        await waitForAssertion(() => assert.ok(lastChange && lastChange.document === reopened));
+        const reopenedInitialVersion = reopened.version;
+        const selection = new vscode.Selection(2, 9, 2, 24);
+        currentEditor.selection = selection;
+        const staleType = staleGuard.planType(reopened, selection, '9');
+        const liveGuard = makeGuard();
+        liveGuard.markA(reopened, 2, 1, true);
+        lastChange = undefined;
+        await currentEditor.edit(builder => builder.replace(new vscode.Range(2, 9, 2, 24), '9'));
+        await waitForAssertion(() => assert.ok(lastChange && lastChange.document === reopened && lastChange.contentChanges[0].text === '9'));
+        const stalePaste = staleGuard.planPostEditCorrection(reopened, lastChange.contentChanges);
+        const livePaste = liveGuard.planPostEditCorrection(reopened, lastChange.contentChanges);
+        const checks = { newObject: reopened !== original, sameUri: reopened.uri.toString() === original.uri.toString(),
+            sameInitialVersion: reopenedInitialVersion === initialVersion, changeOwnsReopenedObject: lastChange.document === reopened,
+            oldObjectClosed: original.isClosed, originalCloseObserved: events.some(event => event.kind === 'close' && event.id === id(original)),
+            livePasteRetainsColumns: !!livePaste && livePaste.newText.slice(24) === originalLine.slice(24),
+            staleTypeRejected: staleType === null, stalePasteRejected: stalePaste === null, snapshotImmutable };
+        const evidencePath = process.env.LSDYNA_CELL_NAV_EVIDENCE;
+        const beforeUndo = { checks, scopedClears, events, singletonNav: singleton.getNav(reopened),
+            version: reopened.version, activeOwnsReopened: vscode.window.activeTextEditor?.document === reopened,
+            originalText, pastedText: reopened.getText() };
+        await vscode.commands.executeCommand('undo');
+        if (evidencePath) fs.writeFileSync(evidencePath, JSON.stringify({ phase: 'undo-observation', beforeUndo,
+            version: reopened.version, activeOwnsReopened: vscode.window.activeTextEditor?.document === reopened,
+            currentText: reopened.getText() }, null, 2));
+        await waitForAssertion(() => assert.equal(reopened.getText(), originalText));
+        checks.closeListenerClearedOwner = closeListenerClearedOwner;
+        internals.markCardCellA(singleton, reopened, 2, 1, true);
+        const currentNav = singleton.getNav(reopened);
+        const selected = new vscode.Selection(2, currentNav.expectedStart, 2, currentNav.expectedEnd);
+        checks.liveTabEligible = internals.isTabSelectionEligible(currentEditor, selected);
+        checks.staleTabRejected = !internals.isTabSelectionEligible(initialEditor, selected);
+        checks.graceOwnsReopenedDocument = internals.hasRecentCardCellSelectionGrace(reopened) &&
+            !internals.hasRecentCardCellSelectionGrace(original) &&
+            internals.cardCellASelectionGraceRemaining(currentNav, reopened) > 0 &&
+            internals.cardCellASelectionGraceRemaining(currentNav, original) === 0;
+        singleton.clearNav(original);
+        singleton.onSelectionChange(initialEditor);
+        singleton.planPostEditCorrection(original, lastChange.contentChanges);
+        checks.queuedOldEventsPreserveNewNav = JSON.stringify(singleton.getNav(reopened)) === JSON.stringify(currentNav);
+        singleton.clearNav(reopened);
+        checks.diskFixtureUnchanged = fs.readFileSync(fixturePath).equals(originalBytes);
+        const evidence = { host: vscode.version, node: process.version, originalId: id(original), reopenedId: id(reopened),
+            initialVersion, reopenedInitialVersion, reopenedVersionAfterUndo: reopened.version, events, scopedClears, checks,
+            activatedModule: currentModule.filename, sourceRestored: reopened.getText() === originalText, resourceKind: 'owned untitled input deck' };
+        if (evidencePath) fs.writeFileSync(evidencePath, JSON.stringify(evidence, null, 2));
+        for (const [name, passed] of Object.entries(checks)) assert.equal(passed, true, name);
+    } finally {
+        singleton.clearNav = clearNav; singleton.clearNav();
+        closeSubscription.dispose(); changeSubscription.dispose();
+        if (reopened && !reopened.isClosed) {
+            await vscode.window.showTextDocument(reopened);
+            await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+        }
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        assert.deepEqual(fs.readFileSync(fixturePath), originalBytes);
+    }
+}
+
+
+async function assertSemanticEvidenceGatesInTheActualHost() {
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const currentModule = Object.values(require.cache).find(entry =>
+        entry.exports?._internals?.ensureCardCellEditGuard === extension.exports._internals.ensureCardCellEditGuard);
+    assert.ok(currentModule, 'use the activated extension module');
+    const api = currentModule.exports._internals;
+    const productRequire = createRequire(currentModule.filename);
+    const i18n = productRequire('./core/i18n');
+    const root = path.join(path.dirname(workspaceRoot), 'semantic-evidence-fixture');
+    fs.mkdirSync(root);
+    const bytes = Buffer.from('original synthetic locked PDF byte fixture');
+    const pdfPath = path.join(root, 'original.pdf');
+    const manifestBytes = Buffer.from(JSON.stringify({ documents: [
+        { slug: 'synthetic-manual', pdfFile: 'original.pdf' },
+    ] }));
+    fs.writeFileSync(path.join(root, 'manifest.json'), manifestBytes);
+    const sourceLock = { manualPackManifestSha256: crypto.createHash('sha256').update(manifestBytes).digest('hex'),
+        documents: [{ manualId: 'synthetic-manual', pdfFile: 'original.pdf', pages: 1,
+            size: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') }] };
+    const request = { keyword: '*TEST', ruleId: 'rule:synthetic', evidenceId: 'evidence:synthetic' };
+    const evidence = { evidenceId: request.evidenceId, manualId: 'synthetic-manual', page: 1 };
+    let summary = { sourceLock };
+    const catalog = { summary: () => summary,
+        rulesForKeyword: () => [{ ruleId: request.ruleId, evidence: [evidence] }] };
+    const resolver = new api.SemanticEvidenceResolver();
+    const opened = [];
+    const openEvidence = () => api.handleOpenSemanticEvidenceCommand({}, request, {
+        resolver, catalog, manualPackRoot: root, openPdf: (_context, file) => opened.push(file),
+    });
+    const configuration = vscode.workspace.getConfiguration('lsdyna');
+    const originalLanguage = configuration.get('language');
+    const workspaceBefore = workspaceSnapshot();
+    const devTools = await connectWorkbenchDevTools();
+    const results = [];
+    const evidencePath = process.env.LSDYNA_SEMANTIC_GATE_EVIDENCE;
+    const fixedTime = new Date('2020-01-02T03:04:05.000Z');
+    const clearNotifications = async () => {
+        await vscode.commands.executeCommand('notifications.clearAll');
+        await waitForAssertion(async () => {
+            const response = await devTools.call('Runtime.evaluate', {
+                expression: `document.querySelectorAll('.notification-list-item').length`, returnByValue: true,
+            });
+            assert.equal(response.result.value, 0);
+        });
+    };
+    try {
+        for (const language of ['en', 'zh-cn']) {
+            await configuration.update('language', language, vscode.ConfigurationTarget.Global);
+            i18n.updateLanguage();
+            await clearNotifications();
+            summary = { sourceLock };
+            fs.writeFileSync(pdfPath, bytes);
+            fs.utimesSync(pdfPath, fixedTime, fixedTime);
+            const original = fs.statSync(pdfPath);
+            assert.equal((await openEvidence()).status, 'resolved');
+            const opensBeforeFailure = opened.length;
+            fs.writeFileSync(pdfPath, Buffer.alloc(bytes.length, 0x78));
+            fs.utimesSync(pdfPath, fixedTime, fixedTime);
+            const replacement = fs.statSync(pdfPath);
+            assert.equal(replacement.size, original.size);
+            assert.equal(replacement.mtimeMs, original.mtimeMs);
+            assert.equal((await openEvidence()).status, 'pdf-integrity-mismatch');
+            for (const [kind, key] of [['byte-mismatch', 'semanticEvidencePdfMismatch'],
+                ['invalid-authority', 'semanticEvidenceUnavailable']]) {
+                if (kind === 'invalid-authority') {
+                    await clearNotifications();
+                    fs.writeFileSync(pdfPath, bytes);
+                    summary = { sourceLock, evidenceAuthority: { profiles: [] } };
+                    assert.equal((await openEvidence()).status, 'source-lock-unavailable');
+                    assert.deepEqual(api.semanticEvidencePageLinks('*TEST', catalog.rulesForKeyword(),
+                        { catalogSummary: summary }), []);
+                }
+                const expected = i18n.get(key);
+                // VS Code limits a burst of toasts; the native notification
+                // center still exposes every warning for actual UI verification.
+                await vscode.commands.executeCommand('notifications.showList');
+                await waitForAssertion(async () => {
+                    const expanded = await devTools.call('Runtime.evaluate', {
+                        expression: `(() => {
+                            const item = Array.from(document.querySelectorAll('.notification-list-item'))
+                                .find(element => element.textContent.includes(${JSON.stringify(expected)}));
+                            if (!item) return false;
+                            item.querySelector('[aria-label="Expand Notification (RightArrow)"]')?.click();
+                            return true;
+                        })()`, returnByValue: true,
+                    });
+                    assert.equal(expanded.result.value, true);
+                });
+                let notification;
+                await waitForAssertion(async () => {
+                    const response = await devTools.call('Runtime.evaluate', {
+                        expression: `Array.from(document.querySelectorAll('.notification-list-item')).map(element => ({
+                            text: element.textContent, visible: element.getClientRects().length > 0,
+                            width: element.getBoundingClientRect().width, className: element.className,
+                            message: (() => {
+                                const message = element.querySelector('.notification-list-item-message');
+                                return message ? { text: message.textContent, height: message.clientHeight,
+                                    scrollHeight: message.scrollHeight, width: message.clientWidth, scrollWidth: message.scrollWidth } : null;
+                            })(),
+                            actions: Array.from(element.querySelectorAll('[aria-label]')).map(node => node.getAttribute('aria-label'))
+                        }))`, returnByValue: true,
+                    });
+                    if (evidencePath) fs.writeFileSync(evidencePath, JSON.stringify({ phase: 'notification-observation',
+                        language, kind, expected, configuredLanguage: vscode.workspace.getConfiguration('lsdyna').get('language'),
+                        notifications: response.result.value, results }, null, 2));
+                    notification = response.result.value.find(item => item.visible && item.text.includes(expected));
+                    assert.ok(notification, expected);
+                    assert.ok(notification.actions.includes('Collapse Notification (LeftArrow)'));
+                    assert.ok(notification.message && notification.message.text.includes(expected));
+                    assert.ok(notification.message.height > 0 && notification.message.scrollHeight <= notification.message.height + 1);
+                    assert.ok(notification.message.scrollWidth <= notification.message.width + 1);
+                });
+                const name = `${language}-${kind}`;
+                const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+                if (evidencePath) fs.writeFileSync(`${evidencePath}.${name}.png`, Buffer.from(screenshot.data, 'base64'));
+                results.push({ language, kind, expected, notification, openerUnchanged: opened.length === opensBeforeFailure,
+                    size: replacement.size, mtimeMs: replacement.mtimeMs });
+                assert.equal(opened.length, opensBeforeFailure);
+            }
+        }
+        assert.deepEqual(workspaceSnapshot(), workspaceBefore);
+        if (evidencePath) fs.writeFileSync(evidencePath, JSON.stringify({ host: vscode.version,
+            vscodeLocale: vscode.env.language, platform: process.platform, activatedModule: currentModule.filename,
+            results, boundary: 'Original synthetic locked bytes/catalog; PDF opener observed; native resolver and notification UI execute unchanged.',
+            workspaceUnchanged: true }, null, 2));
+    } finally {
+        devTools.close();
+        await configuration.update('language', originalLanguage, vscode.ConfigurationTarget.Global);
+        i18n.updateLanguage();
+        await vscode.commands.executeCommand('notifications.clearAll');
+    }
+}
+
+async function assertCustomKeywordOwnershipInTheActualHost() {
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const currentModule = Object.values(require.cache).find(entry =>
+        entry.exports?._internals?.ensureCardCellEditGuard === extension.exports._internals.ensureCardCellEditGuard);
+    assert.ok(currentModule, 'use the activated extension module');
+    const productRequire = createRequire(currentModule.filename);
+    const service = productRequire('./client/services/customValidKeywords');
+    const ui = productRequire('./client/services/customValidKeywordsUi');
+    const i18n = productRequire('./core/i18n');
+    const configuration = vscode.workspace.getConfiguration('lsdyna');
+    const priorLanguage = configuration.get('language');
+    const priorKeywords = configuration.inspect('customValidKeywords').globalValue;
+    const workspaceBefore = workspaceSnapshot();
+    const devTools = await connectWorkbenchDevTools();
+    const evidencePath = process.env.LSDYNA_CUSTOM_KEYWORD_EVIDENCE;
+    const results = [];
+    let observation;
+    const save = phase => {
+        if (evidencePath) fs.writeFileSync(evidencePath, JSON.stringify({ phase, host: vscode.version,
+            vscodeLocale: vscode.env.language, platform: process.platform, activatedModule: currentModule.filename,
+            results, observation, boundary: 'Native settings known-layer control; get-only adapter models unavailable ownership. Actual native QuickPick and warning UI. CDP-emulated viewport; no source snapshot or independent language approval.' }, null, 2));
+    };
+    try {
+        await configuration.update('customValidKeywords', ['*HOST_USER'], vscode.ConfigurationTarget.Global);
+        assert.equal(service.resolveEntrySource('*HOST_USER'), 'global');
+        const knownLayer = service.inspectCustomValidKeywords();
+        await configuration.update('customValidKeywords', priorKeywords, vscode.ConfigurationTarget.Global);
+        for (const language of ['en', 'zh-cn']) {
+            await configuration.update('language', language, vscode.ConfigurationTarget.Global);
+            i18n.updateLanguage();
+            for (const width of [360, 480]) {
+                await vscode.commands.executeCommand('notifications.clearAll');
+                await devTools.call('Emulation.setDeviceMetricsOverride', { width, height: 900,
+                    deviceScaleFactor: 1, mobile: false });
+                const entry = '*UNKNOWN_OWNER';
+                let picks = 0, updates = 0;
+                const commands = [];
+                const config = { get: () => [entry], update() { updates++; throw Error('unknown owner must not be written'); } };
+                const flow = ui.showManageCustomValidKeywordsPick({ config, executeCommand: (command, ...args) => {
+                    commands.push({ command, args });
+                    return vscode.commands.executeCommand(command, ...args);
+                }, showQuickPick: (items, options) => {
+                    assert.equal(items[0].action, 'add', 'must not offer edit/delete for unknown ownership');
+                    return ++picks === 1 ? vscode.window.showQuickPick(items, options) : Promise.resolve(undefined);
+                } });
+                const observed = flow.then(() => ({ passed: true }), error => ({ error: error.stack }));
+                const label = i18n.get('customValidKeywordSourceUnknown');
+                let picker;
+                await waitForAssertion(async () => {
+                    const response = await devTools.call('Runtime.evaluate', { expression: `(() => {
+                        const row = Array.from(document.querySelectorAll('.quick-input-widget .monaco-list-row'))
+                            .find(item => item.textContent.includes(${JSON.stringify(entry)}));
+                        const widget = row?.closest('.quick-input-widget');
+                        return row ? { text: row.textContent, accessible: row.getAttribute('aria-label'),
+                            opacity: Number(getComputedStyle(widget).opacity),
+                            animations: widget.getAnimations({subtree:true}).filter(animation =>
+                                animation.playState === 'running' && Number.isFinite(animation.effect.getTiming().iterations)).length,
+                            title: row.getAttribute('title'), left: row.getBoundingClientRect().left,
+                            right: row.getBoundingClientRect().right, viewport: innerWidth,
+                            labels: Array.from(row.querySelectorAll('.label-name, .label-description')).map(item => {
+                                const range = document.createRange(); range.selectNodeContents(item);
+                                const glyphs = range.getBoundingClientRect();
+                                const parent = item.parentElement.getBoundingClientRect();
+                                return { text: item.textContent, title: item.getAttribute('title'), left: glyphs.left,
+                                    right: glyphs.right, parentLeft: parent.left, parentRight: parent.right };
+                            }) } : null;
+                    })()`, returnByValue: true });
+                    picker = response.result.value;
+                    observation = { language, width, picker };
+                    save('picker-observation');
+                    assert.ok(picker?.text.includes(label));
+                    assert.ok(picker.accessible?.includes(entry) && picker.accessible.includes(label));
+                    assert.equal(picker.viewport, width);
+                    assert.equal(picker.opacity, 1);
+                    assert.equal(picker.animations, 0);
+                    assert.ok(picker.left >= 0 && picker.right <= width + 1);
+                    assert.ok(picker.labels.every(item => item.left >= item.parentLeft - 1 && item.right <= item.parentRight + 1));
+                    assert.ok(picker.labels.every(item => item.left >= picker.left - 1 && item.right <= picker.right + 1));
+                });
+                const name = `${language}-${width}`;
+                if (evidencePath) {
+                    const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+                    fs.writeFileSync(`${evidencePath}.${name}-picker.png`, Buffer.from(screenshot.data, 'base64'));
+                }
+                const point = await waitForRendererVisibleTextElementCenter(devTools,
+                    '.quick-input-widget .monaco-list-row', entry, false, 3000);
+                await dispatchRendererMouseClick(devTools, point);
+                const expected = i18n.get('customValidKeywordSourceUnknownReadOnly', entry);
+                const settingsAction = i18n.get('customValidKeywordManageOpenSettings');
+                await vscode.commands.executeCommand('notifications.showList');
+                let warning;
+                await waitForAssertion(async () => {
+                    const response = await devTools.call('Runtime.evaluate', { expression: `(() => {
+                        const item = Array.from(document.querySelectorAll('.notification-list-item'))
+                            .find(item => item.textContent.includes(${JSON.stringify(expected)}));
+                        if (!item) return null;
+                        item.querySelector('[aria-label^="Expand Notification"]')?.click();
+                        const message = item.querySelector('.notification-list-item-message');
+                        const bounds = message.getBoundingClientRect();
+                        const clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+                        const ancestors = [];
+                        for (let parent = message.parentElement; parent; parent = parent.parentElement) {
+                            const style = getComputedStyle(parent), rect = parent.getBoundingClientRect();
+                            if (style.overflowX !== 'visible') {
+                                clip.left = Math.max(clip.left, rect.left); clip.right = Math.min(clip.right, rect.right);
+                            }
+                            if (style.overflowY !== 'visible') {
+                                clip.top = Math.max(clip.top, rect.top); clip.bottom = Math.min(clip.bottom, rect.bottom);
+                            }
+                            ancestors.push({ className: parent.className, top: rect.top, bottom: rect.bottom,
+                                overflowX: style.overflowX, overflowY: style.overflowY });
+                        }
+                        return { text: message?.textContent, width: message?.clientWidth, scrollWidth: message?.scrollWidth,
+                            height: message?.clientHeight, scrollHeight: message?.scrollHeight,
+                            bounds: { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom }, clip, ancestors,
+                            left: item.getBoundingClientRect().left, right: item.getBoundingClientRect().right,
+                            viewport: innerWidth, accessible: item.getAttribute('aria-label'),
+                            buttons: Array.from(item.querySelectorAll('.monaco-button')).map(button => {
+                                const rect = button.getBoundingClientRect();
+                                const range = document.createRange(); range.selectNodeContents(button);
+                                const glyphs = range.getBoundingClientRect();
+                                return { text: button.textContent, accessible: button.getAttribute('aria-label'),
+                                    left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+                                    glyphs: { left: glyphs.left, right: glyphs.right, top: glyphs.top, bottom: glyphs.bottom } };
+                            }) };
+                    })()`, returnByValue: true });
+                    warning = response.result.value;
+                    observation = { language, width, picker, warning };
+                    save('warning-observation');
+                    assert.ok(warning?.text.includes(expected));
+                    assert.ok(warning.height > 0 && warning.scrollHeight <= warning.height + 1);
+                    assert.ok(warning.scrollWidth <= warning.width + 1);
+                    assert.ok(warning.left >= 0 && warning.right <= width + 1);
+                    assert.ok(warning.bounds.top >= warning.clip.top - 1 && warning.bounds.bottom <= warning.clip.bottom + 1);
+                    assert.ok(warning.bounds.left >= warning.clip.left - 1 && warning.bounds.right <= warning.clip.right + 1);
+                    const button = warning.buttons.find(button => button.text === settingsAction);
+                    assert.ok(button && (!button.accessible || button.accessible === settingsAction));
+                    assert.ok(button.left >= warning.clip.left - 1 && button.right <= warning.clip.right + 1);
+                    assert.ok(button.top >= warning.clip.top - 1 && button.bottom <= warning.clip.bottom + 1);
+                    assert.ok(button.glyphs.top >= warning.clip.top - 1 && button.glyphs.bottom <= warning.clip.bottom + 1);
+                });
+                const dom = await devTools.call('DOM.getDocument', { depth: 0 });
+                const actionNode = await devTools.call('DOM.querySelector', {
+                    nodeId: dom.root.nodeId, selector: '.notification-list-item .monaco-button',
+                });
+                const accessibility = await devTools.call('Accessibility.getPartialAXTree', {
+                    nodeId: actionNode.nodeId, fetchRelatives: false,
+                });
+                const actionName = accessibility.nodes.find(node => !node.ignored && node.role?.value === 'button');
+                assert.equal(actionName?.name?.value, settingsAction);
+                warning.settingsActionAccessibleName = actionName.name.value;
+                if (evidencePath) {
+                    const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+                    fs.writeFileSync(`${evidencePath}.${name}-warning.png`, Buffer.from(screenshot.data, 'base64'));
+                }
+                const actionPoint = await waitForRendererVisibleTextElementCenter(devTools,
+                    '.notification-list-item .monaco-button', settingsAction, false, 3000);
+                await dispatchRendererMouseClick(devTools, actionPoint);
+                const completed = await withTimeout(observed, 3000, 'manage UI did not close after the warning');
+                assert.equal(completed.error, undefined);
+                assert.equal(picks, 1);
+                assert.deepEqual(commands, [{ command: 'workbench.action.openSettings', args: ['lsdyna.customValidKeywords'] }]);
+                assert.equal(updates, 0);
+                assert.deepEqual(workspaceSnapshot(), workspaceBefore);
+                results.push({ language, width, label, expected, settingsAction, commands, picker, warning, writes: updates, knownLayer });
+                save('case-passed');
+            }
+        }
+        save('passed');
+    } catch (error) {
+        observation = { ...observation, error: error.stack };
+        save('failed');
+        if (evidencePath) {
+            const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+            fs.writeFileSync(`${evidencePath}.failed.png`, Buffer.from(screenshot.data, 'base64'));
+        }
+        throw error;
+    } finally {
+        await devTools.call('Emulation.clearDeviceMetricsOverride');
+        await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+        await vscode.commands.executeCommand('notifications.clearAll');
+        await configuration.update('customValidKeywords', priorKeywords, vscode.ConfigurationTarget.Global);
+        await configuration.update('language', priorLanguage, vscode.ConfigurationTarget.Global);
+        i18n.updateLanguage();
+        devTools.close();
+    }
+}
+
+async function runScenarios() {
     if (!workspaceRoot || !fs.existsSync(workspaceRoot)) {
         throw new Error('LSDYNA_EDITOR_SAFETY_WORKSPACE is missing');
     }
@@ -5937,7 +6388,26 @@ async function run() {
     const focusedScenario = process.env.LSDYNA_EDITOR_SAFETY_ONLY;
     if (focusedScenario) {
         const scenarios = {
+            'parameter-rename': async () => {
+                await assertParameterRenameIsDocumentLocalAndUndoable();
+                await assertParameterRenameRendererCancelAndAcceptAreScoped();
+                await assertParameterRenameKeepsFixedColumns();
+            },
             'enter': assertEnterIsAtomicAndUndoable,
+            'cell-navigation-identity': assertCellNavigationBelongsToTheOpenDocument,
+            'semantic-evidence-integrity': assertSemanticEvidenceGatesInTheActualHost,
+            'custom-keyword-owner': assertCustomKeywordOwnershipInTheActualHost,
+            'cell-navigation-regression': async () => {
+                for (const scenario of [
+                    assertCellNavigationBelongsToTheOpenDocument,
+                    assertPasteIntoSelectedCellKeepsColumns,
+                    assertCellTypeIsLocalAndUndoable,
+                    assertCommaTabRequiresExplicitConversionAndUndo,
+                ]) {
+                    await scenario();
+                    console.log(`Cell navigation host passed: ${scenario.name}`);
+                }
+            },
             'release-b05': async () => {
                 await assertPassiveOperationsDoNotWrite();
                 console.log('B05 host passed: assertPassiveOperationsDoNotWrite');
@@ -6034,6 +6504,7 @@ async function run() {
             'mouse-multicursor': assertRendererAltClickMultiCursorActionsAreAtomic,
             'mouse-drag': assertRendererMouseDragSelectionsAreScopedAndUndoable,
             'mouse-context-menu': assertRendererContextMenuPasteAndCutAreScopedAndUndoable,
+            'include-stale': assertStaleIncludeCaseQuickFixFailsClosed,
             'mouse-code-action': assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
             'line-comment': assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly,
             'comment-roundtrip': assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody,
@@ -6069,6 +6540,9 @@ async function run() {
     const caseResults = [];
     for (const scenario of [
         assertPassiveOperationsDoNotWrite,
+        assertSemanticEvidenceGatesInTheActualHost,
+        assertCustomKeywordOwnershipInTheActualHost,
+        assertCellNavigationBelongsToTheOpenDocument,
         assertEntityReferencesWebviewActivatesAndQueries,
         assertLargeFileCustomEditorOpensReadonly,
         assertFunctionalHoverMatrix,
@@ -6104,6 +6578,7 @@ async function run() {
         assertKeywordManagerRemainsBoundWhenEditorFocusChanges,
         assertContactOptionsDoNotDuplicateOrRemoveComments,
         assertParameterRenameIsDocumentLocalAndUndoable,
+        assertParameterRenameKeepsFixedColumns,
         assertParameterRenameRendererCancelAndAcceptAreScoped,
         assertIncludeCaseQuickFixIsLocalAndUndoable,
         assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
@@ -6163,7 +6638,13 @@ async function run() {
     if (gaps.length) throw new Error('Host acceptance incomplete: ' + gaps.map(item => item.name).join(', '));
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 
-    console.log('Editor safety Extension Host: 79 scenarios passed');
+    console.log(`Editor safety Extension Host: ${caseResults.length} scenarios passed`);
+}
+
+async function run() {
+    const originalClipboardText = await vscode.env.clipboard.readText();
+    try { return await runScenarios(); }
+    finally { await writeClipboardText(originalClipboardText); }
 }
 
 module.exports = { run };

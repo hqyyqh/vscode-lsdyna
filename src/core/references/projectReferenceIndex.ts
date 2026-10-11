@@ -1,4 +1,3 @@
-import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const path = require('path');
@@ -13,21 +12,24 @@ const {
 } = require('./parameterEnvironment');
 const { resolveReferenceValueSemantics } = require('./fieldReferenceClassifier');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
-const definitionLayoutIndex = require(keywordDataPath("references/field_reference_index.json"));
+const { getReferenceRuleCatalog } = require('./referenceRuleCatalog');
 const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog');
 const { isEntityIdentity, isLabelIdentity } = require('./entityIdentity');
+const { stripKeywordInputFormatMarker } = require('../parser/inputFormat');
+const { INCLUDE_OFFSET_KEYS, initialIncludeOffsets, nativeOccurrenceOffset,
+    nativeSignedOffsetVerified, nativeOffsetReasons } = require('./nativeIncludeOffsets');
 
 function definitionCoverage() {
-    const generic = definitionLayoutIndex.definitionKeywords?.generic || {};
+    const generic = getReferenceRuleCatalog().metadata('definitionKeywords')?.generic || {};
     const onDemand = {
-        ...(definitionLayoutIndex.definitionKeywords?.onDemand || {}),
+        ...(getReferenceRuleCatalog().metadata('definitionKeywords')?.onDemand || {}),
         ...(familyDefinitionKeywords().onDemand || {}),
     };
     const indexedTargetKinds = new Set(['curve', 'table']);
     const indexedTargetDefinitions = new Set();
     const onDemandTargetKinds = new Set();
     const onDemandTargetDefinitions = new Set();
-    for (const keyword of definitionLayoutIndex.definitionKeywords?.scanned || []) {
+    for (const keyword of getReferenceRuleCatalog().metadata('definitionKeywords')?.scanned || []) {
         indexedTargetDefinitions.add(normalizeKeyword(keyword));
     }
     for (const descriptor of Object.values(generic) as any[]) {
@@ -58,7 +60,7 @@ function definitionCoverage() {
 let defaultDefinitionCoverage;
 
 function normalizeKeyword(value) {
-    return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
+    return stripKeywordInputFormatMarker(String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0]);
 }
 
 function emptyReferenceIndex(files = []) {
@@ -209,7 +211,9 @@ function addDefinitionOccurrence(
     const effectiveDefinition = resolveParameterizedDefinition(approvedDefinition, bindings);
     const runtimeOccurrenceId = occurrenceContext.occurrencePath.join(' > ');
     const sourceId = effectiveDefinition.id;
-    const idfoffOffset = occurrenceContext.idfoffOffset;
+    const targetKinds = [effectiveDefinition.targetKind || effectiveDefinition.kind];
+    const targetDefinitions = [effectiveDefinition.keyword || effectiveDefinition.targetKeyword];
+    const idfoffOffset = nativeOccurrenceOffset(occurrenceContext, targetKinds, targetDefinitions);
     let effectiveId = sourceId;
     const candidate = {
         ...effectiveDefinition,
@@ -225,6 +229,7 @@ function addDefinitionOccurrence(
         uncertaintyReasons: [
             ...occurrenceContext.uncertaintyReasons,
             ...parameterUncertaintyReasons,
+            ...nativeOffsetReasons(occurrenceContext, targetKinds, targetDefinitions),
         ],
     };
     if (Number.isFinite(sourceId) && idfoffOffset !== null && idfoffOffset !== undefined) {
@@ -270,60 +275,38 @@ function fileHasKeyword(fileIndex, keywordPrefix) {
 function transformReasons(
     edge,
     childFileIndex,
-    ancestorRelevantTransformCount,
-    ancestorTransformDepth,
-    ancestorIdfoffOffset
+    context,
+    bindings
 ) {
     const reasons = [];
-    let relevantTransformCount = ancestorRelevantTransformCount;
-    let transformDepth = ancestorTransformDepth;
-    let idfoffOffset = ancestorIdfoffOffset;
+    let transformDepth = context.transformDepth;
+    const includeOffsets = { ...context.includeOffsets };
+    const offsetDepths = { ...context.offsetDepths };
     const transform = edge && edge.transform;
     if (!transform) {
         if (String(edge && edge.keyword || '').toUpperCase().startsWith('*INCLUDE_TRANSFORM')) {
             transformDepth += 1;
-            reasons.push('transform-offset-unresolved');
-            relevantTransformCount += 1;
-            idfoffOffset = null;
-            if (relevantTransformCount > 1) {
-                reasons.push('nested-transform-unsupported');
-            }
+            for (const key of INCLUDE_OFFSET_KEYS) includeOffsets[key] = null;
         }
-        if (transformDepth > 0 && fileHasKeyword(childFileIndex, '*PARAMETER_TYPE')) {
-            reasons.push('parameter-type-transform-unsupported');
-        }
-        return { reasons, relevantTransformCount, transformDepth, idfoffOffset };
-    }
-
-    transformDepth += 1;
-    const idfoff = transform.offsets && transform.offsets.idfoff;
-    const isSafeNumeric = idfoff &&
-        idfoff.kind === 'numeric' &&
-        Number.isSafeInteger(idfoff.value);
-    const isKnownZero = isSafeNumeric && idfoff.value === 0;
-    if (!isKnownZero) {
-        relevantTransformCount += 1;
-        if (!isSafeNumeric ||
-            relevantTransformCount > 1 ||
-            !Number.isSafeInteger(idfoffOffset)) {
-            reasons.push('transform-offset-unresolved');
-            idfoffOffset = null;
-        } else {
-            idfoffOffset += idfoff.value;
-            if (!Number.isSafeInteger(idfoffOffset)) {
-                reasons.push('transform-offset-unresolved');
-                idfoffOffset = null;
-            }
+    } else {
+        transformDepth += 1;
+        for (const key of INCLUDE_OFFSET_KEYS) {
+            const input = transform.offsets?.[key];
+            const value = !input || input.kind === 'blank' ? 0 : input.kind === 'numeric' ? input.value :
+                input.kind === 'parameter' ? resolveIntegerParameter(bindings, input.name, input.negated).value : null;
+            if (value === 0) continue;
+            offsetDepths[key] = (offsetDepths[key] || 0) + 1;
+            const sum = includeOffsets[key] + value;
+            includeOffsets[key] = offsetDepths[key] > 1 ||
+                !Number.isSafeInteger(includeOffsets[key]) || !Number.isSafeInteger(value) ||
+                !Number.isSafeInteger(sum) ? null : sum;
         }
     }
-    if (relevantTransformCount > 1) {
-        reasons.push('nested-transform-unsupported');
-        idfoffOffset = null;
-    }
-    if (fileHasKeyword(childFileIndex, '*PARAMETER_TYPE')) {
+    if (transformDepth > 0 && fileHasKeyword(childFileIndex, '*PARAMETER_TYPE')) {
         reasons.push('parameter-type-transform-unsupported');
     }
-    return { reasons, relevantTransformCount, transformDepth, idfoffOffset };
+    return { reasons, relevantTransformCount: offsetDepths.idfoff || 0, transformDepth,
+        idfoffOffset: includeOffsets.idfoff, includeOffsets, offsetDepths };
 }
 
 function groupOccurrencesByParent(graph) {
@@ -372,7 +355,9 @@ function recordParameterPoint(
 ) {
     if (!runtimeContext.initialBindings) {
         runtimeContext.initialBindings = snapshotVisibleParameterBindings(state);
-        runtimeContext.initialUncertaintyReasons = [...state.uncertaintyReasons];
+        runtimeContext.initialUncertaintyReasons = [...new Set([
+            ...(runtimeContext.uncertaintyReasons || []), ...state.uncertaintyReasons,
+        ])];
     }
     const updates = new Map();
     for (const name of [...new Set(updatedNames)]) {
@@ -397,6 +382,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
     const occurrencesByParent = groupOccurrencesByParent(snapshot.graph);
     const visitCountsByFile = new Map();
     const parameterState = createParameterRuntimeState();
+    const nativeEmState = require('../semantics/nativeEmReadState').createNativeEmReadState();
 
     function visit(filePath, context, ancestry) {
         index.occurrenceCount += 1;
@@ -404,20 +390,29 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         visitCountsByFile.set(filePath, priorVisitCount + 1);
         const reusedOccurrenceSearchContext = priorVisitCount > 0;
         const fileIndex = getFileIndex(fileIndexes, filePath);
+        if (!fileIndex) nativeEmState.invalidate('native-em-file-index-unavailable');
+        let nativeInputFormat = context.inputFormatMode;
         const runtimeParameterContext = {
-            occurrenceId: context.occurrenceId,
+            occurrenceId: context.occurrencePath.join(' > '),
             occurrencePath: [...context.occurrencePath],
             occurrencePathLabels: [...context.occurrencePathLabels],
+            uncertaintyReasons: [...context.uncertaintyReasons],
             idfoffOffset: context.idfoffOffset,
+            includeOffsets: context.includeOffsets,
+            offsetDepths: context.offsetDepths,
             inputFormatMode: context.inputFormatMode,
             timeline: [],
             initialBindings: null,
             initialUncertaintyReasons: [],
+            nativeEmReadLayouts: new Map(),
         };
         enterParameterFile(parameterState, context.occurrenceId, filePath);
         recordParameterPoint(index, filePath, runtimeParameterContext, -1, parameterState);
 
         const actions = [
+            ...(fileIndex?.nativeReadEvents || []).map(event => ({
+                type: 'native-read', lineIndex: event.startLine, sequence: 0, event,
+            })),
             ...(fileIndex && fileIndex.parameterEvents || []).map(event => ({
                 type: 'parameter',
                 lineIndex: Number.isInteger(event.lineIndex) ? event.lineIndex : 0,
@@ -448,6 +443,21 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         );
 
         for (const action of actions) {
+            if (action.type === 'native-read') {
+                if (action.event.kind === 'input-format') {
+                    nativeInputFormat = require('../parser/inputFormat').globalInputFormatFromKeywordLine(action.event.rawKeyword, nativeInputFormat);
+                    continue;
+                }
+                const selected = nativeEmState.apply(action.event.variants?.[nativeInputFormat] || action.event, raw => {
+                    if (!raw.includes('&')) return raw;
+                    const parsed = require('./referenceInputValue').parseNumericInput(raw);
+                    if (parsed.kind !== 'parameter') return raw;
+                    const value = resolveIntegerParameter(snapshotVisibleParameterBindings(parameterState), parsed.name, parsed.negated, true);
+                    return value.resolved ? String(value.value) : raw;
+                });
+                if (selected) runtimeParameterContext.nativeEmReadLayouts.set(action.event.startLine, selected);
+                continue;
+            }
             if (action.type === 'parameter') {
                 applyParameterEvent(parameterState, action.event);
                 recordParameterPoint(
@@ -485,6 +495,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                 childReasons.push('parameterized-include-unresolved');
             }
             if (edge.missing) {
+                nativeEmState.invalidate('missing-include');
                 childReasons.push('missing-include');
                 index.completenessReasons.push('missing-include');
                 index.unresolvedCurves.push({
@@ -501,8 +512,9 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                 });
                 continue;
             }
-            if (!childPath) continue;
+            if (!childPath) { nativeEmState.invalidate('include-read-order-unavailable'); continue; }
             if (ancestry.includes(childPath) || edge.cycle) {
+                nativeEmState.invalidate('include-cycle');
                 childReasons.push('include-cycle');
                 index.unresolvedCurves.push({
                     kind: 'unknownCurveDefinition',
@@ -528,9 +540,8 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             const transformState = transformReasons(
                 edge,
                 childFileIndex,
-                context.relevantTransformCount,
-                context.transformDepth,
-                context.idfoffOffset
+                context,
+                snapshotVisibleParameterBindings(parameterState)
             );
             childReasons.push(...transformState.reasons);
             const globalChangeStart = parameterState.globalChanges.length;
@@ -542,7 +553,9 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                 relevantTransformCount: transformState.relevantTransformCount,
                 transformDepth: transformState.transformDepth,
                 idfoffOffset: transformState.idfoffOffset,
-                inputFormatMode: edge.inputFormatOverride || context.inputFormatMode,
+                includeOffsets: transformState.includeOffsets,
+                offsetDepths: transformState.offsetDepths,
+                inputFormatMode: edge.inputFormatOverride || nativeInputFormat,
             }, [...ancestry, childPath]);
             recordParameterPoint(
                 index,
@@ -565,6 +578,8 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         relevantTransformCount: 0,
         transformDepth: 0,
         idfoffOffset: 0,
+        includeOffsets: initialIncludeOffsets(),
+        offsetDepths: {},
         inputFormatMode: 'standard',
     }, [snapshot.rootFile]);
 }
@@ -695,6 +710,12 @@ function resolveReferenceDefinitions(referenceIndex, id, targetKinds, targetDefi
             definitions.push(...matches);
         }
     }
+    const lookup = referenceIndex.queryDefinitionLookup;
+    if (lookup && lookup.id === id) {
+        const targets = new Set(targetDefinitions.map(normalizeKeyword));
+        definitions.push(...lookup.definitions.filter(definition => kinds.has(definition.targetKind) ||
+            targets.has(normalizeKeyword(definition.targetKeyword || definition.keyword))));
+    }
     return [...new Set(definitions)];
 }
 
@@ -725,10 +746,12 @@ function unresolvedForKinds(referenceIndex, targetKinds, targetDefinitions = [])
     return [...new Set(unresolved)];
 }
 
-function targetCoverageReasons(referenceIndex, targetKinds, targetDefinitions = []) {
+function targetCoverageReasons(referenceIndex, targetKinds, targetDefinitions = [], id = undefined) {
     if (!referenceIndex) return ['project-scan-unavailable'];
     const reasons = [];
     for (const kind of targetKinds || []) {
+        if (referenceIndex.queryDefinitionLookup?.id === id && referenceIndex.queryDefinitionLookup.state === 'complete' &&
+            referenceIndex.queryDefinitionLookup.targetKinds.includes(kind)) continue;
         if (referenceIndex.onDemandTargetKinds?.has(kind)) {
             reasons.push('target-kind-on-demand');
         } else if (!referenceIndex.indexedTargetKinds?.has(kind)) {
@@ -737,6 +760,8 @@ function targetCoverageReasons(referenceIndex, targetKinds, targetDefinitions = 
     }
     for (const target of targetDefinitions || []) {
         const normalized = normalizeKeyword(target);
+        if (referenceIndex.queryDefinitionLookup?.id === id && referenceIndex.queryDefinitionLookup.state === 'complete' &&
+            referenceIndex.queryDefinitionLookup.targetDefinitions.includes(normalized)) continue;
         if (referenceIndex.onDemandTargetDefinitions?.has(normalized)) {
             reasons.push('target-definition-on-demand');
         } else if (!referenceIndex.indexedTargetDefinitions?.has(normalized)) {
@@ -744,6 +769,36 @@ function targetCoverageReasons(referenceIndex, targetKinds, targetDefinitions = 
         }
     }
     return [...new Set(reasons)];
+}
+
+/** A fallback namespace is usable only after earlier namespaces were searched. */
+function selectReferenceTargetSearch(referenceIndex, id, targetSearch, transformForTarget = undefined) {
+    let firstTransform;
+    for (const target of targetSearch) {
+        const transform = transformForTarget?.(target);
+        firstTransform ||= transform;
+        const extra = transform ? { transformResolution: transform } : {};
+        if (transform?.resolved === false) return { ready: false, target: null, definitions: [],
+            reasons: transform.reasons, ...extra };
+        const targetId = transform ? transform.effectiveId : id;
+        const keywords = new Set((target.targetKeywords || []).map(normalizeKeyword));
+        if (target.targetDefinitionUnavailable && !keywords.size) return {
+            ready: false, target: null, definitions: [], reasons: ['lspp-target-priority-unresolved'], ...extra,
+        };
+        const kinds = keywords.size ? [] : target.targetKinds;
+        const definitions = resolveReferenceDefinitions(referenceIndex, targetId, target.targetKinds, target.targetKeywords)
+            .filter(definition => !keywords.size ||
+                keywords.has(normalizeKeyword(definition.targetKeyword || definition.keyword)));
+        if (definitions.length) return { ready: true, target, definitions, reasons: [], ...extra };
+        const reasons = [...(referenceIndex.completenessReasons || []),
+            ...targetCoverageReasons(referenceIndex, kinds, target.targetKeywords, targetId),
+            ...unresolvedForKinds(referenceIndex, kinds, target.targetKeywords)
+                .flatMap(definition => definition.uncertaintyReasons || [])];
+        if (target.targetDefinitionUnavailable || reasons.length) return { ready: false, target: null, definitions: [],
+            reasons: [...new Set(['lspp-target-priority-unresolved', ...reasons])], ...extra };
+    }
+    return { ready: true, target: null, definitions: [], reasons: [],
+        ...(firstTransform ? { transformResolution: firstTransform } : {}) };
 }
 
 function parameterBindingsAtLine(context, lineIndex) {
@@ -760,7 +815,7 @@ function parameterBindingsAtLine(context, lineIndex) {
     return { bindings, reasons: [...reasons] };
 }
 
-function occurrenceContextsForDocument(referenceIndex, documentPath) {
+function occurrenceContextsForDocument(referenceIndex, documentPath, occurrenceId?) {
     if (!documentPath) return [];
     const contextsByFile = referenceIndex && referenceIndex.parameterContextsByFile;
     let contexts = contextsByFile && contextsByFile.get(documentPath) || [];
@@ -773,7 +828,18 @@ function occurrenceContextsForDocument(referenceIndex, documentPath) {
             }
         }
     }
-    return contexts;
+    return occurrenceId === undefined ? contexts : contexts.filter(context => context.occurrenceId === occurrenceId);
+}
+
+/** The same file may be read more than once. Never pick one occurrence's EM layout. */
+function nativeEmReadLayoutAtLocation(referenceIndex, documentPath, startLine, occurrenceId?) {
+    const contexts = occurrenceContextsForDocument(referenceIndex, documentPath, occurrenceId);
+    const layouts = contexts.map(context => context.nativeEmReadLayouts?.get(startLine));
+    if (!layouts.length || layouts.some(layout => layout?.state !== 'ready')) return {
+        state: 'unknown', reason: 'native-em-read-order-unresolved',
+    };
+    const keys = new Set(layouts.map(layout => JSON.stringify(layout.cardIndexes)));
+    return keys.size === 1 ? layouts[0] : { state: 'unknown', reason: 'native-em-occurrence-layout-ambiguous' };
 }
 
 function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, options) {
@@ -787,7 +853,7 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
     const lineIndex = Number.isInteger(options && options.lineIndex)
         ? options.lineIndex
         : Number.MAX_SAFE_INTEGER;
-    const contexts = occurrenceContextsForDocument(referenceIndex, documentPath);
+    const contexts = occurrenceContextsForDocument(referenceIndex, documentPath, options?.occurrenceId);
     if (contexts.length === 0) {
         return {
             resolved: false,
@@ -799,11 +865,7 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
     const reasons = new Set();
     for (const context of contexts) {
         const point = parameterBindingsAtLine(context, lineIndex);
-        if (!point || !point.bindings) {
-            reasons.add('parameter-environment-unavailable');
-            continue;
-        }
-        for (const reason of point.reasons || []) {
+        for (const reason of point.reasons) {
             reasons.add(reason);
         }
         const result = (options?.allowRealValue === true ? require('./parameterEnvironment').resolveNumericParameter : resolveIntegerParameter)(
@@ -893,9 +955,9 @@ function analyzeParameterReferenceAtLocation(
     );
 }
 
-function resolveReferenceTransformAtLocation(referenceIndex, sourceId, isSignedSwitch, options) {
+function resolveReferenceTransformAtLocation(referenceIndex, sourceId, isSignedSwitch, targetKinds, targetDefinitions, options) {
     const documentPath = options && options.documentPath;
-    if (!documentPath) {
+    if (!documentPath && options?.projectScoped !== true) {
         return {
             resolved: true,
             sourceId,
@@ -906,25 +968,22 @@ function resolveReferenceTransformAtLocation(referenceIndex, sourceId, isSignedS
             reasons: [],
         };
     }
-    const contexts = occurrenceContextsForDocument(referenceIndex, documentPath);
+    const contexts = occurrenceContextsForDocument(referenceIndex, documentPath, options?.occurrenceId);
     if (contexts.length === 0) {
         return {
-            resolved: true,
+            resolved: false,
             sourceId,
-            effectiveId: sourceId,
-            offset: 0,
-            evidenceRule: null,
             results: [],
-            reasons: [],
+            reasons: ['reference-source-context-unavailable'],
         };
     }
 
     const results = [];
     const reasons = new Set();
     for (const context of contexts) {
-        const offset = context.idfoffOffset;
+        const offset = nativeOccurrenceOffset(context, targetKinds, targetDefinitions);
         if (!Number.isSafeInteger(offset)) {
-            reasons.add('transform-offset-unresolved');
+            for (const reason of nativeOffsetReasons(context, targetKinds, targetDefinitions)) reasons.add(reason);
             continue;
         }
         results.push({
@@ -972,7 +1031,7 @@ function resolveReferenceTransformAtLocation(referenceIndex, sourceId, isSignedS
             reasons: [],
         };
     }
-    if (isSignedSwitch && offset !== 0) {
+    if (isSignedSwitch && offset !== 0 && !nativeSignedOffsetVerified(contexts, targetKinds, targetDefinitions)) {
         return {
             resolved: false,
             sourceId,
@@ -1020,6 +1079,7 @@ function analyzeReference(
         documentPath?: string;
         lineIndex?: number;
         targetDefinitions?: string[];
+        occurrenceId?: string;
     } = {}
 ) {
     if (!referenceValue) {
@@ -1038,6 +1098,7 @@ function analyzeReference(
     let effectiveReferenceValue = referenceValue;
     let effectiveTargetKinds = referenceValue.targetKinds || targetKinds || [];
     let effectiveTargetDefinitions = referenceValue.targetDefinitions || options.targetDefinitions || [];
+    let targetSearch = referenceValue.targetSearch || referenceValue.semanticRelation?.targetSearch;
     let parameterResolution = null;
     if (referenceValue.kind === 'parameter') {
         parameterResolution = resolveParameterReferenceAtLocation(
@@ -1071,6 +1132,7 @@ function analyzeReference(
             }
             effectiveTargetKinds = semantic.targetKinds;
             effectiveTargetDefinitions = semantic.targetDefinitions;
+            targetSearch = semantic.targetSearch;
             effectiveReferenceValue = {
                 kind: 'numeric',
                 id: semantic.id,
@@ -1088,10 +1150,12 @@ function analyzeReference(
         }
     }
 
-    const transformResolution = resolveReferenceTransformAtLocation(
+    let transformResolution = resolveReferenceTransformAtLocation(
         referenceIndex,
         effectiveReferenceValue.id,
         effectiveReferenceValue.isSignedSwitch,
+        effectiveTargetKinds,
+        effectiveTargetDefinitions,
         options
     );
     if (transformResolution.resolved) {
@@ -1101,7 +1165,21 @@ function analyzeReference(
         };
     }
 
-    const definitions = resolveReferenceDefinitions(
+    const targetSelection = targetSearch
+        ? selectReferenceTargetSearch(referenceIndex, effectiveReferenceValue.id, targetSearch, target =>
+            resolveReferenceTransformAtLocation(referenceIndex, transformResolution.sourceId,
+                effectiveReferenceValue.isSignedSwitch, target.targetKinds || [], target.targetKeywords || [], options)) : null;
+    if (targetSelection?.transformResolution) {
+        transformResolution = targetSelection.transformResolution;
+        if (transformResolution.resolved) effectiveReferenceValue = {
+            ...effectiveReferenceValue, id: transformResolution.effectiveId,
+        };
+    }
+    if (targetSelection?.ready) {
+        effectiveTargetKinds = targetSelection.target?.targetKinds || [];
+        effectiveTargetDefinitions = targetSelection.target?.targetKeywords || [];
+    }
+    const definitions = targetSelection ? targetSelection.definitions : resolveReferenceDefinitions(
         referenceIndex,
         effectiveReferenceValue.id,
         effectiveTargetKinds,
@@ -1116,12 +1194,15 @@ function analyzeReference(
         ...(referenceIndex.completenessReasons || []),
         ...unresolved.flatMap(candidate => candidate.uncertaintyReasons || []),
         ...(transformResolution.reasons || []),
-        ...targetCoverageReasons(referenceIndex, effectiveTargetKinds, effectiveTargetDefinitions),
+        ...targetCoverageReasons(referenceIndex, effectiveTargetKinds, effectiveTargetDefinitions, effectiveReferenceValue.id),
+        ...(targetSelection?.reasons || []),
     ])];
     if ((options as any).projectScoped === false) {
         reasons.push('project-scan-unavailable');
     }
     if (effectiveReferenceValue.isSignedSwitch &&
+        !nativeSignedOffsetVerified(occurrenceContextsForDocument(referenceIndex, options.documentPath, options.occurrenceId),
+            effectiveTargetKinds, effectiveTargetDefinitions) &&
         definitions.some(definition =>
             Number.isSafeInteger(definition.idfoffOffset) &&
             definition.idfoffOffset !== 0
@@ -1144,6 +1225,8 @@ function analyzeReference(
             raw: referenceValue.raw,
             parameterResolution,
             transformResolution,
+            ...(targetSearch ? { targetSearch, targetSelection, targetKinds: effectiveTargetKinds,
+                targetDefinitions: effectiveTargetDefinitions } : {}),
         };
     }
     return {
@@ -1162,6 +1245,8 @@ function analyzeReference(
         raw: referenceValue.raw,
         parameterResolution,
         transformResolution,
+        ...(targetSearch ? { targetSearch, targetSelection, targetKinds: effectiveTargetKinds,
+            targetDefinitions: effectiveTargetDefinitions } : {}),
     };
 }
 
@@ -1266,11 +1351,13 @@ function attachResolvedTableChildren(
 module.exports = {
     buildProjectReferenceIndex,
     resolveReferenceDefinitions,
+    selectReferenceTargetSearch,
     analyzeReference,
     analyzeParameterReferenceAtLocation,
     analyzeIntegerParameterValueAtLocation,
     analyzeNumericParameterValueAtLocation,
     parameterContextsForDocument: occurrenceContextsForDocument,
+    nativeEmReadLayoutAtLocation,
     attachResolvedTableChildren,
 };
 

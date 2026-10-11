@@ -42,7 +42,10 @@ export function formatFieldHelpMarkdown(
         return '';
     }
 
-    const primaryMd = primary.replace(/\r?\n/g, '  \n');
+    const primaryMd = primary
+        .replace(/(`+)[\s\S]*?\1|\b[a-z][a-z\d+.-]*:\S+|[a-z\d]+(?:_[a-z\d]+){2,}/gi, token =>
+            token.includes('`') || token.includes(':') ? token : token.replace(/_/g, '_<wbr>'))
+        .replace(/\r?\n/g, '  \n');
     if (!secondary) {
         return primaryMd;
     }

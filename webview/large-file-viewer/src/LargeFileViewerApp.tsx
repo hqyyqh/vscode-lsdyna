@@ -1,5 +1,7 @@
 import {
+    Fragment,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -15,129 +17,340 @@ import type {
 } from '../../../src/client/largeFileViewerProtocol';
 import type { LargeFileViewerTransport } from './transport';
 
+type ViewerAction = (current: LargeFileViewerState) => Promise<boolean>;
+// ponytail: cap native scroll coordinates; windowed reads and exact line jumps cover files beyond browser pixel limits.
+const MAX_SCROLL_HEIGHT = 4_000_000;
+
 export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTransport }) {
     const [state, setState] = useState<LargeFileViewerState | null>(null);
+    const [displayLine, setDisplayLine] = useState(0);
+    const [lineTarget, setLineTarget] = useState<number | null>(null);
+    const displayLineRef = useRef(0);
     const [gotoLine, setGotoLine] = useState('1');
-    const [keywordFilter, setKeywordFilter] = useState('');
+    const [searchMode, setSearchMode] = useState<'text' | 'keyword'>('keyword');
     const [searchText, setSearchText] = useState('');
+    const [viewportSize, setViewportSize] = useState({ height: 300, lineHeight: 20 });
+    const viewport = useRef<HTMLDivElement>(null);
+    const searchInput = useRef<HTMLInputElement>(null);
+    const desiredLine = useRef<number | null>(null);
+    const assignedScrollTop = useRef<number | null>(null);
+    const wheelPixels = useRef(0);
+    const [pixelOffset, setPixelOffset] = useState(0);
+    const [initialError, setInitialError] = useState(false);
+    const [attempt, setAttempt] = useState(0);
+    const [retryAction, setRetryAction] = useState<ViewerAction | null>(null);
+    const currentState = useRef<LargeFileViewerState | null>(null);
+    const mounted = useRef(false);
+    const actionSequence = useRef(0);
     const gotoFocused = useRef(false);
+    const navigationInFlight = useRef(false);
     const navigateTimer = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         let live = true;
-        transport.ready().then(next => {
+        mounted.current = true;
+        setInitialError(false);
+        const accept = (next: LargeFileViewerState) => {
             if (!live) return;
+            setInitialError(false);
+            const previous = currentState.current;
+            if (previous && next.revision <= previous.revision) return;
+            currentState.current = next;
+            const targetChanged = previous !== null &&
+                JSON.stringify(previous.navigationTarget) !== JSON.stringify(next.navigationTarget);
+            if (targetChanged || next.search.currentLine !== previous?.search.currentLine || next.search.query !== previous?.search.query || next.stale) {
+                desiredLine.current = null;
+                setLineTarget(null);
+                wheelPixels.current = 0;
+                setPixelOffset(0);
+                if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
+                navigateTimer.current = undefined;
+            }
+            const requested = desiredLine.current;
+            const position = !next.stale && requested !== null && next.lines.some(row => row.lineNumber === requested)
+                ? requested : next.anchorLine;
+            if (position !== next.anchorLine) transport.updatePosition(next.revision, position);
+            displayLineRef.current = position;
+            setDisplayLine(position);
+            if (next.stale || next.anchorLine === desiredLine.current) desiredLine.current = null;
             setState(next);
-            setGotoLine(String(next.anchorLine + 1));
-            setSearchText(next.search.query);
+            if (!gotoFocused.current) setGotoLine(String(position + 1));
+            if (!previous) setSearchText(next.keywordSearch?.query ?? next.search.query);
+        };
+        const timer = window.setTimeout(() => { if (live && !currentState.current) setInitialError(true); }, 10000);
+        const received = (next: LargeFileViewerState) => { window.clearTimeout(timer); accept(next); };
+        Promise.resolve().then(() => transport.ready()).then(received, () => {
+            window.clearTimeout(timer);
+            if (live && !currentState.current) setInitialError(true);
         });
-        const stop = transport.onStateChanged(next => {
-            if (!live) return;
-            setState(next);
-            if (!gotoFocused.current) setGotoLine(String(next.anchorLine + 1));
-        });
+        const stop = transport.onStateChanged(received);
         return () => {
             live = false;
+            mounted.current = false;
+            actionSequence.current++;
+            window.clearTimeout(timer);
             stop();
             if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
         };
-    }, [transport]);
+    }, [transport, attempt]);
+
+    useLayoutEffect(() => {
+        const element = viewport.current;
+        if (!element) return;
+        const row = element.querySelector('.line');
+        const measure = () => {
+            const height = element.clientHeight || 300;
+            const lineHeight = element.querySelector('.line')?.getBoundingClientRect().height || 20;
+            setViewportSize(previous => previous.height === height && previous.lineHeight === lineHeight
+                ? previous : { height, lineHeight });
+        };
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        if (row) observer.observe(row);
+        return () => observer.disconnect();
+    }, [!!state, state?.lines[0]?.lineNumber]);
+
+    const lastLine = Math.max(0, (state?.lineCount ?? state?.lines.length ?? 1) - 1);
+    const scrollHeight = Math.min(MAX_SCROLL_HEIGHT, lastLine * viewportSize.lineHeight);
+    const visibleRows = Math.max(1, Math.floor(viewportSize.height / viewportSize.lineHeight));
+    const scrollPosition = (line: number) => lastLine ? line / lastLine * scrollHeight : 0;
+    const setScrollLine = (line: number) => {
+        const element = viewport.current;
+        if (!element) return;
+        element.scrollTop = scrollPosition(line);
+        // Native scroll coordinates can be rounded; that rounding must not change an exact line jump.
+        assignedScrollTop.current = element.scrollTop;
+    };
+
+    useLayoutEffect(() => {
+        if (viewport.current && state && desiredLine.current === null) {
+            setScrollLine(displayLineRef.current);
+        }
+    }, [state?.anchorLine, state?.lines, scrollHeight, viewportSize.height]);
+
+    useEffect(() => {
+        const element = viewport.current;
+        if (!element) return;
+        const wheel = (event: WheelEvent) => {
+            if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+            event.preventDefault();
+            const current = currentState.current;
+            if (!current || current.stale || current.indexing !== 'ready') return;
+            wheelPixels.current += event.deltaY * (event.deltaMode === 1 ? viewportSize.lineHeight
+                : event.deltaMode === 2 ? viewportSize.height : 1);
+            const rows = Math.trunc(wheelPixels.current / viewportSize.lineHeight);
+            wheelPixels.current -= rows * viewportSize.lineHeight;
+            if (rows) navigate((desiredLine.current ?? displayLineRef.current) + rows, true);
+            const position = desiredLine.current ?? displayLineRef.current;
+            setPixelOffset(position > 0 && position < (current.lineCount || 1) - 1 ? wheelPixels.current : 0);
+        };
+        element.addEventListener('wheel', wheel, { passive: false });
+        return () => element.removeEventListener('wheel', wheel);
+    }, [!!state, scrollHeight, lastLine, viewportSize.height, viewportSize.lineHeight]);
 
     const digits = useMemo(() => String(Math.max(1, state?.lineCount || 1)).length, [state?.lineCount]);
-    if (!state) return <div className="loading" role="status">{document.documentElement.lang.toLowerCase().startsWith('zh') ? '正在加载文件…' : 'Loading file…'}</div>;
+    const zh = state?.locale === 'zh' || (!state?.locale && document.documentElement.lang.toLowerCase().startsWith('zh'));
+    const failed = zh ? '\u64CD\u4F5C\u672A\u5B8C\u6210\uFF0C\u8BF7\u91CD\u8BD5\u3002' : 'The operation did not complete. Please try again.';
+    if (!state) return <div className="loading" role={initialError ? 'alert' : 'status'}>
+        {initialError ? failed : zh ? '\u6B63\u5728\u52A0\u8F7D\u6587\u4EF6\u2026' : 'Loading file\u2026'}
+        {initialError && <button type="button" onClick={() => setAttempt(value => value + 1)}>{zh ? '\u91CD\u8BD5' : 'Retry'}</button>}
+    </div>;
+
+    const run = async (action: ViewerAction, reportFalse = true) => {
+        const current = currentState.current;
+        if (!current) return;
+        const sequence = ++actionSequence.current;
+        setRetryAction(null);
+        try {
+            const accepted = await action(current);
+            if (!accepted && reportFalse && mounted.current && sequence === actionSequence.current &&
+                currentState.current?.revision === current.revision) setRetryAction(() => action);
+        } catch {
+            if (mounted.current && sequence === actionSequence.current) setRetryAction(() => action);
+        }
+    };
 
     const navigate = (line: number, delayed = false) => {
-        if (state.stale || state.indexing !== 'ready' && line > 0) return;
+        const current = currentState.current;
+        if (!current || current.stale || current.indexing !== 'ready' && line > 0) return;
+        const target = Math.max(0, Math.min(lastLine, Math.floor(line)));
+        if (!delayed) { wheelPixels.current = 0; setPixelOffset(0); }
+        desiredLine.current = target;
+        setScrollLine(target);
+        const first = current.lines[0]?.lineNumber ?? 0;
+        const last = current.lines.at(-1)?.lineNumber ?? 0;
+        const covered = target >= first && Math.min(lastLine, target + visibleRows) <= last;
+        if (covered) {
+            displayLineRef.current = target;
+            setDisplayLine(target);
+            transport.updatePosition(current.revision, target);
+            if (!gotoFocused.current) setGotoLine(String(target + 1));
+            if ((first === 0 || target - first >= 20) && (last === lastLine || last - target >= visibleRows + 40)) return;
+        }
+        if (delayed && navigateTimer.current !== undefined) return;
         if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
-        const run = () => void transport.navigate(state.revision, Math.max(0, Math.floor(line)));
-        if (delayed) navigateTimer.current = window.setTimeout(run, 70);
-        else run();
+        const request = () => {
+            navigateTimer.current = undefined;
+            if (navigationInFlight.current) return;
+            const current = currentState.current;
+            if (!current || current.stale || current.indexing !== 'ready' && line > 0) return;
+            const requestedLine = desiredLine.current ?? target;
+            navigationInFlight.current = true;
+            void run(async next => {
+                let accepted = false;
+                try {
+                    accepted = await transport.navigate(next.revision, requestedLine);
+                    return accepted;
+                } finally {
+                    navigationInFlight.current = false;
+                    if (!accepted && desiredLine.current === requestedLine) {
+                        desiredLine.current = null;
+                        setScrollLine(displayLineRef.current);
+                    } else if (mounted.current && desiredLine.current !== null && desiredLine.current !== requestedLine) {
+                        navigate(desiredLine.current, true);
+                    }
+                }
+            });
+        };
+        if (delayed) navigateTimer.current = window.setTimeout(request, 16);
+        else request();
+    };
+    const jump = (action: ViewerAction, reportFalse = true) => {
+        setLineTarget(null);
+        if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
+        navigateTimer.current = undefined;
+        desiredLine.current = null;
+        wheelPixels.current = 0;
+        setPixelOffset(0);
+        void run(action, reportFalse);
     };
     const submitGoto = (event: FormEvent) => {
         event.preventDefault();
         const parsed = Number(gotoLine);
-        if (Number.isSafeInteger(parsed) && parsed > 0) navigate(parsed - 1);
+        if (Number.isSafeInteger(parsed) && parsed > 0 && !state.stale) {
+            setLineTarget(Math.min(lastLine, parsed - 1));
+            navigate(parsed - 1);
+        }
     };
     const submitSearch = (event: FormEvent) => {
         event.preventDefault();
-        void transport.search(state.revision, searchText.trim());
+        if (state.stale) return;
+        if (searchMode === 'keyword') jump(next => transport.navigateKeyword(next.revision, 1, searchText.trim()));
+        else if (searchText.trim() === state.search.query && state.search.count > 0) jump(next => transport.searchStep(next.revision, 1));
+        else jump(next => transport.search(next.revision, searchText.trim()));
     };
     const searchKey = (event: KeyboardEvent<HTMLInputElement>) => {
-        if (event.key !== 'Enter' || state.search.loading ||
+        if (event.key === 'Enter' && searchMode === 'keyword' && !state.stale) {
+            event.preventDefault();
+            jump(next => transport.navigateKeyword(next.revision, event.shiftKey ? -1 : 1, searchText.trim()));
+            return;
+        }
+        if (event.key !== 'Enter' || state.stale || state.search.loading ||
             searchText.trim() !== state.search.query || state.search.count === 0) return;
         event.preventDefault();
-        void transport.searchStep(state.revision, event.shiftKey ? -1 : 1);
+        jump(next => transport.searchStep(next.revision, event.shiftKey ? -1 : 1));
     };
     const onViewportKey = (event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key === 'PageDown' || event.key === 'PageUp') {
+        const steps: Record<string, number> = { PageDown: visibleRows - 1 || 1, PageUp: -(visibleRows - 1 || 1), ArrowDown: 1, ArrowUp: -1 };
+        if (event.key in steps || event.key === 'Home' || event.key === 'End') {
             event.preventDefault();
-            navigate(state.anchorLine + (event.key === 'PageDown' ? 40 : -40));
-        } else if (event.key === 'Enter' && state.selectedField?.queryable) {
+            navigate(event.key === 'Home' ? 0 : event.key === 'End' ? lastLine
+                : (desiredLine.current ?? displayLineRef.current) + steps[event.key]);
+        } else if (event.key === 'Enter' && !state.stale && state.selectedField?.queryable) {
             event.preventDefault();
-            void transport.queryField(state.revision, state.selectedField.token);
+            void run(next => transport.queryField(next.revision, state.selectedField!.token));
         }
     };
 
-    return <main>
-        <header className="titlebar">
-            <strong title={state.fileName}>{state.fileName}</strong>
-            <span>{formatBytes(state.fileSize)}</span>
-        </header>
-        <div className="toolbar">
-            <form className="goto" onSubmit={submitGoto}>
-                <label>{state.labels.line}</label>
-                <input value={gotoLine} inputMode="numeric" onFocus={() => { gotoFocused.current = true; }}
-                    onBlur={() => { gotoFocused.current = false; }} onChange={event => setGotoLine(event.target.value)} />
-                <button type="submit" disabled={state.indexing !== 'ready' || state.stale}>{state.labels.goto}</button>
-            </form>
-            <div className="keyword-nav">
-                <input value={keywordFilter} onChange={event => setKeywordFilter(event.target.value)}
-                    placeholder={state.labels.keyword} spellCheck={false} />
-                <button type="button" title={state.labels.previous} disabled={state.indexing !== 'ready' || state.stale}
-                    onClick={() => void transport.navigateKeyword(state.revision, -1, keywordFilter)}>‹</button>
-                <button type="button" title={state.labels.next} disabled={state.indexing !== 'ready' || state.stale}
-                    onClick={() => void transport.navigateKeyword(state.revision, 1, keywordFilter)}>›</button>
-            </div>
-            <form className="search" onSubmit={submitSearch}>
-                <input value={searchText} onChange={event => setSearchText(event.target.value)}
-                    onKeyDown={searchKey} placeholder={state.labels.search} spellCheck={false} />
-                <button type="submit" disabled={state.stale}>{state.labels.search}</button>
-                <button type="button" disabled={state.search.count === 0 || state.stale}
-                    title={state.labels.previous} onClick={() => void transport.searchStep(state.revision, -1)}>‹</button>
-                <button type="button" disabled={state.search.count === 0 || state.stale}
-                    title={state.labels.next} onClick={() => void transport.searchStep(state.revision, 1)}>›</button>
-            </form>
-        </div>
-        <div className={`status ${state.stale ? 'warning' : ''}`} role="status">
-            {state.stale ? <>{state.labels.stale} <button type="button"
-                onClick={() => void transport.reload(state.revision)}>{state.labels.reload}</button></>
+    const includePrevious = pixelOffset < 0 && state.lines.some(line => line.lineNumber === displayLine - 1);
+    const shownLines = state.lines.filter(line => line.lineNumber >= displayLine - (includePrevious ? 1 : 0)).slice(0, visibleRows + 2);
+    const translation = pixelOffset < 0 ? includePrevious ? viewportSize.lineHeight + pixelOffset : 0 : pixelOffset;
+    const precedingKeyword = state.lines.filter(line => line.lineNumber <= displayLine && line.keyword).at(-1)?.text.trim() || state.currentKeyword;
+    const targetText = state.navigationTarget && state.lines.find(line => line.lineNumber === state.navigationTarget?.line)?.text
+        .slice(state.navigationTarget.startColumn, state.navigationTarget.endColumn).trim();
+    return <main lang={state.locale} onKeyDown={event => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+            event.preventDefault(); event.stopPropagation();
+            setSearchMode('text'); searchInput.current?.focus(); searchInput.current?.select();
+        } else if (event.key === 'Escape') {
+            event.preventDefault(); event.stopPropagation(); viewport.current?.focus();
+        }
+    }}>
+        <div className={`status ${state.stale || state.indexing === 'error' || retryAction ? 'warning' : ''}`} role="status">
+            {retryAction && <div className="action-error" role="alert">{state.labels.failed || failed} <button type="button"
+                onClick={() => void run(retryAction)}>{state.labels.retry}</button></div>}
+            {precedingKeyword && <span className="sticky-header" title={precedingKeyword}>{precedingKeyword}</span>}
+            {state.stale || state.indexing === 'error' ? <>{state.stale ? state.labels.stale : state.indexingMessage} <button type="button"
+                onClick={() => jump(next => transport.reload(next.revision))}>{state.labels.reload}</button></>
                 : state.indexing === 'loading' ? state.labels.indexing
-                    : state.indexing === 'error' ? state.indexingMessage
-                        : <><span>{state.currentKeyword}</span><span>{state.anchorLine + 1} / {state.lineCount || '—'}</span>
-                            {state.search.loading && <span>{state.labels.search}…</span>}
-                            {!state.search.loading && state.search.count > 0 &&
-                                <span>{state.search.currentIndex + 1} / {state.search.count}</span>}
+                    : <><span className="position" title={`${state.labels.line} ${displayLine + 1} / ${state.lineCount || '\u2014'}`} aria-label={`${state.labels.line} ${displayLine + 1} / ${state.lineCount || '\u2014'}`}>{state.labels.line} {displayLine + 1}<span className="line-total"> / {state.lineCount || '\u2014'}</span></span>
+                            {state.search.loading && <span>{state.labels.search}{'\u2026'}</span>}
                             {state.search.message && <span>{state.search.message}</span>}</>}
+            {lineTarget === null && state.navigationTarget && !state.stale && targetText && !targetText.startsWith('*') && <span className="navigation-position" title={`${state.labels.navigationTarget} · ${state.labels.line} ${state.navigationTarget.line + 1}${targetText ? ` · ID ${targetText}` : ''}`}>
+                {targetText ? `ID ${targetText}` : `${state.labels.line} ${state.navigationTarget.line + 1}`}
+            </span>}
+            <span className="read-only" title={`${state.labels.readOnly} ${formatBytes(state.fileSize)}`} aria-label={state.labels.readOnly}>{state.labels.readOnlyShort}</span>
         </div>
-        <div className="viewport" tabIndex={0} onKeyDown={onViewportKey}
-            onWheel={event => {
-                if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
-                    state.stale || state.indexing !== 'ready') return;
-                event.preventDefault();
-                const delta = Math.sign(event.deltaY) * Math.max(1, Math.round(Math.abs(event.deltaY) / 24));
-                navigate(state.anchorLine + delta, true);
-            }}>
-            <div className="deck" style={{ '--line-digits': digits } as CSSProperties}>
-                {state.lines.map(line => <LineRow key={line.lineNumber} line={line} state={state}
-                    select={token => void transport.selectField(state.revision, token)}
-                    query={token => void transport.queryField(state.revision, token)} />)}
+        <header className="titlebar">
+            <form className="goto" onSubmit={submitGoto}>
+                <label htmlFor="goto-line">{state.labels.line}</label>
+                <input id="goto-line" title={state.labels.gotoHint} value={gotoLine} inputMode="numeric" onFocus={() => { gotoFocused.current = true; }}
+                    onBlur={event => {
+                        gotoFocused.current = false;
+                        if (!event.currentTarget.form?.contains(event.relatedTarget as Node | null))
+                            setGotoLine(String(displayLineRef.current + 1));
+                    }}
+                    onChange={event => setGotoLine(event.target.value)} />
+                <button type="submit" title={state.labels.gotoHint} disabled={state.indexing !== 'ready' || state.stale} aria-label={state.labels.goto}><span className="codicon codicon-go-to-file" aria-hidden="true" /></button>
+            </form>
+            <form className="search-float" onSubmit={submitSearch}>
+            <button type="button" className="search-mode" aria-pressed={searchMode === 'keyword'}
+                title={searchMode === 'text' ? state.labels.textMode : state.labels.keywordMode}
+                aria-label={searchMode === 'text' ? state.labels.textMode : state.labels.keywordMode}
+                onClick={() => { setSearchMode(mode => mode === 'text' ? 'keyword' : 'text'); jump(next => transport.search(next.revision, '')); searchInput.current?.focus(); }}>
+                <span className={`codicon codicon-${searchMode === 'text' ? 'search' : 'symbol-keyword'}`} aria-hidden="true" />
+            </button>
+            <div className="search-input">
+            <input ref={searchInput} value={searchText} onChange={event => setSearchText(event.target.value)}
+                onKeyDown={searchKey} placeholder={searchMode === 'text' ? state.labels.searchText : state.labels.keyword} title={searchMode === 'text' ? state.labels.searchHint : state.labels.keywordHint} aria-label={searchMode === 'text' ? state.labels.search : state.labels.keyword} spellCheck={false} />
+            {searchMode === 'keyword' && state.keywordSearch?.query === searchText.trim() && !state.stale
+                ? <span className="search-count" aria-live="polite" title={state.keywordSearch.count ? state.labels.keywordMatches : state.labels.noMatches}>{state.keywordSearch.currentIndex + 1} / {state.keywordSearch.count}</span>
+                : searchMode === 'text' && state.search.query && state.search.query === searchText.trim() && !state.search.loading && !state.stale
+                    ? <span className="search-count" aria-live="polite" title={state.search.count ? state.labels.matchLines : state.labels.noMatches}>{state.search.currentIndex + 1} / {state.search.count}{state.search.truncated ? '+' : ''}</span> : null}
+            </div>
+            <button type="button" disabled={state.stale || state.indexing !== 'ready' || searchMode === 'text' && (state.search.loading || state.search.count === 0 || searchText.trim() !== state.search.query)}
+                title={searchMode === 'text' ? state.labels.previousMatch : state.labels.previousKeyword} aria-label={searchMode === 'text' ? state.labels.previousMatch : state.labels.previousKeyword}
+                onClick={() => jump(next => searchMode === 'text' ? transport.searchStep(next.revision, -1) : transport.navigateKeyword(next.revision, -1, searchText.trim()))}>
+                <span className="codicon codicon-arrow-up" aria-hidden="true" /></button>
+            <button type="submit" title={searchMode === 'text' ? state.labels.searchHint : state.labels.keywordHint}
+                aria-label={searchMode === 'text' ? state.labels.search : state.labels.nextKeyword} disabled={state.stale || state.indexing !== 'ready' || state.search.loading}>
+                <span className={`codicon codicon-${state.search.loading ? 'loading codicon-modifier-spin' : 'arrow-down'}`} aria-hidden="true" /></button>
+            <button type="button" title={state.labels.clearSearch} aria-label={state.labels.clearSearch}
+                onClick={() => { setSearchText(''); jump(next => transport.search(next.revision, '')); searchInput.current?.focus(); }}>
+                <span className="codicon codicon-close" aria-hidden="true" /></button>
+        </form>
+        </header>
+        <div className="viewport" ref={viewport} tabIndex={0} title={state.labels.noField} onKeyDown={onViewportKey} onScroll={event => {
+            if (event.currentTarget.scrollTop === assignedScrollTop.current) { assignedScrollTop.current = null; return; }
+            assignedScrollTop.current = null;
+            if (state.stale || state.indexing !== 'ready') {
+                setScrollLine(state.anchorLine); return;
+            }
+            const line = scrollHeight ? Math.round(event.currentTarget.scrollTop / scrollHeight * lastLine) : 0;
+            if (line !== (desiredLine.current ?? state.anchorLine)) navigate(line, true);
+        }}>
+            <div className="scroll-space" style={{ height: scrollHeight + viewportSize.height }}>
+            <div className="deck" style={{ '--line-digits': digits, transform: `translateY(${-translation}px)` } as CSSProperties}>
+                {shownLines.map(line => <LineRow key={line.lineNumber} line={line} state={lineTarget === null ? state : { ...state, search: { ...state.search, currentLine: undefined }, navigationTarget: { line: lineTarget, startColumn: 0, endColumn: 0 } }}
+                    select={token => { if (!state.stale) void run(next => transport.selectField(next.revision, token)); }}
+                    query={token => { if (!state.stale) void run(next => transport.queryField(next.revision, token)); }} />)}
+            </div>
             </div>
         </div>
-        {state.lineCount !== undefined && <input className="scroll-range" type="range" min={0}
-            max={Math.max(0, state.lineCount - 1)} value={state.anchorLine}
-            aria-label={state.labels.line} onChange={event => navigate(Number(event.target.value), true)} />}
-        <FieldHelp state={state} query={() => state.selectedField &&
-            transport.queryField(state.revision, state.selectedField.token)} />
+        <FieldHelp state={state} query={() => { if (!state.stale && state.selectedField)
+            void run(next => transport.queryField(next.revision, state.selectedField!.token)); }} />
     </main>;
 }
 
@@ -149,51 +362,89 @@ function LineRow({ line, state, select, query }: {
 }) {
     const fields = [...line.fields].sort((left, right) => left.startColumn - right.startColumn);
     const content: ReactNode[] = [];
+    const matchStart = !state.stale && !state.search.loading && state.search.currentLine === line.lineNumber && state.search.query
+        ? line.text.toLocaleLowerCase().indexOf(state.search.query.toLocaleLowerCase()) : -1;
+    const renderText = (text: string, offset: number) => {
+        const start = Math.max(0, matchStart - offset), end = Math.min(text.length, matchStart + state.search.query.length - offset);
+        const render = (value: string) => line.keyword || line.text.trimStart().startsWith('$') ? value : syntaxText(value);
+        return matchStart >= 0 && start < end ? <Fragment key={`match-${offset}`}>{render(text.slice(0, start))}<mark className="search-match">{render(text.slice(start, end))}</mark>{render(text.slice(end))}</Fragment> : render(text);
+    };
     let cursor = 0;
     fields.forEach((field, index) => {
-        if (field.startColumn > cursor) content.push(line.text.slice(cursor, field.startColumn));
-        content.push(<FieldSpan key={field.token} field={field} text={line.text.slice(field.startColumn, field.endColumn)}
-            selected={state.selectedField?.token === field.token} select={select} query={query} />);
+        if (field.startColumn > cursor) content.push(renderText(line.text.slice(cursor, field.startColumn), cursor));
+        content.push(<FieldSpan key={field.token} field={field} text={renderText(line.text.slice(field.startColumn, field.endColumn), field.startColumn)}
+            selected={state.selectedField?.token === field.token}
+            target={!state.stale && state.navigationTarget?.line === line.lineNumber && field.endColumn > state.navigationTarget.startColumn && field.startColumn < state.navigationTarget.endColumn}
+            select={select} query={query} />);
         cursor = Math.max(cursor, field.endColumn);
-        if (index === fields.length - 1 && cursor < line.text.length) content.push(line.text.slice(cursor));
+        if (index === fields.length - 1 && cursor < line.text.length) content.push(renderText(line.text.slice(cursor), cursor));
     });
-    if (fields.length === 0) content.push(line.text);
-    return <div className={`line ${line.keyword ? 'keyword-line' : ''}`}>
+    if (fields.length === 0) {
+        const target = !state.stale && state.navigationTarget?.line === line.lineNumber ? state.navigationTarget : undefined;
+        if (target && target.endColumn > target.startColumn) content.push(
+            syntaxText(line.text.slice(0, target.startColumn)),
+            <mark className="navigation-field" key="target">{syntaxText(line.text.slice(target.startColumn, target.endColumn))}</mark>,
+            syntaxText(line.text.slice(target.endColumn)));
+        else content.push(renderText(line.text, 0));
+    }
+    return <div className={`line ${line.keyword ? 'keyword-line' : line.text.trimStart().startsWith('$') ? 'comment-line' : ''} ${!state.stale && state.navigationTarget?.line === line.lineNumber || matchStart >= 0 ? 'navigation-line' : ''}`}>
         <span className="line-number">{line.lineNumber + 1}</span>
-        <span className="line-text">{content}{line.truncated && <span className="truncated" title={state.labels.truncatedLine}>…</span>}</span>
+        <span className="line-text">{content}{line.truncated && <span className="truncated" title={state.labels.truncatedLine}>{'\u2026'}</span>}</span>
     </div>;
 }
 
-function FieldSpan({ field, text, selected, select, query }: {
+function FieldSpan({ field, text, selected, target, select, query }: {
     field: LargeFileFieldSpan;
-    text: string;
+    text: ReactNode;
     selected: boolean;
+    target: boolean;
     select: (token: string) => void;
     query: (token: string) => void;
 }) {
-    return <button type="button" className={`field ${selected ? 'selected' : ''} ${field.queryable ? 'queryable' : ''}`}
-        title={field.label} onClick={() => select(field.token)} onDoubleClick={() => field.queryable && query(field.token)}>{text}</button>;
+    return <button type="button" className={`field ${selected ? 'selected' : ''} ${field.queryable ? 'queryable' : ''} ${target ? 'navigation-field' : ''}`}
+        title={field.label} onClick={() => select(field.token)} onDoubleClick={() => field.queryable && query(field.token)}
+        onKeyDown={event => {
+            if (event.key !== 'Enter') return;
+            event.stopPropagation();
+            if (field.queryable) { event.preventDefault(); query(field.token); }
+        }}>{text}</button>;
 }
 
 function FieldHelp({ state, query }: { state: LargeFileViewerState; query: () => void }) {
     const field = state.selectedField;
-    if (!field) return <footer className="field-help empty-help">{state.labels.noField}</footer>;
-    return <footer className="field-help">
+    if (!field) return null;
+    const zh = state.locale === 'zh';
+    const help = zh ? field.localizedHelp || field.englishHelp : field.englishHelp;
+    const type = ({ integer: ['\u6574\u6570', 'Integer'], float: ['\u5B9E\u6570', 'Real'], real: ['\u5B9E\u6570', 'Real'], double: ['\u5B9E\u6570', 'Real'],
+        string: ['\u6587\u672C', 'Text'], bool: ['\u5E03\u5C14\u503C', 'Boolean'], '1': ['\u6574\u6570', 'Integer'], '-1': ['\u6574\u6570', 'Integer'],
+        '2': ['\u5B9E\u6570', 'Real'], '0': ['\u6587\u672C', 'Text'], '-2': ['\u6587\u672C', 'Text'] } as Record<string, string[]>)[field.type.toLowerCase()]?.[zh ? 0 : 1] || field.type;
+    return <footer className="field-help" aria-label={state.labels.fieldHelp}>
         <div className="field-heading"><strong>{field.label}</strong>
-            <span>{field.keyword} · Card {field.cardIndex}{field.type ? ` · ${field.type}` : ''}</span>
-            {field.queryable && <button type="button" onClick={query}>{state.labels.queryObject}</button>}</div>
-        {field.value && <code>{field.value}</code>}
-        {field.localizedHelp && <p>{field.localizedHelp}</p>}
+            {field.value && field.value !== field.object?.id && <code>{field.value}</code>}
+            {field.object && <span className="field-object"><strong>{field.object.kindLabel} {field.object.id}</strong>
+                {field.object.name && <span title={state.labels.objectName}>{field.object.name}</span>}</span>}
+            {field.queryable && <button type="button" disabled={state.stale} onClick={query}>{state.labels.queryObject}</button>}</div>
+        <details><summary>{state.labels.details}</summary>
+        <div className="field-meta">{field.keyword} {'\u00B7'} {state.labels.card} {field.cardIndex}{type ? ` \u00B7 ${type}` : ''}</div>
+        {help && <p>{help}</p>}
         {(field.defaultValue || field.choices.length > 0) && <div className="field-meta">
-            {field.defaultValue && <span>Default: {field.defaultValue}</span>}
-            {field.choices.length > 0 && <span>{field.choices.join(' · ')}</span>}
+            {field.defaultValue && <span>{state.labels.defaultValue}: {field.defaultValue}</span>}
+            {field.choices.length > 0 && <span>{field.choices.join(' \u00B7 ')}</span>}
         </div>}
-        {field.englishHelp && field.englishHelp !== field.localizedHelp && <details><summary>{state.labels.english}</summary>
+        {zh && field.englishHelp && field.localizedHelp && field.englishHelp !== field.localizedHelp && <details><summary>{state.labels.english}</summary>
             <p>{field.englishHelp}</p></details>}
+        </details>
     </footer>;
 }
 
 function formatBytes(value: number): string {
     if (value < 1024 * 1024) return `${Math.round(value / 1024)} KiB`;
     return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+// Tokenize only bounded visible text; field slicing keeps fixed-width source columns intact.
+function syntaxText(text: string): ReactNode {
+    return text.split(/(&[A-Za-z_][\w]*|[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?)/g).map((part, index) =>
+        /^(?:&|[+\-.]?\d)/.test(part)
+            ? <span key={index} className={part.startsWith('&') ? 'syntax-parameter' : 'syntax-number'}>{part}</span> : part);
 }

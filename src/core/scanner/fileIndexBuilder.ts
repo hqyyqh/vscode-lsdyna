@@ -4,10 +4,11 @@ const { collectIncludeDirectivesFromKeywordBlocks } = require('../parser/include
 const { scanCurveTableDefinitionsFromFileIndex } = require('../references/curveTableDefinitionScanner');
 const { scanParameterEventsFromFileIndex } = require('../references/parameterDefinitionScanner');
 const { scanRegistryReferenceOccurrencesFromFileIndex } = require('../references/registryReferenceScanner');
-const { readBlockText } = require('./blockReader');
-const { SCANNER_VERSION, throwIfCancellationRequested } = require('./scannerContracts');
+const { readBlockText, readBlockHeaderText, createBlockReadWindow } = require('./blockReader');
+const { SCANNER_VERSION, throwIfCancellationRequested, isMeshKeyword } = require('./scannerContracts');
 const { scanKeywordSkeletonFromFile } = require('./keywordSkeletonScanner');
 const { createKeywordIdentityAccumulatorFactory } = require('../keywordDisplayIdentity');
+const { globalInputFormatFromKeywordLine } = require('../parser/inputFormat');
 type FileIndexBuildOptions = {
     onProgress?: (progress: any) => void;
     highWaterMark?: number;
@@ -16,6 +17,10 @@ type FileIndexBuildOptions = {
     };
     maxDefinitionBlockBytes?: number;
     maxReferenceBlockBytes?: number;
+    referenceTargetKinds?: string[];
+    excludeMeshEntities?: boolean;
+    deferDisplayIdentity?: boolean;
+    referenceScanCache?: any;
     largeFileThresholdBytes?: number;
 };
 const DEFAULT_MAX_DEFINITION_BLOCK_BYTES = 8 * 1024 * 1024;
@@ -39,6 +44,9 @@ function markTruncatedDefinitionPreviews(referenceDefinitions, truncatedStartLin
         };
     }
 }
+function fileStructureOptionsKey(options: FileIndexBuildOptions = {}) {
+    return JSON.stringify([options.largeFileThresholdBytes ?? LARGE_FILE_THRESHOLD_BYTES, options.deferDisplayIdentity === true]);
+}
 async function buildFileStructure(filePath, options: FileIndexBuildOptions = {}) {
     throwIfCancellationRequested(options.cancellationToken);
     const startedAt = Date.now();
@@ -49,7 +57,7 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
     let scannedLineCount = 0;
     const keywordBlocks = await scanKeywordSkeletonFromFile(filePath, {
         ...options,
-        createBlockSummaryAccumulator: createKeywordIdentityAccumulatorFactory(),
+        createBlockSummaryAccumulator: options.deferDisplayIdentity ? undefined : createKeywordIdentityAccumulatorFactory(),
         ...(collectLargeFileLineMap ? {
             onLineStart: (line, byteOffset) => {
                 scannedLineCount = line + 1;
@@ -62,11 +70,30 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
     try {
         const includeResult = await collectIncludeDirectivesFromKeywordBlocks(filePath, keywordBlocks, block => readBlockText(block, 'utf8', { handle, cancellationToken: options.cancellationToken }), { cancellationToken: options.cancellationToken });
         const parameterEvents = await scanParameterEventsFromFileIndex({ filePath, keywordBlocks }, block => readBlockText(block, 'utf8', { handle, cancellationToken: options.cancellationToken }), { cancellationToken: options.cancellationToken });
+        const { nativeEmEventKeywords, nativeEmReadEvent } = require('../semantics/nativeEmReadState');
+        const nativeReadEvents = [];
+        let nativeGlobalFormat = 'standard';
+        for (const block of keywordBlocks) {
+            const keyword = String(block.keyword).replace(/^\*/, '').toUpperCase();
+            if (keyword === 'KEYWORD') {
+                nativeGlobalFormat = globalInputFormatFromKeywordLine(block.rawKeyword || block.keyword, nativeGlobalFormat);
+                nativeReadEvents.push({ kind: 'input-format', startLine: block.startLine,
+                    rawKeyword: block.rawKeyword || block.keyword });
+                continue;
+            }
+            if (!nativeEmEventKeywords.has(keyword)) continue;
+            const text = await readBlockText(block, 'utf8', { handle,
+                cancellationToken: options.cancellationToken, maxBytes: 4096 });
+            const event = nativeEmReadEvent(block, text, nativeGlobalFormat);
+            if (event) nativeReadEvents.push({ ...event, variants: Object.fromEntries(['standard','long','i10']
+                .map(format => [format, nativeEmReadEvent(block, text, format)])) });
+        }
         return {
             filePath,
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             scannerVersion: SCANNER_VERSION,
+            structureOptionsKey: fileStructureOptionsKey(options),
             keywordBlocks,
             ...(collectLargeFileLineMap ? {
                 largeFileLineMap: {
@@ -76,6 +103,7 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
                 },
             } : {}),
             parameterEvents,
+            nativeReadEvents,
             includeEntries: includeResult.includeEntries,
             searchPaths: includeResult.searchPaths,
             pathEntries: includeResult.pathEntries || [],
@@ -92,9 +120,12 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
     }
 }
 async function completeFileIndex(structure, options: FileIndexBuildOptions = {}) {
-    const { filePath, keywordBlocks } = structure;
+    const { filePath } = structure;
+    const keywordBlocks = options.excludeMeshEntities ? structure.keywordBlocks.filter(block =>
+        !isMeshKeyword(block.keyword)) : structure.keywordBlocks;
     const startedAt = Date.now();
     const handle = await fs.promises.open(filePath, 'r');
+    const readWindow = createBlockReadWindow(handle);
     let lastProgress = 0;
     const read = async (block, encoding, readOptions) => {
         if (Date.now() - lastProgress >= 50) {
@@ -103,15 +134,18 @@ async function completeFileIndex(structure, options: FileIndexBuildOptions = {})
             options.onProgress?.({ phase: 'references', filePath });
             lastProgress = Date.now();
         }
-        return readBlockText(block, encoding, { ...readOptions, handle });
+        return readOptions.headerDataRecords
+            ? readBlockHeaderText(block, readOptions.headerDataRecords, { ...readOptions, handle: readWindow })
+            : readBlockText(block, encoding, { ...readOptions, handle: readWindow });
     };
     try {
         const truncatedDefinitionStartLines = new Set();
-        const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex({ filePath, keywordBlocks }, block => read(block, 'utf8', {
+        const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex({ filePath, keywordBlocks }, (block, headerDataRecords) => read(block, 'utf8', {
+            headerDataRecords,
             cancellationToken: options.cancellationToken,
             maxBytes: options.maxDefinitionBlockBytes ?? DEFAULT_MAX_DEFINITION_BLOCK_BYTES,
             onTruncated: () => truncatedDefinitionStartLines.add(block.startLine),
-        }), undefined, { cancellationToken: options.cancellationToken });
+        }), undefined, { cancellationToken: options.cancellationToken, targetKinds: options.referenceTargetKinds });
         throwIfCancellationRequested(options.cancellationToken);
         markTruncatedDefinitionPreviews(referenceDefinitions, truncatedDefinitionStartLines);
         const truncatedReferenceStartLines = new Set();
@@ -122,6 +156,9 @@ async function completeFileIndex(structure, options: FileIndexBuildOptions = {})
         }), {
             cancellationToken: options.cancellationToken,
             truncatedStartLines: truncatedReferenceStartLines,
+            targetKinds: options.referenceTargetKinds,
+            excludeMeshEntities: options.excludeMeshEntities,
+            sharedCache: options.referenceScanCache,
         });
         if (truncatedReferenceStartLines.size > 0) {
             registryReferences.complete = false;
@@ -132,9 +169,10 @@ async function completeFileIndex(structure, options: FileIndexBuildOptions = {})
         }
         throwIfCancellationRequested(options.cancellationToken);
         return { filePath: structure.filePath, size: structure.size, mtimeMs: structure.mtimeMs,
-            scannerVersion: structure.scannerVersion, keywordBlocks: structure.keywordBlocks,
+            scannerVersion: structure.scannerVersion, structureOptionsKey: structure.structureOptionsKey, excludeMeshEntities: options.excludeMeshEntities === true, keywordBlocks: structure.keywordBlocks,
             ...(structure.largeFileLineMap ? { largeFileLineMap: structure.largeFileLineMap } : {}),
             referenceDefinitions, registryReferences, parameterEvents: structure.parameterEvents,
+            nativeReadEvents: structure.nativeReadEvents,
             includeEntries: structure.includeEntries, searchPaths: structure.searchPaths,
             pathEntries: structure.pathEntries,
             scanStats: { ...structure.scanStats,
@@ -162,6 +200,7 @@ async function buildFileIndex(filePath, options: FileIndexBuildOptions = {}) {
 }
 
 module.exports = {
+    fileStructureOptionsKey,
     buildFileStructure,
     completeFileIndex,
     buildFileIndex,

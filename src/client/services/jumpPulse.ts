@@ -78,7 +78,7 @@ export function buildPulseFrames(totalMs: number, peakAlpha: number): PulseFrame
         const eased = t * t;
         frames.push({
             alpha: peak * eased,
-            holdMs: Math.max(1, Math.round(fadeInMs / fadeInSteps)),
+            holdMs: Math.round(fadeInMs / fadeInSteps),
         });
     }
     // Extend last fade-in frame with hold, or add explicit peak hold
@@ -97,7 +97,7 @@ export function buildPulseFrames(totalMs: number, peakAlpha: number): PulseFrame
         const alpha = i === fadeOutSteps ? 0 : peak * eased;
         frames.push({
             alpha,
-            holdMs: Math.max(1, Math.round(fadeOutMs / fadeOutSteps)),
+            holdMs: Math.round(fadeOutMs / fadeOutSteps),
         });
     }
 
@@ -282,8 +282,7 @@ export function createJumpPulseController(vscodeApi: any, options: CreateJumpPul
                 }
                 return;
             }
-            const delay = Math.max(0, frame.holdMs);
-            timer = schedule(step, delay);
+            timer = schedule(step, frame.holdMs);
         };
 
         step();

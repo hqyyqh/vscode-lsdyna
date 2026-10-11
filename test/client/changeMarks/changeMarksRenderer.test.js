@@ -163,7 +163,6 @@ describe('changeMarksRenderer', () => {
             showLineBackground: true,
             showMinimap: true,
             showOverviewRuler: true,
-            getHoverMessage: (kind) => `hover:${kind}`,
         });
         renderer.apply(editor, {
             unsavedModifiedLines: [0],
@@ -181,7 +180,7 @@ describe('changeMarksRenderer', () => {
             if (c.opts.length) {
                 // Whole-line: short range is fine; no after-pad
                 assert.ok(!c.opts[0].renderOptions?.after);
-                assert.ok(String(c.opts[0].hoverMessage).startsWith('hover:'));
+                assert.ok(!('hoverMessage' in c.opts[0]));
                 assert.ok(c.opts[0].range.end.character <= 1);
             }
         }

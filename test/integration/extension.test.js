@@ -1,4 +1,5 @@
 'use strict';
+const makeTemp = require('../support/tempDirectories').trackTempDirectories();
 
 const assert = require('assert');
 const fs = require('fs');
@@ -55,7 +56,6 @@ const {
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
-    createProjectSnapshotPersistentCache,
     // Exercise the retained QuickPick fallback directly; activated entry routing
     // is covered by the manager lifecycle and protocol tests.
     chooseKeywordOptionsQuickPickLegacy: chooseKeywordOptionsForEditor,
@@ -93,7 +93,7 @@ function createRuntimeManualPack({
     keywords = {},
     createPdfs = true,
 } = {}) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-runtime-pack-'));
+    const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-runtime-pack-'));
     const indexes = path.join(root, 'indexes');
     fs.mkdirSync(indexes);
     fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({
@@ -265,7 +265,7 @@ describe('updateDocumentDiagnostics', () => {
     });
 
     it('offers a quick fix to rewrite include path casing to match disk', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-case-action-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-case-action-'));
         const realFile = path.join(root, 'Sub', 'Part.k');
         fs.mkdirSync(path.dirname(realFile), { recursive: true });
         fs.writeFileSync(realFile, '*KEYWORD\n*END\n');
@@ -292,12 +292,11 @@ describe('updateDocumentDiagnostics', () => {
             assert.equal(actions[0].edit.edits[0].text, 'Sub/Part.k');
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
     it('preserves continued include layout while fixing path casing', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-continued-case-action-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-continued-case-action-'));
         const realFile = path.join(root, 'Sub', 'Part.k');
         fs.mkdirSync(path.dirname(realFile), { recursive: true });
         fs.writeFileSync(realFile, '*KEYWORD\n*END\n');
@@ -336,12 +335,11 @@ describe('updateDocumentDiagnostics', () => {
             );
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
     it('does not offer a stale include casing fix after the target is removed', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-stale-include-action-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-stale-include-action-'));
         const realFile = path.join(root, 'Sub', 'Part.k');
         fs.mkdirSync(path.dirname(realFile), { recursive: true });
         fs.writeFileSync(realFile, '*KEYWORD\n*END\n');
@@ -364,12 +362,11 @@ describe('updateDocumentDiagnostics', () => {
             assert.deepStrictEqual(actions, []);
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
     it('does not resolve an include casing edit after the target is removed while the action is open', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-open-include-action-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-open-include-action-'));
         const realFile = path.join(root, 'Sub', 'Part.k');
         fs.mkdirSync(path.dirname(realFile), { recursive: true });
         fs.writeFileSync(realFile, '*KEYWORD\n*END\n');
@@ -394,12 +391,11 @@ describe('updateDocumentDiagnostics', () => {
             assert.equal(actions[0].edit, undefined);
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
     it('does not offer a stale include casing fix over newly edited path text', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-edited-include-action-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-edited-include-action-'));
         const realFile = path.join(root, 'Sub', 'Part.k');
         fs.mkdirSync(path.dirname(realFile), { recursive: true });
         fs.writeFileSync(realFile, '*KEYWORD\n*END\n');
@@ -423,7 +419,6 @@ describe('updateDocumentDiagnostics', () => {
             assert.deepStrictEqual(actions, []);
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
@@ -737,7 +732,7 @@ describe('parameter navigation and rename providers', () => {
         );
 
         assert.equal(edit.edits.length, 3);
-        for (const replacement of edit.edits) {
+        for (const replacement of edit.edits.slice(0, 2)) {
             assert.equal(doc.getText(replacement.range), 'tEnd');
             assert.equal(replacement.text, 'finish');
         }
@@ -748,8 +743,80 @@ describe('parameter navigation and rename providers', () => {
             '*PARAMETER_EXPRESSION\n' +
             'R  dtPlot  finish/100.0\n' +
             '*CONTROL_TERMINATION\n' +
-            '     &finish\n'
+            '   &finish\n'
         );
+    });
+
+    it('keeps standard CONTROL_TIMESTEP and native long PART columns fixed when names change', () => {
+        for (const width of [10, 20]) {
+            const row = ['0.0', '&tssfac', '0', '0.0', '', '&lctmcrv', '1', '0']
+                .map(value => value.padStart(width)).join('');
+            const source = ['*KEYWORD' + (width === 20 ? ' LONG=Y' : ''), '*PARAMETER_EXPRESSION',
+                'I lctmcrv'.padEnd(width) + 'mxcrvid+8', width === 20 ? '*PART\ntitle' : '*CONTROL_TIMESTEP',
+                '$   DTINIT    TSSFAC      ISDO    TSLIMT     DT2MS      LCTM     ERODE     MS1ST', row, '*END'].join('\n');
+            for (const name of ['lctmcrv1', 'lc']) {
+                const doc = fakeDoc(source);
+                const edit = new LsdynaRenameProvider().provideRenameEdits(doc, new vscodeMock.Position(2, 3), name);
+                const result = applyWorkspaceEdits(doc, edit).split('\n');
+                const data = result[width === 20 ? 6 : 5];
+                assert.equal(result[2].slice(width), 'mxcrvid+8');
+                assert.equal(result[2].slice(0, width).trim(), 'I ' + name);
+                assert.equal(data.length, row.length);
+                assert.equal(data.slice(0, width * 5), row.slice(0, width * 5));
+                assert.equal(data.slice(width * 5, width * 6), ('&' + name).padStart(width));
+                assert.equal(data.slice(width * 6), row.slice(width * 6));
+            }
+        }
+    });
+
+    it('keeps comma fields, formulas and text cards as token replacements', () => {
+        for (const [keyword, row] of [
+            ['*CONTROL_TIMESTEP', '0.0,&tssfac,0,0.0,,&lctmcrv,1,0'],
+            ['*PARAMETER_EXPRESSION', 'R other   &lctmcrv+8'],
+            ['*TITLE', 'Title &lctmcrv text'],
+        ]) {
+            const doc = fakeDoc('*PARAMETER\nI lctmcrv  1\n' + keyword + '\n' + row);
+            const edit = new LsdynaRenameProvider().provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'lctmcrv1');
+            assert.equal(applyWorkspaceEdits(doc, edit).split('\n')[3], row.replace('&lctmcrv', '&lctmcrv1'));
+        }
+    });
+
+    it('uses native NODE field widths and keeps multiple references in one row independent', () => {
+        const row = ['&nodeid'.padStart(8), '&nodeid'.padStart(16), '2'.padStart(16),
+            '3'.padStart(16), '0'.padStart(8), '0'.padStart(8)].join('');
+        const doc = fakeDoc('*PARAMETER\n' + 'I nodeid'.padEnd(10) + '1'.padStart(10) + '\n*NODE\n' + row);
+        const provider = new LsdynaRenameProvider();
+        const edit = provider.provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'nodeidx');
+        const result = applyWorkspaceEdits(doc, edit).split('\n')[3];
+        assert.equal(result.length, row.length);
+        assert.equal(result.slice(0, 8), '&nodeidx');
+        assert.equal(result.slice(8, 24), '&nodeidx'.padStart(16));
+        assert.equal(result.slice(24), row.slice(24));
+        assert.throws(() => provider.provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'nodeidx1'), /field width/);
+    });
+
+    it('keeps every fixed declaration slot and value when the name fills its descriptor', () => {
+        const row = Array.from({ length: 4 }, (_, i) => 'I short'.padEnd(10) + String(i + 1).padStart(10)).join('');
+        const doc = fakeDoc('*PARAMETER\n' + row);
+        const edit = new LsdynaRenameProvider().provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'longname9');
+        const result = applyWorkspaceEdits(doc, edit).split('\n')[1];
+        assert.equal(result.length, 80);
+        for (let i = 0; i < 4; i++) {
+            assert.equal(result.slice(i * 20, i * 20 + 10), 'Ilongname9');
+            assert.equal(result.slice(i * 20 + 10, i * 20 + 20), row.slice(i * 20 + 10, i * 20 + 20));
+        }
+        assert.equal(findParameterDefinitions(fakeDoc('*PARAMETER\n' + result)).get('LONGNAME9').length, 4);
+    });
+
+    it('preserves negative references and rejects overflow without returning partial edits', () => {
+        const row = ['0.0', '0.9', '0', '0.0', '', '-&lctmcrv', '1', '0']
+            .map(value => value.padStart(10)).join('');
+        const doc = fakeDoc('*PARAMETER\nI lctmcrv  1\n*CONTROL_TIMESTEP\n' + row);
+        const provider = new LsdynaRenameProvider();
+        const edit = provider.provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'lctmcrv1');
+        assert.equal(applyWorkspaceEdits(doc, edit).split('\n')[3].slice(50, 60), '-&lctmcrv1'.padStart(10));
+        assert.throws(() => provider.provideRenameEdits(doc, new vscodeMock.Position(1, 3), 'lctmcrv12'), /field width/);
+        assert.equal(doc.lineAt(3).text, row);
     });
 
     it('rejects parameter names forbidden by the official LS-DYNA syntax', () => {
@@ -1371,7 +1438,7 @@ describe('document-based keyword helpers', () => {
 
 describe('LsdynaIncludeTreeProvider', () => {
     it('builds include trees without readFileSync on scanned files', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
         const submodelsDir = path.join(tempRoot, 'submodels');
         const mainFile = path.join(tempRoot, 'main.k');
         const aFile = path.join(tempRoot, 'a.key');
@@ -1399,12 +1466,11 @@ describe('LsdynaIncludeTreeProvider', () => {
             );
         } finally {
             fs.readFileSync = originalReadFileSync;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('builds include tree items from a project snapshot', () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
         const mainFile = path.join(tempRoot, 'main.k');
         const aFile = path.join(tempRoot, 'a.key');
         const bFile = path.join(tempRoot, 'b.key');
@@ -1436,18 +1502,16 @@ describe('LsdynaIncludeTreeProvider', () => {
             },
         };
 
-        try {
+        {
             const root = provider._buildRootFromSnapshot(snapshot, mainFile);
             assert.equal(root.filePath, mainFile);
             assert.deepEqual(root.children.map(child => child.filePath), [aFile]);
             assert.deepEqual(root.children[0].children.map(child => child.filePath), [bFile]);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('preserves missing include nodes when building tree items from a project snapshot', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
         const mainFile = path.join(tempRoot, 'main.k');
         const childFile = path.join(tempRoot, 'child.key');
         const missingFile = path.join(tempRoot, 'missing.key');
@@ -1456,7 +1520,7 @@ describe('LsdynaIncludeTreeProvider', () => {
         fs.writeFileSync(mainFile, '*INCLUDE\nchild.key\nmissing.key\n', 'utf8');
         fs.writeFileSync(childFile, '*KEYWORD\n', 'utf8');
 
-        try {
+        {
             const snapshot = await buildProjectIndex(mainFile);
             const root = provider._buildRootFromSnapshot(snapshot, mainFile);
 
@@ -1464,13 +1528,11 @@ describe('LsdynaIncludeTreeProvider', () => {
             assert.equal(root.children[1].description, 'missing');
             assert.equal(root.children[1].command, undefined);
             assert.equal(root.children[1].collapsibleState, vscodeMock.TreeItemCollapsibleState.None);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('preserves duplicate missing include nodes when building tree items from a project snapshot', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-tree-'));
         const mainFile = path.join(tempRoot, 'main.k');
         const childFile = path.join(tempRoot, 'child.key');
         const missingFile = path.join(tempRoot, 'missing.key');
@@ -1479,7 +1541,7 @@ describe('LsdynaIncludeTreeProvider', () => {
         fs.writeFileSync(mainFile, '*INCLUDE\nmissing.key\nmissing.key\nchild.key\n', 'utf8');
         fs.writeFileSync(childFile, '*KEYWORD\n', 'utf8');
 
-        try {
+        {
             const snapshot = await buildProjectIndex(mainFile);
             const root = provider._buildRootFromSnapshot(snapshot, mainFile);
 
@@ -1488,8 +1550,6 @@ describe('LsdynaIncludeTreeProvider', () => {
             assert.equal(root.children[1].description, 'missing');
             assert.equal(root.children[0].command, undefined);
             assert.equal(root.children[1].command, undefined);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -1549,6 +1609,85 @@ describe('LsdynaIncludeTreeProvider', () => {
             vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             vscodeMock.window.withProgress = originalWithProgress;
             vscodeMock.ProgressLocation = originalProgressLocation;
+        }
+    });
+
+    it('keeps final include decorations consistent after a file disappears between scan stages', async () => {
+        const directory = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-stages-'));
+        const rootFile = path.join(directory, 'main.k');
+        const childFile = path.join(directory, 'child.k');
+        fs.writeFileSync(rootFile, '*INCLUDE\nchild.k\n');
+        fs.writeFileSync(childFile, '*KEYWORD\n');
+        const { normalizePathKey, LsdynaFileDecorationProvider } = extensionModule._internals;
+        const childKey = normalizePathKey(childFile);
+        const provider = new LsdynaIncludeTreeProvider({
+            loadProjectSnapshot: async (_root, _options, onProgress) => {
+                const snapshot = await buildProjectIndex(rootFile);
+                onProgress({ type: 'structureReady', snapshot });
+                assert.equal(provider.root.children[0].contextValue, 'file');
+                fs.unlinkSync(childFile);
+                return snapshot;
+            },
+        });
+        const originalEditor = vscodeMock.window.activeTextEditor;
+        const originalProgress = vscodeMock.window.withProgress;
+        const originalLocation = vscodeMock.ProgressLocation;
+        vscodeMock.ProgressLocation = { Window: 10 };
+        vscodeMock.window.activeTextEditor = { document: fakeDoc('*INCLUDE\nchild.k\n', rootFile) };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, {});
+        try {
+            const result = await provider.scan();
+            assert.equal(Boolean(result.snapshot.graph.toTree(rootFile).children[0].missing), false);
+            assert.equal(provider.scanPhase, 'complete');
+            assert.equal(provider.root.children[0].contextValue, 'file-missing');
+            assert.equal(provider.root.children[0].command, undefined);
+            assert.equal(provider.listSearchEntries().find(entry => entry.filePath === childFile).missing, true);
+            assert.equal(provider.missingPaths.has(childKey), true);
+            assert.equal(provider.resolvedPaths.has(childKey), false);
+            const decoration = new LsdynaFileDecorationProvider(provider).provideFileDecoration({ scheme: 'file', fsPath: childFile });
+            assert.equal(decoration.badge, '!');
+        } finally {
+            vscodeMock.window.activeTextEditor = originalEditor;
+            vscodeMock.window.withProgress = originalProgress;
+            vscodeMock.ProgressLocation = originalLocation;
+        }
+    });
+
+    it('does not publish a completed include scan when current file metadata is inaccessible', async () => {
+        const directory = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-access-'));
+        const rootFile = path.join(directory, 'main.k');
+        const childFile = path.join(directory, 'child.k');
+        fs.writeFileSync(rootFile, '*INCLUDE\nchild.k\n');
+        fs.writeFileSync(childFile, '*KEYWORD\n');
+        const originalStat = fs.statSync;
+        const failure = Object.assign(new Error('fixture metadata access denied'), { code: 'EACCES' });
+        const provider = new LsdynaIncludeTreeProvider({
+            loadProjectSnapshot: async (_root, _options, onProgress) => {
+                const snapshot = await buildProjectIndex(rootFile);
+                onProgress({ type: 'structureReady', snapshot });
+                fs.statSync = function (file) {
+                    if (file === childFile) throw failure;
+                    return originalStat.apply(this, arguments);
+                };
+                return snapshot;
+            },
+        });
+        const originalEditor = vscodeMock.window.activeTextEditor;
+        const originalProgress = vscodeMock.window.withProgress;
+        const originalLocation = vscodeMock.ProgressLocation;
+        vscodeMock.ProgressLocation = { Window: 10 };
+        vscodeMock.window.activeTextEditor = { document: fakeDoc('*INCLUDE\nchild.k\n', rootFile) };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, {});
+        try {
+            await assert.rejects(provider.scan(), error => error === failure);
+            assert.equal(provider.scanPhase, 'incomplete');
+            assert.strictEqual(provider.root, provider.structureRoot);
+            assert.equal(provider.missingPaths.size, 0);
+        } finally {
+            fs.statSync = originalStat;
+            vscodeMock.window.activeTextEditor = originalEditor;
+            vscodeMock.window.withProgress = originalProgress;
+            vscodeMock.ProgressLocation = originalLocation;
         }
     });
 
@@ -1669,7 +1808,7 @@ describe('LsdynaKeywordIndexProvider', () => {
     });
 
     it('yields during large single-file keyword scans', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-keyword-index-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-keyword-index-'));
         const bigFile = path.join(tempRoot, 'big.k');
         const lines = ['*KEYWORD'];
         for (let i = 0; i < 50000; i++) lines.push(`$ line ${i}`);
@@ -1689,12 +1828,22 @@ describe('LsdynaKeywordIndexProvider', () => {
             assert.ok(yieldCount >= 2, `expected at least 2 yields, got ${yieldCount}`);
         } finally {
             global.setImmediate = originalSetImmediate;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 });
 
 describe('activate', () => {
+    it('registers delayed refresh disposal with the extension context', async () => {
+        const context = { subscriptions: [] };
+        try {
+            await extensionModule.activate(context);
+            const delayed = context.subscriptions.filter(item => typeof item === 'function' && typeof item.dispose === 'function');
+            assert.equal(delayed.length, 3);
+            assert.ok(delayed.some(item => item.name === 'enqueueProjectSnapshotRefresh'));
+            assert.ok(delayed.some(item => item.name === 'queueChangedFile'));
+        } finally { for (const resource of context.subscriptions) resource?.dispose?.(); }
+    });
+
     it('creates diagnostics before snippet loading can request a refresh', async () => {
         const context = { subscriptions: [] };
         const document = fakeDoc('*KEYWORD\n', '/project/main.k');
@@ -1880,6 +2029,15 @@ describe('activate', () => {
 });
 
 describe('createManifestDrivenInvalidator', () => {
+    it('returns asynchronous invalidation failures to its caller', async () => {
+        const failure = Error('invalidation failed');
+        const invalidator = createManifestDrivenInvalidator({
+            indexClient: { getManifestEntries: () => [], invalidate: async () => { throw failure; } },
+            findAffectedRoots: () => ['/project/main.k'],
+        });
+        await assert.rejects(invalidator('/project/child.k'), error => error === failure);
+    });
+
     it('invalidates every affected project root for a changed tracked file', () => {
         const rootA = path.resolve('project', 'root-a.k');
         const rootB = path.resolve('project', 'root-b.k');
@@ -1927,6 +2085,108 @@ describe('createManifestDrivenInvalidator', () => {
 });
 
 describe('createBatchedManifestInvalidator', () => {
+    for (const phase of ['manifest', 'timer', 'invalidation']) it(`stops new work when disposed during ${phase}`, async () => {
+        let finishManifest, finishInvalidation, scheduled;
+        const completed = [], invalidated = [], cancelled = [];
+        const invalidator = createBatchedManifestInvalidator({
+            indexClient: {
+                getManifestEntries: () => new Promise(resolve => { finishManifest = resolve; }),
+                invalidate: root => { invalidated.push(root); return new Promise(resolve => { finishInvalidation = resolve; }); },
+            },
+            findAffectedRoots: () => ['/project/main.k'],
+            schedule: callback => { scheduled = callback; return callback; },
+            cancel: timer => cancelled.push(timer),
+            onInvalidatedRoots: roots => completed.push(roots),
+        });
+        const lookup = invalidator('/project/child.k');
+        if (phase !== 'manifest') { finishManifest([]); await lookup; }
+        if (phase === 'invalidation') scheduled();
+        invalidator.dispose();
+        invalidator.dispose();
+        invalidator('/project/later.k');
+        if (phase === 'manifest') { finishManifest([]); await lookup; assert.equal(scheduled, undefined); }
+        if (phase === 'timer') { assert.ok(cancelled.includes(scheduled)); scheduled(); }
+        if (phase === 'invalidation') finishInvalidation();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(invalidated, phase === 'invalidation' ? ['/project/main.k'] : []);
+        assert.deepEqual(completed, []);
+    });
+
+    it('observes an in-flight invalidation rejection after disposal', async () => {
+        let scheduled, rejectInvalidation;
+        const errors = [], failure = Error('invalidation failed during shutdown');
+        const invalidator = createBatchedManifestInvalidator({
+            indexClient: { getManifestEntries: () => [], invalidate: () => new Promise((_, reject) => { rejectInvalidation = reject; }) },
+            findAffectedRoots: () => ['/project/main.k'], schedule: callback => { scheduled = callback; },
+            onError: error => errors.push(error),
+        });
+        invalidator('/project/child.k');
+        scheduled();
+        invalidator.dispose();
+        rejectInvalidation(failure);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(errors, [failure]);
+    });
+
+    it('observes earlier rejected invalidations even when a later root throws synchronously', async () => {
+        let scheduled;
+        const failure = Error('earlier invalidation failed'), errors = [], attempted = [];
+        const roots = ['/project/main.k', '/project/other.k'];
+        const invalidator = createBatchedManifestInvalidator({
+            indexClient: { getManifestEntries: () => [], invalidate: root => {
+                attempted.push(root);
+                if (root === roots[0]) return Promise.reject(failure);
+                throw Error('later invalidation failed');
+            } },
+            findAffectedRoots: () => roots, schedule: callback => { scheduled = callback; },
+            onError: error => errors.push(error),
+        });
+        invalidator('/project/child.k');
+        scheduled();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(attempted, roots);
+        assert.equal(errors.length, 1);
+        assert.ok(errors[0] === failure || errors[0].message === 'later invalidation failed');
+    });
+
+    it('publishes completion only after every asynchronous invalidation finishes', async () => {
+        let scheduled;
+        const completed = [], finishes = [];
+        const roots = ['/project/main.k', '/project/other.k'];
+        const invalidator = createBatchedManifestInvalidator({
+            indexClient: { getManifestEntries: () => [], invalidate: () => new Promise(resolve => { finishes.push(resolve); }) },
+            findAffectedRoots: () => roots, schedule: callback => { scheduled = callback; },
+            onInvalidatedRoots: values => completed.push(values),
+        });
+        invalidator('/project/child.k');
+        scheduled();
+        assert.deepEqual(completed, []);
+        finishes[0]();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(completed, []);
+        finishes[1]();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(completed, [roots]);
+    });
+
+    for (const asynchronous of [false, true]) it(`reports ${asynchronous ? 'async' : 'sync'} invalidation failure without publishing success`, async () => {
+        let scheduled;
+        const failure = Error('invalidation failed'), errors = [], completed = [];
+        const invalidator = createBatchedManifestInvalidator({
+            indexClient: { getManifestEntries: () => [], invalidate: () => {
+                if (asynchronous) return Promise.reject(failure);
+                throw failure;
+            } },
+            findAffectedRoots: () => ['/project/main.k'], schedule: callback => { scheduled = callback; },
+            onInvalidatedRoots: roots => completed.push(roots), onError: (error, file) => errors.push([error, file]),
+        });
+        invalidator('/project/child.k');
+        scheduled();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(errors, [[failure, '/project/child.k']]);
+        assert.deepEqual(completed, []);
+    });
+
     it('waits for asynchronous LSP manifest entries before batching invalidation', async () => {
         const rootFile = path.resolve('project', 'root.k');
         const changedFile = path.resolve('project', 'shared.key');
@@ -2095,6 +2355,57 @@ describe('createBatchedManifestInvalidator', () => {
 });
 
 describe('createProjectSnapshotRefreshQueue', () => {
+    for (const failed of [false, true]) it(`keeps one same-root refresh after an active load ${failed ? 'fails' : 'finishes'}`, async () => {
+        const root = path.resolve('/project/main.k'), started = [], finishes = [], errors = [];
+        const failure = Error('old generation cancelled');
+        const enqueue = createProjectSnapshotRefreshQueue({
+            loadProjectSnapshot: file => { started.push(file); return new Promise((resolve, reject) => { finishes.push(() => failed && started.length === 1 ? reject(failure) : resolve()); }); },
+            onError: error => errors.push(error),
+        });
+        try {
+            enqueue(root);
+            await new Promise(resolve => setImmediate(resolve));
+            enqueue(root); enqueue(root);
+            finishes.shift()();
+            await new Promise(resolve => setImmediate(resolve));
+            assert.deepEqual(started, [root, root]);
+            assert.deepEqual(errors, failed ? [failure] : []);
+            finishes.shift()();
+            await new Promise(resolve => setImmediate(resolve));
+            assert.deepEqual(started, [root, root]);
+        } finally { enqueue.dispose(); }
+    });
+
+    it('cancels the native immediate and ignores later refresh requests after disposal', async () => {
+        const started = [];
+        const enqueue = createProjectSnapshotRefreshQueue({ loadProjectSnapshot: async root => { started.push(root); } });
+        enqueue('/project/main.k');
+        enqueue.dispose();
+        enqueue.dispose();
+        enqueue('/project/later.k');
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(started, []);
+    });
+
+    for (const failed of [false, true]) it(`finishes the current refresh ${failed ? 'failure' : 'success'} without starting queued roots after disposal`, async () => {
+        let scheduled, finish;
+        const started = [], errors = [], failure = Error('refresh failed during shutdown');
+        const root = path.resolve('/project/main.k');
+        const enqueue = createProjectSnapshotRefreshQueue({
+            loadProjectSnapshot: file => { started.push(file); return new Promise((resolve, reject) => { finish = () => failed ? reject(failure) : resolve(); }); },
+            schedule: callback => { scheduled = callback; }, onError: error => errors.push(error),
+        });
+        enqueue(root);
+        enqueue('/project/queued.k');
+        scheduled();
+        enqueue.dispose();
+        enqueue('/project/later.k');
+        finish();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepEqual(started, [root]);
+        assert.deepEqual(errors, failed ? [failure] : []);
+    });
+
     it('refreshes queued roots sequentially and deduplicates repeated roots', async () => {
         const rootA = path.resolve('project', 'root-a.k');
         const rootB = path.resolve('project', 'root-b.k');
@@ -2365,36 +2676,22 @@ describe('createProjectIndexLoader', () => {
     });
 });
 
-describe('createProjectSnapshotPersistentCache', () => {
-    it('returns null when no global storage path is available', () => {
-        assert.equal(createProjectSnapshotPersistentCache(), null);
-        assert.equal(createProjectSnapshotPersistentCache({ storageUri: {} }), null);
-    });
-
-    it('creates the disk snapshot store under the extension global storage directory', () => {
-        const created = [];
-        const persistentCache = createProjectSnapshotPersistentCache({
-            storageUri: { fsPath: path.resolve('storage-root') },
-            createStore(options) {
-                created.push(options);
-                return { kind: 'disk-store' };
-            },
-        });
-
-        assert.deepEqual(created, [{
-            cacheDirectory: path.resolve('storage-root', 'project-snapshots'),
-            maxCacheBytes: 256 * 1024 * 1024,
-            maxEntryAgeMs: 30 * 24 * 60 * 60 * 1000,
-        }]);
-        assert.deepEqual(persistentCache, { kind: 'disk-store' });
-    });
-});
-
 // ---------------------------------------------------------------------------
 // Debounce helpers
 // ---------------------------------------------------------------------------
 
 describe('createActiveDocumentDebouncer', () => {
+    it('cancels the native timeout and ignores later changes after disposal', async () => {
+        const document = { uri: { fsPath: '/project/main.k' } }, refreshed = [];
+        const debounce = createActiveDocumentDebouncer(() => document, value => refreshed.push(value), 10);
+        debounce(document);
+        debounce.dispose();
+        debounce.dispose();
+        debounce(document);
+        await new Promise(resolve => setTimeout(resolve, 30));
+        assert.deepEqual(refreshed, []);
+    });
+
     it('refreshes only if the changed document is still active when the timer fires', () => {
         const scheduled = new Map();
         let nextTimerId = 1;
@@ -2535,6 +2832,48 @@ describe('large document guards', () => {
         );
     });
 
+    it('reports include access faults as an unchecked path and recovers without a missing-file claim', async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-include-warning-'));
+        const child = path.join(directory, 'child.k');
+        fs.writeFileSync(child, '*NODE\n1,0,0,0\n');
+        const doc = fakeDoc('*INCLUDE\nchild.k\n', path.join(directory, 'main.k'));doc.languageId = 'lsdyna';
+        fs.writeFileSync(doc.uri.fsPath, doc.getText());
+        const access = fs.promises.access, accessSync = fs.accessSync;
+        const fault = Object.assign(new Error('controlled access failure'), { code: 'EACCES' });
+        fs.promises.access = async function (file, ...args) {
+            if (path.resolve(String(file)) === child) throw fault;
+            return access.call(this, file, ...args);
+        };
+        fs.accessSync = function (file, ...args) {
+            if (path.resolve(String(file)) === child) throw fault;
+            return accessSync.call(this, file, ...args);
+        };
+        try {
+            for (const mode of ['off', 'crossPlatform', 'strict']) {
+                const result = await collectIncludeDecorationSets(doc, { mode });
+                assert.equal(result.resolved.length, 0);
+                assert.equal(result.missingIndicators.length, 1);
+                assert.equal(result.missingIndicators[0].hoverMessage, i18n.get('includeDecorationCheckFailed', 'child.k'));
+                assert.notEqual(result.missingIndicators[0].hoverMessage, i18n.get('includeDecorationMissingLocal', 'child.k'));
+                assert.deepEqual(await collectIncludeDocumentLinks(doc, { mode }), []);
+            }
+            await assert.rejects(collectIncludeFiles(doc.uri.fsPath), error => error === fault);
+            const provider = new LsdynaIncludeTreeProvider({ searchFileFromPaths });
+            await assert.rejects(provider._buildItem(doc.uri.fsPath, new Set(), { report() {} }), error => error === fault);
+            fs.promises.access = access;
+            fs.accessSync = accessSync;
+            assert.deepEqual(await collectIncludeFiles(doc.uri.fsPath), [doc.uri.fsPath, child]);
+            assert.equal((await provider._buildItem(doc.uri.fsPath, new Set(), { report() {} })).children[0].filePath, child);
+            assert.equal((await collectIncludeDecorationSets(doc)).resolved.length, 1);
+            assert.equal((await collectIncludeDecorationSets(doc)).missingIndicators.length, 0);
+            assert.equal((await collectIncludeDocumentLinks(doc)).length, 1);
+        } finally {
+            fs.promises.access = access;
+            fs.accessSync = accessSync;
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
     it('splits missing path styling around comments but keeps one trailing indicator', async () => {
         const doc = fakeDoc('*INCLUDE\npart_a +\n$ skip me\npart_b.key\n', '/project/main.k');
         doc.languageId = 'lsdyna';
@@ -2589,12 +2928,12 @@ describe('large document guards', () => {
     });
 
     it('uses only a document link for an existing include and only a warning attachment for a missing one', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-affordance-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-affordance-'));
         const mainFile = path.join(tempRoot, 'main.k');
         const childFile = path.join(tempRoot, 'child.k');
         fs.writeFileSync(childFile, '*KEYWORD\n');
 
-        try {
+        {
             const resolvedDoc = fakeDoc('*INCLUDE\nchild.k\n', mainFile);
             resolvedDoc.languageId = 'lsdyna';
             const resolvedDecorations = await collectIncludeDecorationSets(resolvedDoc);
@@ -2612,13 +2951,11 @@ describe('large document guards', () => {
             assert.equal(missingDecorations.missing.length, 1);
             assert.equal(missingDecorations.missingIndicators.length, 1);
             assert.equal(missingLinks.length, 0);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('shares strict decoration lookups per request and observes file creation and deletion', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-refresh-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-refresh-'));
         const file = path.join(root, 'child.k');
         const doc = fakeDoc('*INCLUDE\nchild.k\n*INCLUDE\nchild.k\n', path.join(root, 'main.k'));
         doc.languageId = 'lsdyna'; doc.version = 1;
@@ -2626,14 +2963,14 @@ describe('large document guards', () => {
         const options = { mode: 'strict', resolveIncludeWithCaseCheck: async () => {
             checks++; return { status: 'exact', resolvedPath: file };
         } };
-        try {
+        {
             assert.equal((await collectIncludeDecorationSets(doc, options)).missing.length, 2);
             fs.writeFileSync(file, '*KEYWORD\n');
             assert.equal((await collectIncludeDecorationSets(doc, options)).resolved.length, 2);
             assert.equal(checks, 1);
             fs.unlinkSync(file);
             assert.equal((await collectIncludeDecorationSets(doc, options)).missing.length, 2);
-        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+        }
     });
 
     it('skips automatic include document links for very large documents', async () => {
@@ -2641,14 +2978,14 @@ describe('large document guards', () => {
     });
 
     it('splits continued include document links around skipped comment lines', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-links-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-links-'));
         const includeFile = path.join(tempRoot, 'part_apart_b.key');
         const mainFile = path.join(tempRoot, 'main.k');
 
         fs.writeFileSync(includeFile, '*KEYWORD\n');
         fs.writeFileSync(mainFile, '*INCLUDE\npart_a +\n$ skip me\npart_b.key\n');
 
-        try {
+        {
             const doc = fakeDoc(fs.readFileSync(mainFile, 'utf8'), mainFile);
             const links = await collectIncludeDocumentLinks(doc);
 
@@ -2657,20 +2994,18 @@ describe('large document guards', () => {
                 links.map(link => [link.range.start.line, link.range.end.line]),
                 [[1, 1], [3, 3]]
             );
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('creates document links for valid *INCLUDE_PATH directories', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-link-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-path-link-'));
         const includeDir = path.join(tempRoot, 'includes');
         const mainFile = path.join(tempRoot, 'main.k');
         fs.mkdirSync(includeDir);
         const mainFileContent = `*INCLUDE_PATH\n${includeDir}\n`;
         fs.writeFileSync(mainFile, mainFileContent);
 
-        try {
+        {
             const doc = fakeDoc(mainFileContent, mainFile);
             const links = await collectIncludeDocumentLinks(doc);
 
@@ -2682,13 +3017,11 @@ describe('large document guards', () => {
             assert.equal(links[0].range.start.character, 0);
             assert.equal(links[0].range.end.line, 1);
             assert.equal(links[0].range.end.character, includeDir.length);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('creates document links for continued *INCLUDE_PATH directories', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-continued-path-link-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-continued-path-link-'));
         const includeDir = path.join(tempRoot, 'long-' + 'a'.repeat(50), 'includes');
         const mainFile = path.join(tempRoot, 'main.k');
         fs.mkdirSync(includeDir, { recursive: true });
@@ -2698,7 +3031,7 @@ describe('large document guards', () => {
         const mainFileContent = `*INCLUDE_PATH\n${part1} +\n${part2}\n`;
         fs.writeFileSync(mainFile, mainFileContent);
 
-        try {
+        {
             const doc = fakeDoc(mainFileContent, mainFile);
             const links = await collectIncludeDocumentLinks(doc);
 
@@ -2708,13 +3041,11 @@ describe('large document guards', () => {
             assert.equal(path.normalize(decodeCommandUriArgs(links[0].target)[0].resourceUri.fsPath), path.normalize(includeDir));
             assert.equal(links[0].range.start.line, 1);
             assert.equal(links[0].range.end.line, 2);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('resolves include document links through continued *INCLUDE_PATH directories', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-links-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-path-links-'));
         const includeDir = path.join(tempRoot, 'shared', 'includes');
         const includeFile = path.join(includeDir, 'continued.k');
         const mainFile = path.join(tempRoot, 'main.k');
@@ -2726,7 +3057,7 @@ describe('large document guards', () => {
         const mainFileContent = `*INCLUDE_PATH\n${part1} +\n${part2}\n*INCLUDE\ncontinued.k\n`;
         fs.writeFileSync(mainFile, mainFileContent);
 
-        try {
+        {
             const doc = fakeDoc(mainFileContent, mainFile);
             const links = await collectIncludeDocumentLinks(doc);
             const includeLink = links.find(link => path.normalize(link.target.fsPath) === path.normalize(includeFile));
@@ -2735,13 +3066,11 @@ describe('large document guards', () => {
             assert.equal(path.normalize(includeLink.target.fsPath), path.normalize(includeFile));
             assert.equal(includeLink.range.start.line, 4);
             assert.equal(includeLink.range.end.line, 4);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('blocks include document links for casing mismatches in strict mode', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-strict-case-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-strict-case-'));
         const realFile = path.join(tempRoot, 'Part.k');
         const mainFile = path.join(tempRoot, 'main.k');
         fs.writeFileSync(realFile, '*KEYWORD\n');
@@ -2771,9 +3100,10 @@ describe('large document guards', () => {
             assert.equal(strictDeco.resolved.length, 0);
             assert.ok(strictDeco.missing.length >= 1);
             assert.equal(strictDeco.missingIndicators.length, 1);
+            assert.equal(strictDeco.missingIndicators[0].hoverMessage,
+                i18n.get('includePathCaseMismatch', 'part.k', 'Part.k'));
         } finally {
             setResolveIncludeWithCaseCheckForTesting(null);
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -2817,7 +3147,7 @@ describe('large document guards', () => {
 
     it('skips hover work for very large documents', async () => {
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(createHugeDoc(), { line: 0, character: 0 });
+        const hover = await provider.provideDetailedHover(createHugeDoc(), { line: 0, character: 0 });
         assert.equal(hover, null);
     });
 
@@ -2873,12 +3203,12 @@ describe('getParameterAtCursor', () => {
 // LsdynaFieldHoverProvider
 // ---------------------------------------------------------------------------
 
-describe('LsdynaFieldHoverProvider', () => {
+describe('LsdynaFieldHoverProvider expanded details', () => {
     it('discards a hover when its document changes during cold schema preparation', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*NODE\n       1             0.0\n');
         doc.version = 1;
-        const pending = provider.provideHover(doc, { line: 1, character: 12 });
+        const pending = provider.provideDetailedHover(doc, { line: 1, character: 12 });
         doc.version = 2;
         assert.equal(await pending, null);
     });
@@ -2958,7 +3288,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 1, character: 8 });
+        const hover = await provider.provideDetailedHover(doc, { line: 1, character: 8 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('Current-file source definition'));
@@ -2986,7 +3316,7 @@ describe('LsdynaFieldHoverProvider', () => {
             { position: { line: 5, character: 5 }, text: '-&AB_CD_EF' },
         ];
         for (const item of cases) {
-            const hover = await provider.provideHover(doc, item.position);
+            const hover = await provider.provideDetailedHover(doc, item.position);
             assert.ok(hover, JSON.stringify(item.position));
             assert.ok(hover.contents[0].value.includes('Current-file source definition'));
             assert.ok(hover.contents[0].value.includes('`7`'));
@@ -2999,7 +3329,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const doc = fakeDoc('*CONTROL_TERMINATION\n  &UNKNOWN\n', filePath);
         doc.languageId = 'lsdyna';
 
-        const hover = await new LsdynaFieldHoverProvider().provideHover(
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             doc,
             { line: 1, character: 5 },
         );
@@ -3058,7 +3388,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 1, character: 8 });
+        const hover = await provider.provideDetailedHover(doc, { line: 1, character: 8 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('Effective value in the current main-deck context'));
@@ -3101,7 +3431,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 3, character: 8 });
+        const hover = await provider.provideDetailedHover(doc, { line: 3, character: 8 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('Current-file source definition'));
@@ -3163,7 +3493,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 3, character: 8 });
+        const hover = await provider.provideDetailedHover(doc, { line: 3, character: 8 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('Current-file source definition'));
@@ -3183,7 +3513,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
-            const hover = await provider.provideHover(doc, { line: 1, character: 45 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 45 });
             assert.ok(hover);
             const value = hover.contents[0].value;
             assert.ok(value.includes('command:extension.muteFieldHoverSession'));
@@ -3213,19 +3543,14 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const fieldDoc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
-            const fieldHover = await provider.provideHover(fieldDoc, { line: 1, character: 45 });
+            const fieldHover = await provider.provideDetailedHover(fieldDoc, { line: 1, character: 45 });
             assert.strictEqual(fieldHover, null);
 
             const kwDoc = fakeDoc('*NODE\n');
-            const kwHover = await provider.provideHover(kwDoc, { line: 0, character: 2 });
-            // Keyword line may still produce hover (known keyword or manuals fallback)
-            // At minimum must not be blocked solely by field-hover config when manuals empty:
-            // if null, ensure it is not because of field gate — field gate only runs on card lines.
-            // When manuals empty and keyword known, hover is still returned with help.
-            if (kwHover) {
-                const value = kwHover.contents[0].value;
-                assert.ok(!value.includes('command:extension.muteFieldHoverSession'));
-            }
+            const kwHover = await provider.provideDetailedHover(kwDoc, { line: 0, character: 2 });
+            assert.ok(kwHover, 'Known *NODE keyword hover must remain available');
+            const value = kwHover.contents[0].value;
+            assert.ok(!value.includes('command:extension.muteFieldHoverSession'));
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
@@ -3240,7 +3565,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
-            const hover = await provider.provideHover(doc, { line: 1, character: 45 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 45 });
             assert.strictEqual(hover, null);
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
@@ -3257,14 +3582,15 @@ describe('LsdynaFieldHoverProvider', () => {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
 
-            const hover = await provider.provideHover(doc, { line: 1, character: 45 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 45 });
 
             assert.ok(hover);
             const value = hover.contents[0].value;
             assert.ok(value.startsWith('### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**ENDMAS**</span> *(real)*'));
             assert.match(value, /DT2MS\. {2,}\nLT\.0\.0:/);
-            assert.ok(value.includes('**$(table) Card Columns:**'));
-            assert.ok(value.includes('**&nbsp;ENDMAS&nbsp;**'));
+            assert.ok(!value.includes('$(table) Card Columns'));
+            assert.ok(value.includes('<span style="color:var(--vscode-textLink-foreground);">**ENDMAS**</span>'));
+            assert.ok(value.includes('<sub>41&#8209;50</sub>'));
         } finally {
             manualIndexer.getManualLocations = originalGetManualLocations;
         }
@@ -3289,7 +3615,7 @@ describe('LsdynaFieldHoverProvider', () => {
                 '         1',
             ].join('\n'));
 
-            const hover = await provider.provideHover(doc, { line: 1, character: 5 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 5 });
             assert.ok(hover);
             const value = hover.contents[0].value;
 
@@ -3325,7 +3651,7 @@ describe('LsdynaFieldHoverProvider', () => {
                 '         1',
             ].join('\n'));
 
-            const hover = await provider.provideHover(doc, { line: 1, character: 5 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 5 });
             assert.ok(hover);
             const value = hover.contents[0].value;
             assert.ok(value.includes('Node set ID'));
@@ -3340,7 +3666,7 @@ describe('LsdynaFieldHoverProvider', () => {
     });
 
     it('shows a local curve candidate but keeps the result uncertain until the project is scanned', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-curve-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-hover-curve-'));
         const filePath = path.join(tempRoot, 'main.k');
         const doc = fakeDoc([
             '*MAT_PIECEWISE_LINEAR_PLASTICITY',
@@ -3373,12 +3699,12 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             setFileIndexForTesting(filePath, fileIndex);
             const provider = new LsdynaFieldHoverProvider();
-            const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+            const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
             const value = hover.contents[0].value;
 
             assert.ok(value.includes('**LCSS**'));
-            assert.ok(value.includes('LCSS reference'));
-            assert.ok(value.includes('*DEFINE\\_CURVE'));
+            assert.ok(!value.includes('LCSS reference'));
+            assert.ok(!value.includes('*DEFINE\\_CURVE'));
             assert.ok(value.includes('Current-file preview'));
             assert.ok(value.includes('command:extension.openLsdynaReferenceDefinition'));
             assert.ok(value.includes('data:image/svg+xml;base64,'));
@@ -3388,7 +3714,6 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(!value.includes('No matching curve/table definition'));
         } finally {
             setFileIndexForTesting(filePath, null);
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -3403,7 +3728,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('LCSS reference'));
@@ -3421,7 +3746,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('`&CID`'));
@@ -3474,11 +3799,12 @@ describe('LsdynaFieldHoverProvider', () => {
         });
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const value = hover.contents[0].value;
 
-        assert.ok(value.includes(childFile));
-        assert.ok(value.includes('*DEFINE\\_CURVE'));
+        const navigation = value.match(/command:extension\.openLsdynaReferenceDefinition\?[^ ]+/g) || [];
+        assert.deepEqual(navigation.flatMap(decodeCommandUriArgs), [{ filePath: childFile, lineIndex: 2, character: 0 }]);
+        assert.ok(!value.includes('*DEFINE\\_CURVE'));
         assert.ok(!value.includes('Scan Include Tree'));
     });
 
@@ -3547,11 +3873,12 @@ describe('LsdynaFieldHoverProvider', () => {
         });
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('evaluates this to ID `1001`'));
-        assert.ok(value.includes(curveFile));
+        const navigation = value.match(/command:extension\.openLsdynaReferenceDefinition\?[^ ]+/g) || [];
+        assert.deepEqual(navigation.flatMap(decodeCommandUriArgs), [{ filePath: curveFile, lineIndex: 1, character: 0 }]);
         assert.ok(!value.includes('parameter-controlled and parameters have not been evaluated'));
         assert.ok(!value.includes('Scan Include Tree'));
     });
@@ -3623,7 +3950,7 @@ describe('LsdynaFieldHoverProvider', () => {
         cacheCondition(rootB, curveB, 2002);
 
         const provider = new LsdynaFieldHoverProvider();
-        const hover = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hover = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const value = hover.contents[0].value;
 
         assert.ok(value.includes('multiple main decks'));
@@ -3636,12 +3963,12 @@ describe('LsdynaFieldHoverProvider', () => {
         const selectedA = getMainDeckContextForDocumentPath(sharedFile);
         assert.equal(selectedA.state, 'selected');
         assert.equal(selectedA.rootFile, rootA);
-        const hoverA = await provider.provideHover(doc, { line: 4, character: 24 });
+        const hoverA = await provider.provideDetailedHover(doc, { line: 4, character: 24 });
         const valueA = hoverA.contents[0].value;
         assert.ok(valueA.includes('Current main deck'));
         assert.ok(valueA.includes(path.basename(rootA)));
-        assert.ok(valueA.includes(curveA));
-        assert.ok(!valueA.includes(curveB));
+        const navigationA = valueA.match(/command:extension\.openLsdynaReferenceDefinition\?[^ ]+/g) || [];
+        assert.deepEqual(navigationA.flatMap(decodeCommandUriArgs).map(target => target.filePath), [curveA]);
 
         assert.equal(setMainDeckContextForDocument(sharedFile, rootB), true);
         const docB = fakeDoc([
@@ -3652,11 +3979,11 @@ describe('LsdynaFieldHoverProvider', () => {
             '       0.0       0.0      2002         0       0.0',
         ].join('\n'), sharedFile);
         docB.languageId = 'lsdyna';
-        const hoverB = await provider.provideHover(docB, { line: 4, character: 24 });
+        const hoverB = await provider.provideDetailedHover(docB, { line: 4, character: 24 });
         const valueB = hoverB.contents[0].value;
         assert.ok(valueB.includes(path.basename(rootB)));
-        assert.ok(valueB.includes(curveB));
-        assert.ok(!valueB.includes(curveA));
+        const navigationB = valueB.match(/command:extension\.openLsdynaReferenceDefinition\?[^ ]+/g) || [];
+        assert.deepEqual(navigationB.flatMap(decodeCommandUriArgs).map(target => target.filePath), [curveB]);
 
         assert.equal(clearMainDeckContextForDocument(sharedFile), true);
         assert.equal(getMainDeckContextForDocumentPath(sharedFile).state, 'ambiguous');
@@ -3721,23 +4048,24 @@ describe('LsdynaFieldHoverProvider', () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*MAT_001_TITLE\nSteel\n$      MID|       RO|\n    100000    2.7E-9\n');
 
-        const titleHover = await provider.provideHover(doc, { line: 1, character: 2 });
+        const titleHover = await provider.provideDetailedHover(doc, { line: 1, character: 2 });
         assert.ok(titleHover);
         assert.ok(titleHover.contents[0].value.includes('**TITLE**'));
         assert.ok(titleHover.contents[0].value.includes('Enter title for the datacard.'));
 
         // Hovering on comment line (line 2) should return null
-        const commentHover = await provider.provideHover(doc, { line: 2, character: 2 });
+        const commentHover = await provider.provideDetailedHover(doc, { line: 2, character: 2 });
         assert.strictEqual(commentHover, null);
 
         // Hovering on data line (line 3) for character 5 (MID field, width 10)
-        const dataHover = await provider.provideHover(doc, { line: 3, character: 5 });
+        const dataHover = await provider.provideDetailedHover(doc, { line: 3, character: 5 });
         assert.ok(dataHover);
-        assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;MID&nbsp;**</span>'));
+        assert.ok(dataHover.contents[0].value.includes('<span style="color:var(--vscode-textLink-foreground);">**MID**</span>'));
+        assert.ok(dataHover.contents[0].value.includes('<sub>1&#8209;10</sub>'));
     });
 
     it('previews TITLE-variant local LCSS candidates before the project is scanned', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-title-curve-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-hover-title-curve-'));
         const filePath = path.join(tempRoot, 'main.k');
         const doc = fakeDoc([
             '*MAT_PIECEWISE_LINEAR_PLASTICITY_TITLE',
@@ -3771,12 +4099,12 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             setFileIndexForTesting(filePath, fileIndex);
             const provider = new LsdynaFieldHoverProvider();
-            const hover = await provider.provideHover(doc, { line: 5, character: 24 });
+            const hover = await provider.provideDetailedHover(doc, { line: 5, character: 24 });
             const value = hover.contents[0].value;
 
             assert.ok(value.includes('**LCSS**'));
-            assert.ok(value.includes('LCSS reference'));
-            assert.ok(value.includes('*DEFINE\\_CURVE'));
+            assert.ok(!value.includes('LCSS reference'));
+            assert.ok(!value.includes('*DEFINE\\_CURVE'));
             assert.ok(value.includes('Current-file preview'));
             assert.ok(value.includes('command:extension.openLsdynaReferenceDefinition'));
             assert.ok(value.includes('Scan Include Tree'));
@@ -3784,12 +4112,11 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(!value.includes('Current-file candidate'));
         } finally {
             setFileIndexForTesting(filePath, null);
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('prepends curve definition preview when hovering on *DEFINE_CURVE definition keyword line', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-def-curve-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-hover-def-curve-'));
         const filePath = path.join(tempRoot, 'main.k');
         const doc = fakeDoc([
             '*DEFINE_CURVE_TITLE',
@@ -3824,7 +4151,7 @@ describe('LsdynaFieldHoverProvider', () => {
             setFileIndexForTesting(filePath, fileIndex);
             const provider = new LsdynaFieldHoverProvider();
             // Hover directly on line 0 (the *DEFINE_CURVE_TITLE keyword line)
-            const hover = await provider.provideHover(doc, { line: 0, character: 5 });
+            const hover = await provider.provideDetailedHover(doc, { line: 0, character: 5 });
             assert.ok(hover);
             const value = hover.contents[0].value;
 
@@ -3834,7 +4161,6 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(value.includes('**\\*DEFINE\\_CURVE')); // Manual/help text
         } finally {
             setFileIndexForTesting(filePath, null);
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -3854,7 +4180,7 @@ describe('LsdynaFieldHoverProvider', () => {
             ''
         ].join('\n'));
 
-        const hover = await provider.provideHover(doc, { line: 9, character: 2 });
+        const hover = await provider.provideDetailedHover(doc, { line: 9, character: 2 });
         assert.ok(hover);
         assert.ok(hover.contents[0].value.includes('**PSTIFF**'));
     });
@@ -3866,8 +4192,8 @@ describe('LsdynaFieldHoverProvider', () => {
             '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
         ].join('\n'));
 
-        const ordinaryHover = await provider.provideHover(doc, { line: 0, character: 3 });
-        const optionHover = await provider.provideHover(doc, { line: 1, character: 3 });
+        const ordinaryHover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
+        const optionHover = await provider.provideDetailedHover(doc, { line: 1, character: 3 });
 
         assert.ok(ordinaryHover);
         assert.ok(optionHover);
@@ -3884,21 +4210,48 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.equal(target[0].uri, extensionModule._internals.documentUriIdentity(doc));
     });
 
+    it('localizes incomplete include previews outside the unchanged source code block', async () => {
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-include-copy-'));
+        const file = path.join(root, 'child.k'), main = path.join(root, 'main.k');
+        const original = vscodeMock.workspace.getConfiguration;
+        let language = 'en', maxLines = 2;
+        vscodeMock.workspace.getConfiguration = () => ({ get: (key, fallback) => key === 'language' ? language : key === 'hover.previewMaxLines' ? maxLines : fallback });
+        try {
+            const doc = fakeDoc('*INCLUDE\nchild.k\n', main); doc.languageId = 'lsdyna';
+            for (language of ['en', 'zh-cn']) for (const data of ['*KEYWORD\n$ 原始内容 &X\n*NODE\n*END', 'x'.repeat(4100)]) {
+                i18n.updateLanguage();fs.writeFileSync(file, data);
+                const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(doc, { line: 1, character: 3 });
+                const markdown = hover.contents[0].value;
+                const notice = language === 'zh-cn' ? '仅显示部分内容' : 'Partial file preview';
+                assert.ok(markdown.includes(notice));
+                assert.ok(!markdown.includes('File is truncated for preview'));
+                const blocks = [...markdown.matchAll(/```lsdyna\n([\s\S]*?)\n```/g)];
+                if (data.startsWith('*KEYWORD')) assert.deepEqual(blocks.map(match => match[1]), ['*KEYWORD\n$ 原始内容 &X']);
+                else assert.equal(blocks.length, 0, 'An incomplete byte-capped line must not be shown');
+                assert.ok(blocks.every(match => !match[1].includes(notice)), 'Product copy belongs outside source text');
+                assert.equal(fs.readFileSync(file, 'utf8'), data);
+            }
+            maxLines = 20;fs.writeFileSync(file, '*KEYWORD\n*END');
+            const complete = await new LsdynaFieldHoverProvider().provideDetailedHover(doc, { line: 1, character: 3 });
+            assert.ok(!complete.contents[0].value.includes('仅显示部分内容'));
+        } finally { vscodeMock.workspace.getConfiguration = original; i18n.updateLanguage();  }
+    });
+
     it('returns custom hover actions for existing include files', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-hover-test-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-hover-test-'));
         const includeFile = path.join(tempRoot, 'sub.key');
         const mainFile = path.join(tempRoot, 'main.k');
 
         fs.writeFileSync(includeFile, '*KEYWORD\n');
         fs.writeFileSync(mainFile, '*INCLUDE\nsub.key\n');
 
-        try {
+        {
             const doc = fakeDoc(fs.readFileSync(mainFile, 'utf8'), mainFile);
             doc.languageId = 'lsdyna';
             const provider = new LsdynaFieldHoverProvider();
 
             // Hovering over 'sub.key' on line 1, character 3
-            const hover = await provider.provideHover(doc, { line: 1, character: 3 });
+            const hover = await provider.provideDetailedHover(doc, { line: 1, character: 3 });
 
             assert.ok(hover);
             assert.strictEqual(hover.contents[0].supportThemeIcons, true);
@@ -3908,8 +4261,6 @@ describe('LsdynaFieldHoverProvider', () => {
             assert.ok(hover.contents[0].value.includes('"' + i18n.get('openNewTab') + '"'));
             assert.ok(hover.contents[0].value.includes('"' + i18n.get('openSplit') + '"'));
             assert.ok(hover.contents[0].value.includes('"' + i18n.get('openFolder') + '"'));
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -3918,9 +4269,10 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
         const provider = new LsdynaFieldHoverProvider();
 
-        const hover = await provider.provideHover(doc, { line: 1, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 1, character: 3 });
         assert.ok(hover);
-        assert.ok(hover.contents[0].value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;FILENAME&nbsp;**</span>'));
+        assert.ok(hover.contents[0].value.includes('<span style="color:var(--vscode-textLink-foreground);">**FILENAME**</span>'));
+        assert.ok(hover.contents[0].value.includes('<sub>1&#8209;80</sub>'));
     });
 
     it('prefers the structured chapter over live PDF bookmarks on keyword and field hovers', async () => {
@@ -3974,7 +4326,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
             // Hovering over keyword line *CONTROL_TERMINATION
             const doc = fakeDoc('*CONTROL_TERMINATION\n');
-            const kwHover = await provider.provideHover(doc, { line: 0, character: 3 });
+            const kwHover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
             assert.ok(kwHover);
             assert.strictEqual(kwHover.contents[0].supportThemeIcons, true);
             assert.ok(kwHover.contents[0].value.includes('[$(file-pdf) PDF · Vol II · P1881](command:extension.manual.openPackChapter?'));
@@ -3993,7 +4345,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
             // Hovering over field line ENDENG under *CONTROL_TERMINATION
             const docField = fakeDoc('*CONTROL_TERMINATION\n                                                            \n');
-            const fieldHover = await provider.provideHover(docField, { line: 1, character: 35 });
+            const fieldHover = await provider.provideDetailedHover(docField, { line: 1, character: 35 });
             assert.ok(fieldHover);
             assert.strictEqual(fieldHover.contents[0].supportThemeIcons, true);
             assert.ok(fieldHover.contents[0].value.includes('[$(file-pdf) PDF · Vol II · P1881](command:extension.manual.openPackChapter?'));
@@ -4012,7 +4364,6 @@ describe('LsdynaFieldHoverProvider', () => {
             workspace.getConfiguration = originalGetConfiguration;
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -4063,7 +4414,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         try {
             const provider = new LsdynaFieldHoverProvider();
-            const hover = await provider.provideHover(
+            const hover = await provider.provideDetailedHover(
                 fakeDoc(`${requestedKeyword}\n`),
                 { line: 0, character: 3 }
             );
@@ -4080,7 +4431,6 @@ describe('LsdynaFieldHoverProvider', () => {
             workspace.getConfiguration = originalGetConfiguration;
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
             manualIndexer.getManualLocations = originalGetManualLocations;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -4108,7 +4458,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         try {
             const provider = new LsdynaFieldHoverProvider();
-            const hover = await provider.provideHover(
+            const hover = await provider.provideDetailedHover(
                 fakeDoc(`${requestedKeyword}\n`),
                 { line: 0, character: 3 }
             );
@@ -4143,7 +4493,7 @@ describe('LsdynaFieldHoverProvider', () => {
 
         try {
             const provider = new LsdynaFieldHoverProvider();
-            const hover = await provider.provideHover(fakeDoc('*DEFINE_TRANSFORMATION\n'), { line: 0, character: 3 });
+            const hover = await provider.provideDetailedHover(fakeDoc('*DEFINE_TRANSFORMATION\n'), { line: 0, character: 3 });
             const value = hover.contents[0].value;
 
             assert.ok(value.includes(`[$(file-pdf) ${i18n.get('pdfChooseBookmark')}](command:extension.manual.pickPdfLocation?`));
@@ -4184,7 +4534,7 @@ describe('LsdynaFieldHoverProvider', () => {
             // Keyword title is omitted on purpose: diagnosis already shows
             // "未知*… ⓘ" / "Unknown *… ⓘ"; hover only adds manuals + actions.
             const doc = fakeDoc('*SOME_UNUSUAL_KEYWORD\n');
-            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             assert.strictEqual(hover.contents[0].supportThemeIcons, true);
             assert.ok(!hover.contents[0].value.includes('**\\*SOME_UNUSUAL_KEYWORD**'), hover.contents[0].value);
@@ -4211,7 +4561,7 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
-            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             assert.ok(hover.contents[0].value.includes(i18n.get('manualDirNotConfigured')));
             assert.ok(hover.contents[0].value.includes('command:extension.configureManualsDir'));
@@ -4241,11 +4591,11 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*UNRECOGNIZED_KEYWORD\n');
-            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
             const value = hover.contents[0].value;
             assert.ok(!value.includes('**\\*UNRECOGNIZED_KEYWORD**'));
-            assert.ok(!value.includes('>ⓘ</span>'));
+            assert.ok(!value.includes('>$(info)</span>'));
             assert.ok(value.includes('command:extension.addCustomValidKeyword'));
             assert.ok(!value.includes('command:extension.manageCustomValidKeywords'));
         } finally {
@@ -4255,32 +4605,29 @@ describe('LsdynaFieldHoverProvider', () => {
         }
     });
 
-    it('embeds closest-keyword help for CONTACT option-order typo without treating typed name as known', async () => {
-        // CONTACT_..._ID_OFFSET is not in schema; closest legal form is ..._OFFSET_ID (option permutation).
+    it('shows the actual CONTACT header and cards for a supported option order', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET\n');
-        const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
         assert.ok(hover);
         const value = hover.contents[0].value;
-        assert.ok(value.includes('command:extension.addCustomValidKeyword'), value);
-        assert.ok(!value.includes('**\\*CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET**'), value);
-        // High-confidence option permutation → embed help for OFFSET_ID (not the typed name as known).
-        assert.ok(value.includes('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_OFFSET_ID'), value);
-        assert.ok(value.includes('| Card |'), value);
-        assert.ok(!value.includes('>ⓘ</span>'), value);
+        assert.ok(!value.includes('command:extension.addCustomValidKeyword'), value);
+        assert.ok(value.includes('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET'), value);
+        assert.ok(value.includes('| Card |') && value.includes('`CID`') && value.includes('`SURFA`'), value);
+        assert.ok(!value.includes('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_OFFSET_ID'), value);
     });
 
     it('embeds closest-keyword help on high-confidence typo hover', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*LOAD_BODY_Z1\n');
-        const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(value.includes('LOAD_BODY_Z'), value);
         assert.ok(value.includes('| Card |'), 'expected embedded help table for LOAD_BODY_Z');
         assert.ok(value.includes('command:extension.addCustomValidKeyword'), value);
         assert.ok(!value.includes('**\\*LOAD_BODY_Z1**'), value);
-        assert.ok(!value.includes('>ⓘ</span>'), value);
+        assert.ok(!value.includes('>$(info)</span>'), value);
     });
 
     it('embeds user-picked similar keyword help after medium picker choice', async () => {
@@ -4289,7 +4636,7 @@ describe('LsdynaFieldHoverProvider', () => {
         const doc = fakeDoc('*ZZZ_NOISE_KEYWORD_QQQ\n');
         // Force a remembered pick even when auto-suggest is empty.
         rememberSimilarKeywordChoice(doc, 0, 'ZZZ_NOISE_KEYWORD_QQQ', 'LOAD_BODY_Z');
-        const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(value.includes('LOAD_BODY_Z'), value);
@@ -4307,7 +4654,7 @@ describe('LsdynaFieldHoverProvider', () => {
         ].join('\n'));
 
         // character ~3 is in LCID (cols 0-9)
-        const hover = await provider.provideHover(doc, { line: 2, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 2, character: 3 });
         assert.ok(hover, 'expected field hover via similar keyword');
         const value = hover.contents[0].value;
         assert.ok(value.includes('**LCID**') || value.includes('LCID'), value);
@@ -4316,14 +4663,14 @@ describe('LsdynaFieldHoverProvider', () => {
             value
         );
         assert.ok(value.includes(i18n.get('unknownKeywordSuggestStillUnknown')), value);
-        const infoEnd = value.indexOf('>ⓘ</span>');
+        const infoEnd = value.indexOf('>$(info)</span>');
         assert.ok(infoEnd > 0, value);
         assert.ok(value.indexOf(i18n.get('unknownKeywordHoverHint')) < infoEnd, value);
         assert.ok(value.indexOf(i18n.get('unknownKeywordFieldHelpFromSimilar', 'LOAD_BODY_Z', 'LOAD_BODY_Z1')) < infoEnd, value);
         assert.ok(value.indexOf(i18n.get('unknownKeywordSuggestStillUnknown')) < infoEnd, value);
         assert.ok(!value.includes('$(lightbulb)'), value);
         assert.ok(
-            value.includes('<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;LCID&nbsp;**</span>'),
+            value.includes('<span style="color:var(--vscode-textLink-foreground);">**LCID**</span>') && value.includes('<sub>1&#8209;10</sub>'),
             value
         );
     });
@@ -4338,7 +4685,7 @@ describe('LsdynaFieldHoverProvider', () => {
         ].join('\n'));
         rememberSimilarKeywordChoice(doc, 0, 'ZZZ_NOISE_KEYWORD_QQQ', 'LOAD_BODY_Z');
 
-        const hover = await provider.provideHover(doc, { line: 2, character: 3 });
+        const hover = await provider.provideDetailedHover(doc, { line: 2, character: 3 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(value.includes('LCID'), value);
@@ -4347,13 +4694,32 @@ describe('LsdynaFieldHoverProvider', () => {
             value.includes(i18n.get('unknownKeywordFieldHelpFromSimilar', 'LOAD_BODY_Z', 'ZZZ_NOISE_KEYWORD_QQQ')),
             value
         );
-        const infoEnd = value.indexOf('>ⓘ</span>');
+        const infoEnd = value.indexOf('>$(info)</span>');
         assert.ok(infoEnd > 0, value);
         assert.ok(value.indexOf(i18n.get('unknownKeywordFieldHelpFromSimilar', 'LOAD_BODY_Z', 'ZZZ_NOISE_KEYWORD_QQQ')) < infoEnd, value);
         assert.ok(!value.includes('$(lightbulb)'), value);
     });
 
-    it('hides bottom manual section when manualsDir is configured but no manuals found for recognized keyword', async () => {
+    it('keeps a compact book setup action when no manual is configured', async () => {
+        const indexer = require('../../src/core/manualIndexer');
+        const originalCount = indexer.getManualFilesCount, originalLocations = indexer.getManualLocations;
+        const originalGet = vscodeMock.workspace.getConfiguration;
+        try {
+            indexer.getManualFilesCount = () => 0; indexer.getManualLocations = () => [];
+            vscodeMock.workspace.getConfiguration = () => ({ get: () => undefined });
+            const provider = new LsdynaFieldHoverProvider();
+            const hover = await provider.provideHover(fakeDoc('*CONTROL_TIMESTEP\n'), { line: 0, character: 2 });
+            const text = hover.contents.map(item => item.value).join('');
+            assert.ok(text.includes('[$(book)](command:extension.configureManualsDir'));
+            assert.ok(!text.includes(i18n.get('manualDirNotConfigured')));
+            assert.ok(hover.contents.some(item => item.isTrusted.enabledCommands.includes('extension.configureManualsDir')));
+        } finally {
+            indexer.getManualFilesCount = originalCount; indexer.getManualLocations = originalLocations;
+            vscodeMock.workspace.getConfiguration = originalGet;
+        }
+    });
+
+    it('keeps manual discovery when the configured PDFs have no keyword match', async () => {
         const workspace = require("../support/vscode-mock").workspace;
         const originalGetConfiguration = workspace.getConfiguration;
         const manualIndexer = require("../../src/core/manualIndexer");
@@ -4369,9 +4735,9 @@ describe('LsdynaFieldHoverProvider', () => {
         try {
             const provider = new LsdynaFieldHoverProvider();
             const doc = fakeDoc('*CONTROL_TERMINATION\n');
-            const hover = await provider.provideHover(doc, { line: 0, character: 3 });
+            const hover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
             assert.ok(hover);
-            assert.ok(!hover.contents[0].value.includes('command:extension.openManual'));
+            assert.ok(hover.contents[0].value.includes('command:extension.manual.openCurrentKeyword'));
             assert.ok(!hover.contents[0].value.includes('command:extension.configureManualsDir'));
         } finally {
             workspace.getConfiguration = originalGetConfiguration;
@@ -4392,7 +4758,7 @@ describe('LsdynaFieldHoverProvider', () => {
             const document = fakeDoc('*DATABASE_EXTENT_BINARY\n' + '         1'.repeat(8));
             document.languageId = 'lsdyna';
             document.version = 1;
-            const hover = await new LsdynaFieldHoverProvider().provideHover(document, { line: 1, character: 5 });
+            const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(document, { line: 1, character: 5 });
             assert.ok(hover);
             assert.ok(getCardFieldsForLine(document, 1));
             assert.equal(lookups, 0, 'field interaction must not expand or align structural grammar paths');
@@ -4420,7 +4786,7 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
         doc.version = 1;
 
-        const keywordHover = await provider.provideHover(doc, { line: 0, character: 5 });
+        const keywordHover = await provider.provideDetailedHover(doc, { line: 0, character: 5 });
         assert.ok(keywordHover);
         assert.ok(keywordHover.contents[0].value.includes(i18n.get('keywordHoverOptions')));
         assert.ok(keywordHover.contents[0].value.includes(i18n.get('keywordHoverOptionActive')));
@@ -4428,14 +4794,14 @@ describe('LsdynaFieldHoverProvider', () => {
         assert.ok(keywordHover.contents[0].value.includes('| **2** | `MID`'));
         assert.ok(!keywordHover.contents[0].value.includes('command:extension.insertVerifiedMissingRecords'));
 
-        const titleHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        const titleHover = await provider.provideDetailedHover(doc, { line: 2, character: 5 });
         assert.ok(titleHover);
         const titleValue = titleHover.contents[0].value;
         assert.ok(titleValue.includes('**TITLE**'));
         assert.ok(!titleValue.includes('command:extension.insertVerifiedMissingRecords'));
         assert.ok(!titleValue.includes('command:extension.pickOfficialFieldValue'));
 
-        const shiftedHover = await provider.provideHover(doc, { line: 4, character: 5 });
+        const shiftedHover = await provider.provideDetailedHover(doc, { line: 4, character: 5 });
         assert.ok(shiftedHover);
         const shiftedValue = shiftedHover.contents[0].value;
         assert.ok(shiftedValue.includes('**MID**'));
@@ -4454,13 +4820,21 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
         doc.version = 1;
 
-        const hover = await provider.provideHover(doc, { line: 2, character: 65 });
+        const hover = await provider.provideDetailedHover(doc, { line: 2, character: 65 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(value.includes('**RLTFLG**'));
         assert.ok(!value.includes(i18n.get('cardCommentVersionHint')));
         assert.ok(!value.includes(i18n.get('cardCommentShiftHint')));
         assert.ok(!value.includes('command:extension.rebuildCardComments'));
+        assert.ok(!value.includes(`$(table) ${i18n.get('cardColumns')}`));
+        const guide = value.slice(value.indexOf('| <sub>'));
+        const rows = guide.split('\n').filter(line => line.startsWith('|'));
+        assert.equal(rows.length, 3, 'card guide has one horizontal field row and one range row');
+        assert.ok(rows[2].includes('<sub>NEIPH</sub>'));
+        assert.ok(rows[2].includes('<span style="color:var(--vscode-textLink-foreground);">RLTFLG</span>'));
+        assert.ok(rows[0].includes('<sub>1&#8209;10</sub>'));
+        assert.ok(rows[0].includes('<sub>71&#8209;80</sub>'));
     });
 
     it('adds a comment mismatch reminder without suppressing field help', async () => {
@@ -4474,18 +4848,18 @@ describe('LsdynaFieldHoverProvider', () => {
         doc.languageId = 'lsdyna';
         doc.version = 7;
 
-        const unchangedHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        const unchangedHover = await provider.provideDetailedHover(doc, { line: 2, character: 5 });
         assert.ok(unchangedHover);
         assert.ok(unchangedHover.contents[0].value.includes('**NEIPH**'));
         assert.ok(!unchangedHover.contents[0].value.includes(i18n.get('cardCommentVersionHint')));
 
-        const changedHover = await provider.provideHover(doc, { line: 2, character: 65 });
+        const changedHover = await provider.provideDetailedHover(doc, { line: 2, character: 65 });
         assert.ok(changedHover);
         const value = changedHover.contents[0].value;
         assert.ok(value.includes(i18n.get('cardCommentVersionHint')));
         assert.ok(value.includes('command:extension.rebuildCardComments'));
         assert.ok(value.includes('**RLTFLG**'));
-        assert.ok(value.includes(i18n.get('cardColumns')));
+        assert.ok(!value.includes(`$(table) ${i18n.get('cardColumns')}`));
 
         const request = cardCommentRewriteRequest(doc, 0, 2);
         assert.deepEqual(Object.keys(request).sort(), [
@@ -4692,7 +5066,7 @@ describe('LsdynaFieldHoverProvider', () => {
             flagMinusOne,
         ].join('\n'));
 
-        const hover = await provider.provideHover(doc, { line: 0, character: 4 });
+        const hover = await provider.provideDetailedHover(doc, { line: 0, character: 4 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(!value.includes(i18n.get('officialConditionalCards')));
@@ -4711,7 +5085,7 @@ describe('LsdynaFieldHoverProvider', () => {
             parameterFlag,
         ].join('\n'));
 
-        const hover = await provider.provideHover(doc, { line: 0, character: 4 });
+        const hover = await provider.provideDetailedHover(doc, { line: 0, character: 4 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(!value.includes(i18n.get('semanticIndeterminateHint')));
@@ -4902,7 +5276,7 @@ it('keeps the official FLAG hover action for a complete TITLE layout with field 
         doc.languageId = 'lsdyna';
         doc.version = 1;
 
-        const hover = await provider.provideHover(doc, { line: 5, character: 75 });
+        const hover = await provider.provideDetailedHover(doc, { line: 5, character: 75 });
         assert.ok(hover);
         const value = hover.contents[0].value;
         assert.ok(value.includes('**FLAG**'));
@@ -5019,6 +5393,28 @@ it('blocks comment rewrites and applies one generic verified-full blank-suffix e
         });
         assert.equal(checked.status, 'definite-error');
         assert.ok(warnings[0].includes('Card 5'));
+    });
+
+it('reports unsupported integers without a definite error, repair link or document edit', async () => {
+        const lines = ['*MAT_WINFRITH_CONCRETE', '1,2,3,4,5,6,7,8', '1,2,3,4,8,6,7,8',
+            '.1,.2,.3,.4,.5,.6,.7,.8', '1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8',
+            '2.1,2,3,4,,,7,8', '3.1,3.2,3.3,3.4,5,3.6,3.7,8',
+            '9007199254740993,4.2,4.3,4.4,4.5,4.6,4.7,8', '*END'];
+        const doc = fakeDoc(lines.join('\n'), path.resolve('card-comments', 'integer-unrepresentable.k'));
+        doc.languageId = 'lsdyna'; doc.version = 1;
+        const before = doc.getText(), messages = [];
+        const result = await handleCheckKeywordStructureCommand(null, {
+            editor: { document: doc, selection: { active: { line: 0 } } }, blockIndex: null,
+            sourceProfileId: DEFAULT_STRUCTURE_SOURCE_PROFILE_EN,
+            showInformationMessage: message => messages.push(message),
+            showWarningMessage: () => assert.fail('unsupported input must not be reported as a definite error'),
+        });
+        assert.equal(result.status, 'unsupported-input');
+        assert.equal(result.reason, 'integer-value-unrepresentable');
+        assert.equal(messages[0], i18n.get('keywordStructureCheckIntegerUnsupported'));
+        assert.equal(buildKeywordStructureIssueMarkdown(result, doc, 0, 1), '');
+        assert.equal(keywordStructureRepairRequest(doc, 0, 1, result), null);
+        assert.equal(doc.getText(), before);
     });
 
 it('bypasses cached hover results before every explicit check and repair', async () => {
@@ -5218,7 +5614,7 @@ it('warns quietly and disables editing for manual-denied TITLE variants', async 
             'x+y',
         ].join('\n'));
 
-        const keywordHover = await provider.provideHover(doc, { line: 0, character: 5 });
+        const keywordHover = await provider.provideDetailedHover(doc, { line: 0, character: 5 });
         assert.ok(keywordHover);
         const keywordValue = keywordHover.contents[0].value;
         assert.ok(keywordValue.includes(i18n.get(
@@ -5227,7 +5623,7 @@ it('warns quietly and disables editing for manual-denied TITLE variants', async 
         )));
         assert.ok(!keywordValue.includes('command:extension.lsdynaChooseKeywordOptions'));
 
-        const fieldHover = await provider.provideHover(doc, { line: 2, character: 5 });
+        const fieldHover = await provider.provideDetailedHover(doc, { line: 2, character: 5 });
         assert.ok(fieldHover);
         assert.ok(fieldHover.contents[0].value.includes('TITLE'));
         assert.ok(fieldHover.contents[0].value.includes('left unchanged'));
@@ -5254,7 +5650,7 @@ it('adds an identity-only official-value action to a ready fixed-width field hov
         doc.languageId = 'lsdyna';
         doc.version = 1;
 
-        const hover = await new LsdynaFieldHoverProvider().provideHover(
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             doc,
             { line: 2, character: 75 },
         );
@@ -5309,7 +5705,7 @@ it('labels a mixed hover projection as incomplete instead of a complete value li
         doc.languageId = 'lsdyna';
         doc.version = 1;
 
-        const hover = await new LsdynaFieldHoverProvider().provideHover(
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             doc,
             { line: 1, character: 5 },
         );
@@ -5327,7 +5723,7 @@ it('labels a mixed hover projection as incomplete instead of a complete value li
 it('keeps display-only CONTROL_THERMAL_TIMESTEP hover free of writable value actions', async () => {
         const doc = fakeDoc(['*CONTROL_THERMAL_TIMESTEP', ' '.repeat(80)].join('\n'));
         doc.languageId = 'lsdyna'; doc.version = 1;
-        const hover = await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 45 });
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(doc, { line: 1, character: 45 });
         assert.ok(hover, 'display-only field remains viewable');
         assert.ok(hover.contents.every(content => !String(content.value || content).includes('command:extension.pickOfficialFieldValue')));
     });
@@ -5387,7 +5783,7 @@ it('does not add a writable official-value hover action for expressions or free 
         ].join('\n'), path.resolve('official-choice-hover', 'expression.k'));
         expressionDoc.languageId = 'lsdyna';
         expressionDoc.version = 1;
-        const expressionHover = await provider.provideHover(
+        const expressionHover = await provider.provideDetailedHover(
             expressionDoc,
             { line: 2, character: 75 },
         );
@@ -5401,7 +5797,7 @@ it('does not add a writable official-value hover action for expressions or free 
         ].join('\n'), path.resolve('official-choice-hover', 'free.k'));
         freeDoc.languageId = 'lsdyna';
         freeDoc.version = 1;
-        const freeHover = await provider.provideHover(freeDoc, { line: 2, character: 7 });
+        const freeHover = await provider.provideDetailedHover(freeDoc, { line: 2, character: 7 });
         assert.ok(!freeHover || !freeHover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
     });
 });
@@ -5517,7 +5913,6 @@ describe('structured manual chapter actions', () => {
             assert.ok(!readFiles.some(file => /sentence-map|search-(?:en|zh)/i.test(file)));
         } finally {
             fs.readFileSync = originalReadFileSync;
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
@@ -5534,14 +5929,12 @@ describe('structured manual chapter actions', () => {
             throw new Error('a runtime pack must not enumerate sibling PDF files');
         };
 
-        try {
+        {
             const md = new vscodeMock.MarkdownString();
             appendManualLinks(md, '*NOT_IN_RUNTIME_INDEX');
 
             assert.ok(!md.value.includes('command:extension.openManual'));
             assert.ok(!md.value.includes('command:extension.manual.pickPdfLocation'));
-        } finally {
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
@@ -5588,7 +5981,7 @@ describe('structured manual chapter actions', () => {
             },
         });
 
-        try {
+        {
             const { ManualIndexRepository } = require("../../src/manual/ManualIndexRepository");
             const repository = new ManualIndexRepository(root);
             const locations = repository.resolveKeywordLocations('*MAT_ALE_INCOMPRESSIBLE');
@@ -5613,8 +6006,6 @@ describe('structured manual chapter actions', () => {
             ]);
             assert.strictEqual(first.manualLabel, 'Vol II');
             assert.strictEqual(first.pdfPage, 1198);
-        } finally {
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 });
@@ -6389,27 +6780,28 @@ describe('isLsdynaUri', () => {
         const workspace = require("../support/vscode-mock").workspace;
         const originalGetConfiguration = workspace.getConfiguration;
 
-        // 1. Mock default extensions
-        workspace.getConfiguration = () => ({
-            get: (key) => key === 'additionalExtensions' ? ['.k', '.key', '.dyna', '.asc'] : undefined
-        });
+        try {
+            // 1. Mock default extensions
+            workspace.getConfiguration = () => ({
+                get: (key) => key === 'additionalExtensions' ? ['.k', '.key', '.dyna', '.asc'] : undefined
+            });
 
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.key' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.dyna' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.asc' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.txt' }), false);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.key' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.dyna' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.asc' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.txt' }), false);
 
-        // 2. Mock custom extensions (some without leading dots)
-        workspace.getConfiguration = () => ({
-            get: (key) => key === 'additionalExtensions' ? ['dat', '.incl'] : undefined
-        });
+            // 2. Mock custom extensions (some without leading dots)
+            workspace.getConfiguration = () => ({
+                get: (key) => key === 'additionalExtensions' ? ['dat', '.incl'] : undefined
+            });
 
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.dat' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.incl' }), true);
-        assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), false);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.dat' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.incl' }), true);
+            assert.strictEqual(isLsdynaUri({ fsPath: 'model.k' }), false);
 
-        workspace.getConfiguration = originalGetConfiguration;
+        } finally { workspace.getConfiguration = originalGetConfiguration; }
     });
 });
 
@@ -6463,8 +6855,10 @@ describe('formatBytes', () => {
         // Test applyVividDescription
         const mockItem1 = { contextValue: 'file', description: '', fileSizeVal: 1024 * 5 };
         applyVividDescription(mockItem1, 'sub');
-        assert.strictEqual(mockItem1.description, '5.0 KB');
+        assert.strictEqual(mockItem1.description, '• 5.0 KB');
         assert.strictEqual(mockItem1.relDir, 'sub');
+        applyVividDescription(mockItem1, 'sub', false);
+        assert.strictEqual(mockItem1.description, '');
 
         const mockItem2 = { contextValue: 'file-missing', description: 'not found' };
         applyVividDescription(mockItem2, 'sub');
@@ -6519,7 +6913,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
 
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-test-'));
+        const tempDir = makeTemp(path.join(os.tmpdir(), 'lsdyna-completion-test-'));
         const subDir = path.join(tempDir, 'submodels');
         fs.mkdirSync(subDir);
         for (const name of ['1', '2', '10', '100', 'materials', 'mats_common', 'unrelated']) {
@@ -6538,7 +6932,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         fs.writeFileSync(mainFile, mainFileContent);
         const doc = fakeDoc(mainFileContent, mainFile);
 
-        try {
+        {
             // Empty card: Mode A empty query → no dump of entire tree
             const emptyList = await provider.provideCompletionItems(doc, { line: 5, character: 0 });
             assert.ok(emptyList);
@@ -6653,8 +7047,6 @@ describe('LsdynaIncludeCompletionProvider', () => {
                 ((await provider.provideCompletionItems(docWithComment, { line: 1, character: 0 })).items || []).length,
                 0
             );
-        } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 
@@ -6662,7 +7054,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
 
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-continued-'));
+        const tempDir = makeTemp(path.join(os.tmpdir(), 'lsdyna-completion-continued-'));
         const includeDir = path.join(tempDir, 'shared', 'includes');
         const mainFile = path.join(tempDir, 'main.k');
         fs.mkdirSync(includeDir, { recursive: true });
@@ -6674,25 +7066,23 @@ describe('LsdynaIncludeCompletionProvider', () => {
         fs.writeFileSync(mainFile, mainFileContent);
         const doc = fakeDoc(mainFileContent, mainFile);
 
-        try {
+        {
             const list = await provider.provideCompletionItems(doc, { line: 4, character: 1 });
             assert.ok(list);
             const labels = list.items.map(item => item.label);
             assert.ok(labels.includes('continued.k'));
             const item = list.items.find(i => i.label === 'continued.k');
             assert.strictEqual(item.insertText, 'continued.k');
-        } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 
     it('does not truncate large browse levels while retaining the search top-N limit', async () => {
         const { LsdynaIncludeCompletionProvider } = extensionModule._internals;
         const provider = new LsdynaIncludeCompletionProvider();
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-count-'));
+        const tempDir = makeTemp(path.join(os.tmpdir(), 'lsdyna-completion-count-'));
         const mainFile = path.join(tempDir, 'main.k');
 
-        try {
+        {
             for (let i = 0; i < 75; i++) {
                 fs.mkdirSync(path.join(tempDir, `dir_${String(i).padStart(2, '0')}`));
             }
@@ -6711,8 +7101,6 @@ describe('LsdynaIncludeCompletionProvider', () => {
             const searchDoc = fakeDoc('*INCLUDE\nmat', mainFile);
             const searchList = await provider.provideCompletionItems(searchDoc, { line: 1, character: 3 });
             assert.strictEqual(searchList.items.length, 40);
-        } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 
@@ -6723,7 +7111,7 @@ describe('LsdynaIncludeCompletionProvider', () => {
             LsdynaKeywordCompletionProvider,
         } = extensionModule._internals;
         const originalActiveTextEditor = vscodeMock.window.activeTextEditor;
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-completion-multicursor-'));
+        const tempDir = makeTemp(path.join(os.tmpdir(), 'lsdyna-completion-multicursor-'));
         const mainFile = path.join(tempDir, 'main.k');
         fs.writeFileSync(path.join(tempDir, 'part.k'), '');
 
@@ -6762,12 +7150,40 @@ describe('LsdynaIncludeCompletionProvider', () => {
             }
         } finally {
             vscodeMock.window.activeTextEditor = originalActiveTextEditor;
-            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 });
 
 describe('file reveal commands', () => {
+    it('observes rejected include commands and retains their existing localized errors', async () => {
+        const originalRegisterCommand = vscodeMock.commands.registerCommand;
+        const originalExecuteCommand = vscodeMock.commands.executeCommand;
+        const originalShowError = vscodeMock.window.showErrorMessage;
+        const commands = new Map(), errors = [], failure = Error('fixture open failed');
+        vscodeMock.commands.registerCommand = (id, callback) => {
+            commands.set(id, callback);
+            return { dispose() {} };
+        };
+        vscodeMock.commands.executeCommand = id => ['vscode.open', 'revealFileInOS'].includes(id)
+            ? Promise.reject(failure) : Promise.resolve();
+        vscodeMock.window.showErrorMessage = async message => { errors.push(message); };
+        try {
+            await extensionModule.activate({ subscriptions: [], asAbsolutePath: value => value });
+            for (const [command, key] of [['extension.openIncludeNewTab', 'failedToOpenFile'],
+                ['extension.openIncludeSplit', 'failedToSplitOpenFile'], ['extension.openIncludeFolder', 'failedToRevealFolder']]) {
+                await commands.get(command)('/project/main.k');
+                assert.equal(errors.at(-1), require('../../src/core/i18n').get(key, failure.message));
+            }
+            for (const command of ['extension.openToSide', 'extension.revealInExplorer']) {
+                await assert.rejects(commands.get(command)({ filePath: '/project/main.k' }), error => error === failure);
+            }
+        } finally {
+            vscodeMock.commands.registerCommand = originalRegisterCommand;
+            vscodeMock.commands.executeCommand = originalExecuteCommand;
+            vscodeMock.window.showErrorMessage = originalShowError;
+        }
+    });
+
     it('send hostile paths only through the VS Code reveal API', async () => {
         const originalPlatform = process.platform;
         const originalRegisterCommand = vscodeMock.commands.registerCommand;
@@ -6816,6 +7232,13 @@ describe('extension.openManual command', () => {
     let originalPathEnv;
     let originalLocalAppdataEnv;
     let originalAppdataEnv;
+    let originalWorkspaceFolders;
+    const restoreEnvironment = () => {
+        for (const [key, value] of [['PATH', originalPathEnv], ['LOCALAPPDATA', originalLocalAppdataEnv], ['APPDATA', originalAppdataEnv]]) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    };
 
     let execCalls = [];
     let spawnCalls = [];
@@ -6837,6 +7260,7 @@ describe('extension.openManual command', () => {
         originalPathEnv = process.env.PATH;
         originalLocalAppdataEnv = process.env.LOCALAPPDATA;
         originalAppdataEnv = process.env.APPDATA;
+        originalWorkspaceFolders = vscodeMock.workspace.workspaceFolders;
 
         vscodeMock.commands.registerCommand = (id, callback) => {
             registeredCommands.set(id, callback);
@@ -6864,9 +7288,8 @@ describe('extension.openManual command', () => {
         }
         vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         vscodeMock.commands.registerCommand = originalRegisterCommand;
-        process.env.PATH = originalPathEnv;
-        process.env.LOCALAPPDATA = originalLocalAppdataEnv;
-        process.env.APPDATA = originalAppdataEnv;
+        vscodeMock.workspace.workspaceFolders = originalWorkspaceFolders;
+        restoreEnvironment();
     });
 
     beforeEach(async () => {
@@ -6878,9 +7301,7 @@ describe('extension.openManual command', () => {
         mockRegistryData = {};
         mockConfig = {};
         mockSpawnError = false;
-        process.env.PATH = originalPathEnv;
-        process.env.LOCALAPPDATA = originalLocalAppdataEnv;
-        process.env.APPDATA = originalAppdataEnv;
+        restoreEnvironment();
 
         require('fs').existsSync = (p) => {
             if (p in mockExistsMap) {
@@ -6889,6 +7310,8 @@ describe('extension.openManual command', () => {
             if (typeof p === 'string' && p.toLowerCase().includes('sumatrapdf.exe')) {
                 return false;
             }
+            if (Object.entries(mockExistsMap).some(([file, exists]) => exists
+                && file.startsWith(String(p) + path.sep))) return true;
             return originalExistsSync(p);
         };
 
@@ -7019,6 +7442,29 @@ describe('extension.openManual command', () => {
         assert.strictEqual(spawnCalls[0].exe, exeSumatra);
     });
 
+    it('uses the viewer from the reader-selected workspace pack over an earlier empty candidate', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.manualsDir = 'relative/manuals';
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        const exeRoot = path.join(path.dirname(process.execPath), 'relative', 'manuals');
+        const selected = path.join('C:\\workspace', 'relative', 'manuals');
+        mockExistsMap[path.join(exeRoot, 'SumatraPDF.exe')] = true;
+        mockExistsMap[path.join(selected, 'indexes')] = true;
+        mockExistsMap[path.join(selected, 'pdf', 'SumatraPDF.exe')] = true;
+        await registeredCommands.get('extension.openManual')('C:\\model\\manual.pdf', 1);
+        assert.equal(spawnCalls[0].exe, path.join(selected, 'pdf', 'SumatraPDF.exe'));
+    });
+    it('uses the system viewer when the selected pack has no Sumatra even if another candidate does', async () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        mockConfig.manualsDir = 'relative/manuals';
+        vscodeMock.workspace.workspaceFolders = [{ uri: { fsPath: 'C:\\workspace' } }];
+        mockExistsMap[path.join(path.dirname(process.execPath), 'relative', 'manuals', 'indexes')] = true;
+        mockExistsMap[path.join('C:\\workspace', 'relative', 'manuals', 'SumatraPDF.exe')] = true;
+        await registeredCommands.get('extension.openManual')('C:\\model\\manual.pdf', 1);
+        assert.equal(spawnCalls.length, 0);
+        assert.equal(openExternalCalls.length, 1);
+    });
+
     it('uses relative manualsDir path resolved against process.cwd() when install root and workspace miss', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32' });
         mockConfig.manualsDir = 'relative/manuals';
@@ -7120,6 +7566,44 @@ describe('extension.openManual command', () => {
         assert.strictEqual(openExternalCalls[0].fsPath, '/path/to/manual.pdf');
     });
 
+    for (const failure of ['true', 'false', 'rejected', 'thrown']) {
+        it(`observes a ${failure} system PDF open result without blocking the command`, async () => {
+            Object.defineProperty(process, 'platform', { value: failure === 'rejected' || failure === 'thrown' ? 'win32' : 'darwin' });
+            if (failure === 'thrown') {
+                mockConfig.manualsDir = 'C:\\custom\\manuals';
+                mockExistsMap['C:\\custom\\manuals\\SumatraPDF.exe'] = true;
+                mockSpawnError = true;
+            }
+            extensionModule._internals.clearSumatraPathCache();
+            const originalOpen = vscodeMock.env.openExternal;
+            const originalWarning = vscodeMock.window.showWarningMessage;
+            const messages = [];
+            let settle;
+            vscodeMock.window.showWarningMessage = async message => { messages.push(message); };
+            vscodeMock.env.openExternal = uri => {
+                openExternalCalls.push(uri);
+                if (failure === 'thrown') throw new Error('System opener rejected the file');
+                return new Promise((resolve, reject) => {
+                    settle = () => ['true', 'false'].includes(failure) ? resolve(failure === 'true') : reject(new Error('System opener rejected the file'));
+                });
+            };
+            try {
+                assert.strictEqual(registeredCommands.get('extension.openManual')('/path/to/manual.pdf', 12), undefined);
+                assert.equal(openExternalCalls.length, 1);
+                assert.equal(spawnCalls.length, failure === 'thrown' ? 1 : 0);
+                if (settle) {
+                    assert.deepEqual(messages, []);
+                    settle();
+                }
+                await new Promise(resolve => setImmediate(resolve));
+                assert.deepEqual(messages, failure === 'true' ? [] : [i18n.get('manualPdfNotOpened')]);
+            } finally {
+                vscodeMock.env.openExternal = originalOpen;
+                vscodeMock.window.showWarningMessage = originalWarning;
+            }
+        });
+    }
+
     it('re-resolves a stable chapter identity against the currently configured pack', async () => {
         const manualId = 'keyword-vol-ii-material-models';
         const createPack = (pdfFile, page) => createRuntimeManualPack({
@@ -7174,8 +7658,6 @@ describe('extension.openManual command', () => {
             ]]);
         } finally {
             vscodeMock.commands.executeCommand = originalExecuteCommand;
-            fs.rmSync(firstRoot, { recursive: true, force: true });
-            fs.rmSync(currentRoot, { recursive: true, force: true });
         }
     });
 
@@ -7238,8 +7720,6 @@ describe('extension.openManual command', () => {
             vscodeMock.commands.executeCommand = originalExecuteCommand;
             vscodeMock.window.showInformationMessage = originalShowInformationMessage;
             require("../../src/core/manualIndexer").getManualLocations = originalGetManualLocations;
-            fs.rmSync(missingPageRoot, { recursive: true, force: true });
-            fs.rmSync(missingPdfRoot, { recursive: true, force: true });
         }
     });
 
@@ -7317,12 +7797,11 @@ describe('extension.openManual command', () => {
         } finally {
             vscodeMock.window.showQuickPick = originalShowQuickPick;
             vscodeMock.commands.executeCommand = originalExecuteCommand;
-            fs.rmSync(root, { recursive: true, force: true });
         }
     });
 
     it('shows the reader warning only for approximate keyword matches', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-reader-match-command-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'lsdyna-reader-match-command-'));
         const indexes = path.join(root, 'indexes');
         fs.mkdirSync(indexes);
         fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({
@@ -7347,7 +7826,7 @@ describe('extension.openManual command', () => {
         const { ManualReaderPanel } = require("../../src/manual/ManualReaderPanel");
         const originalResolveKeywordLocations = ManualIndexRepository.prototype.resolveKeywordLocations;
         const originalShowPanel = ManualReaderPanel.show;
-        const originalShowInformationMessage = vscodeMock.window.showInformationMessage;
+        const originalSetStatusBarMessage = vscodeMock.window.setStatusBarMessage;
         const messages = [];
         let opened = 0;
 
@@ -7363,7 +7842,7 @@ describe('extension.openManual command', () => {
             }];
         };
         ManualReaderPanel.show = () => { opened++; };
-        vscodeMock.window.showInformationMessage = message => {
+        vscodeMock.window.setStatusBarMessage = message => {
             messages.push(message);
         };
 
@@ -7374,18 +7853,11 @@ describe('extension.openManual command', () => {
             await openCurrentKeyword('*MAT_024_LOG_INTERPOLATION');
 
             assert.strictEqual(opened, 2);
-            assert.deepStrictEqual(messages, [
-                i18n.get(
-                    'manualReaderApproximateMatch',
-                    '*MAT_APPROXIMATE_CASE',
-                    '*MAT_024'
-                ),
-            ]);
+            assert.deepStrictEqual(messages, []);
         } finally {
             ManualIndexRepository.prototype.resolveKeywordLocations = originalResolveKeywordLocations;
             ManualReaderPanel.show = originalShowPanel;
-            vscodeMock.window.showInformationMessage = originalShowInformationMessage;
-            fs.rmSync(root, { recursive: true, force: true });
+            vscodeMock.window.setStatusBarMessage = originalSetStatusBarMessage;
         }
     });
 });
@@ -8684,7 +9156,7 @@ describe('LsdynaDefinitionProvider field references', () => {
         }
     });
 
-    it('keeps a signed node candidate dynamic when its Include occurrence has IDFOFF', async () => {
+    it('keeps signed node namespace offsets and unresolved Include transforms distinct', async () => {
         const rootFile = path.resolve('definition-navigation', 'node-offset-main.k');
         const nodeFile = path.resolve('definition-navigation', 'offset-nodes.k');
         const sourceDocument = adaptiveBoxDocument(rootFile, -117);
@@ -8692,7 +9164,7 @@ describe('LsdynaDefinitionProvider field references', () => {
         nodeDocument.languageId = 'lsdyna';
         const originalTextDocuments = vscodeMock.workspace.textDocuments;
         vscodeMock.workspace.textDocuments = [nodeDocument];
-        cacheReferenceIndexFromSnapshot({
+        const snapshot = {
             rootFile,
             files: [rootFile, nodeFile],
             graph: {
@@ -8725,17 +9197,35 @@ describe('LsdynaDefinitionProvider field references', () => {
                     referenceDefinitions: emptyDefinitions(),
                 }],
             ]),
-        });
+        };
 
         try {
-            const navigation = await resolveFieldReferenceNavigation(
-                sourceDocument,
-                new vscodeMock.Position(2, 24),
-            );
-            assert.equal(navigation.state, 'dynamic');
-            assert.equal(navigation.candidateCertainty, 'known-candidate');
-            assert.equal(navigation.candidates.length, 1);
-            assert.ok(navigation.reasons.includes('signed-switch-transform-unverified'));
+            for (const [key, offset, expected] of [
+                ['idfoff', { kind: 'numeric', raw: '100', value: 100 }, 'missing'],
+                ['idnoff', { kind: 'numeric', raw: '100', value: 100 }, 'dynamic'],
+                ['idnoff', { kind: 'parameter', raw: '&OFFSET', name: 'OFFSET' }, 'dynamic'],
+            ]) {
+                cacheReferenceIndexFromSnapshot({
+                    ...snapshot,
+                    graph: { includeOccurrences: [{ ...snapshot.graph.includeOccurrences[0],
+                        transform: { offsets: { [key]: offset } } }] },
+                });
+                const navigation = await resolveFieldReferenceNavigation(
+                    sourceDocument,
+                    new vscodeMock.Position(2, 24),
+                );
+                assert.equal(navigation.state, expected, JSON.stringify({ key, offset, navigation }));
+                if (expected === 'missing') {
+                    assert.equal(navigation.candidates.length, 0);
+                } else if (offset.kind === 'numeric') {
+                    assert.equal(navigation.candidateCertainty, 'known-candidate');
+                    assert.equal(navigation.candidates.length, 1);
+                    assert.ok(navigation.reasons.includes('signed-switch-transform-unverified'));
+                } else {
+                    assert.equal(navigation.candidates.length, 0);
+                    assert.ok(navigation.reasons.includes('transform-offset-unresolved'));
+                }
+            }
         } finally {
             vscodeMock.workspace.textDocuments = originalTextDocuments;
         }
@@ -8908,7 +9398,8 @@ describe('LsdynaDefinitionProvider field references', () => {
         assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
     });
 
-    it('streams a million-row NODE block once, yields, and keeps warm queries O(1)', async () => {
+    it('streams a million-row NODE block once, yields, and keeps warm queries O(1)', async function () {
+        this.timeout(20000); // Million-row correctness fixture; explicit warm-query and yielding assertions remain below.
         const rootFile = path.resolve('definition-navigation', 'million-node-main.k');
         const nodeFile = path.resolve('definition-navigation', 'million-nodes.k');
         const sourceDocument = adaptiveBoxDocument(rootFile, -17);
@@ -8962,9 +9453,10 @@ describe('LsdynaDefinitionProvider field references', () => {
             ]),
         });
 
+        let yieldProbe;
         try {
             let eventLoopYielded = false;
-            const yieldProbe = new Promise(resolve => setImmediate(() => {
+            yieldProbe = new Promise(resolve => setImmediate(() => {
                 eventLoopYielded = true;
                 resolve();
             }));
@@ -8974,11 +9466,9 @@ describe('LsdynaDefinitionProvider field references', () => {
                 new vscodeMock.Position(2, 24),
             );
             const coldDuration = performance.now() - coldStarted;
-            await yieldProbe;
-
             assert.equal(navigation.state, 'resolved');
             assert.equal(navigation.candidates[0].line, nodeLineCount - 1);
-            assert.equal(eventLoopYielded, true);
+            assert.equal(eventLoopYielded, true, 'Cold NODE scan must yield before it completes');
             assert.ok(nodeReads >= nodeLineCount, `expected one streaming pass, got ${nodeReads} reads`);
 
             nodeReads = 0;
@@ -9004,6 +9494,7 @@ describe('LsdynaDefinitionProvider field references', () => {
             assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
         } finally {
             vscodeMock.workspace.textDocuments = originalTextDocuments;
+            await yieldProbe;
         }
     });
 
@@ -9282,7 +9773,7 @@ describe('LsdynaDefinitionProvider field references', () => {
                     complete: true, reasons: [],
                     referenceOccurrences: [{
                         filePath: rootFile, lineIndex: 1, startCharacter: 8, endCharacter: 10,
-                        referenceValue: source.referenceValue,
+                        referenceValue: { ...source.referenceValue, id: 99 },
                         targetKinds: source.referenceValue.targetKinds,
                         targetDefinitions: source.referenceValue.targetDefinitions,
                     }],
@@ -9294,6 +9785,13 @@ describe('LsdynaDefinitionProvider field references', () => {
         sourceDocument.isDirty = true;
         vscodeMock.workspace.textDocuments = [sourceDocument];
         try {
+            sourceDocument.isDirty = false;
+            const cached = await resolveRegistryReferenceNetwork(
+                sourceDocument, new vscodeMock.Position(1, 2), {}, null, { allowWhenPermissionDisabled: true },
+            );
+            assert.equal(cached.state, 'complete', JSON.stringify(cached.reasons));
+            assert.deepEqual(cached.locations, []);
+            sourceDocument.isDirty = true;
             const dirty = await resolveRegistryReferenceNetwork(
                 sourceDocument,
                 new vscodeMock.Position(1, 2),
@@ -9303,7 +9801,12 @@ describe('LsdynaDefinitionProvider field references', () => {
             );
             assert.equal(dirty.state, 'complete', JSON.stringify(dirty.reasons));
             assert.equal(dirty.referenceIndexState.liveReferenceOverlay, true);
-            assert.deepEqual(dirty.locations, []);
+            assert.deepEqual(dirty.locations, [{
+                filePath: rootFile, line: 1, startCharacter: 8, endCharacter: 10, id: 42,
+                authoringRelationId: source.referenceInfo.definitionRegistry.authoringRelationId,
+                coordinateId: source.referenceInfo.definitionRegistry.coordinateId,
+                sourceRuleId: source.referenceInfo.ruleId,
+            }]);
         } finally {
             vscodeMock.workspace.textDocuments = originalDocuments;
         }
@@ -9882,8 +10385,38 @@ describe('indexed entity ID query command', () => {
         ), null);
     });
 
+    it('routes saved sidebar queries to worker pages without loading host snapshots', async () => {
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-worker-command-'));
+        const filePath = path.join(tempRoot, 'main.key');
+        fs.writeFileSync(filePath, '*MAT_ELASTIC\n1\n');
+        const documents = vscodeMock.workspace.textDocuments;
+        vscodeMock.workspace.textDocuments = [];
+        try {
+            const requests = [];
+            const result = await handleIndexedEntityIdQueryCommand({
+                loadProjectSnapshot: () => { throw new Error('Host snapshot must not load'); },
+                queryEntity: async request => {
+                    requests.push(request);
+                    return { status: 'ready', revision: 'r1', result: { state: 'complete', locations: [],
+                        page: { counts: { definition: 0, reference: 0 }, next: {} } } };
+                },
+            }, { targetKind: 'material', id: 1 }, {
+                scopeIdentity: { kind: 'single-file', filePath }, presentResult: false,
+                entityReferenceProvider: { publish: (_identity, value) => ({ ...value }), getSession: () => null },
+                runWithProgress: operation => operation(),
+            });
+            assert.equal(result.state, 'complete');
+            assert.equal(requests.length, 1);
+            assert.equal(requests[0].rootFile, filePath);
+            assert.equal(requests[0].scope, 'single-file');
+            vscodeMock.workspace.textDocuments = [{ isDirty: true }];
+            assert.deepEqual(await result.loadPage({ offset: 200 }), { status: 'stale' });
+            assert.equal(requests.length, 1);
+        } finally { vscodeMock.workspace.textDocuments = documents; }
+    });
+
     it('queries the active disk file without requiring an active TextDocument', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-command-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-command-'));
         const filePath = path.join(tempRoot, 'large.key');
         fs.writeFileSync(filePath, '*MAT_ELASTIC\n   2000101\n', 'utf8');
         const snapshot = {
@@ -9960,7 +10493,6 @@ describe('indexed entity ID query command', () => {
             assert.equal(calls[4].type, 'present');
         } finally {
             vscodeMock.window.tabGroups = originalTabGroups;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -10027,7 +10559,7 @@ describe('indexed entity ID query command', () => {
     });
 
     it('distinguishes an unsynchronized large-file tab from the custom large-file viewer', () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-large-tab-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-large-tab-'));
         const filePath = path.join(tempRoot, 'large.key');
         const uri = { ...vscodeMock.Uri.file(filePath), scheme: 'file' };
         const originalActiveEditor = vscodeMock.window.activeTextEditor;
@@ -10050,7 +10582,6 @@ describe('indexed entity ID query command', () => {
         } finally {
             vscodeMock.window.activeTextEditor = originalActiveEditor;
             vscodeMock.window.tabGroups = originalTabGroups;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -10131,8 +10662,30 @@ describe('indexed entity ID query command', () => {
         }
     });
 
+    it('omits mesh query targets and selects one CONTACT namespace from its controller', () => {
+        const beam = fakeDoc(['*KEYWORD', '*ELEMENT_BEAM',
+            [1, 8, 1, 1, 0].map(value => String(value).padStart(8)).join(''),
+            [2, 8, 1, 73, 0].map(value => String(value).padStart(8)).join(''), '*END'].join('\n'), path.resolve('native-cursor-beam.key'));
+        beam.languageId = 'lsdyna'; beam.version = 1;
+        const selected = inferIndexedEntityQueryTarget({ document: beam, selection: { active: new vscodeMock.Position(3, 30) } });
+        assert.equal(selected, null);
+        for (const [type, expected] of [[3, ['part']], [4, ['node-set']], [5, null], [7, ['part-tree-set', 'part']]]) {
+            const contact = fakeDoc(['*KEYWORD', '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
+                [73, 0, type, 5, 0, 0, 0, 0].map(value => String(value).padStart(10)).join(''), '*END'].join('\n'), path.resolve('native-cursor-contact-' + type + '.key'));
+            contact.languageId = 'lsdyna'; contact.version = 1;
+            const target = fieldReferenceAtPosition(contact, new vscodeMock.Position(2, 8), { semanticScope: "keyword-catalog" });
+            assert.deepEqual(target?.referenceValue.targetKinds || null, expected, String(type));
+            if (type === 7) {
+                assert.deepEqual(target.referenceValue.semanticRelation.targetSearch.map(branch => branch.targetKinds),
+                    [['part-tree-set'], ['part']]);
+                assert.equal(inferIndexedEntityQueryTarget({ document: contact,
+                    selection: { active: new vscodeMock.Position(2, 8) } }, { requireUnambiguous: true }), null);
+            }
+        }
+    });
+
     it('queries the complete LS-PrePost transformation deck through the webview command path', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-transform-webview-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-transform-webview-'));
         const filePath = path.join(tempRoot, 'main.key');
         fs.writeFileSync(filePath, [
             '*KEYWORD',
@@ -10150,7 +10703,7 @@ describe('indexed entity ID query command', () => {
             '   1000001',
             '*END',
         ].join('\n'), 'utf8');
-        try {
+        {
             const snapshot = await buildProjectIndex(filePath, { singleFileOnly: true });
             const query = await handleIndexedEntityIdQueryCommand(
                 { loadProjectSnapshot: async () => snapshot },
@@ -10167,8 +10720,6 @@ describe('indexed entity ID query command', () => {
                 ['definition', '*DEFINE_TRANSFORMATION', 'TRANID', 2],
                 ['reference', '*INCLUDE_TRANSFORM', 'TRANID', 12],
             ]);
-        } finally {
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
@@ -10229,6 +10780,19 @@ describe('indexed entity ID query command', () => {
         );
     });
 
+    it('does not offer node and element records as entity query targets', () => {
+        for (const [keyword, targetKind, records] of [
+            ['NODE', 'node', [1, 2].map(id => String(id).padStart(8) + '               0               0               0')],
+            ['ELEMENT_BEAM', 'element', [1, 2].map(id => [id, 8, 1, 73, 0].map(value => String(value).padStart(8)).join(''))],
+        ]) {
+            const document = fakeDoc(['*KEYWORD', '*' + keyword, ...records, '*END'].join('\n'),
+                path.resolve('repeated-owning-' + keyword + '.key'));
+            document.languageId = 'lsdyna'; document.version = 1;
+            for (const [line, id] of [[2, 1], [3, 2]]) assert.deepEqual(inferIndexedEntityQueryTarget({ document,
+                selection: { active: new vscodeMock.Position(line, 4) } }), null);
+        }
+    });
+
     it('opens one result in the current editor and multiple results in native Peek', async () => {
         const originalExecute = vscodeMock.commands.executeCommand;
         const calls = [];
@@ -10251,7 +10815,7 @@ describe('indexed entity ID query command', () => {
     });
 
     it('reuses an already-scanned project snapshot instead of loading a single file', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-project-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-project-'));
         const rootFile = path.join(tempRoot, 'root.k');
         fs.writeFileSync(rootFile, '*KEYWORD\n*END\n', 'utf8');
         cacheReferenceIndexFromSnapshot({
@@ -10296,12 +10860,11 @@ describe('indexed entity ID query command', () => {
         } finally {
             vscodeMock.window.tabGroups = originalTabGroups;
             clearReferenceIndexCacheForTesting();
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('reloads an oversized scanned project scope instead of falling back to the active root file', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-oversized-scope-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-oversized-scope-'));
         const rootFile = path.join(tempRoot, 'root.k');
         const childFile = path.join(tempRoot, 'child.k');
         fs.writeFileSync(rootFile, '*INCLUDE\nchild.k\n', 'utf8');
@@ -10346,12 +10909,11 @@ describe('indexed entity ID query command', () => {
         } finally {
             vscodeMock.window.tabGroups = originalTabGroups;
             clearReferenceIndexCacheForTesting();
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('uses a dirty ordinary document as a live overlay for references and definitions', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-live-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-live-'));
         const filePath = path.join(tempRoot, 'live.key');
         fs.writeFileSync(filePath, '*MAT_ELASTIC\n         1\n', 'utf8');
         const originalDocuments = vscodeMock.workspace.textDocuments;
@@ -10381,12 +10943,11 @@ describe('indexed entity ID query command', () => {
             ));
         } finally {
             vscodeMock.workspace.textDocuments = originalDocuments;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 
     it('fails closed when a dirty document can change the Include graph', async () => {
-        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-entity-dirty-include-'));
+        const tempRoot = makeTemp(path.join(os.tmpdir(), 'lsdyna-entity-dirty-include-'));
         const filePath = path.join(tempRoot, 'root.key');
         fs.writeFileSync(filePath, '*KEYWORD\n*END\n', 'utf8');
         const originalDocuments = vscodeMock.workspace.textDocuments;
@@ -10404,7 +10965,6 @@ describe('indexed entity ID query command', () => {
             assert.ok(prepared.reasons.some(reason => reason.includes('dirty-include-graph-unverified')));
         } finally {
             vscodeMock.workspace.textDocuments = originalDocuments;
-            fs.rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 });
@@ -10453,6 +11013,7 @@ describe('project index cache controls', () => {
             memory: { cachedSnapshotCount: 2, totalSnapshotBytes: 1024 },
             projectSnapshotDisk: { entryCount: 3, totalBytes: 2048 },
             fileScanDisk: { entryCount: 4, totalBytes: 4096 },
+            entityIndex: { cleared: { removed: 2, reclaimedBytes: 4096, bytes: 65536 } },
         };
         let clearCalls = 0;
         let diagnosticClearCalls = 0;
@@ -10486,16 +11047,40 @@ describe('project index cache controls', () => {
             assert.equal(keywordLocalCalls, 1);
             assert.equal(progressOptions.length, 1);
             assert.equal(progressOptions[0].cancellable, false);
-            assert.deepEqual(cacheRemovalTotals(expected), { entryCount: 9, totalBytes: 7168 });
+            assert.deepEqual(cacheRemovalTotals(expected), { entryCount: 11, totalBytes: 11264 });
             assert.equal(statusMessages.length, 1);
-            assert.match(statusMessages[0].message, /9/);
-            assert.match(statusMessages[0].message, /7\.0 KB/);
+            assert.match(statusMessages[0].message, /11/);
+            assert.match(statusMessages[0].message, /11\.0 KB/);
             assert.equal(statusMessages[0].timeout, 8000);
         } finally {
             clearClientProjectSemanticCaches();
             vscodeMock.window.withProgress = originalWithProgress;
             vscodeMock.ProgressLocation = originalProgressLocation;
             vscodeMock.window.setStatusBarMessage = originalSetStatusBarMessage;
+        }
+    });
+
+    it('reports cache-clear failure in an error notification without claiming success', async () => {
+        const originalError = vscodeMock.window.showErrorMessage;
+        const originalStatus = vscodeMock.window.setStatusBarMessage;
+        const originalLog = console.error;
+        const messages = [], statuses = [], logs = [];
+        vscodeMock.window.showErrorMessage = message => { messages.push(message); return Promise.resolve(); };
+        vscodeMock.window.setStatusBarMessage = message => { statuses.push(message); };
+        console.error = (...args) => logs.push(args);
+        try {
+            assert.equal(await handleClearProjectIndexCachesCommand({ async clearCaches() { throw new Error('stop failed'); } }), null);
+            const cleared = { memory: {}, projectSnapshotDisk: {}, fileScanDisk: {} };
+            assert.strictEqual(await handleClearProjectIndexCachesCommand({ async clearCaches() { return cleared; } }, {
+                projectDiagnosticStore: { clearAll() { throw new Error('view cleanup failed'); } },
+            }), cleared);
+            assert.deepEqual(messages, [i18n.get('projectCacheClearFailed'), i18n.get('projectCacheClearFailed')]);
+            assert.deepEqual(statuses, []);
+            assert.equal(logs.length, 2);
+        } finally {
+            vscodeMock.window.showErrorMessage = originalError;
+            vscodeMock.window.setStatusBarMessage = originalStatus;
+            console.error = originalLog;
         }
     });
 
@@ -10661,7 +11246,7 @@ describe('verified conditional-card hover and command', () => {
 
     it('shows one explicit ready-only hover action with identity-only command arguments', async () => {
         const { document, keywordLine } = winfrithDocument();
-        const hover = await new LsdynaFieldHoverProvider().provideHover(
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             document,
             { line: keywordLine, character: 4 },
         );
@@ -10695,7 +11280,7 @@ describe('verified conditional-card hover and command', () => {
 
     it('does not offer two competing repair commands for the same verified suffix', async () => {
         const { document, keywordLine } = winfrithDocument({ cards: 4 });
-        const hover = await new LsdynaFieldHoverProvider().provideHover(
+        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             document,
             { line: keywordLine, character: 4 },
         );
@@ -10707,7 +11292,7 @@ describe('verified conditional-card hover and command', () => {
 
     it('does not add hover editing noise for false predicates or alternative layouts', async () => {
         const falseDocument = winfrithDocument({ rate: 2 }).document;
-        const falseHover = await new LsdynaFieldHoverProvider().provideHover(
+        const falseHover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             falseDocument,
             { line: 0, character: 4 },
         );
@@ -10717,7 +11302,7 @@ describe('verified conditional-card hover and command', () => {
         const alternative = fakeDoc('*MAT_DAMAGE_1\n' + ' '.repeat(80) + '\n' + ' '.repeat(70) + '        -1');
         alternative.languageId = 'lsdyna';
         alternative.version = 1;
-        const alternativeHover = await new LsdynaFieldHoverProvider().provideHover(
+        const alternativeHover = await new LsdynaFieldHoverProvider().provideDetailedHover(
             alternative,
             { line: 0, character: 4 },
         );

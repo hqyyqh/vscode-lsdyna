@@ -47,7 +47,7 @@ export function useFieldHelp(state: KeywordOptionsViewState | null, transport: K
         if (!snapshot) return;
         // A cached result also invalidates an older, still-running request.
         const help = cache.current.get(fieldId);
-        if (selected.current === fieldId && (help || inFlight.current && sequence.current > 0 && !message)) return;
+        if (selected.current === fieldId && (help || inFlight.current && !message)) return;
         selected.current = fieldId;
         const requestId = ++sequence.current;
         setMessage('');

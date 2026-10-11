@@ -1,4 +1,5 @@
 'use strict';
+const makeTemp = require('../../support/tempDirectories').trackTempDirectories();
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -20,7 +21,7 @@ describe('document edit permission and identity boundary', () => {
     });
 
     it('rejects an OS readonly file even when the provider omits permissions', async () => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-edit-permission-'));
+        const root = makeTemp(path.join(os.tmpdir(), 'dynasense-edit-permission-'));
         const file = path.join(root, 'deck.k');
         const bytes = '*KEYWORD\n*END\n';
         fs.writeFileSync(file, bytes);
@@ -32,8 +33,6 @@ describe('document edit permission and identity boundary', () => {
             assert.equal(fs.readFileSync(file, 'utf8'), bytes);
         } finally {
             fs.chmodSync(file, 0o666);
-            fs.unlinkSync(file);
-            fs.rmdirSync(root);
         }
     });
 

@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LargeFileViewerApp } from './LargeFileViewerApp';
 import { createLargeFileViewerTransport } from './transport';
+import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

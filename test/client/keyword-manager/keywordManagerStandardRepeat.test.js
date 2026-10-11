@@ -9,11 +9,22 @@ const { CatalogInputFormCatalogV4 } = require("../../../out/core/semantics/catal
 const catalog = new CatalogInputFormCatalogV4({ rootDir: path.resolve(__dirname, "../../../keywords/runtime/input-form") });
 const published = require("../../../keywords/runtime/native-readers/lspp-standard-repeat-readers.json");
 const descriptors = require("../../fixtures/public-behavior/standard-repeat-fields.json");
-describe('standard-only repeated records', () => {
+// Original 4.14 input/returned bytes: seatbelt-sbrid-formats-native, two records per format.
+const seatbeltInputs = {
+    standard: ['  979001       0       0       0  987100               0       0       0', '  979002       0       0       0  987101               0       0       0'],
+    comma: ['979003,0,0,0,987100,0,0,0', '979004,0,0,0,987101,0,0,0'],
+    long: ['              979005                   0                   0                   0              987100                   0                   0                   0', '              979006                   0                   0                   0              987101                   0                   0                   0'],
+    i10: ['    979007         0         0         0    987100               0         0         0', '    979008         0         0         0    987101               0         0         0'],
+};
+const seatbeltNames = ['EID', 'PID', 'N1', 'N2', 'SBRID', 'SLEN', 'N3', 'N4'];
+const seatbeltAddresses = ["record:1786cdc8dc093e114e364515:313ac0046c71448bc71fae43", "record:1786cdc8dc093e114e364515:02021cebce7434c16c7466c0", "record:1786cdc8dc093e114e364515:2b844c9ee62ee17f428f3f2e", "record:1786cdc8dc093e114e364515:d835e4056dde06b9acaa39f2", "record:1786cdc8dc093e114e364515:972fd957cfc90b16bbbe1281", "record:1786cdc8dc093e114e364515:e5093e44c07c47d8a6b1b89c", "record:1786cdc8dc093e114e364515:ee1259b422582167de95b32e", "record:1786cdc8dc093e114e364515:2cb9b86f6586c4802593b137"];
+const seatbeltValues = (id, index) => [String(id), '0', '0', '0', String(987100 + index), '0', '0', '0'];
+describe('native repeated records and format boundaries', () => {
     for (const keyword of Object.keys(published.bindings)) {
         const form = catalog.formForKeyword(keyword);
         const rule = { ...form.rules[form.reference.formRuleIds[0]], catalogSource: form.source };
         const nativeFields = rule.cards[0].fields.map(field => descriptors[field.fieldRecordId]);
+        const seatbelt = keyword === 'ELEMENT_SEATBELT';
         const row = value => {
             const text = Array(Math.max(...nativeFields.map(field => field.position + field.width))).fill(' ');
             for (const field of nativeFields) text.splice(field.position, field.width,
@@ -48,8 +59,23 @@ describe('standard-only repeated records', () => {
             [' +', 'standard', [row(1)]], [' %', 'standard', [row(1)]],
             ['', 'long', [row(1)]], ['', 'i10', [row(1)]],
             ['', 'standard', [row(1), '2,1']],
-        ]) it(`${keyword}: blocks ${marker || global} / ${rows.at(-1).includes(',') ? 'comma' : 'fixed'}`, () => {
-            const context = nativeFileReadContext(rule, '*' + keyword + marker, rows, global);
+        ]) it(`${keyword}: ${seatbelt ? 'reads observed formats' : 'blocks'} ${marker || global} / ${rows.at(-1).includes(',') ? 'comma' : 'fixed'}`, () => {
+            const format = marker === ' +' || global === 'long' ? 'long' : marker === ' %' || global === 'i10' ? 'i10' : 'comma';
+            const source = seatbelt ? format === 'comma' ? [seatbeltInputs.standard[0], seatbeltInputs.comma[1]] : seatbeltInputs[format] : rows;
+            const context = nativeFileReadContext(rule, '*' + keyword + marker, source, global);
+            if (seatbelt) {
+                assert.equal(context.readInputFailure, undefined);
+                const selected = context.select();
+                assert.deepEqual(selected.current, [0, 1].map(instanceStart => ({ cardIndex: 1, instanceStart, key: `instance:${instanceStart}:card:1` })));
+                assert.deepEqual(selected.target, selected.current);
+                assert.deepEqual(selected.counts, [1, 1]);
+                assert.deepEqual(context.select(true), selected);
+                assert.equal(context.writeCompatible(selected.current), true);
+                const ids = format === 'long' ? [979005, 979006] : format === 'i10' ? [979007, 979008] : [979001, 979004];
+                assert.deepEqual(source.map((text, index) => seatbeltNames.map((_name, field) => context.read(text, 1, field))), ids.map(seatbeltValues));
+                assert.deepEqual(context.cards.get(1).fields.map(field => field.fieldRecordId), seatbeltAddresses);
+                return;
+            }
             assert.ok(context.readInputFailure);
             assert.equal(context.select(), null);
             assert.equal(context.select(true), null);
@@ -63,9 +89,36 @@ describe('standard-only repeated records', () => {
             assert.equal(context.writeCompatible(context.select().current), true);
         });
         for (const [marker, value] of [[' +', row(1)], [' %', row(1)], ['', '1,2,3']]) {
-            it(`${keyword}: unsupported formats cannot bypass the Hover ordinal fast path or manager protection (${marker || 'comma'})`, () => {
-                const document = documentFor(['*' + keyword + marker, value, '*END']);
+            it(`${keyword}: ${seatbelt ? 'observed formats agree through Hover and manager' : 'unsupported formats cannot bypass the Hover ordinal fast path or manager protection'} (${marker || 'comma'})`, () => {
+                const format = marker === ' +' ? 'long' : marker === ' %' ? 'i10' : 'comma';
+                const document = documentFor(['*' + keyword + marker, ...(seatbelt ? seatbeltInputs[format] : [value]), '*END']);
                 const hover = api.getCardInfoForDocumentLineWithSuggest(document, 1);
+                if (seatbelt) {
+                    const model = api.buildKeywordOptionViewModel(editorFor(document), 0, {});
+                    const ids = format === 'long' ? [979005, 979006] : format === 'i10' ? [979007, 979008] : [979003, 979004];
+                    const positions = format === 'long' ? [0, 20, 40, 60, 80, 100, 120, 140] : format === 'i10' ? [0, 10, 20, 30, 40, 50, 66, 76] : [0, 7, 9, 11, 13, 20, 22, 24];
+                    const widths = format === 'long' ? Array(8).fill(20) : format === 'i10' ? [10, 10, 10, 10, 10, 16, 10, 10] : [6, 1, 1, 1, 6, 1, 1, 1];
+                    assert.equal(model.managerCards.length, 2);
+                    assert.equal(model.plan.status, 'no-change');
+                    assert.equal(api.buildKeywordOptionsViewState(model).canApply, false);
+                    assert.equal(new Set(model.managerCards.flatMap(card => card.fields.map(field => field.fieldId))).size, 16);
+                    for (const [index, card] of model.managerCards.entries()) {
+                        const info = api.getCardInfoForDocumentLineWithSuggest(document, index + 1).cardInfo;
+                        assert.equal(info.nativeInstanceStart, index);
+                        assert.equal(info.inputFormat, format);
+                        assert.deepEqual(info.card.map(field => field.nativeIdentity.fieldRecordId), seatbeltAddresses);
+                        assert.deepEqual(info.card.map(field => field.n), seatbeltNames);
+                        assert.deepEqual(info.card.map(field => field.rawValue), seatbeltValues(ids[index], index));
+                        assert.deepEqual(info.card.map(field => [field.p, field.w]), positions.map((position, field) => [position, widths[field]]));
+                        assert.deepEqual(info.card.map(field => field.nativeRange), positions.map((position, field) => ({
+                            start: position, end: position + widths[field],
+                        })));
+                        assert.deepEqual(card.fields.map(field => field.name), seatbeltNames);
+                        assert.deepEqual(card.fields.map(field => field.value), seatbeltValues(ids[index], index));
+                        assert.deepEqual(card.fields.map(field => [field.position, field.width]), nativeFields.map(field => [field.position, field.width]));
+                    }
+                    return;
+                }
                 assert.equal(hover.cardInfo, null);
                 assert.match(hover.reason, /format-not-supported-by-binding/);
                 const model = api.buildKeywordOptionViewModel(editorFor(document), 0, {});
@@ -73,6 +126,25 @@ describe('standard-only repeated records', () => {
                 assert.equal(api.buildKeywordOptionsViewState(model).canApply, false);
             });
         }
+        it(`${keyword}: rejects changed executable or record pool identities`, () => {
+            const document = documentFor(['*' + keyword, row(1), '*END']);
+            for (const candidate of [{ ...rule, catalogSource: { ...rule.catalogSource, datasetSha256: '0'.repeat(64) } },
+                { ...rule, cardSetId: '0x0' }]) {
+                const context = nativeFileReadContext(candidate, '*' + keyword, [row(1)], 'standard');
+                assert.equal(context.kind, 'unsupported-source');
+                assert.equal(context.select(), null);
+                assert.deepEqual(context.select(true), { current: [], target: [], counts: [] });
+                const result = { block: api.collectOptionSwitchBlock(document, 0), plan: { targetKeyword: '*' + keyword } };
+                assert.equal(api.keywordManagerPrepareCatalogInputFormLayoutForRule(document, 0, result, candidate), null);
+                assert.equal(api.keywordManagerPrepareCatalogInputFormLayoutForRule(document, 0, result, candidate,
+                    { [`lspp-input:${keyword}:instance:0:card:1:field:0`]: '7' },
+                    { [`lspp-input:${keyword}:instance:0:card:1`]: row(7) }), null);
+                assert.equal(result.currentLayout, undefined);
+                assert.equal(result.targetLayout, undefined);
+                assert.deepEqual(result.plan, { targetKeyword: '*' + keyword });
+                assert.equal(document.getText(), ['*' + keyword, row(1), '*END'].join('\n'));
+            }
+        });
         it(`${keyword}: preserves a blank repeated record and stops at the next keyword`, () => {
             const model = api.buildKeywordOptionViewModel(editorFor(documentFor([
                 '*' + keyword, row(1), ' '.repeat(row(1).length), row(3), '*NODE', '         9', '*END',

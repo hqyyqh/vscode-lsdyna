@@ -45,7 +45,7 @@ export function createProjectDiagnosticStore(
                 filePath ||= contribution.filePath;
                 contributions.push({ rootKey, contribution });
             }
-            const resolvedFilePath = filePath || fallbackPaths.get(uriKey) || uriKey;
+            const resolvedFilePath = filePath || fallbackPaths.get(uriKey)!;
             const selectedRoot = typeof resolveRootForFile === 'function'
                 ? resolveRootForFile(
                     resolvedFilePath,

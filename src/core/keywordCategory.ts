@@ -88,7 +88,7 @@ function getCategory(name) {
 function listKeywordCategories(options: { includeEmpty?: boolean; includeOther?: boolean } = {}) {
     const includeEmpty = !!options.includeEmpty;
     const result = categories.filter(category => includeEmpty || category.uniqueKeywordCount > 0);
-    return options.includeOther === false ? result.slice() : [...result, OTHER_CATEGORY];
+    return options.includeOther === false ? result : [...result, OTHER_CATEGORY];
 }
 
 module.exports = {

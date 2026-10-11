@@ -82,14 +82,12 @@ describe('manual reader build and package contract', () => {
         expect(css).toMatch(/\.reader-back-to-top\s+\.reader-toolbar__icon/);
     });
 
-    it('uses medium stroke icons and an SVG back-to-top control (not Unicode arrows)', () => {
-        const icons = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/ToolbarIcons.tsx'), 'utf8');
+    it('uses official icon assets and an accessible back-to-top control', () => {
+        const icons = fs.readFileSync(path.join(repository, 'webview/shared/codicons.css'), 'utf8');
         const app = fs.readFileSync(path.join(repository, 'webview/manual-reader/src/ReaderApp.tsx'), 'utf8');
 
-        expect(icons).toMatch(/strokeWidth:\s*1\.5/);
-        expect(icons).not.toMatch(/strokeWidth:\s*2\b/);
-        expect(icons).toMatch(/function IconArrowUp/);
-        expect(app).toMatch(/IconArrowUp/);
+        expect(icons).toContain('@vscode/codicons/src/icons/arrow-up.svg');
+        expect(app).toContain('<Codicon name="arrow-up"');
         expect(app).toMatch(/reader-back-to-top/);
         expect(app).not.toMatch(/reader-back-to-top[^>]*>\s*↑/);
     });

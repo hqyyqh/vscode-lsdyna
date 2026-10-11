@@ -38,6 +38,55 @@ function memoryState(initial = []) {
 }
 
 describe('LsdynaEntityReferenceProvider', () => {
+    it('appends worker pages once and rejects pages from a replaced query or revision', async () => {
+        const provider = new LsdynaEntityReferenceProvider();
+        let finish;
+        const first = () => ({ ...result(undefined, 1), revision: 'v1',
+            page: { counts: { definition: 1, reference: 2 }, next: { reference: { offset: 1 } } },
+            loadPage: () => new Promise(resolve => { finish = resolve; }) });
+        const session = provider.publish(identity(1), first());
+        const pending = provider.loadNextPage(session, 'reference');
+        assert.equal(await provider.loadNextPage(session, 'reference'), false);
+        finish({ status: 'ready', revision: 'v1', result: { locations: result(undefined, 1).locations.slice(1),
+            page: { appendRole: 'reference', next: {} } } });
+        assert.equal(await pending, true);
+        assert.equal(session.locations.length, 3);
+        assert.equal(session.page.next.reference, undefined);
+        provider.publish(identity(1), first());
+        const old = provider.loadNextPage(session, 'reference');
+        provider.publish(identity(1), result(undefined, 0));
+        finish({ status: 'expired' });
+        assert.equal(await old, false);
+        assert.equal(session.state, 'ready');
+        assert.equal(session.locations.length, 1);
+        provider.publish(identity(1), first());
+        const expired = provider.loadNextPage(session, 'reference');
+        finish({ status: 'ready', revision: 'v2' });
+        assert.equal(await expired, false);
+        assert.equal(session.state, 'needs-refresh');
+        assert.equal(session.locations.length, 0);
+    });
+
+    it('uses one pinned session for equivalent numeric IDs and rejects unsupported identities', async () => {
+        const provider = new LsdynaEntityReferenceProvider();
+        for (const id of [0, '0', '+0', '9007199254740992', Infinity, NaN, null, undefined,
+            false, 17n, { toString: () => '17' }]) {
+            assert.equal(entityQueryKey(identity(id)), '');
+            assert.equal(provider.publish(identity(id), result()), null);
+        }
+        const named = provider.publish(identity('MAT_LABEL_1'), result());
+        assert.equal(named.identity.id, 'MAT_LABEL_1');
+        const pinned = provider.publish(identity(17), result());
+        await provider.pin(pinned);
+        for (const id of ['17', '+17', '0017']) {
+            assert.equal(entityQueryKey(identity(id)), pinned.key);
+            assert.strictEqual(provider.publish(identity(id), result()), pinned);
+            assert.equal(pinned.identity.id, 17);
+        }
+        assert.equal(provider.listSessions().length, 1);
+        assert.equal(pinned.pinned, true);
+    });
+
     it('replaces the current query while preserving newest-first pinned queries', async () => {
         const state = memoryState();
         const provider = new LsdynaEntityReferenceProvider({ workspaceState: state });

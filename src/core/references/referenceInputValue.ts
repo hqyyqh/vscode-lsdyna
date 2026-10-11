@@ -43,7 +43,7 @@ function parseNumericInput(rawValue, options: ParseNumericInputOptions = {}): Nu
     }
 
     const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || (options.integerOnly !== false && !Number.isInteger(parsed))) {
+    if (!Number.isFinite(parsed)) {
         return { kind: 'invalid', raw, reason: 'non-finite-or-non-integer' };
     }
     if (options.nonZero && parsed === 0) {

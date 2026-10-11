@@ -123,35 +123,14 @@ function authorityDocumentMatches(
 
 /** Explicit-click resolver; never runs from hover construction or document scanning. */
 export class SemanticEvidenceResolver {
-    private readonly hashCache = new Map<string, {
-        fingerprint: string;
-        promise: Promise<string>;
-    }>();
-
-    private async fileSha256(filePath: string, size: number, mtimeMs: number): Promise<string> {
-        const fingerprint = `${size}:${mtimeMs}`;
-        const cached = this.hashCache.get(filePath);
-        if (cached?.fingerprint === fingerprint) return cached.promise;
-        const promise = new Promise<string>((resolve, reject) => {
+    private fileSha256(filePath: string): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
             const hash = crypto.createHash('sha256');
             const stream = fs.createReadStream(filePath);
             stream.on('data', chunk => hash.update(chunk));
             stream.on('error', reject);
             stream.on('end', () => resolve(hash.digest('hex')));
         });
-        this.hashCache.delete(filePath);
-        this.hashCache.set(filePath, { fingerprint, promise });
-        while (this.hashCache.size > 8) {
-            const oldest = this.hashCache.keys().next().value;
-            if (oldest === undefined) break;
-            this.hashCache.delete(oldest);
-        }
-        try {
-            return await promise;
-        } catch (error) {
-            if (this.hashCache.get(filePath)?.promise === promise) this.hashCache.delete(filePath);
-            throw error;
-        }
     }
 
     async resolve(
@@ -169,7 +148,10 @@ export class SemanticEvidenceResolver {
         }
         if (!evidence) return { status: 'invalid-request' };
         const evidenceAuthority = summary?.evidenceAuthority;
-        if (authorityProfiles(evidenceAuthority).length > 0) {
+        if (evidenceAuthority !== undefined) {
+            if (authorityProfiles(evidenceAuthority).length === 0) {
+                return { status: 'source-lock-unavailable' };
+            }
             return this.resolvePackScoped(
                 evidence,
                 evidenceAuthority,
@@ -231,7 +213,7 @@ export class SemanticEvidenceResolver {
             return { status: 'pdf-integrity-mismatch' };
         }
         try {
-            if (await this.fileSha256(pdfPath, pdfStat.size, pdfStat.mtimeMs) !== expectedDocument.sha256) {
+            if (await this.fileSha256(pdfPath) !== expectedDocument.sha256) {
                 return { status: 'pdf-integrity-mismatch' };
             }
         } catch (_error) {
@@ -296,7 +278,7 @@ export class SemanticEvidenceResolver {
             return { status: 'pdf-integrity-mismatch' };
         }
         try {
-            if (await this.fileSha256(pdfPath, pdfStat.size, pdfStat.mtimeMs) !==
+            if (await this.fileSha256(pdfPath) !==
                 currentDocument.artifactSha256) {
                 return { status: 'pdf-integrity-mismatch' };
             }

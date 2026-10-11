@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const vscode = require('vscode');
 const { fakeDoc } = require("../../support/helpers");
 const extension = require("../../../out/extension")._internals;
+const assertNativeReferenceAuthority = require("../../support/native-reference-authority");
 const { nativeKeywordTemplate } = require("../../../out/core/completion/nativeKeywordTemplate");
 const { nativeConditionalBinding } = require("../../../out/core/semantics/nativeConditionalLayout");
 const fixture = require("../../fixtures/public-behavior/static-remaining-bulk-display.json");
@@ -47,8 +48,8 @@ describe('static remaining bulk display-only operation boundaries', function () 
                     assert.equal(extension.getCardFieldsForLine(doc, line), null, task.id + ': formatting authorized');
                     recordsChecked++;
                     for (const field of card) {
-                        const position = new vscode.Position(line, field.nativeRange.start);
-                        assert.equal(extension.fieldReferenceAtPosition(doc, position), null, task.id + ': field reference authorized');
+                        const position = new vscode.Position(line, field.p + Math.floor(field.w / 2));
+                        assertNativeReferenceAuthority(extension, doc, position, field, card, keyword, format, task.id);
                         assert.deepEqual(await references.provideReferences(doc, position,
                             { includeDeclaration: true }, { isCancellationRequested: false }), [], task.id + ': fallback reference authorized');
                         fieldsChecked++;

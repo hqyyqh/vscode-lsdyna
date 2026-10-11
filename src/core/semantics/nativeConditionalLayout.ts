@@ -40,9 +40,31 @@ const dmnBindings: Record<string, any> = {
 };
 export function nativeConditionalBinding(keyword: string): any {
     const name = keyword.replace(/^\*/, '');
+    // Original 4.14 reads: two repeated records in each format, including the
+    // SBRID field and all eight numeric values. The old standard-only proof
+    // scope must not reject the independently verified formats.
+    const seatbelt = standardRepeatReaders.bindings[name];
+    if (name === 'ELEMENT_SEATBELT' && standardRepeatReaders.sourceSha256 ===
+        "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0" &&
+        seatbelt?.kind === 'fixed-instances' && seatbelt.cardSetId === "record:1786cdc8dc093e114e364515:d23a0768da66a245c955bbc9" && seatbelt.cardCount === 1)
+        return { ...seatbelt, supportedFormats: ['standard', 'comma', 'long', 'i10'] };
+    
+    // formats, including TITLE. Reuse the two exact registration pools.
+    const listAlias = { SET_NODE_LIST: 'SET_NODES', SET_PART_LIST: 'SET_PART_COLLECTION' }[name.replace(/_TITLE$/, '')];
+    if (listAlias) return data.bindings[listAlias];
     return dmnBindings[name] || data.bindings[name] || optionalFormHeaders.bindings[name] || singleCardReaders.bindings[name] || tailRepeatReaders.bindings[name] || standardRepeatReaders.bindings[name];
 }
 export function nativeConditionalSource(): string { return data.sourceSha256; }
+
+/** Finite branch grammars can be recovered with a bounded prefix. Count the
+ * longest branch; counted/repeated/module tails still require their own reader. */
+export function nativeConditionalRecordBound(binding: any): number | null {
+    const count = (steps: any[]): number => Array.isArray(steps) ? steps.reduce((total, step) => total +
+        (Number.isInteger(step) && step > 0 ? 1 : step?.allowEnd === true ? 0 :
+            step?.control && Array.isArray(step.then) ? Math.max(count(step.then), count(step.else || [])) : NaN), 0) : NaN;
+    const bound = count(binding?.steps);
+    return Number.isSafeInteger(bound) && bound > 0 && bound <= 256 ? bound : null;
+}
 
 export function selectConditionalLayout(binding: any, rows: string[], title: boolean,
     read: (row: number, card: number, field: number) => string,

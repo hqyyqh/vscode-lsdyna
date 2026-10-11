@@ -299,6 +299,106 @@ trailer
             };
         });
 
+        it('counts successful scans separately from discovered PDFs and uses that count in health readiness', async () => {
+            const failedPdf = path.join(tempDir, 'failed.pdf');
+            fs.copyFileSync(mockPdfPath, failedPdf);
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            const originalRead = fs.readFileSync;
+            const originalStat = fs.statSync;
+            const { createHealthService } = require('../../src/client/services/healthService');
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            const health = createHealthService({ getManualsDir: () => tempDir, getManualFilesCount });
+            try {
+                for (const failure of ['stat', 'read', 'all']) {
+                    mockState.clear();
+                    const shouldFail = file => path.resolve(String(file)) === failedPdf ||
+                        (failure === 'all' && path.resolve(String(file)) === mockPdfPath);
+                    fs.statSync = function (file, ...args) {
+                        if (failure === 'stat' && shouldFail(file)) throw Object.assign(new Error('stat denied'), { code: 'EACCES' });
+                        return originalStat.call(this, file, ...args);
+                    };
+                    fs.readFileSync = function (file, ...args) {
+                        if (failure !== 'stat' && shouldFail(file)) throw Object.assign(new Error('read failed'), { code: 'EIO' });
+                        return originalRead.call(this, file, ...args);
+                    };
+                    await initialize(mockContext);
+                    const expected = failure === 'all' ? 0 : 1;
+                    assert.equal(getManualFilesCount(), expected, failure);
+                    assert.equal(getManualLocations('*NODE').length, expected, failure);
+                    health.invalidate();
+                    const report = health.getReport({ isLsdyna: true });
+                    assert.equal(report.items.find(item => item.id === 'pdfFiles').metadata.pdfCount, 2);
+                    const index = report.items.find(item => item.id === 'manualIndex');
+                    assert.equal(index.metadata.indexedPdfCount, expected);
+                    assert.equal(index.state, expected ? 'ready' : 'warning');
+                }
+            } finally {
+                fs.readFileSync = originalRead;
+                fs.statSync = originalStat;
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+                fs.rmSync(failedPdf, { force: true });
+            }
+        });
+        it('indexes only the manual root selected by the reader when several candidates exist', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration, folders = vscode.workspace.workspaceFolders;
+            const candidate = fs.mkdtempSync(path.join(require('os').tmpdir(), 'dynasense-manual-roots-'));
+            const first = path.join(candidate, 'one', 'manuals'), second = path.join(candidate, 'two', 'manuals');
+            try {
+                for (const dir of [first, second]) {
+                    fs.mkdirSync(path.join(dir, 'indexes'), { recursive: true });
+                    fs.copyFileSync(mockPdfPath, path.join(dir, 'manual.pdf'));
+                }
+                vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? 'manuals' : undefined });
+                vscode.workspace.workspaceFolders = [first, second].map(dir => ({ uri: { fsPath: path.dirname(dir) } }));
+                await initialize(mockContext);
+                assert.equal(getManualFilesCount(), 1);
+                assert.deepEqual(getManualLocations('*NODE').map(item => item.file), [path.join(first, 'manual.pdf')]);
+            } finally {
+                // Close the production watchers before removing this test's roots.
+                vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? path.join(candidate, 'absent') : undefined });
+                await initialize(mockContext);
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+                vscode.workspace.workspaceFolders = folders;
+                assert.ok(path.basename(candidate).startsWith('dynasense-manual-roots-'));
+                fs.rmSync(candidate, { recursive: true, force: true });
+            }
+        });
+
+        it('keeps successful scan readiness when persisting the optional bookmark cache fails', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            mockContext.workspaceState.update = async () => { throw new Error('cache write failed'); };
+            try {
+                await initialize(mockContext);
+                assert.equal(getManualFilesCount(), 1);
+                assert.equal(getManualLocations('*NODE').length, 1);
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+            }
+        });
+
+        it('does not restore an older file count after a newer initialization finishes', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            let configured = tempDir;
+            let release;
+            const persisted = new Promise(resolve => { release = resolve; });
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? configured : undefined });
+            mockContext.workspaceState.update = () => persisted;
+            try {
+                const older = initialize(mockContext);
+                configured = path.join(tempDir, 'not-configured');
+                await initialize({ workspaceState: { get: () => undefined } });
+                assert.equal(getManualFilesCount(), 0);
+                release();
+                await older;
+                assert.equal(getManualFilesCount(), 0);
+                assert.deepEqual(getManualLocations('*NODE'), []);
+            } finally {
+                release();
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+            }
+        });
+
         it('scans PDF directory and registers bookmark keywords in keywordMap', async () => {
             // Setup configuration stub
             const originalGetConfiguration = vscode.workspace.getConfiguration;
@@ -408,7 +508,54 @@ trailer
             }
         });
 
-        it('uses cache when file modification time has not changed', async () => {
+        it('refreshes bookmarks after native PDF replacements that preserve modification time', async () => {
+            const originalConfig = vscode.workspace.getConfiguration;
+            const originalBytes = fs.readFileSync(mockPdfPath);
+            const originalStats = fs.statSync(mockPdfPath);
+            const fixedTime = new Date('2025-01-01T00:00:00Z');
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            try {
+                for (const larger of [false, true]) {
+                    fs.writeFileSync(mockPdfPath, originalBytes);
+                    fs.utimesSync(mockPdfPath, fixedTime, fixedTime);
+                    mockState.clear();
+                    await initialize(mockContext);
+                    const before = fs.statSync(mockPdfPath);
+                    const replacement = originalBytes.toString('binary').replace('*NODE_TITLE', '*PART_TITLE') + (larger ? '\n' : '');
+                    fs.writeFileSync(mockPdfPath, replacement, 'binary');
+                    fs.utimesSync(mockPdfPath, fixedTime, fixedTime);
+                    const after = fs.statSync(mockPdfPath);
+                    assert.equal(after.mtimeMs, before.mtimeMs);
+                    assert.equal(after.size === before.size, !larger);
+                    assert.notEqual(after.ctimeMs, before.ctimeMs, 'native change time identifies the replacement');
+                    await initialize(mockContext);
+                    assert.deepEqual(getManualLocations('*NODE'), []);
+                    assert.equal(getManualLocations('*PART')[0]?.page, 1);
+                }
+            } finally {
+                fs.writeFileSync(mockPdfPath, originalBytes);
+                fs.utimesSync(mockPdfPath, originalStats.atime, originalStats.mtime);
+                vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? path.join(tempDir, 'absent') : undefined });
+                await initialize(mockContext);
+                vscode.workspace.getConfiguration = originalConfig;
+            }
+        });
+
+        it('re-parses an older cache that lacks size and change time', async () => {
+            const originalConfig = vscode.workspace.getConfiguration;
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            try {
+                mockState.set('manuals_bookmark_cache', { [path.resolve(mockPdfPath)]: {
+                    version: 2, mtimeMs: fs.statSync(mockPdfPath).mtimeMs,
+                    bookmarks: [{ title: '*CACHED_KEYWORD', page: 42 }],
+                } });
+                await initialize(mockContext);
+                assert.deepEqual(getManualLocations('*CACHED_KEYWORD'), []);
+                assert.equal(getManualLocations('*NODE')[0]?.page, 1);
+            } finally { vscode.workspace.getConfiguration = originalConfig; }
+        });
+
+        it('uses cache when file metadata has not changed', async () => {
             const originalGetConfiguration = vscode.workspace.getConfiguration;
             vscode.workspace.getConfiguration = (section) => {
                 if (section === 'lsdyna') {
@@ -428,6 +575,8 @@ trailer
                 mockCache[path.resolve(mockPdfPath)] = {
                     version: 2,
                     mtimeMs: stats.mtimeMs,
+                    size: stats.size,
+                    ctimeMs: stats.ctimeMs,
                     bookmarks: [
                         { title: '*CACHED_KEYWORD', page: 42 }
                     ]
@@ -511,10 +660,14 @@ trailer
                 mockCache[path.resolve(mockPdfPath)] = {
                     version: 2,
                     mtimeMs: stats.mtimeMs,
+                    size: stats.size,
+                    ctimeMs: stats.ctimeMs,
                     bookmarks: [
                         { title: '14. *MAT_026/*MAT_HONEYCOMB', page: 40 },
                         { title: 'CONTROL_TERMINATION/CONTROL_TIMESTEP', page: 50 },
-                        { title: '*MAT_024/*MAT_PIECEWISE_LINEAR_PLASTICITY', page: 60 }
+                        { title: '*MAT_024/*MAT_PIECEWISE_LINEAR_PLASTICITY', page: 60 },
+                        { title: '*CONTACT', page: 70 },
+                        { title: '*CONTACT_TIED_SHELL_EDGE_TO_SURFACE_OFFSET', page: 71 }
                     ]
                 };
                 mockState.set('manuals_bookmark_cache', mockCache);
@@ -543,6 +696,13 @@ trailer
                 assert.strictEqual(matOptionLocs[0].page, 60);
                 assert.strictEqual(matOptionLocs[0].matchedKeyword, '*MAT_024');
                 assert.strictEqual(matOptionLocs[0].matchKind, 'section');
+                for (const spelling of ['*CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET',
+                    '*CONTACT_ID_TIED_SHELL_EDGE_TO_SURFACE_OFFSET']) {
+                    const locations = getManualLocations(spelling);
+                    assert.equal(locations.length, 1);
+                    assert.equal(locations[0].page, 71); // Canonical chapter takes precedence over generic CONTACT fallback.
+                    assert.equal(locations[0].matchKind, 'section');
+                }
             } finally {
                 vscode.workspace.getConfiguration = originalGetConfiguration;
             }

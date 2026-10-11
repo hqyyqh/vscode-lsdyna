@@ -33,8 +33,19 @@ describe('batch native fixed readers', () => {
         }
         const database = catalog.formForKeyword('DATABASE_BINARY_D3DAT');
         const databaseRule = database.rules[database.reference.formRuleIds[0]];
-        assert.equal(nativeFileLayoutKind({ ...databaseRule, catalogSource: database.source }, 'DATABASE_BINARY_D3DAT'), null,
-            'retain the existing record grammar, including its optional trailing record');
+        const sourceRule = { ...databaseRule, catalogSource: database.source };
+        assert.equal(nativeFileLayoutKind(sourceRule, 'DATABASE_BINARY_D3DAT'), 'verified-source-records');
+        const rows = require('../../fixtures/public-behavior/database-records.json').repeatedInputs
+            .find(input => input.keyword === 'DATABASE_BINARY_D3DAT').records;
+        const reading = require('../../../out/core/semantics/nativeFileReadContext').nativeFileReadContext(
+            sourceRule, '*DATABASE_BINARY_D3DAT', rows, 'standard');
+        assert.deepEqual(reading.select().current, [
+            { cardIndex: 1, instanceStart: 0, key: 'instance:0:card:1' },
+            { cardIndex: 2, instanceStart: 0, key: 'instance:0:card:2' },
+            { cardIndex: 1, instanceStart: 2, key: 'instance:2:card:1' },
+            { cardIndex: 2, instanceStart: 2, key: 'instance:2:card:2' },
+            { cardIndex: 1, instanceStart: 4, key: 'instance:4:card:1' },
+        ], 'retain the existing record grammar, including its optional trailing record');
     });
     it('does not grant an existing operation association from help or a partial card match', () => {
         const { loadKeywordSchema, resolveCardForDocumentLine } = require("../../../out/core/keywordSchema");
@@ -62,7 +73,7 @@ describe('batch native fixed readers', () => {
                 assert.deepEqual(info.card.map(f => f.nativeIdentity.fieldRecordId), record.fields.map(f => f.address), task.keyword);
                 assert.deepEqual(info.card.map(f => f.rawValue), record.fields.map(f => f.value), `${task.keyword} ${task.format}`);
                 for (const field of info.card) {
-                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.p });
+                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.p }, undefined, true);
                     assert.ok(hover?.contents[0].value.includes(`**${field.n}**`), `${task.keyword}: ${field.n}`);
                     assert.equal(hover.range.start.character, field.p);
                     const end = Math.min(task.lines[record.lineOffset].length,

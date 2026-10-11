@@ -1,5 +1,10 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const { buildProjectIndex } = require('../../../src/core/project/projectIndexer');
+const { buildProjectReferenceIndex } = require('../../../src/core/references/projectReferenceIndex');
+const { queryIndexedEntityId } = require('../../../src/core/references/indexedEntityQuery');
 const {
     definitionRecordMode,
     fixedCandidateWidths,
@@ -33,6 +38,141 @@ const TEST_DEFINITION_KEYWORDS = {
 };
 
 describe('onDemandDefinitionScanner', () => {
+    describe('occurrence coverage from disk', () => {
+        let root;
+        beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-on-demand-occurrences-')); });
+        afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+        async function project(alternatePaths = false, repeat = true) {
+            fs.writeFileSync(path.join(root, 'main.k'), `*KEYWORD\n*INCLUDE\na.k\n${repeat ? 'b.k\n' : ''}*END\n`);
+            for (const name of ['a', 'b']) fs.writeFileSync(path.join(root, `${name}.k`),
+                `${alternatePaths ? `*INCLUDE_PATH_RELATIVE\np${name}\n` : ''}*INCLUDE\nshared.k\n`);
+            fs.writeFileSync(path.join(root, 'shared.k'), '*INCLUDE\nleaf.k\n');
+            if (alternatePaths) {
+                for (const [name, id] of [['a', 17], ['b', 23]]) {
+                    fs.mkdirSync(path.join(root, `p${name}`));
+                    fs.writeFileSync(path.join(root, `p${name}`, 'leaf.k'), `*NODE\n${String(id).padStart(8)}\n`);
+                }
+            } else fs.writeFileSync(path.join(root, 'leaf.k'), '*NODE\n      17\n');
+            return buildProjectIndex(path.join(root, 'main.k'));
+        }
+
+        const scan = (snapshot, effectiveId, options = {}) => scanOnDemandDefinitions({
+            referenceIndex: buildProjectReferenceIndex(snapshot), fileIndexes: snapshot.fileIndexes,
+            effectiveId, targetKinds: ['node'], projectScoped: true,
+            definitionKeywords: TEST_DEFINITION_KEYWORDS, ...options,
+        });
+
+        it('retains each shared descendant instance and keeps physical navigation deduplicated', async () => {
+            const snapshot = await project();
+            const lookup = await scan(snapshot, 17);
+            assert.equal(lookup.totalMatchCount, 2);
+            assert.equal(lookup.definitions.length, 2);
+            assert.equal(new Set(lookup.definitions.map(definition => JSON.stringify(definition.occurrencePath))).size, 2);
+            assert.equal(new Set(lookup.definitions.map(definition => definition.occurrenceId)).size, 2);
+            assert.ok(!lookup.reasons.includes('on-demand-results-truncated'));
+            const query = await queryIndexedEntityId({ snapshot, id: 17, targetKind: 'node', definitionKeywords: TEST_DEFINITION_KEYWORDS });
+            assert.equal(query.locations.filter(location => location.role === 'definition').length, 1);
+            assert.ok(!query.reasons.some(reason => reason.includes('on-demand-results-truncated')));
+        });
+
+        it('still reports actual result capacity and preserves complete single-path lookup', async () => {
+            const snapshot = await project();
+            const bounded = await scan(snapshot, 17, { maxStoredMatches: 1 });
+            assert.equal(bounded.totalMatchCount, 2);
+            assert.equal(bounded.definitions.length, 1);
+            assert.ok(bounded.reasons.includes('on-demand-results-truncated'));
+            fs.writeFileSync(path.join(root, 'main.k'), '*KEYWORD\n*INCLUDE\na.k\n*END\n');
+            const single = await scan(await buildProjectIndex(path.join(root, 'main.k')), 17);
+            assert.equal(single.state, 'complete');
+            assert.equal(single.totalMatchCount, 1);
+            assert.equal(single.definitions.length, 1);
+        });
+
+        it('keeps the default 256-result capacity while counting all streamed physical records', async () => {
+            await project(false, false);
+            fs.writeFileSync(path.join(root, 'leaf.k'), `*NODE\n${'      17\n'.repeat(257)}`);
+            const lookup = await scan(await buildProjectIndex(path.join(root, 'main.k')), 17);
+            assert.equal(lookup.totalMatchCount, 257);
+            assert.equal(lookup.definitions.length, 256);
+            assert.equal(lookup.state, 'partial');
+            assert.ok(lookup.reasons.includes('on-demand-results-truncated'));
+        });
+
+        it('keeps unscanned occurrence search paths uncertain for matches, empty queries and cursor origin', async () => {
+            const snapshot = await project(true);
+            const leaf = path.join(root, 'pa', 'leaf.k');
+            assert.ok(snapshot.fileIndexes.has(leaf));
+            assert.ok(!snapshot.fileIndexes.has(path.join(root, 'pb', 'leaf.k')));
+            const referenceIndex = buildProjectReferenceIndex(snapshot);
+            const contexts = referenceIndex.parameterContextsByFile.get(leaf);
+            assert.ok(contexts.some(context => context.uncertaintyReasons?.includes('occurrence-search-path-unavailable')));
+            assert.ok(contexts.some(context => context.initialUncertaintyReasons.includes('occurrence-search-path-unavailable')));
+            const lookup = await scanOnDemandDefinitions({
+                referenceIndex, fileIndexes: snapshot.fileIndexes, effectiveId: 23,
+                targetKinds: ['node'], projectScoped: true, definitionKeywords: TEST_DEFINITION_KEYWORDS,
+            });
+            assert.equal(lookup.state, 'partial');
+            assert.deepEqual(lookup.definitions, []);
+            assert.ok(lookup.reasons.includes('occurrence-search-path-unavailable'));
+            const hit = await scan(snapshot, 17);
+            assert.equal(hit.state, 'partial');
+            assert.ok(hit.reasons.includes('occurrence-search-path-unavailable'));
+            const lines = fs.readFileSync(leaf, 'utf8').split('\n');
+            const origin = queryOnDemandDefinitionAtPosition({
+                referenceIndex, fileIndex: snapshot.fileIndexes.get(leaf), filePath: leaf,
+                position: { line: 1, character: 6 }, projectScoped: true,
+                lineAt: index => lines[index], definitionKeywords: TEST_DEFINITION_KEYWORDS,
+            });
+            assert.equal(origin.state, 'incomplete');
+            const query = await queryIndexedEntityId({ snapshot, id: 23, targetKind: 'node', definitionKeywords: TEST_DEFINITION_KEYWORDS });
+            assert.equal(query.state, 'incomplete');
+            assert.deepEqual(query.locations, []);
+            assert.ok(query.reasons.some(reason => reason.includes('occurrence-search-path-unavailable')));
+        });
+    });
+
+    it('deduplicates repeated contexts before counting even after the retained result cap', async () => {
+        const filePath = path.resolve('model', 'repeated-context.k');
+        const context = parent => ({
+            occurrenceId: 'shared:leaf', occurrencePath: ['root', parent, 'shared:leaf'],
+            idfoffOffset: 0, uncertaintyReasons: [], initialBindings: new Map(), timeline: [],
+        });
+        const first = context('first'), second = context('second');
+        const lookup = await scanOnDemandDefinitions({
+            referenceIndex: { parameterContextsByFile: new Map([[filePath, [first, first, second, second]]]) },
+            fileIndexes: new Map([[filePath, { keywordBlocks: [{ filePath, keyword: '*NODE', startLine: 0, endLine: 1 }] }]]),
+            effectiveId: 17, targetKinds: ['node'], projectScoped: true, maxStoredMatches: 1,
+            definitionKeywords: TEST_DEFINITION_KEYWORDS,
+            scanBlockLines: async (_block, visit) => {
+                await visit('      17', 1); return { complete: true, lineCount: 1 };
+            },
+        });
+        assert.equal(lookup.totalMatchCount, 2);
+        assert.equal(lookup.definitions.length, 1);
+        assert.ok(lookup.reasons.includes('on-demand-results-truncated'));
+    });
+
+    it('applies occurrence uncertainty to an empty relevant block without downgrading unrelated namespaces', async () => {
+        const filePath = path.resolve('model', 'uncertain-empty.k');
+        const referenceIndex = { parameterContextsByFile: new Map([[filePath, [{
+            occurrenceId: 'root:leaf', occurrencePath: ['root', 'root:leaf'], idfoffOffset: 0,
+            uncertaintyReasons: ['occurrence-search-path-unavailable'], initialBindings: new Map(), timeline: [],
+        }]]]) };
+        const scan = keyword => scanOnDemandDefinitions({
+            referenceIndex, fileIndexes: new Map([[filePath, { keywordBlocks: [{ filePath, keyword, startLine: 0, endLine: 0 }] }]]),
+            effectiveId: 17, targetKinds: ['node'], projectScoped: true, definitionKeywords: TEST_DEFINITION_KEYWORDS,
+            scanBlockLines: async () => ({ complete: true, lineCount: 0 }),
+        });
+        const relevant = await scan('*NODE');
+        assert.equal(relevant.state, 'partial');
+        assert.ok(relevant.reasons.includes('occurrence-search-path-unavailable'));
+        assert.deepEqual(relevant.definitions, []);
+        const unrelated = await scan('*MAT_ELASTIC');
+        assert.equal(unrelated.state, 'complete');
+        assert.deepEqual(unrelated.reasons, []);
+    });
+
     it('reuses the immutable runtime descriptor view', () => {
         assert.strictEqual(runtimeDefinitionKeywords(), runtimeDefinitionKeywords());
         assert.strictEqual(
@@ -46,8 +186,10 @@ describe('onDemandDefinitionScanner', () => {
         const element = selectOnDemandDefinitionDescriptors(['element'], []);
 
         assert.deepEqual(node.map(item => item.keyword), ['NODE']);
-        assert.equal(element.length, 12);
+        assert.equal(element.length, 11);
         assert.ok(element.some(item => item.keyword === 'ELEMENT_SHELL'));
+        assert.ok(!element.some(item => item.keyword === 'ELEMENT_SEATBELT'));
+        assert.ok(selectOnDemandDefinitionDescriptors(['element-seatbelt'], []).some(item => item.keyword === 'ELEMENT_SEATBELT'));
         assert.ok(!node.some(item => item.keyword === 'NODE_TRANSFORM'));
         assert.deepEqual(
             selectOnDemandDefinitionDescriptors([], ['NODE']).map(item => item.keyword),
@@ -106,6 +248,44 @@ describe('onDemandDefinitionScanner', () => {
             parseOnDemandIdCandidates('HS Steel,7.8e-9', descriptor).map(item => item.input.value),
             ['HS Steel'],
         );
+    });
+
+    it('never promotes recognized non-integer, zero or non-finite numbers to label identities', async () => {
+        const descriptor = runtimeDefinitionKeywords().onDemand.MAT_024;
+        const filePath = path.resolve('numeric-label-regression.k');
+        for (const raw of ['0', '0.0', '+0', '-0.0', '1.5', '.5', '1e3', '1e309']) {
+            const lines = ['*MAT_024', `${raw},7.8e-9`];
+            const fileIndex = { keywordBlocks: [{ filePath, keyword: '*MAT_024', startLine: 0, endLine: 1 }] };
+            assert.deepEqual(parseOnDemandIdCandidates(lines[1], descriptor), [], raw);
+            const origin = queryOnDemandDefinitionAtPosition({
+                filePath, fileIndex, position: { line: 1, character: 0 },
+                lineAt: index => lines[index],
+            });
+            assert.equal(origin.state, 'none', raw);
+            const lookup = await scanOnDemandDefinitions({
+                fileIndexes: new Map([[filePath, fileIndex]]), effectiveId: raw,
+                targetDefinitions: ['MAT_024'],
+                scanBlockLines: async (_block, visit) => {
+                    await visit(lines[1], 1);
+                    return { complete: true, lineCount: 1 };
+                },
+            });
+            assert.deepEqual(lookup.definitions, [], raw);
+        }
+        assert.equal(parseOnDemandIdCandidates('1.0,7.8e-9', descriptor)[0].input.value, 1);
+        assert.equal(parseOnDemandIdCandidates('HS Steel,7.8e-9', descriptor)[0].input.kind, 'label');
+        assert.equal(parseOnDemandIdCandidates('&MID,7.8e-9', descriptor)[0].input.kind, 'parameter');
+        assert.equal(parseOnDemandIdCandidates('<1+2>,7.8e-9', descriptor)[0].input.kind, 'expression');
+    });
+
+    it('respects source label length in comma records without excluding embedded spaces', () => {
+        const descriptor = runtimeDefinitionKeywords().onDemand.MAT_024;
+        for (const formatMode of ['standard', 'i10', 'long']) {
+            const maximum = formatMode === 'long' ? 20 : 10;
+            const raw = 'HS Steel'.padEnd(maximum, 'A');
+            assert.equal(parseOnDemandIdCandidates(`${raw},0`, descriptor, { formatMode })[0].input.value, raw);
+            assert.deepEqual(parseOnDemandIdCandidates(`${raw}A,0`, descriptor, { formatMode }), []);
+        }
     });
 
     it('uses exact base/TITLE physical data ordinals while preserving repeated NODE records', async () => {

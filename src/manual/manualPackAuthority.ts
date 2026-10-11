@@ -53,7 +53,7 @@ function normalizedRelative(value: unknown): string {
 
 function isInside(root: string, candidate: string): boolean {
     const relative = path.relative(path.resolve(root), path.resolve(candidate));
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
 function safePackPath(packRoot: string, relative: unknown, expectedExtension: string): string | null {
@@ -95,7 +95,6 @@ function validateAuthority(
     if (pointer !== AUTHORITY_INDEX_PATH ||
         normalizedRelative(descriptor?.index) !== AUTHORITY_INDEX_PATH ||
         descriptor?.schemaVersion !== 1 ||
-        !validSha256(descriptor?.indexSha256) ||
         descriptor.indexSha256 !== sha256(indexBytes) ||
         descriptor.sourceProfileId !== index.sourceProfileId ||
         (manifest.flavor && index.flavor !== manifest.flavor)) {

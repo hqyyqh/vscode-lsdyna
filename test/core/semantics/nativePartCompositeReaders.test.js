@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { fakeDoc } = require("../../support/helpers");
+const assertNativeReaderValue = require('../../support/native-reader-values');
 const { getCardInfoForDocumentLineWithSuggest: resolve, LsdynaFieldHoverProvider,
     buildKeywordOptionViewModel: model } = require("../../../out/extension")._internals;
 
@@ -42,35 +43,30 @@ describe('native PART_COMPOSITE instance readers', () => {
                     `${task.keyword} ${task.format} names`
                 );
 
-                // Verify field rawValues
+                // Source tokens are exact; native numeric/default observations are separate.
                 for (let i = 0; i < info.card.length; i++) {
-                    const actual = info.card[i].rawValue;
-                    const expected = record.fields[i].value;
-                    if (actual !== expected) {
-                        const numActual = Number(actual.replace(/[dD]/g, 'e'));
-                        const numExpected = Number(expected.replace(/[dD]/g, 'e'));
-                        assert.ok(
-                            actual === expected || (!isNaN(numActual) && !isNaN(numExpected) && numActual === numExpected) ||
-                            (info.card[i].d !== undefined && !isNaN(Number(info.card[i].d)) && Number(info.card[i].d) === numExpected),
-                            `${task.keyword} ${task.format} field ${info.card[i].n}: expected ${expected}, got ${actual}`
-                        );
-                    }
+                    assertNativeReaderValue(info.card[i], record.fields[i], `${task.keyword} ${task.format} ${info.card[i].n}`);
                 }
 
-                // Verify hover provides valid markdown and field ranges
-                for (const field of info.card.filter(f => f.nativeRange.end > f.nativeRange.start)) {
-                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.p });
-                    assert.ok(hover?.contents[0].value.includes(field.n), `${task.keyword} ${field.n}`);
-                    assert.equal(hover.range.start.character, field.nativeRange.start);
+                for (const field of record.fields.filter(f => f.range.end > f.range.start)) {
+                    const hover = await provider.provideHover(doc, { line: record.lineOffset, character: field.range.start });
+                    const name = /^[-_]*$/.test(field.name) ? 'UNUSED' : field.name;
+                    assert.ok(hover?.contents[0].value.includes(`**${name}**`), `${task.keyword} ${name}`);
+                    assert.deepEqual([hover.range.start.line, hover.range.start.character, hover.range.end.line, hover.range.end.character],
+                        [record.lineOffset, field.range.start, record.lineOffset, field.range.end]);
                 }
-            }
 
-            // Verify source manager cards
-            const view = model({ document: doc, selection: { active: { line: 1, character: 0 } } }, 1, {});
-            assert.ok(view?.managerCards?.length, `${task.keyword} manager`);
-            for (const card of view.managerCards) {
-                const record = task.expectedRecords.find(r => r.lineOffset === card.line);
-                assert.ok(record, `Manager card at line ${card.line} for ${task.keyword}`);
+                const view = model({ document: doc, selection: { active: { line: record.lineOffset, character: 0 } } }, record.lineOffset, {});
+                assert.ok(view?.managerCards?.some(card => card.line === record.lineOffset), `${task.keyword} manager line ${record.lineOffset}`);
+                for (const card of view.managerCards) {
+                    const source = task.expectedRecords.find(r => r.lineOffset === card.line);
+                    assert.ok(source, `Manager card at line ${card.line} for ${task.keyword}`);
+                    // Manager string cells expose trimmed source text; the raw reader above retains TITLE padding.
+                    assert.deepEqual(card.fields.map(f => [f.name, f.type, f.value, f.line]), source.fields.map(f => [
+                        /^[-_]*$/.test(f.name) ? 'UNUSED' : f.name, f.type === 0 ? '' : String(f.type),
+                        f.type === 0 ? f.rawValue.trim() : f.rawValue, source.lineOffset,
+                    ]));
+                }
             }
         }
     });

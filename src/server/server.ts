@@ -28,6 +28,8 @@ connection.onInitialize((params) => {
     const initOptions = params.initializationOptions || {};
     initializeSession({
         globalStoragePath: initOptions.globalStoragePath,
+        entityMemoryBytes: initOptions.entityMemoryBytes,
+        entityDiskBytes: initOptions.entityDiskBytes,
         maxCacheBytes: initOptions.maxCacheBytes,
         maxMemoryCacheBytes: initOptions.maxMemoryCacheBytes,
         maxProjectSnapshotCacheBytes: initOptions.maxProjectSnapshotCacheBytes,
@@ -52,6 +54,8 @@ connection.onShutdown(async () => {
 connection.onRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, async (params, cancellationToken) => {
     return handleRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, params, connection, cancellationToken);
 });
+connection.onRequest(protocol.QUERY_ENTITY_REQUEST, (params, cancellationToken) =>
+    handleRequest(protocol.QUERY_ENTITY_REQUEST, params, connection, cancellationToken));
 
 // Bind custom request handler for retrieving cache manifests.
 connection.onRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST, async (params) => {

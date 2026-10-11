@@ -7,6 +7,7 @@ const path = require('path');
 const vscode = require('vscode');
 const { ManualIndexRepository } = require('../../src/manual/ManualIndexRepository');
 const { ManualReaderPanel } = require('../../src/manual/ManualReaderPanel');
+const { ManualPackManager } = require('../../src/manual/ManualPackManager');
 const i18n = require('../../src/core/i18n');
 
 function versioned(key, value) { return { schemaVersion: 1, [key]: value }; }
@@ -149,6 +150,186 @@ describe('ManualReaderPanel React host', () => {
         return states.at(-1)?.params;
     }
 
+    function replaceManifest(patch) {
+        const file = path.join(root, 'manifest.json');
+        const modified = fs.statSync(file).mtimeMs + 1000;
+        fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), ...patch }));
+        fs.utimesSync(file, new Date(modified), new Date(modified));
+    }
+
+    it('selects, persists and restores bilingual reading without changing source-language paths', async () => {
+        show();
+        const initial = (await request('reader/ready', { revision: -1 })).result;
+        assert.equal(initial.canCompareLanguages, true);
+        const selected = await request('reader/toggleLanguage', { revision: initial.revision, mode: 'bilingual', anchorId: 'reader-unit-u1' });
+        assert.equal(selected.result, true);
+        const current = latestState();
+        assert.equal(current.language, 'zh');
+        assert.equal(current.readingMode, 'bilingual');
+        assert.equal(current.content.comparison, true);
+        assert.equal(current.restore.anchorId, 'reader-unit-u1');
+        assert.equal(current.search.scope, 'both');
+        assert.equal((await request('reader/toggleLanguage', { revision: current.revision, mode: 'invalid' })).result, false);
+        await new Promise(resolve => setTimeout(resolve, 240));
+        assert.equal(savedStates.at(-1).readingMode, 'bilingual');
+        const saved = savedStates.at(-1);
+        panel.dispose();
+        show(saved);
+        assert.equal((await request('reader/ready', { revision: -1 })).result.readingMode, 'bilingual');
+    });
+
+    for (const [name, locations] of [
+        ['chapter/cache', [
+            { manualId: 'vol', sectionId: 'formula\u0000next', anchorId: 'anchor' },
+            { manualId: 'vol\u0000formula', sectionId: 'next', anchorId: 'anchor' },
+        ]],
+        ['section/anchor', [
+            { manualId: 'vol', sectionId: 'formula', anchorId: 'next\u0000anchor' },
+            { manualId: 'vol', sectionId: 'formula\u0000next', anchorId: 'anchor' },
+        ]],
+    ]) {
+        it(`keeps ${name} tuples separate in content, history and restored scroll`, async () => {
+            const file = path.join(root, 'indexes', 'sections.json');
+            const sections = JSON.parse(fs.readFileSync(file, 'utf8'));
+            sections.sections.forEach((section, index) => {
+                Object.assign(section, locations[index], { anchors: [locations[index].anchorId] });
+            });
+            fs.writeFileSync(file, JSON.stringify(sections));
+            const repository = new ManualIndexRepository(root);
+            const manager = { saveState(_packRoot, state) { savedStates.push(state); } };
+            ManualReaderPanel.show(root, repository, manager, locations[0]);
+            const first = (await request('reader/ready', { revision: -1 })).result;
+            assert.match(first.content.markdown, /此卡片控制质量缩放行为/);
+            await request('reader/navigate', { revision: first.revision, target: locations[1] });
+            assert.match(latestState().content.markdown, /下一节/);
+            assert.equal(latestState().navigation.canBack, true);
+            await request('reader/navigate', { revision: latestState().revision, target: 'back' });
+            assert.match(latestState().content.markdown, /此卡片控制质量缩放行为/);
+            await notify('reader/scrollChanged', { revision: latestState().revision, scrollY: 180, scrollRatio: 0.6, anchorId: locations[0].anchorId });
+            ManualReaderPanel.show(root, new ManualIndexRepository(root), manager, locations[1]);
+            const second = latestState();
+            assert.match(second.content.markdown, /下一节/);
+            assert.equal(second.restore.scrollY, 0);
+            assert.equal(second.restore.scrollRatio, 0);
+            assert.equal(second.navigation.canBack, true);
+            await request('reader/navigate', { revision: second.revision, target: 'back' });
+            assert.deepEqual(latestState().location.manualId, locations[0].manualId);
+            assert.deepEqual(latestState().location.sectionId, locations[0].sectionId);
+            assert.match(latestState().content.markdown, /此卡片控制质量缩放行为/);
+            await request('reader/navigate', { revision: latestState().revision, target: locations[1] });
+            assert.match(latestState().content.markdown, /下一节/);
+            await request('reader/toggleLanguage', { revision: latestState().revision });
+            assert.match(latestState().content.markdown, /Next section/);
+            await request('reader/navigate', { revision: latestState().revision, target: 'back' });
+            assert.match(latestState().content.markdown, /This card controls mass scaling behavior/);
+            assert.equal(htmlAssignments, 1);
+        });
+    }
+
+    it('uses a refreshed same-root manager repository while preserving history, scroll and the panel shell', async () => {
+        const state = new Map();
+        const manager = new ManualPackManager({ globalState: {
+            get: key => state.get(key), update: async (key, value) => { state.set(key, value); },
+        } });
+        const original = manager.getRepository(root);
+        ManualReaderPanel.show(root, original, manager, { manualId: 'vol', sectionId: 'formula' });
+        const initial = (await request('reader/ready', { revision: -1 })).result;
+        await request('reader/navigate', { revision: initial.revision, target: 'nextSection' });
+        const before = latestState();
+        await notify('reader/scrollChanged', { revision: before.revision, scrollY: 180, scrollRatio: 0.6, anchorId: 'next' });
+        for (const language of ['en', 'zh']) {
+            fs.writeFileSync(path.join(root, 'documents', language, 'vol', 'chunks', 'next.md'),
+                `<a id="next"></a>\n${language === 'en' ? 'Updated chapter body.' : '本章内容已更新。'}`);
+        }
+        const sectionsFile = path.join(root, 'indexes', 'sections.json');
+        const sections = JSON.parse(fs.readFileSync(sectionsFile, 'utf8'));
+        Object.assign(sections.sections[1], { titleEn: 'Updated next section', titleZh: '更新后的下一节', pdfPage: 42 });
+        fs.writeFileSync(sectionsFile, JSON.stringify(sections));
+        fs.writeFileSync(path.join(root, 'pdf', 'Updated.pdf'), 'pdf');
+        replaceManifest({ generatedAt: 'updated', documents: [{ slug: 'vol', title: 'Updated volume', pdfFile: 'pdf/Updated.pdf' }] });
+        const refreshed = manager.getRepository(root);
+        assert.notStrictEqual(refreshed, original);
+        panel.viewColumn = vscode.ViewColumn.Two;
+        ManualReaderPanel.show(root, refreshed, manager, { manualId: 'vol', sectionId: 'next', anchorId: 'next' });
+        const after = latestState();
+        assert.match(after.content.markdown, /本章内容已更新/);
+        assert.match(panel.title, /更新后的下一节/);
+        assert.equal(after.location.pdfPage, 42);
+        assert.equal(after.restore.scrollY, 180);
+        assert.equal(after.restore.scrollRatio, 0.6);
+        assert.equal(after.navigation.canBack, true);
+        assert.equal(htmlAssignments, 1);
+        assert.equal(panel.reveals.at(-1), vscode.ViewColumn.Two);
+        assert.ok(after.revision > before.revision);
+        assert.equal((await request('reader/toggleLanguage', { revision: before.revision })).result, false);
+        await request('reader/openPdf', { revision: after.revision });
+        assert.deepEqual(commands.at(-1), ['extension.openManual', path.join(root, 'pdf', 'Updated.pdf'), 42]);
+        const back = await request('reader/navigate', { revision: after.revision, target: 'back' });
+        assert.equal(back.result, true);
+        assert.equal(latestState().location.sectionId, 'formula');
+    });
+
+    it('updates same-root language capabilities while retaining the user’s chosen language when supported', async () => {
+        const manager = new ManualPackManager({});
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'formula' });
+        const initial = (await request('reader/ready', { revision: -1 })).result;
+        await request('reader/toggleLanguage', { revision: initial.revision });
+        assert.equal(latestState().language, 'en');
+        replaceManifest({ generatedAt: 'bilingual-refresh' });
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'formula' });
+        assert.equal(latestState().language, 'en');
+        await request('reader/toggleLanguage', { revision: latestState().revision });
+        assert.equal(latestState().language, 'zh');
+        replaceManifest({ generatedAt: 'english-refresh', flavor: 'en', languages: ['en'], defaultLanguage: 'en' });
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'formula' });
+        const refreshed = latestState();
+        assert.equal(refreshed.language, 'en');
+        assert.equal(refreshed.search.scope, 'en');
+        assert.equal(refreshed.uiLocale, 'zh');
+        assert.equal(refreshed.canToggleLanguage, false);
+        assert.deepEqual(refreshed.content.sentencePairs, []);
+        assert.equal((await request('reader/toggleLanguage', { revision: refreshed.revision })).result, false);
+        assert.equal(htmlAssignments, 1);
+    });
+
+    it('refreshes saved target metadata on repository replacement before reopening the same position', async () => {
+        const manager = new ManualPackManager({});
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'next', anchorId: 'next' });
+        const before = latestState();
+        await notify('reader/scrollChanged', { revision: before.revision, scrollY: 180, scrollRatio: 0.6, anchorId: 'next' });
+        const savedLocation = { ...latestState().location };
+        const file = path.join(root, 'indexes', 'sections.json');
+        const sections = JSON.parse(fs.readFileSync(file, 'utf8'));
+        Object.assign(sections.sections[1], { titleEn: 'Updated next section', titleZh: '更新后的下一节', pdfPage: 42 });
+        fs.writeFileSync(file, JSON.stringify(sections));
+        replaceManifest({ generatedAt: 'saved-location-refresh' });
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, savedLocation);
+        const after = latestState();
+        assert.equal(after.location.title, '更新后的下一节');
+        assert.equal(after.location.pdfPage, 42);
+        assert.equal(after.location.anchorId, 'next');
+        assert.equal(after.restore.scrollY, 180);
+        assert.equal(after.restore.scrollRatio, 0.6);
+        assert.equal(htmlAssignments, 1);
+        await request('reader/openPdf', { revision: after.revision });
+        assert.equal(commands.at(-1)[2], 42);
+    });
+
+    it('removes obsolete history entries when a same-root repository no longer contains their section', async () => {
+        const manager = new ManualPackManager({});
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'formula' });
+        await request('reader/navigate', { revision: latestState().revision, target: 'nextSection' });
+        assert.equal(latestState().navigation.canBack, true);
+        const sectionsFile = path.join(root, 'indexes', 'sections.json');
+        const sections = JSON.parse(fs.readFileSync(sectionsFile, 'utf8'));
+        sections.sections = sections.sections.filter(section => section.sectionId === 'next');
+        fs.writeFileSync(sectionsFile, JSON.stringify(sections));
+        replaceManifest({ generatedAt: 'section-removed' });
+        ManualReaderPanel.show(root, manager.getRepository(root), manager, { manualId: 'vol', sectionId: 'next', anchorId: 'next' });
+        assert.equal(latestState().navigation.canBack, false);
+        assert.equal((await request('reader/navigate', { revision: latestState().revision, target: 'back' })).result, false);
+    });
+
     it('reveals the existing editor column on TOC navigations (not ViewColumn.Beside again)', async () => {
         show();
         assert.deepEqual(panel.reveals, [vscode.ViewColumn.Beside]);
@@ -243,7 +424,7 @@ describe('ManualReaderPanel React host', () => {
 
         assert.equal((await request('reader/openPdf', { revision: current.revision })).result, true);
         assert.deepEqual(commands[0], ['extension.openManual', path.join(root, 'pdf', 'Volume.pdf'), 2]);
-        // Second open is a path-cache hit and still uses the same fire-and-forget command.
+        // Repeated opens retain the same indexed page and fire-and-forget command.
         assert.equal((await request('reader/openPdf', { revision: current.revision })).result, true);
         assert.equal(commands.length, 2);
         assert.deepEqual(commands[1], commands[0]);
@@ -315,6 +496,34 @@ describe('ManualReaderPanel React host', () => {
         } finally {
             manualIndexer.getManualLocations = original;
         }
+    });
+
+    it('rechecks a restored or removed PDF in the same reader session', async () => {
+        const pdfPath = path.join(root, 'pdf', 'Volume.pdf');
+        const manifestFile = path.join(root, 'manifest.json');
+        const manifestBytes = fs.readFileSync(manifestFile);
+        fs.unlinkSync(pdfPath);
+        show({ language: 'en' });
+        const state = (await request('reader/ready', { revision: -1 })).result;
+        const open = () => request('reader/openPdf', { revision: state.revision });
+        assert.equal((await open()).result, false);
+        assert.equal(commands.length, 0);
+
+        fs.writeFileSync(pdfPath, 'restored PDF');
+        assert.equal((await open()).result, true);
+        assert.deepEqual(commands[0], ['extension.openManual', pdfPath, 1]);
+        fs.unlinkSync(pdfPath);
+        assert.equal((await open()).result, false);
+        assert.equal(commands.length, 1, 'a removed PDF must not launch the cached path');
+
+        fs.writeFileSync(pdfPath, 'restored again');
+        assert.equal((await request('reader/openPdf', { revision: state.revision - 1 })).result, false);
+        assert.equal(commands.length, 1, 'a stale request must not launch the PDF');
+        assert.equal((await open()).result, true);
+        assert.deepEqual(commands[1], commands[0]);
+        assert.equal(htmlAssignments, 1, 'file restoration must not recreate the reader');
+        assert.equal(latestState().revision, state.revision);
+        assert.deepEqual(fs.readFileSync(manifestFile), manifestBytes);
     });
 
     it('opens PDF via manifest pdfFile when title.pdf is absent', async () => {

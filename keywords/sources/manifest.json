@@ -61,8 +61,8 @@
     {
       "bundle": "references",
       "path": "keywords/sources/references/logical.json.gz",
-      "sha256": "149df27de79860b2c80fd37010e22e1b27c09277dc17b5818474261a4f3b9ef3",
-      "contentSha256": "19c59dce75d2970bb59071a8447c672aa61ac18b5a1c65a1013f46e0a441a4a7",
+      "sha256": "9d824e9b9dab28f261cebf080518f87f901efde46782b0eb8b5cf169c1b4f4f6",
+      "contentSha256": "e22a7fa04ea988b342554953b082d0edaf88cb295b3960de2b50fd15b7bb6c1d",
       "outputRoot": "keywords/runtime/references"
     },
     {
@@ -75,43 +75,43 @@
     {
       "bundle": "categories",
       "path": "keywords/sources/categories/logical.json.gz",
-      "sha256": "1cf72251717ab3d6e7ac229bdc858063dfda790ee4aa7c47b282aa9cc3ce4411",
-      "contentSha256": "74f98d42f4c82e552661bcd363376a47f02fbb4fb73ca1c047635e303d47cb68",
+      "sha256": "73fa3622314e7cc42989fde43effb2aa73666ffb63996ea9d9e4cdce9f229499",
+      "contentSha256": "ee51954b843d034535488ab3594c48f0f9d506f1838545343aba97160cd83d93",
       "outputRoot": "keywords/runtime/categories"
     },
     {
       "bundle": "native-readers",
       "path": "keywords/sources/native-readers/logical.json.gz",
-      "sha256": "611323243ec4a68135a6f5011171a48201b9d2e32993d325d08e739cd445ef49",
-      "contentSha256": "931beb5f49c512daf427500ea8050a44ee4296523e423bdc8cce2535475d9e06",
+      "sha256": "64dd20cd02d4d5cd3875e9433e2d474923bddc50ff551a2e268461b796c7b736",
+      "contentSha256": "b406fa7beb0792a7784e1ffc84a637d3f6b64e445c2790c325b668a28d4a9d8e",
       "outputRoot": "keywords/runtime/native-readers"
     },
     {
       "bundle": "native-help",
       "path": "keywords/sources/native-help/logical.json.gz",
-      "sha256": "cfa77cf701e1aec5201cb1a7bfbff936fbad86d6895117749e61b64e01e65bc3",
-      "contentSha256": "f6c15e5b9dccbbb47721bafbe5865bbe7c28c16e70d26ea3629f7f4c44f033e1",
+      "sha256": "e4bd47bf21da14f086ed5126cff01f53546db7de2e17394073a04b8ca4bc618f",
+      "contentSha256": "40fdb21e30139aabf6cffc8cdbee68e07ec5031c9b9e1aa81c504ef3052015a9",
       "outputRoot": "keywords/runtime/native-help"
     },
     {
       "bundle": "input-form",
       "path": "keywords/sources/input-form/logical.json.gz",
-      "sha256": "2e4e025d0104f9ad677a4552ae52626b36714ba6bacd874f4f3516b4da2c0588",
-      "contentSha256": "e998913f9657f43fdbfecf6b9d1aea9cb775f2505d02d317c2d3b089481c88f4",
+      "sha256": "84cdbf364d30aaedebe0fa6cd14023979a117629370c412aade544d7248b8e94",
+      "contentSha256": "37c9d0f01235f1cc1bf4db09553cc5bb5a330a8a54398b1dd7a7ec8c1122ae29",
       "outputRoot": "keywords/runtime/input-form"
     },
     {
       "bundle": "manual-semantics",
       "path": "keywords/sources/manual-semantics/logical.json.gz",
-      "sha256": "5f4c40172e0be8e67c96dd78c9019ccad1cec562bbf880d1c52692ccfd8ddde3",
-      "contentSha256": "ecee854ccf0fdada98ad8381f2e8367b18adf5ebfe3302c7ec3ab38efb0562e2",
+      "sha256": "7e3c1e529be828912ebef4b81e9a75ba09354085a07554b43cc5f4eec7c44479",
+      "contentSha256": "3b61beac79141e712f8b3c4385d3ddc713c9089fde83bf8e880f11d7e7658fed",
       "outputRoot": "keywords/runtime/manual-semantics"
     },
     {
       "bundle": "semantic-v2",
       "path": "keywords/sources/semantic-v2/logical.json.gz",
-      "sha256": "34c358848f8f48ae878e74d70ae4c66b788c09e806fb2c38cd40ba7cef6c3d3c",
-      "contentSha256": "bcde1e4021dd1ba03b45e2fbd59c741b0de0b128794525e35477671def8611d9",
+      "sha256": "9a66d0ca465da12bb5c56167432efae44acea941e69781e94b77878081bae4ba",
+      "contentSha256": "8932372294c0b2031d5aa8f35920d320e24526f8c4e2383ac40bfba9c2b3bc12",
       "outputRoot": "keywords/runtime/semantic-v2"
     },
     {
@@ -143,6 +143,420 @@
       "sha256": "c6d8cbaa709720062c8634b34a4c8c1c180e62ba5cb98a4f610f4ed3ce6c6516",
       "contentSha256": "6632785741a25f4132bf93269095d5f0e38679a6509bc080cb20ef22310a9e9b",
       "policy": "unchanged-approved-engineering-records-only; changed-authority-requires-independent-validation"
+    },
+    {
+      "path": "keywords/sources/contact-thermal/import-v1.json",
+      "sha256": "25fc9054acfe910c8aca1a751a1ece3d8756655ce9d257ed6605fe464c26a7b1",
+      "contentSha256": "25fc9054acfe910c8aca1a751a1ece3d8756655ce9d257ed6605fe464c26a7b1",
+      "policy": "supplemental-manual-composition; preserves-original-native-checkpoints"
+    },
+    {
+      "path": "keywords/sources/contact-thermal/import-v2.json",
+      "sha256": "2163511e862967fb4014b08aa29bbaa2f6247e6c7b8df89b0efb09cf26cf78e3",
+      "contentSha256": "2163511e862967fb4014b08aa29bbaa2f6247e6c7b8df89b0efb09cf26cf78e3",
+      "policy": "supplemental-manual-composition-and-contact-applicability; preserves-original-native-checkpoints"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v2.json.gz",
+      "sha256": "57ad5483ff0263bf9ae2d1584461acd2752fd1e74a5c4e4b481e9117aaa8a751",
+      "contentSha256": "8e3844d99c77fff486a41cdd0984fac7684388da42f98d2e8569d637bb2dc55e",
+      "policy": "native-identity-rebinding-of-existing-definition-selectors; unresolved-LSPP-behavior-remains-blocked"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v3.json.gz",
+      "sha256": "db941d8592ffdc4548a6467f2b7d6006083169285f1254f4522783d6e3d9149e",
+      "contentSha256": "540b6f26c62143186d36c0869fd7cc7275cc767cf5f601771e4148defbf44b58",
+      "policy": "native-relative-and-signed-reference-resolver; exact-checkpoint-definition-and-scanner-selectors; source-bound-native-file-layout-fallback; unresolved-behavior-remains-blocked"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v4.json.gz",
+      "sha256": "37eee0f0a18e3b484a2890fa5a044dfa6af261bde6261f0c6fe4ff233c35e45d",
+      "contentSha256": "b6cf31779de3c398deac9c847da07adb4fdd5f9578800659c8f035f7fe6edc39",
+      "policy": "decoupled-native-reference-namespace-and-definition-selector; explicit-incomplete-definition-coverage; preserves-v3-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v5.json.gz",
+      "sha256": "b2ff8e7640616aba7b849a11f6acacc72e249e418ee9b6dc93226f9f78a4b3b3",
+      "contentSha256": "3b14a5be755b6776712e82bc11c27de7b41f3a842f7bd0f6d620cda2f2bc6eda",
+      "policy": "native-identity-bound-TITLE-definition-selector-reuse; preserves-v4-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v6.json.gz",
+      "sha256": "9d1d0883065d156b78504aa95e2d52fbda626a39729d7bdf4228478223ecbe90",
+      "contentSha256": "b0ba19ad81394f7d983e886ed0a282cbe744b937251858f7fec8474a90ec435f",
+      "policy": "pinned-native-primary-then-alternate-reference-selection; preserves-v5-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v7.json.gz",
+      "sha256": "9b10c545eb17ad396aa3075c3e0fada6ca133e24a53973f07a0a15521db51600",
+      "contentSha256": "5aac19f00ac21b72633e7a3c136e29d54d7d6870d7721bd0a6af2784c24be426",
+      "policy": "source-bound-native-file-reader-spelling-aliases; preserves-v6-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v8.json.gz",
+      "sha256": "be5f5eb4999558dfca8ea786086468679c278e38636a645439900983eea306cf",
+      "contentSha256": "751be06a33953973a961b6f4c4fc87cffa8cfdc0e35de405848083bc17a507fd",
+      "policy": "pinned-native-CPM-gas-primary-and-PART-alternate-selection; preserves-v7-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v9.json.gz",
+      "sha256": "c4e8862132a8f92973ed33a663f9422f6d6c0609c40afcee02bf7f0f1ead6081",
+      "contentSha256": "0cad408910f1b6997bf15e4d40798e44fcc2488edafcc36d55eeef3f54155d45",
+      "policy": "native-option-tail-parser-and-signed-reference-gate; numeric-schema-binding-retains-original-native-types; preserves-v8-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v10.json.gz",
+      "sha256": "69557ffcc9aa746453572e5238c9cf46418e98ea58c3be26d94861a3d40e6d30",
+      "contentSha256": "08bcd910577594e1068f74a5aaea4004cad68bb60267c6aed025c5ce41109224",
+      "policy": "native-SET-GENERAL-raw-option-record-selection; preserves-v9-definition-selectors-and-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v11.json.gz",
+      "sha256": "95de5653b024bfaf575e9c8fac9209c787c3e9d5300b9f8a223489ac5cf49ce8",
+      "contentSha256": "ee89fefb27591ab802896869157d4bc2fd61d9e23686f65d347458d91a1e1507",
+      "policy": "native-ordered-target-search-and-exact-definition-family; native-GENERAL-and-IGA-file-cards; preserves-v10-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v12.json.gz",
+      "sha256": "5fba3048ee16c6955f7a082f443557061a3c5cc51585bad2314460d3610c3939",
+      "contentSha256": "d16bd5387efb2f4697c9a369615b3224a32afd11e4a8310ac5456166abc36e90",
+      "policy": "exact-native-PART-material-EOS-coordinate-thermal-definition-aliases; preserves-v11-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v13.json.gz",
+      "sha256": "707796c099270dc1e32fa6e7702fef16bcff12b0838cbfee103af198bc30e2c8",
+      "contentSha256": "102dee2c6b60a338d8c796ad91af3268257731a1e3c86b636d101844524a10b5",
+      "policy": "native-file-descriptor-and-format-bindings; cross-card-SSI-and-interpolation-consumers; EFV-tail-positive-segment; preserves-v12-checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_constrained_input_format.v1.json.gz",
+      "sha256": "5a759a1d0535d5618f1444c2883cfe013fe6fd6eb31ceabea7db04114cdafca1",
+      "contentSha256": "e28c863990535b5589049ac42a58ec6cff226d228c627af2b2df2cf32a0b6dde",
+      "policy": "native-directory-byte-identities-and-125-subkind-I10-allowlist; fixed executable; leaf231checks; preserved historical base format checkpoint"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v14.json.gz",
+      "sha256": "b857d248993ed18819379199c0d0fd566707a3d07c5a7e46639718900e5af03b",
+      "contentSha256": "56e965d8f20144f725c24ee164e8b01043ec524a8e4acdd98845918d48a5e33e",
+      "policy": "native-SOIL-HLC-controlled-tail-and-IGA-fixed-pairs; selected-source-record-card-binding; preserves-v13-checkpoint-and-all-definition-coordinates"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_help_reference_supplement.v1.json.gz",
+      "sha256": "7427600027996a1d6d9e716d330797a62508415a50487047986e10a63e937de0",
+      "contentSha256": "7029251b9b83bc4a9ef75de580029ae0954ab5f287017e22c4e7a35ca3bdeaa0",
+      "policy": "exact-native-help-and-actual-file-card-binding; NURBS-contact-SSID-MSIDs; 20 separate source branches; 14 target mappings and 6 unresolved patch namespace branches; numeric read/store authority; LONG save remains unverified"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v16.json.gz",
+      "sha256": "36055acee11e53e0f2dea640782672089438813c62d336e26c72acf89c71085a",
+      "contentSha256": "84ad076de1b7db25c21c576dfc521ef1f16b32224166a7df553f4df3dc4c6eab",
+      "policy": "native-descriptor-extent-projection-and-MAT-user-material-conditional-layout; NURBS-active-file-card-help-supplement; separate encoded/supplemental source conservation; preserves-v14-checkpoint-and-all-definition-coordinates; v15-candidate-retained-in-private-evidence"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v18.json.gz",
+      "sha256": "2af381313087837c471b97efffca428b520ebc8b78ead68f6fad2b2524e2fba9",
+      "contentSha256": "92bc8d3c269c0b3fdb072f3c88a64cedc351c6257f94e2002ad724e02e8cde5f",
+      "policy": "preserves-v16-checkpoint-and-all-2085-definition-records; six-exact-native-NURBS-NPID-definition-stores; five-dispatch-verified-repeated-first-card-file-layouts; excludes-shared-GUI-template-fields-from-file-query"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_include_offsets.v1.json.gz",
+      "sha256": "d5550c71a597373ed8fa0b00de843b185f1e732d647e2b06abf6ddd1025fdf66",
+      "contentSha256": "89b9bdd1693cf7d258fae39b7fc466c30d93f49d99151e1b4906d09acd8ba3bf",
+      "policy": "pinned-native-INCLUDE_TRANSFORM-namespace-mapper-setter-exporter; 629 unique namespaces/630 directory records and 6930 checks; exact target selectors and definition identities; kind collisions and missing generic SET selector remain explicit; preserves historical native inputs"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_include_offsets.v2.json.gz",
+      "sha256": "d4d443589cbe628f03fefd1202c53866d5787643051ff3f6b7821a4ec53df155",
+      "contentSha256": "53d3add758ef5027019afc7917e6120ed0f39dc72f7d34e08bed83d76686bdc7",
+      "policy": "pinned-native-INCLUDE_TRANSFORM-namespace-mapper-setter-exporter; 629 unique namespaces/630 directory records and 6930 checks; exact target selectors and definition identities; kind collisions and missing generic SET selector remain explicit; preserves historical native inputs"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v19.json.gz",
+      "sha256": "bebed6d257c00b88b4eaa1ce81dc170a9e0dba6556f6242cc476b17264109cc9",
+      "contentSha256": "cd7551042edb4e5fcd107e39e344c45268b39669823e59a5b8f27918817ac515",
+      "policy": "preserves-v18-checkpoint-and-all-2091-definition-records; adds-pinned-native-include-offsets-v2-and-two-header-only-reference-layouts; ALE-OPTION-consumer-remains-unverified"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_include_offsets.v3.json.gz",
+      "sha256": "0c678e6c8decf22cea16051e6b7b251519b1f0b0953e9f0563ae984ed555aae9",
+      "contentSha256": "164b285a29131f48fc749897b9d8b344402bf652d3d63eaa532d0fd64152d536",
+      "policy": "Preserves v1/v2; pinned native INCLUDE_TRANSFORM 629 namespaces and exact selectors; adds only six exact generic SET original-input headers/store namespaces, four formats and IDSOFF versus IDROFF oracle, 73 checks; no abstract SET1188 inference"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v21.json.gz",
+      "sha256": "b030182b09e6dd5cc50f353cbbdd5dbba5d1b083a4665a630e8fe48a79df640d",
+      "contentSha256": "2462b62f259d957d31d9d582967b91a0f024cdfa00da39e58a34a2921526f49d",
+      "policy": "preserves-v19-checkpoint-and-all-2091-definition-records; pinned-native-include-offsets-v3-cover-all-definitions; ALE-trim-seven-option-specific-pools; unknown-pre-read-OPTION-remains-scoped-incomplete"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_help_reference_supplement.v2.json.gz",
+      "sha256": "981a0dab05ef6940c8a0fcae78f51aa264b77c483d24d141902e0c76e3c4e75a",
+      "contentSha256": "43f90c5ac153346acc9a7c13cc9f8630d4bdb4c5c34357f29663cc3b428f05fb",
+      "policy": "preserves-v1; NURBS contact type0 exact original NPID definition family and namespace146 read/store proof; six field branches resolve to link109; converted GUI chooser not certified"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v22.json.gz",
+      "sha256": "079fab88a786976e040f6406d660f45a315c77749a5cf1310fee61f18122272a",
+      "contentSha256": "064286d336a1d306cf0d9c9f9aa37d447edf49a969951dddc991f32c1cf2bd10",
+      "policy": "preserves-v21-and-all-2091-definition-records; NURBS-contact-type0-exact-original-NPID-family-and-store-namespace146; all20-native-help-supplement-branches-mapped; converted-GUI-chooser-not-certified"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_file_controller_bindings.v1.json.gz",
+      "sha256": "6bf7811702cbac9d3b4baad4e176bf5d29ccace485ebef1561687add06b62d9c",
+      "contentSha256": "08b53fabd538900b259cd67f31dcaaa28a6be30d7c64bc52c4c8460a992ddc62",
+      "policy": "exact original file controllers for INITIAL_GAS_MIXTURE DEFINE_ALEBAG_BAG ALE_UP_SWITCH; preserves encoded source rows; raw VTYPE link18 defect retained while exact help selects part-set link28; EQ0/NE0 predicates preserve parameter uncertainty"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v23.json.gz",
+      "sha256": "32a373f1ebf52b38706854b6729eaa4b5662c98294e7b6c20a1ccb3f33d94839",
+      "contentSha256": "83de33fbccda1d64d91d51d4771ef6233941464b677e1df7781ab3f9bed7d494",
+      "policy": "preserves-v22-and-all-2091-definition-records; exact-native-file-controller-predicates-and-conditional-file-records; six-existing-encoded-source-rows-consumed-once; source-option-defect-retained; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_file_controller_bindings.v2.json.gz",
+      "sha256": "eb70176b93ce797a05e4f765bb69548801fc049702f9c507b04f9abe5420e06e",
+      "contentSha256": "348fbf43e46e4ca7a8febdc6c1b99984e0a9490241122c2c0dd031f83f9d4f63",
+      "policy": "preserves-v1-three-controller-records; exact-ALE_REFERENCE_SYSTEM_GROUP-PRTYPE4-PRID-SET_NODE-variant; adds-one-native-help-link-zero-source-branch; no-GUI-chooser-certification"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v24.json.gz",
+      "sha256": "9e8fe82bb50f1abc2e277dc6a6c4d4166d265ebf43f31b97148026a80b372f7a",
+      "contentSha256": "ebb39e114e98dd44729319eceaff31e350eade4cbeceb7dd2da4265b461b4acd",
+      "policy": "preserves-v23-and-all-2091-definition-records; exact-ALE-GROUP-PRTYPE4-PRID-SET_NODE-native-help-supplement; source-conservation-28977-encoded-plus20-NURBS-plus1-ALE; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v25.json.gz",
+      "sha256": "e658f5108997db1a58f1e67c030a11ca00714cbec1f79347a9078e7c17ad7ddc",
+      "contentSha256": "cc43a7ea27a90ca7edf23ac9bd6dd3030227eaf91275a59783aa7c9056a501bc",
+      "policy": "preserves-v24-and-all-2091-definition-records; ALE_MOTION-single-first-record-only-native-whole-row-case-sensitive-strstr-selector; 28-four-format-observed-cases; original-failed-repeat-assumption-evidence-retained; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_file_controller_bindings.v4.json.gz",
+      "sha256": "8fcd5bf2f43d9ee795fbd5bef4fd298515eacc32cfb1e007484f689761b10fcf",
+      "contentSha256": "82bb07bdfb2f205b74a762954d2f72021e26c4b23ab6403f25e88dc753fde995",
+      "policy": "preserves-v2-four-controller-records; SALE-six-directions-seven-BCTYPE-choices-add-42-source-branches; native-ASCII-longest-prefix-first-default-backed-by-124-original-instruction-checks-and-64-paired-file-cases; negative-direction-unknown; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v26.json.gz",
+      "sha256": "5e290852548144dfba65802426bdde9780c6171dbd07fcded7127c419eb9d885",
+      "contentSha256": "a1e6b3d4e354462feb14bde670153722c0a0d6beadefd80a2ce014b0660d1310",
+      "policy": "preserves-v25-definitions-blocked-unrelated-references; SALE-six-original-file-BCTYPE-fields-add-42-counted-supplemental-branches; native-case-and-prefix-choice-semantics; positive-curve-or-primary-material-zero-nonreference-negative-unknown; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v1.json.gz",
+      "sha256": "331b22bf24ff820e45db2474f28e94911ea99e8fd3ff0b9de008c2c6458a00bb",
+      "contentSha256": "6c49b1a040f4a702b559586a182a4430464e7de0289ec9fcd600b4b1e3c00f37",
+      "policy": "exact-original-file-AIRBAG_FLUID_AND_GAS_ID-ID-map1482cb928-array1482ba0f0-field1482baef0-namespace913-primary-link85-target; 8-actual-read-and-store-specimens; no-other-AIRBAG-family-expansion"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v27.json.gz",
+      "sha256": "36f2002a0e39e972c455ff8792cf4d64b050521801be95b2a36228d92bad6e8e",
+      "contentSha256": "9cca0aabd2454b74c1728ef3b856fc7a5f83a832150b6370388c882c1ef196cd",
+      "policy": "preserves-v26-definitions-and-source-conservation; restores-37-actual-file-source-branches-and-excludes-six-LOAD_NODE_SET-unconsumed-GUI-pool-branches; adds-exact-original-input-AIRBAG_FLUID_AND_GAS_ID-native-namespace-913-definition; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v2.json.gz",
+      "sha256": "7a8d0de0624942560044de0c4c05e1a5305814625a6203fbec81181fcce12092",
+      "contentSha256": "14ad1056d9fea57189a31d70a3d2ab60da74a7fbfdf66a4664ad393cb1be136d",
+      "policy": "preserves-v1-AIRBAG-definition; adds-two-original-CPM-CHAMBER-and-eight-original-TSHELL-definition-headers-with-exact-native-storage-namespaces-and-map-identities; excludes-unproved-COLLECT-and-VENT-selectors"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v28.json.gz",
+      "sha256": "035b7520a2773d6c17e5a86c00d17413ce7c1d969a1e217ad398d8af5dd6069d",
+      "contentSha256": "042dbe8553763cc721b20d19a19903ed9d3109651a5aa994af626e7dc2d7721f",
+      "policy": "preserves-all-2092-v27-definitions-and-source-conservation; restores-nine-actual-hysteretic-material-and-ICFD-source-branches-with-conditional-card-selection; adds-twelve-exact-original-CPM-and-TSHELL-definitions-including-two-existing-verified-TITLE-selectors; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v29.json.gz",
+      "sha256": "66587818b33a6337b8830c6db0959f396d1484fbcf2bdf15fab69a9b3704b032",
+      "contentSha256": "0700e79f4c04ca80ba59ea7b59d32fe439126b7b87251b236964007e160e1a7b",
+      "policy": "preserves-all-2104-v28-definitions-and-source-conservation; restores-twelve-actual-spotweld-and-DDAM-source-branches-with-native-conditional-card-selection; removes-thirty-one-raw-source-bindings-proved-outside-the-file-consumer-while-preserving-all-fifteen-active-reference-rules; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v1.json.gz",
+      "sha256": "339c8fa14e5f862312bc8b12cafa5f3cb4bdd30eac5cab75c07b06b0cbbb297d",
+      "contentSha256": "a412bac1bb5468ea6e13c6244ac3d364d26dda24cfb56a198eff21a85e79e949",
+      "policy": "exact-native-field-and-help-bound-signed-absolute-target-relations; preserves-encoded-source-counts-and-original-links; no-pattern-only-inference"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v3.json.gz",
+      "sha256": "e8165c24b291783cf1f5cb554ae1e2528dbd813aba258a79cfbe16ccdef41b09",
+      "contentSha256": "6191b72acc8745a20cfb9dbb738a7a835e6646378399408efc4ce42cfdc2bc11",
+      "policy": "preserves-v2-eleven-definitions; twelve-exact-SET_MODE-original-SID-selectors-with-paired-native-read-save-proof; ordinary-namespace1207-and-collect-namespace1208-recorded-separately; no-generic-set-namespace-inference"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v30.json.gz",
+      "sha256": "9c7026e034d5f35f994af72bd9a894568528118cc57c7e4b516ca460f96e7b50",
+      "contentSha256": "f4ae31a1692060e53cf027405ed7f3af8ad83ff65e2dff4d3023bfdc2e216cb7",
+      "policy": "preserves-all-2104-v29-definitions-and-source-conservation; adds-twelve-exact-native-SET_MODE-definitions-and-restores-their-targets; corrects-sixteen-native-field-value-bindings-with-explicit-signed-absolute-target-semantics; restores-three-actual-enhanced-blast-source-branches; no-global-completeness-claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_auxiliary_reference_fields.v1.json.gz",
+      "sha256": "c3425c29d911d0df844fc3ebcca25665993dd9c8431c93a85f4365f80b9693e5",
+      "contentSha256": "74cbdb19c3d0cdd8c931d48c8231868c32cb6ed225437998f3277c2671038787",
+      "policy": "exact-original-input CONTACT auxiliary field table; source-bound registration and conditional applicability; retains native LONG save discrepancy; no full-consumer or global-completeness claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_original_file_reference_supplement.v1.json.gz",
+      "sha256": "175e152cd096048a0b38639eb046b3ced6f8e70eeb357c8bd563d9dbb01e429c",
+      "contentSha256": "77b56cf5b80adff6df54b25bdcc0dfbfd0275eca31c795b1bf739575ac7a0d85",
+      "policy": "exact original-input Transform POS6N and TRANSL2ND node semantics; preserves raw float fields, full native consumer and four-format source windows; retains native POS6N comma value-buffer discrepancy; no save or global completeness claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v31.json.gz",
+      "sha256": "f0a02dd11a744a34efff35d999a37a454ed411e55566c7d74eedffa1ed95a652",
+      "contentSha256": "84c468c1c9edc482e2494540fc02d5c8002d0a485a51afff9a17f2467f4c5a72",
+      "policy": "preserves all 2116 v30 definitions and all previous source identities; restores ten original Transform/CROSS_SECTION/inelastic/volume source branches; adds seven exact CONTACT auxiliary and sixteen original-input Transform branches; no global completeness claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v4.json.gz",
+      "sha256": "dc54b31472f827e44cd1efa2f38d8861871f2cbf144d8626685b06f98abc9203",
+      "contentSha256": "32e7a9c20def4231979aeb36c181b039a093fa9257a4ae1c0c4a3cb77a8040dd",
+      "policy": "preserves all 23 prior original-input definitions; exact EM_ISOPOTENTIAL ISOID namespace1285 and EM_RANDLES_MESHLESS RDLID namespace1274 from eight native original reads/stores and paired unobserved save bytes; no inferred GUI link for Randles"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v2.json.gz",
+      "sha256": "750776ce710fe782db9acc40ef37c1b9c867069ec4c0884bd56d94fb326f4f70",
+      "contentSha256": "3b4105fe6e4bf0fab2e4c4dcacbeab9b9b1ac2bff7b9a58819632bc8d68c95ec",
+      "policy": "preserves all 16 prior field bindings; exact EM connection CONTYPE selects signed curve/function or original Randles namespace; exact reserved CPG Unused slots remain non-reference"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_auxiliary_reference_fields.v2.json.gz",
+      "sha256": "a0a8a868c945d12421fa5b718857889508408a5a703619f7a3baf608aaa85494",
+      "contentSha256": "1df877ae0eee49b8c74ef28ac8ba85fc9c749bcc0f1e28687ba6ca2dc4550fb2",
+      "policy": "preserves seven exact CONTACT optional field identities and geometry; common native object target resolver determines direct and packed signed references independently of solver applicability"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v3.json.gz",
+      "sha256": "a57aaf1e27eea28529db02dd7b3cdddbd213461d0a7b8552f94681e449d82a47",
+      "contentSha256": "db221e814befdb1c9e541881007e9a404dbdd804a26a40ae8781ba19398da753",
+      "policy": "preserves all 18 prior field value records; exact CPG SSIDi positive shell element and negative absolute shell set from native self-field help and target selectors; no guessed signed relations for other fields"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v32.json.gz",
+      "sha256": "2967a9e20b52fe45567f89e1584470bb3bcac5f895730b0ed5f886184a42b098",
+      "contentSha256": "eb67a939e26dad7bbefee477f0335c78a21bc961de1c9a3516813f2583e8bd5f",
+      "policy": "preserves all 2116 previous definitions and all source identities; exact original EM definitions, CONTYPE target selection, pending-read LCID2 and IDROFF; exact CPG eight/nine-card file boundaries, reserved slots and signed shell/set targets; CONTACT native object selection independent of solver applicability; no global completeness claim"
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v4.json.gz",
+      "sha256": "60d90a1204078221ed50b508ac6f5c377ab9240ad810f58826a8b3360bb246c8",
+      "contentSha256": "27606c5f4fe47da864dea4c195e1914fc004b3bba640264981dbb7b8832db6a1",
+      "policy": "Preserves 19 prior bindings; exact HLENV real/direct120 is a scalar distance under two pinned native reference verification gates, retaining original target-table evidence."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_auxiliary_reference_fields.v3.json.gz",
+      "sha256": "30de9c4c1f6b6707d22063807623a5bca5836c7ec2104f8924cb304c1a8693b8",
+      "contentSha256": "b7e7a90f79aee132f3ce7baba7115d14caacd89547dd3d782aca328a47e5821a",
+      "policy": "Preserves seven prior auxiliary references; exact original THERMAL_FRICTION fourth/fifth descriptors and seven fifth-card curve references from 104 original native read specimens."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v33.json.gz",
+      "sha256": "d8037f50d1a334e348ff5ddae5c0f951ade721d4dd5329604ace47fb8fbbdf78",
+      "contentSha256": "cd1ad140b8cd4cf8e1ce3479206be7c15899b3dc8a8132d32122dbac5b194968",
+      "policy": "Preserves all 2118 definitions and blocked source identities; exact original CONTACT owner layouts and thermal field table; HLENV exact scalar role. MPP_ID projections and outstanding target-definition/query gaps remain unverified; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v5.json.gz",
+      "sha256": "b69d67065fe9e8c713b53d1c12622f5f0e2408ad14973f844aa1adede86154c7",
+      "contentSha256": "a09e6fc86f7fe9292c8a126f8d1bf5672ba576c5e22159ca2f4621c717257801",
+      "policy": "Preserves 25 prior exact original definitions; 48 native header ID reads/stores in four formats bind physical field selectors and namespaces. Header-only checkpoint preserved. Target membership and query behavior require separate verification; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v6.json.gz",
+      "sha256": "4a5007d084ae015ad8066c4c26e26a8862556477668b18d99bfd1f333ce7cd38",
+      "contentSha256": "ec72389421a0aaeade95995abc9d023c7f4dd36157e65acbdd10c4b5590b1cab",
+      "policy": "Preserves 25 prior exact original definitions; 48 native header ID reads/stores in four formats bind physical field selectors and namespaces. ELEMENT_SEATBELT repeats every data record under eight original reads/stores. Target membership and query behavior require separate verification; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v34.json.gz",
+      "sha256": "8323887f0bc31c73876e629b04f45195560b87a9346762325a80f8f9c4866f3e",
+      "contentSha256": "eedd8ffd2ae0ea6ed873cf046fb1f94da382e339326d4cf4c487c64335c8ec9e",
+      "policy": "Preserves 2118 existing definitions and all reference/blocked source identities; 48 exact original definition owners plus five compatible TITLE aliases restore source-bound target membership. Original alias and external-interface query gaps remain tracked; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v7.json.gz",
+      "sha256": "9be3b5c1e99cee200092978981f43521f0b1a93c6eb51b76cd4024a395d851f4",
+      "contentSha256": "42483c22b53523ac8cc414923fd15de9a70b84203076684a0bc5fb9333fa656f",
+      "policy": "Preserves 73 prior original definitions; six exact file alias owners restore source-bound native target families using 44 observed ID reads/stores in four formats, including five repeated record templates. SPH GUI donor/duplicate metadata does not assert an observed map pointer. No completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_auxiliary_reference_fields.v4.json.gz",
+      "sha256": "7a583ece76e0a4c069e8ec72e8795db12882b57d7ee4c58a03c6ecc24dfa14d5",
+      "contentSha256": "0ee6a70c6a6757764ba2e0d5ea87cbde74378b99978839c5e0fae386ce056d5a",
+      "policy": "Preserves 14 prior CONTACT optional references and two profiles; adds exact source-bound optional tables for eight observed ID/MPP aliases, three FORCE owners and positive MPP LCBCKT curve references. Controlled count readers and field-sign uncertainty remain explicit; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v35.json.gz",
+      "sha256": "168b79e0603825412f9f5875105c3cd7ebb08f3c927986f99955723897c9b46e",
+      "contentSha256": "90edb61396e7e5f3df8d7ca569d79792aa1fbcb475edabf32b16a7e14f50aa0f",
+      "policy": "Preserves 2171 existing definition selectors and blocked source identities; adds six exact original definition aliases and 85 source-bound CONTACT auxiliary fields. Exact shared optional descriptors replace FORCE duplicate GUI projections; ID/MPP aliases retain count-controlled physical records. Interface definitions and query gaps remain tracked; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v8.json.gz",
+      "sha256": "cad878746aeb61533dfb05b878e5944b2aa1a8659b81b7bb6e1420fc046c0f31",
+      "contentSha256": "bad162d7b23425bbf5a4e9972c9ab2e9fa8a3cd0cb2150b4cfb9bd7c6a414954",
+      "policy": "Preserves all 79 prior exact original selectors; adds six INTERFACE_COMPONENT ID/TITLE aliases with repeated two-record header/payload templates, independently observed in 60 four-format cases. Plain base automatic keys and payload set IDs are excluded from explicit entity definitions; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v5.json.gz",
+      "sha256": "532e8dcc7e3585169abd5baa2307c53ff6139722d280f62780381a126e2575bb",
+      "contentSha256": "451399238db447fac20c0f18ba1326eae46fd772188394f289e8755dba6605fd",
+      "policy": "Preserves 20 prior exact value/controller bindings; adds the native CONTACT FD integer parser gate using FS float32 tolerance and signed TABLE/FRICTION target selection. Other finite FS values are friction coefficients, unresolved parameters remain unknown; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v36.json.gz",
+      "sha256": "d9b875e0f78de9d282ab7dfec52963547788710fe0678c8e24e6147095960598",
+      "contentSha256": "58dcca1459863f97eec7030a92ad7dea2ec035ae88458fc92da4959cee7b6948",
+      "policy": "Preserves all 2177 existing definition selectors and 29155 source-branch partition identities; adds six original INTERFACE ID/TITLE template definitions, corrects nine payload layouts and the shared FD/FS real-value gate in 290 positions. Exact observed suffix grammar excludes two unread EFV_OUTPUT_TITLE GUI fields; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_original_input_definition_supplement.v9.json.gz",
+      "sha256": "0b5794a41147c96ae228bcc78875edb74a4194cc9d4b24affaadaedbb6bb8489",
+      "contentSha256": "b3a9e7a14a7a4665879dadb30cb74d5ffa082b0f61326cbfe45d855b91af3bdb",
+      "policy": "Preserves all 85 previous definition records byte-for-byte in content. Adds DEFINE_FRICTION and its TITLE header ID selectors using existing original four-format reads and direct user-operated V4.14 FD chooser/form evidence. Original temporary namespace1489 storage is recorded separately; final namespace1023 store was not captured. SCALING/namespace1024 is excluded from the FD target; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v37.json.gz",
+      "sha256": "06e9132992632535f82f11c85eba9a0153519ac64277d0ac27cda8b63bf82659",
+      "contentSha256": "0e6b236b5af9a8c7d15001761869409b81f026c8eb107d8b0213e6d49bd6c55f",
+      "policy": "Preserves all 29155 source-branch partition identities, reference conditions and coordinates, and 2181 other definitions. Replaces two wrongly admitted SCALING friction definitions with true DEFINE_FRICTION/TITLE ID selectors and matching iddoff keyword mappings. Target174 membership is restricted to namespace1023; manual V4.14 chooser/form confirms the family, existing original four-format reads confirm the header. Temporary namespace1489 storage is distinguished from the uncaptured final store; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v6.json.gz",
+      "sha256": "b00fd0741e6565728bc207218cf12ddb4b4afbceae719509f1ad739aee05a7e1",
+      "contentSha256": "879e63fdec4a73589c57137a5b35aa5e7c124e31553e5110895d95695b5491fd",
+      "policy": "Preserves all 21 v5 records. Adds only exact EM_CONTROL_SOLUTION/ANG: negative absolute curve ID and nonnegative angle scalar. Direct user adjudication prefers current V4.14 field help over the retained conflicting Link NODE chooser; nativeConsumerVerified is false."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v38.json.gz",
+      "sha256": "bddb817153715332e543b0cc565a0f27a525578f641aab9086cf553a259200f3",
+      "contentSha256": "0b83eead1e4f29a497661ce9b71db094b8e4a16211a2e349b9e3f01a95bd393b",
+      "policy": "Preserves all v37 definitions, source partitions, blocked identities and other relations, including FRICTION. Corrects only EM_CONTROL_SOLUTION/ANG according to user-confirmed V4.14 field help and explicit help-over-chooser adjudication. Existing 354 value-binding records update only checkpoint provenance; no completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_native_field_value_bindings.v7.json.gz",
+      "sha256": "e2147b05a185b375733a2f19740bc1cc4e98e2e057b31a17fda9bd67e6030917",
+      "contentSha256": "26532600ac5a2a8aa1aa30d659fce784a6cb74f5bf797e5a9c37f92954d318fd",
+      "policy": "Preserves all 22 v6 records including ANG. Adds only exact EM_CONTROL_SOLUTION/DIST as non-reference by explicit user decision. No Remark 3 inference, no changes to other DIST fields, and no native-consumer verification claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz",
+      "sha256": "ebf8ef4b5ddbe0d950e34fbe67890f8a4924905071f0f2dd09f9e2e6e7741337",
+      "contentSha256": "2a34ff305ddff882dd8a663c479b6d630c97f8387ab48937fa9508033d0cdfa6",
+      "policy": "Preserves v38 definitions, source partitions, blocked identities and all other relations including ANG and FRICTION. Changes only EM_CONTROL_SOLUTION/DIST to non-reference by explicit user adjudication; previous 355 bindings update only checkpoint provenance. No completeness claim."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v1.json.gz",
+      "sha256": "30204a035569c800c0c8c1590896970844113a112e58eb6763742697cd7ecee2",
+      "contentSha256": "c0a22a8cf50599bbb6e9283b9d4ff726791f0576cb663c084abcdc743cc43f14",
+      "policy": "Explicit user exclusions: freeze all 4165 v39 unpublished native source branches and 7 exact unconfirmed real fields. Historical handoff and source conservation retained. Confirmed ANG, FRICTION and all other relations preserved. Technical scan, parameter, file and cancellation uncertainty remains unchanged."
+    },
+    {
+      "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz",
+      "sha256": "2a541d0f561d838c26c4d521420419ab3a7c5754424c465666bfd9a377e0b12f",
+      "contentSha256": "a78745d072af101cec09480f3c8e9637833340ef9e15f959e6ecd19f06039e80",
+      "policy": "Preserves all v1 static exclusions. Adds exact DEFINE_FRICTION/TITLE PID_I/PTYPEI and PID_J/PTYPEJ help-confirmed PART/PSET branches, with blank retaining the existing PART role. Other strings and parameters remain indeterminate; no native-consumer verification claim."
     }
   ],
   "engineeringAuthorityInput": "keywords/sources/engineering/approved.json.gz"

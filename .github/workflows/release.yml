@@ -1,0 +1,167 @@
+name: Release extension
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to Visual Studio Marketplace and Open VSX
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    needs: metadata
+    uses: ./.github/workflows/public-ci.yml
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      publish: ${{ steps.metadata.outputs.publish }}
+      tag_name: ${{ steps.metadata.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release metadata
+        id: metadata
+        env:
+          MANUAL_PUBLISH: ${{ inputs.publish }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          publish=false
+          tag_name=""
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              tag_version="${GITHUB_REF_NAME#v}"
+              if [[ "${tag_version}" != "${version}" ]]; then
+                echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}." >&2
+                exit 1
+              fi
+              git fetch --no-tags origin master
+              if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
+                echo "Tagged commit must be contained in origin/master." >&2
+                exit 1
+              fi
+              publish=true
+              tag_name="${GITHUB_REF_NAME}"
+            fi
+          elif [[ "${MANUAL_PUBLISH}" == "true" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
+              echo "Manual publishing is allowed only from master." >&2
+              exit 1
+            fi
+            publish=true
+            tag_name="v${version}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
+
+
+  publish:
+    needs: [build, metadata]
+    if: needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-*
+          path: packages
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installed-*
+          path: acceptance-evidence
+      - name: Verify immutable release artifact and acceptance matrix
+        run: |
+          for target in win32-x64 linux-x64 darwin-arm64; do
+            package="packages/candidate-$target/candidate.vsix"
+            node scripts/release/verify-release-hash.cjs "$package"
+            node scripts/release/verify-release-acceptance.cjs "$package" acceptance-evidence "$target"
+          done
+
+      - name: Verify Open VSX credentials
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${OVSX_PAT}" ]] || { echo "Missing repository secret: OVSX_PAT" >&2; exit 1; }
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish to Visual Studio Marketplace
+        run: |
+          for package in packages/candidate-*/candidate.vsix; do
+            npx --no-install vsce publish --azure-credential --packagePath "$package" --skip-duplicate
+          done
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          for package in packages/candidate-*/candidate.vsix; do
+            npx --no-install ovsx --pat "$OVSX_PAT" publish "$package" --skip-duplicate
+          done
+
+      - name: Name platform release assets
+        run: |
+          mkdir -p release-assets
+          for target in win32-x64 linux-x64 darwin-arm64; do
+            cp "packages/candidate-$target/candidate.vsix" "release-assets/dynasense-${{ needs.metadata.outputs.version }}-$target.vsix"
+          done
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.tag_name }}
+          name: DynaSense ${{ needs.metadata.outputs.version }}
+          files: release-assets/*.vsix
+          generate_release_notes: true
+          append_body: true
+          body_path: .github/release-appendix.md
+
+      - name: Create marketplace release verification issue
+        uses: actions/github-script@v9
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        with:
+          script: |
+            const coordinator = require('./.github/scripts/marketplace-release.cjs');
+            const issue = await coordinator.ensureMarketplaceReleaseIssue({
+              github,
+              context,
+              version: process.env.RELEASE_VERSION
+            });
+            core.info(`Marketplace release verification issue: #${issue.number}`);

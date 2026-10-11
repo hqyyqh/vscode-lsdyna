@@ -11,7 +11,6 @@ import {
     KeywordManagerSelectFieldRequest,
     KeywordManagerSelectFormRequest,
     KeywordManagerUpdateControlRequest,
-    KeywordManagerSelectScopeRequest,
     KeywordManagerLocateSourceRequest,
     KeywordManagerOpenManualRequest,
     KeywordManagerSelectInstanceRequest,
@@ -25,6 +24,8 @@ import {
 } from '../../../src/client/keywordOptionsProtocol';
 
 export type KeywordOptionsTransport = {
+    getSelectorState?(): unknown;
+    setSelectorState?(state: unknown): void;
     ready(): Promise<KeywordOptionsViewState>;
     selectDimension(revision: number, dimensionId: string, values: string[]): Promise<KeywordOptionsMutationResult>;
     selectTarget(revision: number, targetKeyword: string): Promise<KeywordOptionsMutationResult>;
@@ -34,7 +35,6 @@ export type KeywordOptionsTransport = {
     selectInstance(revision: number, instanceId: string): Promise<KeywordOptionsMutationResult>;
     selectField(payload: KeywordManagerHelpRequest): Promise<KeywordManagerHelpResult>;
     updateField(revision: number, fieldId: string, value: string): Promise<KeywordOptionsMutationResult>;
-    selectScope(revision: number, scope: 'file' | 'project'): Promise<KeywordOptionsMutationResult>;
     locateSource(revision: number): Promise<boolean>;
     openManual(revision: number, conditionId?: string, evidenceId?: string): Promise<boolean>;
     apply(revision: number): Promise<KeywordOptionsMutationResult>;
@@ -69,11 +69,13 @@ export function createKeywordOptionsTransport(api: VsCodeApi = acquireApi()): Ke
             remember(result.state);
             return result;
         };
-        const result = mutationQueue.then(run, run);
+        const result = mutationQueue.then(run);
         mutationQueue = result.then(() => undefined, () => undefined);
         return result;
     };
     return {
+        getSelectorState: () => api.getState(),
+        setSelectorState: state => api.setState(state),
         ready: async () => remember(await request(KeywordOptionsReadyRequest, { revision: 0 })),
         selectDimension: (revision, dimensionId, values) =>
             mutate(KeywordOptionsSelectDimensionRequest, { revision, dimensionId, values }),
@@ -90,7 +92,6 @@ export function createKeywordOptionsTransport(api: VsCodeApi = acquireApi()): Ke
         selectField: payload => request(KeywordManagerSelectFieldRequest, payload),
         updateField: (revision, fieldId, value) =>
             mutate(KeywordManagerUpdateFieldRequest, { revision, fieldId, value }),
-        selectScope: (revision, scope) => mutate(KeywordManagerSelectScopeRequest, { revision, scope }),
         locateSource: revision => request(KeywordManagerLocateSourceRequest, { revision }),
         openManual: (revision, conditionId, evidenceId) => request(KeywordManagerOpenManualRequest,
             conditionId === undefined && evidenceId === undefined ? { revision } : { revision, conditionId, evidenceId }),

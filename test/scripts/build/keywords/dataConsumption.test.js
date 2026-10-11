@@ -36,19 +36,23 @@ describe('built data consumed by the development extension', function () {
                 fs.copyFileSync(path.join(root, relative), path.join(temporary, relative));
             }
             const baseline = readSources(root).bundles.schema.payloads.find(item => item.path === 'field_data.json').value;
+            const correctionsFile = path.join(temporary, 'keywords/authoring/field-help-corrections.json');
+            const corrections = JSON.parse(fs.readFileSync(correctionsFile));
             let selected;
             for (const [keyword, entry] of Object.entries(baseline)) {
                 for (const [card, fields] of (entry.c || []).entries()) {
-                    const field = fields.find(item => item.h && fields.filter(other => other.n === item.n).length === 1);
+                    const field = fields.find(item => item.h && fields.filter(other => other.n === item.n).length === 1 &&
+                        !corrections.fields.some(correction => correction.keyword === keyword &&
+                            correction.card === card && correction.field === item.n));
                     if (field) { selected = { keyword, card, field }; break; }
                 }
                 if (selected) break;
             }
             assert.ok(selected);
             const replacement = selected.field.h + ' Description reviewed for the development-build test.';
-            fs.writeFileSync(path.join(temporary, 'keywords/authoring/field-help-corrections.json'),
-                JSON.stringify({ schemaVersion: 1, fields: [{ keyword: selected.keyword, card: selected.card,
-                    field: selected.field.n, sourceHelpSha256: sha(Buffer.from(selected.field.h)), english: replacement }] }));
+            corrections.fields.push({ keyword: selected.keyword, card: selected.card,
+                field: selected.field.n, sourceHelpSha256: sha(Buffer.from(selected.field.h)), english: replacement });
+            fs.writeFileSync(correctionsFile, JSON.stringify(corrections));
             const localizedFile = path.join(temporary, 'keywords/authoring/field_data_zh.json');
             const localized = JSON.parse(fs.readFileSync(localizedFile));
             const localizedField = localized[selected.keyword].c[selected.card].find(field => field.n === selected.field.n);

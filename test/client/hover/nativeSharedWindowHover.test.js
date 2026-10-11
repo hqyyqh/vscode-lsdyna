@@ -2,8 +2,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), zlib = require('node:zlib'), crypto = require('node:crypto');
 const { fakeDoc } = require("../../support/helpers");
+const api = require("../../../out/extension")._internals;
 const { LsdynaFieldHoverProvider, getCardInfoForDocumentLineWithSuggest: resolve,
-    buildKeywordOptionViewModel: model, keywordManagerEditField: edit, keywordManagerHelpState: helpState, generateCommentLine } = require("../../../out/extension")._internals;
+    buildKeywordOptionViewModel: model, keywordManagerEditField: edit, keywordManagerHelpState: helpState, generateCommentLine } = api;
 const grammar = require("../../../keywords/runtime/native-readers/lspp-batch-fixed-readers.json");
 // Explicit native windows, independent of the production formatter. The five
 // overlaps also have the earlier native-shared-bytes-v1 span contracts.
@@ -81,7 +82,7 @@ describe('native shared file windows', () => {
                     assert.equal(help.schemaName, record.fields[index].name, task.id);
                     assert.equal(field.type, String(record.fields[index].type), task.id);
                 });
-                if (task.format !== 'standard') {
+                if (task.format !== 'standard' || task.keyword === 'DEFINE_CONTROL_VOLUME_FLOW_AREA') {
                     assert.ok(card.fields.every(field => !field.editable), task.id);
                     assert.equal(edit(view, card.fields[0].fieldId, '1'), null, task.id);
                 }
@@ -119,10 +120,12 @@ describe('native shared file windows', () => {
             const document = makeDoc(rows), editor = { document, selection: { active: { line: 1, character: 0 } } };
             const before = model(editor, 1, {});
             const field = before.managerCards[0].fields[0];
-            if (keyword === 'IGA_INTEGRATION_SHELL_REDUCE') {
+            if (['IGA_INTEGRATION_SHELL_REDUCE', 'DEFINE_CONTROL_VOLUME_FLOW_AREA'].includes(keyword)) {
                 assert.equal(field.editable, false);
                 assert.equal(edit(before, field.fieldId, '42'), null);
-                continue; // Read-window evidence does not expand this unsorted card's write permission.
+                assert.equal(before.plan.status, 'blocked');
+                assert.deepEqual(before.plan.replacementRecords, []);
+                continue; // Read-window evidence does not expand unverified write permission.
             }
             assert.ok(field.editable, keyword);
             const staged = edit(before, field.fieldId, '42');
@@ -184,11 +187,90 @@ describe('native shared file windows', () => {
             assert.equal(view.managerCards[0].line, line);
         }
     });
+    it('retains readable reference windows without granting draft or apply authority', async () => {
+        const task = tasks.find(task => task.keyword === 'DEFINE_CONTROL_VOLUME_FLOW_AREA' && task.format === 'standard');
+        const document = { ...fakeDoc([...task.lines, '*NODE', '     999       1       2       3'].join('\n'), '/window-readonly.k'), version: 1 };
+        const editor = { document, selection: { active: { line: 1, character: 0 } } };
+        const before = model(editor, 1, {}), card = before.managerCards[0];
+        const rule = api.keywordManagerCatalogNativeFormRules(task.keyword)[0];
+        const reading = require('../../../out/core/semantics/nativeFileReadContext').nativeFileReadContext(rule, task.lines[0], task.lines.slice(1), 'standard');
+        assert.equal(reading.kind, 'reference-fixed');
+        assert.equal(reading.writeCompatible(reading.select().current), false);
+        assert.equal(before.plan.reason, 'native-file-write-unverified');
+        assert.equal(api.buildKeywordOptionsViewState(before).canApply, false);
+        assert.equal(edit({ ...before, managerCards: [{ ...card, fields: card.fields.map(field => ({ ...field, editable: true })) }] }, card.fields[0].fieldId, '42'), null);
+        const original = document.getText(), recordId = before.targetLayout.records[0].recordMigrationId;
+        const vscode = require('vscode'), originalApply = vscode.workspace.applyEdit, originalEditor = vscode.window.activeTextEditor;
+        let edits = 0;
+        vscode.workspace.applyEdit = async () => { edits++; return true; };
+        vscode.window.activeTextEditor = editor;
+        try {
+            for (const staged of [
+                { fieldDrafts: { [card.fields[0].fieldId]: '42' } },
+                { recordDrafts: { [recordId]: '        42' + task.lines[1].slice(10) } },
+            ]) {
+                assert.equal(api.keywordManagerStageFieldDrafts(before, staged.fieldDrafts || {}, staged.recordDrafts || {}), null);
+                const next = model(editor, 1, staged);
+                assert.equal(next.plan.status, 'blocked');
+                assert.deepEqual(next.plan.replacementRecords, []);
+                assert.ok(next.managerCards[0].fields.every(field => !field.editable));
+                assert.deepEqual(next.managerCards[0].fields.map(field => field.value), card.fields.map(field => field.value));
+                assert.equal(api.buildKeywordOptionsViewState(next).canApply, false);
+                assert.equal(await api.applyKeywordOptionViewModel({ getModel: () => next, markStale() {} }, editor), null);
+                next.plan = { ...next.plan, status: 'ready' }; // Fresh source checks must also reject a forged ready view.
+                assert.equal(await api.applyKeywordOptionViewModel({ getModel: () => next, markStale() {} }, editor), null);
+            }
+        } finally {
+            vscode.workspace.applyEdit = originalApply;
+            vscode.window.activeTextEditor = originalEditor;
+        }
+        assert.equal(edits, 0);
+        assert.equal(document.getText(), original);
+        for (const tampered of [{ ...rule, catalogSource: { ...rule.catalogSource, datasetSha256: '0'.repeat(64) } },
+            { ...rule, cardSetId: '0x0' }]) {
+            const result = { block: api.collectOptionSwitchBlock(document, 0), plan: { targetKeyword: task.lines[0] } };
+            assert.equal(api.keywordManagerPrepareCatalogInputFormLayoutForRule(document, 0, result, tampered), null);
+            assert.equal(result.currentLayout, undefined);
+        }
+    });
+    it('previews both writable shared fields in a selected instance and applies one edit', async () => {
+        const task = tasks.find(task => task.keyword === 'BOUNDARY_FLUIDM' && task.format === 'standard');
+        const original = [task.lines[0], '$ first', task.lines[1], '$ selected', task.lines[1], '*NODE', '     999       1       2       3'].join('\n');
+        const document = { ...fakeDoc(original, '/window-linked-apply.k'), version: 1 };
+        const editor = { document, selection: { active: { line: 4, character: 0 } } };
+        const before = model(editor, 4, {}), field = before.managerCards[0].fields.find(field => field.name === 'ICURV');
+        assert.equal(before.managerCards[0].line, 4);
+        assert.ok(field.editable);
+        const staged = edit(before, field.fieldId, '42');
+        const next = model(editor, 4, { ...staged, selectedFieldId: field.fieldId });
+        assert.equal(next.selectedInstanceId, before.selectedInstanceId);
+        assert.equal(next.plan.status, 'ready', next.plan.reason);
+        assert.deepEqual(next.sharedByteChanges.map(change => change.split(':')[0]), ['ICURV', 'BESIMF']);
+        assert.ok(next.managerCards[0].fields.filter(field => ['ICURV', 'BESIMF'].includes(field.name)).every(field => field.draft === '42'));
+        assert.equal(next.plan.replacementRecords[0].text, task.lines[1]);
+        assert.equal(next.plan.replacementRecords[1].text.slice(0, 30), task.lines[1].slice(0, 30));
+        assert.equal(next.plan.replacementRecords[1].text.slice(40), task.lines[1].slice(40));
+        const vscode = require('vscode'), originalApply = vscode.workspace.applyEdit, originalEditor = vscode.window.activeTextEditor;
+        const edits = [];
+        vscode.workspace.applyEdit = async value => { edits.push(value); return true; };
+        vscode.window.activeTextEditor = editor;
+        try {
+            assert.ok(await api.applyKeywordOptionViewModel({ getModel: () => next, markStale() {} }, editor));
+        } finally {
+            vscode.workspace.applyEdit = originalApply;
+            vscode.window.activeTextEditor = originalEditor;
+        }
+        assert.equal(edits.length, 1);
+        assert.equal(edits[0].edits.length, 1);
+        assert.equal(edits[0].edits[0].text, [task.lines[0], '$ first', task.lines[1], '$ selected', next.plan.replacementRecords[1].text, ''].join('\n'));
+        assert.equal(edits[0].edits[0].range.end.line, 5);
+        assert.equal(document.getText(), original);
+    });
     it('keeps fixed identities for unknown parameters and honors cancellation', async () => {
         const doc = { ...fakeDoc('*BOUNDARY_FLUIDM\n' + '         1'.repeat(3) + '   &METHOD', '/window-parameter.k'), version:1 };
         const provider = new LsdynaFieldHoverProvider();
         assert.equal(await provider.provideHover(doc,{line:1,character:35},{isCancellationRequested:true}), null);
-        const hover = await provider.provideHover(doc,{line:1,character:35});
+        const hover = await provider.provideHover(doc,{line:1,character:35}, undefined, true);
         assert.ok(hover.contents[0].value.includes('**ICURV**'));
         assert.ok(hover.contents[0].value.includes('**BESIMF**'));
         assert.deepEqual(resolve(doc,1).cardInfo.card.slice(3).map(field => field.rawValue), ['&METHOD','&METHOD']);

@@ -138,8 +138,11 @@ keyword, unit, or reference. The original English remains available from the
 hover's original-text action. A disclosed source defect is **not** a verified
 physical definition and is counted separately by the coverage validator.
 
-After rebuilding, `check:native-help-zh` checks the current native corpus and
-PARAMETER overrides against the actual runtime index, checks source membership,
+After rebuilding, `check:native-help-zh` checks the current native corpus,
+captured help from `lspp-contact-id-mpp-fixed-readers.json` and
+`lspp-contact-mpp-tail-readers.json`, and PARAMETER overrides against the actual
+runtime index. The reader sources must match the native corpus executable hash.
+The gate checks source membership,
 protected identifiers/conditions, and fails on missing translations or stale
 artifacts. Keep this gate in CI and release validation. The tests also exercise
 actual Chinese/English hover output for native fields and reject stale slot

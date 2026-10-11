@@ -12,6 +12,15 @@ describe('DynaSense status bar dashboard', () => {
         shouldShowDashboard,
     } = require('../../src/client/statusBar/dashboard');
 
+    it('keeps literal dollar and placeholder tokens in file and main-deck labels', () => {
+        for (const token of ['$&', '$`', "$'", '$$', '{1}']) {
+            const scanRootName = `cash${token}deck.k`, mainDeckRootName = `main${token}deck.k`;
+            const tooltip = formatDashboardTooltip({ scanRootName, mainDeckRootName, mainDeckContextState: 'selected' });
+            assert.ok(tooltip.includes(scanRootName), tooltip);
+            assert.ok(tooltip.includes(mainDeckRootName), tooltip);
+        }
+    });
+
     describe('normalizeStatusBarLevel', () => {
         it('keeps supported levels and falls back to simple', () => {
             assert.strictEqual(normalizeStatusBarLevel('off'), 'off');
@@ -63,7 +72,7 @@ describe('DynaSense status bar dashboard', () => {
                 errorCount: 2,
                 warningCount: 5,
                 healthIssueCount: 9,
-            }), 'LS-DYNA · 2✗');
+            }), 'LS-DYNA · $(error) 2');
 
             assert.strictEqual(formatDashboardText({
                 level: 'simple',
@@ -71,7 +80,7 @@ describe('DynaSense status bar dashboard', () => {
                 errorCount: 0,
                 warningCount: 2,
                 healthIssueCount: 9,
-            }), 'LS-DYNA · 2⚠');
+            }), 'LS-DYNA · $(warning) 2');
 
             assert.strictEqual(formatDashboardText({
                 level: 'simple',
@@ -255,6 +264,29 @@ describe('DynaSense status bar dashboard', () => {
     });
 
     describe('LsdynaStatusBarDashboard', () => {
+        it('cancels a scheduler handle of zero when replaced or disposed', () => {
+            for (const action of ['reschedule', 'dispose']) {
+                const pending = new Map(), cancelled = [];
+                let nextHandle = 0, shown = 0, disposed = 0;
+                const dashboard = new LsdynaStatusBarDashboard({
+                    statusBarItem: { show() { shown++; }, hide() {}, dispose() { disposed++; } },
+                    getContext: () => ({ isLsdyna: true }),
+                    schedule(callback) { const handle = nextHandle++; pending.set(handle, callback); return handle; },
+                    cancel(handle) { cancelled.push(handle); pending.delete(handle); },
+                });
+                dashboard.scheduleRefresh();
+                if (action === 'reschedule') dashboard.scheduleRefresh();
+                else dashboard.dispose();
+                assert.deepStrictEqual(cancelled, [0]);
+                assert.equal(pending.size, action === 'reschedule' ? 1 : 0);
+                for (const [handle, callback] of pending) { pending.delete(handle); callback(); }
+                assert.equal(shown, action === 'reschedule' ? 1 : 0);
+                assert.equal(dashboard.timer, null);
+                if (action === 'reschedule') dashboard.dispose();
+                assert.equal(disposed, 1);
+            }
+        });
+
         it('updates status bar visibility and text from the current context', () => {
             const calls = [];
             const statusBarItem = {

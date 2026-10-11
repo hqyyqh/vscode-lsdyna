@@ -1,4 +1,5 @@
 'use strict';
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
 const assert = require('assert');
 const fs = require('fs');
@@ -11,7 +12,7 @@ const FIXTURE_DIR = path.join(__dirname, '..', '..', 'Bolt_A_Explicit');
 
 describe('includeScanner', () => {
     it('suppresses include and path cards inside COMMENT ranges in the small-file path', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-comment-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-comment-'));
         const filePath = path.join(tempDir, 'comment.k');
         fs.writeFileSync(filePath, [
             '*COMMENT *INCLUDE',
@@ -27,7 +28,7 @@ describe('includeScanner', () => {
     });
 
     it('handles leading whitespace and mixed-case include keywords', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-case-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-case-'));
         const filePath = path.join(tempDir, 'mixed-case.k');
         fs.writeFileSync(filePath, ' \t*Include\nchild.k\n  *Include_Path\n/extra/path\n', 'utf8');
 
@@ -50,7 +51,7 @@ describe('includeScanner', () => {
     });
 
     it('preserves continued include filenames and segments when scanning files', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-scanner-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-scanner-'));
         const filePath = path.join(tempDir, 'continued.k');
 
         fs.writeFileSync(filePath, '*INCLUDE\npart_a +\npart_b.key\n', 'utf8');
@@ -63,7 +64,7 @@ describe('includeScanner', () => {
     });
 
     it('handles *INCLUDE_PATH with continuation lines (path > 80 chars)', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-'));
         const filePath = path.join(tempDir, 'longpath.k');
         const longPath = '/very/long/directory/path/that/exceeds/eighty/characters/in/length/so/it/needs/continuation/lines';
 
@@ -78,7 +79,7 @@ describe('includeScanner', () => {
     });
 
     it('handles *INCLUDE_PATH_RELATIVE with continuation lines', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-rel-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-rel-'));
         const filePath = path.join(tempDir, 'longrelpath.k');
         const relPath = 'submodels/very/deep/nested/directory/structure/that/exceeds/eighty/characters/total';
 
@@ -92,7 +93,7 @@ describe('includeScanner', () => {
     });
 
     it('handles *INCLUDE_PATH with multiple continuation lines', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-multi-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-multi-'));
         const filePath = path.join(tempDir, 'multiline.k');
 
         fs.writeFileSync(filePath, '*INCLUDE_PATH\n/part/one +\n/part/two +\n/part/three\n', 'utf8');
@@ -103,7 +104,7 @@ describe('includeScanner', () => {
     });
 
     it('handles mixed short and long paths under *INCLUDE_PATH', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-mixed-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-mixed-'));
         const filePath = path.join(tempDir, 'mixed.k');
 
         fs.writeFileSync(filePath, '*INCLUDE_PATH\n/short/path\n/long/path/that +\n/continues/here\n', 'utf8');
@@ -115,7 +116,7 @@ describe('includeScanner', () => {
     });
 
     it('flushes pending path at end of file', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-eof-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-eof-'));
         const filePath = path.join(tempDir, 'eof.k');
 
         // Path with continuation but no closing line (end of file)
@@ -127,7 +128,7 @@ describe('includeScanner', () => {
     });
 
     it('flushes pending path when new keyword starts', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-path-kw-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-path-kw-'));
         const filePath = path.join(tempDir, 'kwflush.k');
 
         fs.writeFileSync(filePath, '*INCLUDE_PATH\n/some/long +\n/path\n*INCLUDE\nfile.k\n', 'utf8');
@@ -140,7 +141,7 @@ describe('includeScanner', () => {
     });
 
     it('returns empty results quickly for files without *INCLUDE (early termination)', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-early-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-early-'));
         const filePath = path.join(tempDir, 'noinclude.k');
 
         // Write a file with keywords but no *INCLUDE
@@ -153,7 +154,7 @@ describe('includeScanner', () => {
     });
 
     it('handles small files with buffer-based parsing (under 1MB)', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-buffer-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-buffer-'));
         const filePath = path.join(tempDir, 'small.k');
 
         fs.writeFileSync(filePath, '*INCLUDE\nchild.k\n*INCLUDE_PATH\n/extra/path\n', 'utf8');
@@ -166,7 +167,7 @@ describe('includeScanner', () => {
     });
 
     it('does not miss middle include directives in large files when fullScanLargeFiles is false', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-large-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-large-'));
         const filePath = path.join(tempDir, 'large.k');
         const filler = '0'.repeat(72);
         const lines = ['*KEYWORD'];
@@ -182,12 +183,8 @@ describe('includeScanner', () => {
         lines.push('*END');
         fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
 
-        try {
-            const result = await collectIncludeDirectivesFromFile(filePath, { fullScanLargeFiles: false });
-            assert.deepEqual(result.includeEntries.map(entry => entry.fileName), ['middle.k']);
-        } finally {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
+        const result = await collectIncludeDirectivesFromFile(filePath, { fullScanLargeFiles: false });
+        assert.deepEqual(result.includeEntries.map(entry => entry.fileName), ['middle.k']);
     });
 
     it('handles collectIncludeDirectivesFromBuffer directly', () => {
@@ -214,7 +211,7 @@ describe('includeScanner', () => {
     });
 
     it('collects only filename card under *INCLUDE_TRANSFORM (not offset cards)', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-xform-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-xform-'));
         const filePath = path.join(tempDir, 'xform.k');
         fs.writeFileSync(
             filePath,
@@ -336,7 +333,7 @@ describe('includeScanner', () => {
     });
 
     it('collects filename on card 2 for *INCLUDE_MULTISCALE and SPOTWELD', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-include-ms-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-ms-'));
         const filePath = path.join(tempDir, 'ms.k');
         fs.writeFileSync(
             filePath,

@@ -288,3 +288,33 @@ $fenced$ and $$
         expect(container.querySelector('img[src^="javascript:"]')).not.toBeInTheDocument();
     });
 });
+
+describe('bilingual block layout', () => {
+    it('pairs formatted paragraphs and table descriptions, retaining one list, table and formula', () => {
+        const { container } = render(<MarkdownDocument comparison markdown={'静**摩擦**系数。\n\n- 可选卡片。\n\n| 字段 | 说明 |\n| --- | --- |\n| FS | 静摩擦系数。 |\n\n$$\nx=1\n$$\n\n未对齐内容。'}
+            chunkBaseUri="vscode-resource:/pack/" onOpenLink={vi.fn()} sentencePairs={[
+                { primary: '静摩擦系数。', secondary: 'Static friction.' },
+                { primary: '可选卡片。', secondary: 'Optional card.' },
+            ]} />);
+        expect(container.querySelectorAll('.bilingual-secondary')).toHaveLength(3);
+        expect(container.querySelectorAll('table')).toHaveLength(1);
+        expect(container.querySelectorAll('li')).toHaveLength(1);
+        expect(container.querySelectorAll('strong')).toHaveLength(1);
+        expect(container.querySelectorAll('.katex-display')).toHaveLength(1);
+        expect(screen.getByText('未对齐内容。')).toBeVisible();
+        expect(container.querySelector('.bilingual-text')).toBeNull();
+    });
+});
+
+it('aligns HTML table prose, renders translated code, and leaves ambiguous translations unpaired', () => {
+    const { container } = render(<MarkdownDocument comparison markdown={'<table><tr><td colspan="2">设为 <code>SCOOR</code>。</td><td>默认</td></tr></table>'}
+        chunkBaseUri="vscode-resource:/pack/" onOpenLink={vi.fn()} sentencePairs={[
+            { primary: '设为 `SCOOR`。', secondary: 'Set `SCOOR`.' },
+            { primary: '默认', secondary: 'Default' }, { primary: '默认', secondary: 'Standard' },
+        ]} />);
+    expect(container.querySelectorAll('table')).toHaveLength(1);
+    expect(container.querySelector('td')).toHaveAttribute('colspan', '2');
+    expect(container.querySelectorAll('.bilingual-secondary')).toHaveLength(1);
+    expect(container.querySelector('.bilingual-secondary code')).toHaveTextContent('SCOOR');
+    expect(screen.queryByText('Standard')).not.toBeInTheDocument();
+});

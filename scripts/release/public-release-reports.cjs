@@ -8,7 +8,7 @@ function identityReport(report) {
     return pick(report, ['complete', 'vsixSha256', 'runtimeFilesChecked', 'packageBytes']);
 }
 function acceptanceReport(report) {
-    return { ...pick(report, ['complete', 'vsixSha256', 'platform', 'vscodeVersion']),
+    return { ...pick(report, ['complete', 'vsixSha256', 'platform', 'arch', 'vscodeVersion']),
         cases: report.cases.map(item => pick(item, ['name', 'passed'])) };
 }
 function performanceReport(report) {
@@ -16,7 +16,7 @@ function performanceReport(report) {
         metrics: (report.metrics || []).map(item => pick(item,
             ['name', 'field', 'percentile', 'before', 'after', 'allowance', 'passed', 'baselineCount', 'candidateCount'])),
         samples: Object.fromEntries(['baseline', 'candidate'].map(side => [side,
-            (report.samples?.[side] || []).map(item => pick(item, ['phase', 'status', 'warmSampleCount']))])) };
+            (report.samples?.[side] || []).map(item => pick(item, ['phase', 'status', 'warmSampleCount', 'vscodeVersion', 'platform', 'arch']))])) };
 }
 function exportHostReports(input, output) {
     fs.mkdirSync(output, { recursive: true });

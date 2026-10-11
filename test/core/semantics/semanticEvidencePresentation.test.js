@@ -5,6 +5,8 @@ const {
     semanticEvidenceTargets,
     semanticEvidenceTargetLabel,
 } = require('../../../out/core/semantics/semanticEvidencePresentation');
+const { semanticEvidencePageLinks, semanticEvidenceLocationPresentation,
+    getManualSemanticCatalog } = require('../../../src/extension')._internals;
 
 function authority(profile, index, revision = 'master@abc123def (01/02/26)') {
     return {
@@ -35,6 +37,42 @@ describe('semantic evidence presentation', () => {
             { evidenceId: 'evidence:two', manualId: 'manual-vol-ii', page: 832, sourceProfileId: profile },
         ],
     }];
+
+    it('hides a declared authority with no valid profile instead of treating it as legacy', () => {
+        const invalidAuthorities = [null, false, 0, '', {}, [],
+            { profiles: [] }, { profiles: [{ sourceProfileId: profile, indexSha256: 'invalid' }] },
+            { sourceProfileId: profile, indexSha256: 'invalid' }];
+        const legacy = [{ ruleId: 'rule:legacy', evidence: [
+            { evidenceId: 'evidence:legacy', manualId: 'manual-vol-ii', page: 7 },
+        ] }];
+        assert.equal(semanticEvidenceTargets(legacy, undefined, undefined).length, 1);
+        assert.equal(semanticEvidencePageLinks('*TEST', legacy, { catalogSummary: {} }).length, 1);
+        for (const evidenceAuthority of invalidAuthorities) {
+            assert.deepStrictEqual(semanticEvidenceTargets(legacy, undefined, evidenceAuthority), [],
+                JSON.stringify(evidenceAuthority));
+            assert.deepStrictEqual(semanticEvidencePageLinks('*TEST', legacy, {
+                catalogSummary: { evidenceAuthority },
+            }), [], JSON.stringify(evidenceAuthority));
+        }
+    });
+
+    it('preserves declared invalid authority values in the field-help location caller', () => {
+        const catalog = getManualSemanticCatalog();
+        const original = Object.getOwnPropertyDescriptor(catalog, 'summary');
+        const evidence = { evidenceId: 'evidence:legacy', manualId: 'manual-vol-ii', page: 7 };
+        try {
+            catalog.summary = () => ({});
+            assert.ok(semanticEvidenceLocationPresentation(evidence));
+            for (const evidenceAuthority of [null, false, 0, '', {}, { profiles: [] }]) {
+                catalog.summary = () => ({ evidenceAuthority });
+                assert.equal(semanticEvidenceLocationPresentation(evidence), null,
+                    JSON.stringify(evidenceAuthority));
+            }
+        } finally {
+            if (original) Object.defineProperty(catalog, 'summary', original);
+            else delete catalog.summary;
+        }
+    });
 
     it('dedupes one physical target and uses an engineer-readable manual label', () => {
         const targets = semanticEvidenceTargets(items, authority(profile, index), evidenceAuthority);

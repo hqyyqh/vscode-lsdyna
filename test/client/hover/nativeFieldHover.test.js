@@ -275,11 +275,11 @@ describe('native file field hover without GUI', function () {
     it('uses the same active fields in keyword overview and field hover', async () => {
         const doc = fakeDoc('*SECTION_BEAM\n1,2\n3,4,5\n*END');
         const hover = await new LsdynaFieldHoverProvider().provideHover(doc, { line: 0, character: 3 });
-        assert.ok(hover.contents[0].value.includes('`A`'));
-        assert.ok(!hover.contents[0].value.includes('`TS1`'));
+        assert.ok(hover.contents[0].value.includes('<sub>A</sub>'));
+        assert.ok(!hover.contents[0].value.includes('<sub>TS1</sub>'));
         const invalid = fakeDoc('*SECTION_BEAM\n1,&FORM\n3,4,5\n*END');
         const unresolved = await new LsdynaFieldHoverProvider().provideHover(invalid, { line: 0, character: 3 });
-        assert.ok(!unresolved.contents[0].value.includes('`TS1`') && !unresolved.contents[0].value.includes('`A`'));
+        assert.ok(!unresolved.contents[0].value.includes('<sub>TS1</sub>') && !unresolved.contents[0].value.includes('<sub>A</sub>'));
     });
 
     it('reuses a current-version field result and does not let cancellation poison later reads', async () => {

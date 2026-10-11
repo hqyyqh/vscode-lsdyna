@@ -39,3 +39,15 @@ test('help bypasses a pending edit and does not advance the reviewed revision', 
     await api.apply(1);
     expect(send.mock.calls[3][2].revision).toBe(1);
 });
+
+test('a rejected mutation does not prevent the next queued edit', async () => {
+    send.mockReset();
+    send.mockRejectedValueOnce(new Error('Edit failed'))
+        .mockResolvedValueOnce({ accepted: true, state: { revision: 2 } });
+    const api = createKeywordOptionsTransport({} as any);
+    const failed = api.updateField(1, 'SID', '42');
+    const next = api.updateField(1, 'SID', '43');
+    await expect(failed).rejects.toThrow('Edit failed');
+    expect((await next).accepted).toBe(true);
+    expect(send).toHaveBeenCalledTimes(2);
+});

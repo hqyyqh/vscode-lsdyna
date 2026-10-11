@@ -1,17 +1,58 @@
 const assert = require('assert');
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { scanKeywordSkeletonFromFile } = require('../../../out/core/scanner/keywordSkeletonScanner');
 
 function writeFixture(name, text) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-skeleton-'));
+    const dir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-skeleton-'));
     const filePath = path.join(dir, name);
     fs.writeFileSync(filePath, text);
     return filePath;
 }
 
 describe('scanKeywordSkeletonFromFile', () => {
+    it('counts mesh rows after prefix capture without changing physical positions', async () => {
+        const text = '*NODE\r\n1,0,0,0\r\n  2,1,0,0\r\n$ comment\r\n\r\n  3,2,0,0\r\n*END\r\n';
+        const file = writeFixture('mesh-prefix.k', text);
+        const positions = [];
+        let captured = 0;
+        const blocks = await scanKeywordSkeletonFromFile(file, {
+            highWaterMark: 13,
+            onLineStart: (line, offset) => positions.push([line, offset]),
+            createBlockSummaryAccumulator: () => ({
+                acceptLine: () => { captured++; return captured === 1; },
+                isCaptureComplete: () => captured >= 1,
+                finish: ({ dataLineCount }) => ({ count: dataLineCount }),
+            }),
+        });
+        assert.equal(captured, 1);
+        assert.equal(blocks[0].dataLineCount, 3);
+        assert.equal(blocks[0].displayIdentity.count, 3);
+        assert.equal(blocks[0].displaySourceEndLine, 1);
+        assert.deepEqual(positions.map(([line, offset]) => [line, text.slice(offset).split('\r\n')[0]]),
+            text.split('\r\n').slice(0, -1).map((text, line) => [line, text]));
+        assert.equal(blocks[1].startOffset, text.indexOf('*END'));
+    });
+
+    it('preserves global and separated local format controls across chunks without changing keyword identities', async () => {
+        const lines = ['*KEYWORD LONG=Y', '\t*contact_nurbs_tied_edge_to_edge +',
+            '*PART, %', '*NODE - $ LONG=Y', '*ELEMENT_BEAM+', '*KEYWORD $ LONG=Y'];
+        const blocks = await scanKeywordSkeletonFromFile(writeFixture('format-controls.k', lines.join('\r\n')),
+            { highWaterMark: 5 });
+        const { keywordInputFormat, globalInputFormatFromKeywordLine } = require('../../../out/core/parser/inputFormat');
+        assert.deepEqual(blocks.map(block => block.keyword), ['*KEYWORD', '*CONTACT_NURBS_TIED_EDGE_TO_EDGE',
+            '*PART', '*NODE', '*ELEMENT_BEAM+', '*KEYWORD']);
+        assert.deepEqual(blocks.map(block => block.rawKeyword), ['*KEYWORD LONG=Y',
+            '*contact_nurbs_tied_edge_to_edge +', '*PART, %', '*NODE -', '*ELEMENT_BEAM+', '*KEYWORD']);
+        assert.equal(globalInputFormatFromKeywordLine(blocks[0].rawKeyword), 'long');
+        assert.deepEqual(blocks.slice(1, 5).map(block => keywordInputFormat(block.rawKeyword, 'long')),
+            ['long', 'i10', 'standard', 'long']);
+        assert.equal(globalInputFormatFromKeywordLine(blocks[5].rawKeyword), 'standard');
+        assert.equal(blocks[1].keywordStartChar, 1);
+    });
+
     it('yields during a sub-megabyte scan without changing record identities or offsets', async () => {
         const filePath = writeFixture('responsive.k', '*DATABASE_BINARY_BLSTFOR\n10,1,1,1,1\n'.repeat(2000) + '*END\n');
         const expected = await scanKeywordSkeletonFromFile(filePath, { yieldInterval: 50000 });

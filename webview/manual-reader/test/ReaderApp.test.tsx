@@ -106,7 +106,7 @@ describe('ReaderApp', () => {
         const user = userEvent.setup();
         render(<ReaderApp initialState={{ ...state, search: { ...state.search, query: 'material', results: searchResults } }} transport={transport()} />);
         await user.click(screen.getByRole('button', { name: 'Search manuals' }));
-        const option = screen.getAllByRole('option')[0];
+        const option = screen.getAllByRole('option').find(option => option.textContent?.includes('Volume II'))!;
         expect(option).toHaveTextContent('Volume II');
         expect(option).toHaveTextContent('材料模型');
         expect(option).toHaveTextContent('Selected material model.');
@@ -343,7 +343,7 @@ describe('ReaderApp', () => {
         await waitFor(() => expect(client.request).toHaveBeenCalledWith('reader/ready', { revision: 4 }));
         await user.click(screen.getByRole('button', { name: '后退' }));
         await user.click(screen.getByRole('button', { name: '下一节' }));
-        await user.click(screen.getByRole('button', { name: '切换语言' }));
+        await user.selectOptions(screen.getByRole('combobox', { name: '阅读语言' }), 'en');
         await user.click(screen.getByRole('button', { name: '打开 PDF' }));
         await user.click(screen.getByRole('button', { name: '搜索手册' }));
         await user.type(screen.getByRole('searchbox'), 'dt2ms');
@@ -352,7 +352,7 @@ describe('ReaderApp', () => {
 
         expect(client.request).toHaveBeenCalledWith('reader/navigate', { revision: 4, target: 'back' });
         expect(client.request).toHaveBeenCalledWith('reader/navigate', { revision: 4, target: 'nextSection' });
-        expect(client.request).toHaveBeenCalledWith('reader/toggleLanguage', { revision: 4 });
+        expect(client.request).toHaveBeenCalledWith('reader/toggleLanguage', { revision: 4, mode: 'en', anchorId: null });
         expect(client.request).toHaveBeenCalledWith('reader/openPdf', { revision: 4 });
         expect(client.request).toHaveBeenCalledWith('reader/search', { revision: 4, query: 'dt2ms', scope: 'both', mode: 'keyword' });
         expect(client.request).toHaveBeenCalledWith('reader/openLink', { revision: 4, href: 'next.md' });
@@ -371,7 +371,7 @@ describe('ReaderApp', () => {
             },
         }} transport={client} />);
 
-        expect(screen.getByRole('button', { name: 'Toggle language' })).toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: 'Reading language' })).toBeInTheDocument();
         expect(screen.getByText(/Hold Alt/)).toBeInTheDocument();
         expect(screen.getByText(/Unofficial documentation/)).toBeInTheDocument();
     });
@@ -385,7 +385,7 @@ describe('ReaderApp', () => {
             canToggleLanguage: false,
         }} transport={client} />);
 
-        expect(screen.queryByRole('button', { name: '切换语言' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: '阅读语言' })).not.toBeInTheDocument();
     });
 
     it('rejects stale state notifications and applies a newer revision', () => {
@@ -415,7 +415,7 @@ describe('ReaderApp', () => {
         const client = transport();
         client.request.mockImplementation(async (name: string) => {
             if (name === 'reader/ready') return true;
-            if (name === 'reader/openPdf') return false;
+            if (name === 'reader/navigate') return false;
             if (name === 'reader/toggleLanguage') return pending;
             return true;
         });
@@ -423,15 +423,36 @@ describe('ReaderApp', () => {
         // Need Chinese UI so the language toggle exists for the stale-failure path.
         render(<ReaderApp initialState={{ ...state, uiLocale: 'zh' }} transport={client} />);
 
-        await user.click(screen.getByRole('button', { name: '打开 PDF' }));
+        await user.click(screen.getByRole('button', { name: '后退' }));
         expect(await screen.findByRole('alert')).toHaveTextContent('当前操作已不可用');
         await user.click(screen.getByRole('button', { name: '关闭' }));
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: '切换语言' }));
+        await user.selectOptions(screen.getByRole('combobox', { name: '阅读语言' }), 'en');
         act(() => client.emit({ ...state, revision: 5, uiLocale: 'zh' }));
         rejectPending(new Error('late failure'));
         await waitFor(() => expect(screen.queryByText(/late failure/)).not.toBeInTheDocument());
+    });
+
+    it.each([
+        ['en', 'Open PDF', 'Cannot open the corresponding PDF. Check the PDF file in this manual pack, then try again.'],
+        ['zh', '打开 PDF', '无法打开对应 PDF。请检查手册包中的 PDF 文件，然后重试。'],
+    ] as const)('keeps a failed PDF action retryable in %s', async (uiLocale, label, message) => {
+        const client = transport();
+        let available = false;
+        client.request.mockImplementation(async name => name !== 'reader/openPdf' || available);
+        const user = userEvent.setup();
+        render(<ReaderApp initialState={{ ...state, uiLocale }} transport={client} />);
+
+        const button = screen.getByRole('button', { name: label });
+        await user.click(button);
+        expect(await screen.findByRole('alert')).toHaveTextContent(message);
+        expect(button).toBeEnabled();
+        available = true;
+        await user.click(button);
+        await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+        expect(client.request.mock.calls.filter(([name]) => name === 'reader/openPdf'))
+            .toEqual([['reader/openPdf', { revision: 4 }], ['reader/openPdf', { revision: 4 }]]);
     });
 
     it('opens PDF without the global Working banner (hover-like)', async () => {
@@ -466,17 +487,17 @@ describe('ReaderApp', () => {
         const zhState = { ...state, uiLocale: 'zh' as const, language: 'zh' as const };
         render(<ReaderApp initialState={zhState} transport={client} />);
 
-        const toggle = screen.getByRole('button', { name: '切换语言' });
-        expect(toggle).toHaveTextContent('中文');
-        await user.click(toggle);
+        const toggle = screen.getByRole('combobox', { name: '阅读语言' });
+        expect(toggle).toHaveValue('zh');
+        await user.selectOptions(toggle, 'en');
         // Optimistic flip before host returns; no Working banner.
-        expect(toggle).toHaveTextContent('EN');
+        expect(toggle).toHaveValue('en');
         expect(screen.queryByText(/正在处理|Working/i)).not.toBeInTheDocument();
-        expect(client.request).toHaveBeenCalledWith('reader/toggleLanguage', { revision: 4 });
+        expect(client.request).toHaveBeenCalledWith('reader/toggleLanguage', { revision: 4, mode: 'en', anchorId: null });
 
         await act(async () => { resolveToggle(true); });
         act(() => client.emit({ ...zhState, revision: 5, language: 'en' }));
-        expect(toggle).toHaveTextContent('EN');
+        expect(toggle).toHaveValue('en');
     });
 
     it('rolls back the optimistic language pill when toggle is rejected', async () => {
@@ -488,9 +509,9 @@ describe('ReaderApp', () => {
         });
         const user = userEvent.setup();
         render(<ReaderApp initialState={{ ...state, uiLocale: 'zh', language: 'zh' }} transport={client} />);
-        const toggle = screen.getByRole('button', { name: '切换语言' });
-        await user.click(toggle);
-        await waitFor(() => expect(toggle).toHaveTextContent('中文'));
+        const toggle = screen.getByRole('combobox', { name: '阅读语言' });
+        await user.selectOptions(toggle, 'en');
+        await waitFor(() => expect(toggle).toHaveValue('zh'));
     });
 
     it('restores scroll and reports debounced scroll state', async () => {
@@ -583,4 +604,28 @@ describe('ReaderApp', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('阅读器无法显示此文档');
         consoleError.mockRestore();
     });
+});
+
+describe('bilingual reading mode', () => {
+    it('offers direct selection and searches both languages even under English chrome', async () => {
+        const client = transport();
+        const user = userEvent.setup();
+        render(<ReaderApp initialState={{ ...state, readingMode: 'bilingual', canCompareLanguages: true,
+            content: { ...documentContent, comparison: true, markdown: '静摩擦系数。',
+                sentencePairs: [{ primary: '静摩擦系数。', secondary: 'Static coefficient of friction.', unitId: 'friction' }] } }} transport={client} />);
+        expect(screen.getByRole('combobox', { name: 'Reading language' })).toHaveValue('bilingual');
+        expect(screen.getByText('Static coefficient of friction.')).toBeVisible();
+        expect(screen.queryByText(/Hold Alt/)).not.toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Search manuals' }));
+        await user.type(screen.getByRole('searchbox'), 'friction');
+        await waitFor(() => expect(client.request).toHaveBeenCalledWith('reader/search',
+            { revision: 4, query: 'friction', scope: 'both', mode: 'keyword' }));
+    });
+});
+
+it('keeps approximate match context in the existing heading without a warning banner', () => {
+    render(<ReaderApp initialState={{ ...state, location: { ...state.location, matchKind: 'approximate',
+        requestedKeyword: '*MAT_REQUEST', matchedKeyword: '*MAT_024' } }} transport={transport()} />);
+    expect(screen.getByRole('img', { name: 'Approximate match: *MAT_REQUEST → *MAT_024' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });

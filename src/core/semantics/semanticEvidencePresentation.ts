@@ -61,15 +61,15 @@ function selectedAuthorityProfile(
 /**
  * Select already-published evidence for the current pack without any I/O.
  * A new profile-aware runtime stays silent until the configured pack exposes
- * the exact profile/index identity. Legacy runtimes retain their old labels.
+ * the exact profile/index identity. Runtimes without an authority field retain
+ * their legacy labels; an invalid declared authority never enables that path.
  */
 export function semanticEvidenceTargets(
     items: SemanticEvidenceItem[],
     currentAuthority: ManualPackAuthoritySnapshot | null | undefined,
-    evidenceAuthority: any | null,
+    evidenceAuthority: any,
 ): SemanticEvidenceTarget[] {
-    const profiles = authorityProfiles(evidenceAuthority);
-    const profileAware = profiles.length > 0;
+    const profileAware = evidenceAuthority !== undefined;
     const selectedProfile = profileAware
         ? selectedAuthorityProfile(evidenceAuthority, currentAuthority)
         : null;

@@ -1,1 +1,12 @@
-{"schemaVersion":1,"fields":[]}
+{
+  "schemaVersion": 1,
+  "fields": [
+    {
+      "keyword": "EM_CONTROL",
+      "card": 0,
+      "field": "EPS0SF",
+      "sourceHelpSha256": "c847ff2328246f76b968c08c49dd373eac8bc870e1011426c417bb4f3b3c72ab",
+      "english": "Optional scale factor on permittivity, ε_0. See Remark 6."
+    }
+  ]
+}

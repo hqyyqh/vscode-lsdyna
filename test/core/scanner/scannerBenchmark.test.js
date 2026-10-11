@@ -1,28 +1,32 @@
 const assert = require('assert');
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { scanKeywordSkeletonFromFile } = require('../../../out/core/scanner/keywordSkeletonScanner');
 
 function createGeneratedDeck(targetSizeBytes) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-benchmark-'));
+    const dir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-benchmark-'));
     const filePath = path.join(dir, 'generated.k');
     const fd = fs.openSync(filePath, 'w');
-    fs.writeSync(fd, '*KEYWORD\n*NODE\n');
-    let written = 15;
-    let nodeId = 1;
-    while (written < targetSizeBytes) {
-        const line = `${nodeId},0.0,0.0,0.0\n`;
-        fs.writeSync(fd, line);
-        written += Buffer.byteLength(line);
-        nodeId++;
-        if (nodeId % 100000 === 0) {
-            fs.writeSync(fd, '*ELEMENT_SHELL\n');
-            written += 15;
+    try {
+        fs.writeSync(fd, '*KEYWORD\n*NODE\n');
+        let written = 15;
+        let nodeId = 1;
+        while (written < targetSizeBytes) {
+            const line = `${nodeId},0.0,0.0,0.0\n`;
+            fs.writeSync(fd, line);
+            written += Buffer.byteLength(line);
+            nodeId++;
+            if (nodeId % 100000 === 0) {
+                fs.writeSync(fd, '*ELEMENT_SHELL\n');
+                written += 15;
+            }
         }
+        fs.writeSync(fd, '*END\n');
+    } finally {
+        fs.closeSync(fd);
     }
-    fs.writeSync(fd, '*END\n');
-    fs.closeSync(fd);
     return filePath;
 }
 

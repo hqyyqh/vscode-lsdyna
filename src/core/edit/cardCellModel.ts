@@ -156,7 +156,7 @@ export function caretAfterCellValue(line: string, card: CardField[], fieldIndex:
     const slice = padded.slice(f.p, f.p + f.w);
     const val = slice.trim();
     if (!val) return f.p;
-    const lead = slice.match(/^\s*/)?.[0].length || 0;
+    const lead = slice.match(/^\s*/)![0].length;
     // Exclusive end after the trimmed value in R1 layout
     return Math.min(f.p + lead + val.length, f.p + f.w);
 }
@@ -358,7 +358,7 @@ export function cellValueRange(
     const slice = padded.slice(f.p, f.p + f.w);
     const val = slice.trim();
     if (!val) return null;
-    const lead = slice.match(/^\s*/)?.[0].length || 0;
+    const lead = slice.match(/^\s*/)![0].length;
     const start = f.p + lead;
     return { start, end: start + val.length };
 }
@@ -418,7 +418,7 @@ function normalizedFieldType(field: CardField): 'integer' | 'real' | 'string' | 
 }
 
 function isValidMergedFieldValue(value: string, type: ReturnType<typeof normalizedFieldType>): boolean {
-    if (!value || /[\t\r\n\u0000-\u001f\u007f]/.test(value)) return false;
+    if (/[\t\r\n\u0000-\u001f\u007f]/.test(value)) return false;
     if (type === 'integer') return /^[+-]?\d+$/.test(value);
     if (type === 'real') {
         // LS-DYNA also accepts compact exponents such as 1.0-3 and 2.0+5.
@@ -483,7 +483,7 @@ export function valueIndexAtCaret(line: string, card: CardField[], fieldIndex: n
     if (!val) return 0;
     const padded = padLineToCard(line, card);
     const slice = padded.slice(f.p, f.p + f.w);
-    const lead = slice.match(/^\s*/)?.[0].length || 0;
+    const lead = slice.match(/^\s*/)![0].length;
     const valueStart = f.p + lead;
     const valueEnd = valueStart + val.length;
     if (caretCol <= valueStart) return 0;
@@ -503,7 +503,7 @@ export function caretAtValueIndex(line: string, card: CardField[], fieldIndex: n
     if (!val) return f.p;
     const padded = padLineToCard(line, card);
     const slice = padded.slice(f.p, f.p + f.w);
-    const lead = slice.match(/^\s*/)?.[0].length || 0;
+    const lead = slice.match(/^\s*/)![0].length;
     const i = Math.max(0, Math.min(val.length, valueIndex));
     // Allow exclusive end p+w so caret sits after the last digit (normal editor).
     return Math.min(f.p + lead + i, f.p + f.w);
@@ -597,7 +597,7 @@ export function applyInCellInsert(
     if (caretCol < valueEnd && val.length > 0) {
         // Insert into value by mapping caret into value index from the right-aligned layout
         const slice = padded.slice(f.p, f.p + f.w);
-        const lead = slice.match(/^\s*/)?.[0].length || 0;
+        const lead = slice.match(/^\s*/)![0].length;
         const rel = Math.max(0, caretCol - f.p - lead);
         const i = Math.min(val.length, rel);
         insertionIndex = i;

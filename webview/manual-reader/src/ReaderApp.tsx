@@ -1,5 +1,5 @@
 import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ManualLanguage, ManualLocation, ManualSearchMode, ManualSearchScope, ReaderViewModel } from '../../../src/manual/readerProtocol';
+import type { ManualReadingMode, ManualLocation, ManualSearchMode, ManualSearchScope, ReaderViewModel } from '../../../src/manual/readerProtocol';
 import { MarkdownDocument } from './MarkdownDocument';
 import {
     FONT_SCALE_DEFAULT,
@@ -14,7 +14,7 @@ import { readerMessages } from './readerI18n';
 import { ReaderToolbar } from './ReaderToolbar';
 import { RequestStatusBanner } from './RequestStatusBanner';
 import { SearchPopover } from './SearchPopover';
-import { IconArrowUp } from './ToolbarIcons';
+import { Codicon } from '../../shared/Codicon';
 import { useReadingPosition, useRestoreReadingPosition } from './useReadingPosition';
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -47,7 +47,7 @@ function isViewModel(value: unknown): value is ReaderViewModel {
 function sameSentencePairs(left: ReaderViewModel['content'], right: ReaderViewModel['content']): boolean {
     if (left.kind !== 'document' || right.kind !== 'document') return left.kind === right.kind;
     return left.sentencePairs.length === right.sentencePairs.length
-        && left.sentencePairs.every((pair, index) => pair.primary === right.sentencePairs[index]?.primary && pair.secondary === right.sentencePairs[index]?.secondary);
+        && left.sentencePairs.every((pair, index) => pair.primary === right.sentencePairs[index]?.primary && pair.secondary === right.sentencePairs[index]?.secondary && pair.unitId === right.sentencePairs[index]?.unitId);
 }
 
 interface MarkdownViewportProps {
@@ -66,6 +66,7 @@ const MarkdownViewport = React.memo(function MarkdownViewport({ content, onOpenL
     return <MarkdownDocument {...content} onOpenLink={onOpenLink} tableLabel={tableLabel} translationHint={translationHint} translationPreviewLabel={translationPreviewLabel} closeTranslationLabel={closeTranslationLabel} openImageLabel={imageLabels.open} imagePreviewLabel={imageLabels.preview} zoomInLabel={imageLabels.zoomIn} zoomOutLabel={imageLabels.zoomOut} resetImageLabel={imageLabels.reset} closeImageLabel={imageLabels.close} />;
 }, (previous, next) => previous.content.markdown === next.content.markdown
     && previous.content.chunkBaseUri === next.content.chunkBaseUri
+    && previous.content.comparison === next.content.comparison
     && sameSentencePairs(previous.content, next.content)
     && previous.tableLabel === next.tableLabel
     && previous.translationHint === next.translationHint
@@ -98,7 +99,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
     const [pendingCount, setPendingCount] = useState(0);
     const [readyAttempt, setReadyAttempt] = useState(0);
     const [readyFailed, setReadyFailed] = useState(false);
-    const [optimisticLanguage, setOptimisticLanguage] = useState<ManualLanguage | null>(null);
+    const [optimisticLanguage, setOptimisticLanguage] = useState<ManualReadingMode | null>(null);
     const [fontScale, setFontScale] = useState(() => loadFontScaleFromStorage());
     const viewRef = useRef(view);
     const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -181,7 +182,8 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         }, error => {
             if (!active) return;
             setReadyFailed(true);
-            setRequestError(`${readerMessages(viewRef.current?.uiLocale || 'en').loadFailed} ${error instanceof Error ? error.message : ''}`.trim());
+            console.error('Reader load failed', error);
+            setRequestError(readerMessages(viewRef.current?.uiLocale || 'en').loadFailed);
         }).finally(() => { if (active && showPending) setPendingCount(count => Math.max(0, count - 1)); });
         return () => { active = false; };
     }, [applyState, readyAttempt, transport]);
@@ -201,12 +203,6 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         document.documentElement.lang = view.uiLocale;
         document.title = messages.documentTitle;
     }, [messages.documentTitle, view?.revision, view?.uiLocale]);
-
-    // Clear optimistic pill once host language matches (or drop if host never moves).
-    useEffect(() => {
-        if (optimisticLanguage == null || !view) return;
-        if (view.language === optimisticLanguage) setOptimisticLanguage(null);
-    }, [view?.language, view?.revision, optimisticLanguage]);
 
     useEffect(() => {
         const onShortcut = (event: KeyboardEvent) => {
@@ -230,11 +226,15 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         setRequestError(null);
         void transport.request(name, { revision, ...payload }).then(result => {
             if (viewRef.current?.revision !== revision) return;
-            if (result === false) setRequestError(readerMessages(viewRef.current.uiLocale).requestRejected);
+            if (result === false) {
+                const messages = readerMessages(viewRef.current.uiLocale);
+                setRequestError(name === 'reader/openPdf' ? messages.openPdfFailed : messages.requestRejected);
+            }
         }, error => {
             if (viewRef.current?.revision !== revision) return;
             const base = readerMessages(viewRef.current.uiLocale).requestFailed;
-            setRequestError(`${base} ${error instanceof Error ? error.message : ''}`.trim());
+            console.error('Reader request failed', error);
+            setRequestError(base);
         }).finally(() => {
             if (!silent) setPendingCount(count => Math.max(0, count - 1));
         });
@@ -242,23 +242,27 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
     const navigate = useCallback((target: string | ManualLocation) => request('reader/navigate', { target }), [request]);
     const openLink = useCallback((href: string) => request('reader/openLink', { href }), [request]);
     const openPdf = useCallback(() => request('reader/openPdf', {}, { silent: true }), [request]);
-    const toggleLanguage = useCallback(() => {
+    const toggleLanguage = useCallback((mode: ManualReadingMode) => {
         const current = viewRef.current;
         // Pack capability only — English VS Code UI may still read bilingual packs.
         if (!current || current.canToggleLanguage === false) return;
-        // Optimistic pill flip; host still toggles from its own language state.
-        setOptimisticLanguage(prev => {
-            const base = prev ?? current.language;
-            return base === 'zh' ? 'en' : 'zh';
-        });
+        setOptimisticLanguage(mode);
+        const anchors = [...document.querySelectorAll<HTMLElement>('.markdown-body [data-unit-id][id], .markdown-body a[id]')];
+        const top = document.querySelector('.reader-toolbar')?.getBoundingClientRect().bottom ?? 48;
+        const anchor = anchors.filter(node => {
+            const rect = node.getBoundingClientRect();
+            return rect.bottom > top && rect.right > 0 && rect.left < window.innerWidth;
+        }).sort((a, b) => Math.abs(a.getBoundingClientRect().top - top) - Math.abs(b.getBoundingClientRect().top - top))[0];
+        const anchorId = anchor?.id || current.restore.anchorId;
         const revision = current.revision;
         // Silent: no Working… banner (same rationale as PDF). Roll back pill if host rejects.
-        void transport.request('reader/toggleLanguage', { revision }).then(result => {
-            if (result === false) setOptimisticLanguage(null);
-        }, () => {
-            setOptimisticLanguage(null);
-        });
-    }, [transport]);
+        void transport.request('reader/toggleLanguage', { revision, mode, anchorId }).then(result => {
+            if (result === false && viewRef.current?.revision === revision) setRequestError(messages.requestRejected);
+        }, error => {
+            console.error('Reader language change failed', error);
+            if (viewRef.current?.revision === revision) setRequestError(messages.requestFailed);
+        }).finally(() => setOptimisticLanguage(null));
+    }, [transport, messages]);
     const closeSearch = useCallback(() => {
         setSearchOpen(false);
         searchButtonRef.current?.focus();
@@ -279,7 +283,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         const current = viewRef.current;
         if (!current) return;
         const revision = current.revision;
-        const effectiveScope = scopeForUiLocale(current.uiLocale);
+        const effectiveScope = current.readingMode === 'bilingual' ? 'both' : scopeForUiLocale(current.uiLocale);
         const effectiveMode: ManualSearchMode = mode === 'fulltext' ? 'fulltext' : 'keyword';
         const key = searchKey(query, effectiveScope, effectiveMode);
         // Skip duplicate live searches (e.g. re-open with unchanged query).
@@ -306,8 +310,8 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         }, error => {
             if (searchSeq.current !== seq) return;
             if (viewRef.current?.revision !== revision) return;
-            const detail = error instanceof Error ? error.message : '';
-            setSearchError(`${readerMessages(current.uiLocale).searchFailed} ${detail}`.trim());
+            console.error('Reader search failed', error);
+            setSearchError(readerMessages(current.uiLocale).searchFailed);
         }).finally(() => {
             if (searchSeq.current === seq) setSearchPending(false);
         });
@@ -329,8 +333,8 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
     // Alt translation preview is available whenever the host sent sentence pairs
     // (bilingual pack with sentence-map), independent of VS Code UI locale.
     const translationEnabled = view.content.kind === 'document'
-        && view.content.sentencePairs.length > 0;
-    const displayLanguage = optimisticLanguage ?? view.language;
+        && !view.content.comparison && view.content.sentencePairs.length > 0;
+    const displayLanguage = optimisticLanguage ?? view.readingMode ?? view.language;
 
     return <>
         <ReaderToolbar
@@ -342,6 +346,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
             onRequest={request}
             onOpenPdf={openPdf}
             displayLanguage={displayLanguage}
+            languagePending={optimisticLanguage !== null}
             onToggleLanguage={toggleLanguage}
             progress={reading.progress}
             fontScalePercentLabel={fontScalePercentLabel}
@@ -390,7 +395,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
                 title={messages.backToTop}
                 onClick={reading.backToTop}
             >
-                <IconArrowUp />
+                <Codicon name="arrow-up" className="reader-toolbar__icon" />
             </button>
         ) : null}
     </>;

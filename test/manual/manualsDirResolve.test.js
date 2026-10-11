@@ -7,6 +7,7 @@ const {
     looksLikeManualPack,
     resolveManualDirectoryCandidates,
     resolveManualsRoot,
+    resolveManualSumatraPath,
 } = require('../../src/manual/manualsDirResolve');
 
 function createFs({ dirs = [], files = [] } = {}) {
@@ -116,5 +117,11 @@ describe('manualsDirResolve (portable Code.exe-first)', () => {
             fs,
         });
         assert.strictEqual(root, '/portable/lsdyna_manual_pack');
+    });
+    it('uses the selected root viewer and falls back to its pdf subdirectory', () => {
+        const fs = createFs({ files: ['/selected/SumatraPDF.exe', '/selected/pdf/SumatraPDF.exe', '/other/SumatraPDF.exe'] });
+        assert.equal(resolveManualSumatraPath('/selected', fs, pathModule), '/selected/SumatraPDF.exe');
+        assert.equal(resolveManualSumatraPath('/selected', createFs({ files: ['/selected/pdf/SumatraPDF.exe', '/other/SumatraPDF.exe'] }), pathModule), '/selected/pdf/SumatraPDF.exe');
+        assert.equal(resolveManualSumatraPath('/selected', createFs({ files: ['/other/SumatraPDF.exe'] }), pathModule), null);
     });
 });

@@ -9,12 +9,10 @@ const {
 } = require('./opaqueCommentRange');
 
 let validKeywords = new Set();
-let isInitialized = false;
 const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*TITLE', '*CASE_BEGIN', '*CASE_END'];
 
 function init(validKeywordsSet) {
     validKeywords = validKeywordsSet;
-    isInitialized = true;
 }
 
 function normalizeKeyword(keyword) {
@@ -44,7 +42,7 @@ function customKeywordMatches(keyword, customValidKeywords) {
 
 function builtInKeywordMatches(keyword, schema) {
     if (/^CASE_(BEGIN|END)_\d+$/.test(keyword)) return true;
-    if (validKeywords.has(keyword) || schema[keyword]) return true;
+    if (validKeywords.has(keyword) || keywordSchema.lookupKeywordSchema(keyword, schema)) return true;
     for (const alias of getAliases(keyword)) {
         if (validKeywords.has(alias) || schema[alias]) return true;
     }
@@ -115,7 +113,7 @@ function resolveUnknownKeywordSeverity(value) {
  * @returns {import('vscode').Diagnostic[]}
  */
 function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocumentScan) {
-    if (!isInitialized || validKeywords.size === 0) return [];
+    if (validKeywords.size === 0) return [];
     if (shouldSkipAutomaticDocumentScan && shouldSkipAutomaticDocumentScan(document)) return [];
     
     const diagnostics = [];

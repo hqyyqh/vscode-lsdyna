@@ -3,7 +3,7 @@ description: Report reproducible product behavior / 报告可复现的产品问�
 body:
   - type: markdown
     attributes:
-      value: "For security vulnerabilities use the private contact in SECURITY.md. 安全漏洞请使用 SECURITY.md 中的私密联系方式。"
+      value: "Please provide a minimal reproducible example without confidential data. For security vulnerabilities, use the private contact in CONTRIBUTING.md. 请提供已去除保密数据的最小复现示例；安全漏洞请使用 CONTRIBUTING.md 中的私密联系方式。"
   - type: textarea
     id: behavior
     attributes:

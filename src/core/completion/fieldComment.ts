@@ -1,27 +1,31 @@
+import { safeRecordGeometry } from '../edit/keywordRecordSerializer';
+
 export function generateCommentLine(card, style = 'dollar-hash-fixed', labelCase = 'lower') {
-    if (!card || card.length === 0) return '';
-    const maximumEnd = card.reduce((maximum, field) => {
-        const end = Number(field?.p) + Number(field?.w);
-        return Number.isFinite(end) ? Math.max(maximum, end) : maximum;
-    }, 0);
-    if (maximumEnd <= 0) return '';
+    if (!Array.isArray(card) || card.length === 0) return '';
+    const fields = card.map(field => ({ name: field?.n, position: Number(field?.p), width: Number(field?.w) }));
+    if (!safeRecordGeometry(fields, true)) return '';
+    const maximumEnd = fields.reduce((maximum, field) => Math.max(maximum, field.position + field.width), 0);
     const marker = style === 'dollar-hash-fixed' ? '$#' : '$';
-    if (card.some((field, index) => card.slice(index + 1).some(other =>
-        Math.max(Number(field.p), Number(other.p)) < Math.min(Number(field.p) + Number(field.w), Number(other.p) + Number(other.w))))) {
-        return marker + ' ' + card.map(field => {
-            const name = labelCase === 'upper' ? String(field.n).toUpperCase() : String(field.n).toLowerCase();
-            return `${name} [${Number(field.p) + 1}-${Number(field.p) + Number(field.w)}]`;
+    if (fields.length === 1 && fields[0].width > 80) {
+        const name = String(fields[0].name || '');
+        const casedName = labelCase === 'upper' ? name.toUpperCase() : name.toLowerCase();
+        return `${marker} ${casedName.substring(0, fields[0].position + fields[0].width - marker.length - 1)}`;
+    }
+    if (fields.some((field, index) => fields.slice(index + 1).some(other =>
+        Math.max(field.position, other.position) < Math.min(field.position + field.width, other.position + other.width)))) {
+        return marker + ' ' + fields.map(field => {
+            const name = labelCase === 'upper' ? String(field.name).toUpperCase() : String(field.name).toLowerCase();
+            return `${name} [${field.position + 1}-${field.position + field.width}]`;
         }).join(' | ');
     }
     const characters = Array(maximumEnd).fill(' ');
     characters[0] = '$';
     if (marker.length === 2 && maximumEnd > 1) characters[1] = '#';
 
-    for (let i = 0; i < card.length; i++) {
-        const f = card[i];
-        const start = Number(f.p);
-        const width = Number(f.w);
-        if (!Number.isInteger(start) || !Number.isInteger(width) || width < 1) continue;
+    for (let i = 0; i < fields.length; i++) {
+        const f = fields[i];
+        const start = f.position;
+        const width = f.width;
         const end = start + width;
         let contentStart = start;
         const contentEnd = end;
@@ -34,13 +38,9 @@ export function generateCommentLine(card, style = 'dollar-hash-fixed', labelCase
         const available = contentEnd - contentStart;
         if (available <= 0) continue;
 
-        const rawName = String(f.n || '');
+        const rawName = String(f.name || '');
         const casedName = labelCase === 'upper' ? rawName.toUpperCase() : rawName.toLowerCase();
         const name = casedName.substring(0, available);
-        if (card.length === 1 && f.w > 80) {
-            return `${marker} ${name}`;
-        }
-
         const nameStart = width >= 40
             ? contentStart
             : contentEnd - name.length;

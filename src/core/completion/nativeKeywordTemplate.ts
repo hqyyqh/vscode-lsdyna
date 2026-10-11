@@ -20,7 +20,7 @@ export function nativeKeywordTemplate(keyword: string) {
     const pending = (reason: string) => ({ status: 'retained-unverified' as const, reason });
     if (nativeFieldDisplayOnly(keyword)) return pending('native-edit-binding-unverified');
     if (!hasNativeFileReader(keyword)) return pending('file-rule-unconfirmed');
-    const form = getCatalogInputFormCatalogV4().formForKeyword(nativeFileCatalogKeyword(keyword));
+    const form = getCatalogInputFormCatalogV4().formForKeyword(nativeFileCatalogKeyword(keyword), false);
     const ruleIds = nativeBatchFixedBinding(keyword) ? [nativeBatchFixedBinding(keyword).ruleId] : form?.reference.formRuleIds;
     if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic ||
         ruleIds?.length !== 1 || !form.rules[ruleIds[0]]) return pending('file-rule-association-unconfirmed');

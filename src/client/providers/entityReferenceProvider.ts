@@ -7,6 +7,7 @@
 
 const path = require('node:path');
 const vscode = require('vscode');
+const { normalizeIndexedEntityId } = require('../../core/references/indexedEntityQuery');
 
 const DEFAULT_MAX_PINNED = 10;
 const DEFAULT_RESULT_BUDGET_BYTES = 8 * 1024 * 1024;
@@ -38,12 +39,9 @@ function normalizeScope(scope): EntityQueryScope | null {
 
 function normalizeIdentity(identity): EntityQueryIdentity | null {
     const targetKind = String(identity?.targetKind || '').trim();
-    const id = typeof identity?.id === 'string' ? identity.id.trim() : identity?.id;
+    const id = normalizeIndexedEntityId(identity?.id);
     const scope = normalizeScope(identity?.scope);
-    const validId = typeof id === 'string'
-        ? (/^[A-Za-z][A-Za-z0-9_]{0,19}$/.test(id) || /^\+?\d+$/.test(id))
-        : Number.isSafeInteger(id) && id > 0;
-    if (!targetKind || !validId || !scope) {
+    if (!targetKind || id === null || !scope) {
         return null;
     }
     return { targetKind, id, scope };
@@ -70,6 +68,9 @@ function estimateLocationsBytes(locations) {
         bytes += String(location.filePath || '').length * 2;
         bytes += String(location.keyword || '').length * 2;
         bytes += String(location.fieldName || '').length * 2;
+        bytes += String(location.entityId || '').length * 2;
+        bytes += String(location.entityName || '').length * 2;
+        bytes += String(location.entityKind || '').length * 2;
     }
     return bytes;
 }
@@ -204,6 +205,7 @@ class LsdynaEntityReferenceProvider {
                 ? 'ready'
             : result?.state === 'partial' ? 'partial' : 'incomplete';
         session.locations = navigable ? [...(result.locations || [])] : [];
+        session.page = navigable && result?.page ? { ...result.page, revision: result.revision, load: result.loadPage } : undefined;
         session.reasons = [...new Set(result?.reasons || [])];
         session.estimatedBytes = navigable
             ? estimateLocationsBytes(session.locations)
@@ -216,9 +218,41 @@ class LsdynaEntityReferenceProvider {
         return session;
     }
 
+    async loadNextPage(target, role) {
+        const session = this.getSession(target);
+        const page = session?.page;
+        if (!session || !['ready', 'partial'].includes(session.state) || !page?.next?.[role] ||
+            typeof page.load !== 'function') return false;
+        if (page.pending) return false;
+        const cursor = page.next[role];
+        page.pending = true;
+        try {
+            const response = await page.load(cursor);
+            if (this.getSession(session.key) !== session || session.page !== page ||
+                !['ready', 'partial'].includes(session.state)) return false;
+            if (response?.status !== 'ready' || response.revision !== page.revision ||
+                response.result?.page?.appendRole !== role) {
+                this.markNeedsRefresh(session, ['entity-query-source-changed']);
+                return false;
+            }
+            session.locations = [...session.locations, ...response.result.locations];
+            page.next = { ...page.next, [role]: response.result.page.next[role] };
+            session.estimatedBytes = estimateLocationsBytes(session.locations);
+            session.lastAccessedAt = this.clock();
+            this.enforceResultBudget();
+            // The Webview publishes the appended page without resetting its visible range.
+            return session.state !== 'needs-refresh';
+        } catch (_error) {
+            if (this.getSession(session.key) === session && session.page === page)
+                this.markNeedsRefresh(session, ['entity-reference-query-interrupted']);
+            return false;
+        } finally { page.pending = false; }
+    }
+
     markLoading(target) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.page = undefined;
         session.state = 'loading';
         session.locations = [];
         session.reasons = [];
@@ -232,6 +266,7 @@ class LsdynaEntityReferenceProvider {
     markIncomplete(target, reasons = []) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.page = undefined;
         session.state = 'incomplete';
         session.locations = [];
         session.reasons = [...new Set(reasons || [])];
@@ -244,6 +279,7 @@ class LsdynaEntityReferenceProvider {
     markNeedsRefresh(target, reasons = []) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.page = undefined;
         session.state = 'needs-refresh';
         session.locations = [];
         session.reasons = [...new Set(reasons || [])];
@@ -350,6 +386,7 @@ class LsdynaEntityReferenceProvider {
             total -= session.estimatedBytes;
             session.locations = [];
             session.estimatedBytes = 0;
+            session.page = undefined;
             session.state = 'needs-refresh';
             session.reasons = ['entity-reference-results-evicted'];
             this.referenceCursorByKey.delete(session.key);

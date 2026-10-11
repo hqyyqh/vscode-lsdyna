@@ -2,11 +2,17 @@ import { keywordDataPath } from "../keywordDataPath";
 import { keywordInputFormat, stripKeywordInputFormatMarker, type KeywordInputFormatMode } from '../parser/inputFormat';
 
 const rules = require(keywordDataPath("native-readers/lspp-native-input-format.json"));
-const sourceSha256 = "68aa1f658eaeed8dc2b33eb9687eb349cf754d1f3fc51959a2364b9fdb071423";
+const constrained = require(keywordDataPath("native-readers/lspp-constrained-input-format.json"));
+const sourceSha256 = "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0";
 
 function boundReader(rule: any, keywordText: string): any {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
-    const binding = rules.bindings[keyword];
+    const reference = require("./catalogNativeFileLayout").nativeReferenceFileBinding(keyword);
+    const secondary = constrained.sourceSha256 === sourceSha256 &&
+        rule?.catalogSource?.datasetSha256 === sourceSha256 ? constrained.bindings[keyword] : undefined;
+    const binding = secondary || rules.bindings[keyword] || (rule?.catalogSource?.datasetSha256 === sourceSha256
+        ? reference?.kind.startsWith('seismic-') ? { ...reference, slot: 40 }
+            : [1, 13, 17, 18, 25, 35, 40, 42].includes(reference?.slot) ? reference : undefined : undefined);
     return rules.sourceSha256 === sourceSha256 && binding?.cardSetId === rule?.cardSetId ? binding : undefined;
 }
 
@@ -25,5 +31,5 @@ export function nativeReadInputFormat(rule: any, keywordText: string,
     if (!binding) return requested;
     
     // pass through the same actual dispatcher-slot gate, independently of LONG.
-    return rules.i10PreservedSlots.includes(binding.slot) ? requested : 'standard';
+    return (binding.i10Preserved ?? rules.i10PreservedSlots.includes(binding.slot)) ? requested : 'standard';
 }

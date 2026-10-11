@@ -36,12 +36,6 @@ type LargeFileScanOptions = {
 };
 
 /**
- * The default batch yield interval for stream scanning to prevent blocking the event loop.
- * @type {number}
- */
-const STREAM_SCAN_YIELD_INTERVAL = 50000;
-
-/**
  * @typedef {Object} IncludeSegment
  * @property {number} lineIndex - 0-indexed line number of this filename segment.
  * @property {number} startChar - 0-indexed column index of the first character of the filename.
@@ -391,7 +385,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
         flushIncludeEntry(state);
         flushPathEntry(state);
         finalizeActiveTransformEntry(state);
-        const normalizedKeyword = String(classification.normalizedKeyword || '');
+        const normalizedKeyword = classification.normalizedKeyword;
         const attachedOverride = normalizedKeyword.endsWith('+')
             ? 'long'
             : normalizedKeyword.endsWith('-')
@@ -401,7 +395,7 @@ function processIncludeDirectiveLine(state, line, lineIndex) {
             ? normalizedKeyword.slice(0, -1)
             : normalizedKeyword;
         const remainder = line.slice(
-            classification.indent + String(classification.rawKeyword || '').length
+            classification.indent + classification.rawKeyword.length
         );
         const separatedMatch = /^\s*([+-])(?:\s|,|$)/.exec(remainder);
         state.inputFormatOverride = attachedOverride ||
@@ -613,12 +607,7 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
     throwIfCancellationRequested(options.cancellationToken);
     const basePath = path.dirname(filePath);
 
-    let fileStat;
-    try {
-        fileStat = await fs.promises.stat(filePath);
-    } catch (_error) {
-        return { includeEntries: [], searchPaths: [basePath], pathEntries: [] };
-    }
+    const fileStat = await fs.promises.stat(filePath);
 
     if (fileStat.size <= SMALL_FILE_THRESHOLD) {
         const buffer = await fs.promises.readFile(filePath);
@@ -633,39 +622,6 @@ async function collectIncludeDirectivesFromFile(filePath, options: LargeFileScan
         block => readBlockText(block, 'utf8', { cancellationToken: options.cancellationToken }),
         options,
     );
-}
-
-/**
- * Fast stream-based check for whether a file contains the '*INCLUDE' pattern.
- * Scans the raw bytes without full parsing - only checks lines starting with '*' (0x2A).
- * For large files (100-500MB), this is much faster than a full parse when no includes exist.
- * 
- * @param {string} filePath - Absolute path to the file.
- * @returns {Promise<boolean>} True if the file likely contains an *INCLUDE directive.
- */
-async function streamContainsIncludeKeyword(filePath) {
-    const stream = fs.createReadStream(filePath);
-    let remainder = Buffer.alloc(0);
-
-    try {
-        for await (const chunk of stream) {
-            const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk;
-            
-            let offset = 0;
-            let nextNewLine = -1;
-            while ((nextNewLine = combined.indexOf(0x0A, offset)) !== -1) {
-                if (isIncludeKeywordBufferLine(combined, offset, nextNewLine)) return true;
-                offset = nextNewLine + 1;
-            }
-            remainder = combined.subarray(offset);
-        }
-
-        if (remainder.length > 0 && isIncludeKeywordBufferLine(remainder, 0, remainder.length)) return true;
-    } finally {
-        stream.destroy();
-    }
-
-    return false;
 }
 
 function isIncludeKeywordBufferLine(buffer, start, end) {

@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "kind": "manual-contact-thermal-composition",
+  "baseKeyword": "CONTACT_AUTOMATIC_SURFACE_TO_SURFACE",
+  "catalogRuleId": "input-form-796",
+  "cardSetId": "record:3c11134d2da44eeb1b070a21:d11d728b0f62be09ab31f4b8",
+  "selectorRuleId": "lspp-native-selectors-57fae9bd493d",
+  "controlId": "native-selector-143e5a495",
+  "source": {
+    "nativeExecutableSha256": "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0",
+    "schemaCheckpointSha256": "0660c76e56f9bcbbd91c2330e2217ce3ef0fc74645d51e568b8bc6b478e0af0d",
+    "inputFormCheckpointSha256": "84cdbf364d30aaedebe0fa6cd14023979a117629370c412aade544d7248b8e94",
+    "manual": {
+      "sha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+      "revision": "master@82cac4671 (06/12/26)",
+      "physicalPages": [
+        1126,
+        1127,
+        1196,
+        1197,
+        1198,
+        1199,
+        1200
+      ],
+      "manualId": "ls-dyna-dev-keyword-manual-vol-i"
+    },
+    "verification": "cross-checked-native-GUI-descriptors-and-original-manual; native-file-roundtrip-not-claimed"
+  },
+  "values": {
+    "Thermal": {
+      "suffix": "THERMAL",
+      "cardCount": 1,
+      "manualSectionId": "12_23_thermal"
+    },
+    "T_Friction": {
+      "suffix": "THERMAL_FRICTION",
+      "cardCount": 2,
+      "manualSectionId": "12_24_thermal-friction"
+    }
+  },
+  "cards": [
+    [
+      {
+        "n": "K",
+        "p": 0,
+        "w": 10,
+        "h": "Thermal conductivity ( k ) of fluid between the slide surfaces. If a gap with a thickness L(gap) exists between the slide surfaces, then the conductance due to thermal conductivity between the slide surfaces is\nH(cond) = K/L(gap), Note that LS- DYNA calculates L(gap) based on deformation.",
+        "t": "real",
+        "localized": "滑动表面之间流体的热导率 k。若两滑动表面之间存在厚度为 L(gap) 的间隙，则由流体导热产生的热导为 H(cond) = K/L(gap)。注意，LS-DYNA 根据变形计算 L(gap)。"
+      },
+      {
+        "n": "FRAD",
+        "p": 10,
+        "w": 10,
+        "h": "Radiation factor, f, between the slide surfaces.",
+        "t": "real",
+        "localized": "滑动表面之间的辐射因子 f。"
+      },
+      {
+        "n": "H0",
+        "p": 20,
+        "w": 10,
+        "h": "Heat transfer conductance for closed gaps, used when 0 <= L(gap) <= LMIN.",
+        "t": "real",
+        "localized": "闭合间隙的传热系数，适用于 0 <= L(gap) <= LMIN。"
+      },
+      {
+        "n": "LMIN",
+        "p": 30,
+        "w": 10,
+        "h": "Minimum gap thickness. H0 applies below this value. If LMIN < 0, -LMIN is the load curve ID defining the minimum gap as a function of time.",
+        "t": "real",
+        "localized": "最小间隙厚度。间隙厚度小于该值时使用 H0。LMIN < 0 时，-LMIN 为载荷曲线 ID，用于定义最小间隙随时间的变化。"
+      },
+      {
+        "n": "LMAX",
+        "p": 40,
+        "w": 10,
+        "h": "maximum length, no thermal contact if gap thickness is greater than this value.",
+        "t": "real",
+        "localized": "最大长度，若间隙厚度大于该值则视为无热接触。"
+      },
+      {
+        "n": "FTOSA",
+        "p": 50,
+        "w": 10,
+        "h": "Fraction,  f, of sliding friction energy partitioned to the SURFA surface (see Remark 3). Energy partitioned to the SURFB surface is (1-f).\nEQ.0:    Set to 0.5 (default). The sliding friction energy is partitioned 50 % -50 % to the SURFA and SURFB surfaces in contact.",
+        "t": "real",
+        "d": 0.5,
+        "localized": "分配到 SURFA 表面的滑动摩擦能量比例 f（参见备注 3）。分配到 SURFB 表面的能量比例为 1 − f。\nEQ.0：设为 0.5（默认值），滑动摩擦能量在接触的 SURFA 与 SURFB 表面之间各分配 50%。"
+      },
+      {
+        "n": "BC_FLG",
+        "p": 60,
+        "w": 10,
+        "h": "Thermal boundary condition flag\nEQ.0: thermal boundary conditions are ON when parts are in contact\nEQ.1: thermal boundary conditions are OFF when parts are in contact",
+        "t": "integer",
+        "localized": "热边界条件标志\nEQ.0：部件发生接触时，热边界条件处于开启状态。\nEQ.1：部件发生接触时，热边界条件处于关闭状态。",
+        "d": 0
+      },
+      {
+        "n": "ALGO",
+        "p": 70,
+        "w": 10,
+        "h": "Thermal contact algorithm type.\nEQ.0: Two-way contact. Both surfaces change temperature due to contact\nEQ.1: One-way contact. The surface of SURFB does not change temperature due to contact. The surface of SURFA does change temperature.\nEQ.2: Two-way edge contact\nEQ.3: One-way edge contact(no heat transfer into reference side)\nNOTE: For ALGO = 2 and 3, shell edges must be on the SURFA side, and solid facets and shell surface need to be on the SURFB side.",
+        "t": "integer",
+        "localized": "热接触算法类型：\nEQ.0：双向接触，两个表面都会因接触改变温度。\nEQ.1：单向接触，SURFB 表面不因接触改变温度，SURFA 表面会改变温度。\nEQ.2：双向边缘接触。\nEQ.3：单向边缘接触（参考侧无热传递）。\n注意：ALGO = 2 或 3 时，壳边缘必须位于 SURFA 侧，实体面和壳表面必须位于 SURFB 侧。",
+        "d": 0
+      }
+    ],
+    [
+      {
+        "n": "LCFST",
+        "p": 0,
+        "w": 10,
+        "h": "Load curve ID defining the static friction coefficient as a function of temperature. The curve value multiplies FS.",
+        "t": "integer",
+        "localized": "载荷曲线 ID，用于定义静摩擦系数随温度的变化；曲线值与 FS 相乘。",
+        "d": 0
+      },
+      {
+        "n": "LCFDT",
+        "p": 10,
+        "w": 10,
+        "h": "Load curve ID defining the dynamic friction coefficient as a function of temperature. The curve value multiplies FD.",
+        "t": "integer",
+        "localized": "载荷曲线 ID，用于定义动摩擦系数随温度的变化；曲线值与 FD 相乘。",
+        "d": 0
+      },
+      {
+        "n": "FORMULA",
+        "p": 20,
+        "w": 10,
+        "h": "Formula that defines the contact heat conductance as a function of temperature and pressure.\nIf FORMULA < 0, supply |FORMULA| real user-subroutine parameters on additional cards, eight parameters per card.",
+        "t": "integer",
+        "localized": "用于定义接触热导随温度与压力变化的公式。\nFORMULA < 0 时，在附加卡片上输入 |FORMULA| 个实数用户子程序参数，每张卡片最多 8 个参数。",
+        "d": 0
+      },
+      {
+        "n": "A",
+        "p": 30,
+        "w": 10,
+        "h": "Load curve number for the a coefficient used in the formula",
+        "t": "integer",
+        "localized": "公式中 a 系数所对应的载荷曲线编号。",
+        "d": 0
+      },
+      {
+        "n": "B",
+        "p": 40,
+        "w": 10,
+        "h": "Load curve number for the b coefficient used in the formula",
+        "t": "integer",
+        "localized": "公式中 b 系数所对应的载荷曲线编号。",
+        "d": 0
+      },
+      {
+        "n": "C",
+        "p": 50,
+        "w": 10,
+        "h": "Load curve number for the c coefficient used in the formula",
+        "t": "integer",
+        "localized": "公式中 c 系数所对应的载荷曲线编号。",
+        "d": 0
+      },
+      {
+        "n": "D",
+        "p": 60,
+        "w": 10,
+        "h": "Load curve number for the d coefficient used in the formula",
+        "t": "integer",
+        "localized": "公式中用于 d 系数的载荷曲线编号。",
+        "d": 0
+      },
+      {
+        "n": "LCH",
+        "p": 70,
+        "w": 10,
+        "h": "Load curve number for h. If this is defined, it will take precedence over any other defintions.\nGT.0: function versus time,\nGT.NLCUR: general function (time, temp, pressure, gap)\nLT.0: function versus temperature.",
+        "t": "integer",
+        "localized": "GT.0: function versus time,\nGT.NLCUR: general function (time, temp, pressure, gap)\nLT.0: function versus temperature.\nh 的载荷曲线编号。如果定义，将优先于其他定义。\nGT.0：函数随时间变化。\nGT.NLCUR：通用函数（时间、温度、压力、间隙）。\nLT.0：函数随温度变化。",
+        "d": 0
+      }
+    ]
+  ],
+  "parameterCard": [
+    {
+      "n": "UC1",
+      "t": "real",
+      "p": 0,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 1 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 1 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC2",
+      "t": "real",
+      "p": 10,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 2 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 2 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC3",
+      "t": "real",
+      "p": 20,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 3 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 3 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC4",
+      "t": "real",
+      "p": 30,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 4 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 4 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC5",
+      "t": "real",
+      "p": 40,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 5 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 5 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC6",
+      "t": "real",
+      "p": 50,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 6 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 6 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC7",
+      "t": "real",
+      "p": 60,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 7 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 7 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    },
+    {
+      "n": "UC8",
+      "t": "real",
+      "p": 70,
+      "w": 10,
+      "d": 0,
+      "h": "User-subroutine parameter 8 on this card. Additional cards are required for FORMULA < 0; supply |FORMULA| parameters, eight per card.",
+      "localized": "本卡片的第 8 个用户子程序参数。FORMULA < 0 时需要附加卡片，共输入 |FORMULA| 个参数，每张卡片最多 8 个。"
+    }
+  ],
+  "parameterCount": {
+    "controller": "FORMULA",
+    "card": 2,
+    "field": 2,
+    "parametersPerCard": 8,
+    "maximumCards": 128
+  },
+  "notes": "Supplemental manual composition, not an unconditional spelling alias or inherited native file-reader approval. Limited to the named base CONTACT; other families and version-specific applicability remain unverified."
+}

@@ -1,5 +1,6 @@
 'use strict';
 import { globalInputFormatFromKeywordLine, type KeywordInputFormatMode } from '../../core/parser/inputFormat';
+import { isKeywordCommentLine } from '../../core/parser/keywordLine';
 
 /**
  * Bounded, operation-wide planner for the explicit LS-DYNA formatting command.
@@ -371,7 +372,6 @@ export async function planLsdynaFormatting(
         };
 
         const isFieldHeader = (text: string) => text.startsWith('$#');
-        const isComment = (text: string) => text.startsWith('$');
         const isIncludeFileKeyword = (keyword: string) =>
             keyword.startsWith('*INCLUDE') && !keyword.startsWith('*INCLUDE_PATH');
         const isSingleEightyColumnCard = (card: any[]) =>
@@ -485,7 +485,7 @@ export async function planLsdynaFormatting(
                     continue;
                 }
 
-                if (isComment(text)) {
+                if (isKeywordCommentLine(text)) {
                     if (isFieldHeader(text)) {
                         if (selected) selectedHeaders.push({ line, text });
                     }

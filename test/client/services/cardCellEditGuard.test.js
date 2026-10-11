@@ -30,6 +30,11 @@ function fakeDoc(lines) {
         version: 1,
         lineCount: arr.length,
         languageId: 'lsdyna',
+        updateLines(nextLines) {
+            arr.splice(0, arr.length, ...nextLines);
+            this.lineCount = arr.length;
+            return this;
+        },
         lineAt(i) {
             return { text: arr[i] || '' };
         },
@@ -397,7 +402,7 @@ describe('cardCellEditGuard', () => {
         guard.markA(before, 1, 1, true);
 
         const pastedLine = originalLine.slice(0, 11) + '9.5' + originalLine.slice(20);
-        const after = fakeDoc(['*NODE', pastedLine]);
+        const after = before.updateLines(['*NODE', pastedLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -428,7 +433,7 @@ describe('cardCellEditGuard', () => {
 
         const pasted = '12345678901';
         const pastedLine = originalLine.slice(0, 11) + pasted + originalLine.slice(20);
-        const after = fakeDoc(['*NODE', pastedLine]);
+        const after = before.updateLines(['*NODE', pastedLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -457,7 +462,7 @@ describe('cardCellEditGuard', () => {
         });
         guard.markA(before, 1, 1, true);
 
-        const after = fakeDoc([
+        const after = before.updateLines([
             '*NODE',
             originalLine.slice(0, 11) + '9',
             '5' + originalLine.slice(20),
@@ -489,7 +494,7 @@ describe('cardCellEditGuard', () => {
             });
             const before = fakeDoc(['*NODE', originalLine]);
             guard.markA(before, 1, 1, true);
-            return guard;
+            return { guard, document: before };
         };
         const change = {
             range: {
@@ -500,8 +505,7 @@ describe('cardCellEditGuard', () => {
             text: '9',
         };
 
-        const multipleGuard = makeGuard();
-        const multipleDoc = fakeDoc(['*NODE', originalLine]);
+        const { guard: multipleGuard, document: multipleDoc } = makeGuard();
         multipleDoc.version = 2;
         assert.strictEqual(
             multipleGuard.planPostEditCorrection(multipleDoc, [change, change]),
@@ -509,14 +513,12 @@ describe('cardCellEditGuard', () => {
         );
         assert.strictEqual(multipleGuard.getNav(), null);
 
-        const staleGuard = makeGuard();
-        const staleDoc = fakeDoc(['*NODE', originalLine]);
+        const { guard: staleGuard, document: staleDoc } = makeGuard();
         staleDoc.version = 3;
         assert.strictEqual(staleGuard.planPostEditCorrection(staleDoc, [change]), null);
         assert.strictEqual(staleGuard.getNav(), null);
 
-        const movedGuard = makeGuard();
-        const movedDoc = fakeDoc(['*NODE', originalLine]);
+        const { guard: movedGuard, document: movedDoc } = makeGuard();
         movedDoc.version = 2;
         assert.strictEqual(movedGuard.planPostEditCorrection(movedDoc, [{
             ...change,
@@ -580,7 +582,7 @@ describe('cardCellEditGuard', () => {
         });
         guard.markAp(beforeUndo, 1, 1, 20);
 
-        const afterUndo = fakeDoc(['*NODE', originalLine]);
+        const afterUndo = beforeUndo.updateLines(['*NODE', originalLine]);
         afterUndo.version = 2;
         assert.strictEqual(guard.planPostEditCorrection(afterUndo, [{
             range: {
@@ -606,7 +608,7 @@ describe('cardCellEditGuard', () => {
         const caret = 20;
 
         const pastedLine = originalLine.slice(0, caret) + '34' + originalLine.slice(caret);
-        const after = fakeDoc(['*NODE', pastedLine]);
+        const after = before.updateLines(['*NODE', pastedLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -636,7 +638,7 @@ describe('cardCellEditGuard', () => {
         guard.markAp(before, 1, 1, caret);
 
         const pastedLine = originalLine.slice(0, caret) + 'X' + originalLine.slice(caret);
-        const after = fakeDoc(['*NODE', pastedLine]);
+        const after = before.updateLines(['*NODE', pastedLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -676,7 +678,7 @@ describe('cardCellEditGuard', () => {
         assert.strictEqual(guard.getNav().expectedEnd, 19);
 
         const pastedLine = originalLine.slice(0, 17) + 'X' + originalLine.slice(19);
-        const after = fakeDoc(['*NODE', pastedLine]);
+        const after = before.updateLines(['*NODE', pastedLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -714,7 +716,7 @@ describe('cardCellEditGuard', () => {
         });
 
         const cutLine = originalLine.slice(0, 17) + originalLine.slice(19);
-        const after = fakeDoc(['*NODE', cutLine]);
+        const after = before.updateLines(['*NODE', cutLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -743,7 +745,7 @@ describe('cardCellEditGuard', () => {
         guard.markAp(before, 1, 1);
 
         const cutLine = originalLine.slice(0, 17) + originalLine.slice(19);
-        const after = fakeDoc(['*NODE', cutLine]);
+        const after = before.updateLines(['*NODE', cutLine]);
         after.version = 2;
         const plan = guard.planPostEditCorrection(after, [{
             range: {
@@ -771,12 +773,12 @@ describe('cardCellEditGuard', () => {
                 isProtectEnabled: () => true,
             });
             guard.markAp(before, 1, 1);
-            return guard;
+            return { guard, document: before };
         };
 
-        const outsideGuard = makeGuard();
+        const { guard: outsideGuard, document: outsideDoc } = makeGuard();
         const outsideLine = originalLine.slice(0, 21) + originalLine.slice(22);
-        const outsideDoc = fakeDoc(['*NODE', outsideLine]);
+        outsideDoc.updateLines(['*NODE', outsideLine]);
         outsideDoc.version = 2;
         assert.strictEqual(outsideGuard.planPostEditCorrection(outsideDoc, [{
             range: {
@@ -787,8 +789,8 @@ describe('cardCellEditGuard', () => {
             text: '',
         }]), null);
 
-        const mismatchGuard = makeGuard();
-        const mismatchDoc = fakeDoc(['*NODE', originalLine.slice(0, 17) + originalLine.slice(19) + 'X']);
+        const { guard: mismatchGuard, document: mismatchDoc } = makeGuard();
+        mismatchDoc.updateLines(['*NODE', originalLine.slice(0, 17) + originalLine.slice(19) + 'X']);
         mismatchDoc.version = 2;
         assert.strictEqual(mismatchGuard.planPostEditCorrection(mismatchDoc, [{
             range: {

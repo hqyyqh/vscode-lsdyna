@@ -144,7 +144,7 @@ export function themeKindFromVscode(kind: unknown): ExtensionThemeKind {
 }
 
 export function themeKindFromRenderOptions(options: any = {}): ExtensionThemeKind {
-    if (options && typeof options.themeKind === 'string' && options.themeKind in EXTENSION_THEME_PALETTES) {
+    if (options && typeof options.themeKind === 'string' && Object.prototype.hasOwnProperty.call(EXTENSION_THEME_PALETTES, options.themeKind)) {
         return options.themeKind as ExtensionThemeKind;
     }
     if (options && options.themeKind != null) {
@@ -155,7 +155,7 @@ export function themeKindFromRenderOptions(options: any = {}): ExtensionThemeKin
 }
 
 export function resolveExtensionThemePalette(kind: unknown): ExtensionThemePalette {
-    const resolvedKind = typeof kind === 'string' && kind in EXTENSION_THEME_PALETTES
+    const resolvedKind = typeof kind === 'string' && Object.prototype.hasOwnProperty.call(EXTENSION_THEME_PALETTES, kind)
         ? kind as ExtensionThemeKind
         : themeKindFromVscode(kind);
     return { kind: resolvedKind, ...EXTENSION_THEME_PALETTES[resolvedKind] };

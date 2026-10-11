@@ -17,7 +17,10 @@ function snapshot(root, { functionalOnly = false } = {}) {
     const Module = require('node:module'), resolve = Module._resolveFilename;
     Module._resolveFilename = function (...args) {
         const result = resolve.apply(this, args);
-        if (path.isAbsolute(result)) assert.ok(!path.relative(root, result).startsWith('..'), `Package escaped: ${result}`);
+        if (path.isAbsolute(result)) {
+            const relative = path.relative(root, result);
+            assert.ok(relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative), `Package escaped: ${result}`);
+        }
         return result;
     };
     const { CatalogInputFormCatalogV4 } = require(resource("out/core/semantics/catalogInputFormCatalogV4.js"));
@@ -35,6 +38,21 @@ function snapshot(root, { functionalOnly = false } = {}) {
     const references = semantics.allReferenceRecords(), definitions = semantics.allDefinitionScanners(), options = semantics.allOptionGrammars();
     assert.ok(semantics.status().ready);
     const payloads = {};
+    const referenceManifestPath = path.join(root, 'keywords/runtime/references/reference-rules.manifest.json');
+    if (!functionalOnly && fs.existsSync(referenceManifestPath)) {
+        const { ReferenceRuleCatalog } = require(path.join(root, 'out/core/references/referenceRuleCatalog.js'));
+        const rules = new ReferenceRuleCatalog(path.dirname(referenceManifestPath));
+        const storage = JSON.parse(fs.readFileSync(referenceManifestPath));
+        const restored = {};
+        for (const key of Object.keys(storage.parts)) {
+            if (key !== 'identity' && !key.startsWith('references-')) restored[key] = rules.metadata(key);
+        }
+        restored.references = Object.fromEntries(rules.keywords().map(keyword => [keyword, rules.records(keyword)]));
+        if (restored.lsppBlockedReferences?.file) restored.lsppBlockedReferences = {
+            ...restored.lsppBlockedReferences, file: authoringPath(restored.lsppBlockedReferences.file),
+        };
+        payloads['keywords/runtime/references/field_reference_index.json'] = digest(restored);
+    }
     const visit = directory => {
         for (const item of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
             const physical = `${directory}/${item.name}`;
@@ -43,6 +61,8 @@ function snapshot(root, { functionalOnly = false } = {}) {
                 /^keywords\/runtime\/semantic-v2\/(authority-lock|build-report|proof-report)\.json$/.test(relative) ||
                 relative === 'out/runtime/release-code.json') continue;
             if (item.isDirectory()) { visit(physical); continue; }
+            if (relative === 'keywords/runtime/references/reference-rules.manifest.json' ||
+                (fs.existsSync(referenceManifestPath) && relative.startsWith('keywords/runtime/references/') && relative.endsWith('.json.br'))) continue;
             if (!/\.json(\.(gz|br))?$/.test(relative)) continue;
             const bytes = fs.readFileSync(path.join(root, physical));
             const zlib = require('node:zlib');
@@ -60,6 +80,14 @@ function snapshot(root, { functionalOnly = false } = {}) {
                 for (const descriptor of [...value.shards, value.textIndex].filter(Boolean)) {
                     // Only codec-derived fields differ; slot ranges and source bindings remain identical.
                     descriptor.file = descriptor.file.replace(/\.br$/, '.gz'); delete descriptor.sha256; delete descriptor.compressedBytes;
+                }
+            }
+            if (relative === 'keywords/runtime/semantic-v2/manifest.json') {
+                // Storage hashes change with encoding; decoded payload hashes remain compared.
+                delete value.contentSha256;
+                for (const descriptor of [...value.referenceShards, ...value.optionShards]) {
+                    descriptor.path = descriptor.path.replace(/\.br$/, '.gz');
+                    delete descriptor.codec; delete descriptor.sha256; delete descriptor.compressedBytes;
                 }
             }
             payloads[relative.replace(/\.br$/, '.gz')] = digest(value);

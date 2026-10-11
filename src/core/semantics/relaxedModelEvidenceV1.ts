@@ -274,7 +274,8 @@ export class RelaxedModelEvidenceV1Catalog {
             'relaxed model source manifest content drift');
         assertContract(sourceRecords.length === manifest.summary.finalPhysicalFields,
             'relaxed model source population drift');
-        const records = sourceRecords.filter(validateSourceRecord);
+        const records = sourceRecords.filter(record =>
+            record?.descriptionStatus === 'approved-relaxed-model-semantic-judgment');
         assertContract(records.length === manifest.summary.approvedRelaxedModelV1Fields,
             'relaxed model approved count does not match source manifest');
         assertContract(new Set(records.map(record => record.finalPhysicalFieldId)).size === records.length,

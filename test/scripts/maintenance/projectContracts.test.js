@@ -9,9 +9,18 @@ const {
     validateParallelMessages,
     validateProjectContracts,
     validateTrackedPaths,
+    debugStorageErrors,
 } = require("../../../scripts/maintenance/validate-project-contracts.cjs");
 
 describe('project contracts', () => {
+    it('rejects unmanaged new runners and does not accept a manager mentioned only in comments', () => {
+        const check = source => debugStorageErrors([{ file: 'scripts/host/new-host.cjs', source }]);
+        assert.equal(check("// createTempRun() require('./temp-runs.cjs')\nspawn(code, [`--user-data-dir=${profile}`]);").length, 1);
+        assert.equal(check("const {createTempRun}=require('./temp-runs.cjs'); const root=createTempRun('dynasense-new-'); spawn(code, [`--user-data-dir=${root}`]);").length, 0);
+        assert.equal(check("const {createTempRun}=require('./temp-runs.cjs'); createTempRun('dynasense-new-'); fs['mkdtempSync']('profile-');").length, 1);
+        assert.equal(debugStorageErrors([{ file: 'scripts/host/run-editor-safety-large-file-host-worker.cjs',
+            source: "spawn(code, [`--user-data-dir=${process.env.INHERITED_PROFILE}`]);" }]).length, 0);
+    });
     it('reads exact settings and defaults from tables and bilingual lists', () => {
         const text = [
             '| `lsdyna.language` | `"auto"` | Language |',
@@ -37,12 +46,14 @@ describe('project contracts', () => {
         const zh = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.nls.zh-cn.json'), 'utf8'));
 
         assert.equal(en['commands.scanKeywordIndex.title'], 'Scan Keyword Index');
-        assert.equal(en['commands.keywordIndexSetLocal.title'], 'Show Current File');
+        assert.equal(en['commands.keywordIndexSetLocal.title'], 'Set Index Scope to Current File');
+        assert.equal(en['commands.keywordIndexSetRecursive.title'], 'Set Index Scope to Entire Project');
         assert.equal(en['commands.configureManualsDir.title'], 'Set LS-DYNA Manuals Directory');
         assert.equal(en['commands.openManualReader.title'], 'Open Manual Reader');
         assert.equal(en['commands.openCurrentKeywordManual.title'], 'Open Manual for Current Keyword');
         assert.equal(zh['commands.scanKeywordIndex.title'], '扫描关键字索引');
-        assert.equal(zh['commands.keywordIndexSetLocal.title'], '显示当前文件');
+        assert.equal(zh['commands.keywordIndexSetLocal.title'], '索引范围设为当前文件');
+        assert.equal(zh['commands.keywordIndexSetRecursive.title'], '索引范围设为整个项目');
         assert.equal(zh['commands.configureManualsDir.title'], '设置 LS-DYNA 手册目录');
         assert.equal(zh['commands.openManualReader.title'], '打开手册阅读器');
         assert.equal(zh['commands.openCurrentKeywordManual.title'], '打开当前关键字的手册');

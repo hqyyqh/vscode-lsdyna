@@ -52,7 +52,7 @@ describe('native PART/NODE format consumers', () => {
                     assert.ok(card, format + keyword + ' manager');
                     assert.deepEqual(card.fields.map(field => field.value), info.card.map(field => field.rawValue));
                     for (const field of info.card.filter(field => field.nativeRange.end > field.nativeRange.start)) {
-                        const result = await hover.provideHover(doc, { line, character: field.p });
+                        const result = await hover.provideHover(doc, { line, character: field.p }, undefined, true);
                         assert.ok(result?.contents[0].value.includes('**' + field.n + '**'), field.n);
                         assert.equal(result.range.start.character, field.nativeRange.start);
                         assert.equal(result.range.end.character, field.nativeRange.end);

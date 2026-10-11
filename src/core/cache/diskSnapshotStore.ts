@@ -177,6 +177,11 @@ function normalizeTrackedFiles(trackedFiles = []) {
     }));
 }
 
+function hasTrackedSnapshotFiles(snapshot, trackedFiles) {
+    const tracked = new Set(trackedFiles.map(file => getRootCacheKey(file.filePath)));
+    return [snapshot.rootFile, ...(snapshot.files || [])].every(file => tracked.has(getRootCacheKey(file)));
+}
+
 /**
  * Factory function to create a Disk Snapshot Store.
  * 
@@ -241,8 +246,12 @@ function createDiskSnapshotStore({
      */
     async function writeFileAtomically(targetPath, content) {
         const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        await fs.promises.writeFile(tempPath, content, 'utf8');
-        await fs.promises.rename(tempPath, targetPath);
+        try {
+            await fs.promises.writeFile(tempPath, content, 'utf8');
+            await fs.promises.rename(tempPath, targetPath);
+        } finally {
+            await removeFileIfExists(tempPath);
+        }
     }
 
     /**
@@ -252,11 +261,7 @@ function createDiskSnapshotStore({
      * @returns {Promise<void>}
      */
     async function removeFileIfExists(filePath) {
-        try {
-            await fs.promises.rm(filePath, { force: true });
-        } catch (error) {
-            if (error.code !== 'ENOENT') throw error;
-        }
+        await fs.promises.rm(filePath, { force: true });
     }
 
     /**
@@ -425,6 +430,7 @@ function createDiskSnapshotStore({
             } catch (error) {
                 if (error.code === 'ENOENT') {
                     state = { entries: new Map() };
+                    await reconcilePayloadFiles(state);
                     return state;
                 }
                 return resetStorage();
@@ -456,7 +462,7 @@ function createDiskSnapshotStore({
      * @returns {Promise<boolean>} True if all files are unmodified.
      */
     async function validateTrackedFiles(trackedFiles) {
-        if (!trackedFiles || trackedFiles.length === 0) return true;
+        if (!trackedFiles || trackedFiles.length === 0) return false;
 
         // Fast path: validate the root file (first entry) first.
         // If it has changed, short-circuit immediately without checking all other files.
@@ -543,6 +549,9 @@ function createDiskSnapshotStore({
                 const rootFile = resolveRootFile(snapshot.rootFile);
                 const rootCacheKey = getRootCacheKey(rootFile);
                 const normalizedTrackedFiles = normalizeTrackedFiles(trackedFiles);
+                if (!hasTrackedSnapshotFiles(snapshot, normalizedTrackedFiles)) {
+                    throw new TypeError('disk snapshot persistence requires signatures for all snapshot files');
+                }
                 const payloadFileName = getPayloadFileName(rootCacheKey);
                 const payload = {
                     schemaVersion,
@@ -591,7 +600,10 @@ function createDiskSnapshotStore({
                     const rawPayload = await fs.promises.readFile(path.join(payloadDirectoryPath, entry.payloadFileName), 'utf8');
                     entry.byteSize = Buffer.byteLength(rawPayload, 'utf8');
                     const payload = JSON.parse(rawPayload);
-                    if (!payload || payload.schemaVersion !== schemaVersion || !Array.isArray(payload.trackedFiles)) {
+                    if (!payload || payload.schemaVersion !== schemaVersion || !Array.isArray(payload.trackedFiles) ||
+                        getRootCacheKey(payload.rootFile) !== rootCacheKey ||
+                        getRootCacheKey(payload.snapshot.rootFile) !== rootCacheKey ||
+                        !hasTrackedSnapshotFiles(payload.snapshot, payload.trackedFiles)) {
                         await removeEntry(currentState, entry);
                         return null;
                     }

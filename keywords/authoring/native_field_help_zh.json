@@ -4718,5 +4718,196 @@
     "english": "|ASW2T| is the inclined (45Â°) shear reinforcement parameter Asw âsh (see Remark 5) resisting shear in the local t-direction (beams) or YZ-plane (shells).\nIt is applicable only for TYPESC = 6 or 16.\nGT.0.0: Inclined bars work for positive shear force only.\nLT.0.0: Inclined bars work for negative shear force only.",
     "localized": "|ASW2T| 为倾斜 45° 的抗剪配筋参数 Asw/sh（见备注 5），抵抗局部 t 方向（梁）或 YZ 平面（壳）的剪切。仅适用于 TYPESC = 6 或 16。GT.0.0：斜筋仅对正剪力起作用。LT.0.0：斜筋仅对负剪力起作用（原文角度和除号乱码，需核对手册）。",
     "sourceIssue": "原文存在缺失符号、乱码或无效交叉引用，需核对手册；详见译文括注。"
+  },
+  {
+    "english": "Formula that defines the contact heat conductance as a function of temperature and pressure.",
+    "localized": "用于定义接触热导随温度与压力变化的公式。"
+  },
+  {
+    "english": "Heat transfer conductance ( H cont ) for closed gaps. Use this heat transfer conductance for gaps in the range 0 <= L(gap) <= L(min) where L(min) is defined below.",
+    "localized": "闭合间隙的热导（H cont）。对于间隙满足 0 <= L(gap) <= L(min) 的范围，使用此热导；L(min) 的定义见下文。"
+  },
+  {
+    "english": "Load curve number for dynamic coefficient of friction as a function of temperature. The load curve value multiplies the coefficient value FD.For Mortar contact the temperature defining the scale factor Image is the mean temperature Image in the interface, if using a table one can prescribe the coefficient as an arbitrary function of both, i.e., Image. For this latter option, define a curve using Image as abscissa for each value of Image. ",
+    "localized": "用于定义动摩擦系数随温度变化的载荷曲线编号。载荷曲线值乘以系数 FD。\n对于 Mortar 接触，用于定义比例因子的温度 Image 是接触界面的平均温度 Image；若使用表，可将系数规定为这两个量的任意函数，即 Image。对于后一种选项，为每个 Image 值定义一条以 Image 为横坐标的曲线。\n原文中的 Image 是缺失符号或公式的占位文本，无法确认对应变量及公式。",
+    "sourceIssue": "The native source contains literal Image placeholders for missing symbols or formulas; the corresponding variables and formulas cannot be reconstructed from this string."
+  },
+  {
+    "english": "Load curve number for static coefficient of friction as a function of temperature. The load curve value multiplies the coefficient value FS. For Mortar contact the temperature defining the scale factor Image is the mean temperature Image in the interface, if using a table one can prescribe the coefficient as an arbitrary function of both, i.e., Image. For this latter option, define a curve using Image as abscissa for each value of Image",
+    "localized": "用于定义静摩擦系数随温度变化的载荷曲线编号。载荷曲线值乘以系数 FS。\n对于 Mortar 接触，用于定义比例因子的温度 Image 是接触界面的平均温度 Image；若使用表，可将系数规定为这两个量的任意函数，即 Image。对于后一种选项，为每个 Image 值定义一条以 Image 为横坐标的曲线。\n原文中的 Image 是缺失符号或公式的占位文本，无法确认对应变量及公式。",
+    "sourceIssue": "The native source contains literal Image placeholders for missing symbols or formulas; the corresponding variables and formulas cannot be reconstructed from this string."
+  },
+  {
+    "english": "minimum length, use heat transfer conductance defined by HTC for gap thickness less than this value.",
+    "localized": "最小长度。间隙厚度小于该值时，使用 HTC 所定义的热导。"
+  },
+  {
+    "english": "Angle tolerance in radians for feature lines option in smooth contact.\nEQ.0.0: No feature line is considered for surface fitting in smooth contact.\nGT.0.0: Any edge with angle between two contact segments bigger than this angle will be treated as feature line during surface fitting in smooth contact.",
+    "localized": "光滑接触中用于特征线选项的角度容差，单位为弧度。\nEQ.0.0: 光滑接触进行曲面拟合时不考虑特征线。\nGT.0.0: 若两个接触面片之间的夹角大于此值，则在光滑接触的曲面拟合中将其公共边视为特征线。"
+  },
+  {
+    "english": "Applies to the SOFT=1 and SOFT=2 and Mortar contacts. Time step used in stiffness calculation for SOFT=1 and SOFT=2 contact.\nEQ.0.0: Use the initial value that is used for time integration.\nGT.0.0: Use the value specified.\nLT.-0.01 and GT.-1.0: use a moving average of the solution time step. (SOFT=2 only).\nLT.-1.0: |DTSTIF| is the load curve ID defining DTSTIF versus time.\nFor the mortar contact and IGNORE=4, MPAR2 corresponds a penetration depth that must be at least the penetration occurring in the contact interface.",
+    "localized": "适用于 SOFT=1、SOFT=2 和 Mortar 接触。对于 SOFT=1 和 SOFT=2 接触，此值为计算刚度所用的时间步长。\nEQ.0.0: 使用时间积分所用的初始时间步长。\nGT.0.0: 使用指定值。\nLT.-0.01 且 GT.-1.0: 使用求解时间步长的移动平均值（仅适用于 SOFT=2）。\nLT.-1.0: |DTSTIF| 为定义 DTSTIF 随时间变化的载荷曲线 ID。\n对于 Mortar 接触且 IGNORE=4 时，MPAR2 表示穿透深度，其值必须至少等于接触界面上发生的穿透深度。"
+  },
+  {
+    "english": "Applies to the SOFT=2 and Mortar contacts. Depth of penetration reduction factor for SOFT=2 contact.\nEQ.0.0: Initial penetrations are always ignored.\nGT.0.0: Initial penetrations are penalized over time.\nLT.0.0:|DPRFAC| is the load curve ID defining DPRFAC versus time.\nFor the mortar conatact MPAR1 corresponds to initial contact pressure in interfaces with initial penetrations if IGNORE=2, for IGNORE=3,4 it corresponds to the time of closure of initial penetrations.",
+    "localized": "适用于 SOFT=2 和 Mortar 接触。对于 SOFT=2 接触，此值为穿透深度减小系数。\nEQ.0.0: 始终忽略初始穿透。\nGT.0.0: 随时间对初始穿透施加罚函数作用。\nLT.0.0: |DPRFAC| 为定义 DPRFAC 随时间变化的载荷曲线 ID。\n对于存在初始穿透的 Mortar 接触界面，IGNORE=2 时 MPAR1 表示初始接触压力；IGNORE=3,4 时，MPAR1 表示消除初始穿透所需的时间。"
+  },
+  {
+    "english": "Bucket sort frequency. This parameter does not apply when SOFT = 2 on Optional Card A or to Mortar contacts. For these two exceptions, the BSORT option on Optional Card A applies instead. Note that NSBCS on *CONTROL_CONTACT does not apply to SOFT = 0 and SOFT = 1 for MPP.  ",
+    "localized": "桶排序频率。此参数不适用于可选卡片 A 上 SOFT = 2 的接触，也不适用于 Mortar 接触；这两种情况改用可选卡片 A 上的 BSORT 选项。\n注意：对于 MPP，*CONTROL_CONTACT 上的 NSBCS 不适用于 SOFT = 0 和 SOFT = 1。"
+  },
+  {
+    "english": "Coordinate system ID to output RCFORC force resultants and NCFORC data in a local system.",
+    "localized": "用于在局部坐标系中输出 RCFORC 合力和 NCFORC 数据的坐标系 ID。"
+  },
+  {
+    "english": "Define if and only if THKOPT above equals 1.  Shell thickness is considered in non-automatic surface-to-surface and non-automatic node-to-surface type contact options, where options 1 and 2 below activate the new contact algorithms.  The thickness offsets are always included in single surface, constraint method, and automatic contact types. \nEQ.0: thickness is not considered, \nEQ.1: thickness is considered but rigid bodies are excluded, \nEQ.2: thickness is considered including rigid bodies.",
+    "localized": "当且仅当上面的 THKOPT 等于 1 时定义此项。对于非自动面对面接触和非自动节点对面接触，此项控制是否考虑壳厚度；下面的选项 1 和 2 会启用新的接触算法。\n单面接触、约束法接触和自动接触始终包含厚度偏置。\nEQ.0: 不考虑厚度。\nEQ.1: 考虑厚度，但不包括刚体。\nEQ.2: 考虑厚度，包括刚体。"
+  },
+  {
+    "english": "Distance for nonlinear force scaling, d.  See Remark 5. This field only applies to segment-to-segment contact invoked with SOFT = 2 on Optional Card A (see About SOFT = 2 under Optional Card A).",
+    "localized": "用于非线性接触力缩放的距离 d，参见说明 5。此字段仅适用于在可选卡片 A 上通过 SOFT = 2 启用的面片对面片接触（参见可选卡片 A 下的 About SOFT = 2）。"
+  },
+  {
+    "english": "FTORQ controls the transmittal of moments across the contact interface for some contact types. The moments addressed by FTORQ are \nthose due to contact friction (or tangential forces in the case of tied/tiebreak contact). For MPP with SOFT != 2, AUTOMATIC_GENERAL, \nAUTOMATIC_SURFACE_TO_SURFACE, AUTOMATIC_SINGLE_SURFACE, and AUTOMATIC_NODES_TO_SURFACE are supported for nonzero FTORQ. For AUTOMATIC_GENERAL, \nonly FTORQ = 1 works and causes the transmission of moments due to beam-to-beam friction. Setting FTORQ = 1 or 2 for AUTOMATIC_SURFACE_TO_SURFACE, \nAUTOMATIC_SINGLE_SURFACE, and AUTOMATIC_NODES_TO_SURFACE leads to transmitting a moment due to tied/tiebreak, contact friction, or damping. \nIn the case of AUTOMATIC_SINGLE_SURFACE, FTORQ = 1 differs only from FTORQ = 2 in that nodal moments are distributed to the nodes of the \ncontact segment if the segment belongs to a shell element; otherwise, the moment is transmitted as self-balanced nodal forces rather than as nodal moments. \nFor AUTOMATIC_SURFACE_TO_SURFACE and AUTOMATIC_NODES_TO_SURFACE, FTORQ = 1 is the same as FTORQ = 2. For SMP with SOFT !=, 2 FTORQ = 1 and 2 are \nsupported for AUTOMATIC_SURFACE_TO_SURFACE_TIEBREAK and AUTOMATIC_ONE_WAY_SURFACE_TO_SURFACE_TIEBREAK. FTORQ = 2 is supported for AUTOMATIC_SURFACE_TO_SURFACE \nand AUTOMATIC_ONE_WAY_SURFACE_TO_SURFACE.\nSOFT = 2 contacts support FTORQ = 2. FTORQ = 1 is not supported.",
+    "localized": "FTORQ 控制某些接触类型中力矩在接触界面两侧的传递。这里的力矩由接触摩擦产生；对于绑定接触或可失效绑定接触（tied/tiebreak），则由切向力产生。\n对于 MPP 且 SOFT != 2 时，AUTOMATIC_GENERAL、AUTOMATIC_SURFACE_TO_SURFACE、AUTOMATIC_SINGLE_SURFACE 和 AUTOMATIC_NODES_TO_SURFACE 支持非零 FTORQ。\n对于 AUTOMATIC_GENERAL，仅 FTORQ = 1 有效，用于传递梁对梁摩擦产生的力矩。\n对于 AUTOMATIC_SURFACE_TO_SURFACE、AUTOMATIC_SINGLE_SURFACE 和 AUTOMATIC_NODES_TO_SURFACE，设置 FTORQ = 1 或 2 可传递 tied/tiebreak、接触摩擦或阻尼产生的力矩。\n对于 AUTOMATIC_SINGLE_SURFACE，FTORQ = 1 与 FTORQ = 2 的唯一区别在于：接触面片属于壳单元时，将节点力矩分配给该面片的节点；否则以自平衡节点力传递力矩，而不以节点力矩传递。\n对于 AUTOMATIC_SURFACE_TO_SURFACE 和 AUTOMATIC_NODES_TO_SURFACE，FTORQ = 1 与 FTORQ = 2 相同。\n对于 SMP，原文条件为 SOFT !=, 2；在此条件下，AUTOMATIC_SURFACE_TO_SURFACE_TIEBREAK 和 AUTOMATIC_ONE_WAY_SURFACE_TO_SURFACE_TIEBREAK 支持 FTORQ = 1 和 2，AUTOMATIC_SURFACE_TO_SURFACE 和 AUTOMATIC_ONE_WAY_SURFACE_TO_SURFACE 支持 FTORQ = 2。\nSOFT = 2 接触支持 FTORQ = 2，不支持 FTORQ = 1。\n原文中的 SMP 条件 SOFT !=, 2 存在损坏，无法确认其准确写法。",
+    "sourceIssue": "The SMP condition is literally SOFT !=, 2; its damaged punctuation does not establish the intended comparison."
+  },
+  {
+    "english": "Flag affecting the location of the contact surfaces for shells when NLOC is nonzero in *SECTION_?SHELL or *PART_?COMPOSITE, or when OFFSET is specified using *ELEMENT_?SHELL_?OFFSET. This flag is basically a local version of CNTCO on *CONTROL_?SHELL but can have modifications as seen in SHLOFF = 2. Thus, set this field to a value greater than 0 to enable the desired local behavior. \nEQ.0:\tThe setting of CNTCO on *CONTROL_?SHELL determines the contact reference plane.\nEQ.1:\tThe contact reference plane coincides with the shell reference surface. This option is equivalent to CNTCO = 1 on *CONTROL_?SHELL. \nEQ.2:\tThis option only applies to segment-to-segment (SOFT = 2). It activates a faster version of CNTCO = 3 or 4, depending on the value of CNTCO on *CONTROL_?SHELL. If CNTCO = 0, 1, or 3, then the behavior matches CNTCO = 3 but faster. If CNTCO = 2 or 4, then the behavior matches CNTCO = 4 but faster",
+    "localized": "当 *SECTION_?SHELL 或 *PART_?COMPOSITE 中的 NLOC 非零，或通过 *ELEMENT_?SHELL_?OFFSET 指定 OFFSET 时，此标志影响壳接触面的位置。\n它基本上相当于 *CONTROL_?SHELL 上 CNTCO 的局部设置，但可以作出 SHLOFF = 2 所示的调整。因此，将此字段设为大于 0 的值可启用所需的局部行为。\nEQ.0: 由 *CONTROL_?SHELL 上的 CNTCO 设置决定接触参考平面。\nEQ.1: 接触参考平面与壳参考面重合，相当于 *CONTROL_?SHELL 上 CNTCO = 1。\nEQ.2: 仅适用于面片对面片接触（SOFT = 2）。根据 *CONTROL_?SHELL 上 CNTCO 的值，启用 CNTCO = 3 或 4 的更快实现。CNTCO = 0、1 或 3 时，行为与 CNTCO = 3 相同，但计算更快；CNTCO = 2 或 4 时，行为与 CNTCO = 4 相同，但计算更快。\n原文关键字中的 ? 为不明确的字符，无法确认上述关键字的完整拼写。",
+    "sourceIssue": "The keyword spellings contain literal question marks in *SECTION_?SHELL, *PART_?COMPOSITE, *ELEMENT_?SHELL_?OFFSET and *CONTROL_?SHELL; their complete spellings are unconfirmed."
+  },
+  {
+    "english": "Flag for assuming edge shape for shells when measuring penetration.This is available for segment-to-segment contact(SOFT = 2).\nEQ.0: Default to SHELDG on *CONTROL_CONTACT\nEQ.1: Shell edges are assumed to be square and are flush with the nodes.\nEQ.2: Shell edges are assumed to be round with a radius equal to half the shell thickness.The edge centers lie on the lines between the segment nodes and extend outward by the radius.\nNote that for DEPTH values of 23, 33,35 and 55, the setting of SHLEDG is ignored and the behavior is like SHLEDG = 1.",
+    "localized": "测量穿透时采用的壳边缘形状标志，适用于面片对面片接触（SOFT = 2）。\nEQ.0: 默认采用 *CONTROL_CONTACT 上的 SHELDG。\nEQ.1: 将壳边缘视为方形，边缘与节点齐平。\nEQ.2: 将壳边缘视为圆形，半径等于壳厚度的一半。边缘中心位于面片节点间的连线上，并向外延伸一个半径。\n注意：DEPTH 为 23, 33,35 和 55 时，忽略 SHLEDG 设置，行为与 SHLEDG = 1 相同。\n原文分别使用了 SHELDG 和 SHLEDG，拼写不一致，无法确认是否指同一字段。",
+    "sourceIssue": "The source uses SHELDG and SHLEDG inconsistently; it does not establish whether they refer to the same field."
+  },
+  {
+    "english": "Flag for behavior of AUTOMATIC_GENERAL contacts.  CPARM8s value is interpreted as two separate flags: OPT1 and OPT2 according to the rule,\n\"CPARM8\" = \"OPT1\" + \"OPT2\".\nWhen OPT1 and OPT2 are both set, both options are active.\n\nOPT1.Flag to exclude beam - to - beam contact from the same PID.\nEQ.0: The flag is not set(default).\nEQ.1: The flag is set.\nEQ.2: The flag is set.CPARM8 = 2 additionally permits contact treatment of spot weld(type 9) beams in AUTOMATIC_GENERAL contacts; spot weld beams are otherwise disregarded entirely by AUTOMATIC_GENERAL contacts.\nOPT2.Flag to shift generated beam affecting only shell - edge - to - shell - edge treatment.See also SRNDE in Optional Card E.\nEQ.10: Beam generated on exterior shell edge will be shifted into the shell by half the shell thickness.Therefore, the shell - edge - to - shell - edge contact starts right at the shell edge and not at an extension of the shell edge.",
+    "localized": "控制 AUTOMATIC_GENERAL 接触行为的标志。CPARM8 的值按两个独立标志 OPT1 和 OPT2 解释，规则为 \"CPARM8\" = \"OPT1\" + \"OPT2\"；同时设置 OPT1 和 OPT2 时，两个选项均生效。\nOPT1: 控制是否排除同一 PID 内的梁对梁接触。\nEQ.0: 不设置此标志（默认）。\nEQ.1: 设置此标志。\nEQ.2: 设置此标志。CPARM8 = 2 还允许 AUTOMATIC_GENERAL 接触处理点焊梁（type 9）；其他情况下，AUTOMATIC_GENERAL 完全不考虑点焊梁。\nOPT2: 控制生成梁的位置偏移，仅影响壳边缘对壳边缘接触处理。另参见可选卡片 E 上的 SRNDE。\nEQ.10: 将壳外边缘上生成的梁向壳内偏移半个壳厚度，使壳边缘对壳边缘接触从壳边缘本身开始，而不是从壳边缘的延伸位置开始。"
+  },
+  {
+    "english": "Flag to choose the method for calculating the penalty stiffness. This is available for segment-to-segment contact (see SOFT on optional card A)\nEQ.0: Default determined by the PSTIFF on *CONTROL_CONTACT.\nEQ.1: Based on nodal masses or on material density and segment dimensions. The segment mass is taken as the larger of the two values calculated.\nEQ.2: Based on material density and segment dimensions.",
+    "localized": "选择罚刚度计算方法的标志，适用于面片对面片接触（参见可选卡片 A 上的 SOFT）。\nEQ.0: 默认由 *CONTROL_CONTACT 上的 PSTIFF 决定。\nEQ.1: 根据节点质量，或根据材料密度和面片尺寸计算；面片质量取这两种计算结果中的较大值。\nEQ.2: 根据材料密度和面片尺寸计算。"
+  },
+  {
+    "english": "Flag to consider only contact segments (not all attached elements) when computing the contact thickness for a node or segment:\nEQ.0:\tOff(default)\nEQ.1 : Only consider segments in the contact definition\nThis flag only applies to shell elements.It is supported for contact types NODES_TO_SURFACE, SURFACE_TO_SURFACE, ONE_WAY_SURFACE_TO_SURFACE, and SINGLE_SURFACE, including the AUTOMATIC variants for all these types.It is only supported for SOFT = 0 and 1.",
+    "localized": "计算节点或面片的接触厚度时，控制是否只考虑接触面片，而不考虑所有相连单元。\nEQ.0: 关闭（默认）。\nEQ.1: 只考虑接触定义中的面片。\n此标志仅适用于壳单元，支持 NODES_TO_SURFACE、SURFACE_TO_SURFACE、ONE_WAY_SURFACE_TO_SURFACE 和 SINGLE_SURFACE 接触，包括这些类型的 AUTOMATIC 变体；仅支持 SOFT = 0 和 1。"
+  },
+  {
+    "english": "Flag to determine how the SSF option on *PART_CONTACT behaves when SOFT = 2 on optional card A:\nEQ.0: Use SSF from the tracked segment as determined by the SOFT = 2 algorithm (see Remark 2) \nEQ.1: Use the larger of the SSF values.\nEQ.2: Use the smaller of the SSF values",
+    "localized": "当可选卡片 A 上 SOFT = 2 时，控制 *PART_CONTACT 上 SSF 选项的行为。\nEQ.0: 使用 SOFT = 2 算法确定的被跟踪面片的 SSF（参见说明 2）。\nEQ.1: 使用较大的 SSF 值。\nEQ.2: 使用较小的 SSF 值。"
+  },
+  {
+    "english": "Flag to ignore the thickness offset for shells in the calculation of the shell contact penetration depth. This allows shells to be used for meshing rigid body dies without modifying the positions of the nodes to compensate for the shell thickness.This variable applies to automatic contact types, excluding segment-to-segment (SOFT = 2) contacts. This flag only applies to SMP.\nEQ.0: Default\nEQ.1: Ignore the SURFB side thickness.\nEQ.2: Ignore the SURFA side thickness.\nEQ.3: Ignore the thickness of both sides.This option is only supported in SMP.",
+    "localized": "计算壳接触穿透深度时，控制是否忽略壳的厚度偏置。这样可用壳单元划分刚体模具网格，而不必调整节点位置来补偿壳厚度。\n此变量适用于自动接触，但不适用于面片对面片接触（SOFT = 2）；仅适用于 SMP。\nEQ.0: 默认。\nEQ.1: 忽略 SURFB 侧的厚度。\nEQ.2: 忽略 SURFA 侧的厚度。\nEQ.3: 忽略两侧的厚度。此选项仅支持 SMP。"
+  },
+  {
+    "english": "Flag to indicate that 2D belts initially inside retractors are involved in the contact.  This is only available for SURFACE_TO_SURFACE contact of segment-to-segment contact (SOFT = 2).\nEQ.0: No 2D belt initially inside a retractor is involved.\nEQ.1: 2D belts initially inside retractors are involved",
+    "localized": "控制初始位于卷收器内部的 2D 安全带是否参与接触。仅适用于面片对面片接触（SOFT = 2）中的 SURFACE_TO_SURFACE 接触。\nEQ.0: 初始位于卷收器内部的 2D 安全带不参与接触。\nEQ.1: 初始位于卷收器内部的 2D 安全带参与接触。"
+  },
+  {
+    "english": "Flag to use tapered shell contact segments adjacent to segments that are thinned by the SPOTHIN option on *CONTROL_CONTACT. This option is only available when SOFT=2 on optional card A.\nEQ.0: Use full thickness constant segments.\nEQ.1: Use tapered segments.",
+    "localized": "控制是否使用厚度渐变的壳接触面片：这些面片与通过 *CONTROL_CONTACT 上 SPOTHIN 选项减薄的面片相邻。仅在可选卡片 A 上 SOFT=2 时可用。\nEQ.0: 使用厚度恒定的全厚度面片。\nEQ.1: 使用厚度渐变的面片。"
+  },
+  {
+    "english": "For Mortar contacts, IGAP is used to progressively increase contact stiffness for large penetrations, or use a linear relationship between penetration and contact pressure; see Remark 14 in the General Remarks section. For other contacts, IGAP can be used to improve implicit convergence at the expense of (1) creating some sticking if parts attempt to separate and (2) possibly under-reporting the contact force magnitude in the output files rcforc and ncforc. (Implicit only.) \nLT.0: Like IGAP = 1 except the maximum distance between contact surfaces at which stickiness is on is scaled by IGAP / 10.\nEQ.1: Apply method to improve convergence(default).\nEQ.2: Do not apply method.\nGT.2: Set IGAP = 1 for first IGAP - 2 converged equilibrium states, then set IGAP = 2.",
+    "localized": "对于 Mortar 接触，IGAP 用于在穿透较大时逐步增大接触刚度，或采用穿透与接触压力之间的线性关系；参见 General Remarks 中的说明 14。\n对于其他接触，IGAP 可改善隐式收敛，但代价是：(1) 部件试图分离时可能产生一定黏着；(2) 输出文件 rcforc 和 ncforc 中的接触力幅值可能偏低。仅适用于隐式计算。\nLT.0: 与 IGAP = 1 类似，但按 IGAP / 10 缩放接触面之间仍产生黏着的最大距离。\nEQ.1: 使用改善收敛的方法（默认）。\nEQ.2: 不使用该方法。\nGT.2: 前 IGAP - 2 个已收敛平衡状态使用 IGAP = 1，此后使用 IGAP = 2。"
+  },
+  {
+    "english": "For SOFT = 0 or 1, SNLOG controls shooting node logic in thickness offset contact. With shooting node logic enabled, the tracked is moved back to the reference surface without applying any contact force in the first cycle that it penetrates the reference segment.  \nEQ.0: logic is enabled (default), \nEQ.1: logic is skipped (sometimes recommended for metalforming calculations).",
+    "localized": "对于 SOFT = 0 或 1，SNLOG 控制厚度偏置接触中的射入节点逻辑。启用此逻辑后，在跟踪对象首次穿透参考面片的计算周期内，将其移回参考面，不施加接触力。\nEQ.0: 启用该逻辑（默认）。\nEQ.1: 跳过该逻辑（有时建议用于金属成形计算）。\n原文在 the tracked 后缺少对象名称，无法确认该处具体所指。",
+    "sourceIssue": "The phrase the tracked omits its object; the exact subject cannot be reconstructed from this source."
+  },
+  {
+    "english": "For automatic and non-automatic contacts, setting this variable to 1 turns on the 'ignore initial penetrations' for this contact.  Alternatively, for automatic contacts only, setting IGNORE = 1 on Card 4 of *CONTROL_CONTACT or on Optional Card C of *CONTACT turns on this option.  In other words, for automatic contacts, if IGNORE is set to 1 in any of three places, initial penetrations are tracked. For non-automatic contacts, setting IGNORE to 1 here causes initial penetrations to be tracked.",
+    "localized": "对于自动接触和非自动接触，将此变量设为 1 会为当前接触启用“忽略初始穿透”。\n仅对于自动接触，也可以在 *CONTROL_CONTACT 的卡片 4 或 *CONTACT 的可选卡片 C 上设置 IGNORE = 1 来启用此选项。也就是说，自动接触在这三个位置的任一处将 IGNORE 设为 1，都会跟踪初始穿透。\n对于非自动接触，在此处将 IGNORE 设为 1 会跟踪初始穿透。"
+  },
+  {
+    "english": "If set to a nonzero value, create a  backup  penalty tied contact for this\ninterface. This option applies to constrained tied contacts only. See Remark 2.",
+    "localized": "设为非零值时，为此接触界面创建备用的罚函数绑定接触。此选项仅适用于约束式绑定接触，参见说明 2。"
+  },
+  {
+    "english": "Ignore initial penetrations for the *CONTACT_AUTOMATIC options:LT.0: Applies only to the Mortar contact.When less than zero, the behavior is the same as for | IGNORE| , but contact between segments belonging to the same part is ignored. \nThe main purpose of this option is to avoid spurious contact detections that otherwise could result for complicated geometries in a single surface contact, typically, when eliminating initial penetrations by interference.See IGNORE = 3 and IGNORE = 4. \nEQ.0: Take the default value from the fourth card of the *CONTROL_CONTACT input. \nEQ.1: Allow initial penetrations to exist by tracking the initial penetrations. \nEQ.2: Allow initial penetrations to exist by tracking the initial penetrations.However, penetration warning messages are printed with the original coordinates, and the recommended coordinates of each penetrating node are given.For Mortar contact, this is the default (see Remark 14 in the General Remarks section). \nEQ.3: Applies only to the Mortar contact.With this option initial penetrations are eliminated between time zero and the time specified by MPAR1.Intended for small initial penetrations.See Remark 14 in the General Remarks section. \nEQ.4: Applies only to the Mortar contact.With this option initial penetrations are eliminated between time zero and the time specified by MPAR1.In addition, a maximum penetration distance can be given as MPAR2, intended for large initial penetrations.See Remark 14 in the General Remarks section.",
+    "localized": "控制 *CONTACT_AUTOMATIC 选项如何忽略初始穿透。\nLT.0: 仅适用于 Mortar 接触。小于零时，行为与 | IGNORE| 相同，但忽略属于同一部件的面片之间的接触。此选项主要用于避免复杂单面接触几何中的误接触检测，通常用于通过过盈处理消除初始穿透的情况；参见 IGNORE = 3 和 IGNORE = 4。\nEQ.0: 采用 *CONTROL_CONTACT 输入的第四张卡片上的默认值。\nEQ.1: 通过跟踪初始穿透，允许其存在。\nEQ.2: 通过跟踪初始穿透，允许其存在；同时按原始坐标输出穿透警告，并给出每个穿透节点的建议坐标。Mortar 接触默认采用此选项（参见 General Remarks 中的说明 14）。\nEQ.3: 仅适用于 Mortar 接触。从时间零到 MPAR1 指定的时间之间消除初始穿透，适用于较小的初始穿透；参见 General Remarks 中的说明 14。\nEQ.4: 仅适用于 Mortar 接触。从时间零到 MPAR1 指定的时间之间消除初始穿透；还可通过 MPAR2 指定最大穿透距离，适用于较大的初始穿透。参见 General Remarks 中的说明 14。"
+  },
+  {
+    "english": "Incremental displacement update for tied contacts.   EQ.0: Off (default).\nEQ.1: On.",
+    "localized": "绑定接触的增量位移更新。\nEQ.0: 关闭（默认）。\nEQ.1: 开启。"
+  },
+  {
+    "english": "Load curve number for h. This parameter can refer to a curve ID (see *DEFINE_CURVE) or a function ID (see *DEFINE_FUNCTION).  When LCH is a curve ID (and a function ID) it is interpreted as follows:\nGT.0: the heat transfer coefficient is defined as a function of time, t, by a curve consisting of (t,h(t)) data pairs.\nLT.0: the heat transfer coefficient is defined as a function of temperature, T, by a curve consisting of (T,h(T)) data pairs.When the reference is to a function it is prototyped as follows h= h(t,T_avg ,T_slv ,T_msr ,P,g) where:\nt=solution time T_avg =average interface temperature\nT_slv =slave segment temperature\nT_msr =master segment temperature\nP=interface pressure\ng=gap distance between master and slave segment",
+    "localized": "h 的载荷曲线编号。此参数可以引用曲线 ID（参见 *DEFINE_CURVE），也可以引用函数 ID（参见 *DEFINE_FUNCTION）。LCH 引用曲线 ID（以及函数 ID）时，按以下方式解释：\nGT.0: 以 (t,h(t)) 数据对组成的曲线定义换热系数随时间 t 的变化。\nLT.0: 以 (T,h(T)) 数据对组成的曲线定义换热系数随温度 T 的变化。\n引用函数时，函数形式为 h= h(t,T_avg ,T_slv ,T_msr ,P,g)，其中：\nt 为求解时间；T_avg 为界面平均温度；\nT_slv 为从面片温度；T_msr 为主面片温度；\nP 为界面压力；\ng 为主面片与从面片之间的间隙距离。"
+  },
+  {
+    "english": "Load curve number for static coefficient of friction as a function of temperature. The load curve value multiplies the coefficient value FS.For Mortar contact the temperature defining the scale factor Image is the mean temperature Image in the interface, if using a table one can prescribe the coefficient as an arbitrary function of both, i.e., Image. For this latter option, define a curve using Image as abscissa for each value of Image",
+    "localized": "用于定义静摩擦系数随温度变化的载荷曲线编号。载荷曲线值乘以系数 FS。\n对于 Mortar 接触，用于定义比例因子的温度 Image 是接触界面的平均温度 Image；若使用表，可将系数规定为这两个量的任意函数，即 Image。对于后一种选项，为每个 Image 值定义一条以 Image 为横坐标的曲线。\n原文中的 Image 是缺失符号或公式的占位文本，无法确认对应变量及公式。",
+    "sourceIssue": "The native source contains literal Image placeholders for missing symbols or formulas; the corresponding variables and formulas cannot be reconstructed from this string."
+  },
+  {
+    "english": "Maximum parametric coordinate in segment search (values between 1.025 and 1.20 are recommended).  This variable applies only to SMP; for MPP, see PARMAX on MPP 1. It does not apply to automatic contacts, except for AUTOMATIC_GENERAL. It also does not apply to segment-to-segment (SOFT = 2) and Mortar segment-to-segment contacts. Larger values can increase the cost. If zero, MAXPAR defaults to 1.025 for most contact options. The exceptions to this are listed in the manual table ",
+    "localized": "面片搜索中的最大参数坐标，建议值为 1.025 至 1.20。此变量仅适用于 SMP；对于 MPP，参见 MPP 1 上的 PARMAX。\n除 AUTOMATIC_GENERAL 外，此变量不适用于自动接触，也不适用于面片对面片接触（SOFT = 2）和 Mortar 面片对面片接触。较大值会增加计算成本。\n值为零时，大多数接触选项的 MAXPAR 默认取 1.025；例外情况列在手册表中。\n原文未给出该手册表的标识，无法确认所指表及具体例外。",
+    "sourceIssue": "The exceptions are referred to a manual table without a table identifier; the specific exceptions are not supplied."
+  },
+  {
+    "english": "Number of cycles between contact force updates for penalty contact formulations. This option can provide a significant speed-up of the contact treatment. If used, values exceeding 3 or 4 are dangerous. Considerable care must be exercised when using this option, as this option assumes that contact does not change FRCFRO cycles. \nEQ.0: FRCFRO is set to 1 and force calculations are performed each cycle-strongly recommended.",
+    "localized": "罚函数接触算法中两次接触力更新之间的计算周期数。此选项可显著加快接触处理，但使用大于 3 或 4 的值有危险。\n使用时必须十分谨慎，因为它假定接触在 FRCFRO 个周期内不发生变化。\nEQ.0: 将 FRCFRO 设为 1，每个周期都计算接触力；强烈建议采用此设置。"
+  },
+  {
+    "english": "Option to split quadrilateral contact segments into two triangles (only available when SOFT=2).\nEQ.0: Off (default).\nEQ.1: On for all SURFA shell segments.\nEQ.2: On for all SURFB shell segments.\nEQ.3: On for all shell segments.\nEQ.4: On for all shell segments of material type 34.\n",
+    "localized": "将四边形接触面片拆分为两个三角形的选项，仅在 SOFT=2 时可用。\nEQ.0: 关闭（默认）。\nEQ.1: 对所有 SURFA 壳面片启用。\nEQ.2: 对所有 SURFB 壳面片启用。\nEQ.3: 对所有壳面片启用。\nEQ.4: 对所有材料类型为 34 的壳面片启用。"
+  },
+  {
+    "english": "Optional solid element stiffness.  A nonzero positive value overrides the bulk modulus taken from the material model referenced by the solid element.  For segment-to-segment contact (SOFT = 2), SLDSTF replaces the stiffness used in the penalty equation. This parameter does not apply to Mortar contacts.",
+    "localized": "可选的实体单元刚度。非零正值会覆盖该实体单元所引用材料模型的体积模量。\n对于面片对面片接触（SOFT = 2），SLDSTF 替代罚函数方程中的刚度。此参数不适用于 Mortar 接触。"
+  },
+  {
+    "english": "Scale factor for neighbor segment contact (only available for segment based contact)\nEQ.0.0: Off (default).\nGT.0.0: Check neighbor segments for contact",
+    "localized": "相邻面片接触的缩放系数，仅适用于基于面片的接触。\nEQ.0.0: 关闭（默认）。\nGT.0.0: 检查相邻面片之间的接触。"
+  },
+  {
+    "english": "Scale factor for nonlinear force scaling, f.  See Remark 5. This field only applies to segment-to-segment contact invoked with SOFT = 2 on Optional Card A (see About SOFT = 2 under Optional Card A).",
+    "localized": "非线性接触力缩放系数 f，参见说明 5。此字段仅适用于在可选卡片 A 上通过 SOFT = 2 启用的面片对面片接触（参见可选卡片 A 下的 About SOFT = 2）。"
+  },
+  {
+    "english": "Scale factor for the computed volume of tetrahedral solid elements for the mass calculation in SOFT=2 contact.\nEQ.0.0: Same behavior as in R11 for backward compatibility.\nGT.0.0.AND.LE.0.5: Scale factor is 0.5.\nGT.0.5: Scale factor is TETFAC.",
+    "localized": "SOFT=2 接触质量计算中，四面体实体单元计算体积的缩放系数。\nEQ.0.0: 与 R11 的行为相同，以保持向后兼容。\nGT.0.0.AND.LE.0.5: 缩放系数为 0.5。\nGT.0.5: 缩放系数为 TETFAC。"
+  },
+  {
+    "english": "Search depth in automatic contact. Value of 1 is sufficiently accurate for most crash applications and is much less expensive. LS-DYNA for improved accuracy sets this value to 2. If zero, the default is set to 2(two segments) for improved accuracy, except for *CONTACT_AUTOMATIC_GENERAL which has a default of 3. \nLT.0: |DEPTH| is the load curve ID defining searching depth as a function of time. (not available when SOFT = 2)\nSee Fields used with SOFT = 2 underSee About SOFT = 2 for segment - based contact options controlled by DEPTH.",
+    "localized": "自动接触的搜索深度。取值 1 对大多数碰撞应用已足够准确，且计算成本低得多；LS-DYNA 为提高精度将此值设为 2。\n值为零时，为提高精度，默认取 2（两个面片）；*CONTACT_AUTOMATIC_GENERAL 例外，其默认值为 3。\nLT.0: |DEPTH| 为定义搜索深度随时间变化的载荷曲线 ID（SOFT = 2 时不可用）。\n关于 DEPTH 控制的基于面片的接触选项，原文指向 Fields used with SOFT = 2 及 About SOFT = 2，但交叉引用文本不完整，无法确认准确的引用位置。",
+    "sourceIssue": "The cross-reference underSee About SOFT=2 is damaged; the precise target is not established by this string."
+  },
+  {
+    "english": "Segment-to-segment contact options (SOFT=2).\nEQ.1: pinball edge-edge contact (not recommended).\nEQ.2: assume planer segments (default).\nEQ.3: warped segment checking.\nEQ.4: sliding optionoption (not recommeded when using DEPTH = 5, 25, and 35)\nEQ.5: Do options 3 and 4 (not recommended when using DEPTH = 5, 25,and 35)",
+    "localized": "面片对面片接触选项（SOFT=2）。\nEQ.1: pinball 边对边接触（不建议使用）。\nEQ.2: 假定面片为平面（默认）。\nEQ.3: 检查翘曲面片。\nEQ.4: 滑动选项（DEPTH = 5、25 和 35 时不建议使用）。\nEQ.5: 同时采用选项 3 和 4（DEPTH = 5、25 和 35 时不建议使用）。"
+  },
+  {
+    "english": "Shared constraint flag (only available for segment-to-segment contact)\nEQ.0: Segments that share constraints not checked for contact.\nEQ.1: Segments that share constraints are checked for contact.",
+    "localized": "共享约束标志，仅适用于面片对面片接触。\nEQ.0: 不检查共享约束的面片之间的接触。\nEQ.1: 检查共享约束的面片之间的接触。"
+  },
+  {
+    "english": "Soft constraint option:\nEQ.0: Standard penalty formulation,\nEQ.1: soft constraint penalty formulation, \nEQ.2: Segment-to-segment contact penalty formulation. See about SOFT=2.See About SOFT=2 \nEQ.4: Constraint approach for FORMING contacts. This formulation only applies to one-way forming contacts. You should use itIt is used when penetration is large using the penalty formulations result in large penetrations. The results, however, are sensitive to damping. \nEQ.6: Special contact algorithm to handle sheet blank edge(deformable) to gage pin(rigid shell) contact during implicit gravity loading.This applies to *CONTACT_FORMING_NODES_TO_SURFACE only.See remarks under About SOFT = 6",
+    "localized": "软约束选项。\nEQ.0: 标准罚函数算法。\nEQ.1: 软约束罚函数算法。\nEQ.2: 面片对面片接触罚函数算法，参见 About SOFT=2。\nEQ.4: FORMING 接触的约束法，仅适用于单向成形接触。罚函数算法产生较大穿透时，应采用此算法，但结果对阻尼敏感。\nEQ.6: 在隐式重力加载期间处理板坯边缘（可变形）与定位销（刚性壳）接触的特殊算法。仅适用于 *CONTACT_FORMING_NODES_TO_SURFACE；参见 About SOFT = 6 下的说明。\n原文中 EQ.4 的使用说明有重复、损坏的语句，此处仅保留可辨认的适用条件及警告。",
+    "sourceIssue": "The EQ.4 recommendation contains duplicated and damaged prose; only the readable condition and damping warning are translated."
+  },
+  {
+    "english": "The parametric extension distance for contact segments.  The MAXPAR parameter on Optional Card A is not used for MPP.  For non-tied contacts, the default is 1.0005. For *CONTACT_TIEBREAK_..., PARMAX is hardcoded as 1.1. For all other tied contacts, the default is 1.035, and the actual extension used is computed as manual",
+    "localized": "接触面片的参数延伸距离。可选卡片 A 上的 MAXPAR 参数不用于 MPP。\n对于非绑定接触，默认值为 1.0005。对于 *CONTACT_TIEBREAK_...，PARMAX 固定为 1.1。对于其他所有绑定接触，默认值为 1.035。\n原文在实际延伸量的计算说明处不完整，仅留下 computed as manual，无法确认计算方法或公式。",
+    "sourceIssue": "The actual extension calculation stops at computed as manual; its method or formula is absent."
+  },
+  {
+    "english": "Thickness option for contact types 3, 5, and 10 (non-automatic surface-to-surface including one-way and non-automatic nodes-to-surface): \nEQ.0: default is taken from control card; see SHLTHK on *CONTROL_CONTACT, \nEQ.1: thickness offsets are included, \nEQ.2: thickness offsets are not included (old way).",
+    "localized": "接触类型 3、5 和 10 的厚度选项，适用于非自动面对面接触（包括单向接触）以及非自动节点对面接触。\nEQ.0: 采用控制卡片上的默认值，参见 *CONTROL_CONTACT 上的 SHLTHK。\nEQ.1: 包含厚度偏置。\nEQ.2: 不包含厚度偏置（旧方法）。"
+  },
+  {
+    "english": "This variable is similar to CPARM8 in *CONTACT__MPP but applies to SMP and not to MPP.  CPARM8 for SMP only controls treatment of spot weld beams in *CONTACT_AUTOMATIC_GENERAL. \nEQ.0: Spot weld(type 9) beams are not considered in the contact even if included in SURFA\nEQ.2: Spot weld(type 9) beams are considered in the contact if included in SURFA",
+    "localized": "此变量类似于 *CONTACT__MPP 中的 CPARM8，但适用于 SMP，不适用于 MPP。SMP 的 CPARM8 仅控制 *CONTACT_AUTOMATIC_GENERAL 中点焊梁的处理。\nEQ.0: 即使 SURFA 中包含点焊梁（type 9），接触也不考虑这些梁。\nEQ.2: 若 SURFA 中包含点焊梁（type 9），接触会考虑这些梁。"
+  },
+  {
+    "english": "Time interval between shell penetration reports (only available for segment based contact)\nEQ.0.0: Off (default).\nGT.0.0: Check and report segment penetrations at time intervals equal to DTPCHK.\nLT.0.0: Check and report segment penetrations at time intervals equal to |DTPCHK|. In addition, calculation stops with an error at t=0 if any intersections are initially present",
+    "localized": "壳穿透报告的时间间隔，仅适用于基于面片的接触。\nEQ.0.0: 关闭（默认）。\nGT.0.0: 按 DTPCHK 指定的时间间隔检查并报告面片穿透。\nLT.0.0: 按 |DTPCHK| 指定的时间间隔检查并报告面片穿透。此外，若初始存在任何相交，计算会在 t=0 时报告错误并停止。"
   }
 ]

@@ -1,4 +1,5 @@
 'use strict';
+const { fetchJson, openSocket, createCdp } = require('../../test/support/devtools.cjs');
 const fs = require('node:fs'), path = require('node:path'), net = require('node:net');
 const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
@@ -17,23 +18,18 @@ async function main() {
     const deadline = Date.now() + 120000;
     while (!socket && Date.now() < deadline && !exited) {
         try {
-            const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
-            socket = new WebSocket(version.webSocketDebuggerUrl);
-            await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+            const version = await fetchJson(`http://127.0.0.1:${port}/json/version`, Math.min(3000, deadline - Date.now()));
+            socket = await openSocket(version.webSocketDebuggerUrl, Math.min(3000, deadline - Date.now()));
         } catch { socket = undefined; await delay(100); }
     }
     assert.ok(socket, `Renderer endpoint missing; host exit ${exitCode}`);
-    let id = 0;
-    const pending = new Map(), contexts = new Map(), attached = new Set();
-    const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-        const requestId = ++id, timer = setTimeout(() => { pending.delete(requestId); reject(Error(`CDP timeout ${method}`)); }, 10000);
-        pending.set(requestId, { resolve, reject, timer }); socket.send(JSON.stringify({ id: requestId, method, params, sessionId }));
-    });
+    const contexts = new Map(), attached = new Set();
+    const cdp = createCdp(socket, 10000), call = cdp.call;
     socket.onmessage = event => {
-        const m = JSON.parse(String(event.data));
+        let m;
+        try { m = JSON.parse(String(event.data)); } catch { return; }
         if (m.method === 'Runtime.executionContextCreated') contexts.set(`${m.sessionId}:${m.params.context.id}`, { sessionId: m.sessionId, contextId: m.params.context.id });
         if (m.method === 'Runtime.executionContextDestroyed') contexts.delete(`${m.sessionId}:${m.params.executionContextId}`);
-        if (pending.has(m.id)) { const p = pending.get(m.id); clearTimeout(p.timer); pending.delete(m.id); m.error ? p.reject(Error(m.error.message)) : p.resolve(m.result); }
     };
     const evaluate = async (context, expression) => {
         const result = await call('Runtime.evaluate', { expression, contextId: context.contextId, awaitPromise: true, returnByValue: true }, context.sessionId);
@@ -56,6 +52,13 @@ async function main() {
             if (!context) await delay(100);
         }
         assert.ok(context, 'Manual content or equations did not render');
+        await evaluate(context, '(async () => { await document.fonts.ready; return true; })()');
+        const { targetInfos: pages } = await call('Target.getTargets');
+        const page = pages.find(target => target.type === 'page' && /workbench/.test(target.url));
+        assert.ok(page, 'Workbench screenshot target missing');
+        const { sessionId: pageSession } = await call('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+        const screenshot = await call('Page.captureScreenshot', { format: 'png' }, pageSession);
+        fs.writeFileSync(path.join(root, `manual-${process.env.LSDYNA_RELEASE_LOCALE || 'en'}.png`), Buffer.from(screenshot.data, 'base64'));
         const evidence = await evaluate(context, `(async()=>{
             await document.fonts.ready;
             const faces = [...document.fonts].filter(f=>f.family.includes('KaTeX'));
@@ -76,8 +79,7 @@ async function main() {
         assert.ok(!/Could not register service worker|document is in an invalid state/i.test(log));
         console.log(JSON.stringify(evidence));
     } finally {
-        socket.close();
-        for (const request of pending.values()) clearTimeout(request.timer);
+        cdp.close();
         if (!exited) child.kill(); // Only the child created by this test, never user windows.
     }
 }

@@ -24,7 +24,7 @@ function isInside(root: string, candidate: string): boolean {
     const resolvedRoot = path.resolve(root);
     const resolvedCandidate = path.resolve(candidate);
     const relative = path.relative(resolvedRoot, resolvedCandidate);
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
 /**

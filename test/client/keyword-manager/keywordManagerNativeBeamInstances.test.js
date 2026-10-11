@@ -37,6 +37,8 @@ describe('native SECTION_BEAM mixed instance fixture', () => {
                 selection: { active: new vscode.Position(line, 0) } }, line, {});
             const instances = model.managerInstances.filter(candidate => candidate.keyword === '*SECTION_BEAM');
             assert.equal(instances.length, 3);
+            assert.deepEqual(instances.map(instance => instance.identity),
+                evidence.observedInstances.map(item => ({ field: 'SECID', value: String(item.secid) })));
             assert.equal(model.managerCards.length, item.nativeCards.length);
             assert.equal(model.managerCards[0].fields.find(field => field.name === 'SECID').value, String(item.secid));
         }

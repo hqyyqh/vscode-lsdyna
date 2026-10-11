@@ -1,12 +1,107 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { vscodeMock } = require("../../support/helpers");
 const i18n = require('../../../src/core/i18n');
 const { buildReferenceHoverSection, buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
+const { buildFileIndex } = require('../../../src/core/scanner/fileIndexBuilder');
+const { buildProjectReferenceIndex, resolveReferenceDefinitions, attachResolvedTableChildren } = require('../../../src/core/references/projectReferenceIndex');
 
 describe('fieldReferenceHover', () => {
+    it('describes short records faithfully and hides their plots in both languages', () => {
+        const { parseCurveBlock, parseTableBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
+        const original = vscodeMock.workspace.getConfiguration;
+        try {
+            for (const language of ['en', 'zh-cn']) {
+                vscodeMock.workspace.getConfiguration = () => ({ get: key => key === 'language' ? language : undefined });
+                i18n.updateLanguage();
+                for (const [keyword, parse] of [['DEFINE_CURVE', parseCurveBlock], ['DEFINE_TABLE_2D', parseTableBlock]]) {
+                    const definition = parse({ keyword, startLine: 0 }, `*${keyword}\n17\n0 1\n2\n*END`);
+                    const section = buildDefinitionHoverSection(definition);
+                    assert.ok(section.includes(language === 'en' ? 'missing or could not be resolved' : '部分数据缺失或尚未解析'));
+                    assert.ok(!section.includes('data:image/svg+xml;base64,'));
+                    assert.ok(!section.includes('原始数据') && !section.includes('original data'));
+                    if (keyword === 'DEFINE_TABLE_2D') {
+                        assert.ok(!section.includes('| value |'));
+                    } else {
+                        assert.ok(!section.includes('| x | y |'));
+                    }
+                }
+            }
+        } finally { vscodeMock.workspace.getConfiguration = original; i18n.updateLanguage(); }
+    });
+
+    it('localizes candidate navigation without exposing selection reasons or changing certainty', () => {
+        const original = vscodeMock.workspace.getConfiguration;
+        let language = 'en';
+        vscodeMock.workspace.getConfiguration = () => ({ get: (key, fallback) => key === 'language' ? language : fallback });
+        try {
+            for (language of ['en', 'zh-cn']) {
+                i18n.updateLanguage();
+                for (const count of [1, 2]) {
+                    const definitions = Array.from({ length: count }, (_, index) => ({ kind: 'generic', id: 77,
+                        keyword: '*DEFINE_CPM_CHAMBER', filePath: `C:/model/${index}.k`, startLine: index + 1 }));
+                    const analysis = { state: count === 1 ? 'uncertain' : 'ambiguous', reasons: ['project-scan-unavailable'], definitions };
+                    const before = JSON.stringify(analysis);
+                    const section = buildReferenceHoverSection({ fieldName: 'CHM', id: 77, analysis });
+                    assert.ok(section.includes(language === 'zh-cn' ? '候选导航' : 'Candidate navigation'));
+                    assert.ok(section.includes(language === 'zh-cn' ? '引用关系尚未确认' : 'The reference is not yet confirmed'));
+                    assert.ok(!/Selection:|unique-namespace-candidate|highest-ranked-candidate|strict resolution/.test(section));
+                    assert.equal(JSON.stringify(analysis), before);
+                    assert.equal((section.match(/command:extension.openLsdynaReferenceDefinition/g) || []).length, count);
+                    const exact = buildReferenceHoverSection({ fieldName: 'CHM', id: 77, analysis: { state: 'exact', reasons: [], definitions: [definitions[0]] } });
+                    assert.ok(!exact.includes(language === 'zh-cn' ? '候选导航' : 'Candidate navigation'));
+                }
+            }
+        } finally { vscodeMock.workspace.getConfiguration = original; i18n.updateLanguage(); }
+    });
+
     afterEach(() => {
         i18n.updateLanguage();
     });
+
+    for (const truncated of [false, true]) {
+        it(`hides a combined preview when its unique child has ${truncated ? 'truncated' : 'parameterized'} data`, async () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-table-child-preview-'));
+            const filePath = path.join(root, 'table.k');
+            const point = (x, y) => String(x).padStart(20) + String(y).padStart(20);
+            const text = ['*DEFINE_TABLE_2D', '         2', point(0.5, 1),
+                '*DEFINE_CURVE', '         1', point(0, 10), point(1, 20),
+                ...(truncated ? [point(2, 30), point(3, 40)] : [point('&X', 30)]), '*END'].join('\n');
+            fs.writeFileSync(filePath, text);
+            const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
+            try {
+                const fileIndex = await buildFileIndex(filePath, truncated ? { maxDefinitionBlockBytes: 128 } : {});
+                const index = buildProjectReferenceIndex({ rootFile: filePath, files: [filePath],
+                    graph: { includeOccurrences: [], includeOccurrencesComplete: true }, fileIndexes: new Map([[filePath, fileIndex]]) });
+                const table = attachResolvedTableChildren(resolveReferenceDefinitions(index, 2, ['table'])[0], index);
+                assert.equal(table.dataCompleteness.state, 'complete');
+                assert.equal(table.rows[0].childAnalysis.state, 'exact');
+                const child = table.rows[0].childAnalysis.definitions[0];
+                assert.equal(child.dataCompleteness.state, truncated ? 'partial' : 'incomplete');
+                assert.ok(child.points.filter(point => Number.isFinite(point.x) && Number.isFinite(point.y)).length >= 2);
+                for (const language of ['en', 'zh-cn']) {
+                    vscodeMock.workspace.getConfiguration = () => ({ get: key => key === 'language' ? language : undefined });
+                    i18n.updateLanguage();
+                    const sections = [buildDefinitionHoverSection(table), buildReferenceHoverSection({
+                        fieldName: 'LCSS', id: 2, definitions: [table],
+                    })];
+                    for (const section of sections) {
+                        assert.ok(!section.includes('data:image/svg+xml;base64,'), 'Incomplete child points must not produce a combined plot');
+                        assert.ok(section.includes(language === 'en' ? 'Child data is incomplete' : '子级定义的数据不完整'));
+                        assert.ok(!section.includes('| value |'));
+                        assert.ok(!section.includes('| 值 |'));
+                    }
+                }
+                assert.equal(fs.readFileSync(filePath, 'utf8'), text);
+            } finally {
+                vscodeMock.workspace.getConfiguration = originalGetConfiguration;
+                i18n.updateLanguage();
+                fs.rmSync(root, { recursive: true, force: true });
+            }
+        });
+    }
 
     it('renders curve preview, signed switch note and definition link', () => {
         const section = buildReferenceHoverSection({
@@ -28,10 +123,12 @@ describe('fieldReferenceHover', () => {
             }],
         });
 
-        assert.ok(section.includes('LCSS reference'));
+        assert.ok(!section.includes('LCSS reference'));
         assert.ok(section.includes(i18n.get('negativeSwitchStripped')));
-        assert.ok(section.includes('*DEFINE\\_CURVE'));
+        assert.ok(!section.includes('*DEFINE\\_CURVE'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
+        assert.ok(section.includes('|width=300)'));
+        assert.ok(!section.includes('| x | y |'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
         assert.ok(!section.includes('Current-file preview'));
         assert.ok(!section.includes('Reference not unique'));
@@ -202,9 +299,9 @@ describe('fieldReferenceHover', () => {
             documentPath: 'C:/model/main.k',
         });
 
-        const referenceLine = section.split('\n').find(line => line.includes('LCSS reference'));
+        const referenceLine = section.split('\n').find(line => line.includes('$(info)'));
         assert.ok(referenceLine.includes('Current-file preview'));
-        assert.ok(section.includes('*DEFINE\\_CURVE'));
+        assert.ok(!section.includes('*DEFINE\\_CURVE'));
         assert.ok(section.includes('Open candidate definition'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
@@ -317,12 +414,13 @@ describe('fieldReferenceHover', () => {
 
         assert.ok(section.includes('Current-file preview'));
         assert.ok(section.includes('Open candidate definition'));
-        assert.ok(section.includes('Open child curve candidate 1'));
+        assert.ok(!section.includes('Open child curve candidate 1'));
         assert.ok(section.includes('Scan Include Tree'));
         assert.ok(section.includes('View:'));
         assert.ok(section.includes('**Front**'));
         assert.ok(section.includes('command:extension.setLsdynaTablePreviewView'));
         assert.ok(section.includes('![3D table preview](data:image/svg+xml;base64,'));
+        assert.ok(section.includes('|width=300)'));
         assert.ok(!section.includes('binding for child ID'));
 
         const dataUri = section.match(/data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+/)[0];
@@ -451,7 +549,7 @@ describe('fieldReferenceHover', () => {
         }
     });
 
-    it('renders resolved child curve links for table rows when available', () => {
+    it('omits resolved child curve rows and links from table previews', () => {
         const childCurve = {
             kind: 'curve',
             id: 1001,
@@ -490,9 +588,8 @@ describe('fieldReferenceHover', () => {
             }],
         });
 
-        assert.ok(section.includes('| value | curve ID |'));
-        assert.ok(section.includes('1001'));
-        assert.ok(section.includes('Open child curve'));
+        assert.ok(!section.includes('| value | curve ID |'));
+        assert.ok(!section.includes('Open child curve'));
     });
 
     it('shows ambiguous table child candidates without selecting one for 3D preview', () => {
@@ -535,8 +632,8 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('2 matching candidates'));
-        assert.ok(section.includes('Open child curve candidate 1'));
-        assert.ok(section.includes('Open child curve candidate 2'));
+        assert.ok(!section.includes('Open child curve candidate 1'));
+        assert.ok(!section.includes('Open child curve candidate 2'));
         assert.ok(section.includes('Combined preview hidden'));
         assert.ok(section.includes('requires exactly one candidate definition'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
@@ -587,7 +684,7 @@ describe('fieldReferenceHover', () => {
         assert.ok(!section.includes('\n- At least one include file is missing'));
     });
 
-    it('keeps parameterized table children uncertain and visible as raw IDs', () => {
+    it('keeps parameterized table child diagnostics without raw data rows', () => {
         const section = buildReferenceHoverSection({
             fieldName: 'LCSS',
             id: 2001,
@@ -614,7 +711,6 @@ describe('fieldReferenceHover', () => {
             }],
         });
 
-        assert.ok(section.includes('&CID'));
         assert.ok(section.includes('Child &amp;CID unresolved'));
         assert.ok(section.includes('parameter-controlled'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
@@ -652,7 +748,7 @@ describe('fieldReferenceHover', () => {
         assert.ok(!section.includes('data:image/svg+xml;base64,'));
     });
 
-    it('localizes resolved child curve labels in Chinese table previews', () => {
+    it('omits child curve rows from Chinese table previews', () => {
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
         vscodeMock.workspace.getConfiguration = () => ({
             get: (key) => key === 'language' ? 'zh-cn' : undefined
@@ -698,8 +794,8 @@ describe('fieldReferenceHover', () => {
                 }],
             });
 
-            assert.ok(section.includes('| 值 | 曲线 ID |'));
-            assert.ok(section.includes('打开子级曲线'));
+            assert.ok(!section.includes('| 值 | 曲线 ID |'));
+            assert.ok(!section.includes('打开子级曲线'));
             assert.ok(!section.includes('curve ID'));
             assert.ok(!section.includes('Open child curve'));
         } finally {
@@ -750,9 +846,8 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('![3D table preview](data:image/svg+xml;base64,'));
-        assert.ok(section.includes('| value | curve ID |'));
-        assert.ok(section.includes('1001'));
-        assert.ok(section.includes('Open child curve'));
+        assert.ok(!section.includes('| value | curve ID |'));
+        assert.ok(!section.includes('Open child curve'));
     });
 
     describe('buildDefinitionHoverSection', () => {

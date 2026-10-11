@@ -3,6 +3,33 @@
 const assert = require('assert');
 
 describe('createWorkspaceWatcherManager', () => {
+    it('owns and disposes a newly created watcher if any event registration fails', () => {
+        const { createWorkspaceWatcherManager } = require('../../../out/client/services/workspaceWatcherManager');
+        for (const method of ['onDidChange', 'onDidCreate', 'onDidDelete']) {
+            let fail = false;
+            const created = [];
+            const manager = createWorkspaceWatcherManager({
+                createWatcher(glob) {
+                    const watcher = { glob, disposed: 0, dispose() { this.disposed++; } };
+                    for (const event of ['onDidChange', 'onDidCreate', 'onDidDelete']) watcher[event] = () => {
+                        if (fail && event === method) throw Error('controlled registration error');
+                    };
+                    created.push(watcher);
+                    return watcher;
+                },
+                onFileEvent() {},
+            });
+            manager.rebuild([]);
+            const original = [...created];
+            fail = true;
+            assert.throws(() => manager.rebuild(['.new']), /controlled registration error/);
+            assert.equal(created.at(-1).disposed, 1, method);
+            assert.ok(original.every(watcher => watcher.disposed === 0));
+            manager.dispose();
+            assert.ok(original.every(watcher => watcher.disposed === 1));
+        }
+    });
+
     it('normalizes extensions and swaps watcher sets without lifecycle gaps', () => {
         const { createWorkspaceWatcherManager } = require('../../../out/client/services/workspaceWatcherManager');
         const events = [];

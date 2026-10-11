@@ -37,7 +37,9 @@ describe('native controller parameter context', () => {
         assert.ok(resolve(doc, 39).reason.includes('parameter-context-stale'));
         const staleHover = await provider.provideHover(doc, { line: 39, character: 1 });
         const i18n = require("../../../out/core/i18n");
-        assert.ok(staleHover.contents[0].value.includes(i18n.get('referenceReasonParameterContextStale')));
+        assert.ok(!staleHover.contents[0].value.includes(i18n.get('referenceReasonParameterContextStale')));
+        const details = await provider.provideDetailedHover(doc, { line: 39, character: 1 });
+        assert.ok(details.contents[0].value.includes(i18n.get('referenceReasonParameterContextStale')));
         index.documentVersion = 2;
         cacheReferenceIndexFromSnapshot({ rootFile: file, files: [file], graph: { includeOccurrences: [] }, fileIndexes: new Map([[file, index]]) });
         assert.deepEqual(resolve(doc, 39).cardInfo.card, warm.card);

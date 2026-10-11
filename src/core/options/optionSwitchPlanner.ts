@@ -16,6 +16,7 @@ export type OptionFieldLayout = {
 
 export type OptionRecordLayout = {
     recordMigrationId: string;
+    recordMarker?: { kind: 'column-one'; value: '&'; fieldIndex: number; evidenceIds: string[] };
     occurrence?: { kind: 'exactly-once' | 'repeat' | 'conditional'; [key: string]: unknown };
     fields: OptionFieldLayout[];
     sharedByteEditing?: 'native-shared-bytes-v1';
@@ -63,6 +64,8 @@ export type OptionSwitchPlannerInput = {
     };
     generateComment?: (record: OptionRecordLayout, style: string, labelCase: string) => string;
     readField?: (text: string, record: OptionRecordLayout, fieldIndex: number) => string;
+    /** Physical source ranges covered by a custom reader, including format separators. */
+    readRecordRanges?: (text: string, record: OptionRecordLayout) => Array<{ start: number; end: number }> | null;
     writeField?: (text: string, record: OptionRecordLayout, fieldIndex: number, value: string) => string | null;
     createRecord?: (record: OptionRecordLayout) => string;
     /** Authoring-preview fallback. Never changes the strict planner default. */
@@ -126,6 +129,9 @@ function validateLayout(layout: OptionLayoutProfile): string | null {
             return 'ambiguous-record-migration';
         }
         recordIds.add(record.recordMigrationId);
+        if (record.recordMarker && (record.recordMarker.kind !== 'column-one' || record.recordMarker.value !== '&' ||
+            !record.recordMarker.evidenceIds?.length || record.recordMarker.fieldIndex !== 0 ||
+            record.fields[0]?.position !== 0 || record.fields[0]?.type !== 'string')) return 'invalid-record-marker';
         if (record.occurrence && record.occurrence.kind !== 'exactly-once') {
             return 'repeat-or-conditional-occurrence-unresolved';
         }
@@ -157,6 +163,27 @@ function recordWidth(record: OptionRecordLayout): number {
 
 function extractCell(text: string, field: OptionFieldLayout): string {
     return String(text || '').slice(field.position, field.position + field.width).trim();
+}
+
+function sourceTextLossReason(input: OptionSwitchPlannerInput, text: string, record?: OptionRecordLayout, customReader = true): string | null {
+    if (!text.trim()) return null;
+    if (!record) return 'unmodeled-source-text';
+    let ranges: Array<{ start: number; end: number }> | null;
+    try {
+        ranges = customReader && input.readRecordRanges ? input.readRecordRanges(text, record)
+            : customReader && input.readField ? null
+                : record.fields.map(field => ({ start: field.position, end: field.position + field.width }));
+    } catch { return 'source-record-coverage-unproven'; }
+    if (!Array.isArray(ranges) || ranges.some(range => !range || !Number.isSafeInteger(range.start) ||
+        !Number.isSafeInteger(range.end) || range.start < 0 || range.end < range.start)) {
+        return 'source-record-coverage-unproven';
+    }
+    let end = 0;
+    for (const range of ranges.slice().sort((left, right) => left.start - right.start)) {
+        if (text.slice(end, range.start).trim()) return 'unmodeled-source-text';
+        end = Math.max(end, range.end);
+    }
+    return text.slice(end).trim() ? 'unmodeled-source-text' : null;
 }
 
 function writeCell(characters: string[], field: OptionFieldLayout, value: string): boolean {
@@ -199,9 +226,16 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
     }
     const sourceError = validateLayout(input.currentLayout);
     const targetError = validateLayout(input.targetLayout);
-    if (sourceError || targetError) return blankPlan(input, 'blocked', sourceError || targetError || 'invalid-layout');
+    if (sourceError || targetError) return blankPlan(input, 'blocked', sourceError || targetError!);
     if (!Array.isArray(input.records) || input.records.length !== input.currentLayout.records.length) {
         return blankPlan(input, 'blocked', 'record-count-unresolved');
+    }
+    for (const [index, record] of input.currentLayout.records.entries()) {
+        if (record.recordMarker && (!input.records[index].text.startsWith(record.recordMarker.value) ||
+            (input.readField?.(input.records[index].text, record, record.recordMarker.fieldIndex) ??
+                extractCell(input.records[index].text, record.fields[record.recordMarker.fieldIndex])) !== record.recordMarker.value)) {
+            return blankPlan(input, 'blocked', 'source-record-marker-mismatch');
+        }
     }
     const sourceBytes = Buffer.byteLength(JSON.stringify(input.records), 'utf8');
     const maxBytes = Number.isFinite(input.maxBytes) ? Number(input.maxBytes) : OPTION_SWITCH_MAX_BYTES;
@@ -226,9 +260,11 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
     const commentChanges: Array<Record<string, unknown>> = [];
     const consumedSourceFields = new Set<string>();
     const consumedSourceRecords = new Set<number>();
+    const preservedSourceRecords = new Set<number>();
     const sourceFieldEntries = input.currentLayout.records.flatMap((record, recordIndex) =>
         record.fields.map((field, fieldIndex) => ({ record, recordIndex, field, fieldIndex,
-            key: `${recordIndex}:${field.fieldMigrationId}` })));
+            key: `${recordIndex}:${field.fieldMigrationId}` }))
+            .filter(entry => entry.fieldIndex !== record.recordMarker?.fieldIndex));
     const normalizeName = (value: unknown) => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const normalizeType = (value: unknown) => {
         const text = String(value || '').toLowerCase();
@@ -293,9 +329,18 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
         }
         const preserveSourceText = sourceMatch &&
             JSON.stringify(sourceMatch.record.fields) === JSON.stringify(targetRecord.fields);
+        if (preserveSourceText) preservedSourceRecords.add(sourceMatch.index);
         let recordText = preserveSourceText ? sourceRecord!.text : input.createRecord?.(targetRecord) ??
             Array(recordWidth(targetRecord)).fill(' ').join('');
+        if (targetRecord.recordMarker && !preserveSourceText) {
+            if (input.writeField) {
+                const written = input.writeField(recordText, targetRecord, targetRecord.recordMarker.fieldIndex, targetRecord.recordMarker.value);
+                if (written === null) return blankPlan(input, 'blocked', 'target-record-marker-mismatch');
+                recordText = written;
+            } else recordText = targetRecord.recordMarker.value + recordText.slice(1);
+        }
         for (let targetFieldIndex = 0; targetFieldIndex < targetRecord.fields.length; targetFieldIndex++) {
+            if (targetFieldIndex === targetRecord.recordMarker?.fieldIndex) continue;
             const targetField = targetRecord.fields[targetFieldIndex];
             const explicitSourceId = explicitBindings.get(targetField.fieldMigrationId);
             let sourceEntry = explicitSourceId
@@ -366,6 +411,11 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
             });
         }
 
+        if (targetRecord.recordMarker && (!recordText.startsWith(targetRecord.recordMarker.value) ||
+            (input.readField?.(recordText, targetRecord, targetRecord.recordMarker.fieldIndex) ??
+                extractCell(recordText, targetRecord.fields[targetRecord.recordMarker.fieldIndex])) !== targetRecord.recordMarker.value)) {
+            return blankPlan(input, 'blocked', 'target-record-marker-mismatch');
+        }
         let comments = sourceRecord ? [...(sourceRecord.comments || [])] : [];
         const recordChanged = !sourceMatch || JSON.stringify(sourceMatch.record.fields) !== JSON.stringify(targetRecord.fields);
         if (recordChanged && comments.length > 0) {
@@ -399,7 +449,12 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
         for (let sourceIndex = 0; sourceIndex < input.currentLayout.records.length; sourceIndex++) {
             const sourceLayout = input.currentLayout.records[sourceIndex];
             const sourceRecord = input.records[sourceIndex];
+            if (!preservedSourceRecords.has(sourceIndex)) {
+                const reason = sourceTextLossReason(input, sourceRecord.text, sourceLayout);
+                if (reason) return blankPlan(input, 'blocked', reason);
+            }
             for (const field of sourceLayout.fields) {
+                if (sourceLayout.fields.indexOf(field) === sourceLayout.recordMarker?.fieldIndex) continue;
                 const key = `${sourceIndex}:${field.fieldMigrationId}`;
                 if (consumedSourceFields.has(key)) continue;
                 const value = input.readField?.(sourceRecord.text, sourceLayout,
@@ -483,7 +538,7 @@ function provisionalColumn(field: any): number | null {
     if (Number.isInteger(field?.columnOrdinal)) return Number(field.columnOrdinal);
     const position = provisionalPosition(field);
     const width = provisionalWidth(field);
-    return position === null || width === null ? null : Math.floor(position / Math.max(1, width)) + 1;
+    return position === null || width === null ? null : Math.floor(position / width) + 1;
 }
 
 function provisionalRecordWidth(record: any): number {
@@ -579,6 +634,7 @@ export function planProvisionalOptionSwitch(input: OptionSwitchPlannerInput): Op
         sourceByRecordId.has(provisionalRecordId(record, index, 'source')));
     const consumedSourceFields = new Set<string>();
     const consumedSourceRecords = new Set<number>();
+    const preservedSourceRecords = new Set<number>();
     const migratedFields: Array<Record<string, unknown>> = [];
     const emptyTargetFields: Array<Record<string, unknown>> = [];
     const discardedFields: Array<Record<string, unknown>> = [];
@@ -602,8 +658,11 @@ export function planProvisionalOptionSwitch(input: OptionSwitchPlannerInput): Op
             fieldIndex,
             key: `${sourceMatch?.index ?? targetRecordIndex}:${provisionalFieldId(field, sourceMatch?.index ?? targetRecordIndex, fieldIndex, 'source')}`,
         }));
-        const characters = Array(Math.max(provisionalRecordWidth(targetRecord), sourceRecord ? String(records[sourceMatch.index]?.text || '').length : 0)).fill(' ');
         const text = sourceRecord && records[sourceMatch.index] ? records[sourceMatch.index].text : '';
+        const preserveSourceText = sourceMatch && JSON.stringify(sourceRecord.fields) === JSON.stringify(targetRecord.fields);
+        if (preserveSourceText) preservedSourceRecords.add(sourceMatch.index);
+        const characters = preserveSourceText ? text.split('')
+            : Array(Math.max(provisionalRecordWidth(targetRecord), text.length)).fill(' ');
         for (let targetFieldIndex = 0; targetFieldIndex < (targetRecord.fields || []).length; targetFieldIndex++) {
             const targetField: any = targetRecord.fields[targetFieldIndex];
             const targetId = provisionalFieldId(targetField, targetRecordIndex, targetFieldIndex, 'target');
@@ -678,9 +737,15 @@ export function planProvisionalOptionSwitch(input: OptionSwitchPlannerInput): Op
         });
     }
 
-    for (let sourceRecordIndex = 0; sourceRecordIndex < sourceRecords.length; sourceRecordIndex++) {
+    for (let sourceRecordIndex = 0; sourceRecordIndex < records.length; sourceRecordIndex++) {
         const sourceRecord: any = sourceRecords[sourceRecordIndex];
         const sourceText = records[sourceRecordIndex]?.text || '';
+        if (!preservedSourceRecords.has(sourceRecordIndex)) {
+            const reason = sourceTextLossReason(input, sourceText, sourceRecord, false);
+            if (reason) return { ...blankPlan(input, 'blocked', reason), ...base, provisional: true,
+                source: 'provisional-option-layout-v1', unmatchedFields, previewDiff };
+        }
+        if (!sourceRecord) continue;
         let sourceHasFieldValue = false;
         for (let sourceFieldIndex = 0; sourceFieldIndex < (sourceRecord.fields || []).length; sourceFieldIndex++) {
             const sourceField = sourceRecord.fields[sourceFieldIndex];

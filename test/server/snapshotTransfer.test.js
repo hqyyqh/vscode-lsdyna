@@ -54,6 +54,50 @@ describe('request-scoped project reference transfer', () => {
         assert.equal(original.fileIndexes.get(original.rootFile).registryReferences.complete, true);
     });
 
+    it('round-trips keyword blocks and templated references for every physical file', async () => {
+        const original = snapshot('main.k', 513), child = snapshot('child.k', 513);
+        original.files.push(child.rootFile);
+        original.fileIndexes.set(child.rootFile, child.fileIndexes.get(child.rootFile));
+        for (const [filePath, index] of original.fileIndexes) {
+            index.keywordBlocks = Array.from({ length: 513 }, (_, lineIndex) => ({
+                keyword: 'PART', filePath, lineIndex,
+            }));
+            for (const field of ['referenceOccurrences', 'valueDomainOccurrences']) {
+                for (const record of index.registryReferences[field]) {
+                    Object.assign(record, { filePath, keyword: 'PART', fieldName: 'PID',
+                        operationalProjection: { kind: 'controlled transport fixture' }, targetKinds: ['part'] });
+                }
+            }
+        }
+        const expected = JSON.parse(JSON.stringify(serializeProjectSnapshot(original)));
+        let batches = 0, templateBatches = 0;
+        const { client } = bridge(async (params, notify) => serializeProjectSnapshotForClient(original, chunk => {
+            batches++;
+            if (chunk.templates) templateBatches++;
+            assert.ok(chunk.items.length <= 512);
+            notify(protocol.SNAPSHOT_REFERENCES_NOTIFICATION,
+                JSON.parse(JSON.stringify({ requestId: params.requestId, ...chunk })));
+        }));
+        assert.deepEqual(JSON.parse(JSON.stringify(serializeProjectSnapshot(await client.loadProjectSnapshot(original.rootFile)))), expected);
+        assert.deepEqual(JSON.parse(JSON.stringify(serializeProjectSnapshot(original))), expected);
+        assert.deepEqual({ batches, templateBatches }, { batches: 12, templateBatches: 8 });
+    });
+
+    it('rejects reference templates that inject source coordinates', async () => {
+        const original = snapshot('invalid-template.k', 513);
+        for (const record of original.fileIndexes.get(original.rootFile).registryReferences.referenceOccurrences) {
+            record.operationalProjection = { kind: 'controlled transport fixture' };
+        }
+        const { client } = bridge(async (params, notify) => serializeProjectSnapshotForClient(original, chunk => {
+            const wire = JSON.parse(JSON.stringify({ requestId: params.requestId, ...chunk }));
+            if (wire.templates) wire.templates[0].lineIndex = 999;
+            notify(protocol.SNAPSHOT_REFERENCES_NOTIFICATION, wire);
+        }));
+        await assert.rejects(client.loadProjectSnapshot(original.rootFile), /invalid reference template/i);
+        assert.ok(original.fileIndexes.get(original.rootFile).registryReferences.referenceOccurrences
+            .every(record => !Object.hasOwn(record, 'lineIndex')));
+    });
+
     it('stops between batches when the scan is cancelled', async () => {
         const original = snapshot('cancel.k');
         const token = { isCancellationRequested: false };

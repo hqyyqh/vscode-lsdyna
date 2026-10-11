@@ -22,15 +22,15 @@ const {
     keywordManagerInferCatalogSelectorSelections,
     buildKeywordOptionsViewState,
     applyKeywordOptionViewModel,
-    keywordManagerProjectInstances,
     locateKeywordManagerSource,
     openKeywordManagerManual,
-    openKeywordManagerInstanceEditor,
     generateCommentLine,
     optionSwitchReplacement,
+    keywordManagerReplacementMatchesTarget,
     keywordManagerHelpState,
     keywordManagerResolveSchemaField,
     keywordManagerEditField,
+    prepareKeywordManagerInstances,
 } = require("../../../out/extension")._internals;
 
 function fakeDocument(lines, version = 1) {
@@ -107,19 +107,20 @@ describe('native field states with unchanged spelling selectors', () => {
 
 describe("keyword catalog native ALE TRIM record selection", () => {
     const handoff = require("../../fixtures/public-behavior/trim-record-selection.json");
-    let catalog, original, selectionOverride;
-    beforeEach(() => { selectionOverride = {}; });
+    const nativeCases = handoff.recordSelection.cases.filter(item =>
+        !['SLDSET', 'SHLSET', 'BEAMSET'].includes(item.value));
+    let catalog, original, sourceDrift;
+    beforeEach(() => { sourceDrift = false; });
     before(() => {
         catalog = getCatalogInputFormCatalogV4();
         original = catalog.formForKeyword;
         catalog.formForKeyword = function(keyword) {
             const form = original.call(this, keyword);
-            if (String(keyword).replace(/^\*/, '') !== handoff.keyword || !form) return form;
+            if (String(keyword).replace(/^\*/, '') !== handoff.keyword || !form || !sourceDrift) return form;
             const copy = structuredClone(form);
             for (const id of copy.reference.formRuleIds) {
                 const rule = copy.rules[id];
-                rule.recordSelection = { ...structuredClone(handoff.recordSelection),
-                    cards: structuredClone(handoff.cards), ...selectionOverride };
+                rule.catalogSource.datasetSha256 = '0'.repeat(64);
             }
             return copy;
         };
@@ -134,15 +135,16 @@ describe("keyword catalog native ALE TRIM record selection", () => {
         assert.notEqual(next.plan.status, 'blocked', next.plan.reason);
         return next;
     }
-    it('projects every extracted option independently in a mixed source and uses native help', () => {
-        const rows = handoff.recordSelection.cases.map((item, i) => `${i+1},${item.value},,,${101+i},${201+i},${301+i},${401+i}`);
+    it('projects every supported file option independently in a mixed source and uses native help', () => {
+        const rows = nativeCases.map((item, i) => `${i+1},${item.value},,,${101+i},${201+i},${301+i},${401+i}`);
         const document = source(rows), model = modelFor(document);
         assert.notEqual(model.plan.status, 'blocked', model.plan.reason);
         assert.equal(model.managerCards.length, rows.length);
-        for (const [i, item] of handoff.recordSelection.cases.entries()) {
+        for (const [i, item] of nativeCases.entries()) {
             const expected = handoff.cards.find(card => card.cardIndex === item.cardIndex);
             const card = model.managerCards[i];
-            assert.deepEqual(card.fields.map(field => field.name), expected.fields.map(field => field.name));
+            assert.deepEqual(card.fields.map(field => field.name), expected.fields.map((field, index) =>
+                index === 3 && item.cardIndex > 1 ? 'OUT/IN' : field.name));
             assert.equal(card.fields[1].value, item.value);
             assert.equal(card.fields[4].value, String(101+i));
             const help = keywordManagerHelpState({ ...model, selectedFieldId: card.fields[4].fieldId });
@@ -151,38 +153,79 @@ describe("keyword catalog native ALE TRIM record selection", () => {
         assert.equal(new Set(model.managerCards.flatMap(card => card.fields.map(field => field.fieldId))).size, rows.length*8);
         assert.equal(document.getText(), [`*${handoff.keyword}`, ...rows, '*END'].join('\n'));
     });
-    it('clears only replaced tail fields through A → B → A, resets and reopens', () => {
+    it('rejects A → B migration without losing tail drafts, restores A, resets and reopens a supported edit', async () => {
         const document = source(['1,PARTSET,,,101,201,301,401', '2,SEGSET,,,102,202,302,402']);
         const base = modelFor(document);
-        const sphere = change(document, base, 0, 1, 'SPHERE');
-        assert.equal(sphere.managerCards[0].fields[4].name, 'NID');
-        assert.deepEqual(sphere.managerCards[0].fields.slice(4).map(field => field.draft), ['', '', '', '']);
-        assert.equal(sphere.plan.replacementRecords[1].text, document.lineAt(2).text);
+        const before = document.getText(), edited = change(document, base, 0, 4, '42');
+        const psidId = base.managerCards[0].fields[4].fieldId;
+        const sphereDraft = keywordManagerEditField(edited, base.managerCards[0].fields[1].fieldId, 'SPHERE');
+        const sphere = modelFor(document, sphereDraft);
+        assert.equal(sphere.plan.status, 'blocked');
+        assert.equal(sphere.plan.reason, 'lspp-input-form-field-draft-invalid');
+        assert.deepEqual(sphere.plan.replacementRecords, []);
+        assert.equal(sphere.fieldDrafts[psidId], '42');
+        assert.equal(buildKeywordOptionsViewState(sphere).canApply, false);
+        assert.equal(buildKeywordOptionsViewState(sphere).preview, null);
+        const originalApply = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            assert.equal(await applyKeywordOptionViewModel({ getModel: () => sphere, markStale() {} }, editorFor(document)), null);
+            assert.equal(writes, 0);
+        } finally { vscode.workspace.applyEdit = originalApply; }
         const back = change(document, sphere, 0, 1, 'PARTSET');
-        assert.deepEqual(back.managerCards[0].fields.slice(4).map(field => field.draft), ['', '', '', '']);
-        assert.equal(modelFor(document).managerCards[0].fields[4].value, '101');
-        const edited = change(document, sphere, 0, 4, '42');
-        const reopened = modelFor(source(edited.plan.replacementRecords.map(record => record.text)));
-        assert.equal(reopened.managerCards[0].fields[4].name, 'NID');
+        assert.equal(back.fieldDrafts[psidId], '42');
+        assert.deepEqual(back.managerCards[0].fields.slice(4).map(field => field.value), ['101', '201', '301', '401']);
+        assert.equal(back.managerCards[0].fields[4].draft, '42');
+        assert.equal(back.plan.replacementRecords[0].text, '1,PARTSET,,,42,201,301,401');
+        assert.equal(back.plan.replacementRecords[1].text, document.lineAt(2).text);
+        const reset = modelFor(document);
+        assert.deepEqual(reset.fieldDrafts, {});
+        assert.deepEqual(reset.managerCards[0].fields.slice(4).map(field => field.value), ['101', '201', '301', '401']);
+        const reopened = modelFor(source(back.plan.replacementRecords.map(record => record.text)));
+        assert.equal(reopened.managerCards[0].fields[4].name, 'PSID');
         assert.equal(reopened.managerCards[0].fields[4].value, '42');
-        assert.deepEqual(reopened.managerCards[0].fields.slice(5).map(field => field.value), ['', '', '']);
-        assert.equal(reopened.managerCards[1].fields[4].value, '102');
+        assert.deepEqual(reopened.managerCards[0].fields.slice(5).map(field => field.value), ['201', '301', '401']);
+        assert.deepEqual(reopened.managerCards[1].fields.slice(4).map(field => field.value), ['102', '202', '302', '402']);
+        assert.equal(document.getText(), before);
     });
     it('preserves values for native choices sharing a card and accepts extracted case-insensitive matching', () => {
         const document = source(['2,SEGSET,,,102,202,302,402']);
-        const next = change(document, modelFor(document), 0, 1, 'sldset');
+        const next = change(document, modelFor(document), 0, 1, 'segset');
         assert.deepEqual(next.managerCards[0].fields.slice(4).map(field => field.value), ['102', '202', '302', '402']);
         assert.equal(Object.keys(next.fieldDrafts).length, 1);
     });
-    it('rejects unknown choices without inventing a branch', () => {
+    it('rejects unknown and GUI-only choices during preparation without inventing a branch', async () => {
         const document = source(['1,PARTSET,,,101']);
         const base = modelFor(document);
-        assert.equal(keywordManagerEditField(base, base.managerCards[0].fields[1].fieldId, 'UNKNOWN'), null);
-        assert.equal(modelFor(source(['1,UNKNOWN,,,101'])).plan.status, 'blocked');
+        const before = document.getText(), optionId = base.managerCards[0].fields[1].fieldId;
+        const originalApply = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            for (const value of ['UNKNOWN', 'SLDSET', 'SHLSET', 'BEAMSET']) {
+                const staged = keywordManagerEditField(base, optionId, value);
+                assert.equal(staged.fieldDrafts[optionId], value);
+                const draft = modelFor(document, staged);
+                assert.equal(draft.plan.status, 'blocked');
+                assert.equal(draft.plan.reason, 'lspp-input-form-field-draft-invalid');
+                assert.deepEqual(draft.plan.replacementRecords, []);
+                assert.equal(buildKeywordOptionsViewState(draft).canApply, false);
+                assert.equal(buildKeywordOptionsViewState(draft).preview, null);
+                assert.equal(await applyKeywordOptionViewModel({ getModel: () => draft, markStale() {} }, editorFor(document)), null);
+                const unreadable = modelFor(source([`1,${value},,,101`]));
+                assert.equal(unreadable.plan.status, 'blocked');
+                assert.equal(unreadable.plan.reason, 'lspp-input-form-source-layout-unresolved');
+                assert.deepEqual(unreadable.plan.replacementRecords, []);
+                assert.deepEqual(unreadable.managerCards, []);
+            }
+            assert.equal(writes, 0);
+        } finally { vscode.workspace.applyEdit = originalApply; }
+        assert.equal(document.getText(), before);
     });
     it('rejects source identity drift even when the static spelling layout fits', () => {
-        selectionOverride = { datasetSha256: '0'.repeat(64) };
-        const rows = handoff.recordSelection.cases.map((item, i) => `${i+1},${item.value}`);
+        sourceDrift = true;
+        const rows = nativeCases.map((item, i) => `${i+1},${item.value}`);
         const model = modelFor(source(rows));
         assert.equal(model.plan.status, 'blocked');
         assert.deepEqual(model.plan.replacementRecords, []);
@@ -192,11 +235,11 @@ describe("keyword catalog native ALE TRIM record selection", () => {
         assert.deepEqual(model.managerCards, []);
         assert.equal(model.help.status, 'none');
     });
-    it('refreshes same-position help on branch changes and keeps missing native descriptions empty', () => {
+    it('reads same-position help from each actual source branch and keeps missing native descriptions empty', () => {
         const document = source(['1,PARTSET,,,101']);
         const base = modelFor(document), id = base.managerCards[0].fields[4].fieldId;
         const before = keywordManagerHelpState({ ...base, selectedFieldId: id });
-        const sphere = change(document, base, 0, 1, 'SPHERE');
+        const sphere = modelFor(source(['1,SPHERE,,,101']));
         const after = keywordManagerHelpState({ ...sphere, selectedFieldId: id });
         assert.equal(after.schemaName, 'NID');
         assert.notEqual(after.contextKey, before.contextKey);
@@ -205,19 +248,23 @@ describe("keyword catalog native ALE TRIM record selection", () => {
         assert.equal(absent.reason, 'description-missing');
     });
     it('preserves native exported comments and all other records when editing a mixed file', () => {
-        const lines = handoff.deck.trimEnd().split(/\r?\n/);
+        const exported = handoff.deck.trimEnd().split(/\r?\n/);
+        const lines = exported.filter((text, index) => !/,(SLDSET|SHLSET|BEAMSET),/.test(text) &&
+            !(text.startsWith('$') && /,(SLDSET|SHLSET|BEAMSET),/.test(exported[index + 1] || '')));
         const line = lines.indexOf(`*${handoff.keyword}`), document = fakeDocument(lines);
         const base = buildKeywordOptionViewModel(editorFor(document), line, {});
         assert.equal(base.plan.status, 'no-change', base.plan.reason);
-        const id = base.managerCards[9].fields[4].fieldId;
+        const id = base.managerCards[6].fields[4].fieldId;
         const staged = keywordManagerEditField(base, id, '43');
         const edited = buildKeywordOptionViewModel(editorFor(document), line, staged);
         assert.equal(edited.plan.status, 'ready');
-        for (let index = 0; index < 9; index++) {
+        for (let index = 0; index < 6; index++) {
             assert.equal(edited.plan.replacementRecords[index].text, base.block.records[index].text);
             assert.deepEqual(edited.plan.replacementRecords[index].comments, base.block.records[index].comments);
         }
-        assert.deepEqual(edited.plan.replacementRecords[9].comments, base.block.records[9].comments);
+        assert.deepEqual(edited.plan.replacementRecords[6].comments, base.block.records[6].comments);
+        assert.equal(edited.plan.replacementRecords[6].text, '10,SPHERE,,,43');
+        assert.equal(document.getText(), lines.join('\n'));
     });
 });
 
@@ -615,7 +662,7 @@ describe('persistent official keyword option integration', () => {
         assert.deepEqual(fields.find(field => field.name === 'IOPT').choices, ['0', '1', '2', '3', '4']);
     });
 
-    it('bounds large repeat blocks with and without a ready BlockIndex', () => {
+    it('bounds large repeat blocks and reports an unavailable directory without a current BlockIndex', async () => {
         const lineCount = 1_000_002;
         const makeDocument = () => {
             let reads = 0;
@@ -643,12 +690,25 @@ describe('persistent official keyword option integration', () => {
         assert.notEqual(indexedModel.editLevel, 'editable');
         assert.ok(indexed.reads() < 20, `ready index should keep reads constant, got ${indexed.reads()}`);
 
-        const fallback = makeDocument();
-        const fallbackModel = buildKeywordOptionViewModel(editorFor(fallback.document), 0, { provisional: true });
-        assert.equal(fallbackModel.managerCards.length, 0);
-        assert.notEqual(fallbackModel.editLevel, 'editable');
-        assert.ok(fallback.reads() < 300, `fallback should stop at its record budget, got ${fallback.reads()}`);
-        assert.equal(fallbackModel.managerInstances[0].endLine, 0);
+        for (const missingIndex of [null, {
+            lineCount: lineCount - 1,
+            getOccurrences() { throw Error('Do not use a stale index'); },
+        }]) {
+            const fallback = makeDocument();
+            const fallbackModel = buildKeywordOptionViewModel(editorFor(fallback.document), 0, {
+                provisional: true, blockIndex: missingIndex, deferInstances: true,
+            });
+            assert.equal(fallbackModel.managerCards.length, 0);
+            assert.notEqual(fallbackModel.editLevel, 'editable');
+            assert.equal(fallbackModel.directoryStatus, 'error');
+            assert.equal(fallbackModel.selectedInstanceId, null);
+            assert.deepEqual(fallbackModel.managerInstances, [], 'do not invent a single-item directory');
+            assert.equal(await prepareKeywordManagerInstances(fallback.document, missingIndex), false);
+            const state = buildKeywordOptionsViewState(fallbackModel);
+            assert.equal(state.directoryStatus, 'error');
+            assert.ok(state.labels.selectorError && state.labels.selectorReload);
+            assert.ok(fallback.reads() < 300, `fallback should stop at its record budget, got ${fallback.reads()}`);
+        }
     });
 
     it('keeps a header-only joint free of invented fields and option dimensions', () => {
@@ -663,14 +723,40 @@ describe('persistent official keyword option integration', () => {
         }]);
     });
 
-    it('does not merge distinct EXE forms into a searchable alias family', () => {
-        const model = buildKeywordOptionViewModel(editorFor(fakeDocument(['*AIRBAG_FLUID_AND_GAS'])), 0, {
+    it('does not merge distinct EXE forms into a searchable alias family', async () => {
+        const document = fakeDocument(['*AIRBAG_FLUID_AND_GAS', '1,2,3,4,5,6,7,8', '9,10,11,12,13,14,15', '*END']);
+        const populated = buildKeywordOptionViewModel(editorFor(document), 0, {});
+        const fields = buildKeywordOptionsViewState(populated);
+        assert.equal(fields.dimensions.length, 0);
+        assert.deepEqual(fields.targets, [{ targetKeyword: '*AIRBAG_FLUID_AND_GAS', selected: true }]);
+        assert.equal(populated.plan.status, 'blocked');
+        assert.equal(populated.plan.reason, 'native-file-write-unverified');
+        assert.deepEqual(populated.plan.replacementRecords, []);
+        assert.deepEqual(populated.managerCards.map(card => card.fields[0].name), ['XWINI', 'GDIR']);
+        assert.ok(populated.managerCards.every(card => card.fields.every(field => !field.editable)));
+        assert.equal(fields.mode, 'fields');
+        assert.equal(fields.canApply, false);
+        const empty = fakeDocument(['*AIRBAG_FLUID_AND_GAS']);
+        const model = buildKeywordOptionViewModel(editorFor(empty), 0, {
             provisional: true,
         });
         const state = buildKeywordOptionsViewState(model);
-        assert.equal(state.mode, 'fields');
+        assert.equal(state.mode, 'none');
         assert.equal(state.dimensions.length, 0);
         assert.deepEqual(state.targets, [{ targetKeyword: '*AIRBAG_FLUID_AND_GAS', selected: true }]);
+        assert.deepEqual(model.managerCards, []);
+        assert.equal(state.canApply, false);
+        const originalApply = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            for (const [view, source] of [[populated, document], [model, empty]]) {
+                assert.equal(await applyKeywordOptionViewModel({ getModel: () => view, markStale() {} }, editorFor(source)), null);
+            }
+            assert.equal(writes, 0);
+        } finally { vscode.workspace.applyEdit = originalApply; }
+        assert.equal(document.getText(), '*AIRBAG_FLUID_AND_GAS\n1,2,3,4,5,6,7,8\n9,10,11,12,13,14,15\n*END');
+        assert.equal(empty.getText(), '*AIRBAG_FLUID_AND_GAS');
     });
 
     it('projects the native TITLE form state without using legacy grammar', () => {
@@ -871,7 +957,7 @@ describe('persistent official keyword option integration', () => {
         const selectorId = values => base.controls.find(control =>
             JSON.stringify(control.choices.map(choice => choice.value)) === JSON.stringify(values))
             .controlId;
-        const identityId = selectorId(['ID', 'TITLE']);
+        const identityId = selectorId(['ID']);
         const mppId = selectorId(['MPP1', 'MPP2']);
         const thermalId = selectorId(['Thermal', 'T_Friction']);
         const optionalId = selectorId(['A', 'AB', 'ABC', 'ABCD', 'ABCDE', 'ABCDEF', 'ABCDEFG']);
@@ -909,13 +995,14 @@ describe('persistent official keyword option integration', () => {
         const thermal = buildKeywordOptionViewModel(editorFor(document), 0, {
             provisional: true, draftControlState: { [thermalId]: 'Thermal' },
         });
-        assert.equal(thermal.plan.replacementRecords.length, 4);
-        assert.equal(thermal.managerCards.at(-1).fields[0].name, 'K');
+        assert.equal(thermal.plan.status, 'ready');
+        const thermalReplacement = optionSwitchReplacement(document, thermal, thermal);
+        assert.equal(keywordManagerReplacementMatchesTarget(document, thermal, { ...thermal, inputFormProjection: { branchEvidence: 'selector' } }, thermalReplacement), true);
+
         const friction = buildKeywordOptionViewModel(editorFor(document), 0, {
             provisional: true, draftControlState: { [thermalId]: 'T_Friction' },
         });
-        assert.equal(friction.plan.replacementRecords.length, 5);
-        assert.equal(friction.managerCards.at(-1).fields[0].name, 'LCFST');
+        assert.equal(friction.plan.status, 'ready');
 
         const abc = buildKeywordOptionViewModel(editorFor(document), 0, {
             provisional: true, draftControlState: { [optionalId]: 'ABC' },
@@ -925,14 +1012,70 @@ describe('persistent official keyword option integration', () => {
         assert.equal(abc.managerCards.at(-1).fields[0].name, 'IGAP');
         assert.equal(abc.controls.find(control => control.controlId === optionalId).value, 'ABC');
 
-        const k = thermal.managerCards.at(-1).fields.find(field => field.name === 'K');
-        const edited = buildKeywordOptionViewModel(editorFor(document), 0, {
-            provisional: true,
-            draftControlState: { [thermalId]: 'Thermal' },
-            fieldDrafts: { [k.fieldId]: '12.5' },
-        });
-        assert.ok(edited.fieldChanges.some(change => change.name === 'K' && change.after === '12.5'));
-        assert.equal(buildKeywordOptionsViewState(edited).canApply, true);
+    });
+
+    it('round-trips protected MPP2 syntax and unified identity without shifting base fields', () => {
+        for (const keyword of ['CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', 'CONTACT_AUTOMATIC_SINGLE_SURFACE',
+            'CONTACT_AUTOMATIC_NODES_TO_SURFACE', 'CONTACT_SURFACE_TO_SURFACE']) {
+            const cards = fieldData[keyword].c;
+            const source = fakeDocument(['*' + keyword,
+                ...cards.map((card, index) => fixedCard(card, index === 0 ? { [card[0].n]: 11, [card[1].n]: 22 } : {})), '*END']);
+            const base = buildKeywordOptionViewModel(editorFor(source), 0, {});
+            const identity = base.controls.find(c => c.choices.length === 1 && c.choices[0].value === 'ID');
+            const mpp = base.controls.find(c => c.choices.some(choice => choice.value === 'MPP2'));
+            const optional = base.controls.find(c => c.choices.some(choice => choice.value === 'A'));
+            const build = (document, drafts = {}) => buildKeywordOptionViewModel(editorFor(document), 0,
+                { draftControlState: drafts });
+            const reopen = model => fakeDocument([model.targetKeyword,
+                ...model.plan.replacementRecords.flatMap(r => [...r.comments, r.text]), '*END']);
+            const selected = build(source, { [mpp.controlId]: 'MPP2' });
+            assert.equal(selected.plan.status, 'ready', keyword + ': ' + selected.plan.reason);
+            assert.equal(selected.managerCards.length, 5);
+            assert.equal(new Set(selected.managerCards.map(card => card.cardId)).size, 5);
+            assert.equal(selected.plan.replacementRecords[1].text[0], '&');
+            assert.equal(selected.managerCards[1].fields[0].visible, false);
+            assert.equal(selected.managerCards[1].fields[0].editable, false);
+            assert.deepEqual(selected.plan.replacementRecords.slice(2).map(r => r.text), base.block.records.map(r => r.text));
+            const replacement = optionSwitchReplacement(source, selected, selected);
+            const result = { ...selected, inputFormProjection: { branchEvidence: 'selector' } };
+            assert.equal(keywordManagerReplacementMatchesTarget(source, selected, result, replacement), true);
+            for (const corrupted of [replacement.text.replace('&', ' '), replacement.text.replace('        11', '        99')]) {
+                assert.notEqual(corrupted, replacement.text, keyword);
+                assert.equal(keywordManagerReplacementMatchesTarget(source, selected, result,
+                    { ...replacement, text: corrupted }), false, keyword);
+            }
+            const current = reopen(selected);
+            assert.equal(build(current).currentControlState[mpp.controlId], 'MPP2');
+            assert.equal(build(current, { [mpp.controlId]: 'MPP2' }).managerCards.length, 5);
+            const mpp1 = build(current, { [mpp.controlId]: 'MPP1' });
+            assert.equal(mpp1.plan.replacementRecords.length, 4);
+            assert.equal(mpp1.plan.requiresLossConfirmation, false);
+            const clear = build(current, { [mpp.controlId]: '' });
+            assert.equal(clear.plan.replacementRecords.length, 3);
+            assert.deepEqual(clear.plan.replacementRecords.map(r => r.text), base.block.records.map(r => r.text));
+            const mppA = build(source, { [mpp.controlId]: 'MPP1', [optional.controlId]: 'A' });
+            const observedA = build(reopen(mppA));
+            assert.equal(observedA.currentControlState[mpp.controlId], 'MPP1');
+            assert.equal(observedA.currentControlState[optional.controlId], 'A');
+            const addSecond = build(reopen(mppA), { [mpp.controlId]: 'MPP2' });
+            assert.deepEqual(addSecond.plan.replacementRecords.slice(2).map(r => r.text), mppA.plan.replacementRecords.slice(1).map(r => r.text));
+            const identified = build(source, { [identity.controlId]: 'ID', [mpp.controlId]: 'MPP2' });
+            assert.equal(identified.plan.replacementRecords.length, 6);
+            assert.equal(identified.managerCards[0].fields[0].name, 'CID');
+            assert.equal(identified.plan.replacementRecords[2].text[0], '&');
+            const titleSource = fakeDocument([identified.targetKeyword.replace(/_ID$/, '_TITLE'),
+                '       123Wall contact'.padEnd(80), ...identified.plan.replacementRecords.slice(1).map(r => r.text), '*END']);
+            const titled = build(titleSource);
+            assert.equal(titled.currentControlState[identity.controlId], 'TITLE');
+            assert.equal(titled.controls.find(c => c.controlId === identity.controlId).choices.length, 1);
+            assert.equal(titled.managerCards[0].fields[1].value, 'Wall contact');
+            const cancelled = build(titleSource, { [identity.controlId]: '' });
+            assert.equal(cancelled.plan.requiresLossConfirmation, true);
+            assert.deepEqual(cancelled.plan.discardedFields.map(f => f.name), ['CID', 'TITLE']);
+            const reenabled = build(titleSource, { [identity.controlId]: 'TITLE' });
+            assert.equal(reenabled.targetKeyword, titled.currentKeyword);
+            assert.equal(reenabled.plan.replacementRecords.length, 6);
+        }
     });
 
     it('opens CONTACT_AUTOMATIC_SINGLE_SURFACE_ID from the EXE catalog', () => {
@@ -945,12 +1088,39 @@ describe('persistent official keyword option integration', () => {
         ]);
         const model = buildKeywordOptionViewModel(editorFor(document), 0, { provisional: true });
         const identity = model.controls.find(control =>
-            control.choices.map(choice => choice.value).join('|') === 'ID|TITLE');
+            control.choices.map(choice => choice.value).join('|') === 'ID');
         assert.ok(model.inputFormSource);
         assert.equal(model.inputFormSourceError, '');
         assert.equal(identity.value, 'ID');
         assert.equal(model.managerCards[0].fields[0].name, 'CID');
         assert.ok(['ready', 'no-change'].includes(model.plan.status));
+    });
+
+    it('keeps MPP markers at column one in supported record formats and protects their drafts', () => {
+        const writer = require('../../../out/core/edit/keywordRecordSerializer');
+        const cards = fieldData.CONTACT_AUTOMATIC_SURFACE_TO_SURFACE.c;
+        const standard = fakeDocument(['*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', ...cards.map(c => fixedCard(c, {})), '*END']);
+        const seed = buildKeywordOptionViewModel(editorFor(standard), 0, {});
+        const mppId = seed.controls.find(c => c.choices.some(v => v.value === 'MPP2')).controlId;
+        for (const [format, marker] of [['standard', ''], ['long', '+'], ['i10', '%'], ['comma', ''], ['free', '']]) {
+            const rows = seed.currentLayout.records.map(record => writer.writeRecordField(
+                writer.blankRecord(record.fields, format), record.fields, 0, '1', format));
+            const document = fakeDocument(['*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE' + marker, ...rows, '*END']);
+            const selected = buildKeywordOptionViewModel(editorFor(document), 0, { draftControlState: { [mppId]: 'MPP2' } });
+            assert.equal(selected.plan.status, 'ready', format + ': ' + selected.plan.reason);
+            assert.equal(selected.plan.replacementRecords[1].text[0], '&', format);
+            assert.deepEqual(selected.plan.replacementRecords.slice(2).map(r => r.text), rows, format);
+            const source = fakeDocument([selected.targetKeyword + marker, ...selected.plan.replacementRecords.map(r => r.text), '*END']);
+            const current = buildKeywordOptionViewModel(editorFor(source), 0, {});
+            assert.equal(current.currentControlState[mppId], 'MPP2', format);
+            const syntax = current.managerCards[1].fields[0];
+            const blocked = buildKeywordOptionViewModel(editorFor(source), 0, { fieldDrafts: { [syntax.fieldId]: '4' } });
+            assert.equal(buildKeywordOptionsViewState(blocked).canApply, false, format);
+            const loss = buildKeywordOptionViewModel(editorFor(source), 0, {
+                draftControlState: { [mppId]: 'MPP1' },
+            });
+            assert.equal(loss.plan.requiresLossConfirmation, false, format);
+        }
     });
 
     it('shrinks native Contact optional cards without inventing repeated rows', () => {
@@ -991,14 +1161,13 @@ describe('persistent official keyword option integration', () => {
             control.controlId,
         ]));
         const mppId = ids['MPP1|MPP2'];
-        const identityId = ids['ID|TITLE'];
+        const identityId = ids['ID'];
         const thermalId = ids['Thermal|T_Friction'];
         const optionalId = ids['A|AB|ABC|ABCD|ABCDE|ABCDEF|ABCDEFG'];
         const selected = buildKeywordOptionViewModel(editorFor(source), 0, {
             provisional: true,
             draftControlState: {
                 [mppId]: 'MPP1',
-                [thermalId]: 'T_Friction',
                 [optionalId]: 'ABC',
             },
         });
@@ -1014,11 +1183,9 @@ describe('persistent official keyword option integration', () => {
         };
         put(0, 0, 10, 1);       // MPP1/IGNORE
         put(2, 0, 10, 0.5);     // Base/FS; rejects a shifted MPP2 interpretation
-        put(4, 0, 10, 12.5);    // Thermal/K
-        put(5, 0, 10, 123);     // T_Friction/LCFST
-        put(6, 0, 10, 2);       // A/SOFT
-        put(7, 0, 10, 3.5);     // B/PENMAX
-        put(8, 0, 10, 4);       // C/IGAP
+        put(4, 0, 10, 2);       // A/SOFT
+        put(5, 0, 10, 3.5);     // B/PENMAX
+        put(6, 0, 10, 4);       // C/IGAP
         const reopened = fakeDocument([
             selected.targetKeyword,
             ...replacementRecords.flatMap(record => [...record.comments, record.text]),
@@ -1033,7 +1200,7 @@ describe('persistent official keyword option integration', () => {
         assert.deepEqual(keywordManagerInferCatalogSelectorSelections(
             selectorRule, selected.targetKeyword, reopenedGrammar, reopenedBlock,
         ), {
-            [identityId]: '', [mppId]: 'MPP1', [thermalId]: 'T_Friction', [optionalId]: 'ABC',
+            [identityId]: '', [mppId]: 'MPP1', [thermalId]: '', [optionalId]: 'ABC',
         }, JSON.stringify({ blockStatus: reopenedBlock.status, blockRecords: reopenedBlock.records?.length,
             grammar: reopenedGrammar?.canonicalSectionId,
             targets: reopenedGrammar?.targets?.map(target => [target.spelling,
@@ -1042,7 +1209,7 @@ describe('persistent official keyword option integration', () => {
         assert.deepEqual(inferred.resolvedTargetState, {
             [identityId]: '',
             [mppId]: 'MPP1',
-            [thermalId]: 'T_Friction',
+            [thermalId]: '',
             [optionalId]: 'ABC',
         });
         assert.deepEqual(inferred.draftControlState, {});
@@ -1052,7 +1219,7 @@ describe('persistent official keyword option integration', () => {
         ])), {
             [identityId]: '',
             [mppId]: 'MPP1',
-            [thermalId]: 'T_Friction',
+            [thermalId]: '',
             [optionalId]: 'ABC',
         });
         assert.equal(inferred.plan.status, 'no-change');
@@ -1137,7 +1304,7 @@ describe('persistent official keyword option integration', () => {
             '*END',
         ]);
         const model = buildKeywordOptionViewModel(editorFor(document), 0, { provisional: true });
-        assert.equal(model.managerInstances.length, 4);
+        assert.equal(model.managerInstances.length, 2);
         const sets = model.managerInstances.filter(instance => instance.keyword === '*SET_NODE');
         assert.equal(sets.length, 2);
         assert.ok(sets.every(instance => instance.occurrenceCount === 2));
@@ -1147,86 +1314,52 @@ describe('persistent official keyword option integration', () => {
         assert.match(sets[1].message, /select|选择/i);
     });
 
-    it('projects Include instances in source order with dirty, readonly, and explicit-edit boundaries', () => {
-        const mainPath = path.resolve('project', 'main.k');
-        const includePath = path.resolve('project', 'include-a.k');
-        const lockedPath = path.resolve('project', 'locked.k');
-        const makeUri = filePath => {
-            const scheme = filePath === lockedPath ? 'locked' : 'file';
-            return {
-                fsPath: filePath,
-                scheme,
-                toString() { return `${scheme}:///${filePath.replace(/\\/g, '/')}`; },
-            };
-        };
-        const document = fakeDocument([
-            '*KEYWORD', '*MAT_001', fixedCard(fieldData.MAT_001.c[0], { MID: 1, E: -1 }),
-            ''.padEnd(80), '*END',
-        ]);
-        document.uri = makeUri(mainPath);
-        document.isDirty = false;
-        const dirtyInclude = { uri: makeUri(includePath), isDirty: true };
-        const entries = [{
-            keyword: '*MAT_001',
-            usages: [
-                { filePath: includePath, lineIndex: 3, endLine: 5, dataLineCount: 2, fileOrder: 1,
-                    category: 'MAT', displayName: 'Include steel' },
-                { filePath: mainPath, lineIndex: 1, endLine: 3, dataLineCount: 2, fileOrder: 0,
-                    category: 'MAT', displayName: 'Main steel' },
-            ],
-        }, {
-            keyword: '*PART',
-            usages: [{ filePath: lockedPath, lineIndex: 8, endLine: 10, dataLineCount: 2, fileOrder: 2,
-                category: 'PART', displayName: 'Locked part' }],
-        }];
-        const originalUriFile = vscode.Uri.file;
+    it('groups confirmed title aliases, keeps unknown spellings separate and ignores target drafts', () => {
+        const fixed = values => values.map(value => String(value).padStart(10)).join('');
+        const document = fakeDocument(['*MAT_ELASTIC', fixed([1,7.85,210000,0.3,0,0,0,0]),
+            '*MAT_ELASTIC_TITLE', 'Steel', fixed([2,2.7,70000,0.33,0,0,0,0]), '*MAT_002', ''.padEnd(80),
+            '*PRIVATE_A', '1,2', '*PRIVATE_A_TITLE', 'A', '*DATABASE_SLEOUT', '0.01,1,12,0', '*END']);
+        const base = buildKeywordOptionViewModel(editorFor(document), 0, { provisional: true });
+        assert.deepEqual(base.managerInstances.map(item => item.keyword), ['*MAT_ELASTIC', '*MAT_ELASTIC_TITLE']);
+        assert.equal(base.managerInstances[1].title, 'Steel');
+        assert.deepEqual(base.managerInstances[1].identity, { field: 'MID', value: '2' });
+        const staged = buildKeywordOptionViewModel(editorFor(document), 0, { provisional: true, targetKeyword: '*MAT_002' });
+        assert.deepEqual(staged.managerInstances.map(item => item.instanceId), base.managerInstances.map(item => item.instanceId));
+        const unknown = buildKeywordOptionViewModel(editorFor(document), 7, { provisional: true });
+        assert.deepEqual(unknown.managerInstances.map(item => item.keyword), ['*PRIVATE_A']);
+        const sleout = buildKeywordOptionViewModel(editorFor(document), 11, { provisional: true });
+        assert.equal(sleout.managerInstances.length, 1);
+        assert.equal(sleout.managerInstances[0].identity, undefined, 'LCUR is a reference');
+        assert.deepEqual(sleout.managerInstances[0].summary, [{ field: 'DT', value: '0.01' }, { field: 'BINARY', value: '1' }]);
+        const comma = fakeDocument(['*MAT_ELASTIC', '1,7.85,210000,0.3', '*END']);
+        assert.deepEqual(buildKeywordOptionViewModel(editorFor(comma), 0).managerInstances[0].identity,
+            { field: 'MID', value: '1' }, 'confirmed source reads do not require write support');
+        const unverified = fakeDocument(['*MAT_DAMAGE_1', '         1', '', '', '', '', '', 'unassigned record', '*END']);
+        assert.equal(buildKeywordOptionViewModel(editorFor(unverified), 0).managerInstances[0].identity, undefined);
+        assert.deepEqual(buildKeywordOptionViewModel(editorFor(unverified), 0).managerInstances[0].summary, []);
+    });
+
+    it('ignores retired project injection and preserves readonly file boundaries', () => {
         const originalFs = vscode.workspace.fs;
-        vscode.Uri.file = makeUri;
         vscode.workspace.fs = { isWritableFileSystem: scheme => scheme !== 'locked' };
         try {
-            const instances = keywordManagerProjectInstances(entries, document, 1, [document, dirtyInclude]);
-            assert.deepEqual(instances.map(instance => instance.includeOrder), [0, 1, 2]);
-            assert.equal(instances[0].selected, true);
-            assert.equal(instances[0].occurrenceCount, 2);
-            assert.equal(instances[1].occurrenceCount, 2);
-            assert.equal(instances[1].dirty, true);
-            assert.equal(instances[1].fileName, 'include-a.k');
-            assert.equal(instances[2].readonly, true);
-            assert.ok(instances.every(instance => instance.editLevel === 'recovery'));
-
-            const model = buildKeywordOptionViewModel(editorFor(document), 1, {
-                provisional: true,
-                scope: 'project',
-                managerInstances: instances,
+            const document = fakeDocument(['*MAT_001', fixedCard(fieldData.MAT_001.c[0], { MID: 1, E: -1 }), ''.padEnd(80)]);
+            document.uri = { scheme: 'locked', fsPath: path.resolve('project', 'locked.k'), toString: () => 'locked:///locked.k' };
+            document.isDirty = true;
+            const model = buildKeywordOptionViewModel(editorFor(document), 0, {
+                provisional: true, targetKeyword: '*MAT_001_TITLE', scope: 'project',
+                managerInstances: [{ instanceId: 'foreign:0', uri: 'file:///other.k', keyword: '*MAT_001', line: 0 }],
             });
-            assert.equal(model.managerScope, 'project');
-            assert.equal(model.managerInstances.find(instance => instance.selected).editLevel, 'editable');
-            assert.equal(model.managerInstances.find(instance => instance.filePath === includePath).editLevel, 'recovery');
-
-            const lockedDocument = fakeDocument(['*MAT_001', fixedCard(fieldData.MAT_001.c[0], { MID: 1, E: -1 }), ''.padEnd(80)]);
-            lockedDocument.uri = makeUri(lockedPath);
-            const lockedUri = lockedDocument.uri.toString();
-            const lockedModel = buildKeywordOptionViewModel(editorFor(lockedDocument), 0, {
-                provisional: true,
-                targetKeyword: '*MAT_001_TITLE',
-                scope: 'project',
-                managerInstances: [{
-                    instanceId: `${lockedUri}:0`, uri: lockedUri, filePath: lockedPath, fileName: 'locked.k',
-                    keyword: '*MAT_001', line: 0, endLine: 2, dataLineCount: 2, occurrenceCount: 1,
-                    category: 'MAT', displayName: 'Locked steel', selected: true, editLevel: 'recovery',
-                    scope: 'project', readonly: true,
-                }],
-            });
-            const lockedState = buildKeywordOptionsViewState(lockedModel);
-            assert.equal(lockedState.editLevel, 'recovery');
-            assert.equal(lockedState.canApply, false);
-            assert.ok(lockedState.cards.flatMap(card => card.fields).every(field => field.editable === false));
-            assert.ok(lockedState.capabilities.filter(capability => capability.write)
+            assert.equal(model.managerInstances.length, 1);
+            assert.equal(model.managerInstances[0].uri, document.uri.toString());
+            assert.equal(model.managerInstances[0].dirty, true);
+            assert.equal(model.managerInstances[0].readonly, true);
+            const view = buildKeywordOptionsViewState(model);
+            assert.equal(view.canApply, false);
+            assert.ok(view.cards.flatMap(card => card.fields).every(field => field.editable === false));
+            assert.ok(view.capabilities.filter(capability => capability.write)
                 .every(capability => capability.availability === 'recovery'));
-        } finally {
-            vscode.Uri.file = originalUriFile;
-            vscode.workspace.fs = originalFs;
-        }
+        } finally { vscode.workspace.fs = originalFs; }
     });
 
     it('locates the selected source line and opens the selected target manual chapter', async () => {
@@ -1275,39 +1408,6 @@ describe('persistent official keyword option integration', () => {
             vscode.window.visibleTextEditors = originalVisibleTextEditors;
             vscode.commands.executeCommand = originalExecuteCommand;
             vscode.TextEditorRevealType = originalRevealType;
-        }
-    });
-
-    it('opens a cross-file project instance before the host builds its editable session', async () => {
-        const current = fakeDocument(['*KEYWORD']);
-        const currentEditor = editorFor(current);
-        const targetPath = path.resolve('project', 'include-a.k');
-        const target = fakeDocument(['*MAT_001', ''.padEnd(80), ''.padEnd(80)]);
-        target.uri = vscode.Uri.file(targetPath);
-        const originalOpenTextDocument = vscode.workspace.openTextDocument;
-        const originalShowTextDocument = vscode.window.showTextDocument;
-        let openedUri = null;
-        let shown = null;
-        vscode.workspace.openTextDocument = async uri => { openedUri = uri; return target; };
-        vscode.window.showTextDocument = async (document, options) => {
-            shown = { document, options };
-            return editorFor(document);
-        };
-        try {
-            const result = await openKeywordManagerInstanceEditor({
-                uri: target.uri.fsPath,
-                filePath: targetPath,
-            }, currentEditor);
-            assert.equal(openedUri.fsPath, targetPath);
-            assert.strictEqual(shown.document, target);
-            assert.deepEqual(shown.options, { preserveFocus: false, preview: false });
-            assert.strictEqual(result.document, target);
-            assert.strictEqual(await openKeywordManagerInstanceEditor({
-                uri: current.uri.fsPath,
-            }, currentEditor), currentEditor);
-        } finally {
-            vscode.workspace.openTextDocument = originalOpenTextDocument;
-            vscode.window.showTextDocument = originalShowTextDocument;
         }
     });
 
@@ -1394,6 +1494,11 @@ describe('persistent official keyword option integration', () => {
         assert.equal(view.hasDrafts, true);
         assert.equal(view.canApply, false);
         assert.match(view.message, /源文件内容已变化|source changed/i);
+        const relocated = buildKeywordOptionsViewState({ ...model, sourceAnchorInvalid: true });
+        assert.equal(relocated.message, '');
+        assert.equal(relocated.status, 'stale');
+        assert.equal(relocated.hasDrafts, true);
+        assert.equal(relocated.canApply, false);
     });
 
     it('drops a normalized no-op field draft so it does not pin the manager session', () => {
@@ -1541,7 +1646,14 @@ describe('persistent official keyword option integration', () => {
         assert.equal(model.managerCards[1].fields[0].name, 'SURFA');
         const contactHelp = keywordManagerHelpState({ ...model,
             selectedFieldId: model.managerCards[1].fields[0].fieldId });
-        assert.equal(contactHelp.schemaName, 'SSID');
+        assert.equal(contactHelp.schemaName, 'SURFA');
+        assert.equal(contactHelp.schemaKeyword, 'CONTACT_AUTOMATIC_SINGLE_SURFACE');
+        assert.equal(contactHelp.status, 'ready');
+        const contactField = model.managerCards[1].fields[0];
+        assert.equal(contactHelp.fieldId, contactField.fieldId);
+        assert.deepEqual([contactField.line, contactField.position, contactField.width, contactField.value],
+            [4, 0, 10, '8000001']);
+        assert.equal(contactHelp.english, fieldData.CONTACT_AUTOMATIC_SINGLE_SURFACE.c[0][0].h);
         assert.ok(contactHelp.localized?.includes('从段集 ID'));
 
         assert.equal(model.managerCards[2].fields[0].name, 'FS');
@@ -1946,17 +2058,152 @@ describe('branch-aware keyword manager help', () => {
         }
         assert.equal(buildKeywordOptionViewModel(editorFor(document), 0, {}).help.reason, 'form-unresolved');
     });
-    it('changes help context for a same-ID field when OPTION is edited and restores it on reset', () => {
+    it('rejects unverified OPTION branch drafts without borrowing help or writing, and restores help on reset', async () => {
         const document = sourceFor(fixtures.find(f => f.id === 'trim-partset'));
         const base = buildKeywordOptionViewModel(editorFor(document), 0, {});
         const fields = base.managerCards[0].fields, field = fields.find(f => f.name === 'PSID'), option = fields.find(f => f.name === 'OPTION');
         const baseHelp = keywordManagerHelpState({ ...base, selectedFieldId: field.fieldId });
-        const draft = buildKeywordOptionViewModel(editorFor(document), 0, { selectedFieldId: field.fieldId, fieldDrafts: { [option.fieldId]: 'SPHERE' } });
-        assert.equal(draft.selectedFieldId, field.fieldId);
-        assert.equal(draft.help.schemaName, 'NID');
-        assert.equal(draft.help.status, 'ready');
-        assert.notEqual(draft.help.contextKey, baseHelp.contextKey);
+        const before = document.getText(), originalApply = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            const record = base.targetLayout.records[0];
+            const sphereLine = fixtures.find(f => f.id === 'trim-sphere').lines[0];
+            for (const staged of [keywordManagerEditField(base, option.fieldId, 'SPHERE'),
+                { recordDrafts: { [record.recordMigrationId]: sphereLine } }]) {
+                assert.ok(staged);
+                const draft = buildKeywordOptionViewModel(editorFor(document), 0, { ...staged, selectedFieldId: field.fieldId });
+                assert.equal(draft.plan.status, 'blocked');
+                assert.equal(draft.plan.reason, 'lspp-input-form-field-draft-invalid');
+                assert.deepEqual(draft.plan.replacementRecords, []);
+                assert.equal(buildKeywordOptionsViewState(draft).canApply, false);
+                assert.equal(draft.help.schemaName, baseHelp.schemaName);
+                assert.equal(draft.help.english, baseHelp.english);
+                assert.equal(await applyKeywordOptionViewModel({ getModel: () => draft, markStale() {} }, editorFor(document)), null);
+                assert.equal(writes, 0);
+                assert.equal(document.getText(), before);
+            }
+        } finally { vscode.workspace.applyEdit = originalApply; }
         const reset = buildKeywordOptionViewModel(editorFor(document), 0, { selectedFieldId: field.fieldId });
         assert.equal(reset.help.contextKey, baseHelp.contextKey);
+        const sphere = buildKeywordOptionViewModel(editorFor(sourceFor(fixtures.find(f => f.id === 'trim-sphere'))), 0,
+            { selectedFieldId: field.fieldId });
+        assert.equal(sphere.help.schemaName, 'NID');
+        assert.equal(sphere.help.status, 'ready');
+        assert.notEqual(sphere.help.contextKey, baseHelp.contextKey);
+        assert.equal(document.getText(), before);
+    });
+    it('explains unavailable draft layouts in both languages and rechecks forged ready plans without writing', async () => {
+        const i18n = require('../../../out/core/i18n');
+        const document = sourceFor(fixtures.find(f => f.id === 'trim-partset')), editor = editorFor(document);
+        const before = document.getText(), originalConfiguration = vscode.workspace.getConfiguration;
+        const originalApply = vscode.workspace.applyEdit, originalMessage = vscode.window.showInformationMessage;
+        const originalEditor = vscode.window.activeTextEditor;
+        let writes = 0, lastMessage;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        vscode.window.showInformationMessage = async message => { lastMessage = message; };
+        vscode.window.activeTextEditor = editor;
+        try {
+            for (const [language, message, invalidMessage] of [
+                ['zh-cn', '这些修改无法应用到当前字段布局。文件未修改，请还原修改的值后再试。',
+                    '本次修改包含无效字段，请修正标记项后再应用。'],
+                ['en', 'These changes cannot be applied to the current field layout. Your file has not changed. Revert the changed values and try again.',
+                    'Some changes are invalid. Correct the marked fields before applying.'],
+            ]) {
+                vscode.workspace.getConfiguration = (...args) => {
+                    const config = originalConfiguration(...args);
+                    return { ...config, get: (key, ...rest) => key === 'language' ? language : config.get(key, ...rest) };
+                };
+                i18n.updateLanguage();
+                const base = buildKeywordOptionViewModel(editor, 0, {});
+                const option = base.managerCards[0].fields.find(field => field.name === 'OPTION');
+                const psid = base.managerCards[0].fields.find(field => field.name === 'PSID');
+                assert.ok(option.choices.includes('SPHERE'), 'SPHERE is a valid option, not an invalid field value');
+                const staged = keywordManagerEditField(base, option.fieldId, 'SPHERE');
+                assert.ok(staged);
+                const draft = buildKeywordOptionViewModel(editor, 0, staged);
+                assert.equal(draft.plan.status, 'blocked');
+                assert.equal(draft.plan.reason, 'lspp-input-form-field-draft-invalid');
+                assert.ok(draft.managerCards[0].fields.every(field => !field.diagnostic?.blocksApply));
+                const view = buildKeywordOptionsViewState(draft);
+                assert.equal(view.status, 'error');
+                assert.equal(view.message, message);
+                assert.equal(view.canApply, false);
+                assert.equal(view.preview, null);
+                const readonly = { ...draft, readonly: true };
+                for (const model of [draft, { ...draft, plan: { ...draft.plan, status: 'ready', reason: 'forged-ready' } }, readonly]) {
+                    let staleCalls = 0;
+                    lastMessage = undefined;
+                    assert.equal(await applyKeywordOptionViewModel({ getModel: () => model, markStale() { staleCalls++; } }, editor), null);
+                    assert.equal(lastMessage, model === readonly ? i18n.get('keywordManagerApplyUnavailable') : message);
+                    assert.equal(staleCalls, model.plan.status === 'ready' ? 1 : 0, 'a ready claim must be re-prepared and rejected');
+                    assert.equal(writes, 0);
+                    assert.equal(document.getText(), before);
+                }
+                const invalid = buildKeywordOptionViewModel(editor, 0, { fieldDrafts: { [psid.fieldId]: '12345678901' } });
+                assert.ok(invalid.managerCards[0].fields.find(field => field.fieldId === psid.fieldId).diagnostic.blocksApply);
+                assert.equal(buildKeywordOptionsViewState(invalid).message, invalidMessage, 'actual field errors keep their specific message');
+                assert.equal(buildKeywordOptionsViewState(invalid).canApply, false);
+            }
+        } finally {
+            vscode.workspace.getConfiguration = originalConfiguration;
+            vscode.workspace.applyEdit = originalApply;
+            vscode.window.showInformationMessage = originalMessage;
+            vscode.window.activeTextEditor = originalEditor;
+            i18n.updateLanguage();
+        }
+        assert.equal(writes, 0);
+        assert.equal(document.getText(), before);
+    });
+    it('edits and reopens values within the same native TRIM branch without changing adjacent records', async () => {
+        const fixture = fixtures.find(f => f.id === 'trim-partset'), sibling = fixtures.find(f => f.id === 'trim-sphere').lines[0];
+        const lines = ['*' + fixture.keyword, fixture.lines[0], sibling, '*END'];
+        const document = fakeDocument(lines), editor = editorFor(document);
+        const base = buildKeywordOptionViewModel(editor, 0, {}), field = base.managerCards[0].fields.find(f => f.name === 'PSID');
+        const draft = buildKeywordOptionViewModel(editor, 0, keywordManagerEditField(base, field.fieldId, '7'));
+        assert.equal(draft.plan.status, 'ready');
+        assert.equal(buildKeywordOptionsViewState(draft).canApply, true);
+        assert.equal(draft.plan.replacementRecords[1].text, sibling);
+        const originalApply = vscode.workspace.applyEdit, originalEditor = vscode.window.activeTextEditor;
+        let writes = 0, applied;
+        vscode.window.activeTextEditor = editor;
+        vscode.workspace.applyEdit = async edit => { writes++; applied = edit; return true; };
+        try { assert.ok(await applyKeywordOptionViewModel({ getModel: () => draft, markStale() {} }, editor)); }
+        finally { vscode.workspace.applyEdit = originalApply; vscode.window.activeTextEditor = originalEditor; }
+        assert.equal(writes, 1);
+        assert.equal(applied.edits.length, 1);
+        const expected = lines.slice(0, -1);
+        expected[1] = expected[1].slice(0, 40) + '7'.padStart(10) + expected[1].slice(50);
+        assert.equal(applied.edits[0].text, expected.join('\n') + '\n');
+        const reopened = buildKeywordOptionViewModel(editorFor(fakeDocument([...expected, '*END'])), 0, {});
+        assert.equal(reopened.plan.status, 'no-change');
+        assert.equal(reopened.managerCards[0].fields.find(f => f.name === 'PSID').value, '7');
+        assert.equal(document.getText(), lines.join('\n'));
+    });
+    it('keeps incomplete ALE instances, changed native sources and unsupported LONG selector windows unresolved', () => {
+        const fixture = fixtures.find(f => f.id === 'ale-reference-source');
+        const incomplete = fakeDocument(['*' + fixture.keyword, fixture.lines[0], '*END']);
+        const model = buildKeywordOptionViewModel(editorFor(incomplete), 0, {});
+        assert.equal(model.plan.status, 'blocked');
+        assert.deepEqual(model.managerCards, []);
+        assert.equal(model.help.reason, 'form-unresolved');
+        assert.equal(buildKeywordOptionsViewState(model).canApply, false);
+        assert.equal(incomplete.getText(), ['*' + fixture.keyword, fixture.lines[0], '*END'].join('\n'));
+        const { nativeFileReadContext } = require('../../../out/core/semantics/nativeFileReadContext');
+        const trim = fixtures.find(f => f.id === 'trim-partset');
+        const form = getCatalogInputFormCatalogV4().formForKeyword(trim.keyword, false);
+        const rule = { ...form.rules[form.reference.formRuleIds[0]], catalogSource: form.source };
+        const wrong = nativeFileReadContext({ ...rule, catalogSource: { ...form.source, datasetSha256: '0'.repeat(64) } },
+            '*' + trim.keyword, trim.lines, 'standard');
+        assert.equal(wrong.kind, 'unsupported-source');
+        assert.equal(wrong.select(), null);
+        const longRow = [1, 'SEGSET', 0, 0, 1, 2, 0, 0].map(value => String(value).padStart(20)).join('');
+        const unsupported = nativeFileReadContext(rule, '*' + trim.keyword + ' +', [longRow], 'standard');
+        assert.equal(unsupported.select(), null);
+        const longDocument = fakeDocument(['*' + trim.keyword + ' +', longRow, '*END']);
+        const longModel = buildKeywordOptionViewModel(editorFor(longDocument), 0, {});
+        assert.equal(longModel.plan.status, 'blocked');
+        assert.equal(buildKeywordOptionsViewState(longModel).canApply, false);
+        assert.equal(longDocument.getText(), ['*' + trim.keyword + ' +', longRow, '*END'].join('\n'));
     });
 });

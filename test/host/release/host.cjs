@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const crypto = require('node:crypto'), vscode = require('vscode');
+const { withCpuProfile } = require('../../support/cpu-profile.cjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 const viewType = tab => String(tab.input?.viewType || '').replace(/^mainThreadWebview-/, '');
@@ -15,33 +16,32 @@ exports.run = async () => {
             if (process.env.LSDYNA_PROFILE_CPU && now - previous > 40) gaps.push({ endUs: Number(process.hrtime.bigint() / 1000n), ms: now - previous });
             previous = now; }, 2);
         const memoryBefore = process.memoryUsage(), start = performance.now();
-        let profiler;
-        if (process.env.LSDYNA_PROFILE_CPU === name ||
-            (process.env.LSDYNA_PROFILE_CPU === '1' && name === 'first-hover')) {
-            profiler = new (require('node:inspector').Session)(); profiler.connect();
-            const post = method => new Promise((resolve, reject) => profiler.post(method, (error, value) => error ? reject(error) : resolve(value)));
-            await post('Profiler.enable'); await post('Profiler.start');
+        let peakRss = memoryBefore.rss;
+        const memoryTimer = setInterval(() => { peakRss = Math.max(peakRss, process.memoryUsage().rss); }, 2);
+        try {
+            return await withCpuProfile(process.env.LSDYNA_PROFILE_CPU === name ||
+                (process.env.LSDYNA_PROFILE_CPU === '1' && name === 'first-hover'),
+                path.join(root, name + '.cpuprofile'), operation);
         }
-        try { return await operation(); }
         finally {
-            if (profiler) {
-                const value = await new Promise((resolve, reject) => profiler.post('Profiler.stop', (error, value) => error ? reject(error) : resolve(value)));
-                fs.writeFileSync(path.join(root, name + '.cpuprofile'), JSON.stringify(value.profile)); profiler.disconnect();
-            }
             const durationMs = performance.now() - start;
-            await delay(10); clearInterval(timer);
-            metrics.push({ name, durationMs, maxEventLoopGapMs, memoryBefore, memoryAfter: process.memoryUsage(), ...(gaps.length ? { gaps } : {}) });
+            try { await delay(10); } finally { clearInterval(timer); }
+            clearInterval(memoryTimer);
+            const memoryAfter = process.memoryUsage();
+            peakRss = Math.max(peakRss, memoryAfter.rss, process.resourceUsage().maxRSS * 1024);
+            metrics.push({ name, durationMs, maxEventLoopGapMs, peakRss, peakRssScope: 'extension-host process high-water mark', memoryBefore, memoryAfter, ...(gaps.length ? { gaps } : {}) });
         }
     };
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
     assert.ok(extension);
-    const result = { phase, vscodeVersion: vscode.version, platform: process.platform,
+    const result = { phase, vscodeVersion: vscode.version, platform: process.platform, arch: process.arch,
         node: process.version, electron: process.versions.electron, cpu: require('node:os').cpus()[0].model,
         totalMemoryBytes: require('node:os').totalmem(),
         configuration: Object.fromEntries(['changeMarks.enabled', 'changeMarks.debounceMs', 'changeMarks.maxLineCount',
             'largeFile.enableRendering', 'include.pathCaseCheck', 'language'].map(key => [key, vscode.workspace.getConfiguration('lsdyna').get(key)])),
         packageVersion: extension.packageJSON.version, installedPath: extension.extensionPath,
         initiallyActive: extension.isActive, metrics, checks, status: 'running' };
+    let failure;
     try {
         assert.equal(extension.isActive, false, 'Cold host must begin before DynaSense activation');
         const Module = require('node:module'), originalLoad = Module._load;
@@ -53,9 +53,21 @@ exports.run = async () => {
                 finally { const ms = performance.now() - start; if (ms >= 10) result.moduleLoads.push({ request, ms }); }
             };
         }
-        await measure('activation', () => extension.activate());
-        Module._load = originalLoad;
+        try { await measure('activation', () => extension.activate()); }
+        finally { Module._load = originalLoad; }
         assert.ok(extension.isActive);
+        if (phase === 'sqlite') {
+            await require('./sqlite.cjs').check(extension, root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'entity-pages') {
+            await require('./entity-pages.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'cache-settings') {
+            await require('./cache-settings.cjs').check(extension, root, checks);
+            result.status = 'passed'; return;
+        }
         if (phase === 'reference-hover') {
             await require('./reference-hover.cjs').check(extension, root, checks);
             result.status = 'passed'; return;
@@ -85,6 +97,45 @@ exports.run = async () => {
         const original = fs.readFileSync(file), document = await vscode.workspace.openTextDocument(file);
         let editor = await vscode.window.showTextDocument(document);
         result.fixtureSha256 = sha(original);
+        if (phase === 'experience') {
+            const renderer = await require('../../support/release/rendered.cjs').connect(process.env.LSDYNA_RELEASE_CDP_PORT);
+            try {
+                let manager;
+                await measure('first-manager-rendered', async () => {
+                    await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions', 1);
+                    manager = await renderer.wait(`typeof document !== 'undefined' && document.querySelector('main')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.fieldEditor input, .fieldEditor select').length >= 5`);
+                });
+                for (let i = 0; i < 100; i++) await measure('manager-refresh', () => renderer.evaluate(manager, `(async () => {
+                    const button = [...document.querySelectorAll('.headerActions button')].find(b => /^(Reload this instance|重新读取当前实例)$/.test(b.title));
+                    if (!button || button.disabled) throw Error('Refresh unavailable');
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => { cleanup(); reject(Error('Refresh response timeout')); }, 10000);
+                        const cleanup = () => { clearTimeout(timeout); window.removeEventListener('message', receive); };
+                        const receive = event => {
+                            const result = event.data?.result;
+                            if (!result?.state || typeof result.accepted !== 'boolean') return;
+                            cleanup(); result.accepted ? resolve() : reject(Error('Refresh rejected'));
+                        };
+                        window.addEventListener('message', receive); button.click();
+                    });
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    if (document.querySelector('main')?.getAttribute('aria-busy') !== 'false') throw Error('Refresh still busy');
+                })()`));
+                await measure('manual-open', async () => {
+                    await vscode.commands.executeCommand('extension.manual.openReader');
+                    await renderer.wait(`typeof document !== 'undefined' && !!document.querySelector('.katex') && document.body.textContent.includes('release-formula') && !document.querySelector('.katex-error')`);
+                });
+                const main = await vscode.workspace.openTextDocument(path.join(root, 'workspace', 'main.k'));
+                await vscode.window.showTextDocument(main);
+                const scanned = await measure('scan', () => vscode.commands.executeCommand('extension.scanIncludeTree'));
+                assert.equal(path.basename(scanned?.rootFile || ''), 'main.k');
+                assert.equal(scanned?.snapshot?.files?.length, 2, 'The scan must complete both fixture files');
+                checks.push('rendered-manager-refresh-manual-scan');
+                assert.equal(document.getText(), original.toString());
+                result.warmSampleCount = metrics.filter(item => item.name === 'manager-refresh').length;
+                result.status = 'passed'; return;
+            } finally { renderer.close(); }
+        }
         if (phase === 'choices') {
             const api = require(path.join(extension.extensionPath, 'out/extension'))._internals;
             const plan = api.planPreparedOfficialFieldChoices || api.planOfficialFieldChoicesForDocument;
@@ -211,9 +262,15 @@ exports.run = async () => {
             assert.ok(result.warmP95Ms <= 100);
         }
         result.status = 'passed';
-    } catch (error) { result.status = 'failed'; result.error = String(error); throw error; }
+    } catch (error) { failure = error; result.status = 'failed'; result.error = String(error); throw error; }
     finally {
         result.peakRssBytes = process.resourceUsage().maxRSS * 1024;
-        fs.writeFileSync(output, JSON.stringify(result, null, 2)); console.log(`Release host result: ${output}`);
+        try { fs.writeFileSync(output, JSON.stringify(result, null, 2)); console.log(`Release host result: ${output}`); }
+        catch (error) {
+            if (!failure) throw error;
+            failure.evidenceSaveFailed = true;
+            failure.evidenceError = error;
+            console.error('Release host evidence save failed:', error);
+        }
     }
 };

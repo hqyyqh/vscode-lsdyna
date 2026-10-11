@@ -171,23 +171,7 @@ async function showNativeOfficialFieldChoiceQuickPick(
     }
 
     const quickPick = window.createQuickPick();
-    quickPick.title = plan.domainKind === 'closed'
-        ? deps.translate('officialFieldChoiceClosedTitle', plan.fieldName)
-        : deps.translate('officialFieldChoiceMixedTitle', plan.fieldName);
-    quickPick.placeholder = plan.domainKind === 'closed'
-        ? deps.translate('officialFieldChoiceClosedPlaceholder')
-        : deps.translate('officialFieldChoiceMixedPlaceholder');
-    quickPick.items = items;
-    quickPick.matchOnDescription = true;
-    quickPick.matchOnDetail = true;
-    quickPick.ignoreFocusOut = false;
-    quickPick.canSelectMany = false;
-    const currentItem = items.find(item =>
-        plan.choices.find(choice => choice.id === item.choiceId)?.valueText === plan.currentRawValue
-    );
-    if (currentItem) quickPick.activeItems = [currentItem];
-
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         let settled = false;
         const disposables: any[] = [];
         const dispose = () => {
@@ -205,35 +189,59 @@ async function showNativeOfficialFieldChoiceQuickPick(
             dispose();
             resolve(choiceId);
         };
-        disposables.push(
-            quickPick.onDidAccept(() => {
-                const item = quickPick.selectedItems?.[0] || quickPick.activeItems?.[0];
-                settle(item?.choiceId || null);
-            }),
-            quickPick.onDidHide(() => settle(null, false)),
-        );
-        if (typeof quickPick.onDidTriggerItemButton === 'function') {
-            disposables.push(quickPick.onDidTriggerItemButton((event: any) => {
-                if (event?.button?.englishOriginal) {
-                    if (deps.openEnglish) {
-                        void deps.openEnglish(event.button.englishOriginal);
-                        return;
+        try {
+            quickPick.title = plan.domainKind === 'closed'
+                ? deps.translate('officialFieldChoiceClosedTitle', plan.fieldName)
+                : deps.translate('officialFieldChoiceMixedTitle', plan.fieldName);
+            quickPick.placeholder = plan.domainKind === 'closed'
+                ? deps.translate('officialFieldChoiceClosedPlaceholder')
+                : deps.translate('officialFieldChoiceMixedPlaceholder');
+            quickPick.items = items;
+            quickPick.matchOnDescription = true;
+            quickPick.matchOnDetail = true;
+            quickPick.ignoreFocusOut = false;
+            quickPick.canSelectMany = false;
+            const currentItem = items.find(item =>
+                plan.choices.find(choice => choice.id === item.choiceId)?.valueText === plan.currentRawValue
+            );
+            if (currentItem) quickPick.activeItems = [currentItem];
+            disposables.push(
+                quickPick.onDidAccept(() => {
+                    const item = quickPick.selectedItems?.[0] || quickPick.activeItems?.[0];
+                    settle(item?.choiceId || null);
+                }),
+            );
+            disposables.push(quickPick.onDidHide(() => settle(null, false)));
+            if (typeof quickPick.onDidTriggerItemButton === 'function') {
+                disposables.push(quickPick.onDidTriggerItemButton(async (event: any) => {
+                    try {
+                        if (event?.button?.englishOriginal) {
+                            if (deps.openEnglish) {
+                                await deps.openEnglish(event.button.englishOriginal);
+                                return;
+                            }
+                            await deps.vscode?.window?.showInformationMessage(
+                                `${plan.fieldName} ${deps.translate('fieldHelpEnglishOriginal')}: ${event.button.englishOriginal}`
+                            );
+                            return;
+                        }
+                        const evidence = event?.button?.evidence;
+                        if (!evidence?.evidenceId || !deps.openEvidence) return;
+                        await deps.openEvidence({
+                            keyword: plan.catalogKeyword,
+                            ruleId: plan.ruleId,
+                            evidenceId: evidence.evidenceId,
+                        });
+                    } catch (_error) {
+                        // Help requests do not change the selected value or apply an edit.
                     }
-                    deps.vscode?.window?.showInformationMessage(
-                        `${plan.fieldName} ${deps.translate('fieldHelpEnglishOriginal')}: ${event.button.englishOriginal}`
-                    );
-                    return;
-                }
-                const evidence = event?.button?.evidence;
-                if (!evidence?.evidenceId || !deps.openEvidence) return;
-                void Promise.resolve(deps.openEvidence({
-                    keyword: plan.catalogKeyword,
-                    ruleId: plan.ruleId,
-                    evidenceId: evidence.evidenceId,
-                })).catch(() => undefined);
-            }));
+                }));
+            }
+            quickPick.show();
+        } catch (error) {
+            dispose();
+            reject(error);
         }
-        quickPick.show();
     });
 }
 

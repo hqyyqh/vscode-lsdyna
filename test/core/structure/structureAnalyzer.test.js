@@ -41,6 +41,25 @@ function analyze(lines, options = {}) {
 }
 
 describe('generic keyword structure analyzer', () => {
+    it('preserves verified branches and physical mappings with ASCII-space comments between records', () => {
+        for (const sourceProfileId of [DEFAULT_STRUCTURE_SOURCE_PROFILE_EN, DEFAULT_STRUCTURE_SOURCE_PROFILE_BILINGUAL]) {
+            for (const [rate, count] of [[1, 4], [8, 7]]) {
+                for (const free of [false, true]) {
+                    const lines = winfrith(rate, count, free).flatMap((line, index) => [
+                        ' '.repeat(index % 3) + '$ record comment', line,
+                    ]);
+                    const result = analyze(lines, { sourceProfileId });
+                    assert.equal(result.status, 'valid');
+                    assert.equal(result.observedDataRecords, count);
+                    assert.deepEqual(result.block.records.map(record => record.line),
+                        Array.from({ length: count }, (_, index) => index * 2 + 2));
+                    assert.equal(result.diagnostics.length, 0);
+                    assert.equal(result.repairCandidates.length, 0);
+                }
+            }
+        }
+    });
+
     it('accepts both complete WINFRITH branches in fixed and per-card free format', () => {
         for (const [rate, count] of [[1, 4], [8, 7]]) {
             const fixedResult = analyze(winfrith(rate, count));
@@ -92,6 +111,29 @@ describe('generic keyword structure analyzer', () => {
         }).status, 'valid', 'a decoded controlling field must override stale external context');
     });
 
+    it('withholds the verdict and repairs for unsupported integers in a verified grammar', () => {
+        for (const raw of ['9007199254740993', '-9007199254740993', '9'.repeat(400)]) {
+            const lines = winfrith(8, 7, true);
+            const last = lines[6].split(',');
+            last[0] = raw;
+            lines[6] = last.join(',');
+            const result = analyze(lines);
+            assert.equal(result.status, 'unsupported-input');
+            assert.equal(result.reason, 'integer-value-unrepresentable');
+            assert.deepEqual(result.diagnostics, []);
+            assert.deepEqual(result.repairCandidates, []);
+            const missing = analyze(lines.slice(0, 6));
+            assert.equal(missing.status, 'definite-error', 'an absent unsupported field does not mask known missing cards');
+            const earlier = winfrith(8, 6, true);
+            const integerRow = earlier[4].split(',');
+            integerRow[1] = raw;
+            earlier[4] = integerRow.join(',');
+            const incomplete = analyze(earlier);
+            assert.equal(incomplete.status, 'unsupported-input');
+            assert.deepEqual(incomplete.repairCandidates, [], 'unsupported values must withhold otherwise authorized suffix repairs');
+        }
+    });
+
     it('resolves countFrom from decoded cards, with parameter context as a fallback only', () => {
         const profile = 'a'.repeat(64);
         const structureNode = (type, id, values = {}) => ({
@@ -140,6 +182,15 @@ describe('generic keyword structure analyzer', () => {
         assert.equal(run('&N').status, 'context-dependent');
         assert.equal(run('&N', { fields: { count: 2 } }).status, 'valid',
             'case-insensitive external context may resolve a parameterized count');
+        for (const raw of ['9007199254740993,', '-9007199254740993,', '9'.repeat(400) + ',']) {
+            for (const context of [{}, { fields: { COUNT: 2 } }]) {
+                const result = run(raw, context);
+                assert.equal(result.status, 'unsupported-input');
+                assert.equal(result.reason, 'integer-value-unrepresentable');
+                assert.deepEqual(result.diagnostics, []);
+                assert.deepEqual(result.repairCandidates, []);
+            }
+        }
     });
 
     it('does not use comments as solver structure evidence', () => {

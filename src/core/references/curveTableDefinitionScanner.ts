@@ -1,9 +1,8 @@
-import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const { parseNumericInput, numericInputValue } = require('./referenceInputValue');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
-const loadedReferenceIndex = require(keywordDataPath("references/field_reference_index.json"));
+const { getReferenceRuleCatalog } = require('./referenceRuleCatalog');
 
 function normalizeKeyword(value) {
     return String(value || '').trim().replace(/^\*/, '').toUpperCase().split(/[\s,$]/)[0];
@@ -24,7 +23,7 @@ function isTableKeyword(keyword) {
 
 function genericDefinitionDescriptor(
     keyword,
-    definitionKeywords = loadedReferenceIndex.definitionKeywords,
+    definitionKeywords = getReferenceRuleCatalog().metadata('definitionKeywords'),
     registryCatalog = getDefinitionRegistryCatalog(),
 ) {
     const normalized = normalizeKeyword(keyword).replace(/[+%\-]$/, '');
@@ -34,7 +33,7 @@ function genericDefinitionDescriptor(
     return indexed || registryCatalog?.definitionDescriptorForKeyword(normalized) || null;
 }
 
-function isVerifiedScannedDefinition(keyword, definitionKeywords = loadedReferenceIndex.definitionKeywords) {
+function isVerifiedScannedDefinition(keyword, definitionKeywords = getReferenceRuleCatalog().metadata('definitionKeywords')) {
     const normalized = normalizeKeyword(keyword).replace(/[+%\-]$/, '');
     return Array.isArray(definitionKeywords?.scanned) &&
         definitionKeywords.scanned.includes(normalized);
@@ -77,7 +76,7 @@ function parseDefinitionIdInput(token) {
 }
 
 function completenessFromInputs(inputs) {
-    const unresolved = (inputs || []).filter(input => input && input.kind !== 'numeric');
+    const unresolved = inputs.filter(input => input.kind !== 'numeric');
     return unresolved.length === 0
         ? { state: 'complete', reasons: [] }
         : {
@@ -232,11 +231,8 @@ function parseCurveBlock(block, text) {
     const points = [];
     const pointInputs = [];
     for (const entry of entries.slice(cursor)) {
-        if (entry.tokens.length < 2) {
-            continue;
-        }
         const xRaw = entry.tokens[0];
-        const yRaw = entry.tokens[1];
+        const yRaw = entry.tokens[1] ?? '';
         // Native comma-format curve coordinates default empty cells to zero.
         // Keep raw text for display; do not apply this default to identifiers,
         // symbolic/invalid values, or other record families.
@@ -330,11 +326,8 @@ function parseTableBlock(block, text) {
         }
     } else {
         for (const entry of entries.slice(cursor)) {
-            if (entry.tokens.length < 2) {
-                continue;
-            }
             const valueRaw = entry.tokens[0];
-            const childIdRaw = entry.tokens[1];
+            const childIdRaw = entry.tokens[1] ?? '';
             const valueInput = parseNumericInput(valueRaw, { integerOnly: false });
             const childIdInput = parseDefinitionIdInput(childIdRaw);
             const childLocation = definitionIdLocation(entry, childIdRaw, 20, 20);
@@ -436,10 +429,11 @@ function parseGenericDefineBlock(block, text, descriptor) {
 async function scanCurveTableDefinitionsFromFileIndex(
     fileIndex,
     readBlockText,
-    definitionKeywords = loadedReferenceIndex.definitionKeywords,
+    definitionKeywords = getReferenceRuleCatalog().metadata('definitionKeywords'),
     options: {
         cancellationToken?: { isCancellationRequested?: boolean };
         registryCatalog?: any;
+        targetKinds?: string[];
     } = {}
 ) {
     const curves = [];
@@ -452,22 +446,26 @@ async function scanCurveTableDefinitionsFromFileIndex(
     const isCancelled = () => options.cancellationToken?.isCancellationRequested === true;
     const cancelledResult = () => ({ curves, tables, genericDefinitions, cancelled: true });
 
+    const descriptors = new Map();
     for (let i = 0; i < fileIndex.keywordBlocks.length; i++) {
         if (isCancelled()) return cancelledResult();
         const block = fileIndex.keywordBlocks[i];
         const keyword = withStar(block.keyword);
-        const genericDescriptor = genericDefinitionDescriptor(
-            keyword,
-            definitionKeywords,
-            options.registryCatalog,
-        );
+        const normalized = normalizeKeyword(keyword).replace(/[+%\-]$/, '');
+        if (normalized === 'KEYWORD' || normalized === 'END') continue;
         const verifiedScanned = isVerifiedScannedDefinition(keyword, definitionKeywords);
         const curveDefinition = verifiedScanned && isCurveKeyword(keyword);
         const tableDefinition = verifiedScanned && isTableKeyword(keyword);
+        if (!curveDefinition && !tableDefinition && !descriptors.has(normalized)) {
+            descriptors.set(normalized, genericDefinitionDescriptor(keyword, definitionKeywords, options.registryCatalog));
+        }
+        const genericDescriptor = descriptors.get(normalized);
         if (!curveDefinition && !tableDefinition && !genericDescriptor) {
             continue;
         }
-        const text = await readBlockText(block);
+        if (genericDescriptor?.targetKind && options.targetKinds?.length &&
+            !options.targetKinds.includes(genericDescriptor.targetKind)) continue;
+        const text = await readBlockText(block, genericDescriptor?.cardIndex);
         if (isCancelled()) return cancelledResult();
         if (curveDefinition) {
             const definition = parseCurveBlock(block, text);

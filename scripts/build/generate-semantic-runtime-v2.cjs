@@ -61,13 +61,46 @@ function compactOptionGrammarForStorage(grammar) {
                 const compact = { ...core, bindingEncoding: 'identity-derived-v1' };
                 const { bindingEncoding, ...restoredCore } = compact;
                 const restored = { ...restoredCore, bindings: derivedIdentityBindings(compact.layout) };
-                if (bindingEncoding !== 'identity-derived-v1' || json(restored) !== json(candidate)) {
+                if (json(restored) !== json(candidate)) {
                     throw new Error(`semantic option binding compaction drift: ${target.spelling}`);
                 }
                 return compact;
             }),
         })),
     };
+}
+
+function attachDefinitionValueDomains(scanners, descriptors) {
+    const source = new Map(descriptors.map(descriptor => [descriptor.keyword, descriptor]));
+    if (source.size !== descriptors.length || scanners.length !== source.size ||
+        new Set(scanners.map(scanner => scanner.keyword)).size !== scanners.length) {
+        throw new Error('definition scanner value domain population drift');
+    }
+    return scanners.map(scanner => {
+        const descriptor = source.get(scanner.keyword);
+        const selector = scanner.physicalSelector || {};
+        if (!descriptor || !scanner.evidence?.some(item => item.evidenceId === descriptor.handoffId) ||
+            json([scanner.targetKind, scanner.targetToken, scanner.definitionField, scanner.fieldType,
+                scanner.titleCardCount || 0, scanner.identityType, selector.recordMode,
+                selector.dataRecordOrdinal, selector.fieldIndex]) !==
+            json([descriptor.targetKind, descriptor.targetToken, descriptor.fieldName, descriptor.fieldType,
+                descriptor.titleCardCount || 0, descriptor.valueDomain.kind === 'positive-integer' ? 'numeric' : 'label',
+                descriptor.recordMode, descriptor.dataRecordOrdinal, descriptor.fieldIndex]) ||
+            scanner.valueDomain && json(scanner.valueDomain) !== json(descriptor.valueDomain)) {
+            throw new Error(`definition scanner value domain source drift: ${scanner.keyword}`);
+        }
+        const widths = { standard: descriptor.width,
+            i10: descriptor.valueDomain.i10Width || descriptor.width,
+            long: descriptor.valueDomain.longWidth || 20 };
+        if (scanner.formatContracts.length !== 4 || new Set(scanner.formatContracts.map(contract => contract.format)).size !== 4 ||
+            !scanner.formatContracts.every(contract =>
+            contract.format === 'comma' ? contract.mode === 'comma' && contract.fieldIndex === descriptor.fieldIndex
+                : contract.mode === 'fixed' && contract.width === widths[contract.format] &&
+                    contract.position === (contract.format === 'standard' ? descriptor.position : descriptor.fieldIndex * contract.width))) {
+            throw new Error(`definition scanner value domain format drift: ${scanner.keyword}`);
+        }
+        return { ...scanner, valueDomain: descriptor.valueDomain };
+    });
 }
 
 function writeShard(root, domain, prefix, records, scanners = []) {
@@ -97,4 +130,4 @@ function groupedByPrefix(records, keywordOf) {
     return groups;
 }
 
-module.exports = { groupedByPrefix, writeShard };
+module.exports = { groupedByPrefix, writeShard, attachDefinitionValueDomains };

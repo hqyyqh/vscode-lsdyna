@@ -1,13 +1,12 @@
 const BUILT_IN_EXTENSIONS = ['.k', '.key', '.dyna'];
 const VALID_EXTENSION = /^\.[a-z0-9][a-z0-9._-]*$/i;
-const FORBIDDEN_GLOB_CHARACTERS = /[\\/*?\[\]{}]/;
 
 function normalizeExtension(value: unknown): string | null {
     if (typeof value !== 'string') return null;
     let extension = value.trim().toLowerCase();
     if (!extension) return null;
     if (!extension.startsWith('.')) extension = `.${extension}`;
-    if (FORBIDDEN_GLOB_CHARACTERS.test(extension) || !VALID_EXTENSION.test(extension)) return null;
+    if (!VALID_EXTENSION.test(extension)) return null;
     return extension;
 }
 
@@ -39,10 +38,10 @@ export function createWorkspaceWatcherManager({
             try {
                 for (const extension of ordered) {
                     const watcher = createWatcher(`**/*${extension}`);
+                    nextWatchers.push(watcher);
                     watcher.onDidChange(onFileEvent);
                     watcher.onDidCreate(onFileEvent);
                     watcher.onDidDelete(onFileEvent);
-                    nextWatchers.push(watcher);
                 }
             } catch (error) {
                 for (const watcher of nextWatchers) watcher.dispose();

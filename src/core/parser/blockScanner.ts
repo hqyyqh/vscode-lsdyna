@@ -147,7 +147,7 @@ async function collectBlocksFromLineReaderAsync(lineCount, getLine, options: Blo
     );
 
     for (let chunkStart = 0; chunkStart < lineCount; chunkStart += yieldInterval) {
-        if (options.shouldCancel?.()) return null;
+        if (options.shouldCancel?.() || options.cancellationToken?.isCancellationRequested) return null;
         const chunkEnd = Math.min(lineCount, chunkStart + yieldInterval);
         // Document changes cannot interleave with this synchronous chunk.  Cancellation is checked
         // before the next chunk, before any potentially out-of-range TextDocument.lineAt call.
@@ -163,7 +163,7 @@ async function collectBlocksFromLineReaderAsync(lineCount, getLine, options: Blo
         if (chunkEnd < lineCount) await new Promise(resolve => setImmediate(resolve));
     }
 
-    if (options.shouldCancel?.()) return null;
+    if (options.shouldCancel?.() || options.cancellationToken?.isCancellationRequested) return null;
     return collector.finish(lineCount);
 }
 
@@ -175,34 +175,29 @@ async function collectBlocksFromLineReaderAsync(lineCount, getLine, options: Blo
  * @returns {Promise<KeywordBlock[]>} A promise resolving to the list of keyword blocks in the file.
  */
 async function collectBlocksFromFile(filePath, options: BlockScannerOptions = {}) {
-    try {
-        const blocks = await scanKeywordSkeletonFromFile(filePath, options);
-        await new Promise(r => setImmediate(r));
-        return blocks.map(block => {
-            const result: any = {
-                keyword: block.keyword.slice(1),
-                startLine: block.startLine,
-                endLine: block.endLine,
-            };
-            if (typeof options.createBlockSummaryAccumulator === 'function') {
-                result.dataLineCount = block.dataLineCount || 0;
-                if (block.displayIdentity) result.displayIdentity = block.displayIdentity;
-                if (Number.isFinite(block.displaySourceEndLine)) {
-                    result.displaySourceEndLine = block.displaySourceEndLine;
-                }
-                if (Number.isFinite(block.startOffset)) result.startOffset = block.startOffset;
-                if (Number.isFinite(block.endOffset)) result.endOffset = block.endOffset;
+    const blocks = await scanKeywordSkeletonFromFile(filePath, options);
+    await new Promise(r => setImmediate(r));
+    return blocks.map(block => {
+        const result: any = {
+            keyword: block.keyword.slice(1),
+            startLine: block.startLine,
+            endLine: block.endLine,
+        };
+        if (typeof options.createBlockSummaryAccumulator === 'function') {
+            result.dataLineCount = block.dataLineCount || 0;
+            if (block.displayIdentity) result.displayIdentity = block.displayIdentity;
+            if (Number.isFinite(block.displaySourceEndLine)) {
+                result.displaySourceEndLine = block.displaySourceEndLine;
             }
-            if (block.opaqueKind) {
-                result.opaqueKind = block.opaqueKind;
-                result.opaqueStartCharacter = block.opaqueStartCharacter;
-            }
-            return result;
-        });
-    } catch (error) {
-        if (error?.name === 'CancellationError') throw error;
-        return [];
-    }
+            if (Number.isFinite(block.startOffset)) result.startOffset = block.startOffset;
+            if (Number.isFinite(block.endOffset)) result.endOffset = block.endOffset;
+        }
+        if (block.opaqueKind) {
+            result.opaqueKind = block.opaqueKind;
+            result.opaqueStartCharacter = block.opaqueStartCharacter;
+        }
+        return result;
+    });
 }
 
 module.exports = {

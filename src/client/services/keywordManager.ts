@@ -31,7 +31,7 @@ const {
 } = require('../../core/options/optionSwitchPlanner');
 const { evaluateOptionGrammar } = require('../../core/options/optionGrammarEvaluator');
 const { evaluatePredicate } = require('../../core/semantics/predicateEvaluator');
-const { getLegalSelectorValues, resolveSelectorPriorScore, resolveFormRulePriorScore } = require("../../core/semantics/catalogPriorRules");
+const { getLegalSelectorValues, resolveFormRulePriorScore } = require("../../core/semantics/catalogPriorRules");
 const keywordRecordSerializer = require('../../core/edit/keywordRecordSerializer');
 const { parseNumericInput } = require('../../core/references/referenceInputValue');
 const { NATIVE_FILE_SOURCE } = require("../../core/semantics/catalogNativeFileLayout");
@@ -191,6 +191,16 @@ export function createKeywordManagerServices(host: {
         return generateCommentLine(optionSwitchCardFromRecord(record), style, labelCase);
     }
 
+    function optionSwitchSourceRanges(text: string, record, inputFormat: string) {
+        const requested = inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : 'standard';
+        const format = keywordRecordSerializer.detectRecordFormat(text, requested, record.fields);
+        const ranges = keywordRecordSerializer.formattedReadRanges(record.fields, text, format);
+        if (ranges.length !== record.fields.length) return null;
+        // Commas separate verified fields; extra comma fields have no coverage.
+        return format === 'comma' ? [...ranges, ...Array.from(text.matchAll(/,/g), match =>
+            ({ start: match.index, end: match.index + 1 }))] : ranges;
+    }
+
     function keywordSpellingFromLine(text) {
         const classification = classifyKeywordLine(String(text || ''));
         if (!classification.isKeyword) return '';
@@ -257,22 +267,6 @@ export function createKeywordManagerServices(host: {
         }
     }
 
-    async function openKeywordManagerInstanceEditor(instance, currentEditor) {
-        if (!instance || !currentEditor) return null;
-        if (!instance.uri || instance.uri === documentUriIdentity(currentEditor.document)) return currentEditor;
-        try {
-            const targetUri = instance.filePath
-                ? vscode.Uri.file(instance.filePath) : vscode.Uri.parse(instance.uri);
-            const targetDocument = await vscode.workspace.openTextDocument(targetUri);
-            return await vscode.window.showTextDocument(targetDocument, {
-                preserveFocus: false,
-                preview: false,
-            });
-        } catch (_error) {
-            return null;
-        }
-    }
-
     function keywordManagerDisplayName(identity) {
         if (!identity) return '';
         if (identity.title) return String(identity.title);
@@ -290,24 +284,25 @@ export function createKeywordManagerServices(host: {
             vscode.workspace.fs.isWritableFileSystem(uri.scheme) === false;
     }
 
-    function keywordManagerInstanceFileState(document, scope = 'file') {
+    function keywordManagerInstanceFileState(document) {
         const uri = documentUriIdentity(document);
         const filePath = String(document?.uri?.fsPath || '');
         return {
             uri,
             filePath,
             fileName: filePath ? path.basename(filePath) : '',
-            scope,
             dirty: document?.isDirty === true,
             readonly: keywordManagerReadonlyUri(document?.uri),
         };
     }
 
     const { nativeSpellingBinding, nativeFileCatalogKeyword, nativeFileLayoutKind: nativeReaderLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding } = require("../../core/semantics/catalogNativeFileLayout");
+    const { contactThermalBinding, contactThermalSource, contactThermalAllowed, contactThermalRecordDefinition, equivalentContactThermalSpelling, expandContactThermalRecords } = require('../../core/semantics/contactThermal');
 
-    // Use the same actual-record reader as Hover.
+    // Verified descriptor grammars use the existing record-selection and instance paths.
     function nativeFileLayoutKind(rule, keyword) {
-        return nativeReaderLayoutKind(rule, keyword);
+        const kind = nativeReaderLayoutKind(rule?.nativeForm || rule, keyword);
+        return kind === 'verified-source-records' ? null : kind;
     }
 
     function keywordManagerNativeFileSelection(document, keywordLine, rule, records, drafts = {}, recordDrafts = {}, targetKeyword = null) {
@@ -319,7 +314,7 @@ export function createKeywordManagerServices(host: {
             records.some(record => record.text.includes('&')) || [...Object.values(drafts), ...Object.values(recordDrafts)].some(value => String(value).includes('&'))
                 ? nativeParameterContextForDocument(document) : undefined;
         const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(
-            rule, document.lineAt(keywordLine).text, records.map(record => record.text),
+            rule.nativeForm || rule, document.lineAt(keywordLine).text, records.map(record => record.text),
             documentGlobalInputFormat(document), recordLines, parameters);
         if (!reading.kind) return null;
         const { read, cards, input } = reading;
@@ -344,8 +339,8 @@ export function createKeywordManagerServices(host: {
                 }
                 return value;
             });
-        // A corrected read-only identity must not broaden the existing native writer.
-        return selection?.current && !reading.writeCompatible(selection.current) ? null : selection;
+        // Read-only identities still belong in the field view and instance directory.
+        return selection?.current ? { ...selection, writeCompatible: reading.writeCompatible(selection.current) } : selection;
     }
 
     function keywordManagerNativeInstanceCounts(grammar, count) {
@@ -421,34 +416,82 @@ export function createKeywordManagerServices(host: {
                 cached.parameterContext === nativeParameterContextForDocument(document)) ? cached : null;
     }
 
+    function keywordManagerTypeKey(keyword) {
+        const normalized = String(keyword || '').trim().replace(/^\*/, '').toUpperCase();
+        return keywordSchema.lookupKeywordSchema(normalized)?.canonicalName || normalized;
+    }
+
+    function keywordManagerNativeIdentitySource(document, instance) {
+        const forms = keywordManagerCatalogNativeFormRules(instance.keyword);
+        if (!forms.length) return null;
+        if (forms.length !== 1 || instance.endLine - instance.line > OPTION_SWITCH_MAX_PHYSICAL_LINES ||
+            instance.dataLineCount > OPTION_SWITCH_MAX_DATA_RECORDS) return { unverified: true };
+        const block = collectOptionSwitchBlock(document, instance.line);
+        if (block.status !== 'ready') return { unverified: true };
+        const rows = block.records.map(record => record.text);
+        let physical = instance.line + 1;
+        const recordLines = block.records.map(record => { physical += (record.comments || []).length; return physical++; });
+        const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(
+            forms[0].nativeForm || forms[0], document.lineAt(instance.line).text, rows, documentGlobalInputFormat(document),
+            recordLines, nativeParameterContextForDocument(document));
+        const records = reading.select()?.current;
+        return records?.length === rows.length ? { rows, reading, records } : { unverified: true };
+    }
+
+    function keywordManagerSourceIdentity(document, instance, nativeSource = null) {
+        if (nativeSource?.unverified) return { typeKey: keywordManagerTypeKey(instance.keyword), displayName: '', summary: [] };
+        const { createKeywordIdentityAccumulator, summarizeKeywordIdentity, compactText } = require('../../core/keywordDisplayIdentity');
+        const input = keywordInputFormat(document.lineAt(instance.headerLine ?? instance.line).text,
+            documentGlobalInputFormat(document));
+        const reader = createKeywordIdentityAccumulator(instance.keyword, {
+            managerSummary: true, longFormat: input === 'long', percentFormat: input === 'i10',
+        });
+        for (let line = instance.headerLine !== undefined ? instance.line : instance.line + 1;
+            line <= Math.min(instance.endLine, (instance.headerLine ?? instance.line) + 256) && !reader.isCaptureComplete(); line++) reader.acceptLine(document.lineAt(line).text);
+        let identity = reader.finish({ dataLineCount: instance.dataLineCount });
+        if (nativeSource) {
+            const { rows, reading, records } = nativeSource;
+            const first = instance.recordStartIndex ?? 0;
+            const count = instance.recordStartIndex !== undefined ? instance.dataLineCount : rows.length;
+            const values = [];
+            let bytes = 0;
+            for (let index = first; index < Math.min(rows.length, first + count, first + 32); index++) {
+                bytes += Buffer.byteLength(rows[index], 'utf8');
+                if (bytes > 8192) break;
+                const cardIndex = records[index].cardIndex;
+                if (cardIndex === 0 && /_TITLE$/.test(instance.keyword) && !reading.cards.has(0)) {
+                    values.push({ name: 'TITLE', value: compactText(rows[index]), cardIndex: 1, fieldIndex: 0 });
+                }
+                for (const [fieldIndex, field] of (reading.cards.get(cardIndex)?.fields || []).entries()) {
+                    const value = compactText(reading.read(rows[index], cardIndex, fieldIndex));
+                    if (value) values.push({ name: String(field.name || '').trim().toUpperCase(),
+                        value, cardIndex: cardIndex + 1, fieldIndex });
+                }
+            }
+            identity = summarizeKeywordIdentity(instance.keyword, [], {
+                managerSummary: true, sourceValues: values, dataLineCount: instance.dataLineCount,
+            });
+        }
+        return { typeKey: keywordManagerTypeKey(instance.keyword), title: identity.title,
+            identity: identity.identity, summary: identity.summary || identity.signature?.slice(0, 2) || [],
+            displayName: keywordManagerDisplayName(identity) };
+    }
+
     function keywordManagerInstances(document, selectedLine, blockIndex = readyCardEditBlockIndex(document), selectedBlock = null) {
         if (!document) return [];
         const fileState = keywordManagerInstanceFileState(document);
-        if (!blockIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD) {
-            const keyword = keywordSpellingFromLine(document.lineAt(selectedLine).text);
-            return [{
-                instanceId: `${documentUriIdentity(document)}:${selectedLine}`,
-                ...fileState,
-                keyword,
-                line: selectedLine,
-                endLine: selectedLine,
-                dataLineCount: 0,
-                occurrenceCount: 1,
-                category: resolveKeywordCategory(keyword).primaryCategory,
-                displayName: '',
-                selected: true,
-                editLevel: 'view-only',
-                reason: 'select-instance-to-evaluate',
-                message: i18n.get('keywordManagerReasonSelectInstance'),
-            }];
-        }
         const usableIndex = blockIndex?.lineCount === document.lineCount ? blockIndex : null;
-        const project = instances => instances.map(({ selectionStartLine, ...instance }) => ({
+        if (!usableIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD) return [];
+        const project = instances => {
+            const selected = instances.find(instance => selectedLine >= (instance.selectionStartLine ?? instance.line) && selectedLine <= instance.endLine);
+            if (!selected) return [];
+            return instances.filter(instance => instance.typeKey === selected.typeKey).map(({ selectionStartLine, ...instance }) => ({
             ...instance, ...fileState,
             selected: selectedLine >= (selectionStartLine ?? instance.line) && selectedLine <= instance.endLine,
             editLevel: 'view-only', reason: 'select-instance-to-evaluate',
             message: i18n.get('keywordManagerReasonSelectInstance'),
         }));
+        };
         const cached = cachedKeywordManagerDirectory(document, usableIndex);
         if (cached) return project(cached.instances);
         const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex, selectedBlock ? [selectedBlock] : null);
@@ -483,11 +526,16 @@ export function createKeywordManagerServices(host: {
             };
             const expanded = keywordManagerExpandNativeInstances(document, instance, -1,
                 () => { parameterDependent = true; });
-            for (const { selected, ...item } of expanded) instances.push(item);
+            const nativeSource = keywordManagerNativeIdentitySource(document, instance);
+            for (const { selected, ...item } of expanded) instances.push({ ...item,
+                ...(nativeSource?.unverified ? keywordManagerSourceIdentity(document, item, nativeSource) : item.endLine - startLine > OPTION_SWITCH_MAX_PHYSICAL_LINES ? {
+                    typeKey: keywordManagerTypeKey(keyword), title: block.displayIdentity?.title,
+                    identity: block.displayIdentity?.identity, summary: block.displayIdentity?.signature?.slice(0, 2) || [],
+                } : keywordManagerSourceIdentity(document, item, nativeSource)) });
         }
         const counts = new Map();
-        for (const instance of instances) counts.set(instance.keyword, (counts.get(instance.keyword) || 0) + 1);
-        for (const instance of instances) instance.occurrenceCount = counts.get(instance.keyword) || 1;
+        for (const instance of instances) counts.set(instance.typeKey, (counts.get(instance.typeKey) || 0) + 1);
+        for (const instance of instances) instance.occurrenceCount = counts.get(instance.typeKey) || 1;
         return { version: document.version, lineCount: document.lineCount,
             blockIndex: usableIndex, instances,
             parameterContext: parameterDependent ? nativeParameterContextForDocument(document) : undefined };
@@ -496,8 +544,8 @@ export function createKeywordManagerServices(host: {
     async function prepareKeywordManagerInstances(document, blockIndex, isCurrent = () => true) {
         await require('../../core/keywordSchema').prepareKeywordSchema();
         if (!document || document.isClosed || !isCurrent()) return false;
-        if (!blockIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD) return true;
         const usableIndex = blockIndex?.lineCount === document.lineCount ? blockIndex : null;
+        if (!usableIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD) return false;
         const version = document.version, parameterContext = nativeParameterContextForDocument(document);
         const current = () => !document.isClosed && document.version === version && isCurrent();
         const cached = keywordManagerInstanceDirectories.get(document);
@@ -527,7 +575,7 @@ export function createKeywordManagerServices(host: {
     }
 
     function completeKeywordManagerInstances(model, document, blockIndex) {
-        if (!model || model.managerScope !== 'file' || model.stale || document.isClosed ||
+        if (!model || model.stale || document.isClosed ||
             model.uri !== documentUriIdentity(document) || model.session?.documentVersion !== document.version ||
             !cachedKeywordManagerDirectory(document, blockIndex)) return false;
         const instances = keywordManagerInstances(document, model.managerSelectionLine, blockIndex);
@@ -540,59 +588,8 @@ export function createKeywordManagerServices(host: {
         return true;
     }
 
-    function keywordManagerProjectInstances(entries, document, selectedLine, openDocuments = vscode.workspace.textDocuments || []) {
-        const selectedUri = documentUriIdentity(document);
-        const documentsByUri = new Map<string, any>((openDocuments || [])
-            .map(candidate => [documentUriIdentity(candidate), candidate]));
-        const instances: any[] = [];
-        for (const entry of entries || []) {
-            for (const usage of entry?.usages || []) {
-                const filePath = String(usage?.filePath || '');
-                if (!filePath || !Number.isInteger(Number(usage?.lineIndex))) continue;
-                const fileUri = vscode.Uri.file(filePath);
-                const uri = documentUriIdentity({ uri: fileUri });
-                const line = Number(usage.lineIndex);
-                const endLine = Number.isInteger(Number(usage.endLine)) ? Number(usage.endLine) : line;
-                const keyword = `*${String(usage.keyword || entry.keyword || '').replace(/^\*/, '')}`.toUpperCase();
-                const openDocument = documentsByUri.get(uri);
-                instances.push({
-                    instanceId: `${uri}:${line}`,
-                    uri,
-                    filePath,
-                    fileName: path.basename(filePath),
-                    keyword,
-                    line,
-                    endLine,
-                    dataLineCount: Number.isInteger(Number(usage.dataLineCount))
-                        ? Number(usage.dataLineCount) : Math.max(0, endLine - line),
-                    occurrenceCount: 1,
-                    category: String(usage.category || resolveKeywordCategory(keyword).primaryCategory),
-                    displayName: String(usage.displayName || ''),
-                    selected: uri === selectedUri && line === selectedLine,
-                    editLevel: 'recovery',
-                    scope: 'project',
-                    dirty: openDocument?.isDirty === true,
-                    readonly: keywordManagerReadonlyUri(fileUri),
-                    includeOrder: Number.isInteger(Number(usage.fileOrder)) ? Number(usage.fileOrder) : undefined,
-                    reason: 'select-project-instance-to-edit',
-                    message: i18n.get('keywordManagerProjectInstance'),
-                });
-            }
-        }
-        const expanded = instances.flatMap(instance => {
-            const openDocument = documentsByUri.get(instance.uri);
-            return openDocument ? keywordManagerExpandNativeInstances(openDocument, instance,
-                instance.uri === selectedUri ? selectedLine : -1) : [instance];
-        }).map(({ selectionStartLine, ...instance }) => instance);
-        const counts = new Map();
-        for (const instance of expanded) counts.set(instance.keyword, (counts.get(instance.keyword) || 0) + 1);
-        for (const instance of expanded) instance.occurrenceCount = counts.get(instance.keyword) || 1;
-        return expanded.sort((left, right) =>
-            (left.includeOrder ?? Number.MAX_SAFE_INTEGER) - (right.includeOrder ?? Number.MAX_SAFE_INTEGER) ||
-            left.filePath.localeCompare(right.filePath) || left.line - right.line);
-    }
-
     let keywordManagerCatalogCatalogFailure = '';
+    let keywordManagerModelForms: WeakMap<object, Map<string, any>> | null = null;
 
     function isKeywordManagerUnauditedCatalogAllowed(): boolean {
         if (process.env.DYNASENSE_ALLOW_UNAUDITED_CATALOG === '1') return true;
@@ -604,18 +601,27 @@ export function createKeywordManagerServices(host: {
         }
     }
 
-    function keywordManagerCatalogCatalogForm(keyword) {
+    function keywordManagerCatalogCatalogForm(keyword, fresh = false) {
         const allowUnaudited = isKeywordManagerUnauditedCatalogAllowed();
         try {
-            return getCatalogInputFormCatalogV4({ allowUnaudited }).resolveFormForKeyword(keyword);
+            const catalog = getCatalogInputFormCatalogV4({ allowUnaudited });
+            const forms = fresh ? undefined : keywordManagerModelForms?.get(catalog);
+            if (forms?.has(keyword)) return forms.get(keyword);
+            const form = catalog.resolveFormForKeyword(keyword);
+            if (form && !fresh && keywordManagerModelForms) {
+                const entries = forms || new Map();
+                entries.set(keyword, form);
+                keywordManagerModelForms.set(catalog, entries);
+            }
+            return form;
         } catch (error) {
-            keywordManagerCatalogCatalogFailure = error instanceof Error ? error.message : String(error);
+            keywordManagerCatalogCatalogFailure = (error instanceof Error ? error.message : String(error)) || 'Field catalog loading failed';
             return null;
         }
     }
 
     function keywordManagerCatalogAllowsWrite(keyword) {
-        const source = keywordManagerCatalogCatalogForm(keyword)?.source;
+        const source = keywordManagerCatalogCatalogForm(keyword, true)?.source;
         return source?.datasetSha256 === NATIVE_FILE_SOURCE &&
             source.conservationSatisfied === true && !source.isUnauditedDiagnostic;
     }
@@ -649,7 +655,7 @@ export function createKeywordManagerServices(host: {
         const batch = nativeBatchFixedBinding(keyword);
         return keywordManagerCatalogRules(nativeFileCatalogKeyword(keyword), 'formRuleIds').filter(rule => !batch || rule.cardSetId === batch.cardSetId).map(rule => {
             const cards = nativeFileLayoutCards(rule, keyword);
-            return cards === rule.cards ? rule : { ...rule, cards };
+            return cards === rule.cards ? rule : { ...rule, cards, nativeForm: rule };
         });
     }
 
@@ -663,25 +669,26 @@ export function createKeywordManagerServices(host: {
     function keywordManagerCatalogEffectiveFormRules(keyword) {
         const stateRules = keywordManagerCatalogRules(keyword, 'fieldRuleIds');
         return keywordManagerCatalogNativeFormRules(keyword).flatMap(rawForm => {
+            const sourceForm = rawForm.nativeForm || rawForm;
             const state = stateRules.find(rule => rule.cardSetId === rawForm.cardSetId);
             const binding = nativeConditionalBinding(keyword);
-            if (state && !['unsupported-source', 'counted-occurrences'].includes(nativeReaderLayoutKind(rawForm, keyword)) &&
+            if (state && !['unsupported-source', 'counted-occurrences'].includes(nativeReaderLayoutKind(sourceForm, keyword)) &&
                 binding && !binding.steps.some(step => step?.tagged)) {
-                return [{ ...state, spellingGroups: rawForm.spellingGroups, nativeForm: rawForm },
-                    { ...rawForm, nativeForm: rawForm }];
+                return [{ ...state, spellingGroups: rawForm.spellingGroups, nativeForm: sourceForm },
+                    { ...rawForm, nativeForm: sourceForm }];
             }
-            if (nativeFileLayoutKind(rawForm, keyword)) return { ...rawForm, nativeForm: rawForm };
+            if (nativeFileLayoutKind(rawForm, keyword)) return { ...rawForm, nativeForm: sourceForm };
             const nativeForm = rawForm.recordSelection
                 ? { ...rawForm, cards: rawForm.recordSelection.cards } : rawForm;
             // The source-bound relation owns the complete active card composition.
             // A legacy state pool must not replace its prefix/selected-row layout.
-            if (rawForm.recordSelection) return { ...nativeForm, nativeForm };
+            if (rawForm.recordSelection) return { ...nativeForm, nativeForm: sourceForm };
             const stateRule = stateRules.find(rule => rule.cardSetId === nativeForm.cardSetId);
             return stateRule ? {
                 ...stateRule,
                 spellingGroups: nativeForm.spellingGroups,
-                nativeForm,
-            } : { ...nativeForm, nativeForm };
+                nativeForm: sourceForm,
+            } : { ...nativeForm, nativeForm: sourceForm };
         });
     }
 
@@ -695,12 +702,13 @@ export function createKeywordManagerServices(host: {
     }
 
     function preserveEquivalentNativeSpelling(form, keyword, requested, selectorSpelling) {
+        if (contactThermalBinding(keyword) && equivalentContactThermalSpelling(requested, selectorSpelling)) return requested;
         const spellings = keywordManagerCatalogEquivalentSpellings(form, keyword).map(value => `*${value}`);
         return spellings.includes(requested) && spellings.includes(selectorSpelling) ? requested : selectorSpelling;
     }
 
     function keywordManagerCatalogSelectorRule(keyword) {
-        const form = keywordManagerCatalogCatalogForm(keyword);
+        const form = keywordManagerCatalogCatalogForm(nativeFileCatalogKeyword(keyword));
         const ruleIds = form?.reference?.selectorRuleIds || [];
         const rules = ruleIds.map(ruleId => form.rules[ruleId]).filter(Boolean);
         return rules.length ? {
@@ -817,7 +825,7 @@ export function createKeywordManagerServices(host: {
         const lines = records.map(record => { line += (record.comments || []).length; return line++; });
         const binding = nativeConditionalBinding(keyword);
         const readings = keywordManagerCatalogNativeFormRules(keyword).map(rule => {
-            const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(rule,
+            const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(rule.nativeForm || rule,
                 document.lineAt(keywordLine).text, records.map(record => record.text), documentGlobalInputFormat(document),
                 lines, records.some(record => record.text.includes('&')) ? nativeParameterContextForDocument(document) : undefined);
             return { reading, selected: reading.select(true) };
@@ -890,21 +898,103 @@ export function createKeywordManagerServices(host: {
         const fields = record?.fields || [];
         const format = keywordRecordSerializer.detectRecordFormat(text, inputFormat, fields);
         const geometry = keywordRecordSerializer.formattedFields(fields, text, format);
+        if (record.recordMarker && (!text.startsWith(record.recordMarker.value) ||
+            keywordRecordSerializer.readRecordField(text, fields, record.recordMarker.fieldIndex, format) !== record.recordMarker.value)) return false;
         if (staticLayout) return format === 'comma'
             ? text.split(',').length <= fields.length
             : !text.slice(Math.max(0, ...geometry.map(field => Number(field.position) + Number(field.width)))).trim();
         return fields.every((field, index) => {
+            if (index === record.recordMarker?.fieldIndex) return true;
             const value = format === 'standard'
                 ? text.slice(Number(field.position), Number(field.position) + Number(field.width)).trim()
                 : keywordRecordSerializer.readRecordField(text, fields, index, format);
             if (!value) return true;
             const type = String(field.type || '').toLowerCase();
             if (Number(field.type) === 0 || type === 'string') return true;
-            const numeric = Number(value.replace(/[dD]/g, 'e'));
-            if (!Number.isFinite(numeric)) return false;
+            const parsed = parseNumericInput(value.replace(/[dD]/g, 'e'), { integerOnly: false });
+            if (parsed.kind === 'parameter' || parsed.kind === 'expression') return true;
+            if (parsed.kind !== 'numeric') return false;
             const integer = Math.abs(Number(field.type)) === 1 || type === 'integer' || type === 'bool';
-            return !integer || Number.isInteger(numeric);
+            return !integer || Number.isInteger(parsed.value);
         });
+    }
+
+    function keywordManagerContactPrefixSteps(rule) {
+        return rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
+            /^CONTACT_(?!2D(?:_|$))/.test(rule.canonicalKeyword)
+            ? keywordSchema.getVerifiedPrefixLayoutSteps(rule.canonicalKeyword, ['ID', 'MPP']) : null;
+    }
+
+    function keywordManagerPrefixCardMatches(step, card) {
+        const type = value => Number(value) === 0 || value === 'string' ? 'string'
+            : Math.abs(Number(value)) === 1 || value === 'integer' ? 'integer' : 'real';
+        const fields = card?.fields || [];
+        return !!step && fields.length > 0 && step.card.every(expected => {
+            const field = fields.find(candidate => Number(candidate.position) === expected.p && Number(candidate.width) === expected.w);
+            return field && (step.recordMarker && expected.p === 0 ? field.name === '-' :
+                (field.name === expected.n || expected.n === 'HEADING' && field.name === 'TITLE') && type(field.type) === type(expected.t));
+        }) && fields.every(field => field.name === '-' || step.card.some(expected =>
+            Number(field.position) === expected.p && Number(field.width) === expected.w));
+    }
+
+    function keywordManagerContactIdentitySelector(rule, selector) {
+        const values = selector.values || [];
+        const id = values.find(value => value.value === 'ID' && value.keywordSuffix === '_ID');
+        const title = values.find(value => value.value === 'TITLE' && value.keywordSuffix === '_TITLE');
+        const step = keywordManagerContactPrefixSteps(rule)?.find(step => step.template === 'contact-id-heading');
+        return selector.placement === 'before-base' && values.length === 2 && id?.cards?.length === 1 &&
+            title?.cards?.length === 1 && JSON.stringify(id.cards) === JSON.stringify(title.cards) &&
+            !!id.cards[0].parserAddress && !!id.cards[0].descriptorAddress && keywordManagerPrefixCardMatches(step, id.cards[0]);
+    }
+
+    function keywordManagerCatalogSelectorLayout(rule, keyword, nativeForm, selections, evaluatedRecords = null) {
+        const selectors = rule.selectors || [];
+        const canonical = String(keyword).replace(/^\*/, '').toUpperCase();
+        const recordForCard = (card, identity) => legacyOptionRecord((card.fields || []).map(field => ({
+            n: field.name === '-' ? 'UNUSED' : field.name, t: field.type, p: field.position, w: field.width,
+        })), identity, true);
+        const selectedBaseCards = new Set<number>(selectors.flatMap(selector => (selector.baseCardIndexes || []).map(Number)));
+        const base = evaluatedRecords?.filter(record => Number(record.lsppCardIndex) !== 0 &&
+            !selectedBaseCards.has(Number(record.lsppCardIndex))) ||
+            (nativeForm.cards || []).filter(card => !selectedBaseCards.has(Number(card.cardIndex))).map(card => ({
+                ...recordForCard(card, `lspp-input:${canonical}:card:${card.cardIndex}`), lsppCardIndex: Number(card.cardIndex),
+            }));
+        const before: any[] = [], after: any[] = [], thermal: any[] = [];
+        const prefixSteps = keywordManagerContactPrefixSteps(rule);
+        let markerCheck = null;
+        for (const selector of [...selectors].sort((a, b) => Number(a.placementOrder || 0) - Number(b.placementOrder || 0))) {
+            const controlId = String(selector.controlId || '');
+            const value = (selector.values || []).find(candidate => String(candidate.value) === String(selections[controlId] || ''));
+            const mpp = selector.placement === 'before-base' && selector.keywordSuffix === '_MPP' && value;
+            if (mpp) {
+                const step = prefixSteps?.find(step => step.template === 'contact-mpp-2');
+                if (!step?.recordMarker || !['MPP1', 'MPP2'].includes(value.value)) return null;
+                markerCheck = { index: before.length + 1, value: step.recordMarker.value, present: value.value === 'MPP2' };
+            }
+            const identity = keywordManagerContactIdentitySelector(rule, selector);
+            const records = [];
+            for (const [index, card] of (value?.cards || []).entries()) {
+                const record: any = recordForCard(card, `lspp-input:${canonical}:selector:${controlId}:card:${index + 1}`);
+                if (selector.placement === 'before-base') record.lsppCardIndex = 0;
+                else if (card.cardIndex != null) record.lsppCardIndex = Number(card.cardIndex);
+                if (mpp || identity) {
+                    const step = prefixSteps?.find(step => step.template === (mpp ? `contact-mpp-${index + 1}` : 'contact-id-heading'));
+                    if (!keywordManagerPrefixCardMatches(step, card)) return null;
+                    record.prefixRole = mpp ? `mpp${index + 1}` : 'identity';
+                    if (step.recordMarker) {
+                        record.recordMarker = { ...step.recordMarker, fieldIndex: 0, evidenceIds: step.evidenceIds };
+                        record.fields[0] = { ...record.fields[0], name: step.recordMarker.value, type: 'string' };
+                    }
+                }
+                records.push(record);
+            }
+            (selector.placement === 'before-base' ? before : selector.controlId === contactThermalSource().controlId ? thermal : after).push(...records);
+        }
+        const orthotropic=base.findIndex(record=>record.fields[0]?.name==='FS1_SA');
+        const split=orthotropic<0?base.length:orthotropic;
+        const mechanical=base.map(record=>prefixSteps?{...record,prefixRole:'base'}:record);
+        return { spelling: keywordManagerCatalogSelectorSpelling(rule, selections),
+            records: [...before, ...mechanical.slice(0,split), ...thermal, ...mechanical.slice(split), ...after], markerCheck };
     }
 
     function keywordManagerVerifiedTrailingRepeat(keyword, nativeForm) {
@@ -919,44 +1009,6 @@ export function createKeywordManagerServices(host: {
     function keywordManagerResolveCatalogSelectorState(rule, currentKeyword, block) {
         if (!rule || block?.status !== 'ready') return null;
         const selectors = Array.isArray(rule.selectors) ? rule.selectors : [];
-        const recordForCard = (card, identity) => legacyOptionRecord((card.fields || []).map(field => ({
-            n: field.name === '-' ? 'UNUSED' : field.name,
-            t: field.type,
-            p: field.position,
-            w: field.width,
-        })), identity, true);
-        const layoutFor = (nativeForm, selections) => {
-            const canonical = String(currentKeyword || '').replace(/^\*/, '').toUpperCase();
-            const selectedBaseCards = new Set<number>(selectors.flatMap(selector =>
-                (selector.baseCardIndexes || []).map(Number)));
-            const base = (nativeForm.cards || []).filter(card => !selectedBaseCards.has(Number(card.cardIndex))).map(card => {
-                const record: any = recordForCard(card, `lspp-input:${canonical}:card:${card.cardIndex}`);
-                record.lsppCardIndex = Number(card.cardIndex);
-                return record;
-            });
-            const before: any[] = [];
-            const after: any[] = [];
-            for (const selector of [...selectors].sort((left, right) =>
-                Number(left.placementOrder || 0) - Number(right.placementOrder || 0))) {
-                const controlId = String(selector.controlId || '');
-                const selected = String(selections[controlId] || '');
-                const value = (selector.values || []).find(candidate => String(candidate.value) === selected);
-                const records = (value?.cards || []).map((card, index) => {
-                    const record: any = recordForCard(card, `lspp-input:${canonical}:selector:${controlId}:card:${index + 1}`);
-                    if (selector.placement === 'before-base') {
-                        record.lsppCardIndex = 0;
-                    } else if (card.cardIndex != null) {
-                        record.lsppCardIndex = Number(card.cardIndex);
-                    }
-                    return record;
-                });
-                (selector.placement === 'before-base' ? before : after).push(...records);
-            }
-            return {
-                spelling: keywordManagerCatalogSelectorSpelling(rule, selections),
-                records: [...before, ...base, ...after],
-            };
-        };
         const combinations = selectors.reduce((states, selector) => {
             const legalValues = getLegalSelectorValues(currentKeyword, selector);
             return states.flatMap(state => legalValues.map(value => ({
@@ -967,10 +1019,16 @@ export function createKeywordManagerServices(host: {
         let candidates: any[] = [];
         for (const nativeForm of keywordManagerCatalogNativeFormRules(currentKeyword)) {
             for (const selections of combinations) {
-                const layout = layoutFor(nativeForm, selections);
+                const layout = keywordManagerCatalogSelectorLayout(rule, currentKeyword, nativeForm, selections);
+                if (!layout || layout.markerCheck &&
+                    String(block.records[layout.markerCheck.index]?.text || '').startsWith(layout.markerCheck.value) !== layout.markerCheck.present) continue;
                 if (layout.spelling.replace(/^\*/, '') !==
-                    String(currentKeyword || '').toUpperCase().replace(/^\*/, '')) continue;
-                let candidateRecords = layout.records;
+                    String(currentKeyword || '').toUpperCase().replace(/^\*/, '') &&
+                    !equivalentContactThermalSpelling(layout.spelling, currentKeyword)) continue;
+                let candidateRecords = expandContactThermalRecords(currentKeyword, layout.records, block.records,
+                    block.inputFormat || 'standard', (card, identity) => legacyOptionRecord(card, identity, true),
+                    {}, layout.records, block.parameterContext, block.recordLines);
+                if (!candidateRecords) continue;
                 const isExactLength = candidateRecords.length === block.records.length;
                 if (keywordManagerVerifiedTrailingRepeat(currentKeyword, nativeForm) && !isExactLength && candidateRecords.length < block.records.length) {
                     const extra = block.records.length - candidateRecords.length;
@@ -991,11 +1049,13 @@ export function createKeywordManagerServices(host: {
                         candidateRecords = expanded;
                     }
                 }
-                if (candidateRecords.length !== block.records.length ||
-                    !candidateRecords.every((record, index) =>
-                        keywordManagerCatalogSourceRecordCompatible(block.records[index], record,
-                            keywordManagerStaticLayout(currentKeyword, nativeForm), block.inputFormat || 'standard'))) continue;
-                candidates.push({ selections, nativeForm, isExactLength, layout: { ...layout, records: candidateRecords } });
+                if (candidateRecords.length !== block.records.length || candidateRecords.some((record, index) =>
+                    record.recordMarker && !keywordManagerCatalogSourceRecordCompatible(block.records[index], record,
+                        true, block.inputFormat || 'standard'))) continue;
+                const compatible = candidateRecords.every((record, index) =>
+                    keywordManagerCatalogSourceRecordCompatible(block.records[index], record,
+                        keywordManagerStaticLayout(currentKeyword, nativeForm), block.inputFormat || 'standard'));
+                candidates.push({ selections, nativeForm, isExactLength, compatible, layout: { ...layout, records: candidateRecords } });
             }
         }
         const hasExact = candidates.some(candidate => candidate.isExactLength);
@@ -1003,22 +1063,16 @@ export function createKeywordManagerServices(host: {
             candidates = candidates.filter(candidate => candidate.isExactLength);
         }
 
-        // Tier 1: Domain structure prior matrix derived from keyword syntax
-        if (candidates.length > 1) {
-            for (const candidate of candidates) {
-                const prior = resolveSelectorPriorScore(currentKeyword, candidate.selections, selectors);
-                candidate.priorScore = prior.score;
-            }
-            const maxPrior = Math.max(...candidates.map(candidate => candidate.priorScore ?? 0));
-            candidates = candidates.filter(candidate => (candidate.priorScore ?? 0) === maxPrior);
-        }
-
         const unique = new Map(candidates.map(candidate => [JSON.stringify({
             selections: candidate.selections,
             form: keywordManagerCatalogFormFingerprint(candidate.nativeForm),
             records: candidate.layout.records.map(record => optionSwitchCardFromRecord(record)),
         }), candidate]));
-        return unique.size === 1 ? [...unique.values()][0] : null;
+        // Unique file syntax locates fields even when their values have warnings.
+        // Numeric compatibility can eliminate candidates, never manufacture certainty.
+        const distinct = [...unique.values()];
+        const remaining = distinct.length === 1 ? distinct : distinct.filter(candidate => candidate.compatible);
+        return remaining.length === 1 ? remaining[0] : null;
     }
 
     function keywordManagerInferCatalogSelectorSelections(rule, currentKeyword, _grammar, block) {
@@ -1038,7 +1092,14 @@ export function createKeywordManagerServices(host: {
 
     function keywordManagerPrepareCatalogSelectorLayout(
         document, keywordLine, result, selections: any = {}, selectionsDescribeCurrentLayout = false,
+        fieldDrafts = {},
     ) {
+        let physical = keywordLine + 1;
+        if (result.block) {
+            result.block = {...result.block, inputFormat:keywordInputFormat(document.lineAt(keywordLine).text, documentGlobalInputFormat(document)),
+                parameterContext:nativeParameterContextForDocument(document),
+                recordLines:result.block.records.map(r=>{physical += (r.comments || []).length; return physical++;})};
+        }
         const keyword = keywordSpellingFromLine(document.lineAt(keywordLine).text);
         // A source-row relation owns its records. Static spelling layouts must not
         // replace it (or rescue a rejected relation) with the all-cards snapshot.
@@ -1063,46 +1124,13 @@ export function createKeywordManagerServices(host: {
         // Spelling selectors cannot authorize a layout whose field conditions
         // failed validation. This also runs during application revalidation.
         if (!result.inputFormProjection && keywordManagerCatalogRules(keyword, 'fieldRuleIds').length) return null;
-        const layoutFor = (selected, evaluatedRecords = null) => {
-            const canonical = String(keyword).replace(/^\*/, '').toUpperCase();
-            const recordForCard = (card, identity) => {
-                const geometry = (card.fields || []).map(field => ({
-                    n: field.name === '-' ? 'UNUSED' : field.name,
-                    t: field.type,
-                    p: field.position,
-                    w: field.width,
-                }));
-                const record: any = legacyOptionRecord(geometry, identity, true);
-                return record;
-            };
-            const selectedBaseCards = new Set<number>(selectors.flatMap(selector =>
-                (selector.baseCardIndexes || []).map(Number)));
-            const base = evaluatedRecords?.filter(record => Number(record.lsppCardIndex) !== 0 &&
-                !selectedBaseCards.has(Number(record.lsppCardIndex))) ||
-                (nativeForm.cards || []).filter(card => !selectedBaseCards.has(Number(card.cardIndex))).map(card => {
-                const record: any = recordForCard(card, `lspp-input:${canonical}:card:${card.cardIndex}`);
-                record.lsppCardIndex = Number(card.cardIndex);
-                return record;
-            });
-            const before: any[] = [];
-            const after: any[] = [];
-            for (const selector of [...selectors].sort((left, right) =>
-                Number(left.placementOrder || 0) - Number(right.placementOrder || 0))) {
-                const controlId = String(selector.controlId || '');
-                const value = (selector.values || []).find(candidate =>
-                    String(candidate.value) === String(selected[controlId] || ''));
-                const records = (value?.cards || []).map((card, index) => {
-                    const record: any = recordForCard(card, `lspp-input:${canonical}:selector:${controlId}:card:${index + 1}`);
-                    if (selector.placement === 'before-base') {
-                        record.lsppCardIndex = 0;
-                    } else if (card.cardIndex != null) {
-                        record.lsppCardIndex = Number(card.cardIndex);
-                    }
-                    return record;
-                });
-                (selector.placement === 'before-base' ? before : after).push(...records);
-            }
-            let records = [...before, ...base, ...after];
+        const layoutFor = (selected, evaluatedRecords = null, drafts = {}, recordDrafts = {}) => {
+            const layout = keywordManagerCatalogSelectorLayout(rule, keyword, nativeForm, selected, evaluatedRecords);
+            if (!layout) return null;
+            let records = expandContactThermalRecords(keyword, layout.records, result.block.records, result.block.inputFormat || 'standard',
+                (card, identity) => legacyOptionRecord(card, identity, true), drafts, resolved?.layout?.records || layout.records,
+                result.block.parameterContext, result.block.recordLines, recordDrafts);
+            if (!records) return null;
             if (keywordManagerVerifiedTrailingRepeat(keyword, nativeForm) && !evaluatedRecords && result?.block?.records && result.block.records.length > records.length) {
                 const extra = result.block.records.length - records.length;
                 const repeatAt = records.length - 1;
@@ -1119,17 +1147,26 @@ export function createKeywordManagerServices(host: {
                     })) : [record]);
             }
             return {
-                spelling: keywordManagerCatalogSelectorSpelling(rule, selected),
+                spelling: layout.spelling,
                 records,
             };
         };
         const inferred = resolved?.selections || {};
         const currentState = layoutFor(selectionsDescribeCurrentLayout ? selections : inferred,
             predicateProjection ? result.currentLayout.records : null);
-        const targetState = layoutFor(selections, predicateProjection ? result.targetLayout.records : null);
+        const targetState = layoutFor(selections, predicateProjection ? result.targetLayout.records : null, fieldDrafts, result.recordDrafts || {});
+        if (!currentState || !targetState) {
+            result.plan = blockedKeywordOptionSwitchPlan(keyword, result.plan?.targetKeyword, 'lspp-prefix-layout-unverified', result.plan);
+            return null;
+        }
         targetState.spelling = preserveEquivalentNativeSpelling(
             nativeForm, keyword, result.plan?.targetKeyword || keyword, targetState.spelling,
         );
+        if (selectors.some(selector => !getLegalSelectorValues(targetState.spelling, selector)
+            .includes(String(selections[selector.controlId] || '')))) {
+            result.plan = blockedKeywordOptionSwitchPlan(keyword, targetState.spelling, 'lspp-selector-spelling-unverified', result.plan);
+            return null;
+        }
         const sourceIdentity = result.targetLayout.sourceIdentity;
         const targetLayout = {
             ...result.targetLayout,
@@ -1158,6 +1195,7 @@ export function createKeywordManagerServices(host: {
                 text, record.fields, index,
                 keywordRecordSerializer.detectRecordFormat(text, inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : 'standard', record.fields),
             ),
+            readRecordRanges: (text, record) => optionSwitchSourceRanges(text, record, inputFormat),
             writeField: (text, record, index, value) => keywordRecordSerializer.writeRecordField(
                 text, record.fields, index, value,
                 keywordRecordSerializer.detectRecordFormat(text, inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : 'standard', record.fields),
@@ -1270,6 +1308,9 @@ export function createKeywordManagerServices(host: {
         const allSourceRecords = result?.block?.records || [];
         let sourceRecords = allSourceRecords;
         if (!rule || result?.block?.status !== 'ready' || !Array.isArray(rule.cards)) return null;
+        // A projected form must keep the source identity of the original descriptor.
+        if (rule.nativeForm && (rule.catalogSource?.datasetSha256 !== rule.nativeForm.catalogSource?.datasetSha256 ||
+            rule.cardSetId !== rule.nativeForm.cardSetId)) return null;
         const prefixRecordsFor = spelling => {
             const records: any[] = [];
             const spellingRule = keywordManagerCatalogSelectorRule(keyword);
@@ -1505,11 +1546,13 @@ export function createKeywordManagerServices(host: {
         if (!currentCardIndexes || currentCardIndexes.length === 0 || !targetCardIndexes || targetCardIndexes.length === 0) return null;
         let currentRecords = currentCardIndexes.map(index => schemaRecords.get(index));
         let targetRecords = targetCardIndexes.map(index => schemaRecords.get(index));
+        let nativeWriteCompatible = true;
         if (currentRecords.some(r => !r) || targetRecords.some(r => !r)) return null;
         if (fileKind) {
             const selected = keywordManagerNativeFileSelection(document, keywordLine, rule, sourceRecords, drafts, recordDrafts,
                 result.plan?.targetKeyword);
             if (!selected) return null;
+            nativeWriteCompatible = selected.writeCompatible;
             const makeRecord = (item, prefixRecords) => {
                 const key = fileKind === 'conditional-sequence' ? item.key.replace(/^instance:0:/, '') : item.key;
                 const id = `lspp-input:${canonical}:${key}`;
@@ -1599,8 +1642,7 @@ export function createKeywordManagerServices(host: {
             if (!nativeSource || nativeSource.length !== sourceRecords.length) return null;
             for (const [index, item] of nativeSource.entries()) {
                 const cardIndex = item.cardIndex;
-                const key = fileKind === 'conditional-sequence' ? item.key.replace(/^instance:0:/, '') : item.key;
-                const id = `lspp-input:${canonical}:${key}`;
+                const id = `lspp-input:${canonical}:${item.key}`;
                 const record = { ...legacyOptionRecord(effectiveCards.get(cardIndex), id), lsppCardIndex: cardIndex };
                 if (!acceptsSource(record, sourceRecords[index])) return null;
                 currentRecords.push(record); targetRecords.push(record);
@@ -1659,6 +1701,7 @@ export function createKeywordManagerServices(host: {
                 text, record.fields, index,
                 keywordRecordSerializer.detectRecordFormat(text, inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : 'standard', record.fields),
             ),
+            readRecordRanges: (text, record) => optionSwitchSourceRanges(text, record, inputFormat),
             writeField: (text, record, index, value) => keywordRecordSerializer.writeRecordField(
                 text, record.fields, index, value,
                 keywordRecordSerializer.detectRecordFormat(text, inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : 'standard', record.fields),
@@ -1684,10 +1727,10 @@ export function createKeywordManagerServices(host: {
             plan.reason = 'conditional-comma-write-unverified';
             plan.replacementRecords = [];
         }
-        if (nativeBatchFixedBinding(keyword)?.readWindows && (inputFormat !== 'standard' || sourceRecords.some(record => record.text.includes(',')) ||
-            rule.cards.some(card => card.fields.some((field, index) => index > 0 && field.position < card.fields[index - 1].position)))) {
+        if (!nativeWriteCompatible || (nativeBatchFixedBinding(keyword)?.readWindows && (inputFormat !== 'standard' || sourceRecords.some(record => record.text.includes(',')) ||
+            rule.cards.some(card => card.fields.some((field, index) => index > 0 && field.position < card.fields[index - 1].position))))) {
             plan.status = 'blocked';
-            plan.reason = 'native-read-window-write-unverified';
+            plan.reason = nativeWriteCompatible ? 'native-read-window-write-unverified' : 'native-file-write-unverified';
             plan.replacementRecords = [];
         }
         if (plan.status !== 'blocked' && currentRecords.length === targetRecords.length &&
@@ -1752,8 +1795,7 @@ export function createKeywordManagerServices(host: {
             : null;
         if (nativeReading?.readInputFailure) return { cards: [], selectedFieldId: null, reason: nativeReading.readInputFailure };
         const readInput = nativeReading?.readInput || inputFormat;
-        const nativeCards = new Map<number, any>((nativeForm?.cards || [])
-            .map(card => [Number(card.cardIndex), card]));
+        const nativeCards = nativeReading?.cards || new Map<number, any>();
         const nativeControlStates = new Map<string, any>((inputFormProjection?.targetSnapshot?.controls || [])
             .map(control => [String(control.controlId || ''), control]));
         const supportedFormats = ['standard', 'long', 'i10', 'comma', 'free'];
@@ -1781,6 +1823,7 @@ export function createKeywordManagerServices(host: {
         const cards = [];
         for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
             const record = records[recordIndex];
+            const thermalDefinition = contactThermalRecordDefinition(result.plan?.targetKeyword, record);
             const officialCardIndex = Number.isInteger(record?.lsppCardIndex)
                 ? Number(record.lsppCardIndex)
                 : recordIndex + 1;
@@ -1792,6 +1835,10 @@ export function createKeywordManagerServices(host: {
             const fields = Array.isArray(record?.fields) ? record.fields : [];
             const cardEditable = editableLayout && !!record;
             cards.push({
+                cardId: String(record.recordMigrationId),
+                title: record.prefixRole === 'identity' ? i18n.get('keywordManagerIdAndTitle')
+                    : /^mpp[12]$/.test(record.prefixRole || '') ? i18n.get('keywordManagerMppCard', record.prefixRole.slice(-1))
+                    : record.prefixRole === 'base' ? i18n.get('keywordManagerBaseCard', officialCardIndex) : undefined,
                 cardIndex: officialCardIndex,
                 ...(Number.isInteger(record?.lsppOccurrenceIndex)
                     ? { occurrenceIndex: Number(record.lsppOccurrenceIndex) } : {}),
@@ -1801,6 +1848,7 @@ export function createKeywordManagerServices(host: {
                     ? `input-format-${inputFormat}` : 'field-geometry-unsupported',
                 fields: fields.map((field, fieldIndex) => {
                     const fieldId = String(field.fieldMigrationId || `${recordIndex}:${fieldIndex}`);
+                    const syntaxField = fieldIndex === record.recordMarker?.fieldIndex;
                     const geometry = { n: field.name, p: field.position, w: field.width, t: field.type };
                     const recordFormat = sourceRecord ? keywordRecordSerializer.detectRecordFormat(
                         sourceRecord.text,
@@ -1851,9 +1899,9 @@ export function createKeywordManagerServices(host: {
                     const choices = Array.isArray(controlState?.choices)
                         ? controlState.choices.map(String)
                         : Array.isArray(nativeField?.choices) ? nativeField.choices.map(String) : [];
-                    const defaultValue = nativeField?.defaultValue == null
-                        ? undefined : String(nativeField.defaultValue);
-                    const controlEnabled = controlState?.enabled !== false && !(nativeField && verifiedPlaceholder(nativeField));
+                    const fieldDefault = nativeField?.defaultValue ?? thermalDefinition?.[fieldIndex]?.d;
+                    const defaultValue = fieldDefault == null ? undefined : String(fieldDefault);
+                    const controlEnabled = !syntaxField && controlState?.enabled !== false && !(nativeField && verifiedPlaceholder(nativeField));
                     return {
                         fieldId,
                         cardIndex: officialCardIndex,
@@ -1869,7 +1917,7 @@ export function createKeywordManagerServices(host: {
                         ...(draftVal !== undefined ? { draft: draftVal } : {}),
                         ...(choices.length > 0 ? { choices } : {}),
                         ...(defaultValue !== undefined ? { defaultValue } : {}),
-                        visible: controlState?.visible !== false,
+                        visible: !syntaxField && controlState?.visible !== false,
                         enabled: controlEnabled,
                         editable: cardEditable && controlEnabled,
                         reason: cardEditable && controlEnabled ? undefined : controlEnabled
@@ -1907,9 +1955,10 @@ export function createKeywordManagerServices(host: {
         const record = records.find(record => record.fields?.some(field => field.fieldMigrationId === selected.fieldId));
         if (context?.branchEvidence === 'record-selection' || context?.branchEvidence === 'native-file-reader' ||
             context?.nativeForm?.nativeDescriptorExtent?.consumption === 'static-descriptor-records') {
+            const nativeCards = nativeFileLayoutCards(context.nativeForm, model.currentKeyword || model.targetKeyword);
             const nativeCard = record?.lsppCardIndex === 0
-                ? nativeSpellingBinding(model.currentKeyword || model.targetKeyword)?.prefixCard || context.nativeForm?.cards?.find(card => card.cardIndex === 0)
-                : context.nativeForm?.cards?.find(card => card.cardIndex === record?.lsppCardIndex);
+                ? nativeSpellingBinding(model.currentKeyword || model.targetKeyword)?.prefixCard || nativeCards.find(card => card.cardIndex === 0)
+                : nativeCards.find(card => card.cardIndex === record?.lsppCardIndex);
             const index = record?.fields?.findIndex(field => field.fieldMigrationId === selected.fieldId);
             const nativeField = nativeCard?.fields?.find(field => field.fieldIndex === index &&
                 (field.name === selected.name || (selected.name === 'UNUSED' && /^(?:-|\s*)$/.test(String(field.name || '')))));
@@ -2071,7 +2120,7 @@ export function createKeywordManagerServices(host: {
 
     function keywordManagerEditField(model, fieldId: string, value: string) {
         if (!model || typeof fieldId !== 'string') return null;
-        if (model.plan?.reason === 'native-read-window-write-unverified') return null;
+        if (['native-read-window-write-unverified', 'native-file-write-unverified'].includes(model.plan?.reason)) return null;
         const rawValue = String(value ?? '');
         if (/[\r\n\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|,/.test(rawValue)) {
             return null;
@@ -2164,6 +2213,9 @@ export function createKeywordManagerServices(host: {
             if (result.inputFormat && result.inputFormat !== 'standard') return null;
         }
         const details = [];
+        const nativeForm = result.inputFormProjection?.nativeForm;
+        const nativeCards = recordEntries.length && nativeForm
+            ? nativeFileLayoutCards(nativeForm, result.currentKeyword || result.plan.currentKeyword) : [];
 
         for (const [recordId, draftText] of recordEntries) {
             const recordIndex = targetRecords.findIndex(r => r.recordMigrationId === recordId);
@@ -2174,6 +2226,7 @@ export function createKeywordManagerServices(host: {
             const fields = targetRecord.fields || [];
             const recordFormat = keywordRecordSerializer.detectRecordFormat(sourceText,
                 result.inputFormat || 'standard', fields);
+            if (targetRecord.recordMarker && !keywordManagerCatalogSourceRecordCompatible({ text: draftText }, targetRecord, true, result.inputFormat || 'standard')) return null;
             if (/[\r\n\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(draftText) ||
                 (recordFormat === 'comma' && draftText.split(',').length > fields.length)) return null;
             const allowedMask = new Array(Math.max(draftText.length, sourceText.length)).fill(false);
@@ -2200,7 +2253,7 @@ export function createKeywordManagerServices(host: {
                     ? keywordRecordSerializer.readRecordField(draftText, fields, fieldIndex, recordFormat)
                     : draftText.slice(field.position, field.position + field.width);
                 if (beforeSlice !== afterSlice) {
-                    const card = result.inputFormProjection?.nativeForm?.cards?.find(card => card.cardIndex === targetRecord.lsppCardIndex);
+                    const card = nativeCards.find(card => card.cardIndex === targetRecord.lsppCardIndex);
                     const nativeField = card?.fields?.find(candidate => candidate.position === field.position && candidate.width === field.width);
                     const sourceLine = (result.plan.keywordLine || 0) + 1 + (result.block?.records || []).slice(0, recordIndex)
                         .reduce((n, record) => n + 1 + (record.comments || []).length, 0) + (result.block?.records?.[recordIndex]?.comments || []).length;
@@ -2252,6 +2305,7 @@ export function createKeywordManagerServices(host: {
             const targetFieldId = targetIdBySourceId.get(sourceFieldId) || sourceFieldId;
             const location = targetLocations.get(targetFieldId);
             if (!location) return null;
+            if (location.fieldIndex === targetRecords[location.recordIndex].recordMarker?.fieldIndex) return null;
             const sourceField = sourceEntry?.field || location.field;
             const value = String(rawValue ?? '').trim();
             const recordFields = targetRecords[location.recordIndex].fields;
@@ -2593,13 +2647,24 @@ export function createKeywordManagerServices(host: {
     }
 
     function buildKeywordOptionViewModel(editor, requestedLine = null, staged: any = {}) {
+        const previous = keywordManagerModelForms;
+        keywordManagerModelForms = new WeakMap();
+        try {
+            return buildKeywordOptionViewModelInScope(editor, requestedLine, staged);
+        } finally {
+            keywordManagerModelForms = previous;
+        }
+    }
+
+    function buildKeywordOptionViewModelInScope(editor, requestedLine = null, staged: any = {}) {
         const document = editor?.document;
         if (!document || !isLsdynaFile(document)) return null;
         const line = Number.isInteger(requestedLine)
             ? requestedLine
             : Number.isInteger(editor.selection?.active?.line) ? editor.selection.active.line : 0;
         if (!isActiveLsdynaSemanticLocation(document, { line, character: 0 }, { requireLiveSnapshot: true })) return null;
-        const blockIndex = staged.blockIndex !== undefined ? staged.blockIndex : readyCardEditBlockIndex(document);
+        const candidateIndex = staged.blockIndex !== undefined ? staged.blockIndex : readyCardEditBlockIndex(document);
+        const blockIndex = candidateIndex?.lineCount === document.lineCount ? candidateIndex : null;
         const indexed = blockIndex?.lineCount === document.lineCount ? blockIndex.findBlockAtLine?.(line) : null;
         const keywordLine = isKeywordLineText(document.lineAt(line).text)
             ? line
@@ -2612,8 +2677,7 @@ export function createKeywordManagerServices(host: {
         keywordManagerCatalogCatalogFailure = '';
         const catalogForm = keywordManagerCatalogCatalogForm(currentKeyword);
         const grammar = null;
-        // Manual/schema metadata remains available for help and other language
-        // features. Keyword Manager behavior is exclusively catalog-driven.
+        // Native geometry owns fields; source-locked prefix rules add file syntax.
         const dimensions = [];
         let selection = staged.selection && typeof staged.selection === 'object'
             ? Object.fromEntries(Object.entries(staged.selection).map(([slot, values]) => [
@@ -2624,6 +2688,12 @@ export function createKeywordManagerServices(host: {
         let targetKeyword = String(staged.targetKeyword || currentKeyword).toUpperCase();
         const selectorRule = keywordManagerCatalogSelectorRule(currentKeyword);
         const selectorSeedBlock = selectorRule ? collectOptionSwitchBlock(document, keywordLine, { blockIndex }) : null;
+        if (selectorSeedBlock) {
+            let physical = keywordLine + 1;
+            Object.assign(selectorSeedBlock, {inputFormat:keywordInputFormat(document.lineAt(keywordLine).text, documentGlobalInputFormat(document)),
+                parameterContext:nativeParameterContextForDocument(document),
+                recordLines:selectorSeedBlock.records.map(r=>{physical += (r.comments || []).length; return physical++;})});
+        }
         const inferredInputFormSelections = keywordManagerInferCatalogSelectorSelections(
             selectorRule, currentKeyword, grammar, selectorSeedBlock,
         );
@@ -2669,7 +2739,7 @@ export function createKeywordManagerServices(host: {
             document, keywordLine, baseResult, fieldDrafts, recordDrafts, selectedFormRuleId,
         );
         const preparedSelectors = keywordManagerPrepareCatalogSelectorLayout(
-            document, keywordLine, baseResult, resolvedTargetState,
+            document, keywordLine, baseResult, resolvedTargetState, false, fieldDrafts,
         );
         if (catalogForm && !preparedInputForm && !preparedSelectors) {
             baseResult.plan.status = 'blocked';
@@ -2728,6 +2798,17 @@ export function createKeywordManagerServices(host: {
             fieldDrafts,
             staged.selectedFieldId,
         );
+        if (Object.entries(draftControlState).some(([id,value])=>value!=='' && !selectorRule?.selectors.some(s=>s.controlId===id&&s.values.some(v=>v.value===value)))) {
+            baseResult.plan=blockedKeywordOptionSwitchPlan(currentKeyword,targetKeyword,'lspp-selector-spelling-unverified',baseResult.plan);
+        }
+        const thermalAllowed=contactThermalAllowed(currentKeyword,(name,fallback)=> {
+            const field=fieldProjection.cards.flatMap(c=>c.fields).find(f=>f.name===name);
+            if(!field) return null;
+            const raw=fieldDrafts[field.fieldId]??field.value??'';
+            const value=require('../../core/semantics/nativeParameterContext').nativeControlResolver(
+                nativeParameterContextForDocument(document),[field.line]).resolve(raw||String(fallback),0);
+            return value.trim()&&Number.isFinite(Number(value))?Number(value):null;
+        });
         for (const field of fieldProjection.cards.flatMap(card => card.fields)) {
             if (field.draft !== undefined && String(field.draft).trim() === String(field.value || '').trim()) {
                 delete fieldDrafts[field.fieldId];
@@ -2736,38 +2817,15 @@ export function createKeywordManagerServices(host: {
         }
         const selectedSourceLine = staged.selectedFieldId
             ? fieldProjection.cards.flatMap(card => card.fields).find(field => field.fieldId === staged.selectedFieldId)?.line ?? line : line;
-        const deferInstances = staged.deferInstances === true && staged.scope !== 'project' &&
-            !cachedKeywordManagerDirectory(document, blockIndex) &&
-            !!(blockIndex || document.lineCount <= LARGE_DOCUMENT_LINE_THRESHOLD);
+        const directoryUnavailable = !blockIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
+        const deferInstances = staged.deferInstances === true && !directoryUnavailable &&
+            !cachedKeywordManagerDirectory(document, blockIndex);
         // Use the same block descriptor and native instance reader as the complete directory.
         const selectedBlock = deferInstances ? indexed || {
             keyword: currentKeyword, startLine: keywordLine, endLine: blockEnd - 1,
         } : null;
         const localInstances = keywordManagerInstances(document, selectedSourceLine, blockIndex, selectedBlock);
-        let instances = localInstances;
-        if (staged.scope === 'project' && Array.isArray(staged.managerInstances)) {
-            const currentUri = documentUriIdentity(document);
-            const byId = new Map<string, any>(staged.managerInstances.map(instance => [instance.instanceId, {
-                ...instance,
-                selected: instance.uri === currentUri && instance.line === selectedSourceLine,
-                editLevel: (instance.uri === currentUri && instance.line === keywordLine)
-                    ? (instance.readonly ? 'recovery' : 'editable')
-                    : (instance.editLevel || 'recovery'),
-                reason: 'select-project-instance-to-edit',
-                message: i18n.get('keywordManagerProjectInstance'),
-            }]));
-            for (const instance of localInstances) {
-                if (instance.headerLine !== undefined) byId.delete(`${currentUri}:${instance.headerLine}`);
-                const existing = byId.get(instance.instanceId);
-                byId.set(instance.instanceId, existing ? {
-                    ...existing,
-                    ...instance,
-                    scope: 'project',
-                    includeOrder: existing.includeOrder,
-                } : { ...instance, scope: 'project' });
-            }
-            instances = [...byId.values()];
-        }
+        const instances = localInstances;
         const selectedInstance = instances.find(instance => instance.selected);
         if (selectedInstance?.recordStartIndex !== undefined && selectedInstance.headerLine === keywordLine) {
             const nativeRecords = baseResult.targetLayout?.records || [];
@@ -2801,13 +2859,11 @@ export function createKeywordManagerServices(host: {
                 (baseResult.targetLayout?.records || []).map(record => record.lsppCardIndex).filter(Number.isFinite),
             ) : null,
             managerInstances: instances,
+            managerInstanceContext: { ...keywordManagerInstanceFileState(document), typeKey: keywordManagerTypeKey(currentKeyword) },
             managerSelectionLine: selectedSourceLine,
-            directoryStatus: deferInstances ? 'loading' : 'ready',
+            directoryStatus: directoryUnavailable ? 'error' : deferInstances ? 'loading' : 'ready',
             managerCards: fieldProjection.cards,
             selectedInstanceId: selectedInstance?.instanceId || null,
-            managerScope: staged.scope === 'project' ? 'project' : 'file',
-            managerScopeStatus: staged.scopeStatus || 'ready',
-            managerScopeMessage: String(staged.scopeMessage || ''),
             readonly: selectedInstance?.readonly === true || keywordManagerReadonlyUri(document?.uri),
             selectedFieldId: fieldProjection.selectedFieldId,
             fieldDrafts,
@@ -2819,15 +2875,19 @@ export function createKeywordManagerServices(host: {
             currentControlState,
             draftControlState,
             resolvedTargetState,
-            controls: (selectorRule?.selectors || []).map(selector => {
+            controls: (selectorRule?.selectors || []).filter(selector=>selector.controlId!==contactThermalSource().controlId||thermalAllowed).map(selector => {
                 const controlId = String(selector.controlId || '');
                 const currentValue = resolvedTargetState[controlId] ?? '';
+                const identity = keywordManagerContactIdentitySelector(selectorRule, selector);
+                const identityValue = currentValue || currentControlState[controlId] || 'ID';
                 return {
                     controlId,
                     kind: 'selector',
-                    label: String(selector.label || controlId),
+                    label: identity ? i18n.get('keywordManagerIdAndTitle') : String(selector.label || controlId),
                     value: currentValue,
-                    choices: selector.values.map(value => ({ value: value.value, label: value.value, enabled: true })),
+                    ...(identity ? { emptyLabel: i18n.get('keywordManagerIdentityDisabled') } : {}),
+                    choices: identity ? [{ value: identityValue, label: i18n.get('keywordManagerIdentityEnabled'), enabled: true }]
+                        : selector.values.map(value => ({ value: value.value, label: value.value, enabled: true })),
                     visible: true,
                     enabled: !keywordManagerCatalogCatalogFailure,
                 };
@@ -2863,6 +2923,7 @@ export function createKeywordManagerServices(host: {
                 datasetSha256: catalogForm.source.datasetSha256,
                 keyword: catalogForm.keyword,
             } : null,
+            inputFormSourceUnavailable: !!keywordManagerCatalogCatalogFailure,
             inputFormSourceError: keywordManagerCatalogCatalogFailure ||
                 (!catalogForm ? 'The form catalog has no entry for this keyword.' : ''),
             inputFormResolution: baseResult.inputFormResolution || null,
@@ -2921,6 +2982,29 @@ export function createKeywordManagerServices(host: {
 
     function keywordOptionProductLabels() {
         return {
+            selectorReload: i18n.get('selectorReload'),
+            selectorAppliedReselect: i18n.get('keywordManagerAppliedReselect'),
+            selectorTitle: i18n.get('selectorTitle'),
+            selectorSearch: i18n.get('selectorSearch'),
+            selectorPrevious: i18n.get('selectorPrevious'),
+            selectorNext: i18n.get('selectorNext'),
+            selectorClear: i18n.get('selectorClear'),
+            selectorClose: i18n.get('selectorClose'),
+            selectorFileOrder: i18n.get('selectorFileOrder'),
+            selectorIdOrder: i18n.get('selectorIdOrder'),
+            selectorSort: i18n.get('selectorSort'),
+            selectorCurrent: i18n.get('selectorCurrent'),
+            selectorLine: i18n.get('selectorLine'),
+            selectorRecord: i18n.get('selectorRecord'),
+            selectorCount: i18n.get('selectorCount'),
+            selectorCountSingle: i18n.get('selectorCountSingle'),
+            selectorSelected: i18n.get('selectorSelected'),
+            selectorMissing: i18n.get('selectorMissing'),
+            selectorNoMatch: i18n.get('selectorNoMatch'),
+            selectorOutside: i18n.get('selectorOutside'),
+            selectorLoading: i18n.get('selectorLoading'),
+            selectorError: i18n.get('selectorError'),
+            selectorEmpty: i18n.get('selectorEmpty'),
             current: i18n.get('keywordOptionsCurrent'),
             result: i18n.get('keywordOptionsResult'),
             search: i18n.get('keywordOptionsSearch'),
@@ -2937,11 +3021,7 @@ export function createKeywordManagerServices(host: {
             cards: i18n.get('keywordOptionsCards'),
             fields: i18n.get('keywordOptionsFields'),
             comments: i18n.get('keywordOptionsComments'),
-            scope: i18n.get('keywordManagerScope'),
             currentFile: i18n.get('keywordManagerCurrentFile'),
-            currentProject: i18n.get('keywordManagerCurrentProject'),
-            scopeLoading: i18n.get('keywordManagerScopeLoading'),
-            projectInstance: i18n.get('keywordManagerProjectInstance'),
             dirty: i18n.get('keywordManagerDirty'),
             readonly: i18n.get('keywordManagerReadonly'),
             noOptions: i18n.get('keywordOptionsNoAlternatives'),
@@ -2977,9 +3057,6 @@ export function createKeywordManagerServices(host: {
             selectedFormRuleId: null,
             instances: [],
             selectedInstanceId: null,
-            scope: 'file',
-            scopeStatus: 'ready',
-            scopeMessage: '',
             editLevel: 'view-only',
             capabilities: [],
             cards: [],
@@ -3085,10 +3162,13 @@ export function createKeywordManagerServices(host: {
         if (status === 'no-options') message = i18n.get('keywordOptionsNoAlternatives');
         if (model.stale) {
             status = 'stale';
-            message = i18n.get(model.sourceAnchorInvalid ? 'keywordManagerRelocateSource' : 'keywordManagerSourceChanged');
+            message = model.sourceAnchorInvalid ? '' : i18n.get('keywordManagerSourceChanged');
         } else if (dimensions.length > 0 && model.selectionState !== 'exact') {
             status = 'configuring';
             message = i18n.get('keywordOptionsChooseValid');
+        } else if (model.plan?.status === 'blocked' && model.plan.reason === 'lspp-input-form-field-draft-invalid') {
+            status = 'error';
+            message = i18n.get('keywordManagerDraftLayoutUnavailable');
         } else if (model.plan?.status === 'blocked' &&
             ((hasAlternatives || hasFormFields) ||
                 String(model.plan.reason || '').startsWith('lspp-input-form-source-layout-')) && !hasFieldChanges) {
@@ -3097,7 +3177,11 @@ export function createKeywordManagerServices(host: {
                 ? (model.inputFormResolution.candidateSummaries || []).join('; ') : '';
             message = ambiguousCandidates
                 ? i18n.get('keywordOptionsLayoutAmbiguous', ambiguousCandidates)
-                : String(model.plan.reason || '').startsWith('lspp-input-form-source-layout-')
+                : model.plan.reason === 'lspp-selector-spelling-unverified'
+                    ? i18n.get('keywordOptionsContactTransitionUnverified')
+                    : ['unmodeled-source-text', 'source-record-coverage-unproven'].includes(model.plan.reason)
+                    ? i18n.get('keywordManagerRecordContentUnverified')
+                    : String(model.plan.reason || '').startsWith('lspp-input-form-source-layout-')
                     ? i18n.get('keywordOptionsLayoutUnresolved')
                     : i18n.get('keywordOptionsTargetUnavailable');
             console.warn(`[lsdyna] Keyword option target unavailable: ${String(model.plan.reason || 'unknown').replace(/^lspp-/, '')}`);
@@ -3115,6 +3199,10 @@ export function createKeywordManagerServices(host: {
             status = 'error';
             message = i18n.get('keywordManagerInvalidDraft');
 
+        }
+        if (!model.stale && model.inputFormSourceUnavailable) {
+            status = 'error';
+            message = i18n.get('keywordManagerFieldInfoLoadFailed');
         }
         const dimensionStates = dimensions.map(dimension => {
             const selected = model.selection?.[dimension.dimensionId] || [];
@@ -3198,11 +3286,9 @@ export function createKeywordManagerServices(host: {
             })),
             selectedFormRuleId: typeof model?.selectedFormRuleId === 'string' ? model.selectedFormRuleId : null,
             instances: model.managerInstances || [],
+            instanceContext: model.managerInstanceContext,
             directoryStatus: model.directoryStatus || 'ready',
             selectedInstanceId: model.selectedInstanceId || null,
-            scope: model.managerScope || 'file',
-            scopeStatus: model.managerScopeStatus || 'ready',
-            scopeMessage: model.managerScopeMessage || '',
             editLevel: (model.readonly === true || model.managerInstances?.find(i => i.selected)?.readonly === true)
                 ? 'recovery'
                 : (model.editLevel || 'view-only'),
@@ -3275,6 +3361,35 @@ export function createKeywordManagerServices(host: {
         return { range, text: lines.join(eol) + (beforeNextKeyword ? eol : '') };
     }
 
+    function keywordManagerReplacementMatchesTarget(document, model, result, replacement) {
+        if (result.inputFormProjection?.branchEvidence !== 'selector') return true;
+        const lines = replacement.text.replace(/\r?\n$/, '').split(/\r?\n/);
+        const keyword = keywordSpellingFromLine(lines[0]);
+        if (keyword !== result.plan.targetKeyword) return false;
+        if (contactThermalBinding(keyword) && (!keywordManagerCatalogAllowsWrite(keyword) || !keywordSchema.lookupKeywordSchema(keyword))) return false;
+        const virtual = { ...document, lineCount: lines.length + 1,
+            lineAt: index => ({ text: index < lines.length ? lines[index] : '*END' }) };
+        const block = collectOptionSwitchBlock(virtual, 0, { blockIndex: null });
+        if (block.status !== 'ready' || block.records.length !== result.targetLayout.records.length +
+            (result.preservedTrailingRecords?.length || 0)) return false;
+        const expectedRecords = [...result.plan.replacementRecords, ...(result.preservedTrailingRecords || [])];
+        if (block.records.some((record, index) => record.text !== expectedRecords[index]?.text)) return false;
+        const expectedComments = [...expectedRecords.flatMap(record => record.comments || []),
+            ...(result.plan.trailingComments || []), ...(result.block.trailingComments || [])];
+        if (JSON.stringify(lines.slice(1).filter(line => line.trimStart().startsWith('$'))) !==
+            JSON.stringify(expectedComments)) return false;
+        block.records = block.records.slice(0, result.targetLayout.records.length);
+        let physical = model.keywordLine + 1;
+        Object.assign(block, {parameterContext:nativeParameterContextForDocument(document),
+            recordLines:block.records.map(r=>{physical += (r.comments || []).length; return physical++;})});
+        const resolved = keywordManagerResolveCatalogSelectorState(keywordManagerCatalogSelectorRule(keyword), keyword,
+            { ...block, inputFormat: keywordInputFormat(lines[0], documentGlobalInputFormat(document)) });
+        return !!resolved && Object.entries(model.resolvedTargetState || {}).every(([id, value]) =>
+            String(resolved.selections[id] || '') === String(value || '')) &&
+            JSON.stringify(resolved.layout.records.map(optionSwitchCardFromRecord)) ===
+            JSON.stringify(result.targetLayout.records.map(optionSwitchCardFromRecord));
+    }
+
     return {
         blockedKeywordOptionSwitchPlan,
         OPTION_SWITCH_MAX_PHYSICAL_LINES,
@@ -3291,7 +3406,6 @@ export function createKeywordManagerServices(host: {
         keywordOptionsEditorForModel,
         locateKeywordManagerSource,
         openKeywordManagerManual,
-        openKeywordManagerInstanceEditor,
         keywordManagerDisplayName,
         keywordManagerReadonlyUri,
         keywordManagerInstanceFileState,
@@ -3305,9 +3419,9 @@ export function createKeywordManagerServices(host: {
         keywordManagerExpandNativeInstances,
         keywordManagerInstanceDirectories,
         keywordManagerInstances,
+        keywordManagerTypeKey,
         prepareKeywordManagerInstances,
     completeKeywordManagerInstances,
-        keywordManagerProjectInstances,
         keywordManagerCatalogCatalogFailure,
         isKeywordManagerUnauditedCatalogAllowed,
         keywordManagerCatalogCatalogForm,
@@ -3345,5 +3459,6 @@ export function createKeywordManagerServices(host: {
         keywordManagerCatalogAllowsWrite,
         keywordLineWithTargetSpelling,
         optionSwitchReplacement,
+        keywordManagerReplacementMatchesTarget,
     };
 }

@@ -1,3 +1,4 @@
+import { contactKeywordParts, contactKeywordKey } from './contactKeywordName';
 import { keywordDataPath } from "./keywordDataPath";
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -229,6 +230,7 @@ let fieldHelpUnavailableWarned = false;
 let fieldHelpShardCache = new Map<number, CachedFieldHelpShard>();
 let fieldHelpShardCacheBytes = 0;
 let fieldHelpIndexCache = new WeakMap<object, number>();
+let contactBaseIndexCache = new WeakMap<object, Map<string, string | null>>();
 let aliasCanonicalIndexCache = new WeakMap<object, Map<string, string>>();
 let prefixLayoutRuntimeCache: PrefixLayoutRuntime | null | undefined;
 let localizationState: FieldHelpLocalizationState = {
@@ -320,7 +322,9 @@ function loadEnglishSchema(): KeywordSchema {
             // Development fallback only. The VSIX content contract requires the
             // compact runtime and excludes the 35 MiB authoring source.
             const text = fs.readFileSync(path.join(schemaDir(), 'field_data.json'), 'utf8');
-            schemaCache = JSON.parse(text);
+            const schema = JSON.parse(text);
+            if (!schema || typeof schema !== 'object' || Array.isArray(schema)) throw new Error('invalid field schema source');
+            schemaCache = schema;
             schemaSha256 = sha256(Buffer.from(text, 'utf8'));
             schemaHelpSlotCount = visitHelpSlots(schemaCache, (owner, _englishHelp, index) => {
                 fieldHelpIndexCache.set(owner, index);
@@ -337,9 +341,8 @@ function loadEnglishSchema(): KeywordSchema {
 function installSchemaRuntime(text: string): void {
     const runtime = JSON.parse(text);
     if (!runtime || runtime.formatVersion !== FIELD_SCHEMA_RUNTIME_FORMAT_VERSION
-        || !runtime.schema || typeof runtime.schema !== 'object'
+        || !runtime.schema || typeof runtime.schema !== 'object' || Array.isArray(runtime.schema)
         || !/^[0-9a-f]{64}$/.test(runtime.baseSha256 || '')
-        || !Number.isSafeInteger(runtime.keywordCount)
         || runtime.keywordCount !== Object.keys(runtime.schema).length
         || !Number.isSafeInteger(runtime.helpSlotCount)
         || runtime.helpSlotCount < 0) {
@@ -416,7 +419,6 @@ function validateFieldHelpManifest(value: unknown): FieldHelpRuntimeManifest {
         || !Number.isSafeInteger(manifest.shardSize)
         || Number(manifest.shardSize) <= 0
         || Number(manifest.shardSize) > 65_536
-        || !Number.isSafeInteger(manifest.shardCount)
         || !Array.isArray(manifest.shards)
         || manifest.shardCount !== manifest.shards.length
         || manifest.shardCount !== Math.ceil(schemaHelpSlotCount / Number(manifest.shardSize))) {
@@ -491,10 +493,7 @@ function cacheFieldHelpShard(shardIndex: number, payload: FieldHelpShard, estima
     if (estimatedBytes > FIELD_HELP_SHARD_CACHE_MAX_BYTES) return;
     while (fieldHelpShardCache.size >= FIELD_HELP_SHARD_CACHE_MAX_ENTRIES
         || fieldHelpShardCacheBytes + estimatedBytes > FIELD_HELP_SHARD_CACHE_MAX_BYTES) {
-        const oldest = fieldHelpShardCache.entries().next().value as
-            | [number, CachedFieldHelpShard]
-            | undefined;
-        if (!oldest) break;
+        const oldest = fieldHelpShardCache.entries().next().value as [number, CachedFieldHelpShard];
         fieldHelpShardCache.delete(oldest[0]);
         fieldHelpShardCacheBytes -= oldest[1].estimatedBytes;
     }
@@ -525,7 +524,6 @@ function loadFieldHelpShard(helpIndex: number): FieldHelpShard | null {
         const encoded = fs.readFileSync(shardPath);
         if (!Buffer.isBuffer(encoded)
             || encoded.length !== entry.compressedBytes
-            || encoded.length > FIELD_HELP_SHARD_MAX_COMPRESSED_BYTES
             || sha256(encoded) !== entry.sha256) {
             throw new Error(`field-help shard ${shardIndex} failed its compressed identity check`);
         }
@@ -611,6 +609,7 @@ export function resetKeywordSchemaCache(): void {
     fieldHelpUnavailableWarned = false;
     clearFieldHelpShardCache();
     fieldHelpIndexCache = new WeakMap<object, number>();
+    contactBaseIndexCache = new WeakMap();
     aliasCanonicalIndexCache = new WeakMap<object, Map<string, string>>();
     localizationState = {
         state: 'unloaded',
@@ -752,7 +751,7 @@ function inferActiveOptionsFromSuffix(entry: KeywordEntry, suffix: string): stri
             const candidate = splitOptionName(option.n);
             return candidate.length > 0 && candidate.every((token, index) => suffixTokens[cursor + index] === token);
         });
-        if (!match) {
+        if (!match || active.includes(optionName(match))) {
             return null;
         }
         active.push(optionName(match));
@@ -884,20 +883,31 @@ function applySourceLockedLayoutCorrection(
 
 function makeLookup(inputName: string, matchedName: string, schema: KeywordSchema,
     activeOptions: string[] = []): KeywordLookup | null {
-    const matchedEntry = schema[matchedName];
-    const targetName = matchedEntry.x && normalizeKeywordName(matchedEntry.x);
-    const canonicalName = targetName && (schema[targetName] ? targetName : findAliasCanonical(targetName, schema))
-        || matchedName;
-    const canonicalEntry = schema[canonicalName] || matchedEntry;
+    let canonicalName = matchedName;
+    let canonicalEntry = schema[canonicalName];
+    const visited = new Set<string>();
+    const active = new Set<string>();
+    while (canonicalEntry) {
+        if (visited.has(canonicalName)) return null;
+        visited.add(canonicalName);
+        for (const option of canonicalEntry.active || []) active.add(normalizeKeywordName(option));
+        if (!canonicalEntry.x) break;
+        const targetName = normalizeKeywordName(canonicalEntry.x);
+        const nextName = schema[targetName] ? targetName : findAliasCanonical(targetName, schema);
+        if (!nextName) return null;
+        canonicalName = nextName;
+        canonicalEntry = schema[canonicalName];
+    }
+    if (!canonicalEntry) return null;
     const correctedEntry = applySourceLockedLayoutCorrection(canonicalName, canonicalEntry);
     if (!correctedEntry) return null;
-    const active = matchedEntry.active || activeOptions;
+    for (const option of activeOptions) active.add(normalizeKeywordName(option));
 
     return {
         inputName,
         canonicalName,
         entry: correctedEntry,
-        activeOptions: active.map(normalizeKeywordName),
+        activeOptions: [...active],
     };
 }
 
@@ -975,9 +985,29 @@ function lookupParameterFamily(inputName: string, schema: KeywordSchema): Keywor
     };
 }
 
+function lookupContactOptions(inputName: string, schema: KeywordSchema): KeywordLookup | null {
+    const parts = contactKeywordParts(inputName);
+    if (!parts) return null;
+    const options = parts.options.filter(option => option === 'ID' || option === 'MPP');
+    const base = [parts.type, ...parts.options.filter(option => option !== 'ID' && option !== 'MPP')].join('_');
+    let index = contactBaseIndexCache.get(schema);
+    if (!index) {
+        index = new Map();
+        for (const [name, entry] of Object.entries(schema)) {
+            if (entry.x) continue;
+            const key = contactKeywordKey(name);
+            if (key) index.set(key, index.has(key) ? null : name);
+        }
+        contactBaseIndexCache.set(schema, index);
+    }
+    const canonical = index.get(contactKeywordKey(base) || '');
+    if (!canonical || inferActiveOptionsFromSuffix(schema[canonical], options.join('_')) === null) return null;
+    return makeLookup(inputName, canonical, schema, options);
+}
+
 export function lookupKeywordSchema(name: string, schema: KeywordSchema = loadKeywordSchema()): KeywordLookup | null {
     const inputName = normalizeKeywordName(name);
-    if (!inputName) {
+    if (!inputName || inputName.endsWith('_') || inputName.includes('__')) {
         return null;
     }
 
@@ -997,24 +1027,23 @@ export function lookupKeywordSchema(name: string, schema: KeywordSchema = loadKe
     for (let length = tokens.length - 1; length >= 1; length--) {
         const candidate = tokens.slice(0, length).join('_');
         const foldedCandidate = schema[candidate] ? candidate : findAliasCanonical(candidate, schema);
-        const isStandardAlias = STANDARD_NUMBERED_ALIASES[candidate] !== undefined;
-        if (!foldedCandidate || (!isStandardAlias && normalizeKeywordName(foldedCandidate) !== candidate) || !schema[foldedCandidate]) {
+        const baseLookup = foldedCandidate ? makeLookup(candidate, foldedCandidate, schema) : null;
+        if (!baseLookup) {
             continue;
         }
 
         const suffix = tokens.slice(length).join('_');
         // Only accept a prefix match when the entire leftover suffix maps to known
-        // title/options (e.g. _ID, _MPP, _TITLE). Partial matches such as
-        // CONTACT_..._ID + leftover OFFSET must not count as recognized — otherwise
-        // hover shows a known-keyword card while validation correctly flags unknown.
-        const activeOptions = inferActiveOptionsFromSuffix(schema[foldedCandidate], suffix);
-        if (activeOptions === null) {
+        // title/options (e.g. _ID, _MPP, _TITLE); never accept an unknown remainder.
+        const activeOptions = inferActiveOptionsFromSuffix(schema[foldedCandidate], suffix)
+            ?? inferActiveOptionsFromSuffix(baseLookup.entry, suffix);
+        if (activeOptions === null || activeOptions.some(option => baseLookup.activeOptions.includes(option))) {
             continue;
         }
         return makeLookup(inputName, foldedCandidate, schema, activeOptions);
     }
 
-    return null;
+    return lookupContactOptions(inputName, schema);
 }
 
 function parseCardOrder(cardOrder: string): { position: string; index: number } {
@@ -1084,6 +1113,20 @@ function stepIsActive(step: PrefixLayoutStep, activeOptions: Set<string>): boole
 
 function clonePrefixCard(card: KeywordCard): KeywordCard {
     return card.map(field => ({ ...field }));
+}
+
+/** Source-locked steps, including optional markers, for an explicitly planned layout. */
+export function getVerifiedPrefixLayoutSteps(canonicalName: string, options: string[]) {
+    const runtime = loadPrefixLayoutRuntime();
+    const active = new Set(options.map(normalizeKeywordName));
+    const policies = [...new Set(options.map(option => prefixPolicyForOption(canonicalName, option)))];
+    if (!runtime || policies.some(policy => !policy || policy.decision !== 'allow')) return null;
+    const steps = policies.flatMap(policy => policy!.steps.filter(step => stepIsActive(step, active))
+        .map(step => ({ ...step, policyId: policy!.policyId, evidenceIds: [...policy!.evidenceIds],
+            card: runtime.templates[step.template] })));
+    if (steps.some(step => !Array.isArray(step.card) || !step.card.length)) return null;
+    return steps.map(step => ({ ...step, recordMarker: step.recordMarker ? { ...step.recordMarker } : undefined,
+        card: clonePrefixCard(step.card) }));
 }
 
 function enrichVerifiedPrefixCards(
@@ -1525,7 +1568,11 @@ export function getRenderedCardsForLookup(
     lookup: KeywordLookup,
     observedDataLines: string[] = [],
     observedDataLineCount?: number,
+    options: Partial<Pick<FieldContext, 'keywordText' | 'globalInputFormat' | 'parameterContext' | 'recordLines'>> = {},
 ): KeywordCard[] {
+    const thermal = require('./semantics/contactThermalFieldResolution').renderContactThermalCards(lookup, observedDataLines, options);
+    if (thermal) return thermal.cards.slice(0, Math.max(thermal.prefixCardCount + lookup.entry.c.length,
+        observedDataLineCount ?? observedDataLines.length));
     const layout = getVerifiedPrefixLayout(lookup, observedDataLines);
     if (layout.status === 'unsupported-option') {
         // The keyword spelling is not an official variant. Do not synthesize the
@@ -1672,6 +1719,12 @@ export function resolveCardFromContext(
     const fail = (status: CardResolution['status'], reason: string): CardResolution => ({ status, reason });
     const keyword = keywordOverride || keywordLineName(context.keywordText);
     const lookup = lookupKeywordSchema(keyword, schema);
+    const thermal = require('./semantics/contactThermalFieldResolution').resolveContactThermalFieldCard(context, lookup);
+    // Verified file spellings retain native identity; manual-only dynamic rows
+    // and explicitly approved edit geometry keep the imported composition.
+    if (thermal && (geometryOnly || thermal.status !== 'resolved' && thermal.reason !== 'contact-thermal-format-unverified' ||
+        thermal.reason === 'contact-thermal-manual-extension' || !hasNativeFileReader(keyword))) return geometryOnly && thermal.cardInfo?.inputFormat !== 'standard'
+        ? fail('unsupported', 'non-standard-input-format') : thermal;
     // File identity is independent of whether the help schema contains this spelling.
     const native = resolveNativeFieldCard(context, keyword, schema, lookup?.activeOptions);
     if (native) {

@@ -15,10 +15,10 @@ generation evidence. Build tools live in `scripts/build/keywords/` and
 | `runtime/` | Generated schema, native help/readers, Input Form, references, definition registry/scanners, manual semantics, structure grammars and semantic catalogs. / 生成的模式、原生帮助与读取器、输入表单、引用、定义注册表与扫描器、手册语义、结构语法及语义目录。 |
 | `provenance/` | Original source declarations and current local generation lineage. / 原始来源声明与当前本地生成记录。 |
 
-Start with the [public data workflow](../DATA_REGENERATION.md). After installing
-the locked dependencies, run the following commands from the repository root:
+Edit authoring inputs, not generated runtime data. After installing the locked
+dependencies, run the following commands from the repository root:
 
-先阅读[公开数据流程](../DATA_REGENERATION.md)。按锁文件安装依赖后，在项目根目录运行：
+修改作者输入，不直接编辑生成的运行时数据。按锁文件安装依赖后，在项目根目录运行：
 
 ```sh
 npm run compile

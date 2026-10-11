@@ -24,14 +24,21 @@ type WorkerLike = {
     postMessage(message: any): void;
     terminate(): Promise<any>;
 };
+type IndexWorkerData = {
+    fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number;
+    entityStorageDirectory?: string; entityMemoryBytes?: number; entityDiskBytes?: number;
+};
 
 type WorkerPoolOptions = {
     workerPath?: string;
-    workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: { fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number } }) => WorkerLike;
+    workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: IndexWorkerData }) => WorkerLike;
     fileScanCacheDirectory?: string | null;
     fileScanCacheOptions?: object;
     fileScanMemoryCacheBytes?: number;
     requestTimeoutMs?: number;
+    entityStorageDirectory?: string;
+    entityMemoryBytes?: number;
+    entityDiskBytes?: number;
 };
 
 /**
@@ -59,6 +66,9 @@ function createWorkerPool({
     fileScanCacheOptions = {},
     fileScanMemoryCacheBytes = 16 * 1024 * 1024,
     requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    entityStorageDirectory,
+    entityMemoryBytes,
+    entityDiskBytes,
 }: WorkerPoolOptions = {}) {
     if (typeof workerPath !== 'string' || workerPath.trim() === '') {
         throw new TypeError('createWorkerPool requires a workerPath');
@@ -71,11 +81,14 @@ function createWorkerPool({
     }
 
     /** @type {Worker} */
-    const workerOpts: { workerData?: { fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number } } = {
+    const workerOpts: { workerData?: IndexWorkerData } = {
         workerData: {
             fileScanCacheDirectory,
             fileScanCacheOptions,
             fileScanMemoryCacheBytes,
+            ...(entityStorageDirectory === undefined ? {} : { entityStorageDirectory }),
+            ...(entityMemoryBytes === undefined ? {} : { entityMemoryBytes }),
+            ...(entityDiskBytes === undefined ? {} : { entityDiskBytes }),
         },
     };
     const worker = workerFactory(workerPath, workerOpts);
@@ -122,11 +135,7 @@ function createWorkerPool({
 
     function terminateWorker() {
         if (terminationPromise) return terminationPromise;
-        try {
-            terminationPromise = Promise.resolve(worker.terminate()).catch(() => undefined);
-        } catch {
-            terminationPromise = Promise.resolve();
-        }
+        terminationPromise = Promise.resolve().then(() => worker.terminate());
         return terminationPromise;
     }
 
@@ -134,7 +143,8 @@ function createWorkerPool({
         disposed = true;
         rejectPendingRequests(error);
         if (terminate) {
-            void terminateWorker();
+            // Observe automatic shutdown failure; dispose still receives the stored rejection.
+            void terminateWorker().catch(() => undefined);
         }
     }
 
@@ -160,7 +170,7 @@ function createWorkerPool({
                     const event = message.event;
                     pendingRequest.onProgress(event?.type === 'structureReady'
                         ? { ...event, snapshot: hydrateProjectSnapshot(event.snapshot) }
-                        : event?.type === 'progress' ? event : hydrateProjectSnapshot(message.snapshot));
+                        : ['progress', 'entity-query-progress'].includes(event?.type) ? event : hydrateProjectSnapshot(message.snapshot));
                 }
                 armRequestTimeout(message.requestId, pendingRequest);
             } catch (error) {
@@ -192,7 +202,15 @@ function createWorkerPool({
 
         const completedRequest = takePendingRequest(message.requestId);
         try {
-            completedRequest.resolve(hydrateProjectSnapshot(message.snapshot));
+            if (completedRequest.resultType === 'queryEntity') {
+                if (!['ready', 'expired', 'stale'].includes(message.result?.status) ||
+                    message.result.status === 'ready' && (!Array.isArray(message.result.result?.locations) || message.result.result.locations.length > 400))
+                    throw new Error('Invalid entity result page');
+                completedRequest.resolve(message.result);
+            } else if (completedRequest.resultType === 'controlEntityIndex') {
+                if (!message.result || !Number.isSafeInteger(message.result.memoryBudget)) throw new Error('Invalid entity index statistics');
+                completedRequest.resolve(message.result);
+            } else completedRequest.resolve(hydrateProjectSnapshot(message.snapshot));
         } catch (error) {
             const invalidResultError = new Error(
                 `invalid scan worker result: ${error?.message || String(error)}`,
@@ -214,16 +232,7 @@ function createWorkerPool({
         failWorker(new Error(`scan worker exited with code ${code}`));
     });
 
-    return {
-        /**
-         * Asynchronously enqueues a project indexing request and sends it to the worker thread.
-         * 
-         * @param {string} rootFile - Absolute path to the project's root input file.
-         * @param {Object} [options] - Optional indexing options (e.g. fullScanLargeFiles).
-         * @param {function(Object): void} [onProgress] - Optional progress callback.
-         * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Resolved project index.
-         */
-        buildProjectIndex(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+    function requestWorker(type, rootFile, options = {}, onProgress = null, cancellationToken = null) {
             if (disposed) {
                 return Promise.reject(new Error('scan worker pool has been disposed'));
             }
@@ -239,6 +248,7 @@ function createWorkerPool({
                     onProgress,
                     timeout: null,
                     cancellationRegistration: null,
+                    resultType: type,
                 };
                 pendingRequests.set(requestId, pendingRequest);
                 armRequestTimeout(requestId, pendingRequest);
@@ -247,7 +257,7 @@ function createWorkerPool({
                         requestId,
                         rootFile,
                         options,
-                        type: 'buildProjectIndex',
+                        type,
                     });
                     if (typeof cancellationToken?.onCancellationRequested === 'function') {
                         const registration = cancellationToken.onCancellationRequested(() => {
@@ -271,7 +281,14 @@ function createWorkerPool({
                     failedRequest?.reject(error);
                 }
             });
-        },
+    }
+
+    return {
+        buildProjectIndex: (rootFile, options = {}, onProgress = null, cancellationToken = null) =>
+            requestWorker('buildProjectIndex', rootFile, options, onProgress, cancellationToken),
+        queryEntity: (request, onProgress = null, cancellationToken = null) =>
+            requestWorker('queryEntity', request.rootFile, request, onProgress, cancellationToken),
+        controlEntityIndex: action => requestWorker('controlEntityIndex', undefined, { action }),
 
         /**
          * Terminate the worker thread and reject all remaining pending requests.

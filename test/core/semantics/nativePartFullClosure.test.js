@@ -211,7 +211,8 @@ const TEST_DECKS = [
 ];
 
 describe('Category PART Full Closure Phase 2C (Inertia, Field, and All Combinations)', () => {
-    it('verifies configuration metadata and evidence digest locks', () => {
+    // Source and matrix digest locks are checked in publicPartRegistryFixtureSources.test.js.
+    it('retains 49 modular native reader bindings', () => {
         assert.equal(Object.keys(partModularReaders.bindings).length, 49);
     });
 

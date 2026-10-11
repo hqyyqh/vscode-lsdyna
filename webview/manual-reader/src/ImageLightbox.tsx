@@ -1,3 +1,4 @@
+import { Codicon } from '../../shared/Codicon';
 import React, { useEffect, useRef, useState } from 'react';
 
 interface ImageLightboxProps {
@@ -97,11 +98,11 @@ export function ImageLightbox({
         onMouseDown={dismissIfBackdrop}
     >
         <div className="reader-lightbox__toolbar">
-            <button type="button" aria-label={zoomOutLabel} onClick={() => setZoom(value => boundedZoom(value - .25))}>−</button>
+            <button type="button" aria-label={zoomOutLabel} onClick={() => setZoom(value => boundedZoom(value - .25))}><Codicon name="zoom-out" /></button>
             <output aria-live="polite">{Math.round(zoom * 100)}%</output>
-            <button type="button" aria-label={zoomInLabel} onClick={() => setZoom(value => boundedZoom(value + .25))}>+</button>
+            <button type="button" aria-label={zoomInLabel} onClick={() => setZoom(value => boundedZoom(value + .25))}><Codicon name="zoom-in" /></button>
             <button type="button" aria-label={resetLabel} onClick={reset}>1:1</button>
-            <button ref={closeRef} type="button" aria-label={closeLabel} onClick={onClose}>×</button>
+            <button ref={closeRef} type="button" aria-label={closeLabel} onClick={onClose}><Codicon name="close" /></button>
         </div>
         <figure className="reader-lightbox__figure">
             <div ref={stageRef} className="reader-lightbox__stage">

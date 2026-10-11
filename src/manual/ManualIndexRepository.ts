@@ -27,6 +27,7 @@ import { classifyManualMatch } from '../core/manualMatch';
 import {
     dedupeManualChapters,
     keywordKeysForSectionTitle,
+    manualChapterKey,
 } from './manualKeywordResolution';
 export type {
     ManifestDocument,
@@ -125,7 +126,7 @@ function coerceFeatures(raw: Partial<PackFeatures> | undefined, languages: strin
 function defaultLanguageFromManifest(raw: unknown, flavor: PackFlavor): ManualLanguage {
     const value = String(raw || '').trim().toLowerCase();
     if (value.startsWith('zh')) return 'zh';
-    if (value === 'en' || value.startsWith('en')) return 'en';
+    if (value.startsWith('en')) return 'en';
     // Bilingual packs default to Chinese for Chinese-primary audiences.
     return flavor === 'bilingual' ? 'zh' : 'en';
 }
@@ -138,10 +139,9 @@ export function resolvePackCapabilities(packRoot: string, manifest: PackManifest
     let flavor = normalizePackFlavor(manifest.flavor, languages, features);
     // On-disk evidence overrides a missing/unknown flavor declaration.
     if (flavor === 'unknown') {
-        if (features.zhDocuments || features.sentenceMap || features.searchZh) flavor = 'bilingual';
-        else if (languages.length === 0 || languages.every(lang => lang === 'en' || lang.toLowerCase().startsWith('en'))) {
+        if (languages.length === 0 || languages.every(lang => lang.toLowerCase().startsWith('en'))) {
             // No zh signals → treat as English-capable; still unknown if empty legacy.
-            flavor = features.zhDocuments ? 'bilingual' : (languages.length ? 'en' : 'unknown');
+            flavor = languages.length ? 'en' : 'unknown';
         }
     }
     // Explicit en flavor must never claim zh capabilities even if stale files exist.
@@ -155,7 +155,7 @@ export function resolvePackCapabilities(packRoot: string, manifest: PackManifest
     return {
         flavor,
         languages: languages.length ? languages : (flavor === 'en' ? ['en'] : ['en', 'zh-CN']),
-        defaultLanguage: defaultLanguageFromManifest(manifest.defaultLanguage, flavor === 'unknown' && canReadZh ? 'bilingual' : flavor),
+        defaultLanguage: defaultLanguageFromManifest(manifest.defaultLanguage, flavor),
         features,
         canReadZh,
         canToggleLanguage,
@@ -276,16 +276,16 @@ export class ManualIndexRepository {
     }
 
     private static sectionKey(manualId: string, sectionId: string): string {
-        return `${manualId}\u0000${sectionId}`;
+        return manualChapterKey({ manualId, sectionId });
     }
 
     private static locationKey(location: ManualLocation): string {
-        return [
+        return JSON.stringify([
             location.manualId,
             location.sectionId,
             location.anchorId || '',
             location.pdfPage ?? '',
-        ].join('\u0000');
+        ]);
     }
 
     private addKeywordLocation(keyword: string, location: ManualLocation): void {
@@ -315,6 +315,12 @@ export class ManualIndexRepository {
         this.sectionById.clear();
         this.sectionByPath.clear();
         for (const section of this.sections) {
+            // Restore separators for untranslated Chinese titles mangled by the manual pack build pipeline.
+            if (section.titleZh && section.titleZh !== section.titleEn) {
+                if (keywordSkeleton(section.titleZh) === keywordSkeleton(section.titleEn)) {
+                    section.titleZh = section.titleEn;
+                }
+            }
             this.sectionById.set(ManualIndexRepository.sectionKey(section.manualId, section.sectionId), section);
             this.sectionByPath.set(normalizePath(section.pathEn), section);
             if (section.pathZh) this.sectionByPath.set(normalizePath(section.pathZh), section);
@@ -354,7 +360,7 @@ export class ManualIndexRepository {
                 const key = ManualIndexRepository.locationKey(location);
                 const equivalents = this.keywordsByLocation.get(key);
                 if (equivalents) {
-                    if (!equivalents.includes(keyword)) equivalents.push(keyword);
+                    equivalents.push(keyword);
                 } else {
                     this.keywordsByLocation.set(key, [keyword]);
                 }
@@ -477,6 +483,17 @@ export class ManualIndexRepository {
     resolveKeywordLocations(keyword: string): ManualLocation[] {
         this.loadNavigation();
         const requestedKeyword = normalizeKeyword(keyword);
+        const thermal = require('../core/semantics/contactThermal');
+        const binding = thermal.contactThermalBinding(requestedKeyword);
+        if (binding?.value) {
+            const source = thermal.contactThermalSource();
+            const section = this.sectionById.get(ManualIndexRepository.sectionKey(source.source.manual.manualId,
+                source.values[binding.value].manualSectionId));
+            if (section?.titleEn === source.values[binding.value].suffix) return [this.withTitle({
+                manualId:section.manualId,sectionId:section.sectionId,anchorId:section.anchors[0] || null,
+                pdfPage:section.pdfPage ?? null,requestedKeyword,matchedKeyword:'*'+source.values[binding.value].suffix,matchKind:'section',
+            })];
+        }
         for (const candidate of resolveKeywordCandidates(keyword)) {
             const normalized = normalizeKeyword(candidate);
             const exact = this.keywordLocations.get(normalized);
@@ -633,7 +650,7 @@ export class ManualIndexRepository {
             }
         }
         const direct = this.resolveKeyword(needle);
-        if (direct && languages.length > 0) {
+        if (direct) {
             const section = this.getSection(direct.manualId, direct.sectionId)!;
             const key = ManualIndexRepository.sectionKey(direct.manualId, direct.sectionId);
             const existing = results.get(key);

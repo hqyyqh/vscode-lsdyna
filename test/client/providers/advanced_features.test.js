@@ -2368,6 +2368,10 @@ describe('Phase 7 Features', () => {
     });
 
     describe('extension.configureManualsDir command', () => {
+        const setup = require('../../../src/manual/manualSetup');
+        let originalChoose;
+        beforeEach(() => { originalChoose = setup.chooseManualDirectory; setup.chooseManualDirectory = async () => '/path/to/manuals'; });
+        afterEach(() => { setup.chooseManualDirectory = originalChoose; });
         it('should update manualsDir config globally and show success info', async () => {
             const originalShowOpenDialog = vscodeMock.window.showOpenDialog;
             const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
@@ -2480,6 +2484,49 @@ describe('Phase 7 Features', () => {
     });
 
 describe('adjacent field merge choice', () => {
+        for (const keyword of ['SET_PART_LIST', 'SET_PART_LIST_TITLE']) {
+            it(`${keyword}: preserves the display-only boundary for cell deletion and typing`, async () => {
+                const sourceLine = '         1     95200       501';
+                const titled = keyword.endsWith('_TITLE');
+                const line = titled ? 3 : 1;
+                const document = fakeDoc(titled
+                    ? `*${keyword}\nSET_Dummy\n   8100001\n${sourceLine}\n`
+                    : `*${keyword}\n${sourceLine}\n`, '/project/set.k');
+                document.languageId = 'lsdyna';
+                document.version = 1;
+                const selection = new vscodeMock.Selection(line, 27, line, 27);
+                let edits = 0;
+                const editor = { document, selection, selections: [selection],
+                    edit: async () => { edits++; return true; } };
+                const previousEditor = vscodeMock.window.activeTextEditor;
+                const previousExecute = vscodeMock.commands.executeCommand;
+                const commands = [];
+                vscodeMock.window.activeTextEditor = editor;
+                vscodeMock.commands.executeCommand = async (...args) => commands.push(args);
+                const guard = ensureCardCellEditGuard();
+                guard.clearNav();
+                try {
+                    const info = require('../../../src/core/keywordSchema')
+                        .getCardInfoForDocumentLine(document, line);
+                    assert.equal(info.resolutionSource, 'native-file-reader');
+                    assert.ok(info.card.every(field => field.nativeIdentity));
+                    assert.equal(getCardFieldsForLine(document, line), null);
+                    await handleCardCellDelete('left');
+                    guard.markAp(document, line, 2, 27);
+                    await handleCardCellType({ text: '9' });
+                    assert.deepStrictEqual(commands, [['deleteLeft'], ['default:type', { text: '9' }]]);
+                    assert.equal(edits, 0, 'display evidence must not authorize automatic cell rewrites');
+                    assert.deepStrictEqual(new LsdynaEditChoiceCompletionProvider()
+                        .provideCompletionItems(document, selection.active), []);
+                } finally {
+                    clearInlineEditChoiceSession();
+                    guard.clearNav();
+                    vscodeMock.window.activeTextEditor = previousEditor;
+                    vscodeMock.commands.executeCommand = previousExecute;
+                }
+            });
+        }
+
         it('cancels an open inline edit choice on Backspace without deleting source bytes', async () => {
             const sourceLine = '         1     95200       501';
             const document = fakeDoc(`*SET_PART_LIST\n${sourceLine}\n`, '/project/set.k');
@@ -2524,17 +2571,20 @@ describe('adjacent field merge choice', () => {
             }
         });
 
-        it('merges the sample SET_PART fields atomically after explicit confirmation', async () => {
+        it('merges adjacent fixed fields atomically after explicit confirmation', async () => {
             const sourceLine = '  92201101  92201301  93200101  93700101  95200001  95200301     95200       501';
             const document = fakeDoc(
-                `*SET_PART_LIST_TITLE\nSET_Dummy\n   8100001\n${sourceLine}\n`,
-                '/project/set.k',
+                `*DEFINE_CURVE\n${sourceLine}\n`,
+                '/project/curve.k',
             );
             document.languageId = 'lsdyna';
             document.version = 1;
+            assert.deepStrictEqual(getCardFieldsForLine(document, 1).slice(6).map(field =>
+                [field.n, field.p, field.w, field.t]),
+            [['DATTYP', 60, 10, 'integer'], ['LCINT', 70, 10, 'integer']]);
             const selection = new vscodeMock.Selection(
-                new vscodeMock.Position(3, 77),
-                new vscodeMock.Position(3, 77),
+                new vscodeMock.Position(1, 77),
+                new vscodeMock.Position(1, 77),
             );
             let replacement = null;
             let editOptions = null;
@@ -2586,13 +2636,13 @@ describe('adjacent field merge choice', () => {
         });
 
         it('leaves the row untouched when the user keeps the fields separate', async () => {
-            const sourceLine = '         1     95200       501';
-            const document = fakeDoc(`*SET_PART_LIST\n${sourceLine}\n`, '/project/set.k');
+            const sourceLine = '  92201101  92201301  93200101  93700101  95200001  95200301     95200       501';
+            const document = fakeDoc(`*DEFINE_CURVE\n${sourceLine}\n`, '/project/curve.k');
             document.languageId = 'lsdyna';
             document.version = 1;
             const selection = new vscodeMock.Selection(
-                new vscodeMock.Position(1, 27),
-                new vscodeMock.Position(1, 27),
+                new vscodeMock.Position(1, 77),
+                new vscodeMock.Position(1, 77),
             );
             let editCalled = false;
             const editor = {
@@ -2689,17 +2739,17 @@ describe('empty fixed-width field typing', () => {
             }
         });
 
-        it('previews both valid shared-boundary meanings before writing a SET_PART value', async () => {
+        it('previews both valid shared-boundary meanings before writing a fixed-field value', async () => {
             const sourceLine = '  92201101  92201301  93200101  93700101  95200001  95200301  95200501';
             const document = fakeDoc(
-                `*SET_PART_LIST_TITLE\nSET_Dummy\n   8100001\n${sourceLine}\n`,
-                '/project/set.k',
+                `*DEFINE_CURVE\n${sourceLine}\n`,
+                '/project/curve.k',
             );
             document.languageId = 'lsdyna';
             document.version = 1;
             const selection = new vscodeMock.Selection(
-                new vscodeMock.Position(3, 70),
-                new vscodeMock.Position(3, 70),
+                new vscodeMock.Position(1, 70),
+                new vscodeMock.Position(1, 70),
             );
             let selectionValue = selection;
             let replacement = null;
@@ -2725,7 +2775,7 @@ describe('empty fixed-width field typing', () => {
             // A collapsed A-prime mark can survive at the same physical boundary
             // after navigation. Without an active typing session it must not own
             // the next keystroke or suppress the two valid interpretations.
-            guard.markAp(document, 3, 6, 70);
+            guard.markAp(document, 1, 6, 70);
 
             try {
                 await handleCardCellType({ text: '9' });

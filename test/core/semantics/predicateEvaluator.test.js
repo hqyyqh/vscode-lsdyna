@@ -69,6 +69,21 @@ describe('manual semantic predicate evaluator', () => {
         ], { currentValue: 1 }).reason, 'overlapping-branches');
     });
 
+    it('keeps a true branch unresolved while another branch can still match', () => {
+        const relation = { branches: [
+            { when: { op: 'gt', value: 0 }, role: 'reference' },
+            { when: { field: 'FLAG', op: 'eq', value: 1 }, role: 'literal' },
+        ] };
+        for (const fields of [{}, { FLAG: '&UNKNOWN' }]) {
+            const result = resolveValueRole(relation, 42, { fields });
+            assert.equal(result.state, 'indeterminate');
+            assert.equal(result.reason, 'predicate-indeterminate');
+            assert.equal(result.branch, undefined);
+        }
+        assert.equal(resolveValueRole(relation, 42, { fields: { FLAG: 0 } }).role, 'reference');
+        assert.equal(resolveValueRole(relation, 42, { fields: { FLAG: 1 } }).reason, 'overlapping-branches');
+    });
+
     it('applies only the ID transform explicitly selected by a value branch', () => {
         const relation = {
             kind: 'entity-reference',

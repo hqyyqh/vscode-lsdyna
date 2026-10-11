@@ -36,8 +36,8 @@ export function keywordKeysForSectionTitle(title: string): string[] {
     return value.split('/').flatMap(segmentKeys);
 }
 
-export function manualChapterKey(location: ManualLocation): string {
-    return `${location.manualId}\u0000${location.sectionId}`;
+export function manualChapterKey(location: Pick<ManualLocation, 'manualId' | 'sectionId'>): string {
+    return JSON.stringify([location.manualId, location.sectionId]);
 }
 
 export function dedupeManualChapters(locations: ManualLocation[]): ManualLocation[] {

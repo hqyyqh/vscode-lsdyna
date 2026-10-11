@@ -16,7 +16,6 @@ import {
     KeywordManagerSelectFieldRequest,
     KeywordManagerSelectFormRequest,
     KeywordManagerUpdateControlRequest,
-    KeywordManagerSelectScopeRequest,
     KeywordManagerLocateSourceRequest,
     KeywordManagerOpenManualRequest,
     KeywordManagerSelectInstanceRequest,
@@ -35,10 +34,9 @@ export type KeywordOptionsWebviewActions = {
     selectPostCount: (targetPostCount: number) => boolean | Promise<boolean>;
     updateControl: (controlId: string, value: string | boolean) => boolean | Promise<boolean>;
     selectForm: (ruleId: string) => boolean | Promise<boolean>;
-    selectInstance: (instanceId: string) => boolean | Promise<boolean>;
+    selectInstance: (instanceId: string) => boolean | string | Promise<boolean | string>;
     selectField: (request: KeywordManagerHelpRequest) => KeywordManagerHelpState | null;
     updateField: (fieldId: string, value: string) => boolean | Promise<boolean>;
-    selectScope: (scope: 'file' | 'project') => boolean | Promise<boolean>;
     locateSource: () => boolean | Promise<boolean>;
     openManual: (conditionId?: string, evidenceId?: string) => boolean | Promise<boolean>;
     panelDisposed?: () => void;
@@ -124,6 +122,11 @@ export class KeywordOptionsWebviewProvider implements vscode.Disposable {
 
     isOpen(): boolean { return !!this.panel; }
 
+    getActiveSourceUri(): vscode.Uri | null {
+        const uri = this.panel?.active && this.state.instanceContext?.uri;
+        return uri ? vscode.Uri.parse(uri) : null;
+    }
+
     dispose(): void {
         this.detach(this.participant);
         this.panel?.dispose();
@@ -136,7 +139,7 @@ export class KeywordOptionsWebviewProvider implements vscode.Disposable {
 
     private async mutate(
         revision: number,
-        action: () => boolean | Promise<boolean>,
+        action: () => boolean | string | Promise<boolean | string>,
         applying = false,
     ): Promise<KeywordOptionsMutationResult> {
         if (this.mutationPending) {
@@ -149,13 +152,14 @@ export class KeywordOptionsWebviewProvider implements vscode.Disposable {
         this.mutationPending = true;
         try {
             if (applying) this.publish({ ...before, status: 'applying', canApply: false });
-            const accepted = !!(await action());
+            const outcome = await action();
+            const accepted = outcome === true;
             if (applying && this.state.status === 'applying') this.publish({ ...before,
                 instances: this.state.instances, directoryStatus: this.state.directoryStatus });
             return {
                 accepted,
                 state: this.state,
-                ...(accepted ? {} : { reason: 'action-rejected' }),
+                ...(accepted ? {} : { reason: typeof outcome === 'string' ? outcome : 'action-rejected' }),
             };
         } catch (error) {
             if (applying && this.state.status === 'applying') this.publish({ ...before,
@@ -196,8 +200,6 @@ export class KeywordOptionsWebviewProvider implements vscode.Disposable {
                 }, sender),
             this.messenger.onRequest(KeywordManagerUpdateFieldRequest, request =>
                 this.mutate(request.revision, () => this.actions.updateField(request.fieldId, request.value)), sender),
-            this.messenger.onRequest(KeywordManagerSelectScopeRequest, request =>
-                this.mutate(request.revision, () => this.actions.selectScope(request.scope)), sender),
             this.messenger.onRequest(KeywordManagerLocateSourceRequest, request =>
                 this.accepts(request.revision) && this.actions.locateSource(), sender),
             this.messenger.onRequest(KeywordManagerOpenManualRequest, request =>
@@ -227,7 +229,7 @@ export class KeywordOptionsWebviewProvider implements vscode.Disposable {
         const css = (entry.css || []).map((file: string) =>
             `<link rel="stylesheet" href="${webview.asWebviewUri(vscode.Uri.file(path.join(dist, file)))}">`).join('');
         const nonce = Math.random().toString(36).slice(2);
-        const csp = `default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
-        return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="root"></div><script nonce="${nonce}" type="module" src="${script}"></script></body></html>`;
+        const csp = `default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
+        return `<!doctype html><html lang="${this.state.locale === 'zh' ? 'zh-CN' : 'en'}"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="root"></div><script nonce="${nonce}" type="module" src="${script}"></script></body></html>`;
     }
 }

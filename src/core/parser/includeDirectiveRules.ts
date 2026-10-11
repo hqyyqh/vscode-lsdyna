@@ -24,7 +24,6 @@ export type IncludeDirectiveRule = {
  */
 export function getIncludeDirectiveRule(keyword: string): IncludeDirectiveRule | null {
     const kw = String(keyword || '').trim().toUpperCase();
-    if (!kw) return null;
 
     if (kw === '*INCLUDE') {
         return { repeatable: true, filenameCard: 1 };

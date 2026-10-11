@@ -49,7 +49,7 @@ function joinRelative(segments: string[], preferBackslash: boolean): string {
 }
 
 function prefersBackslash(fileName: string): boolean {
-    return String(fileName || '').includes('\\') && !String(fileName || '').includes('/');
+    return fileName.includes('\\') && !fileName.includes('/');
 }
 
 /**
@@ -66,8 +66,8 @@ export async function resolveIncludeOsPath(
         try {
             await io.access(fullPath, fs.constants.F_OK);
             return fullPath;
-        } catch (_error) {
-            // continue
+        } catch (error) {
+            if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
         }
     }
     return null;
@@ -91,6 +91,11 @@ export async function comparePathSegmentsToDisk(
 
     for (let index = 0; index < deckSegments.length; index++) {
         const deckSeg = deckSegments[index];
+        if (deckSeg === '..') {
+            realSegments.push(deckSeg);
+            current = path.dirname(current);
+            continue;
+        }
         let entries: Array<{ name: string }>;
         try {
             entries = await io.readdir(current, { withFileTypes: true });
@@ -156,7 +161,8 @@ export async function resolveIncludeWithCaseCheck(
     const raw = String(fileName || '').trim();
     if (!raw) return { status: 'missing' };
 
-    const resolvedPath = await resolveIncludeOsPath(raw, searchPaths, io);
+    const roots = (searchPaths || []).filter(Boolean).map(searchPath => path.resolve(searchPath));
+    const resolvedPath = await resolveIncludeOsPath(raw, roots, io);
     if (!resolvedPath) return { status: 'missing' };
 
     // Absolute deck paths: compare trailing segments under path.parse root.
@@ -172,7 +178,7 @@ export async function resolveIncludeWithCaseCheck(
     } else {
         // Find which search root was used (first successful root).
         rootForWalk = '';
-        for (const searchPath of searchPaths || []) {
+        for (const searchPath of roots) {
             if (!searchPath) continue;
             const candidate = path.resolve(searchPath, raw);
             if (path.normalize(candidate) === path.normalize(resolvedPath)

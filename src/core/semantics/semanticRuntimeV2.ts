@@ -129,6 +129,7 @@ export type KeywordOptionGrammarV2 = {
 };
 
 type ShardDescriptor = {
+    codec?: 'gzip' | 'br';
     prefix: string;
     path: string;
     records: number;
@@ -205,7 +206,9 @@ function validateManifest(raw: any): SemanticRuntimeCatalogV2Manifest {
     const descriptors = [...(raw.referenceShards || []), ...(raw.optionShards || [])];
     assertContract(descriptors.length > 0 && descriptors.every((descriptor: any) =>
         /^[0-9a-f]$/.test(descriptor.prefix || '') &&
-        /^[a-z]+\/[0-9a-f]\.json\.gz$/.test(descriptor.path || '') &&
+        /^[a-z]+\/[0-9a-f]\.json\.(gz|br)$/.test(descriptor.path || '') &&
+        (descriptor.codec === undefined || descriptor.codec === 'gzip' || descriptor.codec === 'br') &&
+        descriptor.path.endsWith(descriptor.codec === 'br' ? '.br' : '.gz') &&
         Number.isInteger(descriptor.records) && descriptor.records >= 0 &&
         descriptor.compressedBytes <= capacity.maxCompressedShardBytes &&
         descriptor.uncompressedBytes <= capacity.maxUncompressedShardBytes &&
@@ -392,7 +395,8 @@ export class SemanticRuntimeCatalogV2 {
         const compressed = prepared?.compressed || fs.readFileSync(path.join(this.root, descriptor.path));
         assertContract(compressed.length === descriptor.compressedBytes && sha256(compressed) === descriptor.sha256,
             `semantic ${domain} shard compressed drift: ${prefix}`);
-        const raw = prepared?.raw || zlib.gunzipSync(compressed, { maxOutputLength: descriptor.uncompressedBytes });
+        const decode = descriptor.codec === 'br' ? zlib.brotliDecompressSync : zlib.gunzipSync;
+        const raw = prepared?.raw || decode(compressed, { maxOutputLength: descriptor.uncompressedBytes });
         assertContract(raw.length === descriptor.uncompressedBytes && sha256(raw) === descriptor.contentSha256,
             `semantic ${domain} shard content drift: ${prefix}`);
         const payload = JSON.parse(raw.toString('utf8'));
@@ -416,6 +420,8 @@ export class SemanticRuntimeCatalogV2 {
     prepareReferences(): Promise<{ records: any[]; scanners: any[] }> {
         if (this.preparation) return this.preparation;
         this.preparation = (async () => {
+            // Sync failures remain sticky for this catalog, including failures in the options domain.
+            assertContract(!this.failureReasonValue, this.failureReasonValue);
             if (!this.manifestValue) this.manifest(await fs.promises.readFile(path.join(this.root, 'manifest.json'), 'utf8'));
             const records = [], scanners = [];
             for (const descriptor of this.manifest().referenceShards) {
@@ -425,13 +431,18 @@ export class SemanticRuntimeCatalogV2 {
                     const compressed = await fs.promises.readFile(path.join(this.root, descriptor.path));
                     assertContract(compressed.length === descriptor.compressedBytes && sha256(compressed) === descriptor.sha256,
                         `semantic references shard compressed drift: ${descriptor.prefix}`);
-                    const raw = await new Promise<Buffer>((resolve, reject) => zlib.gunzip(compressed,
-                        { maxOutputLength: descriptor.uncompressedBytes }, (error, value) => error ? reject(error) : resolve(value)));
+                    const raw = await new Promise<Buffer>((resolve, reject) => {
+                        const done = (error: Error | null, value: Buffer) => error ? reject(error) : resolve(value);
+                        const options = { maxOutputLength: descriptor.uncompressedBytes };
+                        if (descriptor.codec === 'br') zlib.brotliDecompress(compressed, options, done);
+                        else zlib.gunzip(compressed, options, done);
+                    });
                     records.push(...this.load('references', descriptor.prefix, { compressed, raw }));
                 }
                 scanners.push(...(this.cache.get(`references:${descriptor.prefix}`)?.scanners || []));
                 await new Promise<void>(resolve => setImmediate(resolve));
             }
+            assertContract(!this.failureReasonValue, this.failureReasonValue);
             return { records, scanners };
         })().finally(() => { this.preparation = null; });
         return this.preparation;

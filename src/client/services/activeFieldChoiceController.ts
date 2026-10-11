@@ -200,7 +200,7 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
                 return deps.executeCommand(COMMAND_ID, request);
             }
             return undefined;
-        }, () => {
+        }).catch(() => {
             discoveryPending = false;
         });
     }
@@ -260,7 +260,7 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
         try {
             const plan = deps.plan(document, position, { expectedDocumentVersion: version, maximumKeywordLookback: 0 });
             if (plan && typeof (plan as Promise<any>).then === 'function') {
-                void Promise.resolve(plan).then(accept, () => accept(null));
+                void Promise.resolve(plan).then(accept).catch(() => accept(null));
                 return null;
             }
             return accept(plan as OfficialFieldChoicePlan | null);

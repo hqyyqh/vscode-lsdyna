@@ -35,6 +35,32 @@ describe('keywordSchema resolver', () => {
         assert.strictEqual(lookupKeywordSchema('mixed', { Mixed: base, MIXED: exact }).entry, exact);
     });
 
+    it('resolves complete alias chains and merges their active options with suffix options', () => {
+        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const base = { c: [], active: ['BASE'] };
+        const middle = { c: [], x: 'base', active: ['title', 'BASE'] };
+        const alias = { c: [], x: 'middle', active: ['outer'],
+            o: [{ n: 'EXTRA', c: [], co: 'title/1', to: 1 }] };
+        const schema = { BASE: base, Middle: middle, ALIAS: alias };
+        const found = lookupKeywordSchema('ALIAS_EXTRA', schema);
+        assert.strictEqual(found.entry, base);
+        assert.equal(found.canonicalName, 'BASE');
+        assert.deepEqual(found.activeOptions, ['OUTER', 'TITLE', 'BASE', 'EXTRA']);
+        assert.equal(alias.x, 'middle');
+        assert.equal(middle.x, 'base');
+        assert.deepEqual(middle.active, ['title', 'BASE']);
+    });
+
+    it('rejects missing, ambiguous and cyclic alias targets without using intermediate cards', () => {
+        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+        const alias = x => ({ c: [[{ n: 'INTERMEDIATE', t: 'integer', p: 0, w: 10 }]], x });
+        assert.equal(lookupKeywordSchema('A', { A: alias('MISSING') }), null);
+        assert.equal(lookupKeywordSchema('A', { A: alias('A') }), null);
+        assert.equal(lookupKeywordSchema('A', { A: alias('B'), B: alias('A') }), null);
+        assert.equal(lookupKeywordSchema('A', { A: alias('B'), B: alias('C') }), null);
+        assert.equal(lookupKeywordSchema('A', { A: alias('mixed'), Mixed: { c: [] }, miXed: { c: [] } }), null);
+    });
+
     it('keeps COMMENT bodies opaque to field resolution', () => {
         const { resolveCardForDocumentLine } = require('../../src/core/keywordSchema');
         const doc = fakeDoc('*COMMENT\n$# fields\nordinary text\n*END');
@@ -87,6 +113,31 @@ describe('keywordSchema resolver', () => {
         assert.equal(rendered[1][0].n, 'MID');
     });
 
+    it('renders the current catalog multi-hop aliases from their final entry and all source options', () => {
+        const { loadKeywordSchema, lookupKeywordSchema, getRenderedCards, getCardInfoForDocumentLine } =
+            require('../../src/core/keywordSchema');
+        const schema = loadKeywordSchema();
+        let multiHop = 0;
+        for (const [keyword, source] of Object.entries(schema)) {
+            const first = source.x && schema[source.x];
+            if (!first?.x) continue;
+            multiHop++;
+            const lookup = lookupKeywordSchema(keyword, schema);
+            assert.ok(lookup, keyword);
+            assert.equal(lookup.entry.x, undefined, keyword);
+            assert.strictEqual(lookup.entry, schema[lookup.canonicalName], keyword);
+            const rendered = getRenderedCards(lookup.entry, lookup.activeOptions);
+            assert.equal(rendered[0][0].n, 'TITLE', keyword);
+            assert.strictEqual(rendered[1][0], lookup.entry.c[0][0], keyword);
+            const document = fakeDoc(`*${keyword}\nChain title\n       731\n*END`);
+            const header = getCardInfoForDocumentLine(document, 2, schema);
+            assert.equal(header?.cardIndex, 2, keyword);
+            assert.equal(header?.card[0].n, lookup.entry.c[0][0].n, keyword);
+            assert.equal(schema[keyword].x, source.x, keyword);
+        }
+        assert.equal(multiHop, 20);
+    });
+
     it('uses the verified leading-card count across TITLE, ID, and MPP families', () => {
         const {
             getLeadingMaterialTitleCardCount,
@@ -113,6 +164,7 @@ describe('keywordSchema resolver', () => {
         const {
             getRenderedCardsForLookup,
             getVerifiedPrefixLayout,
+            getVerifiedPrefixLayoutSteps,
             lookupKeywordSchema,
         } = require('../../src/core/keywordSchema');
 
@@ -141,7 +193,21 @@ describe('keywordSchema resolver', () => {
         const withMarker = getVerifiedPrefixLayout(contact, ['', '', '&']);
         assert.deepEqual(withMarker.cards.map(card => card[0].n), ['CID', 'IGNORE', '&']);
         assert.deepEqual(withMarker.cards[2].map(field => field.n), ['&', 'CHKSEGS', 'PENSF', 'GRPABLE', 'IGTOL']);
-        assert.equal(getRenderedCardsForLookup(contact, ['', '', '&'])[3][0].n, 'SSID');
+        const body = getRenderedCardsForLookup(contact, ['', '', '&'])[3];
+        const nativeForm = require("../../src/core/semantics/catalogInputFormCatalogV4")
+            .getCatalogInputFormCatalogV4().formForKeyword(contact.inputName);
+        const nativeBody = Object.values(nativeForm.rules).flatMap(rule => rule.cards || [])
+            .find(card => card.cardRecordId === "record:3c11134d2da44eeb1b070a21:440dd31a8a6ca9beaef27bb6");
+        assert.equal(nativeBody.fields[0].fieldRecordId, "record:3c11134d2da44eeb1b070a21:ced317ff062626eddb57498d");
+        assert.equal(nativeBody.fields[0].name, 'SURFA');
+        assert.deepEqual({ name: body[0].n, position: body[0].p, width: body[0].w },
+            { name: nativeBody.fields[0].name, position: nativeBody.fields[0].serializationPosition,
+                width: nativeBody.fields[0].serializationWidth });
+        const steps = getVerifiedPrefixLayoutSteps('CONTACT_AUTOMATIC_SINGLE_SURFACE', ['ID', 'MPP']);
+        assert.deepEqual(steps.map(step => step.card[0].n), ['CID', 'IGNORE', '&']);
+        assert.deepEqual(steps[2].recordMarker, { kind: 'column-one', value: '&' });
+        assert.ok(steps.every(step => step.evidenceIds.length > 0));
+        assert.equal(getVerifiedPrefixLayoutSteps('MAT_001', ['ID', 'MPP']), null);
     });
 
     it('fails closed for the two manual-denied DEFINE_FUNCTION TITLE spellings', () => {
@@ -182,9 +248,8 @@ describe('keywordSchema resolver', () => {
     it('rejects prefix matches when leftover suffix is not a known option', () => {
         const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
 
-        // Valid base + ID exists, but ID_OFFSET is not a schema option combination
-        // (correct form is OFFSET_ID / BEAM_OFFSET_ID). Must not soft-match as known.
-        const invalid = lookupKeywordSchema('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET');
+        // Unknown options must not turn a valid CONTACT prefix into a known name.
+        const invalid = lookupKeywordSchema('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_UNKNOWN');
         assert.equal(invalid, null);
 
         const validOffsetId = lookupKeywordSchema('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_OFFSET_ID');
@@ -353,14 +418,14 @@ describe('keywordSchema resolver', () => {
         }
     });
 
-    it('resolves SET_NODE_TITLE and SET_PART_TITLE aliases to LIST title variants', () => {
-        const { lookupKeywordSchema } = require('../../src/core/keywordSchema');
+    it('resolves SET_NODE_TITLE and SET_PART_TITLE aliases through LIST title variants', () => {
+        const { lookupKeywordSchema, getRenderedCards } = require('../../src/core/keywordSchema');
 
         for (const [keyword, canonical] of [
-            ['SET_NODE_TITLE', 'SET_NODE_LIST_TITLE'],
-            ['*SET_NODE_TITLE', 'SET_NODE_LIST_TITLE'],
-            ['SET_PART_TITLE', 'SET_PART_LIST_TITLE'],
-            ['*SET_PART_TITLE', 'SET_PART_LIST_TITLE'],
+            ['SET_NODE_TITLE', 'SET_NODE_LIST'],
+            ['*SET_NODE_TITLE', 'SET_NODE_LIST'],
+            ['SET_PART_TITLE', 'SET_PART_LIST'],
+            ['*SET_PART_TITLE', 'SET_PART_LIST'],
         ]) {
             const lookup = lookupKeywordSchema(keyword);
 
@@ -368,6 +433,9 @@ describe('keywordSchema resolver', () => {
             assert.equal(lookup.canonicalName, canonical);
             assert.deepEqual(lookup.activeOptions, ['TITLE']);
             assert.equal(lookup.entry.c[0][0].n, 'SID');
+            const rendered = getRenderedCards(lookup.entry, lookup.activeOptions);
+            assert.equal(rendered[0][0].n, 'TITLE');
+            assert.equal(rendered[1][0].n, 'SID');
         }
     });
 

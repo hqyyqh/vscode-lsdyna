@@ -121,7 +121,7 @@ export type DecodedField = {
     name: string;
     raw: string;
     value?: unknown;
-    state: 'known' | 'blank' | 'parameter' | 'invalid';
+    state: 'known' | 'blank' | 'parameter' | 'invalid' | 'unsupported';
     typeCode?: string;
 };
 

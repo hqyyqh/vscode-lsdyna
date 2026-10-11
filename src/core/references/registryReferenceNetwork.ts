@@ -33,7 +33,6 @@ function namespaceMatches(query, occurrence) {
     const occurrenceDefinitions = normalizedSet(occurrence?.targetDefinitions, normalizeKeyword);
     const kindMatch = [...queryKinds].some(value => occurrenceKinds.has(value));
     const definitionMatch = [...queryDefinitions].some(value => occurrenceDefinitions.has(value));
-    if (queryKinds.size === 0 && queryDefinitions.size === 0) return false;
     return kindMatch || definitionMatch;
 }
 
@@ -149,13 +148,26 @@ function queryFromReferenceSource(
     }
     return {
         state: 'ready',
-        query: { id: analysis.id, targetKinds, targetDefinitions },
+        query: { id: analysis.id, targetKinds: analysis.targetKinds || targetKinds,
+            targetDefinitions: analysis.targetDefinitions || targetDefinitions },
         analysis,
         reasons: [],
     };
 }
 
-function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false } = {}) {
+function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false, query = null } = {} as any) {
+    if (query && occurrence.occurrenceId === undefined) {
+        const contexts = require('./projectReferenceIndex').parameterContextsForDocument(referenceIndex, occurrence.filePath);
+        if (contexts.length > 1) {
+            const bindings = contexts.map(context => occurrenceBinding(referenceIndex,
+                { ...occurrence, occurrenceId: context.occurrenceId }, { bindingOnly }));
+            const selected = bindings.find(binding => binding.ready && entityIdentityEquals(binding.analysis.id, query.id) &&
+                (!binding.analysis.targetSelection || namespaceMatches(query, binding.analysis))) ||
+                bindings.find(binding => binding.ready) || bindings[0];
+            return { ...selected, unresolvedOccurrenceReasons: [...new Set(bindings.filter(binding => !binding.ready)
+                .flatMap(binding => binding.blockingReasons.length ? binding.blockingReasons : ['reference-binding-indeterminate']))] };
+        }
+    }
     const analysis = analyzeReference(
         referenceIndex,
         occurrence.referenceValue,
@@ -163,6 +175,7 @@ function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false } =
         {
             projectScoped: true,
             documentPath: occurrence.filePath,
+            occurrenceId: occurrence.occurrenceId,
             lineIndex: occurrence.lineIndex,
             targetDefinitions: occurrence.targetDefinitions,
         },
@@ -170,6 +183,7 @@ function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false } =
     const blockingReasons = bindingOnly
         ? [...new Set([
             ...(analysis.transformResolution?.reasons || []),
+            ...(analysis.targetSelection?.ready === false ? analysis.targetSelection.reasons : []),
             ...(occurrence.referenceValue.kind === 'parameter' &&
                 analysis.parameterResolution?.resolved !== true
                 ? analysis.parameterResolution?.reasons || ['parameter-unresolved']
@@ -191,6 +205,7 @@ function collectRegistryReferenceMatches(
         maxMatches?: number;
         cancellationToken?: { isCancellationRequested?: boolean };
         retainVerifiedMatchesOnIncomplete?: boolean;
+        resolvedCoverageGaps?: Set<any>;
     } = {},
 ) {
     const result = {
@@ -207,7 +222,8 @@ function collectRegistryReferenceMatches(
     }
     const hasScopedCoverage = Array.isArray(referenceIndex?.registryReferenceCoverageGaps);
     const relevantGaps = hasScopedCoverage
-        ? referenceIndex.registryReferenceCoverageGaps.filter(gap => coverageGapMatches(query, gap))
+        ? referenceIndex.registryReferenceCoverageGaps.filter(gap => coverageGapMatches(query, gap) &&
+            !options.resolvedCoverageGaps?.has(gap))
         : [];
     if (relevantGaps.length > 0) {
         if (options.retainVerifiedMatchesOnIncomplete === true) {
@@ -254,7 +270,12 @@ function collectRegistryReferenceMatches(
         result.namespaceCandidates += 1;
         const binding = occurrenceBinding(referenceIndex, occurrence, {
             bindingOnly: options.retainVerifiedMatchesOnIncomplete === true,
+            query,
         });
+        if (binding.unresolvedOccurrenceReasons?.length) {
+            result.state = 'incomplete';
+            result.reasons.push(...binding.unresolvedOccurrenceReasons);
+        }
         if (!binding.ready) {
             result.state = 'incomplete';
             result.indeterminateCandidates += 1;
@@ -266,6 +287,11 @@ function collectRegistryReferenceMatches(
             continue;
         }
         if (!entityIdentityEquals(binding.analysis.id, query.id)) continue;
+        if (binding.analysis.targetSelection && !namespaceMatches(query, binding.analysis)) continue;
+        if (occurrence.targetDefinitionUnavailable) {
+            result.state = 'incomplete';
+            result.reasons.push('lspp-target-definition-layout-unresolved');
+        }
         const key = [
             normalizeFilePath(occurrence.filePath),
             occurrence.lineIndex,

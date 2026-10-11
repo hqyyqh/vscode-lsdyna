@@ -46,11 +46,10 @@ class ByteLru<T> {
         this.entries.set(key, { value, bytes: normalizedBytes });
         this.totalBytes += normalizedBytes;
         while (this.totalBytes > this.maximumBytes && this.entries.size > 0) {
-            const oldestKey = this.entries.keys().next().value;
-            if (oldestKey === undefined) break;
-            const oldest = this.entries.get(oldestKey);
+            const oldestKey = this.entries.keys().next().value!;
+            const oldest = this.entries.get(oldestKey)!;
             this.entries.delete(oldestKey);
-            this.totalBytes -= oldest?.bytes || 0;
+            this.totalBytes -= oldest.bytes;
         }
     }
 

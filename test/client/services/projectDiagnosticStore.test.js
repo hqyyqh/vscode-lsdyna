@@ -71,6 +71,27 @@ describe('createProjectDiagnosticStore', () => {
         assert.deepStrictEqual(collection.sets.get(shared), [diagA, diagB]);
     });
 
+    it('keeps a normalized root candidate for an empty exported root string', () => {
+        const { createProjectDiagnosticStore } = require('../../../out/client/services/projectDiagnosticStore');
+        const path = require('node:path');
+        const sets = new Map();
+        const collection = { set(uri, diagnostics) { sets.set(uri.fsPath, diagnostics); },
+            delete(uri) { sets.delete(uri.fsPath); } };
+        const child = '/project/child.k';
+        const diagnostic = { message: 'root contribution' };
+        const store = createProjectDiagnosticStore(collection, {
+            resolveRootForFile(filePath, roots) {
+                assert.equal(filePath, child);
+                if (roots.length) assert.deepStrictEqual(roots, [path.normalize('')]);
+                return roots.find(Boolean) || null;
+            },
+        });
+        store.publish('', new Map([[child, [diagnostic]]]));
+        assert.deepStrictEqual(sets.get(child), [diagnostic]);
+        store.clear('');
+        assert.equal(sets.has(child), false);
+    });
+
     it('clears every project contribution and remains reusable', () => {
         const { createProjectDiagnosticStore } = require('../../../out/client/services/projectDiagnosticStore');
         const collection = {

@@ -16,9 +16,15 @@ export type EntityReferenceLocationItem = {
     role: 'definition' | 'reference';
     label: string;
     description: string;
+    fileLabel?: string;
+    line?: number;
     detail: string;
     keyword?: string;
     fieldName?: string;
+    entityId?: string;
+    entityName?: string;
+    entityKind?: string;
+    entityKindLabel?: string;
 };
 
 export type EntityReferenceSessionSummary = {
@@ -31,12 +37,18 @@ export type EntityReferenceSessionSummary = {
     scopePath?: string;
     definitionCount: number;
     referenceCount: number;
+    entityId?: string;
+    entityKindLabel?: string;
+    entityName?: string;
+    keyword?: string;
 };
 
 export type EntityReferencesViewState = {
     locale?: 'en' | 'zh';
     following: boolean;
     revision: number;
+    /** A bounded next page, appended only to this exact preceding view revision. */
+    appendPage?: { baseRevision: number; role: 'definition' | 'reference' };
     input: {
         targetKind: string;
         id: string;
@@ -55,6 +67,7 @@ export type EntityReferencesViewState = {
     activeSession: EntityReferenceSessionSummary | null;
     definitions: EntityReferenceLocationItem[];
     references: EntityReferenceLocationItem[];
+    referenceGroupCounts?: Record<string, number>;
     hasMoreDefinitions: boolean;
     hasMoreReferences: boolean;
     reasons: string[];

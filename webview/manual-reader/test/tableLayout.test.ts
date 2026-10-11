@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    MANUAL_TABLE_MARKER_RE,
     inferTableKindFromHeaders,
     parseManualTableMarker,
     resolveTableKind,
@@ -12,6 +13,19 @@ describe('tableLayout', () => {
         expect(parseManualTableMarker('<!--manual-table:variable-desc-->')).toBe('prose');
         expect(parseManualTableMarker('<!-- manual-table:variable-desc -->')).toBe('prose');
         expect(parseManualTableMarker('<!-- other -->')).toBeNull();
+    });
+
+    it('preserves the null contract when the exported expression is recompiled', () => {
+        const { source, flags } = MANUAL_TABLE_MARKER_RE;
+        try {
+            MANUAL_TABLE_MARKER_RE.compile('<!-- manual-table:(future-kind) -->', 'i');
+            expect(parseManualTableMarker('<!-- manual-table:future-kind -->')).toBeNull();
+            expect(resolveTableKind(parseManualTableMarker('<!-- manual-table:future-kind -->'), 'prose')).toBe('prose');
+        } finally {
+            MANUAL_TABLE_MARKER_RE.compile(source, flags);
+        }
+        expect(parseManualTableMarker('<!-- manual-table:card-grid -->')).toBe('grid');
+        expect(parseManualTableMarker('<!-- manual-table:variable-desc -->')).toBe('prose');
     });
 
     it('infers prose and grid from headers aligned with Manual-Build vocabulary', () => {

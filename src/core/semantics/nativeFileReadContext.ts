@@ -3,15 +3,19 @@ import { nativeControlResolver, type NativeParameterContext } from './nativePara
 import { nativeConditionalBinding, selectConditionalLayout } from './nativeConditionalLayout';
 import { nativeCountedOccurrenceBinding, selectCountedOccurrenceLayout } from './nativeCountedOccurrenceLayout';
 import { nativeReadInputFormat, nativeReadInputFailure } from './nativeInputFormat';
+import { nativeFordFeatureEnabled } from './nativeFeatureContext';
+import { nativeContactOptionalBinding, nativeContactOptionalRecordReader } from './nativeContactOptionalReferences';
 import { nativeSpellingBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
-    selectNativeFileLayout, selectVerifiedSourceRecords } from "./catalogNativeFileLayout";
+    selectNativeFileLayout, selectVerifiedSourceRecords, nativeReferenceTailBinding,
+    nativeSoilPileRecordReader, nativeAleTrimRecordReader, nativeAleMotionRecordReader, nativeControlledReferenceRecordReader, selectNativeUserMaterialRecords } from "./catalogNativeFileLayout";
 
 /** Shared interpretation of actual records. Draft callbacks affect only target selection. */
 export function nativeFileReadContext(rule: any, keywordText: string, rows: string[],
-    globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext): ReturnType<typeof baseNativeFileReadContext> {
+    globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
+    nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }): ReturnType<typeof baseNativeFileReadContext> {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
     const spelling = nativeSpellingBinding(keyword);
-    if (spelling) {
+    if (spelling && !spelling.originalContactPrefix && !spelling.interfaceComponent) {
         if (spelling.layout) {
             const body = baseNativeFileReadContext(rule, '*' + spelling.baseKeyword, rows,
                 keywordInputFormat(keywordText, globalFormat), recordLines, parameters);
@@ -66,11 +70,12 @@ export function nativeFileReadContext(rule: any, keywordText: string, rows: stri
                     counts: 'counts' in selected ? selected.counts?.map((count, index) => count + (index ? 0 : prefix)) : undefined };
             } };
     }
-    return baseNativeFileReadContext(rule, keywordText, rows, globalFormat, recordLines, parameters);
+    return baseNativeFileReadContext(rule, keywordText, rows, globalFormat, recordLines, parameters, nativeReadLayout);
 }
 
 function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[],
-    globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext) {
+    globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
+    nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }) {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
     const kind = nativeFileLayoutKind(rule, keyword);
     const fields = nativeFileLayoutCards(rule, keyword);
@@ -96,6 +101,56 @@ function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[
         select(partial = false, draft?: Parameters<typeof selectNativeFileLayout>[4],
             targetTitle = title, draftRecord?: Parameters<typeof selectNativeFileLayout>[9]) {
             if (readInputFailure) return null;
+            if (kind === 'em-connection-records') {
+                // File indexes have no root occurrence or inherited INCLUDE format.
+                // Query-time selection supplies even an explicitly unknown layout.
+                if (nativeReadLayout === undefined) return null;
+                const indexes = nativeReadLayout?.state === 'ready' ? nativeReadLayout.cardIndexes : [1];
+                if (!indexes?.length || !partial && rows.length < indexes.length) return null;
+                const current = rows.map((_text, index) => ({ cardIndex: indexes[index] || 0,
+                    instanceStart: 0, key: `instance:0:record:${index}` }));
+                return { current, target: current.slice(), ...(nativeReadLayout?.state !== 'ready' ? {
+                    uncertainty: nativeReadLayout?.reason || 'native-em-read-order-unresolved', unknownCardIndexes: [3],
+                } : {}) };
+            }
+            if (kind === 'verified-source-records')
+                return { current: selectVerifiedSourceRecords(rule, keyword, rows, readInput) };
+            if (kind === 'user-material-records') return selectNativeUserMaterialRecords(rows,
+                (row, card, field) => read(rows[row] || '', card, field), controls.resolve, nativeFordFeatureEnabled);
+            if (kind === 'ale-trim-records') {
+                const reader = nativeAleTrimRecordReader();
+                const current = rows.map(text => reader.next(text));
+                if (current.some(record => !record)) return null;
+                if (draftRecord) {
+                    const targetReader = nativeAleTrimRecordReader();
+                    // Reading another pool does not authorize migrating its shared tail fields.
+                    if (rows.some((text, index) => targetReader.next(draftRecord(current[index], text))?.cardIndex !== current[index].cardIndex)) return null;
+                }
+                return { current, target: current.slice() };
+            }
+            if (kind === 'ale-motion-single') {
+                const reader = nativeAleMotionRecordReader();
+                const current = rows.map(text => reader.next(text));
+                return reader.complete() ? { current, target: current.slice() } : null;
+            }
+            if (kind === 'controlled-reference-records') {
+                const reader = nativeControlledReferenceRecordReader(keyword, cards, readInput, controls.resolve);
+                const current = rows.map((text, index) => reader.next(text, index));
+                return current.some(record => !record) || !partial && !reader.complete()
+                    ? null : { current, target: current.slice() };
+            }
+            if (kind === 'contact-optional-records') {
+                const reader = nativeContactOptionalRecordReader(nativeContactOptionalBinding(rule, keyword, rule.nativeAuxiliaryReferenceFields));
+                const current = rows.map((text, index) => reader.next(text, index));
+                return !partial && !reader.complete() ? null : { current, target: current.slice() };
+            }
+            const soil = kind === 'reference-tail' && nativeSoilPileRecordReader(keyword, cards, readInput,
+                (raw, line) => controls.resolve(raw, line));
+            if (soil) {
+                const current = rows.map((text, index) => soil.next(text, index));
+                return current.some(record => !record) || !partial && !soil.complete()
+                    ? null : { current, target: current.slice() };
+            }
             if (kind === 'counted-occurrences') return selectCountedOccurrenceLayout(
                 nativeCountedOccurrenceBinding(keyword), rows,
                 (row, card, field) => read(rows[row] || '', card, field), controls.resolve);
@@ -111,7 +166,8 @@ function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[
                 }, (card, index) => cards.get(card)?.fields[index]?.defaultValue ?? undefined);
             return kind ? selectNativeFileLayout(kind, rows, title,
                 (row, card, field) => read(rows[row] || '', card, field), draft,
-                targetTitle, partial, fields.length, controls.resolve, draftRecord)
+                targetTitle, partial, fields.length, controls.resolve, draftRecord,
+                nativeReferenceTailBinding(keyword)?.headerCount)
                 : { current: selectVerifiedSourceRecords(rule, keyword, rows, readInput) };
         },
     };

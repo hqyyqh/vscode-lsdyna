@@ -12,7 +12,7 @@ const {
 const { isLongFormatKeyword } = require("../../../src/core/keywordSchema");
 
 // Helpers mirror test/core/edit/cardLayoutSafety.test.js (the canonical
-// 469-layout iteration that locks the 20,783 / 20,729 / 117,745 / 469 inventory).
+// 469-layout iteration that locks the 22,535 / 22,481 / 129,522 / 469 inventory).
 // Keep these in sync if the generated schema iteration changes.
 function collectCards(schema) {
     const cards = [];
@@ -89,7 +89,7 @@ describe('editor safety: card-layout dangerous-input fail-closed (469 layouts)',
     const safeLayouts = [...distinctLayouts.values()].filter(({ card }) => !geometryIssue(card));
 
     it('locks the same 469-layout inventory as the canonical pass', () => {
-        assert.strictEqual(nonEmptyCards.length, 20729);
+        assert.strictEqual(nonEmptyCards.length, 22481);
         assert.strictEqual(distinctLayouts.size, 469);
         assert.ok(safeLayouts.length > 0, 'at least one safe distinct layout must exist');
     });

@@ -1,7 +1,6 @@
 const assert = require('assert');
 const {
     renderCurveSvgDataUri,
-    renderCurveMarkdownFallback,
     renderTable3dSvgDataUri,
     TABLE_3D_VIEWS,
     normalizeTable3dView,
@@ -11,6 +10,31 @@ describe('curvePlotRenderer', () => {
     function decodeSvg(dataUri) {
         return Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
     }
+
+    it('normalizes curve point limits like table limits and preserves sampled endpoints', () => {
+        const definition = { points: Array.from({ length: 300 }, (_, x) => ({ x, y: x })) };
+        for (const [maxPoints, count] of [[2.5, 2], [0, 2], [-5, 2], [3, 3], [1e6, 300],
+            [NaN, 200], [Infinity, 200], [-Infinity, 200], ['3', 200], [undefined, 200]]) {
+            const svg = decodeSvg(renderCurveSvgDataUri(definition, { maxPoints }));
+            const sampled = svg.match(/<polyline points="([^"]+)"/)[1].split(' ');
+            assert.equal(sampled.length, count, String(maxPoints));
+            assert.equal(sampled[0], '55.00,135.00');
+            assert.equal(sampled[sampled.length - 1], '340.00,10.00');
+            assert.ok(!/NaN|Infinity|undefined/.test(svg));
+        }
+    });
+
+    it('falls back to a complete dark palette for inherited theme names in curve, table and hover rendering', () => {
+        const { buildDefinitionHoverSection } = require('../../../out/core/references/fieldReferenceHover');
+        const curve = { kind: 'curve', keyword: '*DEFINE_CURVE', id: 1,
+            points: [{ x: 0, y: 0, xRaw: '0', yRaw: '0' }, { x: 1, y: 1, xRaw: '1', yRaw: '1' }] };
+        const table = { rows: [{ value: 0, points: curve.points }] };
+        for (const themeKind of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'unknown']) {
+            assert.equal(renderCurveSvgDataUri(curve, { themeKind }), renderCurveSvgDataUri(curve, { themeKind: 'dark' }));
+            assert.equal(renderTable3dSvgDataUri(table, { themeKind }), renderTable3dSvgDataUri(table, { themeKind: 'dark' }));
+            assert.equal(buildDefinitionHoverSection(curve, themeKind), buildDefinitionHoverSection(curve, 'dark'));
+        }
+    });
 
     it('renders a safe svg data uri for numeric curve points', () => {
         const dataUri = renderCurveSvgDataUri({
@@ -25,20 +49,40 @@ describe('curvePlotRenderer', () => {
         assert.ok(dataUri.startsWith('data:image/svg+xml;base64,'));
         const svg = Buffer.from(dataUri.split(',')[1], 'base64').toString('utf8');
         assert.ok(svg.includes('&lt;'));
+        assert.ok(svg.includes('aria-label="A &lt; B"'));
+        assert.ok(!svg.includes('>A &lt; B</text>'));
         assert.ok(!svg.includes('<script'));
         assert.ok(svg.includes('<polyline'));
     });
 
-    it('falls back to markdown table rows', () => {
-        const markdown = renderCurveMarkdownFallback({
-            points: [
-                { xRaw: '0', yRaw: '10' },
-                { xRaw: '&a', yRaw: '&b' },
-            ],
-        });
+    it('keeps constant-axis tick labels consistent with the plotted scale', () => {
+        for (const axis of ['x', 'y']) {
+            const points = [{ x: 0, y: 0 }, { x: 5, y: 5 }];
+            points.forEach(point => { point[axis] = 1; });
+            const svg = decodeSvg(renderCurveSvgDataUri({ points }));
+            const labels = [...svg.matchAll(/<text[^>]*>([^<]+)<\/text>/g)].map(match => match[1]);
+            assert.deepEqual(axis === 'x' ? labels.slice(0, 3) : labels.slice(3), ['1', '1.5', '2']);
+        }
+    });
 
-        assert.ok(markdown.includes('| x | y |'));
-        assert.ok(markdown.includes('`&a`'));
+    it('declines previews whose finite coordinates overflow an axis span', () => {
+        for (const axis of ['x', 'y']) {
+            const points = [{ x: 0, y: 0 }, { x: 1, y: 1 }];
+            points[0][axis] = -1e308;
+            points[1][axis] = 1e308;
+            assert.equal(renderCurveSvgDataUri({ points }), null);
+        }
+        for (const axis of ['x', 'y', 'z']) {
+            const rows = [0, 1].map(value => ({ value, points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }));
+            if (axis === 'y') { rows[0].value = -1e308; rows[1].value = 1e308; }
+            else {
+                rows[0].points[0][axis === 'z' ? 'y' : 'x'] = -1e308;
+                rows[0].points[1][axis === 'z' ? 'y' : 'x'] = 1e308;
+            }
+            for (const view of TABLE_3D_VIEWS) assert.equal(renderTable3dSvgDataUri({ rows }, { view }), null);
+        }
+        const normal = decodeSvg(renderCurveSvgDataUri({ points: [{ x: 1e308, y: 1e308 }, { x: 1.1e308, y: 1.1e308 }] }));
+        assert.ok(!/NaN|Infinity/.test(normal));
     });
 
     it('renders distinct curve colors for all four VS Code theme kinds', () => {

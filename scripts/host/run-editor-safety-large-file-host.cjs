@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const { createTempRun, finishTempRun, createEvidenceDirectory, writeEvidence } = require('./temp-runs.cjs');
 
 const {
     copyDirectoryExact,
@@ -12,7 +13,6 @@ const {
 } = require("../../test/support/editor-safety/fileOracle");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const isolationPrefix = 'vscode-lsdyna-editor-safety-large-';
 const noProgressTimeoutMs = 10_000;
 const setupNoProgressTimeoutMs = 30_000;
 const scenarioTimeoutMs = 120_000;
@@ -75,6 +75,7 @@ function runExtensionHostWithWatchdog(options) {
                 watchdogError = new Error(
                     `Large-file Extension Host exceeded ${scenarioTimeoutMs} ms`,
                 );
+                clearInterval(watchdog);
                 terminateProcessTree(child);
             } else {
                 const label = String(lastProgressRecord?.label || 'startup');
@@ -87,6 +88,7 @@ function runExtensionHostWithWatchdog(options) {
                     `Large-file Extension Host produced no heartbeat for ${inactivityLimit} ms ` +
                     `during ${label}`,
                 );
+                clearInterval(watchdog);
                 terminateProcessTree(child);
             }
         }, 250);
@@ -95,16 +97,18 @@ function runExtensionHostWithWatchdog(options) {
             clearInterval(watchdog);
             reject(error);
         });
-        child.once('exit', (code, signal) => {
+        child.once('close', (code, signal) => {
             clearInterval(watchdog);
             if (watchdogError) {
+                watchdogError.runtimeMayBeActive = true;
                 reject(watchdogError);
             } else if (code === 0) {
                 resolve();
             } else {
-                reject(new Error(
+                // ponytail: failed workers may hide a signalled host; inspect retained runs or add a closure handshake.
+                reject(Object.assign(new Error(
                     `Large-file Extension Host worker exited with code ${code} signal ${signal || 'none'}`,
-                ));
+                ), { runtimeMayBeActive: true }));
             }
         });
     });
@@ -159,27 +163,6 @@ function largestDeckName(modelRoot) {
     return candidates[0];
 }
 
-function createEvidenceDirectory(sourceRoot) {
-    const evidenceParent = path.join(
-        path.dirname(sourceRoot),
-        'vscode-lsdyna-editor-safety-evidence',
-    );
-    fs.mkdirSync(evidenceParent, { recursive: true });
-    return fs.mkdtempSync(path.join(evidenceParent, 'large-files-'));
-}
-
-function removeIsolationDirectory(isolationRoot, sourceRoot) {
-    const resolved = path.resolve(isolationRoot);
-    const expectedParent = path.resolve(path.dirname(sourceRoot));
-    if (
-        path.dirname(resolved) !== expectedParent ||
-        !path.basename(resolved).startsWith(isolationPrefix)
-    ) {
-        throw new Error(`Refusing to remove unexpected isolation directory: ${resolved}`);
-    }
-    fs.rmSync(resolved, { recursive: true, force: true });
-}
-
 async function runModel({
     sourceRoot,
     modelName,
@@ -193,30 +176,28 @@ async function runModel({
         `${modelName}/${target.name} is below the 100 MiB large-file test floor`,
     );
 
-    const isolationRoot = fs.mkdtempSync(
-        path.join(path.dirname(sourceRoot), isolationPrefix),
-    );
+    const isolationRoot = createTempRun('dynasense-editor-safety-large-');
     const workspaceDirectory = path.join(isolationRoot, 'workspace');
     const isolatedModelRoot = path.join(workspaceDirectory, modelName);
     const userDataDirectory = path.join(isolationRoot, 'user-data');
     const extensionsDirectory = path.join(isolationRoot, 'extensions');
-    const progressFile = path.join(isolationRoot, 'progress.json');
+    const progressFile = path.join(evidenceDirectory, `${modelName}.progress.json`);
     const resultFile = path.join(evidenceDirectory, `${modelName}.runtime.json`);
     fs.mkdirSync(workspaceDirectory);
     fs.mkdirSync(userDataDirectory);
     fs.mkdirSync(extensionsDirectory);
 
-    let passed = false;
+    let retainRuntime = false;
     console.log(
         `[large file] ${modelName}: copying ${target.name} ecosystem ` +
         `(${target.size} bytes)`,
     );
-    const sourceBefore = await snapshotDirectory(sourceModelRoot);
-
     try {
+        const sourceBefore = await snapshotDirectory(sourceModelRoot);
+        writeEvidence(path.join(evidenceDirectory, `${modelName}.source-before.json`), JSON.stringify(sourceBefore));
         await copyDirectoryExact(sourceModelRoot, isolatedModelRoot);
         const before = await snapshotDirectory(isolatedModelRoot);
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, `${modelName}.before.json`),
             `${JSON.stringify(before, null, 2)}\n`,
             'utf8',
@@ -233,7 +214,7 @@ async function runModel({
         });
 
         const after = await snapshotDirectory(isolatedModelRoot);
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, `${modelName}.after.json`),
             `${JSON.stringify(after, null, 2)}\n`,
             'utf8',
@@ -249,14 +230,33 @@ async function runModel({
             { clean: true, added: [], removed: [], modified: [] },
             `${modelName} source changed during isolated large-file testing`,
         );
-        passed = true;
         return JSON.parse(fs.readFileSync(resultFile, 'utf8'));
-    } finally {
-        if (passed) {
-            removeIsolationDirectory(isolationRoot, sourceRoot);
-        } else {
-            console.error(`[large file] failed isolation preserved: ${isolationRoot}`);
+    } catch (error) {
+        process.exitCode = 1;
+        retainRuntime = Boolean(error.runtimeMayBeActive || error.evidenceSaveFailed);
+        try {
+            writeEvidence(path.join(evidenceDirectory, `${modelName}.failure.json`), JSON.stringify({
+                status: 'failed', sourceModelRoot, error: error.stack || String(error),
+                runtimeReservation: retainRuntime ? isolationRoot : null,
+            }, null, 2));
+            if (!retainRuntime && fs.existsSync(isolatedModelRoot)) {
+                try {
+                    writeEvidence(path.join(evidenceDirectory, `${modelName}.after.json`),
+                        JSON.stringify(await snapshotDirectory(isolatedModelRoot)));
+                } catch (captureError) {
+                    if (captureError.evidenceSaveFailed) throw captureError;
+                    writeEvidence(path.join(evidenceDirectory, `${modelName}.snapshot-error.json`), JSON.stringify({ error: String(captureError) }));
+                }
+            }
+        } catch (saveError) {
+            retainRuntime = true;
+            console.error(`[large file] diagnostics could not be saved; runtime retained: ${isolationRoot}`, saveError);
+            throw Object.assign(error, { evidenceSaveFailed: true, evidenceError: saveError });
         }
+        if (retainRuntime) console.error(`[large file] runtime reservation retained: ${isolationRoot}`);
+        throw error;
+    } finally {
+        finishTempRun(isolationRoot, { retain: retainRuntime });
     }
 }
 
@@ -275,7 +275,7 @@ async function main() {
             `Unknown LSDYNA_LARGE_MODEL: ${requestedModel}`,
         );
     }
-    const evidenceDirectory = createEvidenceDirectory(sourceRoot);
+    const evidenceDirectory = createEvidenceDirectory('editor-safety-large-files');
     const vscodeExecutablePath = resolveVSCodeExecutable();
     const results = [];
 

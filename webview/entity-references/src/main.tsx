@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { EntityReferencesApp } from './EntityReferencesApp';
 import { createEntityReferencesTransport } from './transport';
+import '@vscode/codicons/dist/codicon.css';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

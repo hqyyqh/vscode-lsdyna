@@ -31,12 +31,10 @@ describe('keywordSuggest', () => {
         assert.equal(result.items[0].keyword, 'LOAD_BODY_Z');
     });
 
-    it('ranks CONTACT ID_OFFSET option-order typo as high confidence OFFSET_ID', () => {
-        const result = suggestSimilarKeywords('CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET');
-        // Same base + option token permutation (ID_OFFSET ↔ OFFSET_ID) is high confidence.
-        assert.equal(result.tier, 'high');
-        assert.equal(result.items[0].keyword, 'CONTACT_TIED_SHELL_EDGE_TO_SURFACE_OFFSET_ID');
-        assert.equal(result.items[0].reason, 'token-permutation');
+    it('does not suggest spelling corrections for valid CONTACT option orders', () => {
+        for (const name of ['CONTACT_TIED_SHELL_EDGE_TO_SURFACE_ID_OFFSET', 'CONTACT_AUTOMATIC_SINGLE_SURFACE_MPP_ID']) {
+            assert.equal(suggestSimilarKeywords(name).tier, 'none');
+        }
     });
 
     it('returns none for exact known keywords', () => {

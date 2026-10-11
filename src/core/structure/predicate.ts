@@ -33,6 +33,7 @@ function resolvedField(
 ): { state: 'known' | 'blank' | 'unknown'; value?: unknown } {
     const normalized = String(name || '').trim().toUpperCase();
     const candidates = fields.get(normalized) || [];
+    if (candidates.some(field => field.state === 'unsupported')) return { state: 'unknown' };
     const known = candidates.filter(field => field.state === 'known').map(field => field.value);
     if (known.length > 0) {
         if (!known.every(value => scalarEqual(value, known[0]))) return { state: 'unknown' };

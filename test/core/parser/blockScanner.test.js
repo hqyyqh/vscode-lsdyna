@@ -1,13 +1,30 @@
 'use strict';
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { collectBlocksFromLineReader, collectBlocksFromFile } = require('../../../src/core/parser/blockScanner');
+const { collectBlocksFromLineReader, collectBlocksFromLineReaderAsync, collectBlocksFromFile } = require('../../../src/core/parser/blockScanner');
 
 describe('blockScanner', () => {
+    it('honors token-only cancellation before reading and after the final line', async () => {
+        const token = { isCancellationRequested: true };
+        let reads = 0;
+        assert.equal(await collectBlocksFromLineReaderAsync(1, () => { reads++; return '*NODE'; },
+            { cancellationToken: token }), null);
+        assert.equal(reads, 0);
+        token.isCancellationRequested = false;
+        assert.equal(await collectBlocksFromLineReaderAsync(1, () => {
+            token.isCancellationRequested = true; return '*NODE';
+        }, { cancellationToken: token }), null);
+        token.isCancellationRequested = false;
+        setImmediate(() => { token.isCancellationRequested = true; });
+        assert.equal(await collectBlocksFromLineReaderAsync(2, () => '*NODE',
+            { cancellationToken: token, yieldInterval: 1 }), null);
+    });
+
     it('splits blocks on indented mixed-case keywords', () => {
         const lines = [' \t*Keyword', 'data', '\t*node', '1,2,3'];
         const blocks = collectBlocksFromLineReader(lines.length, i => lines[i]);
@@ -38,7 +55,7 @@ describe('blockScanner', () => {
     });
 
     it('collects keyword blocks from file asynchronously', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-block-scanner-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-block-scanner-'));
         const filePath = path.join(tempDir, 'blocks.k');
         fs.writeFileSync(
             filePath,
@@ -56,7 +73,7 @@ describe('blockScanner', () => {
     });
 
     it('keeps the existing file API while using complete skeleton block ranges', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-block-api-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-block-api-'));
         const filePath = path.join(tempDir, 'api.k');
         fs.writeFileSync(filePath, '*KEYWORD\n*INCLUDE\nbody.k\n*NODE\n1,2,3\n*END\n', 'utf8');
 
@@ -66,7 +83,7 @@ describe('blockScanner', () => {
     });
 
     it('keeps live and disk COMMENT block tuples identical', async () => {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-comment-parity-'));
+        const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-comment-parity-'));
         const filePath = path.join(tempDir, 'comment.k');
         const lines = [
             '*KEYWORD',

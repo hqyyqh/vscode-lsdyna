@@ -17,18 +17,24 @@ const { createWorkerPool } = require('./workerPool');
 
 type ProjectIndexLoader = {
     buildProjectIndex(rootFile: string, options?: object, onProgress?: ((snapshot: object) => void) | null, cancellationToken?: any): Promise<object>;
+    queryEntity?(request: any, onProgress?: ((event: any) => void) | null, cancellationToken?: any): Promise<any>;
+    controlEntityIndex?(action: 'stats' | 'clear'): Promise<any>;
     dispose(): Promise<void>;
     clearPersistentCache(): Promise<{entryCount: number, totalBytes: number}>;
     isDisposed?: () => boolean;
 };
 
 type ProjectIndexLoaderOptions = {
-    createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number }) => ProjectIndexLoader;
+    createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number;
+        entityStorageDirectory?: string; entityMemoryBytes?: number; entityDiskBytes?: number }) => ProjectIndexLoader;
     createFileScanCache?: (options: object) => any;
     workerPath?: string;
     fileScanCacheDirectory?: string | null;
     fileScanCacheOptions?: object;
     fileScanMemoryCacheBytes?: number;
+    entityStorageDirectory?: string;
+    entityMemoryBytes?: number;
+    entityDiskBytes?: number;
 };
 
 /**
@@ -51,11 +57,16 @@ function createProjectIndexLoader({
     fileScanCacheDirectory = null,
     fileScanCacheOptions = {},
     fileScanMemoryCacheBytes = 16 * 1024 * 1024,
+    entityStorageDirectory,
+    entityMemoryBytes,
+    entityDiskBytes,
 }: ProjectIndexLoaderOptions = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
     let disposed = false;
     let clearPromise = null;
+    let stopPromise = null;
+    let disposePromise = null;
 
     /**
      * Checks if the worker pool has been disposed.
@@ -67,6 +78,17 @@ function createProjectIndexLoader({
         return !pool || (typeof pool.isDisposed === 'function' && pool.isDisposed());
     }
 
+    function stopWorkerPool() {
+        if (!stopPromise && workerPool) {
+            const closingPool = workerPool;
+            stopPromise = Promise.resolve().then(() => closingPool.dispose()).then(() => {
+                workerPool = null;
+                stopPromise = null;
+            });
+        }
+        return stopPromise;
+    }
+
     /**
      * Gets the active worker pool instance, initializing it lazily if it doesn't exist.
      * 
@@ -76,21 +98,35 @@ function createProjectIndexLoader({
         if (disposed) {
             throw new Error('project index loader has been disposed');
         }
-        if (isPoolDisposed(workerPool)) {
-            workerPool = null;
-        }
         if (!workerPool) {
             workerPool = createPool({
                 workerPath,
                 fileScanCacheDirectory,
                 fileScanCacheOptions,
                 fileScanMemoryCacheBytes,
+                ...(entityStorageDirectory === undefined ? {} : { entityStorageDirectory }),
+                ...(entityMemoryBytes === undefined ? {} : { entityMemoryBytes }),
+                ...(entityDiskBytes === undefined ? {} : { entityDiskBytes }),
             });
         }
         return workerPool;
     }
 
     return {
+        async getEntityIndexStats() {
+            if (disposed) throw new Error('project index loader has been disposed');
+            while (clearPromise || stopPromise || (workerPool && isPoolDisposed(workerPool))) {
+                await (clearPromise || stopPromise || stopWorkerPool());
+            }
+            return workerPool ? workerPool.controlEntityIndex('stats') : null;
+        },
+        async queryEntity(request, onProgress = null, cancellationToken = null) {
+            if (disposed) throw new Error('project index loader has been disposed');
+            while (clearPromise || stopPromise || (workerPool && isPoolDisposed(workerPool))) {
+                await (clearPromise || stopPromise || stopWorkerPool());
+            }
+            return getWorkerPool().queryEntity(request, onProgress, cancellationToken);
+        },
         /**
          * Asynchronously delegates project indexing to the worker pool.
          * 
@@ -100,16 +136,12 @@ function createProjectIndexLoader({
          * @returns {Promise<import('../core/project/projectIndexer').ProjectIndexResult>} Scanned project snapshot.
          */
         async buildProjectIndex(rootFile, options = {}, onProgress = null, cancellationToken = null) {
-            if (clearPromise) await clearPromise;
-            const pool = getWorkerPool();
-            try {
-                return await pool.buildProjectIndex(rootFile, options, onProgress, cancellationToken);
-            } catch (error) {
-                if (!disposed && workerPool === pool && isPoolDisposed(pool)) {
-                    workerPool = null;
-                }
-                throw error;
+            if (disposed) throw new Error('project index loader has been disposed');
+            while (clearPromise || stopPromise || (workerPool && isPoolDisposed(workerPool))) {
+                await (clearPromise || stopPromise || stopWorkerPool());
             }
+            const pool = getWorkerPool();
+            return await pool.buildProjectIndex(rootFile, options, onProgress, cancellationToken);
         },
 
         /**
@@ -122,18 +154,24 @@ function createProjectIndexLoader({
             }
             if (clearPromise) return clearPromise;
 
-            const operation = (async () => {
-                const closingPool = workerPool;
-                workerPool = null;
-                if (closingPool) await closingPool.dispose();
-                if (!fileScanCacheDirectory) return { entryCount: 0, totalBytes: 0 };
+            const operation = Promise.resolve().then(async () => {
+                let entityIndex;
+                const ownsSqlite = entityStorageDirectory || (fileScanCacheDirectory &&
+                    (createPool === createWorkerPool || typeof workerPool?.controlEntityIndex === 'function'));
+                if (ownsSqlite) {
+                    if (stopPromise || (workerPool && isPoolDisposed(workerPool))) await (stopPromise || stopWorkerPool());
+                    const pool = getWorkerPool();
+                    if (typeof pool.controlEntityIndex === 'function') entityIndex = await pool.controlEntityIndex('clear');
+                }
+                await stopWorkerPool();
+                if (!fileScanCacheDirectory) return { entryCount: 0, totalBytes: 0, ...(entityIndex ? { entityIndex } : {}) };
 
                 const store = createFileScanCache({
                     cacheDirectory: fileScanCacheDirectory,
                     ...fileScanCacheOptions,
                 });
-                return await store.invalidateAll();
-            })();
+                return { ...await store.invalidateAll(), ...(entityIndex ? { entityIndex } : {}) };
+            });
             clearPromise = operation;
             try {
                 return await operation;
@@ -147,16 +185,15 @@ function createProjectIndexLoader({
          * 
          * @returns {Promise<void>}
          */
-        async dispose() {
-            if (disposed) return;
-            disposed = true;
-            const pendingClear = clearPromise;
-            if (pendingClear) await pendingClear;
-            const closingPool = workerPool;
-            workerPool = null;
-            if (closingPool) {
-                await closingPool.dispose();
+        dispose() {
+            if (!disposePromise) {
+                disposed = true;
+                disposePromise = Promise.resolve().then(async () => {
+                    if (clearPromise) await clearPromise;
+                    await stopWorkerPool();
+                });
             }
+            return disposePromise;
         },
 
         /**

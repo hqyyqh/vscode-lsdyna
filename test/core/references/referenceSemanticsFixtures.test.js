@@ -29,7 +29,7 @@ async function analyzeFixture(name, id = 1001, kinds = ['curve']) {
             index,
             { kind: 'numeric', id, raw: String(id) },
             kinds,
-            { projectScoped: true }
+            { projectScoped: true, documentPath: snapshot.rootFile }
         ),
     };
 }
@@ -78,6 +78,10 @@ describe('official reference-semantics fixtures', () => {
         assert.equal(numeric.analysis.definitions[0].idfoffOffset, 100);
         assert.equal(parameter.analysis.state, 'uncertain');
         assert.ok(parameter.analysis.reasons.includes('transform-offset-unresolved'));
+        const noSource = analyzeReference(numeric.index,
+            { kind: 'numeric', id: 1101, raw: '1101' }, ['curve'], { projectScoped: true });
+        assert.equal(noSource.state, 'uncertain');
+        assert.ok(noSource.reasons.includes('reference-source-context-unavailable'));
     });
 
     it('retains repeated source-file occurrences without rescanning the source definition', async () => {
@@ -95,7 +99,7 @@ describe('official reference-semantics fixtures', () => {
                 buildProjectReferenceIndex(snapshot),
                 { kind: 'numeric', id: 1101, raw: '1101' },
                 ['curve'],
-                { projectScoped: true }
+                { projectScoped: true, documentPath: snapshot.rootFile }
             ).state,
             'exact'
         );

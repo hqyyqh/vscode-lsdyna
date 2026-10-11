@@ -1,5 +1,5 @@
 import type { FieldContext } from '../parser/fieldContext';
-import { nativeSpellingGap } from "./catalogNativeFileLayout";
+import { nativeSpellingGap, type NativeFileRecord } from "./catalogNativeFileLayout";
 import { isKeywordCommentLine } from '../parser/keywordLine';
 import { keywordInputFormat, keywordInputFormatOverride } from '../parser/inputFormat';
 import { formattedReadFields, readRecordField } from '../edit/keywordRecordSerializer';
@@ -27,6 +27,7 @@ export function nativeFieldDisplayOnly(keyword: string): boolean {
 }
 let cache = new WeakMap<KeywordSchema, WeakMap<object, WeakMap<object, Map<string, CardResolution>>>>();
 let cachedCatalog: ReturnType<typeof getCatalogInputFormCatalogV4> | undefined;
+const ordinalDecisions = new WeakMap<object, Map<string, boolean>>();
 // Keep circular schema/help dependencies lazy, while reusing Node's loaded module objects.
 let managerHelpModule: typeof import('../hover/managerFieldHelpResolution') | undefined;
 let schemaHelpModule: typeof import('../keywordSchema') | undefined;
@@ -47,13 +48,21 @@ export function nativeFieldsNeedOnlyOrdinal(keyword: string): boolean {
     if (standalone) return standalone.kind === 'part-stacked-elements' || standalone.kind === 'part-standalone-fixed';
     if (!hasNativeFileReader(keyword)) return false;
     try {
-        const form = getCatalogInputFormCatalogV4().formForKeyword(nativeFileCatalogKeyword(keyword));
+        const catalog = getCatalogInputFormCatalogV4();
+        let decisions = ordinalDecisions.get(catalog);
+        if (decisions?.has(keyword)) return decisions.get(keyword)!;
+        const form = catalog.formForKeyword(spelling?.baseKeyword || nativeFileCatalogKeyword(keyword), false);
         const ruleIds = nativeBatchFixedBinding(keyword) ? [nativeBatchFixedBinding(keyword).ruleId] : form?.reference.formRuleIds;
         if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic || ruleIds?.length !== 1 || !form.rules[ruleIds[0]]) return false;
         const rule = { ...form.rules[ruleIds[0]], catalogSource: form.source };
         const kind = nativeFileLayoutKind(rule, keyword);
-        return !!nativeFixedFileRecord(spelling?.prefixScope === 'instance' ? 'generic-fixed' : kind, 1,
+        const onlyOrdinal = !!nativeFixedFileRecord(spelling?.prefixScope === 'instance' ? 'generic-fixed' : kind, 1,
             spelling ? !!spelling.prefixCard : /_TITLE$/.test(keyword), nativeFileLayoutCards(rule, keyword).length);
+        // Catalog replacement rechecks authority; unavailable or unverified forms are never retained.
+        if (!decisions) ordinalDecisions.set(catalog, decisions = new Map());
+        decisions.set(keyword, onlyOrdinal);
+        if (decisions.size > 256) decisions.delete(decisions.keys().next().value);
+        return onlyOrdinal;
     } catch { return false; }
 }
 
@@ -98,8 +107,8 @@ function resolveUncached(context: FieldContext, keyword: string, schema: Keyword
     if (!ordinal) return fail('native-record-context-unavailable');
     let form;
     try {
-        const formKeyword = nativeFileCatalogKeyword(keyword);
-        form = getCatalogInputFormCatalogV4().formForKeyword(formKeyword);
+        const formKeyword = nativeSpellingBinding(keyword)?.baseKeyword || nativeFileCatalogKeyword(keyword);
+        form = getCatalogInputFormCatalogV4().formForKeyword(formKeyword, false);
     }
     catch { return fail('native-file-catalog-unavailable', 'implementation-gap'); }
     const rules = (form?.reference?.formRuleIds || []).map(id => form.rules[id]);
@@ -129,7 +138,7 @@ function resolveUncached(context: FieldContext, keyword: string, schema: Keyword
     if (!positioned && ordinal > rows.length) return fail('native-record-context-unavailable');
     if (context.recordOrdinalOnly && !positioned) return fail('native-record-context-unavailable');
     const selection = context.recordOrdinalOnly ? null : reading.select(true);
-    const record = positioned || selection?.current?.[ordinal - 1];
+    const record: NativeFileRecord | undefined = positioned || selection?.current?.[ordinal - 1];
     if (!record) return fail(parameters.reasons.size ? 'native-' + [...parameters.reasons].join(',') :
         selection && 'reasons' in selection && Array.isArray(selection.reasons) && selection.reasons.length ? 'native-' + selection.reasons.join(',') : 'native-control-or-record-layout-unresolved',
         selection && 'failureKind' in selection &&

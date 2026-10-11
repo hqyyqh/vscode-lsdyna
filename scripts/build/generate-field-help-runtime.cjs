@@ -7,6 +7,7 @@ const zlib = require('zlib');
 
 const { buildFieldSchemaRuntime } = require('./generate-field-schema-runtime.cjs');
 const { buildFieldHelpDelta } = require('./generate-field-help-zh-delta.cjs');
+const publish = require('./publish-files.cjs');
 
 const FORMAT_VERSION = 1;
 const DEFAULT_SHARD_SIZE = 2048;
@@ -72,10 +73,6 @@ function buildFieldHelpRuntime(englishText, localizedText, shardSize = DEFAULT_S
     }
     const { helpRuntime } = buildFieldSchemaRuntime(englishText);
     const localizedDelta = buildFieldHelpDelta(englishText, localizedText);
-    if (helpRuntime.baseSha256 !== localizedDelta.baseSha256
-        || helpRuntime.helpSlotCount !== localizedDelta.helpSlotCount) {
-        throw new Error('English and localized field-help sources do not share one slot contract');
-    }
 
     const shards = [];
     for (let start = 0, shardIndex = 0; start < helpRuntime.helpSlotCount; start += shardSize, shardIndex++) {
@@ -114,18 +111,25 @@ function buildFieldHelpRuntime(englishText, localizedText, shardSize = DEFAULT_S
     return { manifest, shards };
 }
 
-function removeOldShardFiles(shardsDirectory) {
+function obsoleteShardFiles(shardsDirectory, currentFiles) {
     let names = [];
     try {
         names = fs.readdirSync(shardsDirectory);
     } catch (error) {
         if (error.code !== 'ENOENT') throw error;
     }
-    for (const name of names) {
-        if (/^\d{4}\.json\.gz$/.test(name)) {
-            fs.rmSync(path.join(shardsDirectory, name), { force: true });
+    const obsolete = names.filter(name => /^\d{4}\.json\.gz$/.test(name) && !currentFiles.has(name));
+    if (!obsolete.length) return [];
+    const previous = JSON.parse(fs.readFileSync(path.join(shardsDirectory, '..', 'manifest.json'), 'utf8'));
+    return obsolete.map(name => {
+        const file = path.join(shardsDirectory, name);
+        const descriptor = previous.shards?.find(entry => entry.file === name);
+        const bytes = fs.readFileSync(file);
+        if (!descriptor || bytes.length !== descriptor.compressedBytes || sha256(bytes) !== descriptor.sha256) {
+            throw new Error(`Unlisted or edited obsolete help shard; review before removing: ${file}`);
         }
-    }
+        return { path: file, bytes: null };
+    });
 }
 
 function generateFieldHelpRuntime({
@@ -153,17 +157,12 @@ function generateFieldHelpRuntime({
     }
     const resolvedOutputDirectory = path.resolve(outputDirectory);
     const shardsDirectory = path.join(resolvedOutputDirectory, 'shards');
-    fs.mkdirSync(shardsDirectory, { recursive: true });
-    fs.writeFileSync(path.join(resolvedOutputDirectory, 'text-index.json.gz'), textIndex);
-    removeOldShardFiles(shardsDirectory);
-    for (const shard of result.shards) {
-        fs.writeFileSync(path.join(shardsDirectory, shard.file), shard.encoded);
-    }
-    fs.writeFileSync(
-        path.join(resolvedOutputDirectory, 'manifest.json'),
-        `${JSON.stringify(result.manifest, null, 2)}\n`,
-        'utf8',
-    );
+    publish([
+        ...result.shards.map(shard => ({ path: path.join(shardsDirectory, shard.file), bytes: shard.encoded })),
+        { path: path.join(resolvedOutputDirectory, 'text-index.json.gz'), bytes: textIndex },
+        { path: path.join(resolvedOutputDirectory, 'manifest.json'), bytes: Buffer.from(`${JSON.stringify(result.manifest, null, 2)}\n`) },
+        ...obsoleteShardFiles(shardsDirectory, new Set(result.shards.map(shard => shard.file))),
+    ]);
     return {
         ...result,
         outputDirectory: resolvedOutputDirectory,

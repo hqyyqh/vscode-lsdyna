@@ -17,6 +17,23 @@ const proofReport = require(path.resolve(__dirname, "../../../keywords/provenanc
 const fieldReferenceIndex = require(path.resolve(__dirname, "../../../keywords/runtime/references/field_reference_index.json"));
 
 describe('Definition Registry runtime', () => {
+    it('rejects an empty reference population in the retained strict facade', () => {
+        const runtime = getSemanticRuntimeCatalogV2();
+        const originalManifest = runtime.manifest, originalRecords = runtime.allReferenceRecords;
+        const manifest = originalManifest.call(runtime);
+        runtime.manifest = () => ({ ...manifest, source: { ...manifest.source,
+            producerHandoff: { ...manifest.source.producerHandoff, publicationMode: 'strict' } } });
+        runtime.allReferenceRecords = () => [];
+        try {
+            const catalog = new DefinitionRegistryCatalog();
+            assert.equal(catalog.status().ready, false);
+            assert.equal(catalog.permission('f12Permission'), false);
+            assert.match(catalog.status().failureReason, /reference population drift/);
+        } finally {
+            runtime.manifest = originalManifest; runtime.allReferenceRecords = originalRecords;
+        }
+    });
+
     it('shares asynchronous preparation and retains all validated relations and permissions', async function () {
         this.timeout(10000);
         const asynchronous = new DefinitionRegistryCatalog();

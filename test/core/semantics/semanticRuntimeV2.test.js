@@ -62,6 +62,27 @@ function rewriteFirstOptionCandidate(root, mutate) {
 }
 
 describe('semantic runtime catalog v2', () => {
+    it('keeps synchronous shard failures closed during async preparation until a new catalog is created', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-runtime-v2-retry-'));
+        try {
+            fs.cpSync(semanticRuntimeV2Root(), root, { recursive: true });
+            for (const domain of ['references', 'options']) {
+                const catalog = new SemanticRuntimeCatalogV2(root);
+                const descriptor = catalog.manifest()[domain === 'references' ? 'referenceShards' : 'optionShards'][0];
+                const file = path.join(root, descriptor.path), bytes = fs.readFileSync(file);
+                fs.writeFileSync(file, 'broken shard');
+                assert.deepEqual(domain === 'references' ? catalog.allReferenceRecords() : catalog.allOptionGrammars(), []);
+                fs.writeFileSync(file, bytes);
+                await assert.rejects(() => catalog.prepareReferences(), /shard compressed drift/);
+                assert.equal(catalog.status().ready, false);
+                assert.deepEqual(catalog.allReferenceRecords(), []);
+                const restored = new SemanticRuntimeCatalogV2(root);
+                assert.equal((await restored.prepareReferences()).records.length, restored.manifest().summary.referenceRelations);
+                assert.equal(restored.status().ready, true);
+            }
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+
     it('loads the reference and option domains lazily from a source-locked manifest', () => {
         const catalog = new SemanticRuntimeCatalogV2();
         assert.equal(catalog.status().ready, true);

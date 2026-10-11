@@ -2,6 +2,7 @@
 
 /** Shared lifecycle and persisted reader state for one manual pack. */
 
+import type { ManualReadingMode } from './manualTypes';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,6 +18,7 @@ export interface PersistedReaderState {
     manifestIdentity: string;
     location: ManualLocation;
     language: ManualLanguage;
+    readingMode?: ManualReadingMode;
     scrollY: number;
     scrollRatio?: number;
 }
@@ -48,8 +50,13 @@ export class ManualPackManager {
     constructor(private readonly context: vscode.ExtensionContext, private readonly onAuthorityChanged?: () => void) {}
 
     hasPack(packRoot: string): boolean {
-        return fs.existsSync(path.join(packRoot, 'manifest.json'))
-            && fs.existsSync(path.join(packRoot, 'indexes'));
+        try {
+            return fs.statSync(path.join(packRoot, 'manifest.json')).isFile()
+                && fs.statSync(path.join(packRoot, 'indexes')).isDirectory();
+        } catch (error) {
+            if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+            throw error;
+        }
     }
 
     getRepository(packRoot: string): ManualIndexRepository {
@@ -104,15 +111,23 @@ export class ManualPackManager {
         if (!this.context.globalState || typeof this.context.globalState.get !== 'function') return undefined;
         const root = canonicalRoot(packRoot);
         const saved = this.context.globalState.get<PersistedReaderState | undefined>(stateKey(root), undefined);
-        if (!saved || !saved.location || !repository.getSection(saved.location.manualId, saved.location.sectionId)) {
+        const section = saved?.location && repository.getSection(saved.location.manualId, saved.location.sectionId);
+        if (!saved || !section) {
             return undefined;
         }
         const caps = repository.getCapabilities();
         const language = !caps.canToggleLanguage || saved.language === 'en' ? 'en' : 'zh';
+        const manifestIdentity = repository.getManifestIdentity();
         return {
-            manifestIdentity: repository.getManifestIdentity(),
-            location: saved.location,
+            manifestIdentity,
+            location: saved.manifestIdentity === manifestIdentity ? saved.location : {
+                ...saved.location,
+                title: language === 'zh' && section.titleZh ? section.titleZh : section.titleEn,
+                pdfPage: section.pdfPage ?? null,
+                anchorId: saved.location.anchorId && section.anchors.includes(saved.location.anchorId) ? saved.location.anchorId : section.anchors[0] || null,
+            },
             language,
+            readingMode: caps.canToggleLanguage && caps.features.sentenceMap && saved.readingMode === 'bilingual' ? 'bilingual' : language,
             scrollY: Number.isFinite(saved.scrollY) ? Math.max(0, saved.scrollY) : 0,
             scrollRatio: Number.isFinite(saved.scrollRatio) ? Math.min(1, Math.max(0, Number(saved.scrollRatio))) : 0,
         };

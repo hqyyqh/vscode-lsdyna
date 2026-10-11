@@ -1,4 +1,3 @@
-import { keywordDataPath } from "../keywordDataPath";
 'use strict';
 
 const fs = require('fs');
@@ -11,9 +10,11 @@ const {
 const {
     globalInputFormatFromKeywordLine,
     keywordInputFormat,
+    stripKeywordInputFormatMarker,
 } = require('../parser/inputFormat');
-const loadedReferenceIndex = require(keywordDataPath("references/field_reference_index.json"));
+const { getReferenceRuleCatalog } = require('./referenceRuleCatalog');
 const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog');
+const { nativeOccurrenceOffset } = require('./nativeIncludeOffsets');
 
 const DEFAULT_MAX_STORED_MATCHES = 256;
 const DISK_STREAM_HIGH_WATER_MARK = 256 * 1024;
@@ -26,12 +27,11 @@ function addResultReasons(result, ...reasons) {
 }
 
 function normalizeKeyword(value) {
-    return String(value || '')
+    return stripKeywordInputFormatMarker(String(value || '')
         .trim()
         .replace(/^\*/, '')
         .toUpperCase()
-        .split(/[\s,$]/)[0]
-        .replace(/[+%\-]$/, '');
+        .split(/[\s,$]/)[0]);
 }
 
 function normalizeFilePathKey(filePath) {
@@ -49,10 +49,25 @@ function runtimeDefinitionKeywords({ allowCandidate = false } = {}) {
     const cached = runtimeDefinitionKeywordCache.get(cacheKey);
     if (cached?.family === family.onDemand) return cached.value;
     const value = {
-        generic: loadedReferenceIndex.definitionKeywords?.generic || {},
+        generic: getReferenceRuleCatalog().metadata('definitionKeywords')?.generic || {},
         onDemand: {
-            ...(loadedReferenceIndex.definitionKeywords?.onDemand || {}),
+            // Curve/table previews may end before their ID header. Reuse the
+            // approved scanned-keyword set and its existing title/header layout.
+            ...Object.fromEntries((getReferenceRuleCatalog().metadata('definitionKeywords')?.scanned || [])
+                .filter(keyword => /^DEFINE_(CURVE|TABLE)(_|$)/.test(keyword))
+                .map(keyword => [keyword, {
+                    target: keyword,
+                    targetKind: keyword.startsWith('DEFINE_CURVE') ? 'curve' : 'table',
+                    fieldName: 'ID', fieldType: 'integer', fieldIndex: 0, position: 0, width: 10,
+                    recordMode: 'exact-data-record-ordinal',
+                    dataRecordOrdinal: keyword.includes('TITLE') ? 1 : 0,
+                }])),
             ...(family.onDemand || {}),
+            ...(getReferenceRuleCatalog().metadata('definitionKeywords')?.onDemand || {}),
+            // Exact original selectors also need disk recovery when their header
+            // was omitted by the definition preview limit.
+            ...Object.fromEntries(Object.entries(getReferenceRuleCatalog().metadata('definitionKeywords')?.generic || {})
+                .filter(([_keyword, descriptor]) => descriptorIsSupported(descriptor))),
         },
     };
     runtimeDefinitionKeywordCache.set(cacheKey, { family: family.onDemand, value });
@@ -62,7 +77,7 @@ function runtimeDefinitionKeywords({ allowCandidate = false } = {}) {
 function selectOnDemandDefinitionDescriptors(
     targetKinds,
     targetDefinitions,
-    definitionKeywords = loadedReferenceIndex.definitionKeywords
+    definitionKeywords = getReferenceRuleCatalog().metadata('definitionKeywords')
 ) {
     const kinds = new Set(targetKinds || []);
     const definitions = normalizedTargets(targetDefinitions);
@@ -88,7 +103,8 @@ function selectOnDemandDefinitionDescriptors(
 
 function definitionRecordMode(descriptor) {
     if (descriptor?.recordMode === 'repeat-all-data-records' ||
-        descriptor?.recordMode === 'exact-data-record-ordinal') return descriptor.recordMode;
+        descriptor?.recordMode === 'exact-data-record-ordinal' ||
+        descriptor?.recordMode === 'repeat-data-record-template') return descriptor.recordMode;
     if (descriptor?.targetKind === 'node' || descriptor?.targetKind === 'element') {
         return 'repeat-all-data-records';
     }
@@ -107,22 +123,26 @@ function descriptorIsSupported(descriptor) {
         !!recordMode &&
         (recordMode !== 'exact-data-record-ordinal' ||
             Number.isInteger(descriptor.dataRecordOrdinal) && descriptor.dataRecordOrdinal >= 0) &&
+        (recordMode !== 'repeat-data-record-template' || Number.isSafeInteger(descriptor.recordStride) &&
+            descriptor.recordStride > 0 && Number.isInteger(descriptor.dataRecordOrdinal) &&
+            descriptor.dataRecordOrdinal >= 0 && descriptor.dataRecordOrdinal < descriptor.recordStride) &&
         Number.isInteger(descriptor.width) &&
         descriptor.width > 0;
 }
 
 function fixedCandidateWidths(descriptor, formatMode = 'standard') {
+    const contract = descriptor.formatContracts?.find(contract => contract.format === formatMode && contract.mode === 'fixed');
+    if (Number.isInteger(contract?.width) && contract.width > 0) return [contract.width];
     if (formatMode === 'long') return [20];
     if (formatMode === 'i10' && descriptor.width === 8) return [10];
     return [descriptor.width];
 }
 
-function candidateFromCell(text, startCharacter, endCharacter, descriptor) {
+function candidateFromCell(text, startCharacter, endCharacter, descriptor, formatMode) {
     const cell = text.slice(startCharacter, endCharacter);
     const raw = cell.trim();
     if (!raw) return null;
     const offset = cell.indexOf(raw);
-    if (offset < 0) return null;
     let input = parseNumericInput(raw, {
         integerOnly: true,
         nonZero: true,
@@ -131,7 +151,14 @@ function candidateFromCell(text, startCharacter, endCharacter, descriptor) {
         'positive-integer-or-alphanumeric-label',
         'label-or-positive-integer',
     ].includes(descriptor?.valueDomain?.kind)) {
-        input = { kind: 'label', raw, value: raw };
+        const numberInput = parseNumericInput(raw, { integerOnly: false });
+        const maximum = formatMode === 'long'
+            ? descriptor.valueDomain.labelLongMaxCharacters
+            : descriptor.valueDomain.labelStandardMaxCharacters;
+        if (numberInput.kind === 'invalid' && numberInput.reason === 'unsupported-numeric-input' &&
+            (maximum === undefined || raw.length <= maximum)) {
+            input = { kind: 'label', raw, value: raw };
+        }
     }
     if (input.kind === 'invalid' || input.kind === 'blank') return null;
     return {
@@ -159,7 +186,7 @@ function parseOnDemandIdCandidates(line, descriptor, options: { formatMode?: str
             const comma = text.indexOf(',', start);
             const end = comma >= 0 ? comma : text.length;
             if (index === descriptor.fieldIndex) {
-                const candidate = candidateFromCell(text, start, end, descriptor);
+                const candidate = candidateFromCell(text, start, end, descriptor, options.formatMode);
                 if (candidate) candidates.push(candidate);
                 break;
             }
@@ -169,21 +196,13 @@ function parseOnDemandIdCandidates(line, descriptor, options: { formatMode?: str
     } else {
         for (const width of fixedCandidateWidths(descriptor, options.formatMode)) {
             const candidate = candidateFromCell(
-                text, descriptor.position, descriptor.position + width, descriptor
+                text, descriptor.position, descriptor.position + width, descriptor, options.formatMode
             );
             if (candidate) candidates.push(candidate);
         }
     }
 
-    const unique = [];
-    const seen = new Set();
-    for (const candidate of candidates) {
-        const key = [candidate.raw, candidate.startCharacter, candidate.endCharacter].join(':');
-        if (seen.has(key)) continue;
-        seen.add(key);
-        unique.push(candidate);
-    }
-    return unique;
+    return candidates;
 }
 
 function fileIndexEntries(fileIndexes) {
@@ -266,10 +285,10 @@ function resolveCandidateSourceId(candidate, context, lineIndex) {
         : { resolved: false, resolution, reasons: [...reasons] };
 }
 
-function resolveCandidateEffectiveId(candidate, context, lineIndex): any {
+function resolveCandidateEffectiveId(candidate, context, lineIndex, descriptor): any {
     const sourceResolution = resolveCandidateSourceId(candidate, context, lineIndex);
     if (!sourceResolution.resolved) return sourceResolution;
-    const offset = context.idfoffOffset;
+    const offset = nativeOccurrenceOffset(context, [descriptor.targetKind], [descriptor.keyword]);
     if (!Number.isSafeInteger(offset)) {
         return { resolved: false, reasons: ['transform-offset-unresolved'] };
     }
@@ -302,7 +321,7 @@ function definitionFromMatch({
     effectiveId,
     parameterResolution,
 }) {
-    const idfoffOffset = context.idfoffOffset;
+    const idfoffOffset = nativeOccurrenceOffset(context, [descriptor.targetKind], [descriptor.keyword]);
     return {
         kind: 'generic',
         id: effectiveId,
@@ -419,7 +438,7 @@ function queryOnDemandDefinitionAtPosition({
 
     const recordMode = definitionRecordMode(descriptor);
     let dataRecordOrdinal = -1;
-    if (recordMode === 'exact-data-record-ordinal') {
+    if (recordMode === 'exact-data-record-ordinal' || recordMode === 'repeat-data-record-template') {
         for (let lineIndex = block.startLine + 1; lineIndex <= position.line; lineIndex++) {
             const text = lineAt(lineIndex);
             if (typeof text !== 'string') {
@@ -428,9 +447,20 @@ function queryOnDemandDefinitionAtPosition({
             const trimmed = text.trimStart();
             if (trimmed.startsWith('$') || trimmed.startsWith('*')) continue;
             dataRecordOrdinal += 1;
-            if (dataRecordOrdinal > descriptor.dataRecordOrdinal) return emptyDefinitionOrigin();
+            if (recordMode === 'exact-data-record-ordinal' && dataRecordOrdinal > descriptor.dataRecordOrdinal) return emptyDefinitionOrigin();
         }
-        if (dataRecordOrdinal !== descriptor.dataRecordOrdinal) return emptyDefinitionOrigin();
+        if ((recordMode === 'repeat-data-record-template' ? dataRecordOrdinal % descriptor.recordStride : dataRecordOrdinal)
+            !== descriptor.dataRecordOrdinal) return emptyDefinitionOrigin();
+        if (recordMode === 'repeat-data-record-template') {
+            let remaining = descriptor.recordStride - descriptor.dataRecordOrdinal - 1;
+            for (let lineIndex = position.line + 1; remaining > 0 && lineIndex <= block.endLine; lineIndex++) {
+                const text = lineAt(lineIndex);
+                if (typeof text !== 'string') return emptyDefinitionOrigin('incomplete', ['definition-origin-line-unavailable']);
+                if (text.trimStart().startsWith('*')) break;
+                if (!text.trimStart().startsWith('$')) remaining--;
+            }
+            if (remaining > 0) return emptyDefinitionOrigin('incomplete', ['on-demand-definition-record-template-incomplete']);
+        }
     }
 
     const line = lineAt(position.line);
@@ -452,10 +482,7 @@ function queryOnDemandDefinitionAtPosition({
             .filter(candidate => position.character >= candidate.startCharacter &&
                 position.character < candidate.endCharacter);
         if (candidates.length === 0) return emptyDefinitionOrigin();
-        if (candidates.length !== 1) {
-            return emptyDefinitionOrigin('ambiguous', ['definition-origin-token-ambiguous']);
-        }
-        const mapped = resolveCandidateEffectiveId(candidates[0], context, position.line);
+        const mapped = resolveCandidateEffectiveId(candidates[0], context, position.line, descriptor);
         if (!mapped.resolved) {
             reasons.push(...(mapped.reasons || ['definition-occurrence-indeterminate']));
             continue;
@@ -507,7 +534,7 @@ function queryOnDemandDefinitionAtPosition({
     };
 }
 
-async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null) {
+async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null, options: { dataRecordLimit?: number } = {}) {
     if (!Number.isInteger(block.startOffset) || block.startOffset < 0 ||
         !Number.isInteger(block.endOffset) || block.endOffset <= block.startOffset) {
         return { complete: false, reason: 'on-demand-block-range-unavailable', lineCount: 0 };
@@ -515,13 +542,16 @@ async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null
     const input = fs.createReadStream(block.filePath, {
         start: block.startOffset,
         end: block.endOffset - 1,
-        highWaterMark: DISK_STREAM_HIGH_WATER_MARK,
+        highWaterMark: options.dataRecordLimit ? 4096 : DISK_STREAM_HIGH_WATER_MARK,
     });
     const lines = readline.createInterface({ input, crlfDelay: Infinity });
     let lineIndex = Number.isInteger(block.startLine) ? block.startLine : 0;
     let lineCount = 0;
     let firstLine = true;
     let keywordLineText = '';
+    let dataRecords = 0;
+    const limit = Number.isSafeInteger(options.dataRecordLimit) && options.dataRecordLimit > 0
+        ? options.dataRecordLimit : Infinity;
     try {
         for await (const line of lines) {
             if (cancellationToken?.isCancellationRequested) {
@@ -531,6 +561,8 @@ async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null
                 const pending = visitLine(String(line), lineIndex, { keywordLineText });
                 if (pending && typeof pending.then === 'function') await pending;
                 lineCount += 1;
+                if (!String(line).trimStart().startsWith('$') && !String(line).trimStart().startsWith('*')) dataRecords++;
+                if (dataRecords >= limit) return { complete: true, lineCount, keywordLineText };
             } else {
                 keywordLineText = String(line);
             }
@@ -559,8 +591,13 @@ async function scanOnDemandDefinitions({
     cancellationToken = null,
     scanBlockLines = scanBlockLinesFromDisk,
     maxStoredMatches = DEFAULT_MAX_STORED_MATCHES,
+    collectAllIds = false,
+    acceptDefinition = null,
+    retainDefinitions = true,
     definitionKeywords = runtimeDefinitionKeywords(),
 } = {} as any) {
+    if (!retainDefinitions && typeof acceptDefinition !== 'function')
+        throw new TypeError('Streaming definitions requires a record consumer');
     const descriptors = selectOnDemandDefinitionDescriptors(
         targetKinds,
         targetDefinitions,
@@ -583,7 +620,7 @@ async function scanOnDemandDefinitions({
     const effectiveIdentityValid = typeof effectiveId === 'string'
         ? effectiveId.length > 0
         : Number.isSafeInteger(effectiveId) && effectiveId > 0;
-    if (!effectiveIdentityValid) {
+    if (!effectiveIdentityValid && !collectAllIds) {
         result.state = 'partial';
         addResultReasons(result, 'on-demand-reference-id-unresolved');
         return result;
@@ -666,12 +703,19 @@ async function scanOnDemandDefinitions({
             }
             const descriptor = descriptorByKeyword.get(normalizeKeyword(sourceBlock.keyword));
             if (!descriptor) continue;
+            for (const context of contexts) {
+                if ((context.uncertaintyReasons || []).length > 0) {
+                    result.state = 'partial';
+                    addResultReasons(result, context.uncertaintyReasons);
+                }
+            }
             const block = {
                 ...sourceBlock,
                 filePath: sourceBlock.filePath || filePath,
             };
             const recordMode = definitionRecordMode(descriptor);
             let dataRecordOrdinal = -1;
+            let pendingTemplateRecord: any = null;
             const blockResult = await scanBlockLines(
                 block,
                 (line, lineIndex, metadata: any = {}) => {
@@ -681,7 +725,17 @@ async function scanOnDemandDefinitions({
                     dataRecordOrdinal += 1;
                     if (recordMode === 'exact-data-record-ordinal' &&
                         dataRecordOrdinal !== descriptor.dataRecordOrdinal) return;
+                    if (recordMode === 'repeat-data-record-template') {
+                        if (dataRecordOrdinal % descriptor.recordStride === descriptor.dataRecordOrdinal)
+                            pendingTemplateRecord = { line, lineIndex, metadata };
+                        if (dataRecordOrdinal % descriptor.recordStride !== descriptor.recordStride - 1 || !pendingTemplateRecord) return;
+                        ({ line, lineIndex, metadata } = pendingTemplateRecord);
+                        pendingTemplateRecord = null;
+                    }
                     const candidatesByMode = new Map();
+                    // Each reader visits a physical record once. Bound deduplication
+                    // to its contexts even when retained matches reach capacity.
+                    const seenLineMatches = new Set();
                     for (const context of contexts) {
                         const formatMode = keywordInputFormat(
                             metadata.keywordLineText || sourceBlock.rawKeyword || sourceBlock.keyword,
@@ -694,14 +748,13 @@ async function scanOnDemandDefinitions({
                             );
                         }
                         for (const candidate of candidatesByMode.get(formatMode)) {
-                            const mapped = resolveCandidateEffectiveId(candidate, context, lineIndex);
+                            const mapped = resolveCandidateEffectiveId(candidate, context, lineIndex, descriptor);
                             if (!mapped.resolved) {
                                 addResultReasons(result, mapped.reasons);
                                 result.state = 'partial';
                                 continue;
                             }
-                            if (mapped.effectiveId !== effectiveId) continue;
-                            result.totalMatchCount += 1;
+                            if (!collectAllIds && mapped.effectiveId !== effectiveId) continue;
                             const definition = definitionFromMatch({
                                 block,
                                 descriptor,
@@ -712,22 +765,36 @@ async function scanOnDemandDefinitions({
                                 effectiveId: mapped.effectiveId,
                                 parameterResolution: mapped.resolution,
                             });
-                            if (result.definitions.length < maxStoredMatches) {
-                                const key = [
-                                    normalizeFilePathKey(definition.filePath),
-                                    definition.idLine,
-                                    definition.idStartChar,
-                                    definition.idEndChar,
-                                    definition.occurrenceId,
-                                ].join(':');
-                                if (seenMatches.has(key)) continue;
+                            const key = JSON.stringify([
+                                normalizeFilePathKey(definition.filePath),
+                                definition.idLine,
+                                definition.idStartChar,
+                                definition.idEndChar,
+                                definition.occurrencePath.length ? definition.occurrencePath : definition.occurrenceId,
+                            ]);
+                            if (seenMatches.has(key) || seenLineMatches.has(key)) continue;
+                            seenLineMatches.add(key);
+                            result.totalMatchCount += 1;
+                            if (!retainDefinitions && (definition.uncertaintyReasons || []).length) {
+                                result.state = 'partial';
+                                addResultReasons(result, definition.uncertaintyReasons);
+                            }
+                            if (acceptDefinition && acceptDefinition(definition) === false) {
+                                if (!retainDefinitions) {
+                                    result.state = 'partial';
+                                    addResultReasons(result, 'on-demand-definition-consumer-rejected');
+                                }
+                                return;
+                            }
+                            if (retainDefinitions && result.definitions.length < maxStoredMatches) {
                                 seenMatches.add(key);
                                 result.definitions.push(definition);
                             }
                         }
                     }
                 },
-                cancellationToken
+                cancellationToken,
+                recordMode === 'exact-data-record-ordinal' ? { dataRecordLimit: descriptor.dataRecordOrdinal + 1 } : {}
             );
             result.scannedBlockCount += 1;
             result.scannedLineCount += blockResult && blockResult.lineCount || 0;
@@ -742,10 +809,14 @@ async function scanOnDemandDefinitions({
                     blockResult && blockResult.reason || 'on-demand-scan-unavailable'
                 );
             }
+            if (pendingTemplateRecord) {
+                result.state = 'partial';
+                addResultReasons(result, 'on-demand-definition-record-template-incomplete');
+            }
         }
     }
 
-    if (result.totalMatchCount > result.definitions.length) {
+    if (retainDefinitions && result.totalMatchCount > result.definitions.length) {
         result.state = 'partial';
         addResultReasons(result, 'on-demand-results-truncated');
     }
@@ -759,9 +830,9 @@ async function scanOnDemandDefinitions({
     return result;
 }
 
-function mergeOnDemandDefinitions(analysis, lookup) {
+function mergeOnDemandDefinitions(analysis, lookup, referenceIndex = null) {
     if (!analysis || !lookup || lookup.state === 'cancelled') return analysis;
-    const definitions = [
+    let definitions = [
         ...(analysis.definitions || []),
         ...(lookup.definitions || []),
     ];
@@ -772,8 +843,20 @@ function mergeOnDemandDefinitions(analysis, lookup) {
             'target-definition-on-demand',
             'target-kind-unindexed',
             'target-definition-unindexed',
+            'lspp-target-priority-unresolved',
         ].includes(reason)
     );
+    let targetSelection = analysis.targetSelection;
+    if (analysis.targetSearch) {
+        const { selectReferenceTargetSearch } = require('./projectReferenceIndex');
+        targetSelection = selectReferenceTargetSearch({ ...(referenceIndex || {}),
+            queryDefinitionLookup: { ...lookup, definitions, id: analysis.id,
+                targetKinds: (lookup.descriptors || []).map(descriptor => descriptor.targetKind).filter(Boolean),
+                targetDefinitions: (lookup.descriptors || []).map(descriptor => normalizeKeyword(descriptor.keyword)) } },
+            analysis.id, analysis.targetSearch);
+        definitions = targetSelection.definitions;
+        reasons.push(...targetSelection.reasons);
+    }
     reasons.push(...(lookup.reasons || []));
     const uniqueReasons = [...new Set(reasons)];
     return {
@@ -788,6 +871,8 @@ function mergeOnDemandDefinitions(analysis, lookup) {
         definitions,
         reasons: uniqueReasons,
         onDemandLookup: lookup,
+        ...(analysis.targetSearch ? { targetSelection, targetKinds: targetSelection.target?.targetKinds || [],
+            targetDefinitions: targetSelection.target?.targetKeywords || [] } : {}),
     };
 }
 

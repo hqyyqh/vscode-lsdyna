@@ -26,11 +26,13 @@ const HOVER_TRUST = { enabledCommands: [
     'extension.pickOfficialFieldValue',
     'extension.addVerifiedConditionalCards',
     'extension.rebuildCardComments',
+    'extension.updateKeywordCards',
     'extension.insertVerifiedMissingRecords',
     'extension.openSemanticEvidence',
     'extension.checkKeywordStructure',
     "extension.addCustomValidKeyword",
     "extension.configureManualsDir",
+    "extension.manual.openCurrentKeyword",
     "extension.disableFieldHover",
     "extension.lsdynaChooseKeywordOptions",
     "extension.lsdynaFormatSelection",
@@ -49,7 +51,9 @@ const HOVER_TRUST = { enabledCommands: [
     "extension.selectKeyword",
     "extension.selectMainDeckContext",
     "extension.setLsdynaTablePreviewView",
-    "extension.showFieldHelpEnglish"
+    "extension.showFieldHelpEnglish",
+    "extension.hoverMore",
+    "extension.toggleHoverDetails"
 ] };
 
 const { ManualIndexRepository } = require('./manual/ManualIndexRepository');
@@ -60,6 +64,7 @@ const { LsdynaIncludeTreeProvider, normalizePathKey, formatBytes } = require('./
 const { LsdynaEntityReferenceProvider } = require('./client/providers/entityReferenceProvider');
 const { EntityReferencesWebviewProvider } = require('./client/EntityReferencesWebviewProvider');
 const { LsdynaKeywordIndexProvider } = require('./client/providers/keywordIndexProvider');
+const { isMeshEntityKind, isMeshKeyword } = require('./core/scanner/scannerContracts');
 const { createIndexClient } = require('./client/services/indexClient');
 const { createWorkspaceWatcherManager } = require('./client/services/workspaceWatcherManager');
 const { createProjectDiagnosticStore } = require('./client/services/projectDiagnosticStore');
@@ -83,7 +88,6 @@ const { showManageCustomValidKeywordsPick } = require('./client/services/customV
 const { suggestSimilarKeywords } = require('./core/keywordSuggest');
 const { LsdynaStatusBarDashboard } = require('./client/statusBar/dashboard');
 const { openPdfWithSumatra } = require('./platform/externalProcess');
-const { createDiskSnapshotStore } = require('./core/cache/diskSnapshotStore');
 const { findAffectedProjectRoots } = require('./core/incremental/fileInvalidation');
 const includeScanner = require('./core/parser/includeScanner');
 const keywordScanner = require('./core/parser/keywordScanner');
@@ -116,6 +120,8 @@ const {
 const {
     buildReferenceHoverSection,
     buildDefinitionHoverSection,
+    buildCompactReferenceHover,
+    hasUncertainTableChildren,
     uncertaintyReasonLabel,
 } = require('./core/references/fieldReferenceHover');
 const { scanCurveTableDefinitionsFromFileIndex } = require('./core/references/curveTableDefinitionScanner');
@@ -184,6 +190,8 @@ async function startLanguageServer(context) {
     const clientOptions = {
         documentSelector: [{ scheme: 'file', language: 'lsdyna' }],
         initializationOptions: {
+            entityMemoryBytes: entityBudget.workerBytes,
+            entityDiskBytes: entityBudget.diskBytes,
             globalStoragePath: context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'project-snapshots') : null,
             maxMemoryCacheBytes: cacheLimitBytes('cache.memoryMaxMiB', 48, 16, 64),
             maxProjectSnapshotCacheBytes: cacheLimitBytes('cache.projectSnapshotDiskMaxMiB', 256, 32, 256),
@@ -204,7 +212,6 @@ async function startLanguageServer(context) {
 }
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
-const PROJECT_SNAPSHOT_DISK_CACHE_BYTES = 256 * 1024 * 1024;
 const STREAM_SCAN_YIELD_INTERVAL = 50000;
 const includeDirectiveCache = new WeakMap();
 const documentPresentationCache = new WeakMap();
@@ -620,20 +627,7 @@ async function getReferenceIndexForDocument(document, cancellationToken = null) 
             if (!blocks || !isCurrent()) return null;
             const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
                 { filePath: document.uri.fsPath, keywordBlocks: blocks },
-                async (block) => {
-                    const lines = [];
-                    for (let i = block.startLine; i <= block.endLine; i++) {
-                        if ((i & 255) === 0 && !isCurrent()) {
-                            return null;
-                        }
-                        if (i > block.startLine && ((i - block.startLine) & 4095) === 0) {
-                            await new Promise(resolve => setImmediate(resolve));
-                            if (!isCurrent()) return null;
-                        }
-                        lines.push(document.lineAt(i).text);
-                    }
-                    return lines.join('\n');
-                },
+                (block, headerDataRecords) => readLiveReferenceBlock(document, block, cancellationToken, headerDataRecords),
                 undefined,
                 { cancellationToken }
             );
@@ -903,9 +897,10 @@ function prepareDocumentPresentation(document) {
 async function searchFileFromPathsAsync(filePath, paths) {
     for (const directory of paths) {
         const fullPath = path.resolve(directory, filePath);
-        try { await fs.promises.access(fullPath); return fullPath; } catch (_) { /* next search root */ }
+        try { await fs.promises.access(fullPath); return fullPath; }
+        catch (error) { if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error; }
     }
-    throw new Error(i18n.get('fileNotFound', filePath));
+    throw Object.assign(new Error(i18n.get('fileNotFound', filePath)), { code: 'ENOENT' });
 }
 
 /**
@@ -1027,7 +1022,7 @@ async function collectIncludeDocumentLinks(document, options: any = {}) {
                 ));
             }
         } catch (e) {
-            // missing on host FS
+            // A failed lookup has no verified navigation target.
         }
     }
 
@@ -1157,8 +1152,7 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
             .map(({ lineIndex, startChar, endLineIndex, endChar }) => ({
                 range: new vscode.Range(lineIndex, startChar, endLineIndex, endChar),
             }));
-        const markMissing = () => {
-            const hoverMessage = i18n.get('includeDecorationMissingLocal', entry.fileName);
+        const markMissing = (hoverMessage = i18n.get('includeDecorationMissingLocal', entry.fileName)) => {
             missing.push(...ranges.map(item => ({ ...item, hoverMessage })));
             const last = entryRanges[entryRanges.length - 1];
             if (!last) return;
@@ -1175,18 +1169,19 @@ async function collectIncludeDecorationSets(document, options: any = {}) {
         try {
             if (!lookups.has(entry.fileName)) lookups.set(entry.fileName, (async () => {
                 await searchFileFromPathsAsync(entry.fileName, searchPaths);
-                return mode !== 'strict' || pathCaseFidelity.isIncludeResolveAccepted(
-                    await resolveFn(entry.fileName, searchPaths), mode);
+                return mode === 'strict' ? await resolveFn(entry.fileName, searchPaths) : null;
             })());
-            const accepted = await lookups.get(entry.fileName);
+            const caseResult = await lookups.get(entry.fileName);
             if (!isCurrent()) return empty;
-            if (!accepted) {
-                markMissing();
+            if (mode === 'strict' && !pathCaseFidelity.isIncludeResolveAccepted(caseResult, mode)) {
+                markMissing(caseResult?.status === 'case-mismatch'
+                    ? i18n.get('includePathCaseMismatch', caseResult.deckRelative, caseResult.diskRelative) : undefined);
                 continue;
             }
             resolved.push(...ranges);
         } catch (e) {
-            markMissing();
+            markMissing(e?.code === 'ENOENT' || e?.code === 'ENOTDIR'
+                ? undefined : i18n.get('includeDecorationCheckFailed', entry.fileName));
         }
     }
 
@@ -1534,13 +1529,48 @@ class LsdynaRenameProvider {
 
         const definitions = findParameterDefinitions(document).get(nameUpper) || [];
         for (const def of definitions) {
+            if (def.format === 'fixed' || def.format === 'long-fixed') {
+                const width = def.format === 'long-fixed' ? 20 : 10;
+                const start = def.sequence * width * 2;
+                const prefix = document.lineAt(def.lineIndex).text.slice(start, def.startChar);
+                let descriptor = prefix + replacementName;
+                if (descriptor.length > width) descriptor = prefix.trimEnd() + replacementName;
+                if (descriptor.length > width) throw new Error(i18n.get('cellInputTooWide'));
+                edit.replace(document.uri, new vscode.Range(def.lineIndex, start, def.lineIndex, start + width),
+                    descriptor.padEnd(width));
+                continue;
+            }
             edit.replace(document.uri,
                 new vscode.Range(def.lineIndex, def.startChar, def.lineIndex, def.startChar + def.length),
                 replacementName);
         }
 
+        const cards = new Map();
         for (const ref of findParameterReferences(document)) {
             if (ref.name === nameUpper) {
+                const text = document.lineAt(ref.lineIndex).text;
+                if (ref.syntax === 'ampersand' && !text.includes(',') && !text.includes('\t')) {
+                    if (!cards.has(ref.lineIndex)) cards.set(ref.lineIndex,
+                        keywordSchema.getCardInfoForDocumentLine(document, ref.lineIndex, getFieldData()));
+                    const info = cards.get(ref.lineIndex);
+                    const fields = !info?.isTextCard && !['comma', 'free', 'raw'].includes(info?.inputFormat)
+                        ? (info?.card || []).filter(field => ref.startChar >= field.p &&
+                            ref.startChar + ref.length <= field.p + field.w) : [];
+                    if (fields.length === 1) {
+                        const field = fields[0];
+                        const token = text.slice(ref.startChar, ref.startChar + ref.length);
+                        // Only a standalone reference owns the whole fixed cell; formulas keep their text edits.
+                        const overlaps = info.card.some(other => other !== field &&
+                            other.p < field.p + field.w && other.p + other.w > field.p);
+                        if (!overlaps && text.slice(field.p, field.p + field.w).trim() === token) {
+                            const value = (ref.negated ? '-&' : '&') + replacementName;
+                            if (value.length > field.w) throw new Error(i18n.get('cellInputTooWide'));
+                            edit.replace(document.uri, new vscode.Range(ref.lineIndex, field.p,
+                                ref.lineIndex, Math.min(text.length, field.p + field.w)), value.padStart(field.w));
+                            continue;
+                        }
+                    }
+                }
                 edit.replace(document.uri,
                     new vscode.Range(
                         ref.lineIndex,
@@ -1631,12 +1661,19 @@ function buildFieldHelpMarkdown(field, context: any = {}) {
             ? keywordSchema.getLocalizedHelpForText(resolved.text)
             : keywordSchema.getLocalizedFieldHelp(field)
         : null;
-    const prefix = provisional
-        ? `⚠ **${i18n.get('fieldHelpProvisional')}** · _${i18n.get(sourceKeys[resolved.source])}_\n\n`
+    const prefix = provisional && !context.compact
+        ? `$(warning) **${i18n.get('fieldHelpProvisional')}** · _${i18n.get(sourceKeys[resolved.source])}_\n\n`
             + (language === 'zh-cn' && !localizedHelp && !/[\u3400-\u9fff]/.test(resolved.text)
                 ? `${i18n.get('fieldHelpUntranslated')}\n\n` : '')
         : '';
     const parts = selectFieldHelp(provisional ? resolved.text : englishHelp, localizedHelp, language);
+    if (context.compact) {
+        const paragraph = parts.primary.split(/\r?\n\s*\r?\n/)[0];
+        const lines = paragraph.split(/\r?\n/);
+        const shortened = lines.length > 3 || paragraph !== parts.primary;
+        parts.primary = lines.slice(0, 3).join('\n') + (shortened ? ' …' : '');
+        return prefix + formatFieldHelpMarkdown({ primary: parts.primary, secondary: null });
+    }
     const summaryLabel = i18n.get('fieldHelpEnglishOriginal');
     if (parts.secondary) {
         const id = stashFieldHelpEnglish(parts.secondary);
@@ -1678,6 +1715,7 @@ function keywordHoverMarkdown(
     canonicalName = kwName,
     observedDataLines = [],
     nativeCards = undefined,
+    cardContext = {},
 ) {
     const lookup = {
         inputName: kwName,
@@ -1685,7 +1723,7 @@ function keywordHoverMarkdown(
         entry,
         activeOptions,
     };
-    const cards = nativeCards ?? keywordSchema.getRenderedCardsForLookup(lookup, observedDataLines);
+    const cards = nativeCards ?? keywordSchema.getRenderedCardsForLookup(lookup, observedDataLines, undefined, cardContext);
     const lines = [`### $(symbol-keyword) **\\*${kwName}**\n\n---\n`];
     let cardNum = 1;
 
@@ -1730,7 +1768,6 @@ function keywordHoverMarkdown(
 
     if (nativeCards) lines.push(i18n.getLanguage() === 'zh-cn'
         ? '以上为当前数据前部已确定的记录。' : 'Resolved records from the beginning of the current data.');
-    if (!nativeCards && entry.r) lines.push(`*(✨ ${i18n.get('keywordHoverLastCardRepeats')})*\n`);
     if (entry.o && entry.o.length) {
         const active = new Set((activeOptions || []).map(option => String(option || '').toUpperCase()));
         const options = supportedKeywordOptions(entry, canonicalName).map(option => {
@@ -2452,7 +2489,7 @@ function buildFieldHoverQuietLinksMarkdown() {
  * @param {string} kwName - Cleaned keyword name.
  * @param {{ fieldHoverQuiet?: boolean }} [opts]
  */
-function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {}) {
+function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean; compact?: boolean } = {}) {
     const fieldHoverQuiet = !!opts.fieldHoverQuiet;
     const quietLinks = fieldHoverQuiet ? buildFieldHoverQuietLinksMarkdown() : '';
     const cleanKw = manualIndexer.cleanKeyword(kwName);
@@ -2465,6 +2502,13 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
     const fileCount = structuredPackAvailable ? 0 : manualIndexer.getManualFilesCount();
     const notConfigured = !structuredPackAvailable && fileCount === 0;
 
+    if (opts.compact && !structured && manuals.length === 0) {
+        const command = notConfigured ? 'extension.configureManualsDir' : 'extension.manual.openCurrentKeyword';
+        const args = encodeURIComponent(JSON.stringify(notConfigured ? [] : [cleanKw]));
+        const title = i18n.get(notConfigured ? 'manualSetupTitle' : 'openManualReader');
+        md.appendMarkdown(` &nbsp; [$(book)](command:${command}?${args} "${escapeMarkdownLinkTitle(title)}")`);
+        return;
+    }
     if (notConfigured) {
         md.appendMarkdown('\n\n---');
         md.appendMarkdown(`\n\n${i18n.get('manualDirNotConfigured')}`);
@@ -2476,7 +2520,7 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
             md.appendMarkdown(`\n\n${quietLinks}`);
         }
     } else if (structured || manuals.length > 0) {
-        md.appendMarkdown('\n\n---');
+        if (!opts.compact) md.appendMarkdown('\n\n---');
         const settingsLink = `[$(settings-gear)](command:extension.configureManualsDir "${i18n.get('modifyManualPath')}")`;
         let readerLink = '';
         let pdfLink;
@@ -2496,7 +2540,7 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
                 const pdfArgs = encodeURIComponent(JSON.stringify([
                     cleanKw, location.manualId, location.sectionId, 'pdf',
                 ]));
-                readerLink = `[$(book) ${i18n.get('manualReaderBilingual')}](command:extension.manual.openPackChapter?${readerArgs} "${i18n.get('openManualReader')}")`;
+                readerLink = `[$(book) ${opts.compact ? '' : i18n.get('manualReaderBilingual')}](command:extension.manual.openPackChapter?${readerArgs} "${i18n.get('openManualReader')}")`;
                 const pdfLabel = chapter.pdfPage
                     ? `PDF · ${chapter.manualLabel} · P${chapter.pdfPage}`
                     : `PDF · ${chapter.manualLabel}`;
@@ -2507,12 +2551,12 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
                         chapter.pdfPage ? i18n.get('page', chapter.pdfPage) : chapter.titleEn,
                     ),
                 );
-                pdfLink = `[$(file-pdf) ${pdfLabel}](command:extension.manual.openPackChapter?${pdfArgs} "${title}")`;
+                pdfLink = `[$(file-pdf) ${opts.compact ? '' : pdfLabel}](command:extension.manual.openPackChapter?${pdfArgs} "${title}")`;
             } else {
                 const readerArgs = encodeURIComponent(JSON.stringify([cleanKw, 'reader']));
                 const pdfArgs = encodeURIComponent(JSON.stringify([cleanKw, 'pdf']));
-                readerLink = `[$(book) ${i18n.get('manualReaderChooseChapter')}](command:extension.manual.pickPackChapter?${readerArgs} "${i18n.get('selectManualChapter')}")`;
-                pdfLink = `[$(file-pdf) ${i18n.get('pdfChooseChapter')}](command:extension.manual.pickPackChapter?${pdfArgs} "${i18n.get('selectManualChapter')}")`;
+                readerLink = `[$(book) ${opts.compact ? '' : i18n.get('manualReaderChooseChapter')}](command:extension.manual.pickPackChapter?${readerArgs} "${i18n.get('selectManualChapter')}")`;
+                pdfLink = `[$(file-pdf) ${opts.compact ? '' : i18n.get('pdfChooseChapter')}](command:extension.manual.pickPackChapter?${pdfArgs} "${i18n.get('selectManualChapter')}")`;
             }
         } else if (manuals.length === 1) {
             const man = manuals[0];
@@ -2523,14 +2567,23 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
             const title = escapeMarkdownLinkTitle(
                 i18n.get('openPdfManualLocation', volName, i18n.get('page', man.page)),
             );
-            pdfLink = `[$(file-pdf) PDF · P${man.page}](command:extension.openManual?${openArgs} "${title}")`;
+            pdfLink = `[$(file-pdf) ${opts.compact ? '' : `PDF · P${man.page}`}](command:extension.openManual?${openArgs} "${title}")`;
         } else {
             matchedKw = manuals[0].matchedKeyword || cleanKw;
             isApproximate = manuals[0].matchKind === 'approximate';
             const pickerArgs = encodeURIComponent(JSON.stringify([cleanKw]));
-            pdfLink = `[$(file-pdf) ${i18n.get('pdfChooseBookmark')}](command:extension.manual.pickPdfLocation?${pickerArgs} "${i18n.get('selectPdfManualLocation')}")`;
+            pdfLink = `[$(file-pdf) ${opts.compact ? '' : i18n.get('pdfChooseBookmark')}](command:extension.manual.pickPdfLocation?${pickerArgs} "${i18n.get('selectPdfManualLocation')}")`;
         }
 
+        if (opts.compact) {
+            if (isApproximate) {
+                const notice = escapeMarkdownLinkTitle(i18n.get('manualApproximateMatch', matchedKw));
+                readerLink = readerLink.replace(/ "([^"]*)"\)$/, (_, title) => ` "${title} · ${notice}")`);
+                pdfLink = pdfLink.replace(/ "([^"]*)"\)$/, (_, title) => ` "${title} · ${notice}")`);
+            }
+            md.appendMarkdown(` &nbsp; ${readerLink} ${pdfLink}`);
+            return;
+        }
         const documentLinks = readerLink
             ? `${readerLink} &nbsp;|&nbsp; ${pdfLink}`
             : pdfLink;
@@ -2539,10 +2592,10 @@ function appendManualLinks(md, kwName, opts: { fieldHoverQuiet?: boolean } = {})
             : '';
         const quietGroup = quietLinks ? ` &nbsp;·&nbsp; ${quietLinks}` : '';
         md.appendMarkdown(`\n\n${settingsLink} &nbsp;&nbsp; ${matchNotice}${documentLinks}${quietGroup}`);
-    } else if (quietLinks) {
-        // No manual matches: still offer quiet controls on a light action row.
-        md.appendMarkdown('\n\n---');
-        md.appendMarkdown(`\n\n${quietLinks}`);
+    } else {
+        const args = encodeURIComponent(JSON.stringify([cleanKw]));
+        md.appendMarkdown(`\n\n[$(book) ${i18n.get('openManualReader')}](command:extension.manual.openCurrentKeyword?${args})`);
+        if (quietLinks) md.appendMarkdown(`\n\n---\n\n${quietLinks}`);
     }
 }
 
@@ -2595,45 +2648,39 @@ async function pickManualLocation(kwName) {
 
 /**
  * Safely reads the first chunk of a file to generate a preview.
- * Returns empty string if the file doesn't exist or an error occurs.
+ * Returns no preview if the file doesn't exist or an error occurs.
  *
  * @param {string} filePath
- * @param {number} maxBytes
- * @param {number} maxLines
- * @returns {Promise<string>}
+ * @returns {Promise<{text: string, truncated: boolean} | null>}
  */
 async function getIncludeFilePreview(filePath) {
     const maxLines = getLsdynaConfigurationValue('hover.previewMaxLines', 20);
-    const maxBytes = Math.max(4096, maxLines * 120);
+    if (!Number.isFinite(maxLines) || maxLines < 0 || maxLines > 500) return null;
+    const maxBytes = Math.max(4096, Math.floor(maxLines * 120));
 
-    return new Promise((resolve) => {
-        fs.open(filePath, 'r', (err, fd) => {
-            if (err) return resolve('');
-            const buffer = Buffer.alloc(maxBytes);
-            fs.read(fd, buffer, 0, maxBytes, 0, (err, bytesRead) => {
-                fs.close(fd, () => {
-                    if (err || bytesRead === 0) return resolve('');
-                    let text = buffer.toString('utf8', 0, bytesRead);
-                    let lines = text.split(/\r?\n/);
-                    let isTruncated = false;
-
-                    if (lines.length > maxLines) {
-                        lines = lines.slice(0, maxLines);
-                        isTruncated = true;
-                    } else if (bytesRead === maxBytes) {
-                        lines.pop(); // Drop the last incomplete line
-                        isTruncated = true;
-                    }
-
-                    let preview = lines.join('\n');
-                    if (isTruncated) {
-                        preview += '\n... (File is truncated for preview)';
-                    }
-                    resolve(preview);
-                });
-            });
-        });
-    });
+    try {
+        const buffer = Buffer.alloc(maxBytes);
+        const file = await fs.promises.open(filePath, 'r');
+        let bytesRead;
+        try {
+            ({ bytesRead } = await file.read(buffer, 0, maxBytes, 0));
+        } finally {
+            await file.close();
+        }
+        if (bytesRead === 0) return null;
+        let lines = buffer.toString('utf8', 0, bytesRead).split(/\r?\n/);
+        let isTruncated = false;
+        if (lines.length > maxLines) {
+            lines = lines.slice(0, maxLines);
+            isTruncated = true;
+        } else if (bytesRead === maxBytes) {
+            lines.pop(); // Drop the last incomplete line
+            isTruncated = true;
+        }
+        return { text: lines.join('\n'), truncated: isTruncated };
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -2710,7 +2757,7 @@ async function maybeShowFieldHoverQuietHint(kind) {
     const picked = await vscode.window.showInformationMessage(message, reenable, dismiss);
     if (picked === reenable) {
         await enableFieldHoverFromQuiet();
-        vscode.window.showInformationMessage(i18n.get('fieldHoverEnabledToast'));
+        vscode.window.setStatusBarMessage(i18n.get('fieldHoverEnabledToast'), 2500);
     }
 }
 
@@ -2741,7 +2788,7 @@ async function handleToggleFieldHover() {
         return;
     }
     await enableFieldHoverFromQuiet();
-    vscode.window.showInformationMessage(i18n.get('fieldHoverEnabledToast'));
+    vscode.window.setStatusBarMessage(i18n.get('fieldHoverEnabledToast'), 2500);
 }
 
 function similarKeywordChoiceKey(document, line, unknownKeyword) {
@@ -2871,7 +2918,7 @@ function buildHoverInfoIcon(messages) {
         .filter(Boolean)
         .map(text => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;'))
         .join('&#10;');
-    return `<span title="${title}">ⓘ</span>`;
+    return `<span title="${title}">$(info)</span>`;
 }
 
 function buildUnknownKeywordHoverMarkdown(kwName, ctx: any = {}) {
@@ -2916,6 +2963,7 @@ function buildUnknownKeywordHoverMarkdown(kwName, ctx: any = {}) {
         const pickArgs = encodeURIComponent(JSON.stringify([{
             keyword: kwName,
             line,
+            uri: document?.uri?.toString(),
             suggestions: suggest.items.map(item => item.keyword),
         }]));
         detailMarkdown = `[$(search) ${i18n.get('unknownKeywordPickSimilarHelp')}](command:extension.pickSimilarKeywordHelp?${pickArgs} "${i18n.get('unknownKeywordPickSimilarHelp')}")`;
@@ -2958,6 +3006,17 @@ async function handlePickSimilarKeywordHelpCommand(arg) {
         return;
     }
 
+    const initialEditor = vscode.window.activeTextEditor;
+    const document = payload.uri
+        ? vscode.workspace.textDocuments.find(document => document.uri.toString() === payload.uri)
+        : initialEditor?.document;
+    if (!document || document.isClosed) return;
+    const line = typeof payload.line === 'number'
+        ? payload.line
+        : (initialEditor?.document === document ? initialEditor.selection.active.line : 0);
+    if (!Number.isInteger(line) || line < 0 || line >= document.lineCount) return;
+    const version = document.version;
+
     const items = suggestions.map(name => ({
         label: `*${name}`,
         description: name,
@@ -2968,25 +3027,19 @@ async function handlePickSimilarKeywordHelpCommand(arg) {
         placeHolder: i18n.get('unknownKeywordPickSimilarPlaceholder'),
         matchOnDescription: true,
     });
-    if (!picked || !picked.keyword) {
+    if (!picked || !picked.keyword || document.isClosed || document.version !== version || line >= document.lineCount) {
         return;
     }
 
     const editor = vscode.window.activeTextEditor;
-    const document = editor && editor.document;
-    const line = typeof payload.line === 'number'
-        ? payload.line
-        : (editor ? editor.selection.active.line : 0);
-    if (document) {
-        rememberSimilarKeywordChoice(document, line, unknownKeyword || picked.keyword, picked.keyword);
-        if (editor) {
-            const pos = new vscode.Position(line, Math.min(1, document.lineAt(line).text.length));
-            editor.selection = new vscode.Selection(pos, pos);
-            try {
-                await vscode.commands.executeCommand('editor.action.showHover');
-            } catch {
-                // Hover may be unavailable in tests / non-editor hosts.
-            }
+    rememberSimilarKeywordChoice(document, line, unknownKeyword || picked.keyword, picked.keyword);
+    if (editor?.document === document) {
+        const pos = new vscode.Position(line, Math.min(1, document.lineAt(line).text.length));
+        editor.selection = new vscode.Selection(pos, pos);
+        try {
+            await vscode.commands.executeCommand('editor.action.showHover');
+        } catch {
+            // Hover may be unavailable in tests / non-editor hosts.
         }
     }
 }
@@ -2995,6 +3048,87 @@ async function handlePickSimilarKeywordHelpCommand(arg) {
  * Hover provider delivering detailed keyword and card field documentation on mouse hover.
  * @implements {vscode.HoverProvider}
  */
+let activeHoverRequest: any = null;
+let hoverRequestSequence = 0;
+
+function beginHoverRequest(document, position) {
+    const previous = activeHoverRequest;
+    if (previous?.document === document && previous.version === document.version &&
+        previous.position.line === position.line && previous.position.character === position.character) return previous;
+    return activeHoverRequest = { id: ++hoverRequestSequence, document, version: document.version,
+        position, expanded: false };
+}
+
+function hoverRequestIsCurrent(request) {
+    return request === activeHoverRequest && !request.document.isClosed &&
+        request.version === request.document.version && vscode.window.activeTextEditor?.document === request.document;
+}
+
+async function handleHoverAction(id, more = false) {
+    const request = activeHoverRequest;
+    if (!request || request.id !== id || !hoverRequestIsCurrent(request)) return false;
+    let action = 'details';
+    if (more) {
+        const choice = await vscode.window.showQuickPick([
+            { label: `$(list-tree) ${i18n.get(request.expanded ? 'hoverCollapse' : 'hoverDetails')}`, action: 'details' },
+            { label: `$(settings-gear) ${i18n.get('modifyManualPath')}`, action: 'extension.configureManualsDir' },
+            { label: `$(bell-slash) ${i18n.get('fieldHoverQuietSessionLink')}`, action: 'extension.muteFieldHoverSession' },
+            { label: `$(lock) ${i18n.get('fieldHoverDisableGlobalLink')}`, action: 'extension.disableFieldHover' },
+        ], { placeHolder: i18n.get('hoverMore'), ignoreFocusOut: false });
+        if (!choice || !hoverRequestIsCurrent(request)) return false;
+        action = choice.action;
+    }
+    if (action !== 'details') return vscode.commands.executeCommand(action);
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    if (!hoverRequestIsCurrent(request)) return false;
+    request.expanded = !request.expanded;
+    const editor = vscode.window.activeTextEditor;
+    const position = new vscode.Position(request.position.line, request.position.character);
+    // Explicit detail navigation anchors the native hover at the requested field.
+    // Restoring a different selection after showHover closes the native widget.
+    if (editor.selection.active.line !== position.line || editor.selection.active.character !== position.character)
+        editor.selection = new vscode.Selection(position, position);
+    await vscode.commands.executeCommand('editor.action.hideHover');
+    // Native command links finish dismissing the old hover after the handler returns.
+    // Reopen on the next event turn, once that dismissal has completed.
+    setTimeout(() => {
+        if (hoverRequestIsCurrent(request) && editor.selection.active.line === position.line &&
+            editor.selection.active.character === position.character)
+            void Promise.resolve(vscode.commands.executeCommand('editor.action.showHover', { focus: 'autoFocusImmediately' }))
+                .catch(error => console.warn('[lsdyna] Could not reopen hover details', error));
+    }, 0);
+    return true;
+}
+
+function compactFieldGrid(cards, activeName = '') {
+    const fields = cards.flat();
+    if (!fields.length) return '';
+    // One table shares column widths across cards; physical boundaries also support wide fields.
+    const boundaries = [...new Set<number>(fields.flatMap(field => [field.p, field.p + field.w]))].sort((a, b) => a - b);
+    const starts = boundaries.slice(0, -1);
+    const rows = cards.filter(card => card.length).map(card => starts.map(start => {
+        const field = card.find(candidate => candidate.p === start);
+        if (!field) return card.some(candidate => candidate.p < start && candidate.p + candidate.w > start) ? '<sub>→</sub>' : '';
+        const label = new vscode.MarkdownString().appendText(field.n).value;
+        return `<sub>${field.n === activeName ? `<span style="color:var(--vscode-textLink-foreground);">${label}</span>` : label}</sub>`;
+    }));
+    return [`| ${starts.map((start, index) => `<sub>${start + 1}&#8209;${boundaries[index + 1]}</sub>`).join(' | ')} |`,
+        `| ${starts.map(() => '---').join(' | ')} |`,
+        ...rows.map(row => `| ${row.join(' | ')} |`)].join('\n');
+}
+
+function compactHoverCard(title, body, keyword, request, actions = '') {
+    const md = new vscode.MarkdownString(`${title}${actions ? ` &nbsp; ${actions}` : ''}`);
+    md.isTrusted = HOVER_TRUST;
+    md.supportHtml = true;
+    md.supportThemeIcons = true;
+    if (keyword) appendManualLinks(md, keyword, { compact: true });
+    const args = encodeURIComponent(JSON.stringify([request.id]));
+    md.appendMarkdown(` &nbsp; [$(ellipsis)](command:extension.hoverMore?${args} "${i18n.get('hoverMore')}")`);
+    if (body) md.appendMarkdown(`\n\n${body}`);
+    return md;
+}
+
 class LsdynaFieldHoverProvider {
     /**
      * Generates Hover cards for includes, parameter references, keywords, or card fields.
@@ -3003,7 +3137,25 @@ class LsdynaFieldHoverProvider {
      * @param {import('vscode').Position} position - Cursor position.
      * @returns {import('vscode').Hover|null} Hover card or null.
      */
-    async provideHover(document, position, cancellationToken = undefined) {
+    async provideDetailedHover(document, position, cancellationToken = undefined) {
+        return this.provideHoverContent(document, position, cancellationToken, true);
+    }
+
+    async provideHover(document, position, cancellationToken = undefined, detailed = undefined) {
+        const request = beginHoverRequest(document, position);
+        const expanded = detailed ?? request.expanded;
+        const hover = await this.provideHoverContent(document, position, cancellationToken, expanded);
+        if (hover && expanded) {
+            const args = encodeURIComponent(JSON.stringify([request.id]));
+            const content = hover.contents[0];
+            if (content?.value) content.value = `[$(chevron-up)](command:extension.toggleHoverDetails?${args} "${i18n.get('hoverCollapse')}")\n\n${content.value}`;
+        }
+        return hover;
+    }
+
+    async provideHoverContent(document, position, cancellationToken = undefined, detailed = false) {
+        const request = beginHoverRequest(document, position);
+        detailed = detailed ?? request.expanded;
         const documentVersion = document.version;
         const isCurrent = createReferenceReadGuard(document, cancellationToken);
         if (!isCurrent()) return null;
@@ -3026,26 +3178,25 @@ class LsdynaFieldHoverProvider {
                     const uri = vscode.Uri.file(fullPath);
                     const hoverRange = new vscode.Range(rangeOnLine.lineIndex, rangeOnLine.startChar, rangeOnLine.lineIndex, rangeOnLine.endChar);
 
-                    const openNewTabArgs = encodeURIComponent(JSON.stringify([fullPath]));
-                    const openSplitArgs = encodeURIComponent(JSON.stringify([fullPath]));
-                    const openFolderArgs = encodeURIComponent(JSON.stringify([fullPath]));
+                    const includeArgs = encodeURIComponent(JSON.stringify([fullPath]));
 
                     const md = new vscode.MarkdownString(
-                        `[$(go-to-file)](command:extension.openIncludeNewTab?${openNewTabArgs} "${i18n.get('openNewTab')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
-                        `[$(split-horizontal)](command:extension.openIncludeSplit?${openSplitArgs} "${i18n.get('openSplit')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
-                        `[$(folder-opened)](command:extension.openIncludeFolder?${openFolderArgs} "${i18n.get('openFolder')}")`
+                        `[${detailed ? i18n.get('openNewTab') : '$(go-to-file)'}](command:extension.openIncludeNewTab?${includeArgs} "${escapeMarkdownLinkTitle(i18n.get('openNewTab') + (detailed ? '' : ' · ' + fullPath))}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[${detailed ? i18n.get('openSplit') : '$(split-horizontal)'}](command:extension.openIncludeSplit?${includeArgs} "${i18n.get('openSplit')}") &nbsp;&nbsp;&nbsp;&nbsp; ` +
+                        `[${detailed ? i18n.get('openFolder') : '$(folder-opened)'}](command:extension.openIncludeFolder?${includeArgs} "${i18n.get('openFolder')}")`
                     );
                     md.isTrusted = HOVER_TRUST;
                     md.supportThemeIcons = true;
 
-                    const previewText = await getIncludeFilePreview(fullPath);
+                    const preview = detailed ? await getIncludeFilePreview(fullPath) : null;
                     if (!isCurrent()) return null;
-                    if (previewText) {
+                    if (preview) {
                         md.appendMarkdown('\n\n---\n\n');
-                        md.appendCodeblock(previewText, 'lsdyna');
+                        if (preview.text) md.appendCodeblock(preview.text, 'lsdyna');
+                        if (detailed && preview.truncated) md.appendMarkdown(`\n\n> ${i18n.get('includePreviewTruncated').replace(/\n/g, '  \n> ')}`);
                     }
 
-                    return new vscode.Hover(md, hoverRange);
+                    return new vscode.Hover(detailed ? md : compactHoverCard(`**${new vscode.MarkdownString().appendText(path.basename(fullPath)).value}**`, '', '', request, md.value), hoverRange);
                 } catch (e) {
                     // File does not exist, fall through to default keyword/field hover
                 }
@@ -3104,6 +3255,14 @@ class LsdynaFieldHoverProvider {
                 referenceIndexState,
                 document.uri.fsPath
             );
+            if (!detailed) {
+                const value = effectiveAnalysis?.resolved ? ` = ${inlineSemanticLabel(String(effectiveAnalysis.value))}`
+                    : ` · ${i18n.get('hoverUnresolved')}`;
+                const fieldName = nativeField ? `**${new vscode.MarkdownString().appendText(nativeField.n).value}** · ` : '';
+                const md = compactHoverCard(`${fieldName}$(symbol-variable) ${inlineSemanticLabel('&' + parameterName)}${value}`,
+                    '', '', request);
+                return new vscode.Hover(md, nativeField ? new vscode.Range(position.line, nativeField.nativeRange.start, position.line, nativeField.nativeRange.end) : parameterAtCursor.fullRange);
+            }
             const md = new vscode.MarkdownString(buildParameterReferenceHoverMarkdown({
                 parameterName,
                 sourceDefinitions,
@@ -3123,6 +3282,7 @@ class LsdynaFieldHoverProvider {
             if (!kwName) return null;
 
             let previewMd = '';
+            let previewDefinition = null;
             const normalizedKw = kwName.toUpperCase();
             if (normalizedKw.startsWith('DEFINE_CURVE') || normalizedKw.startsWith('DEFINE_TABLE')) {
                 const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
@@ -3146,6 +3306,7 @@ class LsdynaFieldHoverProvider {
                             position.line,
                             `definition:${resolvedMatch.keyword}:${resolvedMatch.id ?? resolvedMatch.idRaw ?? ''}`
                         );
+                        previewDefinition = resolvedMatch;
                         previewMd = buildDefinitionHoverSection(
                             resolvedMatch,
                             themeKind,
@@ -3156,13 +3317,15 @@ class LsdynaFieldHoverProvider {
                                 lineIndex: position.line,
                                 character: 0,
                                 endCharacter: document.lineAt(position.line).text.length,
-                            }
+                            },
+                            !detailed,
                         );
                     }
                 }
             }
 
             const lookup = lookupKeywordInfo(kwName);
+            if (!lookup && !detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, previewMd, kwName, request));
             if (!lookup) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
                 const manuals = manualIndexer.getManualLocations(cleanKw);
@@ -3205,6 +3368,18 @@ class LsdynaFieldHoverProvider {
                     }, getFieldData());
                     return result.cardInfo ? [result.cardInfo.card] : [];
                 }) : undefined;
+            if (!detailed) {
+                const id = previewDefinition ? ` · ${inlineSemanticLabel(String(previewDefinition.id ?? previewDefinition.idRaw ?? ''))}` : '';
+                const title = `**$(symbol-keyword) ${new vscode.MarkdownString().appendText('*' + kwName).value}**${id}` +
+                    (hasUncertainTableChildren(previewDefinition) ? ` · ${i18n.get('hoverCandidate')}` : '');
+                const cards = nativeCards?.length ? nativeCards : keywordSchema.getRenderedCardsForLookup(lookup, prefixDataLines, undefined, { keywordText: text, globalInputFormat: documentGlobalInputFormat(document), parameterContext });
+                const body = previewMd || (previewDefinition ? i18n.get('hoverUnavailable') : compactFieldGrid(cards));
+                const args = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: position.line }]));
+                const manager = `[$(settings-gear)](command:extension.lsdynaChooseKeywordOptions?${args} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`;
+                const maintenance = keywordCardMaintenanceAction(document, position.line);
+                const update = maintenance ? ` &nbsp; [$(comment)](command:extension.updateKeywordCards?${encodeURIComponent(JSON.stringify([maintenance.request]))} "${maintenance.title}")` : '';
+                return new vscode.Hover(compactHoverCard(title, body, kwName, request, manager + update));
+            }
             let hoverContent = keywordHoverMarkdown(
                 kwName,
                 lookup.entry,
@@ -3212,6 +3387,8 @@ class LsdynaFieldHoverProvider {
                 lookup.canonicalName,
                 prefixDataLines,
                 nativeCards,
+                {keywordText:text, globalInputFormat:documentGlobalInputFormat(document), parameterContext,
+                    recordLines:prefixRecords.map(record => record.line)},
             );
             const semanticAdvice = getKeywordSemanticAdviceForDocument(document, position.line, lookup);
             const semanticMarkdown = buildKeywordSemanticAdviceMarkdown(semanticAdvice);
@@ -3282,6 +3459,7 @@ class LsdynaFieldHoverProvider {
                     : 'Cannot determine this field: the control value, record layout, or input format is not resolved.')
                 : '');
             if (!issue) return null;
+            if (!detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, '', kwName, request));
             const issueMd = new vscode.MarkdownString(issue);
             issueMd.isTrusted = HOVER_TRUST;
             issueMd.supportHtml = true;
@@ -3306,6 +3484,7 @@ class LsdynaFieldHoverProvider {
         const field = matchingFields[0];
         if (!field) {
             if (!cardCommentNoticeMarkdown) return null;
+            if (!detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, '', kwName, request));
             const conflictMd = new vscode.MarkdownString(cardCommentNoticeMarkdown);
             conflictMd.isTrusted = HOVER_TRUST;
             conflictMd.supportHtml = true;
@@ -3323,6 +3502,7 @@ class LsdynaFieldHoverProvider {
         const nativeStart = field.nativeRange ? Math.max(field.nativeRange.start, ...boundaries.filter(value => value <= col)) : Math.min(text.length, field.p);
         const nativeEnd = field.nativeRange ? Math.min(field.nativeRange.end, ...boundaries.filter(value => value > col)) : Math.min(text.length, field.p + field.w);
         if (matchingFields.length > 1 && matchingFields.every(f => f.nativeIdentity)) {
+            if (!detailed) return new vscode.Hover(compactHoverCard(matchingFields.map(f => `**${new vscode.MarkdownString().appendText(f.n).value}**`).join(' · '), '', kwName, request), new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
             const md = new vscode.MarkdownString(i18n.getLanguage() === 'zh-cn'
                 ? '这些原生字段读取共享字节，各自保留字段身份和类型。'
                 : 'These native fields read shared bytes and retain distinct identities and types.');
@@ -3356,6 +3536,7 @@ class LsdynaFieldHoverProvider {
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpKeywordName = cardInfo.keywordName || resolvedCard.suggestedName || kwName;
         const formattedHelp = buildFieldHelpMarkdown(field, {
+            compact: !detailed,
             keyword: helpKeywordName,
             cardIndex: cardInfo.cardIndex,
             fieldIndex: card.indexOf(field),
@@ -3369,20 +3550,7 @@ class LsdynaFieldHoverProvider {
             ])}`
             : '';
 
-        const columnsHeader = card.map(f => `${f.p + 1}-${f.p + f.w}`);
-        const separators = card.map(() => ':---:'); // Center align all columns
-        const fieldNamesBody = card.map((f) => {
-            if (f.n === field.n) {
-                return `<span style="color:var(--vscode-badge-foreground);background-color:var(--vscode-badge-background);">**&nbsp;${f.n}&nbsp;**</span>`;
-            }
-            return `\`${f.n}\``; // Use inline code for inactive fields to look like input cells
-        });
-
-        const gridTable = [
-            `| ${columnsHeader.join(' | ')} |`,
-            `| ${separators.join(' | ')} |`,
-            `| ${fieldNamesBody.join(' | ')} |`
-        ].join('\n');
+        const gridTable = compactFieldGrid([card], field.n);
         const rawFieldValue = field.rawValue ?? text.slice(field.p, field.p + field.w);
         const referenceInfo = field.nativeIdentity && !field.nativeStaticBinding ? null : getActionableFieldReferenceInfo({
             keyword: helpKeywordName,
@@ -3403,6 +3571,12 @@ class LsdynaFieldHoverProvider {
             document,
         );
 
+        if (!detailed && !(referenceInfo && referenceValue)) {
+            const choice = buildOfficialFieldChoiceHoverMarkdown(officialChoicePlan, document, true);
+            const title = `$(symbol-field) **${new vscode.MarkdownString().appendText(field.n).value}**${typeLabel}`;
+            return new vscode.Hover(compactHoverCard(title, `${formattedHelp}${formattedHelp ? '\n\n' : ''}${gridTable}`, manualKw, request, choice),
+                new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
+        }
         let md;
         if (referenceInfo && referenceValue) {
             md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${suggestInfoIcon}${typeLabel}`);
@@ -3428,6 +3602,19 @@ class LsdynaFieldHoverProvider {
                 field.n
             );
 
+            if (!detailed) {
+                const preview = buildCompactReferenceHover(analysis, themeKind, {
+                    key: tablePreviewKey, view: getTablePreviewViewForReference(tablePreviewKey),
+                    filePath: document.uri.fsPath, lineIndex: position.line, character: field.p, endCharacter: field.p + field.w,
+                });
+                const id = analysis.transformResolution?.resolved ? analysis.transformResolution.effectiveId
+                    : analysis.parameterResolution?.resolved ? analysis.parameterResolution.value
+                    : referenceValue.kind === 'parameter' ? referenceValue.raw : referenceValue.id;
+                const title = `**${inlineSemanticLabel(field.n)}** ${inlineSemanticLabel(String(id ?? rawFieldValue))}` +
+                    (preview.status ? ` · ${preview.status}` : '');
+                const body = preview.body || `${formattedHelp}${formattedHelp ? '\n\n' : ''}${gridTable}`;
+                return new vscode.Hover(compactHoverCard(title, body, manualKw, request, preview.actions), new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
+            }
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
                 referenceValue,
@@ -3462,12 +3649,12 @@ class LsdynaFieldHoverProvider {
             }
 
             // Manual & columns at the bottom
-            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
+            md.appendMarkdown(`\n\n---\n\n${helpText}\n\n---\n\n${gridTable}`);
             if (officialChoiceMarkdown) md.appendMarkdown(`\n\n${officialChoiceMarkdown}`);
             if (fieldCardCommentNoticeMarkdown) md.appendMarkdown(`\n\n${fieldCardCommentNoticeMarkdown}`);
             appendManualLinks(md, manualKw, { fieldHoverQuiet: true });
         } else {
-            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${suggestInfoIcon}${typeLabel}${helpText}\n\n---\n\n**$(table) ${i18n.get('cardColumns')}:**\n\n${gridTable}`);
+            md = new vscode.MarkdownString(`### $(symbol-field) <span style="color:var(--vscode-textLink-foreground);">**${field.n}**</span>${suggestInfoIcon}${typeLabel}${helpText}\n\n---\n\n${gridTable}`);
             md.isTrusted = HOVER_TRUST;
             md.supportHtml = true;
             md.supportThemeIcons = true;
@@ -3656,9 +3843,10 @@ function getFilenameFromDocument(document, lineindex) {
 function searchFileFromPaths(filePath, paths) {
     for (const searchPath of paths) {
         const fullPath = path.resolve(searchPath, filePath);
-        if (fs.existsSync(fullPath)) return fullPath;
+        try { fs.accessSync(fullPath, fs.constants.F_OK); return fullPath; }
+        catch (error) { if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error; }
     }
-    throw new Error(i18n.get('fileNotFound', filePath));
+    throw Object.assign(new Error(i18n.get('fileNotFound', filePath)), { code: 'ENOENT' });
 }
 
 /**
@@ -3715,18 +3903,20 @@ function findPreviousKeywordInDocument(document, currentLine) {
  * @param {number} [delayMs=500] - Timer delay.
  * @param {function} [schedule=setTimeout] - Scheduling handle.
  * @param {function} [cancel=clearTimeout] - Cancellation handle.
- * @returns {function(any): void} Debounced caller.
+ * @returns Debounced caller with a dispose method that cancels pending work.
  */
 function createActiveDocumentDebouncer(getActiveDocument, refreshDocument, delayMs = 500, schedule = setTimeout, cancel = clearTimeout) {
     let timer;
-    return (changedDocument) => {
+    let disposed = false;
+    return Object.assign((changedDocument) => {
+        if (disposed) return;
         cancel(timer);
         timer = schedule(() => {
-            if (getActiveDocument() === changedDocument) {
+            if (!disposed && getActiveDocument() === changedDocument) {
                 refreshDocument(changedDocument);
             }
         }, delayMs);
-    };
+    }, { dispose() { disposed = true; cancel(timer); } });
 }
 
 // --- Shared include traversal ---
@@ -3744,13 +3934,16 @@ async function collectIncludeFiles(rootPath, onProgress) {
     const files = [];
     while (queue.length > 0) {
         const filePath = queue.shift();
-        if (visited.has(filePath) || !fs.existsSync(filePath)) continue;
+        if (visited.has(filePath)) continue;
+        try { fs.accessSync(filePath, fs.constants.F_OK); }
+        catch (error) { if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') continue; throw error; }
         visited.add(filePath);
         files.push(filePath);
         if (onProgress) onProgress(files.length);
     const { includeEntries, searchPaths } = await includeScanner.collectIncludeDirectivesFromFile(filePath);
         for (const { fileName } of includeEntries) {
-            try { queue.push(searchFileFromPaths(fileName, searchPaths)); } catch (e) {}
+            try { queue.push(searchFileFromPaths(fileName, searchPaths)); }
+            catch (error) { if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error; }
         }
         await new Promise(r => setImmediate(r));
     }
@@ -4554,6 +4747,7 @@ class LsdynaFieldCompletionProvider {
                 });
                 if (helpMd) {
                     const doc = new vscode.MarkdownString(helpMd);
+                    doc.supportThemeIcons = true;
                     doc.supportHtml = true;
                     doc.isTrusted = HOVER_TRUST;
                     item.documentation = doc;
@@ -5205,7 +5399,7 @@ async function waitForPendingCardCellPostEdit(document) {
     let barrier = waitForCardCellPostEdit(document);
     let waited = !!barrier;
     if (!barrier && document) {
-        const nav = ensureCardCellEditGuard().getNav();
+        const nav = ensureCardCellEditGuard().getNav(document);
         const documentKey = document.uri && document.uri.toString();
         const staleNavigationVersion = nav &&
             nav.uri === documentKey &&
@@ -5240,9 +5434,10 @@ function ensureCardCellEditGuard() {
 
 function markCardCellA(guard, document, lineNum, fieldIndex, keepSeparator) {
     guard.markA(document, lineNum, fieldIndex, keepSeparator);
-    const nav = guard.getNav();
+    const nav = guard.getNav(document);
     cardCellASelectionGrace = nav
         ? {
+            document,
             uri: nav.uri,
             line: nav.line,
             fieldIndex: nav.fieldIndex,
@@ -5252,11 +5447,13 @@ function markCardCellA(guard, document, lineNum, fieldIndex, keepSeparator) {
         : null;
 }
 
-function cardCellASelectionGraceRemaining(nav) {
+function cardCellASelectionGraceRemaining(nav, document) {
     if (
         !nav ||
         nav.mode !== 'A' ||
+        !document || document.isClosed ||
         !cardCellASelectionGrace ||
+        cardCellASelectionGrace.document !== document ||
         nav.uri !== cardCellASelectionGrace.uri ||
         nav.line !== cardCellASelectionGrace.line ||
         nav.fieldIndex !== cardCellASelectionGrace.fieldIndex ||
@@ -5632,7 +5829,7 @@ function handleSelectionChange(e) {
             // selection as Command (3). Only direct keyboard/mouse gestures
             // should bypass the short command-selection grace immediately.
             const graceRemaining = e && e.textEditor && e.kind !== 1 && e.kind !== 2
-                ? cardCellASelectionGraceRemaining(guard.getNav())
+                ? cardCellASelectionGraceRemaining(guard.getNav(currentDoc), currentDoc)
                 : 0;
             if (graceRemaining > 0) {
                 cellSelectionSyncTimer = setTimeout(syncCellSelection, graceRemaining);
@@ -5886,7 +6083,7 @@ async function handleCardCellDelete(direction) {
                         editor.document.isClosed ||
                         editor.document.lineAt(plan.lineNum).text !== sourceText
                     ) return;
-                    await applyCardCellLineEdit(
+                    const applied = await applyCardCellLineEdit(
                         editor,
                         plan.lineNum,
                         merge.line,
@@ -5894,6 +6091,7 @@ async function handleCardCellDelete(direction) {
                         merge.caretCol,
                         { undoStopBefore: true, undoStopAfter: true },
                     );
+                    if (applied === false) return;
                     guard.markAp(
                         editor.document,
                         plan.lineNum,
@@ -5911,10 +6109,11 @@ async function handleCardCellDelete(direction) {
     }
     if (plan.deleteLine) {
         const targetLine = typeof plan.targetLine === 'number' ? plan.targetLine : Math.max(0, plan.lineNum - 1);
-        await applyCardCellLineDelete(editor, plan.lineNum, targetLine, plan.selStart, plan.selEnd, {
+        const applied = await applyCardCellLineDelete(editor, plan.lineNum, targetLine, plan.selStart, plan.selEnd, {
             undoStopBefore: true,
             undoStopAfter: true,
         });
+        if (applied === false) return;
         if (plan.clearNav) {
             guard.clearNav();
         } else if (plan.markA) {
@@ -5923,10 +6122,11 @@ async function handleCardCellDelete(direction) {
         vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', guard.shouldCellEditActive(editor));
         return;
     }
-    await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.selStart, plan.selEnd, {
+    const applied = await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.selStart, plan.selEnd, {
         undoStopBefore: true,
         undoStopAfter: true,
     });
+    if (applied === false) return;
     if (plan.clearNav) {
         guard.clearNav();
     } else if (plan.markA) {
@@ -5936,7 +6136,7 @@ async function handleCardCellDelete(direction) {
         const fi =
             typeof plan.fieldIndex === 'number' && plan.fieldIndex >= 0
                 ? plan.fieldIndex
-                : (guard.getNav()?.fieldIndex ?? 0);
+                : (guard.getNav(editor.document)?.fieldIndex ?? 0);
         if (fi >= 0) guard.markAp(editor.document, plan.lineNum, fi, plan.selStart);
     }
     vscode.commands.executeCommand('setContext', 'lsdyna.cellEditActive', guard.shouldCellEditActive(editor));
@@ -6060,6 +6260,7 @@ async function finalizeCardCellComposition(document, state) {
     const releaseBarrier = beginCardCellPostEditBarrier(document);
     try {
         if (
+            vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed ||
             state.lineNum < 0 ||
@@ -6081,6 +6282,13 @@ async function finalizeCardCellComposition(document, state) {
             await vscode.commands.executeCommand('undo');
         } finally {
             endCardCellOwnedEdit(document);
+        }
+        if (
+            vscode.window.activeTextEditor !== state.editor ||
+            state.editor.document !== document ||
+            document.isClosed
+        ) {
+            return;
         }
         if (
             document.isClosed ||
@@ -6113,7 +6321,7 @@ async function finalizeCardCellComposition(document, state) {
             return;
         }
 
-        await applyCardCellLineEdit(
+        const applied = await applyCardCellLineEdit(
             state.editor,
             state.lineNum,
             plan.newText,
@@ -6124,6 +6332,7 @@ async function finalizeCardCellComposition(document, state) {
                 undoStopAfter: true,
             },
         );
+        if (applied === false) return;
         const isActiveEditor = vscode.window.activeTextEditor === state.editor;
         if (isActiveEditor) {
             guard.markAp(document, state.lineNum, state.fieldIndex, plan.caret);
@@ -6155,6 +6364,7 @@ async function cancelCardCellComposition(document, state) {
     const releaseBarrier = beginCardCellPostEditBarrier(document);
     try {
         if (
+            vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed ||
             state.lineNum < 0 ||
@@ -6168,6 +6378,8 @@ async function cancelCardCellComposition(document, state) {
         // remain behind the post-edit barrier during the wait.
         await new Promise(resolve => setTimeout(resolve, CARD_IME_CANCEL_SETTLE_MS));
         if (
+            vscode.window.activeTextEditor !== state.editor ||
+            state.editor.document !== document ||
             document.isClosed ||
             state.lineNum >= document.lineCount
         ) {
@@ -6181,6 +6393,13 @@ async function cancelCardCellComposition(document, state) {
             } finally {
                 endCardCellOwnedEdit(document);
             }
+        }
+        if (
+            vscode.window.activeTextEditor !== state.editor ||
+            state.editor.document !== document ||
+            document.isClosed
+        ) {
+            return;
         }
         if (
             document.isClosed ||
@@ -6284,7 +6503,7 @@ async function handleCardCellType(args) {
         return vscode.commands.executeCommand('default:type', args);
     }
     const guard = ensureCardCellEditGuard();
-    const nav = guard.getNav();
+    const nav = guard.getNav(editor.document);
     const documentKey = editor.document.uri?.toString?.();
     const navMatchesDocument = !!nav && (!nav.uri || !documentKey || nav.uri === documentKey);
     const selection = editor.selection;
@@ -6453,7 +6672,7 @@ async function handleCardCellPostEdit(event) {
     if (!editor || editor.document !== document || !isLsdynaFile(document)) return;
 
     const guard = ensureCardCellEditGuard();
-    if (!guard.getNav()) return;
+    if (!guard.getNav(document)) return;
     if (!isActiveLsdynaSemanticLocation(
         document,
         editor.selection.active,
@@ -7091,17 +7310,20 @@ let largeFileViewerProvider = null;
     const changeMarksController = createChangeMarksController({
         vscode,
         isLsdynaDocument: isLsdynaFile,
-        getConfig: (resource) => ({
-            enabled: getLsdynaConfigurationValue('changeMarks.enabled', true, resource) !== false,
-            colorScheme: getLsdynaConfigurationValue('changeMarks.colorScheme', 'adaptive', resource),
-            customUnsavedColor: getLsdynaConfigurationValue('changeMarks.customUnsavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved, resource),
-            customSavedColor: getLsdynaConfigurationValue('changeMarks.customSavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved, resource),
-            maxLineCount: Number(getLsdynaConfigurationValue('changeMarks.maxLineCount', 100000, resource)) || 100000,
-            debounceMs: Number(getLsdynaConfigurationValue('changeMarks.debounceMs', 250, resource)) || 250,
-            showOverviewRuler: getLsdynaConfigurationValue('changeMarks.showOverviewRuler', true, resource) !== false,
-            showLineBackground: getLsdynaConfigurationValue('changeMarks.showLineBackground', true, resource) !== false,
-            showMinimap: getLsdynaConfigurationValue('changeMarks.showMinimap', true, resource) !== false,
-        }),
+        getConfig: (resource) => {
+            const debounceMs = Number(getLsdynaConfigurationValue('changeMarks.debounceMs', 250, resource));
+            return {
+                enabled: getLsdynaConfigurationValue('changeMarks.enabled', true, resource) !== false,
+                colorScheme: getLsdynaConfigurationValue('changeMarks.colorScheme', 'adaptive', resource),
+                customUnsavedColor: getLsdynaConfigurationValue('changeMarks.customUnsavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved, resource),
+                customSavedColor: getLsdynaConfigurationValue('changeMarks.customSavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved, resource),
+                maxLineCount: Number(getLsdynaConfigurationValue('changeMarks.maxLineCount', 100000, resource)) || 100000,
+                debounceMs: Number.isNaN(debounceMs) ? 250 : debounceMs,
+                showOverviewRuler: getLsdynaConfigurationValue('changeMarks.showOverviewRuler', true, resource) !== false,
+                showLineBackground: getLsdynaConfigurationValue('changeMarks.showLineBackground', true, resource) !== false,
+                showMinimap: getLsdynaConfigurationValue('changeMarks.showMinimap', true, resource) !== false,
+            };
+        },
         getMessage: (key, ...args) => i18n.get(key, ...args),
         showMessage: (message) => {
             if (message) vscode.window.showInformationMessage(String(message));
@@ -7176,9 +7398,10 @@ let largeFileViewerProvider = null;
     const refreshManualSidebar = (location = undefined) => {
         if (!manualSidebarProvider) return;
         try {
-            manualSidebarProvider.refresh(manualPackManager.getRepository(resolveManualPackRoot()), location);
+            const packRoot = resolveManualPackRoot();
+            manualSidebarProvider.refresh(manualPackManager.hasPack(packRoot) ? manualPackManager.getRepository(packRoot) : undefined, location);
         } catch (_error) {
-            manualSidebarProvider.refresh(undefined);
+            manualSidebarProvider.refresh(undefined, undefined, true);
         }
     };
     const openManualReader = (requestedLocation = undefined, restoreWhenPossible = false) => {
@@ -7189,7 +7412,7 @@ let largeFileViewerProvider = null;
             || (restoreWhenPossible ? restored?.location : undefined)
             || manualPackManager.firstLocation(repository);
         if (!location) {
-            vscode.window.showWarningMessage(i18n.get('manualReaderNoSections'));
+            void vscode.commands.executeCommand('extension.configureManualsDir', true);
             return;
         }
         const restore = restored && location.manualId === restored.location.manualId
@@ -7200,7 +7423,10 @@ let largeFileViewerProvider = null;
         refreshManualSidebar(location);
     };
     if (vscode.window && typeof vscode.window.registerWebviewViewProvider === 'function') {
-        manualSidebarProvider = new ManualSidebarProvider(location => openManualReader(location));
+        manualSidebarProvider = new ManualSidebarProvider(location => openManualReader(location), undefined, () => {
+            manualPackManager.invalidate();
+            refreshManualSidebar();
+        });
         context.subscriptions.push(vscode.window.registerWebviewViewProvider('lsdynaManuals', manualSidebarProvider));
         refreshManualSidebar();
     }
@@ -7235,6 +7461,7 @@ let largeFileViewerProvider = null;
             manualSidebarProvider.refreshUiLanguage();
         }
         entityReferencesWebviewProvider?.refreshUiLanguage();
+        largeFileViewerProvider?.refreshUiLanguage();
         refreshKeywordOptionsProductView();
         ManualReaderPanel.refreshUiLanguage();
         if (healthService) {
@@ -7348,6 +7575,13 @@ let largeFileViewerProvider = null;
     context.subscriptions.push(
         vscode.languages.registerCodeActionsProvider(
             { language: 'lsdyna' },
+            new LsdynaKeywordCardsCodeActionProvider(),
+            { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+        )
+    );
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'lsdyna' },
             new LsdynaUnknownKeywordCodeActionProvider(),
             { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
         )
@@ -7383,6 +7617,8 @@ let largeFileViewerProvider = null;
         })
     );
     context.subscriptions.push(
+        vscode.commands.registerCommand('extension.hoverMore', id => handleHoverAction(id, true)),
+        vscode.commands.registerCommand('extension.toggleHoverDetails', id => handleHoverAction(id)),
         vscode.commands.registerCommand('extension.showFieldHelpEnglish', async (arg) => {
             let id = arg;
             if (Array.isArray(arg)) {
@@ -7527,6 +7763,7 @@ context.subscriptions.push(
             await handleRebuildCardCommentsCommand(request);
         })
     );
+    context.subscriptions.push(vscode.commands.registerCommand('extension.updateKeywordCards', request => handleUpdateKeywordCardsCommand(request)));
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.insertVerifiedMissingRecords', async (request) => {
             await handleInsertVerifiedMissingRecordsCommand(request);
@@ -7541,15 +7778,10 @@ context.subscriptions.push(
     await new Promise(resolve => setTimeout(resolve, 0));
     const client = await startLanguageServer(context);
     await new Promise(resolve => setTimeout(resolve, 0));
-    const indexClient = createIndexClient({ languageClient: client });
+    const indexClient = createIndexClient({ languageClient: client, excludeMeshEntities: true });
 
 let keywordOptionsModel = null;
     const keywordOptionsPinned = true;
-    let keywordManagerScope = 'file';
-    let keywordManagerScopeStatus = 'ready';
-    let keywordManagerScopeMessage = '';
-    let keywordManagerProjectInstanceCache = [];
-    let keywordManagerScopeGeneration = 0;
     let keywordOptionsRefreshGeneration = 0;
     let keywordManagerDirectoryTask = null;
     const completeKeywordManagerDirectory = (document, blockIndex) => {
@@ -7595,32 +7827,20 @@ let keywordOptionsModel = null;
         const blockIndex = staged.blockIndex !== undefined ? staged.blockIndex : readyCardEditBlockIndex(document);
         const isCurrent = () => generation === keywordOptionsRefreshGeneration && !document.isClosed &&
             document.version === version && editor.document === document && epoch === activeProjectCacheEpoch;
-        const scope = staged.scope || keywordManagerScope;
-        {
-            if (scope === 'project') {
-                if (!await prepareKeywordManagerInstances(document, blockIndex, isCurrent)) return null;
-            } else {
-                await require('./core/keywordSchema').prepareKeywordSchema();
-                if (!isCurrent()) return null;
-                const keywordLine = findKeywordLineForLine(document, requestedLine);
-                if (Number.isInteger(keywordLine)) {
-                    const keyword = keywordSpellingFromLine(document.lineAt(keywordLine).text);
-                    try { await getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() })
-                        .prepareKeyword(require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword)); }
-                    catch { /* Model construction reports the catalog error without authorizing writes. */ }
-                }
-            }
-            if (!isCurrent()) return null;
+        await require('./core/keywordSchema').prepareKeywordSchema();
+        if (!isCurrent()) return null;
+        const keywordLine = findKeywordLineForLine(document, requestedLine);
+        if (Number.isInteger(keywordLine)) {
+            const keyword = keywordSpellingFromLine(document.lineAt(keywordLine).text);
+            try { await getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() })
+                .prepareKeyword(require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword)); }
+            catch { /* Model construction reports the catalog error without authorizing writes. */ }
         }
+        if (!isCurrent()) return null;
         const model = buildKeywordOptionViewModel(editor, requestedLine, {
             ...staged,
             blockIndex,
-            scope,
-            deferInstances: scope === 'file',
-            scopeStatus: staged.scopeStatus || keywordManagerScopeStatus,
-            scopeMessage: staged.scopeMessage ?? keywordManagerScopeMessage,
-            managerInstances: staged.managerInstances || (keywordManagerScope === 'project'
-                ? keywordManagerProjectInstanceCache : undefined),
+            deferInstances: true,
             draftControlState: staged.draftControlState !== undefined
                 ? staged.draftControlState : keywordOptionsModel?.draftControlState,
             provisional: staged.provisional !== false,
@@ -7628,6 +7848,7 @@ let keywordOptionsModel = null;
         if (!model) return null;
         model.pinned = true;
         keywordOptionsModel = model;
+        if (model.inputFormSourceUnavailable) logDebug(`Field catalog loading failed: ${model.inputFormSourceError}`);
         keywordOptionsWebviewProvider?.publish(buildKeywordOptionsViewState(model));
         if (model.directoryStatus === 'loading') completeKeywordManagerDirectory(document, blockIndex);
         return model;
@@ -7637,16 +7858,7 @@ let keywordOptionsModel = null;
         const editor = keywordOptionsEditorForModel(model);
         if (!model || !editor) return null;
         const line = keywordManagerRefreshLine(model, editor.document);
-        if (line === null) {
-            vscode.window.showInformationMessage(i18n.get('keywordManagerRelocateSource'));
-            return null;
-        }
-        if (model.stale && keywordManagerScope === 'project') {
-            keywordManagerScope = 'file';
-            keywordManagerProjectInstanceCache = [];
-            keywordManagerScopeStatus = 'ready';
-            keywordManagerScopeMessage = '';
-        }
+        if (line === null) return null;
         return await refreshKeywordOptionsView(editor, line, {
             fieldDrafts: {}, recordDrafts: {}, draftControlState: {},
             selectedFieldId: null, selectedFormRuleId: null, provisional: true,
@@ -7682,48 +7894,23 @@ let keywordOptionsModel = null;
         }
         return editor;
     };
-    const restoreKeywordManagerFileScope = async (status = 'ready', message = '') => {
-        keywordManagerScope = 'file';
-        keywordManagerScopeStatus = status;
-        keywordManagerScopeMessage = message;
-        keywordManagerProjectInstanceCache = [];
-        const model = keywordOptionsModel;
-        const editor = keywordOptionsEditorForModel(model);
-        if (!model || !editor) return false;
-        return !!await refreshKeywordOptionsView(editor, model.keywordLine, {
-            targetKeyword: model.targetKeyword,
-            selection: model.selection,
-            targetPostCount: model.targetPostCount,
-            fieldDrafts: model.fieldDrafts,
-            recordDrafts: model.recordDrafts,
-            selectedFormRuleId: model.selectedFormRuleId,
-            dynamicCardsSelected: model.dynamicCardsSelected,
-            selectedFieldId: model.selectedFieldId,
-            pinned: keywordOptionsPinned,
-            scope: 'file',
-            scopeStatus: status,
-            scopeMessage: message,
-            provisional: true,
-        });
-    };
     const confirmKeywordManagerTransition = async () => {
         const model = keywordOptionsModel;
         if (!keywordManagerHasStaging(model)) return 'proceed';
-        const stagedCount = Math.max(1, Object.keys(model.fieldDrafts || {}).length +
-            Object.keys(model.draftControlState || {}).length + (model.dynamicCardsSelected ? 1 : 0));
         const applyLabel = i18n.get('keywordOptionsApply');
         const discardLabel = i18n.get('keywordManagerDiscardDraftConfirm');
         const choice = await vscode.window.showWarningMessage(
-            i18n.get('keywordManagerDiscardDraftWarning', stagedCount),
+            i18n.get('keywordManagerDiscardDraftWarning'),
             { modal: true },
             applyLabel,
             discardLabel,
         );
+        if (keywordOptionsModel !== model) return null;
         if (choice === discardLabel) return 'discard';
-        if (choice !== applyLabel) return null;
+        if (choice !== applyLabel) return false;
         const editor = keywordOptionsEditorForModel(model);
         return editor && await applyKeywordOptionViewModel(keywordOptionsModelAdapter, editor)
-            ? 'proceed' : null;
+            ? 'applied' : null;
     };
     keywordOptionsWebviewProvider = new KeywordOptionsWebviewProvider(context.extensionPath, {
         selectDimension: async (dimensionId, values) => {
@@ -7823,37 +8010,57 @@ let keywordOptionsModel = null;
             });
         },
         selectInstance: async instanceId => {
-            let model = keywordOptionsModel;
-            let editor = keywordOptionsEditorForModel(model);
-            let instance = model?.managerInstances?.find(candidate => candidate.instanceId === instanceId);
-            if (!model || !editor || !instance || model.stale) return false;
-            if (model.managerScope === 'project' && model.managerScopeStatus !== 'ready') return false;
-            const line = Number(instance.line);
-            if (!Number.isInteger(line) || line < 0) return false;
-            if (instance.instanceId !== model.selectedInstanceId) {
-                const transition = await confirmKeywordManagerTransition();
-                if (!transition) return false;
-                model = keywordOptionsModel;
-                editor = keywordOptionsEditorForModel(model);
-                instance = model?.managerInstances?.find(candidate => candidate.instanceId === instanceId) || instance;
-                if (!model || !editor) return false;
+            const model = keywordOptionsModel;
+            const editor = await validKeywordOptionsModel();
+            if (!model || !editor || model.directoryStatus === 'error') return false;
+            const document = editor.document;
+            if (instanceId === model.selectedInstanceId) return model.managerInstances.some(candidate =>
+                candidate.instanceId === instanceId && candidate.uri === model.uri &&
+                keywordManagerTypeKey(candidate.keyword) === keywordManagerTypeKey(model.currentKeyword));
+            if (model.directoryStatus === 'loading') {
+                const version = document.version, blockIndex = readyCardEditBlockIndex(document);
+                const isCurrent = () => keywordOptionsModel === model && !model.stale && !document.isClosed &&
+                    document.version === version && model.documentVersion === version;
+                if (!await prepareKeywordManagerInstances(document, blockIndex, isCurrent) || !isCurrent() ||
+                    !completeKeywordManagerInstances(model, document, blockIndex)) return false;
+                keywordOptionsWebviewProvider.publishInstances(model.managerInstances, 'ready');
             }
-            const targetEditor = await openKeywordManagerInstanceEditor(instance, editor);
-            if (!targetEditor) return false;
-            const refreshed = await refreshKeywordOptionsView(targetEditor, line, {
-                fieldDrafts: {},
-                dynamicCardsSelected: false,
-                selectedFieldId: null,
-                pinned: keywordOptionsPinned,
-                scope: keywordManagerScope,
-                managerInstances: keywordManagerScope === 'project' ? keywordManagerProjectInstanceCache : undefined,
-                provisional: true,
+            if (model.directoryStatus !== 'ready') return false;
+            const instance = keywordManagerInstances(document, model.managerSelectionLine)
+                .find(candidate => candidate.instanceId === instanceId && candidate.uri === model.uri &&
+                    keywordManagerTypeKey(candidate.keyword) === keywordManagerTypeKey(model.currentKeyword));
+            if (!instance) return false;
+            const transition = await confirmKeywordManagerTransition();
+            if (transition === false) return 'cancelled';
+            if (!transition) return false;
+            if (transition === 'applied') {
+                // ponytail: no edit-position mapping, reconsider when switching after structural Apply is required.
+                const refreshed = await refreshKeywordOptionsView(editor, model.keywordLine, {
+                    fieldDrafts: {}, recordDrafts: {}, draftControlState: {}, dynamicCardsSelected: false,
+                    selectedFieldId: null, provisional: true,
+                });
+                if (refreshed) {
+                    const isCurrent = () => keywordOptionsModel === refreshed && !document.isClosed &&
+                        document.version === refreshed.documentVersion;
+                    await prepareKeywordManagerInstances(document, readyCardEditBlockIndex(document), isCurrent);
+                    completeKeywordManagerInstances(refreshed, document, readyCardEditBlockIndex(document));
+                    if (keywordOptionsModel === refreshed) keywordOptionsWebviewProvider.publish(buildKeywordOptionsViewState(refreshed));
+                }
+                vscode.window.showInformationMessage(i18n.get('keywordManagerAppliedReselect'));
+                keywordOptionsWebviewProvider.showPanel(i18n.get('keywordManagerTitle'));
+                return 'applied-reselect';
+            }
+            if (keywordOptionsModel !== model || model.stale || document.isClosed ||
+                document.version !== model.documentVersion || keywordOptionsEditorForModel(model)?.document !== document) return false;
+            const target = keywordManagerInstances(document, model.managerSelectionLine)
+                .find(candidate => candidate.instanceId === instanceId && candidate.uri === model.uri &&
+                    keywordManagerTypeKey(candidate.keyword) === keywordManagerTypeKey(model.currentKeyword));
+            if (!target) return false;
+            const refreshed = await refreshKeywordOptionsView(editor, target.line, {
+                fieldDrafts: {}, recordDrafts: {}, draftControlState: {}, dynamicCardsSelected: false,
+                selectedFieldId: null, provisional: true,
             });
-            if (refreshed && typeof targetEditor.revealRange === 'function') {
-                const range = new vscode.Range(line, 0, line, 0);
-                targetEditor.selection = new vscode.Selection(range.start, range.start);
-                targetEditor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-            }
+            if (refreshed) keywordOptionsWebviewProvider.showPanel(i18n.get('keywordManagerTitle'));
             return !!refreshed;
         },
         selectField: request => keywordManagerReadFieldHelp(
@@ -7896,108 +8103,12 @@ let keywordOptionsModel = null;
                 provisional: true,
             });
         },
-        selectScope: async scope => {
-            const editor = await validKeywordOptionsModel();
-            if (!editor || (scope !== 'file' && scope !== 'project')) return false;
-            const scopeGeneration = ++keywordManagerScopeGeneration;
-            const scopeUri = keywordOptionsModel.uri;
-            if (scope === 'file') return await restoreKeywordManagerFileScope();
-            if (!keywordIndexProvider || typeof keywordIndexProvider.scan !== 'function') return false;
-            keywordManagerScope = 'project';
-            keywordManagerScopeStatus = 'loading';
-            keywordManagerScopeMessage = i18n.get('keywordManagerScopeLoading');
-            await refreshKeywordOptionsView(editor, keywordOptionsModel.keywordLine, {
-                targetKeyword: keywordOptionsModel.targetKeyword,
-                selection: keywordOptionsModel.selection,
-                targetPostCount: keywordOptionsModel.targetPostCount,
-                fieldDrafts: keywordOptionsModel.fieldDrafts,
-                recordDrafts: keywordOptionsModel.recordDrafts,
-                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
-                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
-                selectedFieldId: keywordOptionsModel.selectedFieldId,
-                pinned: keywordOptionsPinned,
-                scope: 'project',
-                scopeStatus: 'loading',
-                provisional: true,
-            });
-            try {
-                const completed = await keywordIndexProvider.scan({
-                    onPartial: async ({ filesScanned }) => {
-                        if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project' ||
-                            keywordOptionsModel?.uri !== scopeUri) return;
-                        const currentEditor = keywordOptionsEditorForModel(keywordOptionsModel);
-                        if (!currentEditor) return;
-                        keywordManagerScopeStatus = 'partial';
-                        keywordManagerScopeMessage = i18n.get('scannedFilesProgress', filesScanned);
-                        await refreshKeywordOptionsView(currentEditor, keywordOptionsModel.keywordLine, {
-                            targetKeyword: keywordOptionsModel.targetKeyword,
-                            selection: keywordOptionsModel.selection,
-                            targetPostCount: keywordOptionsModel.targetPostCount,
-                            fieldDrafts: keywordOptionsModel.fieldDrafts,
-                            recordDrafts: keywordOptionsModel.recordDrafts,
-                            selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
-                            dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
-                            selectedFieldId: keywordOptionsModel.selectedFieldId,
-                            pinned: keywordOptionsPinned,
-                            scope: 'project',
-                            scopeStatus: 'partial',
-                            scopeMessage: keywordManagerScopeMessage,
-                            managerInstances: [],
-                            provisional: true,
-                        });
-                    },
-                });
-                if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project') return false;
-                if (keywordOptionsModel?.uri !== scopeUri) {
-                    await restoreKeywordManagerFileScope();
-                    return false;
-                }
-                if (completed !== true) {
-                    await restoreKeywordManagerFileScope();
-                    return false;
-                }
-            } catch (_error) {
-                if (scopeGeneration !== keywordManagerScopeGeneration || keywordManagerScope !== 'project') return false;
-                await restoreKeywordManagerFileScope('unavailable', i18n.get('keywordManagerScopeUnavailable'));
-                return false;
-            }
-            if (keywordIndexProvider.mode !== 'recursive') {
-                await restoreKeywordManagerFileScope();
-                return false;
-            }
-            const currentEditor = keywordOptionsEditorForModel(keywordOptionsModel);
-            if (!currentEditor) return false;
-            keywordManagerProjectInstanceCache = keywordManagerProjectInstances(
-                keywordIndexProvider.listSearchEntries(),
-                currentEditor.document,
-                keywordOptionsModel.keywordLine,
-            );
-            keywordManagerScopeStatus = 'ready';
-            keywordManagerScopeMessage = '';
-            return !!await refreshKeywordOptionsView(currentEditor, keywordOptionsModel.keywordLine, {
-                targetKeyword: keywordOptionsModel.targetKeyword,
-                selection: keywordOptionsModel.selection,
-                targetPostCount: keywordOptionsModel.targetPostCount,
-                fieldDrafts: keywordOptionsModel.fieldDrafts,
-                recordDrafts: keywordOptionsModel.recordDrafts,
-                selectedFormRuleId: keywordOptionsModel.selectedFormRuleId,
-                dynamicCardsSelected: keywordOptionsModel.dynamicCardsSelected,
-                selectedFieldId: keywordOptionsModel.selectedFieldId,
-                pinned: keywordOptionsPinned,
-                scope: 'project',
-                managerInstances: keywordManagerProjectInstanceCache,
-                provisional: true,
-            });
-        },
         locateSource: async () => {
             const model = keywordOptionsModel;
             const editor = keywordOptionsEditorForModel(model);
             if (!model || !editor) return false;
             const line = keywordManagerRefreshLine(model, editor.document);
-            if (line === null) {
-                vscode.window.showInformationMessage(i18n.get('keywordManagerRelocateSource'));
-                return false;
-            }
+            if (line === null) return false;
             if (!model.stale) return locateKeywordManagerSource(model, editor);
             const source = await vscode.window.showTextDocument(editor.document, { preserveFocus: false });
             source.selection = new vscode.Selection(line, 0, line, 0);
@@ -8031,7 +8142,12 @@ let keywordOptionsModel = null;
                 provisional: true,
             });
         },
-        reset: async () => !!await refreshSelectedKeywordOptions(),
+        reset: async () => {
+            if (keywordOptionsModel?.directoryStatus === 'error' && keywordManagerHasStaging(keywordOptionsModel)) {
+                if (!await confirmKeywordManagerTransition()) return false;
+            }
+            return !!await refreshSelectedKeywordOptions();
+        },
         togglePin: () => {
             return true;
         },
@@ -8055,7 +8171,7 @@ let keywordOptionsModel = null;
                     editor.document, keywordOptionsModel.keywordLine, keywordOptionsModel.blockEnd,
                 );
             if (sameDraftBlock) {
-                const resumeDirectory = keywordOptionsModel.managerScope === 'file' && keywordOptionsModel.directoryStatus !== 'ready';
+                const resumeDirectory = keywordOptionsModel.directoryStatus !== 'ready';
                 if (resumeDirectory) keywordOptionsModel.directoryStatus = 'loading';
                 keywordOptionsWebviewProvider.publish(buildKeywordOptionsViewState(keywordOptionsModel));
                 keywordOptionsWebviewProvider.showPanel(i18n.get('keywordManagerTitle'));
@@ -8137,6 +8253,7 @@ let keywordOptionsModel = null;
 
     await new Promise(resolve => setTimeout(resolve, 0));
     entityReferenceProvider = new LsdynaEntityReferenceProvider({
+        resultBudgetBytes: entityBudget.resultBytes,
         workspaceState: context.workspaceState,
     });
     context.subscriptions.push(entityReferenceProvider);
@@ -8164,6 +8281,7 @@ let keywordOptionsModel = null;
         entityReferenceProvider.markStaleForRoot(snapshot.rootFile);
         cacheReferenceIndexFromSnapshot(snapshot);
         refreshMainDeckContextUi();
+        refreshEntityReferenceScopeContext();
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
@@ -8193,8 +8311,8 @@ let keywordOptionsModel = null;
         const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
         entityReferencesWebviewProvider.setScopeContext({
             filePath: filePath || undefined,
-            projectRoot: contextState?.state !== 'ambiguous' && contextState?.project
-                ? contextState.rootFile
+            projectRoot: filePath && contextState?.state !== 'ambiguous'
+                ? contextState?.rootFile || filePath
                 : undefined,
         });
     };
@@ -8205,8 +8323,8 @@ let keywordOptionsModel = null;
         }
         if (preference === 'project') {
             const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
-            return contextState?.state !== 'ambiguous' && contextState?.project
-                ? { kind: 'project', rootFile: contextState.rootFile }
+            return filePath && contextState?.state !== 'ambiguous'
+                ? { kind: 'project', rootFile: contextState?.rootFile || filePath }
                 : null;
         }
         return undefined;
@@ -8374,6 +8492,7 @@ let keywordOptionsModel = null;
                     uri,
                     Math.max(0, Number(line) || 0),
                     side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+                    startCharacter, endCharacter,
                 );
             }
         } catch {
@@ -8443,7 +8562,7 @@ let keywordOptionsModel = null;
             loadFileIndex: async (filePath, cancellationToken) => {
                 const snapshot = await indexClient.loadProjectSnapshot(
                     filePath,
-                    { singleFileOnly: true },
+                    { singleFileOnly: true, largeFileThresholdBytes: 0 },
                     null,
                     cancellationToken,
                 );
@@ -8479,13 +8598,14 @@ let keywordOptionsModel = null;
                 uri,
                 Math.max(0, Number(target?.line) || 0),
                 target?.side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+                target?.startCharacter, target?.endCharacter,
             );
         }),
     );
     entityReferencesWebviewProvider = new EntityReferencesWebviewProvider(
         context.extensionPath,
         entityReferenceProvider,
-        () => indexedEntityKinds(),
+        () => indexedEntityKinds().filter(kind => !isMeshEntityKind(kind)),
         {
             stopFollow: stopObjectReferenceFollow,
             follow: () => { lastObjectFollowKey = ''; objectReferenceNavigation = null; scheduleObjectReferenceFollow(); },
@@ -8530,6 +8650,7 @@ let keywordOptionsModel = null;
             openLargeFile: uri => largeFileViewerProvider.openAt(uri, 0),
         },
         prepareReferenceDirectory,
+        context.workspaceState,
     );
     context.subscriptions.push(
         entityReferencesWebviewProvider,
@@ -8586,6 +8707,23 @@ let keywordOptionsModel = null;
             'extension.entityReferences.refresh',
             refreshCurrentObjectReference,
         ),
+
+
+        vscode.commands.registerCommand('extension.entityReferences.search', () => entityReferencesWebviewProvider.search()),
+        vscode.commands.registerCommand('extension.entityReferences.toggleFollow', () => {
+            entityReferencesWebviewProvider?.toggleFollowCursor();
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.toggleFollowActive', () => {
+            entityReferencesWebviewProvider?.toggleFollowCursor();
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.setScopeFile', () => {
+            refreshEntityReferenceScopeContext();
+            return entityReferencesWebviewProvider.setScopePreference('file');
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.setScopeProject', () => {
+            refreshEntityReferenceScopeContext();
+            return entityReferencesWebviewProvider.setScopePreference('project');
+        }),
         vscode.commands.registerCommand('extension.entityReferences.pin', async target => {
             const pinned = await entityReferenceProvider.pin(target);
             if (!pinned.ok && pinned.reason === 'limit') {
@@ -8593,7 +8731,11 @@ let keywordOptionsModel = null;
             }
             return pinned;
         }),
-        vscode.commands.registerCommand('extension.entityReferences.unpin', target => entityReferenceProvider.unpin(target)),
+        vscode.commands.registerCommand('extension.entityReferences.unpin', async target => {
+            const session = await entityReferenceProvider.unpin(target);
+            if (session) { lastObjectFollowKey = ''; scheduleObjectReferenceFollow(); }
+            return session;
+        }),
         vscode.commands.registerCommand('extension.entityReferences.remove', target => entityReferenceProvider.remove(target)),
         vscode.commands.registerCommand('extension.entityReferences.clear', () => entityReferenceProvider.clear()),
         vscode.commands.registerCommand('extension.entityReferences.openSide', node => openEntityReferenceNode(node, true)),
@@ -8635,6 +8777,7 @@ let keywordOptionsModel = null;
             }
         },
     });
+    context.subscriptions.push(enqueueProjectSnapshotRefresh, invalidateChangedProjectRoots);
     workspaceWatcherManager = createWorkspaceWatcherManager({
         createWatcher: glob => vscode.workspace.createFileSystemWatcher(glob),
         onFileEvent: uri => {
@@ -8656,7 +8799,9 @@ let keywordOptionsModel = null;
         })
     );
     await new Promise(resolve => setTimeout(resolve, 0));
+    const resolveScanUri = () => keywordOptionsWebviewProvider?.getActiveSourceUri() || getActiveUri();
     includeTreeProvider = new LsdynaIncludeTreeProvider({
+        resolveActiveUri: resolveScanUri,
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         invalidateProjectSnapshot: indexClient.invalidate,
@@ -8711,6 +8856,10 @@ let keywordOptionsModel = null;
         )
     );
     context.subscriptions.push(
+        vscode.commands.registerCommand('extension.includeTree.toggleSize', () => includeTreeProvider.toggleShowSize()),
+        vscode.commands.registerCommand('extension.includeTree.sortByName', () => includeTreeProvider.setSortMode('flat-name')),
+        vscode.commands.registerCommand('extension.includeTree.sortBySize', () => includeTreeProvider.setSortMode('flat-size')),
+        vscode.commands.registerCommand('extension.includeTree.sortByTree', () => includeTreeProvider.setSortMode('tree')),
         vscode.commands.registerCommand('extension.searchIncludeTree', async () => {
             await showIncludeSearchPick({
                 getEntries: () => includeTreeProvider.listSearchEntries(),
@@ -8732,7 +8881,7 @@ let keywordOptionsModel = null;
                             await vscode.window.showTextDocument(doc, { preview: true });
                         } catch (e) {
                             vscode.window.showWarningMessage(
-                                i18n.get('treeSearchMissingFileWarning', entry.filePath)
+                                i18n.get('treeSearchOpenFileWarning', entry.filePath)
                             );
                         }
                     }
@@ -8753,6 +8902,7 @@ let keywordOptionsModel = null;
     );
 
     keywordIndexProvider = new LsdynaKeywordIndexProvider({
+        resolveActiveUri: resolveScanUri,
         shouldSkipAutomaticDocumentScan,
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
@@ -8767,16 +8917,6 @@ let keywordOptionsModel = null;
             }
         },
     });
-    if (typeof keywordIndexProvider.onDidChangeTreeData === 'function') {
-        context.subscriptions.push(keywordIndexProvider.onDidChangeTreeData(() => {
-            if (keywordManagerScope === 'project' && keywordManagerScopeStatus === 'ready' &&
-                keywordOptionsModel && !keywordOptionsModel.stale) {
-                keywordOptionsRefreshGeneration++;
-                keywordManagerDirectoryTask = null;
-                keywordOptionsModelAdapter.markStale();
-            }
-        }));
-    }
     keywordTreeView = vscode.window.createTreeView('lsdynaKeywordIndex', {
         treeDataProvider: keywordIndexProvider,
         showCollapseAll: true,
@@ -8784,12 +8924,13 @@ let keywordOptionsModel = null;
     keywordTreeView.title = i18n.get('keywordIndexTitle');
     context.subscriptions.push(keywordTreeView);
 keywordIndexProvider.attachTreeView(keywordTreeView);
+    const reportKeywordIndexError = error => logDebug(`Keyword index refresh failed: ${error?.message || error}`);
     context.subscriptions.push(keywordTreeView.onDidChangeVisibility?.(() => {
         keywordIndexProvider.stopAutomaticWork();
         if (keywordTreeView.visible) {
             const editor = vscode.window.activeTextEditor;
             void keywordIndexProvider.refreshAutomatically(editor?.document || getActiveUri())
-                .then(() => keywordIndexProvider.scheduleReveal(editor));
+                .then(() => keywordIndexProvider.scheduleReveal(editor)).catch(reportKeywordIndexError);
         }
     }) || { dispose() {} }, { dispose: () => keywordIndexProvider.stopAutomaticWork() });
     context.subscriptions.push(
@@ -8800,14 +8941,15 @@ context.subscriptions.push(
         vscode.commands.registerCommand('extension.keywordIndexChooseLayout', () => keywordIndexProvider.chooseLayout())
     );
 context.subscriptions.push(
-        vscode.commands.registerCommand('extension.keywordIndexToggleFollow', () => keywordIndexProvider.toggleFollowCursor())
+        vscode.commands.registerCommand('extension.keywordIndexToggleFollow', () => keywordIndexProvider.toggleFollowCursor()),
+        vscode.commands.registerCommand('extension.keywordIndexToggleFollowActive', () => keywordIndexProvider.toggleFollowCursor())
     );
-    vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', 'local');
+    void Promise.resolve(vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', 'local')).catch(reportKeywordIndexError);
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.scanKeywordIndex', () => keywordIndexProvider.scan())
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.keywordIndexSetLocal', () => keywordIndexProvider.setLocal())
+        vscode.commands.registerCommand('extension.keywordIndexSetLocal', () => keywordIndexProvider.setLocal()), vscode.commands.registerCommand('extension.keywordIndexSetRecursive', () => keywordIndexProvider.setRecursive())
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.searchKeywordIndex', async () => {
@@ -8845,12 +8987,12 @@ context.subscriptions.push(
             logDebug(`onDidChangeActiveTextEditor: editor=${editor ? editor.document.uri.toString() : 'none'}, languageId=${editor ? editor.document.languageId : 'none'}`);
             if (editor) {
                 Promise.resolve(keywordIndexProvider.refreshAutomatically(editor.document))
-                    .finally(() => keywordIndexProvider.scheduleReveal(editor));
+                    .finally(() => keywordIndexProvider.scheduleReveal(editor)).catch(reportKeywordIndexError);
             } else {
                 const uri = getActiveUri();
                 logDebug(`onDidChangeActiveTextEditor callback fallback: getActiveUri=${uri ? uri.toString() : 'null'}`);
                 if (uri) {
-                    keywordIndexProvider.refreshAutomatically(uri);
+                    void keywordIndexProvider.refreshAutomatically(uri).catch(reportKeywordIndexError);
                 }
             }
         })
@@ -8862,7 +9004,7 @@ context.subscriptions.push(
                 const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
                 logDebug(`onDidChangeTabs: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
                 if (uri) {
-                    keywordIndexProvider.refreshAutomatically(uri);
+                    void keywordIndexProvider.refreshAutomatically(uri).catch(reportKeywordIndexError);
                 }
             })
         );
@@ -8871,12 +9013,15 @@ context.subscriptions.push(
         () => vscode.window.activeTextEditor?.document || getActiveUri(),
         uriOrDoc => {
             logDebug(`Debounced keyword index refresh triggered`);
-            keywordIndexProvider.refreshAutomatically(uriOrDoc);
+            void keywordIndexProvider.refreshAutomatically(uriOrDoc).catch(reportKeywordIndexError);
         }
     );
+    context.subscriptions.push(scheduleKeywordIndexRefresh);
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(e => {
-            keywordIndexProvider.updateDocumentAutomatically(e.document, e);
+            try {
+                void Promise.resolve(keywordIndexProvider.updateDocumentAutomatically(e.document, e)).catch(reportKeywordIndexError);
+            } catch (error) { reportKeywordIndexError(error); }
             if (vscode.window.activeTextEditor?.document === e.document) {
                 scheduleKeywordIndexRefresh(e.document);
             }
@@ -8885,7 +9030,7 @@ context.subscriptions.push(
     const initialUri = getActiveUri();
     logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);
     if (initialUri) {
-        keywordIndexProvider.refreshAutomatically(initialUri);
+        void keywordIndexProvider.refreshAutomatically(initialUri).catch(reportKeywordIndexError);
     }
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.goToKeywordUsage', async (filePath, lineIndex) => {
@@ -8947,7 +9092,7 @@ context.subscriptions.push(
         vscode.commands.registerCommand('extension.openToSide', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside });
+                return vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside });
             }
         })
     );
@@ -8955,7 +9100,7 @@ context.subscriptions.push(
         vscode.commands.registerCommand('extension.revealInExplorer', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                vscode.commands.executeCommand('revealFileInOS', uri);
+                return vscode.commands.executeCommand('revealFileInOS', uri);
             }
         })
     );
@@ -8975,13 +9120,7 @@ context.subscriptions.push(
             }
 
             const choices = buildIncludeCopyChoices(String(filePath), {
-                asRelativePath: (fsPath) => {
-                    try {
-                        return vscode.workspace.asRelativePath(vscode.Uri.file(fsPath), false);
-                    } catch {
-                        return undefined;
-                    }
-                },
+                asRelativePath: (fsPath) => vscode.workspace.asRelativePath(vscode.Uri.file(fsPath), false),
             });
             if (!choices.length) {
                 vscode.window.showWarningMessage(i18n.get('copyIncludeNoChoices'));
@@ -9010,39 +9149,39 @@ context.subscriptions.push(
             if (vscode.env && vscode.env.clipboard && typeof vscode.env.clipboard.writeText === 'function') {
                 await vscode.env.clipboard.writeText(String(picked.value));
             }
-            vscode.window.showInformationMessage(
-                i18n.get('copyIncludeCopied', truncateForToast(String(picked.value)))
+            vscode.window.setStatusBarMessage(
+                i18n.get('copyIncludeCopied', truncateForToast(String(picked.value))), 2500
             );
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.openIncludeNewTab', (filePath) => {
+        vscode.commands.registerCommand('extension.openIncludeNewTab', async (filePath) => {
             try {
                 const uri = vscode.Uri.file(filePath);
-                vscode.commands.executeCommand('vscode.open', uri, { preview: false });
+                await vscode.commands.executeCommand('vscode.open', uri, { preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(i18n.get('failedToOpenFile', err.message));
+                return vscode.window.showErrorMessage(i18n.get('failedToOpenFile', err.message));
             }
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.openIncludeSplit', (filePath) => {
+        vscode.commands.registerCommand('extension.openIncludeSplit', async (filePath) => {
             try {
                 const uri = vscode.Uri.file(filePath);
-                vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+                await vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside, preview: false });
             } catch (err) {
-                vscode.window.showErrorMessage(i18n.get('failedToSplitOpenFile', err.message));
+                return vscode.window.showErrorMessage(i18n.get('failedToSplitOpenFile', err.message));
             }
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.openIncludeFolder', (filePath) => {
+        vscode.commands.registerCommand('extension.openIncludeFolder', async (filePath) => {
             try {
                 const uri = vscode.Uri.file(filePath);
-                vscode.commands.executeCommand('revealFileInOS', uri);
+                await vscode.commands.executeCommand('revealFileInOS', uri);
             } catch (err) {
-                vscode.window.showErrorMessage(i18n.get('failedToRevealFolder', err.message));
+                return vscode.window.showErrorMessage(i18n.get('failedToRevealFolder', err.message));
             }
         })
     );
@@ -9062,12 +9201,12 @@ context.subscriptions.push(
 
     const showApproximateManualMatch = (location, keyword) => {
         if (location.matchKind !== 'approximate') return;
-        vscode.window.showInformationMessage(
+        vscode.window.setStatusBarMessage(
             i18n.get(
                 'manualReaderApproximateMatch',
                 location.requestedKeyword || keyword,
                 location.matchedKeyword || location.title || '',
-            )
+            ), 6000
         );
     };
 
@@ -9085,12 +9224,12 @@ context.subscriptions.push(
                 );
                 return;
             }
-            showApproximateManualMatch(location, keyword);
             if (targetArg !== 'pdf') {
                 openManualReader(location);
                 return;
             }
 
+            showApproximateManualMatch(location, keyword);
             const chapter = getManualChapterPresentation(repository, location);
             if (!chapter.pdfPage) {
                 vscode.window.showInformationMessage(
@@ -9109,9 +9248,8 @@ context.subscriptions.push(
                 chapter.pdfPage,
             );
         } catch (e) {
-            vscode.window.showErrorMessage(
-                i18n.get('manualReaderOpenFailed', e && e.message ? e.message : e)
-            );
+            console.warn('[DynaSense] Manual chapter failed:', e);
+            await vscode.commands.executeCommand('extension.configureManualsDir', true);
         }
     };
 
@@ -9140,19 +9278,23 @@ context.subscriptions.push(
                     targetArg,
                 );
             } catch (e) {
-                vscode.window.showErrorMessage(
-                    i18n.get('manualReaderOpenFailed', e && e.message ? e.message : e)
-                );
+                console.warn('[DynaSense] Manual chapter lookup failed:', e);
+                await vscode.commands.executeCommand('extension.configureManualsDir', true);
             }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.manual.openReader', () => {
+        vscode.commands.registerCommand('extension.manual.openReader', async () => {
             try {
+                if (!manualPackManager.hasPack(resolveManualPackRoot())) {
+                    await vscode.commands.executeCommand('extension.configureManualsDir');
+                    return;
+                }
                 openManualReader(undefined, true);
             } catch (e) {
-                vscode.window.showWarningMessage(i18n.get('manualReaderOpenFailed', e && e.message ? e.message : e));
+                console.warn('[DynaSense] Manual reader failed:', e);
+                await vscode.commands.executeCommand('extension.configureManualsDir', true);
             }
         })
     );
@@ -9160,6 +9302,10 @@ context.subscriptions.push(
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.manual.openCurrentKeyword', async (kwArg) => {
             try {
+                if (!manualPackManager.hasPack(resolveManualPackRoot())) {
+                    await vscode.commands.executeCommand('extension.configureManualsDir');
+                    return;
+                }
                 let kw = typeof kwArg === 'string' ? kwArg : '';
                 if (!kw) {
                     const ed = vscode.window.activeTextEditor;
@@ -9175,62 +9321,35 @@ context.subscriptions.push(
                 const repo = manualPackManager.getRepository(resolveManualPackRoot());
                 const locations = repo.resolveKeywordLocations(kw);
                 if (locations.length === 0) {
-                    vscode.window.showInformationMessage(i18n.get('manualReaderKeywordNotFound', kw));
+                    refreshManualSidebar();
+                    await vscode.commands.executeCommand('lsdynaManuals.focus');
                     return;
                 }
                 const loc = await pickManualChapter(repo, locations);
                 if (!loc) return;
-                showApproximateManualMatch(loc, kw);
                 openManualReader(loc);
             } catch (e) {
-                vscode.window.showErrorMessage(
-                    i18n.get('manualReaderOpenFailed', e && e.message ? e.message : e)
-                );
+                console.warn('[DynaSense] Manual lookup failed:', e);
+                await vscode.commands.executeCommand('extension.configureManualsDir', true);
             }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.configureManualsDir', async () => {
-            const hasPack = i18n.get('hasManualPackReady');
-            const btnYes = i18n.get('btnYesSelectFolder');
-            const btnDownload = i18n.get('btnDownloadPack');
-            const btnCancel = i18n.get('btnCancel');
-
-            const choice = await vscode.window.showInformationMessage(hasPack, btnYes, btnDownload, btnCancel);
-
-            if (choice === btnDownload) {
-                vscode.env.openExternal(vscode.Uri.parse('https://github.com/hqyyqh/vscode-lsdyna/releases'));
-                return;
-            } else if (choice !== btnYes) {
-                return;
-            }
-
-            const folders = await vscode.window.showOpenDialog({
-                canSelectFolders: true,
-                canSelectFiles: false,
-                canSelectMany: false,
-                openLabel: i18n.get('selectFolder')
-            });
-            if (folders && folders[0]) {
-                const selectedPath = folders[0].fsPath;
+        vscode.commands.registerCommand('extension.configureManualsDir', async (unavailable = false) => {
+            const selectedPath = await require('./manual/manualSetup').chooseManualDirectory(unavailable === true);
+            if (selectedPath) {
                 const config = vscode.workspace.getConfiguration('lsdyna');
                 try {
                     await config.update('manualsDir', selectedPath, vscode.ConfigurationTarget.Global);
                     vscode.window.showInformationMessage(i18n.get('manualDirSetTo', selectedPath));
                 } catch (err) {
                     vscode.window.showErrorMessage(i18n.get('failedToSaveGlobalConfig', err.message));
+                    return;
                 }
 
-                if (process.platform === 'win32') {
-                    const fs = require('fs');
-                    const path = require('path');
-                    const sumatraAtRoot = path.join(selectedPath, 'SumatraPDF.exe');
-                    const sumatraInPack = path.join(selectedPath, 'pdf', 'SumatraPDF.exe');
-                    if (!fs.existsSync(sumatraAtRoot) && !fs.existsSync(sumatraInPack)) {
-                        vscode.window.showWarningMessage(i18n.get('sumatraNotFound'));
-                    }
-                }
+                manualPackManager.invalidate();
+                refreshManualSidebar();
                 await manualIndexer.initialize(context);
                 if (healthService) healthService.invalidate();
                 if (statusDashboard) statusDashboard.scheduleRefresh();
@@ -9269,6 +9388,8 @@ context.subscriptions.push(
             if (inlineEditChoiceSession?.document === doc) {
                 clearInlineEditChoiceSession(inlineEditChoiceSession.id);
             }
+            cardCellEditGuard?.clearNav(doc);
+            if (cardCellASelectionGrace?.document === doc) cardCellASelectionGrace = null;
             clearCardCellTypingSession(doc);
             cardCellCompositions.delete(doc);
             structureDiagnostics.clear(doc);
@@ -9357,7 +9478,7 @@ context.subscriptions.push(
             if (vscode.env && vscode.env.clipboard && typeof vscode.env.clipboard.writeText === 'function') {
                 await vscode.env.clipboard.writeText(text);
             }
-            vscode.window.showInformationMessage(i18n.get('statusDashboardDiagnosticsCopied', diagnosticsList.length));
+            vscode.window.setStatusBarMessage(i18n.get('statusDashboardDiagnosticsCopied', diagnosticsList.length), 2500);
             return;
         }
 
@@ -9375,7 +9496,10 @@ context.subscriptions.push(
         if (!isLsdynaFile(document)) return;
         const resource = document && document.uri ? document.uri : undefined;
         const showFirstRunNotice = getLsdynaConfigurationValue('health.showFirstRunNotice', true, resource) !== false;
-        const report = getHealthReportForEditor(editor);
+        const healthReport = getHealthReportForEditor(editor);
+        const issues = healthReport.items.filter(item => item.state === 'warning'
+            && !['manualsDir', 'pdfFiles', 'manualIndex', 'sumatra'].includes(item.id));
+        const report = { ...healthReport, issueCount: issues.length, issueSignature: issues.map(item => item.id).sort().join('|') };
         const lastPromptedIssueSignature = context.globalState && typeof context.globalState.get === 'function'
             ? context.globalState.get(HEALTH_NOTICE_SIGNATURE_KEY, '')
             : '';
@@ -9400,9 +9524,9 @@ context.subscriptions.push(
             btnLater
         )).then(choice => {
             if (choice === btnView) {
-                vscode.commands.executeCommand('extension.showHealthStatus');
+                return vscode.commands.executeCommand('extension.showHealthStatus');
             }
-        }, () => {});
+        }).catch(error => logDebug(`Health status action failed: ${error?.message || error}`));
     };
 
     context.subscriptions.push(
@@ -9468,8 +9592,8 @@ context.subscriptions.push(
                 const config = vscode.workspace.getConfiguration('lsdyna', resource);
                 const nextValue = !getLsdynaConfigurationValue('enableTabNavigation', true, resource);
                 await config.update('enableTabNavigation', nextValue, vscode.ConfigurationTarget.Global);
-                vscode.window.showInformationMessage(
-                    i18n.get(nextValue ? 'statusDashboardTabNavigationEnabled' : 'statusDashboardTabNavigationDisabled')
+                vscode.window.setStatusBarMessage(
+                    i18n.get(nextValue ? 'statusDashboardTabNavigationEnabled' : 'statusDashboardTabNavigationDisabled'), 2500
                 );
                 statusDashboard.scheduleRefresh();
             },
@@ -9887,11 +10011,11 @@ context.subscriptions.push(
                     getSearchPath(editor.document)
                 );
                 const uri = vscode.Uri.file(fullPath);
-                vscode.commands.executeCommand('vscode.open', uri).then(undefined, () => {
-                    vscode.workspace.openTextDocument(fullPath).then(doc => vscode.window.showTextDocument(doc));
+                await vscode.commands.executeCommand('vscode.open', uri).then(undefined, () => {
+                    return vscode.workspace.openTextDocument(fullPath).then(doc => vscode.window.showTextDocument(doc));
                 });
             } catch (error) {
-                vscode.window.showErrorMessage(error.message);
+                return vscode.window.showErrorMessage(error.message);
             }
         })
     );
@@ -9976,7 +10100,7 @@ context.subscriptions.push(
             if (!editor) return;
             const ok = await changeMarksController.resetOrigin(editor);
             if (ok) {
-                vscode.window.showInformationMessage(i18n.get('changeMarksOriginReset'));
+                vscode.window.setStatusBarMessage(i18n.get('changeMarksOriginReset'), 2500);
             }
         })
     );
@@ -10022,7 +10146,7 @@ function deactivate() {
  * @param {Object} params - Options.
  * @param {Object} params.indexClient - Index client handle.
  * @param {function} [params.findAffectedRoots] - Roots mapping function.
- * @returns {function(string|import('vscode').Uri): void} Invalidation callback.
+ * @returns {function(string|import('vscode').Uri): Promise<unknown[]>|void} Invalidation callback; failures remain observable by its caller.
  */
 type ManifestDrivenInvalidatorOptions = {
     indexClient?: any;
@@ -10044,9 +10168,7 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
         if (!changedFilePath) return;
 
         const affectedRoots = findAffectedRoots(changedFilePath, indexClient.getManifestEntries());
-        for (const rootFile of affectedRoots) {
-            indexClient.invalidate(rootFile);
-        }
+        return Promise.all(affectedRoots.map(async rootFile => indexClient.invalidate(rootFile)));
     };
 }
 
@@ -10061,7 +10183,7 @@ function createManifestDrivenInvalidator({ indexClient, findAffectedRoots = find
  * @param {number} [params.delayMs=100] - Debounce delay.
  * @param {function} [params.schedule=setTimeout] - Scheduler.
  * @param {function} [params.cancel=clearTimeout] - Canceler.
- * @returns {function(string|import('vscode').Uri): void|Promise<void>} Enqueuing callback.
+ * @returns Enqueuing callback with a dispose method that cancels pending work.
  */
 function createBatchedManifestInvalidator({
     indexClient,
@@ -10084,9 +10206,11 @@ function createBatchedManifestInvalidator({
         throw new TypeError('createBatchedManifestInvalidator requires onInvalidatedRoots to be a function');
     }
     let timer = null;
+    let disposed = false;
     const pendingRoots = new Map();
 
     function queueAffectedRoots(changedFilePath, manifestEntries) {
+        if (disposed) return;
         const affectedRoots = findAffectedRoots(changedFilePath, manifestEntries);
         if (affectedRoots.length === 0) return;
         for (const rootFile of affectedRoots) {
@@ -10100,12 +10224,12 @@ function createBatchedManifestInvalidator({
         if (timer) cancel(timer);
         timer = schedule(() => {
             timer = null;
+            if (disposed) return;
             const roots = [...pendingRoots.values()];
             pendingRoots.clear();
-            for (const rootFile of roots) {
-                indexClient.invalidate(rootFile);
-            }
-            onInvalidatedRoots(roots);
+            void Promise.all(roots.map(async rootFile => indexClient.invalidate(rootFile)))
+                .then(() => { if (!disposed) onInvalidatedRoots(roots); })
+                .catch(error => reportManifestError(error, changedFilePath));
         }, delayMs);
     }
 
@@ -10114,7 +10238,8 @@ function createBatchedManifestInvalidator({
         onError(manifestError, changedFilePath);
     }
 
-    return function queueChangedFile(fileUriOrPath) {
+    return Object.assign(function queueChangedFile(fileUriOrPath) {
+        if (disposed) return;
         const changedFilePath = typeof fileUriOrPath === 'string'
             ? fileUriOrPath
             : fileUriOrPath && fileUriOrPath.fsPath;
@@ -10139,7 +10264,7 @@ function createBatchedManifestInvalidator({
         } catch (error) {
             reportManifestError(error, changedFilePath);
         }
-    };
+    }, { dispose() { disposed = true; cancel(timer); timer = null; pendingRoots.clear(); } });
 }
 
 /**
@@ -10149,16 +10274,19 @@ function createBatchedManifestInvalidator({
  * @param {function(string): Promise<any>} params.loadProjectSnapshot - Loader function.
  * @param {function(Error, string): void} [params.onError] - Error callback.
  * @param {function} [params.schedule=setImmediate] - Queue execution handler.
- * @returns {function(string): void} Enqueue project callback.
+ * @param {function} [params.cancel=clearImmediate] - Cancels queued execution.
+ * @returns Enqueue project callback with a dispose method that stops new refreshes.
  */
 function createProjectSnapshotRefreshQueue({
     loadProjectSnapshot,
     onError = () => {},
     schedule = setImmediate,
+    cancel = clearImmediate,
 }: {
     loadProjectSnapshot?: (rootFile: string) => Promise<any>;
     onError?: (error: any, rootFile: string | null) => void;
     schedule?: (callback: () => void) => any;
+    cancel?: (timer: any) => void;
 } = {}) {
     if (typeof loadProjectSnapshot !== 'function') {
         throw new TypeError('createProjectSnapshotRefreshQueue requires a loadProjectSnapshot function');
@@ -10171,25 +10299,21 @@ function createProjectSnapshotRefreshQueue({
     }
 
     const pendingRoots = new Map();
-    let activeRootKey = null;
-    let flushScheduled = false;
+    let timer = null;
+    let disposed = false;
     let processing = false;
 
     async function drainQueue() {
-        if (processing) return;
+        if (disposed || processing) return;
         processing = true;
-        flushScheduled = false;
         try {
-            while (pendingRoots.size > 0) {
+            while (!disposed && pendingRoots.size > 0) {
                 const [rootKey, rootFile] = pendingRoots.entries().next().value;
                 pendingRoots.delete(rootKey);
-                activeRootKey = rootKey;
                 try {
                     await loadProjectSnapshot(rootFile);
                 } catch (error) {
                     onError(error, rootFile);
-                } finally {
-                    activeRootKey = null;
                 }
             }
         } finally {
@@ -10197,50 +10321,25 @@ function createProjectSnapshotRefreshQueue({
         }
     }
 
-    return function enqueueProjectSnapshotRefresh(rootFile) {
+    return Object.assign(function enqueueProjectSnapshotRefresh(rootFile) {
+        if (disposed) return;
         const resolvedRootFile = path.resolve(rootFile);
         const rootKey = process.platform === 'win32'
             ? resolvedRootFile.toLowerCase()
             : resolvedRootFile;
-        if (rootKey === activeRootKey || pendingRoots.has(rootKey)) return;
+        if (pendingRoots.has(rootKey)) return;
 
         pendingRoots.set(rootKey, resolvedRootFile);
-        if (flushScheduled || processing) return;
+        if (timer !== null || processing) return;
 
-        flushScheduled = true;
-        schedule(() => {
+        timer = schedule(() => {
+            timer = null;
             drainQueue().catch(error => onError(error, null));
         });
-    };
+    }, { dispose() { disposed = true; cancel(timer); timer = null; pendingRoots.clear(); } });
 }
 
 // createProjectIndexLoader is now imported from src/worker/projectIndexLoader.js
-
-/**
- * Factory helper to construct the persistent L2 cache in globalStorage.
- *
- * @param {Object} params - Options.
- * @param {import('vscode').Uri|null} [params.storageUri] - VS Code global storage directory URI.
- * @param {function(Object): import('./core/cache/diskSnapshotStore').DiskSnapshotStore} [params.createStore] - Store factory.
- * @returns {import('./core/cache/diskSnapshotStore').DiskSnapshotStore|null} Store instance, or null.
- */
-function createProjectSnapshotPersistentCache({
-    storageUri = null,
-    createStore = createDiskSnapshotStore,
-}: {
-    storageUri?: any;
-    createStore?: (options: { cacheDirectory: string; maxCacheBytes: number; maxEntryAgeMs: number }) => any;
-} = {}) {
-    if (!storageUri || typeof storageUri.fsPath !== 'string' || storageUri.fsPath.trim() === '') {
-        return null;
-    }
-
-    return createStore({
-        cacheDirectory: path.join(storageUri.fsPath, 'project-snapshots'),
-        maxCacheBytes: PROJECT_SNAPSHOT_DISK_CACHE_BYTES,
-        maxEntryAgeMs: 30 * CACHE_DAY_MS,
-    });
-}
 
 /**
  * Collects diagnostic warnings and errors (missing files, circular dependencies)
@@ -10308,7 +10407,7 @@ function publishProjectDiagnostics(snapshot, diagnosticsCollection) {
 }
 
 
-/** Session cache: manualsDir config string → Sumatra path (or null after miss). */
+/** Session cache: selected manuals root → Sumatra path (or null after miss). */
 let sumatraPathCacheKey = '';
 let sumatraPathCacheValue = undefined;
 
@@ -10321,7 +10420,7 @@ function clearSumatraPathCache() {
  * Resolves SumatraPDF.exe from either a legacy manuals root or a packaged
  * `pdf/` subdirectory. Root remains first to preserve existing installations.
  * Uses the same exe-first manuals root as the reader/indexer (portable layout).
- * Result is cached per manualsDir for the session so hover/reader PDF open stays snappy.
+ * Result is cached per selected root for the session so hover/reader PDF open stays snappy.
  *
  * @param {import('vscode').ExtensionContext} context - Context.
  * @returns {string|null} Resolved path, or null.
@@ -10329,34 +10428,22 @@ function clearSumatraPathCache() {
 function resolveSumatraPath(context) {
     const fs = require('fs');
     const path = require('path');
-    const { resolveManualDirectoryCandidates } = require('./manual/manualsDirResolve');
+    const { resolveManualSumatraPath } = require('./manual/manualsDirResolve');
     const manualsDir = getLsdynaConfigurationValue('manualsDir', 'lsdyna_manual_pack') || 'lsdyna_manual_pack';
-    const cacheKey = String(manualsDir);
+    const manualRoot = resolveManualsRoot({
+        manualsDir,
+        workspaceFolders: vscode.workspace.workspaceFolders || [],
+        cwd: process.cwd(),
+        execPath: process.execPath,
+        appRoot: vscode.env && vscode.env.appRoot ? vscode.env.appRoot : null,
+        extensionPath: getExtensionPath(context),
+        pathModule: path,
+    });
+    const cacheKey = manualRoot;
     if (sumatraPathCacheKey === cacheKey && sumatraPathCacheValue !== undefined) {
         return sumatraPathCacheValue;
     }
-    let resolved = null;
-    if (manualsDir && typeof manualsDir === 'string') {
-        const dirsToCheck = resolveManualDirectoryCandidates({
-            manualsDir,
-            workspaceFolders: vscode.workspace.workspaceFolders || [],
-            cwd: process.cwd(),
-            execPath: process.execPath,
-            appRoot: vscode.env && vscode.env.appRoot ? vscode.env.appRoot : null,
-            extensionPath: getExtensionPath(context),
-            pathModule: path,
-        });
-
-        for (const dir of dirsToCheck) {
-            for (const sumatraPath of [path.join(dir, 'SumatraPDF.exe'), path.join(dir, 'pdf', 'SumatraPDF.exe')]) {
-                if (fs.existsSync(sumatraPath)) {
-                    resolved = sumatraPath;
-                    break;
-                }
-            }
-            if (resolved) break;
-        }
-    }
+    const resolved = resolveManualSumatraPath(manualRoot, fs, path);
     sumatraPathCacheKey = cacheKey;
     sumatraPathCacheValue = resolved;
     return resolved;
@@ -10368,13 +10455,17 @@ function resolveSumatraPath(context) {
  * @param {string} pdfPath - File path.
  * @param {number} [pageNum] - Page number.
  */
-function openManualExternal(pdfPath, pageNum) {
-    const uri = vscode.Uri.file(pdfPath);
-    const target = pageNum && typeof uri.with === 'function'
-        ? uri.with({ fragment: `page=${pageNum}` })
-        : uri;
-    // Do not return/await the promise from the command path — fire and forget like hover.
-    void vscode.env.openExternal(target);
+async function openManualExternal(pdfPath, pageNum) {
+    try {
+        const uri = vscode.Uri.file(pdfPath);
+        const target = pageNum && typeof uri.with === 'function'
+            ? uri.with({ fragment: `page=${pageNum}` })
+            : uri;
+        if (await vscode.env.openExternal(target)) return;
+    } catch (_error) {
+        // The system opener can reject as well as return false.
+    }
+    void vscode.window.showWarningMessage(i18n.get('manualPdfNotOpened'));
 }
 
 /**
@@ -10496,7 +10587,12 @@ const MAX_TABLE_PREVIEW_VIEW_STATES = 256;
 
 const tablePreviewViewByReference = new Map();
 
-const entityReferenceQueryService = new EntityReferenceQueryService();
+const { entityIndexBudget } = require('./core/cache/entityIndexBudget');
+const entityBudget = entityIndexBudget(getLsdynaConfigurationValue('cache.entityIndexMemoryMaxMiB', 512),
+    getLsdynaConfigurationValue('cache.entityIndexDiskMaxMiB', 4096));
+const entityReferenceQueryService = new EntityReferenceQueryService(entityBudget.hostBytes);
+const { EntityQueryCache } = require('./core/references/entityQueryCache');
+const liveEntityIndexCache = new EntityQueryCache(entityBudget.liveBytes);
 
 function buildTablePreviewReferenceKey(documentPath, lineIndex, fieldName) {
     if (typeof documentPath !== 'string' || !documentPath) return '';
@@ -10945,6 +11041,8 @@ function cacheLimitMilliseconds(key, fallbackDays, minimumDays, maximumDays) {
 }
 
 function clearClientProjectSemanticCaches() {
+    entityReferenceQueryService.clear();
+    liveEntityIndexCache.clear();
     activeProjectCacheEpoch += 1;
     const projectCount = activeProjectReferenceIndexCache.size;
     for (const rootKey of [...new Set([
@@ -10972,13 +11070,14 @@ function cacheRemovalTotals(result) {
     const memory = result?.memory || {};
     const projectDisk = result?.projectSnapshotDisk || {};
     const fileDisk = result?.fileScanDisk || {};
+    const entityDisk = result?.entityIndex?.cleared || {};
     return {
         entryCount: Number(memory.cachedSnapshotCount || 0)
             + Number(projectDisk.entryCount || 0)
-            + Number(fileDisk.entryCount || 0),
+            + Number(fileDisk.entryCount || 0) + Number(entityDisk.removed || 0),
         totalBytes: Number(memory.totalSnapshotBytes || 0)
             + Number(projectDisk.totalBytes || 0)
-            + Number(fileDisk.totalBytes || 0),
+            + Number(fileDisk.totalBytes || 0) + Number(entityDisk.reclaimedBytes || 0),
     };
 }
 
@@ -11015,12 +11114,14 @@ async function handleClearProjectIndexCachesCommand(indexClient, {
             }, execute)
             : await execute();
         const totals = cacheRemovalTotals(result);
-        vscode.window.setStatusBarMessage(localCleanupError
-            ? i18n.get('projectCacheClearFailed')
-            : i18n.get('projectCacheCleared', totals.entryCount, formatBytes(totals.totalBytes)), 8000);
+        if (localCleanupError) {
+            void vscode.window.showErrorMessage(i18n.get('projectCacheClearFailed'));
+        } else {
+            vscode.window.setStatusBarMessage(i18n.get('projectCacheCleared', totals.entryCount, formatBytes(totals.totalBytes)), 8000);
+        }
         return result;
     } catch (error) {
-        vscode.window.setStatusBarMessage(i18n.get('projectCacheClearFailed'), 8000);
+        void vscode.window.showErrorMessage(i18n.get('projectCacheClearFailed'));
         console.error('[lsdyna] Failed to clear project index caches:', error);
         return null;
     }
@@ -11217,12 +11318,14 @@ function validEntityQueryFilePath(filePath) {
 
 async function resolveIndexedEntityQueryScope(target, indexClient, cancellationToken = null, options: any = {}) {
     if (options.scope?.snapshot) return options.scope;
+    const identityOnly = options.identityOnly === true;
     const requestedScope = options.scopeIdentity;
     if (requestedScope?.kind === 'project' && requestedScope.rootFile) {
         const rootFile = validEntityQueryFilePath(requestedScope.rootFile);
         if (!rootFile) {
             return { unavailableReason: 'entity-query-source-missing', identityScope: requestedScope };
         }
+        if (identityOnly) return { kind: 'project', rootFile };
         const snapshot = await indexClient.loadProjectSnapshot(rootFile, {}, null, cancellationToken);
         return snapshot ? {
             kind: 'project',
@@ -11236,6 +11339,7 @@ async function resolveIndexedEntityQueryScope(target, indexClient, cancellationT
         if (!filePath) {
             return { unavailableReason: 'entity-query-source-missing', identityScope: requestedScope };
         }
+        if (identityOnly) return { kind: 'single-file', filePath };
         const snapshot = await indexClient.loadProjectSnapshot(
             filePath,
             { singleFileOnly: true },
@@ -11254,6 +11358,7 @@ async function resolveIndexedEntityQueryScope(target, indexClient, cancellationT
         const project = activeProjectReferenceIndexCache.get(rootKey) ||
             activeProjectScopeCache.get(rootKey);
         if (project) {
+            if (identityOnly) return { kind: 'project', rootFile: project.rootFile || target.rootFile };
             const snapshot = project.snapshot || await indexClient.loadProjectSnapshot(
                 project.rootFile || target.rootFile,
                 {},
@@ -11276,6 +11381,7 @@ async function resolveIndexedEntityQueryScope(target, indexClient, cancellationT
     }
     const mainDeckContext = getMainDeckContextForDocumentPath(filePath);
     if (mainDeckContext.state !== 'ambiguous' && mainDeckContext.project) {
+        if (identityOnly) return { kind: 'project', rootFile: mainDeckContext.rootFile };
         const snapshot = mainDeckContext.project.snapshot || await indexClient.loadProjectSnapshot(
             mainDeckContext.rootFile,
             {},
@@ -11293,6 +11399,7 @@ async function resolveIndexedEntityQueryScope(target, indexClient, cancellationT
             ),
         };
     }
+    if (identityOnly) return { kind: 'single-file', filePath };
     const loadSnapshot = options.loadSnapshot || ((filePath, token) =>
         indexClient.loadProjectSnapshot(
             filePath,
@@ -11372,7 +11479,7 @@ function isEntityReferenceNavigationPosition(editor, location) {
 function inferIndexedEntityQueryTarget(editor = vscode.window.activeTextEditor, options: { requireUnambiguous?: boolean } = {}) {
     if (!editor || !isLsdynaFile(editor.document)) return null;
     const position = editor.selection?.active;
-    const kinds = indexedEntityKinds();
+    const kinds = indexedEntityKinds().filter(kind => !isMeshEntityKind(kind));
     if (!position) return null;
 
     // References are preferred when the cursor is on a reference field.
@@ -11424,6 +11531,8 @@ function inferIndexedEntityQueryTarget(editor = vscode.window.activeTextEditor, 
     if (!Number.isInteger(fieldIndex) || fieldIndex !== expectedFieldIndex) return null;
 
     const recordMode = descriptor.physicalSelector?.recordMode || descriptor.recordMode;
+    if (!recordMode && !['node', 'element'].includes(descriptor.targetKind) &&
+        cardInfo.cardIndex !== descriptor.cardIndex) return null;
     if (recordMode === 'exact-data-record-ordinal') {
         let dataLineOrdinal = -1;
         for (let line = keywordLine + 1; line <= position.line; line++) {
@@ -11498,7 +11607,7 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         : () => true;
     await prepareReferenceDirectory();
     if (!isCurrentRequest()) return null;
-    const kinds = indexedEntityKinds();
+    const kinds = indexedEntityKinds().filter(kind => !isMeshEntityKind(kind));
     let normalizedTarget = kinds.includes(String(target?.targetKind || '').trim()) &&
         normalizeIndexedEntityId(target?.id)
         ? { ...target, targetKind: String(target.targetKind).trim(), id: normalizeIndexedEntityId(target.id) }
@@ -11507,7 +11616,6 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         options.onInputRequired?.();
         return null;
     }
-    if (!normalizedTarget) return null;
     target = { ...(target || {}), ...normalizedTarget };
     const targetKind = normalizedTarget.targetKind;
     const entityId = normalizedTarget.id;
@@ -11515,14 +11623,24 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
     let loadingSession, loadingLocations;
     const operation = async (_progress = null, cancellationToken = null) => {
         if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+        const documentVersions = new Map((vscode.workspace.textDocuments || []).map(document =>
+            [liveEntityIndexCache.identity(document), document.version]));
+        const documentsCurrent = () => {
+            const current = vscode.workspace.textDocuments || [];
+            return current.length === documentVersions.size && current.every(document => !document.isClosed &&
+                documentVersions.has(liveEntityIndexCache.identity(document)) &&
+                documentVersions.get(liveEntityIndexCache.identity(document)) === document.version);
+        };
+        // ponytail: dirty documents use host overlays; migrate when worker synchronization preserves document instances and versions.
+        const background = typeof indexClient.queryEntity === 'function' && options.entityReferenceProvider &&
+            options.presentResult === false && !options.query && !options.prepareSnapshot && !options.scope &&
+            !options.loadSnapshot && !options.scanBlockLines &&
+            !(vscode.workspace.textDocuments || []).some(document => document.isDirty);
         const scope = await resolveIndexedEntityQueryScope(
-            target,
-            indexClient,
-            cancellationToken,
-            options,
+            target, indexClient, cancellationToken, { ...options, identityOnly: background },
         );
         if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
-        if (scope?.unavailableReason || !scope?.snapshot || cancellationToken?.isCancellationRequested) {
+        if (scope?.unavailableReason || (!background && !scope?.snapshot) || !scope || cancellationToken?.isCancellationRequested) {
             if (scope?.unavailableReason && !cancellationToken?.isCancellationRequested &&
                 options.silentStatus !== true) {
                 vscode.window.showWarningMessage(i18n.get(
@@ -11550,6 +11668,23 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
             { state: 'loading', locations: [], reasons: [] },
         );
         loadingLocations = loadingSession?.locations;
+        if (background) {
+            const request = { rootFile: scope.rootFile || scope.filePath, scope: scope.kind,
+                id: entityId, targetKind, excludeMeshEntities: true };
+            const response = await indexClient.queryEntity(request, cancellationToken);
+            if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+            const result = response?.status === 'ready' && documentsCurrent()
+                ? { ...response.result, revision: response.revision,
+                    loadPage: async cursor => {
+                        if (!documentsCurrent()) return { status: 'stale' };
+                        const page = await indexClient.queryEntity({ ...request, cursor });
+                        return documentsCurrent() ? page : { status: 'stale' };
+                    } }
+                : { state: 'incomplete', locations: [], reasons: ['entity-query-source-changed'] };
+            const querySession = options.entityReferenceProvider.publish(
+                { targetKind, id: entityId, scope: identityScope }, result);
+            return { ...result, querySession };
+        }
         const prepared = await (options.prepareSnapshot || prepareIndexedEntityQuerySnapshot)(
             scope.snapshot,
             cancellationToken,
@@ -11804,11 +11939,12 @@ function fieldReferenceAtPosition(document, position, options: any = {}) {
     ].filter((fieldIndex, index, values) => fieldIndex >= 0 && values.indexOf(fieldIndex) === index);
     for (const fieldIndex of fieldIndexes) {
         const field = cardInfo.card[fieldIndex];
-        if (!field || (field.nativeIdentity && !field.nativeStaticBinding) || text.length < field.p) continue;
+        if (!field || text.length < field.p) continue;
 
         let referenceInfo;
         try {
-            const resolveReferenceInfo = options.semanticScope === "keyword-catalog"
+            const resolveReferenceInfo = options.semanticScope === "keyword-catalog" ||
+                (field.nativeIdentity && !field.nativeStaticBinding)
                 ? getCatalogFieldReferenceInfo
                 : getActionableFieldReferenceInfo;
             referenceInfo = resolveReferenceInfo({
@@ -11820,6 +11956,21 @@ function fieldReferenceAtPosition(document, position, options: any = {}) {
             continue;
         }
         if (!referenceInfo) continue;
+        if (referenceInfo.source === "keyword-catalog") {
+            const sibling = referenceInfo.definitionRegistry?.operationalProjection?.siblingTargetBinding;
+            if (field.nativeIdentity && sibling) {
+                const controller = cardInfo.card.find(candidate => candidate.nativeIdentity?.fieldRecordId === sibling.nativeFieldAddress);
+                if (!controller) continue;
+                referenceInfo = { ...referenceInfo, definitionRegistry: { ...referenceInfo.definitionRegistry,
+                    operationalProjection: { ...referenceInfo.definitionRegistry.operationalProjection,
+                        siblingTargetBinding: { ...sibling, formats: { ...sibling.formats,
+                            standard: { mode: 'fixed', position: controller.p, width: controller.w } } } } } };
+            }
+            const siblingState = require('./core/references/registryReferenceScanner')
+                .resolveSiblingTargetBinding(referenceInfo, text, 'standard');
+            if (siblingState.state === 'indeterminate') continue;
+            referenceInfo = siblingState.info;
+        }
         const authorityScope = fieldReferenceAuthorityScope(
             referenceInfo,
             options.semanticScope || 'prefer-registry',
@@ -12114,7 +12265,7 @@ async function resolveFieldReferenceNavigation(
             return null;
         }
         if (lookup) {
-            analysis = mergeOnDemandDefinitions(analysis, lookup);
+            analysis = mergeOnDemandDefinitions(analysis, lookup, referenceIndexState.referenceIndex);
             if (source.referenceValue.isSignedSwitch &&
                 (lookup.definitions || []).some(definition =>
                     Number.isSafeInteger(definition.idfoffOffset) &&
@@ -12179,8 +12330,10 @@ function lookupNormalizedFileIndex(fileIndexes, filePath) {
     return null;
 }
 
-async function readLiveReferenceBlock(document, block, cancellationToken = null) {
+async function readLiveReferenceBlock(document, block, cancellationToken = null, headerDataRecords = undefined) {
     const isCurrent = createDocumentReadGuard(document, cancellationToken);
+    if (!isCurrent()) return null;
+    let dataRecords = 0;
     const lines = [];
     for (let line = block.startLine; line <= block.endLine; line++) {
         if ((line & 255) === 0 && !isCurrent()) return null;
@@ -12188,9 +12341,12 @@ async function readLiveReferenceBlock(document, block, cancellationToken = null)
             await new Promise(resolve => setImmediate(resolve));
             if (!isCurrent()) return null;
         }
-        lines.push(document.lineAt(line).text);
+        const text = document.lineAt(line).text;
+        lines.push(text);
+        if (headerDataRecords && line > block.startLine && text.trim() && !text.trimStart().startsWith('$') &&
+            ++dataRecords >= headerDataRecords) break;
     }
-    return lines.join('\n');
+    return isCurrent() ? lines.join('\n') : null;
 }
 
 async function buildLiveRegistryReferenceFileIndex(
@@ -12200,6 +12356,11 @@ async function buildLiveRegistryReferenceFileIndex(
     options: any = {},
 ) {
     const isCurrent = createDocumentReadGuard(document, cancellationToken);
+    if (!isCurrent()) return null;
+    const cacheKey = JSON.stringify([liveEntityIndexCache.identity(document), document.version,
+        liveEntityIndexCache.identity(existingFileIndex), options]);
+    const cached = liveEntityIndexCache.get(cacheKey);
+    if (cached) return cached;
     const blocks = await parseKeywordBlocksFromDocumentAsync(document, cancellationToken);
     if (!blocks || !isCurrent()) return null;
     if (!options.allowIncludeControlBlocks &&
@@ -12208,8 +12369,10 @@ async function buildLiveRegistryReferenceFileIndex(
             incompleteReason: options.includeIncompleteReason || 'dirty-include-graph-unverified',
         };
     }
-    const input = { filePath: document.uri.fsPath, keywordBlocks: blocks };
-    const readBlock = block => readLiveReferenceBlock(document, block, cancellationToken);
+    const excludeMeshEntities = existingFileIndex?.excludeMeshEntities === true;
+    const input = { filePath: document.uri.fsPath, keywordBlocks: excludeMeshEntities
+        ? blocks.filter(block => !isMeshKeyword(block.keyword)) : blocks };
+    const readBlock = (block, headerDataRecords = undefined) => readLiveReferenceBlock(document, block, cancellationToken, headerDataRecords);
     const referenceDefinitions = await scanCurveTableDefinitionsFromFileIndex(
         input,
         readBlock,
@@ -12220,7 +12383,7 @@ async function buildLiveRegistryReferenceFileIndex(
     const registryReferences = await scanRegistryReferenceOccurrencesFromFileIndex(
         { ...input, referenceDefinitions },
         readBlock,
-        { cancellationToken },
+        { cancellationToken, excludeMeshEntities },
     );
     if (registryReferences.cancelled || !isCurrent()) return null;
     const parameterEvents = await scanParameterEventsFromFileIndex(
@@ -12229,7 +12392,7 @@ async function buildLiveRegistryReferenceFileIndex(
         { cancellationToken },
     );
     if (!isCurrent()) return null;
-    return {
+    const liveIndex = {
         ...existingFileIndex,
         filePath: document.uri.fsPath,
         keywordBlocks: blocks,
@@ -12239,6 +12402,8 @@ async function buildLiveRegistryReferenceFileIndex(
         documentVersion: document.version,
         liveReferenceOverlay: true,
     };
+    liveEntityIndexCache.set(cacheKey, liveIndex);
+    return liveIndex;
 }
 
 async function buildSingleDocumentRegistryReferenceIndexState(
@@ -12459,11 +12624,13 @@ async function resolveRegistryReferenceNetwork(
             source,
         };
     }
-    const matches = collectRegistryReferenceMatches(
-        referenceIndexState.referenceIndex,
-        queryState.query,
-        { cancellationToken },
-    );
+    const matches = await require('./core/references/onDemandReferenceScanner').queryRegistryReferences({
+        referenceIndex: referenceIndexState.referenceIndex,
+        fileIndexes: referenceIndexState.snapshot?.fileIndexes,
+        query: queryState.query,
+        cancellationToken,
+        scanBlockLines: options.scanBlockLines || scanReferenceBlockLines,
+    });
     if (matches.state !== 'complete' || !isCurrent()) {
         return {
             state: matches.state,
@@ -12912,7 +13079,7 @@ function semanticEvidencePageLinks(keyword, items, options: any = {}) {
     const targets = semanticEvidenceTargets(
         items,
         currentAuthority,
-        summary?.evidenceAuthority || null,
+        summary?.evidenceAuthority,
     );
     return targets.map(target => {
         const args = encodeURIComponent(JSON.stringify([{
@@ -12934,7 +13101,7 @@ function semanticEvidenceLocationPresentation(evidence, ruleId = 'presentation')
     return semanticEvidenceTargets(
         [{ ruleId, evidence: [evidence] }],
         currentAuthority,
-        summary?.evidenceAuthority || null,
+        summary?.evidenceAuthority,
     )[0] || null;
 }
 
@@ -13338,6 +13505,8 @@ function keywordStructureCheckMessage(analysis) {
         message = i18n.get('keywordStructureAmbiguous');
     } else if (analysis.status === 'profile-unverified') {
         message = i18n.get('keywordStructureCheckProfileUnverified', analysis.reason);
+    } else if (analysis.reason === 'integer-value-unrepresentable') {
+        return i18n.get('keywordStructureCheckIntegerUnsupported');
     } else {
         message = i18n.get('keywordStructureCheckUnsupported', analysis.reason);
     }
@@ -13444,7 +13613,7 @@ const {
     planVerifiedConditionalCards,
 } = require('./core/semantics/cardEditPlanner');
 
-function buildOfficialFieldChoiceHoverMarkdown(plan, document) {
+function buildOfficialFieldChoiceHoverMarkdown(plan, document, compact = false) {
     if (plan?.status !== 'ready' || !plan.fieldRange || !Array.isArray(plan.choices) ||
         plan.choices.length === 0) {
         return '';
@@ -13466,6 +13635,7 @@ function buildOfficialFieldChoiceHoverMarkdown(plan, document) {
     const tooltip = i18n.get(
         closed ? 'officialFieldChoiceHoverClosedTooltip' : 'officialFieldChoiceHoverMixedTooltip',
     );
+    if (compact) return `[$(list-selection)](command:extension.pickOfficialFieldValue?${args} "${tooltip}")`;
     const items = [
         `[$(list-selection) ${action}](command:extension.pickOfficialFieldValue?${args} "${tooltip}")`,
     ];
@@ -13912,6 +14082,120 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
         generatedBytes,
         edits,
     };
+}
+
+/** Context actions reuse the bounded comment/card planners; never scan a project. */
+function planKeywordCardMaintenance(document, keywordLine, options: any = {}): any {
+    if (!document || !Number.isInteger(keywordLine) || keywordLine < 0 || keywordLine >= document.lineCount) return null;
+    const endLine = boundedCardCommentRewriteEnd(document, keywordLine, options);
+    if (!Number.isInteger(endLine)) return null;
+    if (!isActiveLsdynaSemanticLocation(document, { line: keywordLine, character: 0 }, { requireLiveSnapshot: true })) return null;
+    const keywordText = document.lineAt(keywordLine).text;
+    const schema = options.schema || getFieldData();
+    const lookup = keywordSchema.lookupKeywordSchema(classifyKeywordLine(keywordText).normalizedKeyword, schema);
+    if (!lookup || keywordInputFormat(keywordText, documentGlobalInputFormat(document)) !== 'standard') return null;
+    const records = [];
+    const comments = [];
+    for (let line = keywordLine + 1; line <= endLine; line++) {
+        const text = document.lineAt(line).text;
+        if (isKeywordCommentLine(text)) { if (!records.length) comments.push(text); }
+        else records.push({ line, text });
+    }
+    if (!records.length || records.length > CARD_COMMENT_REWRITE_MAX_DATA_LINES) return null;
+    const prefix = keywordSchema.getVerifiedPrefixLayout(lookup, records.map(record => record.text));
+    // Removing _TITLE leaves a real data line behind; comment rewriting cannot repair that shift.
+    if (prefix.status === 'none' && comments.some(text => /^\$\s*#?\s*TITLE\s*$/i.test(text))) return null;
+    if (prefix.status === 'verified' && prefix.cards.length === 1 && prefix.cards[0].length === 1 && prefix.cards[0][0].n === 'TITLE') {
+        const baseText = keywordText.replace(/_TITLE(?=\s|$|_)/i, '');
+        const baseLookup = keywordSchema.lookupKeywordSchema(classifyKeywordLine(baseText).normalizedKeyword, schema);
+        const baseCards = baseLookup && keywordSchema.getFiniteRenderedCardsForLookup(baseLookup, records.map(record => record.text));
+        const hasTitleHeader = comments.some(text => keywordSchema.analyzeCardCommentHeader(text, [prefix.cards[0]])?.exactMatch);
+        const hasDataHeader = baseCards?.length && comments.some(text => keywordSchema.analyzeCardCommentHeader(text, [baseCards[0]])?.exactMatch);
+        // An existing first-card header is evidence for offering insertion, not permission to reinterpret data.
+        const missingTitle = !hasTitleHeader && hasDataHeader && /^[\s\d.+\-EeDd]+$/.test(records[0].text) && records[0].text.trim();
+        if (missingTitle) {
+            const baseDocument = { uri: document.uri, version: document.version, languageId: document.languageId,
+                lineCount: document.lineCount, eol: document.eol,
+                lineAt: line => line === keywordLine ? { text: baseText } : document.lineAt(line) };
+            const basePlan = planCardCommentRewriteForDocument(baseDocument, keywordLine, { ...options, schema, globalInputFormat: 'standard', blockIndex: null });
+            return ['ready', 'no-change'].includes(basePlan.status)
+                ? { kind: 'title', endLine, edits: basePlan.edits, titleCard: prefix.cards[0] } : null;
+        }
+        // An old data header or numeric/parameter text can signal misplaced data, not an existing title.
+        if ((hasDataHeader || /^[\s\d.+\-EeDd]+$/.test(records[0].text) || records[0].text.includes('&')) && !hasTitleHeader) return null;
+    }
+    const conditional = planVerifiedConditionalCardsForDocument(document, keywordLine, options);
+    if (conditional?.status === 'ready') return { kind: 'conditional', endLine, insertion: conditional.insertion };
+    const plan = planCardCommentRewriteForDocument(document, keywordLine, options);
+    return plan.status === 'ready' ? { ...plan, kind: 'comments' } : null;
+}
+
+function keywordCardMaintenanceAction(document, keywordLine) {
+    const plan = planKeywordCardMaintenance(document, keywordLine);
+    if (!plan) return null;
+    const title = i18n.get(plan.kind === 'title' ? 'keywordCardsInsertTitle' : plan.kind === 'conditional' ? 'keywordCardsInsertConditional' : 'keywordCardsUpdateComments');
+    return { title, plan, request: { uri: documentUriIdentity(document), documentVersion: document.version, keywordLine, kind: plan.kind } };
+}
+
+class LsdynaKeywordCardsCodeActionProvider {
+    provideCodeActions(document, range, _context, token) {
+        if (!isLsdynaFile(document) || token?.isCancellationRequested || range.start.line !== range.end.line) return [];
+        if (_context.only && !_context.only.contains(vscode.CodeActionKind.QuickFix)) return [];
+        const line = range.start.line;
+        const keywordLine = isKeywordLineText(document.lineAt(line).text) ? line : findEnclosingKeywordLine(document, line);
+        const available = keywordCardMaintenanceAction(document, keywordLine);
+        if (!available || token?.isCancellationRequested) return [];
+        const action = new vscode.CodeAction(available.title, vscode.CodeActionKind.QuickFix);
+        action.command = { command: 'extension.updateKeywordCards', title: available.title, arguments: [available.request] };
+        return [action];
+    }
+}
+
+async function handleUpdateKeywordCardsCommand(request, options: any = {}) {
+    const editor = options.editor || vscode.window.activeTextEditor;
+    const document = editor?.document;
+    const isCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
+    if (!document || !isLsdynaFile(document) || !request || request.uri !== documentUriIdentity(document) || request.documentVersion !== document.version) {
+        showCardCommentRewriteStatus('cardCommentRewriteStale'); return false;
+    }
+    const available = keywordCardMaintenanceAction(document, request.keywordLine);
+    if (!available || available.plan.kind !== request.kind) { showCardCommentRewriteStatus('cardCommentRewriteUnavailable'); return false; }
+    const { plan, title } = available;
+    let titleText;
+    if (plan.kind === 'title') {
+        titleText = await (options.input || (input => vscode.window.showInputBox(input)))({
+            prompt: i18n.get('keywordCardsTitlePrompt'), ignoreFocusOut: true,
+            validateInput: value => value.trim() && value.length <= 80 && !/[\r\n]/.test(value) && !/^\s*[$*]/.test(value)
+                ? undefined : i18n.get('keywordCardsTitleInvalid'),
+        });
+        if (titleText === undefined) return false;
+        if (!titleText.trim() || titleText.length > 80 || /[\r\n]/.test(titleText) || /^\s*[$*]/.test(titleText)) return false;
+    }
+    if (!await canApplyDocumentEdit(document, isCurrent)) return false;
+    const edit = new vscode.WorkspaceEdit();
+    const metadata = plan.kind === 'comments' ? undefined : { needsConfirmation: true, label: title };
+    const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+    if (plan.kind === 'conditional') {
+        const insertion = plan.insertion;
+        edit.replace(document.uri, new vscode.Range(insertion.line, insertion.character, insertion.line, insertion.character), insertion.text, metadata);
+    } else {
+        const insertions = new Map<number, string>();
+        if (plan.kind === 'title') insertions.set(request.keywordLine + 1, generateCommentLine(plan.titleCard, 'dollar-hash-fixed', 'lower') + eol + titleText + eol);
+        for (const operation of plan.edits) {
+            if (operation.kind === 'insert-before-line') {
+                insertions.set(operation.line, (insertions.get(operation.line) || '') + operation.replacementText + eol);
+            } else {
+                const range = operation.kind === 'delete-line'
+                    ? new vscode.Range(operation.line, 0, operation.line + 1, 0)
+                    : new vscode.Range(operation.line, 0, operation.line, operation.sourceText.length);
+                edit.replace(document.uri, range, operation.replacementText, metadata);
+            }
+        }
+        for (const [line, text] of insertions) edit.replace(document.uri, new vscode.Range(line, 0, line, 0), text, metadata);
+    }
+    try {
+        return await (options.applyEdit || ((change, meta) => vscode.workspace.applyEdit(change, meta)))(edit, { isRefactoring: plan.kind !== 'comments' });
+    } catch (_error) { showCardCommentRewriteStatus('cardCommentRewriteApplyFailed'); return false; }
 }
 
 function showCardCommentRewriteStatus(key, ...args) {
@@ -14589,7 +14873,8 @@ function rememberCardCellTypingSession(editor, lineNum, fieldIndex, caret) {
 }
 
 function hasRecentCardCellSelectionGrace(document) {
-    if (!document || !cardCellASelectionGrace) return false;
+    if (!document || document.isClosed || !cardCellASelectionGrace ||
+        cardCellASelectionGrace.document !== document) return false;
     const documentKey = document.uri && document.uri.toString();
     return cardCellASelectionGrace.until > Date.now() &&
         cardCellASelectionGrace.uri === documentKey &&
@@ -14614,7 +14899,7 @@ function isTabSelectionEligible(editor, selection) {
     // Tab itself selects a complete guarded cell.  That exact A selection may
     // continue navigating; arbitrary partial/cross-field selections belong to
     // normal VS Code indentation and must never be collapsed into one cell.
-    const nav = ensureCardCellEditGuard().getNav();
+    const nav = ensureCardCellEditGuard().getNav(editor.document);
     if (!nav || nav.mode !== 'A') return false;
     const documentKey = editor.document?.uri?.toString?.();
     if (nav.uri && documentKey && nav.uri !== documentKey) return false;
@@ -14665,7 +14950,7 @@ function startEmptyCellBoundaryTypeChoice(editor, target, text, guard) {
 
     const applyResult = async (fieldIndex, newText) => {
         const caret = cardCellModel.caretAfterCellValue(newText, card, fieldIndex);
-        await applyCardCellLineEdit(
+        const applied = await applyCardCellLineEdit(
             editor,
             lineNum,
             newText,
@@ -14673,6 +14958,7 @@ function startEmptyCellBoundaryTypeChoice(editor, target, text, guard) {
             caret,
             { undoStopBefore: true, undoStopAfter: false },
         );
+        if (applied === false) return;
         guard.markAp(document, lineNum, fieldIndex, caret);
         rememberCardCellTypingSession(editor, lineNum, fieldIndex, caret);
         vscode.commands.executeCommand(
@@ -14766,7 +15052,7 @@ async function handleCardCellTypeWithNavigation(args, text, editor, guard) {
         return vscode.commands.executeCommand('default:type', args);
     }
     // Navigation may have been cleared while awaiting a native paste repair.
-    const nav = guard.getNav();
+    const nav = guard.getNav(editor.document);
     if (!nav) {
         return vscode.commands.executeCommand('default:type', args);
     }
@@ -14833,10 +15119,11 @@ async function handleCardCellTypeWithNavigation(args, text, editor, guard) {
         plan.fieldIndex,
         invokingCaret,
     );
-    await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.caret, plan.caret, {
+    const applied = await applyCardCellLineEdit(editor, plan.lineNum, plan.newText, plan.caret, plan.caret, {
         undoStopBefore: !continuesTyping,
         undoStopAfter: false,
     });
+    if (applied === false) return;
     if (plan.markAp) {
         guard.markAp(editor.document, plan.lineNum, plan.fieldIndex, plan.caret);
     }
@@ -14867,7 +15154,7 @@ const { evaluateOptionGrammar } = require('./core/options/optionGrammarEvaluator
 
 const { evaluatePredicate } = require('./core/semantics/predicateEvaluator');
 
-const { getLegalSelectorValues, resolveSelectorPriorScore, resolveFormRulePriorScore } = require("./core/semantics/catalogPriorRules");
+const { getLegalSelectorValues, resolveFormRulePriorScore } = require("./core/semantics/catalogPriorRules");
 
 const keywordRecordSerializer = require('./core/edit/keywordRecordSerializer');
 
@@ -15266,7 +15553,6 @@ const {
     keywordOptionsEditorForModel,
     locateKeywordManagerSource,
     openKeywordManagerManual,
-    openKeywordManagerInstanceEditor,
     keywordManagerDisplayName,
     keywordManagerReadonlyUri,
     keywordManagerInstanceFileState,
@@ -15279,10 +15565,9 @@ const {
     keywordManagerNativeInstanceCounts,
     keywordManagerExpandNativeInstances,
     keywordManagerInstanceDirectories,
-    keywordManagerInstances,
+    keywordManagerInstances, keywordManagerTypeKey,
     prepareKeywordManagerInstances,
     completeKeywordManagerInstances,
-    keywordManagerProjectInstances,
     keywordManagerCatalogCatalogFailure,
     isKeywordManagerUnauditedCatalogAllowed,
     keywordManagerCatalogCatalogForm,
@@ -15321,6 +15606,7 @@ const {
     keywordLineWithTargetSpelling,
     optionSwitchReplacement,
     keywordManagerCatalogAllowsWrite,
+    keywordManagerReplacementMatchesTarget,
 } = require('./client/services/keywordManager').createKeywordManagerServices({
     getKeywordSemanticAdviceForDocument,
     readyCardEditBlockIndex,
@@ -15350,6 +15636,7 @@ const {
     keywordManagerStageFieldDrafts,
     keywordOptionBlockSha256,
     optionSwitchReplacement,
+    keywordManagerReplacementMatchesTarget,
 });
 
 module.exports = { activate, deactivate };
@@ -15433,7 +15720,6 @@ module.exports._internals = {
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
     createProjectIndexLoader,
-    createProjectSnapshotPersistentCache,
     chooseKeywordOptionsForEditor,
     LsdynaFileDecorationProvider,
     normalizePathKey,
@@ -15556,7 +15842,6 @@ Object.assign(module.exports._internals, {
     createManifestDrivenInvalidator,
     createBatchedManifestInvalidator,
     createProjectSnapshotRefreshQueue,
-    createProjectSnapshotPersistentCache,
     normalizePathKey,
     getCardInfoForDocumentLineWithSuggest,
     resolveKeywordLookupWithSuggest,
@@ -15582,7 +15867,7 @@ module.exports._internals.keywordStructureAnalysisCacheStatsForTesting = keyword
 
 Object.assign(module.exports._internals, { createActiveFieldChoiceController, officialFieldChoiceCommandRequest, planLsdynaFormatting, mapPositionThroughFormattingEdits, buildOfficialFieldChoiceHoverMarkdown, buildVerifiedConditionalCardEditMarkdown, cardNumbersLabel, planVerifiedConditionalCardsForDocument, planVerifiedConditionalCards, showVerifiedCardEditStatus, handleAddVerifiedConditionalCardsCommand, showOfficialFieldChoiceStatus, handlePickOfficialFieldValueCommand, createOfficialFieldChoicePicker, planOfficialFieldChoicesForDocument, planOfficialFieldChoices, buildCardCommentNoticeMarkdown, planCardCommentRewriteForDocument, cardCommentLabelCase, mostCommonCardCommentValue, CARD_COMMENT_REWRITE_MAX_EDITS, CARD_COMMENT_REWRITE_MAX_TEXT_BYTES, showCardCommentRewriteStatus, handleRebuildCardCommentsCommand, handleInsertVerifiedMissingRecordsCommand, LsdynaFieldHoverProvider, getCardFieldsForLine, buildOfficialFieldChoiceCompletionItems, editorQuickSuggestionsOtherEnabled, officialChoiceRoleLabel, LsdynaFieldCompletionProvider, inlineEditChoiceSession, LsdynaKeywordCompletionProvider, generateCommentLine, handleEnterIndentationRemoval, extractSmartTokens, hasDeclaredDefault, canOmitTrailingFields, planAlignedLine, alignLineText, parseTabValueOrder, analyzeTabLineInterpretation, valueOrderFieldIndexAtCaret, tabMeaningCandidateDetail, inlineEditChoiceSequence, clearInlineEditChoiceSession, cancelInlineEditChoiceSession, isInlineEditChoiceSessionValid, compactLinePreview, fixedCellPreview, startInlineEditChoiceSession, LsdynaEditChoiceCompletionProvider, applyInlineEditChoice, getPathEntryRange, splitIncludePathEntry, isIncludeFileKeyword, isSingleEightyColumnCard, formatPathEntryIfNeeded, createPathEntryFormatEdit, isFormattingLine, formatLineErrorObserverForTesting, setFormatLineErrorObserverForTesting, matchesConfiguredReadonlyPattern, isDocumentReadonlyForAutomaticEdit, formatLineIfNeeded, shouldPreserveTextCardLine, cardCellEditGuard, cardCellOwnedEditDepth, cardCellPostEditBarriers, cardCellTypingSessions, cardCellCompositions, cardCellASelectionGrace, CARD_CELL_A_SELECTION_GRACE_MS, clearCardCellTypingSession, canContinueCardCellTypingSession, rememberCardCellTypingSession, beginCardCellOwnedEdit, endCardCellOwnedEdit, isCardCellOwnedEdit, beginCardCellPostEditBarrier, waitForCardCellPostEdit, hasRecentCardCellSelectionGrace, waitForPendingCardCellPostEdit, ensureCardCellEditGuard, markCardCellA, cardCellASelectionGraceRemaining, executeNativeTab, isTabSelectionEligible, handleTabAlignment, lastActiveLineNum, lastActiveDoc, lastActiveDocumentVersion, activeEditorWasUndefined, cellSelectionSyncGeneration, cellSelectionSyncTimer, CELL_SELECTION_QUIET_MS, CARD_NATIVE_EDIT_SETTLE_MS, CARD_IME_CANCEL_SETTLE_MS, waitForCellSelectionQuietPeriod, handleSelectionChange, isDocumentStillOpenInTextTab, handleActiveEditorChangeForFormatting, applyCardCellLineEdit, applyCardCellLineDelete, handleCardCellDelete, readCardCellCompositionText, planCardCellComposition, finalizeCardCellComposition, cancelCardCellComposition, startEmptyCellBoundaryTypeChoice, handleCardCellTypeWithNavigation, handleCardCellType, handleCardCellPostEdit, planLineCommentToggle, planLineCommentTogglePure, LINE_COMMENT_TOGGLE_LIMITS, handleLineCommentToggle });
 
-Object.assign(module.exports._internals, { optionSwitchReplacement, keywordLineWithTargetSpelling });
+Object.assign(module.exports._internals, { optionSwitchReplacement, keywordLineWithTargetSpelling, keywordManagerReplacementMatchesTarget });
 
 function writableKeywordOptions(entry, canonicalName) {
     return supportedKeywordOptions(entry, canonicalName).filter(option => {
@@ -15607,10 +15892,14 @@ async function canApplyDocumentEdit(document, isCurrent) {
     return true;
 }
 
-Object.assign(module.exports._internals, { chooseKeywordOptionsQuickPickLegacy, lookupWithActiveTitleOptions, verifiedPrefixCardsForSelection, keywordCardsManagedLines, legacyPrefixOptionCards, managedPrefixCommentReplacements, LsdynaKeywordOptionsCodeLensProvider, keywordOptionsViewControllerRef, chooseKeywordOptionsForEditor, blockedKeywordOptionSwitchPlan, OPTION_SWITCH_MAX_PHYSICAL_LINES, OPTION_SWITCH_MAX_DATA_RECORDS, collectOptionSwitchBlock, OPTION_SWITCH_MAX_BYTES, planOptionSwitch, planProvisionalOptionSwitch, keywordOptionTarget, keywordOptionLayoutProfile, keywordOptionLayoutCandidate, optionSwitchCardFromRecord, optionSwitchCommentAnalysis, optionSwitchCommentLine, keywordSpellingFromLine, keywordLineWithTargetSpelling, keywordOptionBlockSha256, nodeCrypto, keywordOptionsEditorForModel, locateKeywordManagerSource, openKeywordManagerManual, openKeywordManagerInstanceEditor, keywordManagerDisplayName, keywordManagerReadonlyUri, keywordManagerInstanceFileState, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding, keywordManagerNativeFileSelection, keywordRecordSerializer, keywordManagerNativeInstanceCounts, keywordManagerExpandNativeInstances, keywordManagerCatalogNativeFormRules, keywordManagerCatalogRules, keywordManagerCatalogCatalogForm, isKeywordManagerUnauditedCatalogAllowed, getCatalogInputFormCatalogV4, keywordManagerCatalogCatalogFailure, keywordManagerInstanceDirectories, keywordManagerInstances, resolveKeywordCategory, keywordManagerProjectInstances, keywordManagerCatalogFormFingerprint, keywordManagerCatalogNativeFormRule, keywordManagerCatalogEffectiveFormRules, keywordManagerCatalogEquivalentSpellings, keywordManagerCatalogSelectorRule, keywordManagerCatalogSelectorSpelling, keywordManagerCatalogSourceRecordCompatible, keywordManagerResolveCatalogSelectorState, legacyOptionRecord, getLegalSelectorValues, resolveSelectorPriorScore, resolveFormRulePriorScore, keywordManagerInferCatalogSelectorSelections, keywordManagerCatalogExplicitSpellingSelections, keywordManagerPrepareCatalogSelectorLayout, keywordManagerPrepareCatalogInputFormLayout, keywordManagerPrepareCatalogInputFormLayoutForRule, evaluatePredicate, keywordManagerFieldProjection, keywordManagerResolveSchemaField, managerHelpLookups, keywordManagerReadFieldHelp, keywordManagerHelpState, keywordManagerHasStaging, keywordManagerCapabilityProjection, keywordManagerEditField, keywordManagerStageFieldDrafts, buildKeywordOptionSwitchPlan, loadKeywordOptionGrammarRuntime, lookupKeywordOptionGrammar, lookupOperationalKeywordOptionGrammar, buildKeywordManagerCatalogPlan, buildKeywordOptionViewModel, keywordOptionProductLabels, keywordOptionEmptyViewState, keywordOptionPlanDetails, buildKeywordOptionsViewState, evaluateOptionGrammar, optionSwitchReplacement, applyKeywordOptionViewModel });
+Object.assign(module.exports._internals, { chooseKeywordOptionsQuickPickLegacy, lookupWithActiveTitleOptions, verifiedPrefixCardsForSelection, keywordCardsManagedLines, legacyPrefixOptionCards, managedPrefixCommentReplacements, LsdynaKeywordOptionsCodeLensProvider, keywordOptionsViewControllerRef, chooseKeywordOptionsForEditor, blockedKeywordOptionSwitchPlan, OPTION_SWITCH_MAX_PHYSICAL_LINES, OPTION_SWITCH_MAX_DATA_RECORDS, collectOptionSwitchBlock, OPTION_SWITCH_MAX_BYTES, planOptionSwitch, planProvisionalOptionSwitch, keywordOptionTarget, keywordOptionLayoutProfile, keywordOptionLayoutCandidate, optionSwitchCardFromRecord, optionSwitchCommentAnalysis, optionSwitchCommentLine, keywordSpellingFromLine, keywordLineWithTargetSpelling, keywordOptionBlockSha256, nodeCrypto, keywordOptionsEditorForModel, locateKeywordManagerSource, openKeywordManagerManual, keywordManagerDisplayName, keywordManagerReadonlyUri, keywordManagerInstanceFileState, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding, keywordManagerNativeFileSelection, keywordRecordSerializer, keywordManagerNativeInstanceCounts, keywordManagerExpandNativeInstances, keywordManagerCatalogNativeFormRules, keywordManagerCatalogRules, keywordManagerCatalogCatalogForm, isKeywordManagerUnauditedCatalogAllowed, getCatalogInputFormCatalogV4, keywordManagerCatalogCatalogFailure, keywordManagerInstanceDirectories, keywordManagerInstances, keywordManagerTypeKey, resolveKeywordCategory, keywordManagerCatalogFormFingerprint, keywordManagerCatalogNativeFormRule, keywordManagerCatalogEffectiveFormRules, keywordManagerCatalogEquivalentSpellings, keywordManagerCatalogSelectorRule, keywordManagerCatalogSelectorSpelling, keywordManagerCatalogSourceRecordCompatible, keywordManagerResolveCatalogSelectorState, legacyOptionRecord, getLegalSelectorValues, resolveFormRulePriorScore, keywordManagerInferCatalogSelectorSelections, keywordManagerCatalogExplicitSpellingSelections, keywordManagerPrepareCatalogSelectorLayout, keywordManagerPrepareCatalogInputFormLayout, keywordManagerPrepareCatalogInputFormLayoutForRule, evaluatePredicate, keywordManagerFieldProjection, keywordManagerResolveSchemaField, managerHelpLookups, keywordManagerReadFieldHelp, keywordManagerHelpState, keywordManagerHasStaging, keywordManagerCapabilityProjection, keywordManagerEditField, keywordManagerStageFieldDrafts, buildKeywordOptionSwitchPlan, loadKeywordOptionGrammarRuntime, lookupKeywordOptionGrammar, lookupOperationalKeywordOptionGrammar, buildKeywordManagerCatalogPlan, buildKeywordOptionViewModel, keywordOptionProductLabels, keywordOptionEmptyViewState, keywordOptionPlanDetails, buildKeywordOptionsViewState, evaluateOptionGrammar, optionSwitchReplacement, applyKeywordOptionViewModel });
 
 Object.assign(module.exports._internals, { trackKeywordManagerSourceChange, keywordManagerRefreshLine });
 
 Object.assign(module.exports._internals, { prepareDocumentPresentation, updateDocumentPresentationAfterChange });
 
 Object.assign(module.exports._internals, { prepareFieldInteraction, planPreparedOfficialFieldChoices });
+
+Object.assign(module.exports._internals, { beginHoverRequest, handleHoverAction, compactHoverCard });
+
+Object.assign(module.exports._internals, { planKeywordCardMaintenance, keywordCardMaintenanceAction, LsdynaKeywordCardsCodeActionProvider, handleUpdateKeywordCardsCommand });

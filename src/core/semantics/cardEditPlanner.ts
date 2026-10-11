@@ -600,15 +600,6 @@ export function planVerifiedConditionalCards(
             predicateState: 'indeterminate',
         }));
     }
-    if (predicateState === 'false') {
-        return fail('predicate-false', 'activation-predicate-false', withScan());
-    }
-    if (predicateState !== 'true') {
-        return fail('predicate-indeterminate', 'activation-predicate-indeterminate', withScan());
-    }
-    if (!boundary) {
-        return fail('truncated', 'block-boundary-unavailable', withScan());
-    }
 
     const cardsToAppend = buildCardsToAppend(layout, lookup.entry, existingPhysicalCards);
     if (!cardsToAppend || cardsToAppend.length === 0) {

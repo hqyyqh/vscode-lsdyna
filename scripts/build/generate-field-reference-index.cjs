@@ -10,7 +10,7 @@ const zlib = require('zlib');
 
 const repoRoot = path.resolve(__dirname, "../..");
 
-const manualRuntimePath = path.join(repoRoot, 'keywords', 'manual_semantics');
+const manualRuntimePath = path.join(repoRoot, 'keywords/runtime/manual-semantics');
 
 const schemaHelpers = () => require("../../out/core/keywordSchema");
 
@@ -191,7 +191,38 @@ function definitionTarget(rule, schema, fallbackTarget, helpers = schemaHelpers(
     };
 }
 
-function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, helpers = schemaHelpers()) {
+function applyUserReferenceExclusions(handoff, policy) {
+    const { contentSha256, ...core } = policy || {};
+    const { contentSha256: handoffHash, ...handoffCore } = handoff || {};
+    const hashRecord = value => sha256(JSON.stringify(canonical(value)));
+    const invalid = () => { throw new Error('User reference exclusion identity mismatch'); };
+    if (core.schemaVersion !== 1 || core.kind !== 'dynasense-user-reference-exclusions' ||
+        core.authority !== 'explicit-user-decision' || hashRecord(core) !== contentSha256 ||
+        core.handoffContentSha256 !== handoffHash || hashRecord(handoffCore) !== handoffHash || !Array.isArray(core.excludedBlocked) ||
+        !Array.isArray(core.excludedReferences)) invalid();
+    const blocked = new Set(core.excludedBlocked), references = structuredClone(handoff.references);
+    if (blocked.size !== core.excludedBlocked.length || handoff.blocked.length !== blocked.size ||
+        handoff.blocked.some(record => !blocked.has(hashRecord(record)))) invalid();
+    for (const exclusion of core.excludedReferences) {
+        const matches = (references[exclusion.keyword] || []).filter(record => hashRecord(record) === exclusion.recordSha256);
+        if (matches.length !== 1 || matches[0].fieldName !== exclusion.fieldName || exclusion.disposition !== 'user-excluded') invalid();
+        matches[0].relation = { kind: 'non-reference', otherwise: 'non-reference', targetKinds: [], targetKeywords: [] };
+        matches[0].userExclusion = { status: 'user-excluded', policyContentSha256: contentSha256 };
+    }
+    for (const binding of core.confirmedReferenceBindings || []) {
+        const matches = (references[binding.keyword] || []).filter(record => hashRecord(record) === binding.recordSha256);
+        if (matches.length !== 1 || matches[0].fieldName !== binding.fieldName) invalid();
+        Object.assign(matches[0], { relation: binding.relation, siblingTargetBinding: binding.siblingTargetBinding,
+            userReferenceDecision: { sourceKind: binding.sourceKind, policyContentSha256: contentSha256, nativeConsumerVerified: false } });
+    }
+    return { references, blocked: handoff.blocked.filter(record => !blocked.has(hashRecord(record))),
+        policy: { contentSha256, excludedSourceBranches: blocked.size, excludedPublishedFields: core.excludedReferences.length,
+            confirmedReferenceBindings: core.confirmedReferenceBindings?.length || 0,
+            status: 'user-excluded', completenessClaim: false } };
+}
+
+function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, helpers = schemaHelpers(), userExclusions = null) {
+    const projection = userExclusions ? applyUserReferenceExclusions(lsppHandoff, userExclusions) : lsppHandoff;
     const {lookupKeywordSchema} = helpers;
     // Runtime classification follows the consumer namespace. The original handoff
     // and its upstream source/content identities remain unchanged.
@@ -239,22 +270,25 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
         }
     }
 
-    const sortedDescriptors = Object.fromEntries(
-        Object.entries(descriptors).sort(([left], [right]) => left.localeCompare(right))
-    );
     const lsppDescriptors = {};
     for (const [keyword, descriptor] of Object.entries(lsppHandoff?.definitions || {})) {
         if (REGISTRY_OWNED_DEFINITIONS.has(keyword)) continue;
         const lookup = lookupKeywordSchema(keyword, schema);
-        const located = lookup && locateDefinitionField(lookup, descriptor.fieldName, null, helpers);
-        if (located?.descriptor?.fieldType === 'integer') {
+        const located = lookup && locateDefinitionField(lookup, descriptor.fieldName, descriptor, helpers);
+        if (located?.descriptor?.fieldType === 'integer' && located.descriptor.cardIndex === descriptor.cardIndex) {
             lsppDescriptors[keyword] = { ...runtimeDescriptor(descriptor), ...located.descriptor };
+        } else if (!lookup && sourceBoundDefinition(descriptor, lsppHandoff.source)) {
+            // A pinned file-reader selector can cover a native spelling absent
+            // from the independent editor schema (for example a TITLE alias).
+            lsppDescriptors[keyword] = runtimeDescriptor(descriptor);
         }
     }
-    const mergedDescriptors = {
-        ...lsppDescriptors,
-        ...sortedDescriptors,
-    };
+    const mergedDescriptors = { ...descriptors };
+    // Keep semantic evidence while retaining the schema-matched native
+    // namespace and selector. A semantic rule may omit its targetKind.
+    for (const [keyword, descriptor] of Object.entries(lsppDescriptors)) {
+        mergedDescriptors[keyword] = { ...descriptors[keyword], ...descriptor };
+    }
     const scanned = Object.entries(mergedDescriptors)
         .filter(([, descriptor]) => descriptor.targetKind === 'curve' || descriptor.targetKind === 'table')
         .map(([keyword]) => keyword)
@@ -264,7 +298,8 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
     const onDemand = {};
     for (const [keyword, descriptor] of Object.entries(mergedDescriptors).sort(([a], [b]) => a.localeCompare(b))) {
         if (descriptor.targetKind === 'curve' || descriptor.targetKind === 'table') continue;
-        (ON_DEMAND_TARGET_KINDS.has(descriptor.targetKind) ? onDemand : generic)[keyword] = descriptor;
+        (ON_DEMAND_TARGET_KINDS.has(descriptor.targetKind) || ['repeat-all-data-records', 'repeat-data-record-template'].includes(descriptor.recordMode)
+            ? onDemand : generic)[keyword] = descriptor;
     }
 
     return {
@@ -288,11 +323,33 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
             onDemand,
             blocked,
         },
-        references: Object.fromEntries(Object.entries(lsppHandoff?.references || {})
+        references: Object.fromEntries(Object.entries(projection?.references || {})
             .map(([keyword, records]) => [keyword, records.map(runtimeDescriptor)])),
-        ...(lsppHandoff ? { blockedReferences: compactBlockedReferences(lsppHandoff.blocked) } : {}),
+        ...(lsppHandoff ? { blockedReferences: compactBlockedReferences(projection.blocked) } : {}),
+        ...(userExclusions ? { userReferenceExclusions: projection.policy } : {}),
         ...(lsppHandoff ? { lsppReferenceCoverage: lsppHandoff.summary } : {}),
+        ...(lsppHandoff?.nativeIncludeOffsets ? { nativeIncludeOffsets: lsppHandoff.nativeIncludeOffsets } : {}),
+        ...(lsppHandoff?.nativeAuxiliaryReferenceFields ? { nativeAuxiliaryReferenceFields: lsppHandoff.nativeAuxiliaryReferenceFields } : {}),
     };
+}
+
+function sourceBoundDefinition(descriptor, source) {
+    const address = value => require('../../out/core/semantics/descriptorIdentity').isDescriptorIdentity(value, true);
+    const formats = descriptor.formatContracts || [];
+    return source?.datasetSha256 === "fc75cfb733be68b314152dc5a77e0a9a3c469444c917fc0f6adb004117d930f0" &&
+        descriptor.source === "keyword-catalog" && descriptor.fieldType === 'integer' &&
+        (descriptor.recordMode === 'exact-data-record-ordinal' || descriptor.recordMode === 'repeat-data-record-template' &&
+            Number.isSafeInteger(descriptor.recordStride) && descriptor.recordStride > 0 && descriptor.dataRecordOrdinal < descriptor.recordStride) &&
+        Number.isInteger(descriptor.dataRecordOrdinal) && descriptor.dataRecordOrdinal >= 0 &&
+        descriptor.cardIndex === descriptor.dataRecordOrdinal + 1 &&
+        Number.isInteger(descriptor.fieldIndex) && descriptor.fieldIndex >= 0 &&
+        address(descriptor.nativeMapAddress) && address(descriptor.nativeCardArrayAddress) &&
+        address(descriptor.nativeFieldAddress) && descriptor.selectorRuleId && descriptor.selectorEvidenceIds?.length &&
+        formats.length === 4 && ['standard', 'long', 'i10'].every(mode => formats.some(format =>
+            format.format === mode && format.mode === 'fixed' && Number.isInteger(format.position) && format.position >= 0 &&
+            Number.isInteger(format.width) && format.width > 0 && format.width <= 256)) &&
+        formats.some(format => format.format === 'comma' && format.mode === 'comma' &&
+            format.fieldIndex === descriptor.fieldIndex);
 }
 
 module.exports = { readManualRuntime, buildIndex, writeBlockedRuntime };

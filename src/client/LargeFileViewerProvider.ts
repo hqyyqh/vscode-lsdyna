@@ -5,9 +5,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { globalInputFormatFromKeywordLine, type KeywordInputFormatMode } from '../core/parser/inputFormat';
+import { shortEntityKindLabel } from './entityKindLabels';
 import { Messenger } from 'vscode-messenger';
 import type { WebviewIdMessageParticipant } from 'vscode-messenger-common';
 import {
+    LargeFilePositionChanged,
     LargeFileKeywordNavigateRequestType,
     LargeFileNavigateRequestType,
     LargeFileQueryFieldRequest,
@@ -112,12 +114,24 @@ function normalizeIdentity(value: unknown): string | number | null {
 
 function labels(): Record<string, string> {
     return {
+        navigationTarget: i18n.get('largeFileNavigationTarget'),
         goto: i18n.get('largeFileGoto'),
         line: i18n.get('largeFileLine'),
         keyword: i18n.get('largeFileKeyword'),
         previous: i18n.get('largeFilePrevious'),
         next: i18n.get('largeFileNext'),
+        textMode: i18n.get('largeFileTextMode'),
+        keywordMode: i18n.get('largeFileKeywordMode'),
+        keywordMatches: i18n.get('largeFileKeywordMatches'),
+        noMatches: i18n.get('largeFileSearchNoResults'),
         search: i18n.get('largeFileSearch'),
+        matchLines: i18n.get('largeFileMatchLines'),
+        searching: i18n.get('largeFileSearching'),
+        clearSearch: i18n.get('largeFileClearSearch'),
+        gotoHint: i18n.get('largeFileGotoHint'),
+        keywordHint: i18n.get('largeFileKeywordHint'),
+        searchHint: i18n.get('largeFileSearchHint'),
+        searchText: i18n.get('largeFileSearchText'),
         reload: i18n.get('largeFileReload'),
         indexing: i18n.get('largeFileIndexing'),
         indexFailed: i18n.get('largeFileIndexFailed'),
@@ -129,6 +143,20 @@ function labels(): Record<string, string> {
         noField: i18n.get('largeFileNoField'),
         searchTruncated: i18n.get('largeFileSearchTruncated'),
         searchNoResults: i18n.get('largeFileSearchNoResults'),
+        searchFailed: i18n.get('largeFileSearchFailed'),
+        failed: i18n.get('largeFileActionFailed'),
+        retry: i18n.get('entityReferencesRetry'),
+        card: i18n.get('keywordHoverCard'),
+        defaultValue: i18n.get('largeFileDefaultValue'),
+        readOnly: i18n.get('largeFileReadOnly'),
+        readOnlyShort: i18n.get('largeFileReadOnlyShort'),
+        previousKeyword: i18n.get('largeFilePreviousKeyword'),
+        nextKeyword: i18n.get('largeFileNextKeyword'),
+        previousMatch: i18n.get('largeFilePreviousMatch'),
+        nextMatch: i18n.get('largeFileNextMatch'),
+        closeSearch: i18n.get('largeFileCloseSearch'),
+        details: i18n.get('largeFileFieldDetails'),
+        objectName: i18n.get('largeFileObjectName'),
     };
 }
 
@@ -136,6 +164,7 @@ export class LargeFileViewerProvider implements
 vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private readonly messenger = new Messenger();
     private readonly sessions = new Map<string, ViewerSession>();
+    private readonly pendingTargets = new Map<string, NonNullable<LargeFileViewerState['navigationTarget']>>();
     private readonly pendingLines = new Map<string, number>();
 
     constructor(
@@ -162,18 +191,22 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         const initialLine = this.consumeInitialLine(document.uri);
         const state: LargeFileViewerState = {
             revision: 0,
+            locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en',
             fileName: path.basename(document.uri.fsPath),
             fileSize: stat.size,
             anchorLine: initialLine,
+            navigationTarget: this.pendingTargets.get(keyForUri(document.uri)),
             lines: [],
             currentKeyword: '',
             indexing: 'loading',
             indexingMessage: i18n.get('largeFileIndexing'),
             stale: false,
             selectedField: null,
+            keywordSearch: undefined,
             search: { query: '', loading: false, count: 0, currentIndex: -1, truncated: false, message: '' },
             labels: labels(),
         };
+        this.pendingTargets.delete(keyForUri(document.uri));
         const relative = new vscode.RelativePattern(
             vscode.Uri.file(path.dirname(document.uri.fsPath)),
             path.basename(document.uri.fsPath),
@@ -207,21 +240,47 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         void this.initialize(session, initialLine);
     }
 
-    async openAt(uri: vscode.Uri, line = 0, column: vscode.ViewColumn = vscode.ViewColumn.Active): Promise<boolean> {
+    async openAt(uri: vscode.Uri, line = 0, column: vscode.ViewColumn = vscode.ViewColumn.Active, startColumn = 0, endColumn = startColumn): Promise<boolean> {
         const key = keyForUri(uri);
+        const coordinate = (value: number) => Number.isSafeInteger(value) ? Math.max(0, value) : 0;
+        const target = { requestId: crypto.randomUUID(), line: coordinate(line), startColumn: coordinate(startColumn),
+            endColumn: Math.max(coordinate(startColumn), coordinate(endColumn)) };
+        const anchor = Math.max(0, target.line - 4);
         const existing = this.sessions.get(key);
         if (existing) {
             existing.panel.reveal(column, false);
-            await this.navigate(existing, line);
-            return true;
+            existing.state = { ...existing.state, navigationTarget: target };
+            return this.navigate(existing, anchor);
         }
-        this.pendingLines.set(key, Math.max(0, Math.floor(Number(line) || 0)));
-        await vscode.commands.executeCommand('vscode.openWith', uri, LARGE_FILE_VIEW_TYPE, column);
+        this.pendingTargets.set(key, target);
+        this.pendingLines.set(key, anchor);
+        try {
+            await vscode.commands.executeCommand('vscode.openWith', uri, LARGE_FILE_VIEW_TYPE, column);
+        } catch (error) {
+            this.pendingLines.delete(key);
+            this.pendingTargets.delete(key);
+            throw error;
+        }
         return true;
     }
 
     dispose(): void {
         for (const session of [...this.sessions.values()]) this.disposeSession(session);
+    }
+
+    refreshUiLanguage(): void {
+        const currentLabels = labels();
+        for (const session of this.sessions.values()) {
+            const messageKey = ['searchNoResults', 'searchTruncated', 'searchFailed']
+                .find(key => session.state.search.message && session.state.search.message === session.state.labels[key]);
+            session.state = {
+                ...session.state,
+                indexingMessage: session.state.indexing === 'loading' ? i18n.get('largeFileIndexing')
+                    : session.state.indexing === 'error' ? i18n.get('largeFileIndexFailed') : '',
+                search: { ...session.state.search, message: messageKey ? currentLabels[messageKey] : session.state.search.message },
+            };
+            this.publish(session);
+        }
     }
 
     selectedQueryTarget(uri: vscode.Uri): FieldBinding['target'] {
@@ -252,14 +311,14 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private async initialize(session: ViewerSession, initialLine: number): Promise<void> {
-        await this.loadWindow(session, session.index ? initialLine : 0);
-        if (!this.isLive(session, session.generation)) return;
         const generation = session.generation;
         session.indexCancellation?.cancel();
         session.indexCancellation?.dispose();
         const indexCancellation = new vscode.CancellationTokenSource();
         session.indexCancellation = indexCancellation;
         try {
+            await this.loadWindow(session, session.index ? initialLine : 0);
+            if (!this.isLive(session, generation)) return;
             const index = await this.actions.loadFileIndex(
                 session.document.uri.fsPath,
                 indexCancellation.token,
@@ -279,10 +338,11 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             await this.loadWindow(session, initialLine);
         } catch (error) {
             if (!this.isLive(session, generation)) return;
+            console.error('[lsdyna] Large-file indexing failed:', error);
             session.state = {
                 ...session.state,
                 indexing: 'error',
-                indexingMessage: `${i18n.get('largeFileIndexFailed')}: ${error instanceof Error ? error.message : String(error)}`,
+                indexingMessage: i18n.get('largeFileIndexFailed'),
             };
             this.publish(session);
         } finally {
@@ -296,6 +356,12 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private registerHandlers(session: ViewerSession): vscode.Disposable[] {
         const sender = { sender: session.participant };
         return [
+            this.messenger.onNotification(LargeFilePositionChanged, request => {
+                if (this.accepts(session, request.revision) && Number.isSafeInteger(request.line) &&
+                    session.state.lines.some(line => line.lineNumber === request.line)) {
+                    session.state = { ...session.state, anchorLine: request.line };
+                }
+            }, sender),
             this.messenger.onRequest(LargeFileReadyRequest, () => session.state, sender),
             this.messenger.onRequest(LargeFileNavigateRequestType, request =>
                 this.accepts(session, request.revision) && this.navigate(session, request.line), sender),
@@ -316,7 +382,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private acceptsRevision(session: ViewerSession, revision: number): boolean {
-        return Number.isFinite(revision) && revision === session.state.revision;
+        return this.isLive(session, session.generation) && Number.isFinite(revision) && revision === session.state.revision;
     }
 
     private accepts(session: ViewerSession, revision: number): boolean {
@@ -328,7 +394,12 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private publish(session: ViewerSession): void {
-        session.state = { ...session.state, revision: session.state.revision + 1, labels: labels() };
+        const object = session.state.selectedField?.object;
+        if (object) session.state = { ...session.state, selectedField: {
+            ...session.state.selectedField!, object: { ...object, kindLabel: shortEntityKindLabel(object.kind) },
+        } };
+        session.state = { ...session.state, revision: session.state.revision + 1,
+            locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en', labels: labels() };
         this.messenger.sendNotification(LargeFileStateChangedNotification, session.participant, session.state);
     }
 
@@ -342,7 +413,9 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private async reload(session: ViewerSession): Promise<boolean> {
+        const generation = session.generation;
         const stat = await fs.promises.stat(session.document.uri.fsPath);
+        if (!this.isLive(session, generation)) return false;
         session.generation++;
         session.searchGeneration++;
         session.indexCancellation?.cancel();
@@ -359,8 +432,10 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             stale: false,
             indexing: 'loading',
             indexingMessage: i18n.get('largeFileIndexing'),
+            navigationTarget: undefined,
             lineCount: undefined,
             selectedField: null,
+            keywordSearch: undefined,
             search: { query: '', loading: false, count: 0, currentIndex: -1, truncated: false, message: '' },
         };
         this.publish(session);
@@ -377,6 +452,8 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
 
     private async loadWindow(session: ViewerSession, line: number): Promise<void> {
         const request = ++session.requestGeneration;
+        const generation = session.generation;
+        const isCurrent = () => this.isLive(session, generation) && request === session.requestGeneration && !session.state.stale;
         const map = session.index?.largeFileLineMap as LargeFileLineMap | undefined;
         const knownCount = map?.lineCount;
         const anchor = knownCount === undefined ? 0 : Math.min(
@@ -384,40 +461,51 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             Math.max(0, knownCount - 1),
         );
         let raw: CachedWindow['value'];
-        const cached = session.windowCache.get(anchor);
+        const windowStart = Math.max(0, anchor - 60);
+        const cached = session.windowCache.get(windowStart);
         if (cached) {
             const stat = signatureFromStat(await fs.promises.stat(session.document.uri.fsPath));
+            if (!isCurrent()) return;
             if (!sameSignature(stat, session.signature)) {
                 this.markStale(session);
                 return;
             }
-            session.windowCache.delete(anchor);
-            session.windowCache.set(anchor, cached);
+            session.windowCache.delete(windowStart);
+            session.windowCache.set(windowStart, cached);
             raw = cached.value;
         } else {
             raw = await readLargeFileWindow(
                 session.document.uri.fsPath,
                 map || null,
-                anchor,
-                { expectedSignature: session.signature },
+                windowStart,
+                { expectedSignature: session.signature, maxLines: 300 },
             );
+            if (!isCurrent()) return;
             if (raw.stale) {
                 this.markStale(session);
                 return;
             }
-            this.cacheWindow(session, anchor, raw);
+            this.cacheWindow(session, windowStart, raw);
         }
-        if (request !== session.requestGeneration || session.state.stale) return;
-        const lines = await this.annotateLines(session, raw.lines);
-        if (request !== session.requestGeneration || session.state.stale) return;
+        if (!isCurrent()) return;
+        // A byte-bounded window can end before the requested line when context lines are very long.
+        if (!raw.lines.some(row => row.lineNumber === anchor)) {
+            raw = await readLargeFileWindow(session.document.uri.fsPath, map || null, anchor,
+                { expectedSignature: session.signature, maxLines: 300 });
+            if (!isCurrent()) return;
+            if (raw.stale) { this.markStale(session); return; }
+        }
+        const lines = await this.annotateLines(session, raw.lines, request);
+        if (!isCurrent()) return;
         const after = signatureFromStat(await fs.promises.stat(session.document.uri.fsPath));
+        if (!isCurrent()) return;
         if (!sameSignature(after, session.signature)) {
             this.markStale(session);
             return;
         }
         session.state = {
             ...session.state,
-            anchorLine: raw.anchorLine,
+            anchorLine: anchor,
             lineCount: raw.lineCount ?? session.state.lineCount,
             lines,
             currentKeyword: this.keywordAt(session.index?.keywordBlocks || [], raw.anchorLine),
@@ -430,11 +518,11 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private cacheWindow(session: ViewerSession, anchor: number, value: CachedWindow['value']): void {
         const bytes = value.lines.reduce((total, line) => total + Buffer.byteLength(line.text, 'utf8') + 32, 0);
         if (bytes > WINDOW_CACHE_MAX_BYTES) return;
+        session.windowCacheBytes -= session.windowCache.get(anchor)?.bytes || 0;
         session.windowCache.set(anchor, { value, bytes });
         session.windowCacheBytes += bytes;
         while (session.windowCacheBytes > WINDOW_CACHE_MAX_BYTES) {
-            const oldest = session.windowCache.entries().next().value as [number, CachedWindow] | undefined;
-            if (!oldest) break;
+            const oldest = session.windowCache.entries().next().value as [number, CachedWindow];
             session.windowCache.delete(oldest[0]);
             session.windowCacheBytes -= oldest[1].bytes;
         }
@@ -456,15 +544,16 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         return found;
     }
 
-    private async annotateLines(session: ViewerSession, rawLines: Array<{ lineNumber: number; text: string; truncated: boolean }>): Promise<LargeFileViewerLine[]> {
-        session.fields.clear();
+    private async annotateLines(session: ViewerSession, rawLines: Array<{ lineNumber: number; text: string; truncated: boolean }>, request: number): Promise<LargeFileViewerLine[]> {
+        const fields = new Map<string, FieldBinding>();
         const generation = session.generation;
+        const isCurrent = () => this.isLive(session, generation) && request === session.requestGeneration && !session.state.stale;
         const lines: LargeFileViewerLine[] = rawLines.map(line => ({
             ...line,
             keyword: line.text.trimStart().startsWith('*'),
             fields: [],
         }));
-        if (!session.index || lines.length === 0) return lines;
+        if (!session.index || lines.length === 0) { if (isCurrent()) session.fields = fields; return lines; }
         const byNumber = new Map(lines.map(line => [line.lineNumber, line]));
         const first = lines[0].lineNumber;
         const last = lines[lines.length - 1].lineNumber;
@@ -473,14 +562,14 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             let mode: KeywordInputFormatMode | null = 'standard';
             if (/^\*?KEYWORD$/i.test(blocks[0]?.keyword || '')) {
                 const header = String(await readBlockText(blocks[0], 'utf8', { maxBytes: 64 * 1024 }));
-                if (!this.isLive(session, generation)) return lines;
+                if (!isCurrent()) return lines;
                 const firstLine = header.split(/\r?\n/, 1)[0];
                 mode = Buffer.byteLength(firstLine, 'utf8') >= 64 * 1024
                     ? null : globalInputFormatFromKeywordLine(firstLine);
             }
             session.fieldInputFormat = mode;
         }
-        if (session.fieldInputFormat === null) return lines;
+        if (session.fieldInputFormat === null) { if (isCurrent()) session.fields = fields; return lines; }
         let low = 0, high = blocks.length;
         while (low < high) {
             const middle = (low + high) >>> 1;
@@ -497,7 +586,8 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                 maxBytes: FIELD_BLOCK_MAX_BYTES,
                 onTruncated: () => { truncated = true; },
             });
-            if (truncated || !this.isLive(session, generation)) continue;
+            if (!isCurrent()) return lines;
+            if (truncated) continue;
             const blockLines = String(text).split(/\r?\n/);
             const fakeDocument = {
                 lineCount: blockLines.length,
@@ -555,7 +645,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                         globalLine,
                     );
                     const token = crypto.randomUUID();
-                    session.fields.set(token, {
+                    fields.set(token, {
                         generation: session.generation,
                         field,
                         keyword: cardInfo.keywordName,
@@ -573,6 +663,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                 });
             }
         }
+        if (isCurrent()) session.fields = fields;
         return lines;
     }
 
@@ -610,6 +701,18 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             : null;
     }
 
+    private objectName(session: ViewerSession, target: NonNullable<FieldBinding['target']>): string | undefined {
+        // ponytail: verified summaries in this file only; use the existing object query for project scope or ambiguous IDs.
+        const matches = (session.index?.keywordBlocks || []).filter((block: any) => {
+            const display = block.displayIdentity;
+            if (display?.confidence !== 'verified' || !display.identity) return false;
+            const descriptor = getDefinitionRegistryCatalog().definitionDescriptorForKeyword(display.canonicalKeyword || block.keyword);
+            return descriptor?.targetKind === target.targetKind && descriptor.recordMode !== 'repeat-all-data-records' &&
+                display.identity.field === descriptor.fieldName && normalizeIdentity(display.identity.value) === target.id;
+        });
+        return matches.length === 1 ? matches[0].displayIdentity.title || undefined : undefined;
+    }
+
     private selectField(session: ViewerSession, token: string): boolean {
         const binding = session.fields.get(token);
         if (!binding || binding.generation !== session.generation) return false;
@@ -629,6 +732,9 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             defaultValue: field.d === undefined ? '' : String(field.d),
             choices,
             queryable: !!binding.target,
+            ...(binding.target ? { object: { kind: binding.target.targetKind,
+                kindLabel: shortEntityKindLabel(binding.target.targetKind), id: String(binding.target.id),
+                name: this.objectName(session, binding.target) } } : {}),
         };
         session.state = { ...session.state, selectedField: selected };
         this.publish(session);
@@ -637,22 +743,31 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
 
     private async queryField(session: ViewerSession, token: string): Promise<boolean> {
         const binding = session.fields.get(token);
-        if (!binding || binding.generation !== session.generation || !binding.target || session.state.stale) {
+        if (!this.isLive(session, session.generation) || !binding || binding.generation !== session.generation || !binding.target || session.state.stale) {
             return false;
         }
         return this.actions.queryObject(binding.target);
     }
 
     private async navigateKeyword(session: ViewerSession, direction: -1 | 1, filter: string): Promise<boolean> {
-        const blocks = session.index?.keywordBlocks || [];
-        if (blocks.length === 0) return false;
-        const normalized = String(filter || '').trim().replace(/^\*/, '').toUpperCase();
-        const matches = (block: any) => !normalized || String(block.keyword || '').replace(/^\*/, '').includes(normalized);
+        const query = String(filter || '').trim();
+        const normalized = query.replace(/^\*/, '').toUpperCase();
+        const matches = (session.index?.keywordBlocks || []).filter((block: any) =>
+            !normalized || String(block.keyword || '').replace(/^\*/, '').toUpperCase().includes(normalized));
         const anchor = session.state.anchorLine;
-        const candidate = direction > 0
-            ? blocks.find((block: any) => block.startLine > anchor && matches(block))
-            : [...blocks].reverse().find((block: any) => block.startLine < anchor && matches(block));
-        if (!candidate) return false;
+        let currentIndex = direction > 0
+            ? matches.findIndex((block: any) => block.startLine > anchor)
+            : matches.findLastIndex((block: any) => block.startLine < anchor);
+        if (currentIndex < 0 && matches.length) currentIndex = direction > 0 ? 0 : matches.length - 1;
+        session.state = { ...session.state, keywordSearch: { query, count: matches.length, currentIndex } };
+        if (!matches.length) {
+            session.state = { ...session.state, navigationTarget: undefined };
+            this.publish(session);
+            return true;
+        }
+        const candidate = matches[currentIndex];
+        session.state = { ...session.state, navigationTarget: { requestId: crypto.randomUUID(),
+            line: candidate.startLine, startColumn: 0, endColumn: String(candidate.keyword).replace(/^\*/, '').length + 1 } };
         await this.loadWindow(session, candidate.startLine);
         return true;
     }
@@ -660,18 +775,33 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private async search(session: ViewerSession, query: string): Promise<boolean> {
         const normalized = String(query || '').trim();
         const generation = ++session.searchGeneration;
+        const sessionGeneration = session.generation;
+        const isCurrent = () => this.isLive(session, sessionGeneration) &&
+            generation === session.searchGeneration && !session.state.stale;
         session.searchMatches = [];
         session.state = {
             ...session.state,
+            keywordSearch: undefined,
+            ...(normalized ? { navigationTarget: undefined } : {}),
             search: { query: normalized, loading: !!normalized, count: 0, currentIndex: -1, truncated: false, message: '' },
         };
         this.publish(session);
         if (!normalized) return true;
-        const result = await searchLargeFileLiteral(session.document.uri.fsPath, normalized, {
-            expectedSignature: session.signature,
-            isCurrent: () => generation === session.searchGeneration && !session.state.stale,
-        });
-        if (generation !== session.searchGeneration || session.state.stale) return false;
+        let result: Awaited<ReturnType<typeof searchLargeFileLiteral>>;
+        try {
+            result = await searchLargeFileLiteral(session.document.uri.fsPath, normalized, {
+                expectedSignature: session.signature,
+                isCurrent,
+            });
+        } catch (error) {
+            if (!isCurrent()) return false;
+            console.error('[lsdyna] Large-file search failed:', error);
+            session.state = { ...session.state, search: { ...session.state.search,
+                loading: false, message: i18n.get('largeFileSearchFailed') } };
+            this.publish(session);
+            return false;
+        }
+        if (!isCurrent()) return false;
         if (result.stale) {
             this.markStale(session);
             return false;
@@ -684,6 +814,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                 loading: false,
                 count: result.matches.length,
                 currentIndex: result.matches.length > 0 ? 0 : -1,
+                currentLine: result.matches[0]?.lineNumber,
                 truncated: result.truncated,
                 message: result.matches.length === 0 ? i18n.get('largeFileSearchNoResults')
                     : result.truncated ? i18n.get('largeFileSearchTruncated') : '',
@@ -701,7 +832,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         if (session.searchMatches.length === 0) return false;
         const current = session.state.search.currentIndex;
         const next = (current + direction + session.searchMatches.length) % session.searchMatches.length;
-        session.state = { ...session.state, search: { ...session.state.search, currentIndex: next } };
+        session.state = { ...session.state, search: { ...session.state.search, currentIndex: next, currentLine: session.searchMatches[next].lineNumber } };
         await this.loadWindow(session, session.searchMatches[next].lineNumber);
         return true;
     }
@@ -709,6 +840,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private disposeSession(session: ViewerSession): void {
         const key = keyForUri(session.document.uri);
         if (this.sessions.get(key) !== session) return;
+        this.rememberAnchor(session);
         session.generation++;
         session.searchGeneration++;
         session.indexCancellation?.cancel();
@@ -727,7 +859,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         const css = (entry.css || []).map((file: string) =>
             `<link rel="stylesheet" href="${resource(file)}">`).join('');
         const nonce = crypto.randomBytes(18).toString('base64');
-        const csp = `default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
+        const csp = `default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
         return `<!doctype html><html lang="${i18n.getLanguage() === 'zh-cn' ? 'zh-CN' : 'en'}"><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="viewport" content="width=device-width,initial-scale=1">${css}</head><body><div id="root"></div><script nonce="${nonce}" type="module" src="${resource(entry.file)}"></script></body></html>`;
     }
 }

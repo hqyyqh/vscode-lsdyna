@@ -62,9 +62,16 @@ function readSources(root = ROOT) {
         assert.ok(fs.realpathSync(location).startsWith(fs.realpathSync(root)+path.sep),'Compiler input escaped checkout');
         const bytes = fs.readFileSync(location);
         assert.equal(sha(bytes), item.sha256, `Compiler input changed: ${item.path}`);
-        const decoded = item.path.endsWith('.gz') ? zlib.gunzipSync(bytes) : bytes;
+        const compressed = item.path.endsWith('.gz');
+        const decoded = compressed ? zlib.gunzipSync(bytes) : bytes;
         assert.equal(sha(decoded), item.contentSha256, `Compiler logical input changed: ${item.path}`);
-        compilerInputs[item.path] = JSON.parse(decoded);
+        // Validate every retained checkpoint, but materialize only consumed versions.
+        // Capture the verified bytes so a later file change cannot alter this build.
+        JSON.parse(decoded);
+        let parsed;
+        Object.defineProperty(compilerInputs, item.path, { enumerable: true, get() {
+            return parsed ??= JSON.parse(compressed ? zlib.gunzipSync(bytes) : bytes);
+        } });
     }
     return { manifest, bundles, compilerInputs };
 }
@@ -107,11 +114,40 @@ function engineeringRuntimeBytes(bytes) {
 }
 
 // Repartition semantic records using the production generator's SHA-256 keyword buckets.
-function semanticPayloads(bundle, destination) {
+function rebindReferenceNamespaces(records, handoff, observations, conflicts = []) {
+    return records.map(record => {
+        const relation = record.relation;
+        if (record.kind !== 'entity-reference' || relation?.branches?.length || !relation?.targetKeywords?.length) return record;
+        const definitions = relation.targetKeywords.map(keyword => handoff.definitions[String(keyword).replace(/^\*/, '').toUpperCase()]);
+        if (definitions.some(definition => !definition?.targetKind) || definitions.every(definition =>
+            relation.targetKinds?.some(kind => kind === definition.targetKind ||
+                (kind === 'curve' && definition.targetKind === 'function')))) return record;
+        const targetKinds = [...new Set(definitions.map(definition => definition.targetKind))];
+        if (targetKinds.length !== 1) {
+            conflicts.push({ sourceRuleId: record.sourceRuleId || record.ruleId, field: record.field,
+                keyword: record.field?.keyword || record.keyword,
+                targetKeywords: relation.targetKeywords, originalTargetKinds: relation.targetKinds || [],
+                candidateTargetKinds: targetKinds, reason: 'explicit-targets-cross-namespace-requires-LSPP-confirmation' });
+            return record;
+        }
+        const correction = { source: 'existing-explicit-target-keywords-and-native-definition-selectors',
+            lsppHandoffContentSha256: handoff.contentSha256, originalTargetKinds: relation.targetKinds || [],
+            targetKinds };
+        observations.push({ sourceRuleId: record.sourceRuleId || record.ruleId,
+            ...(record.coordinateId ? { coordinateId: record.coordinateId } : {}),
+            field: record.field, targetKeywords: relation.targetKeywords, ...correction });
+        return { ...record, relation: { ...relation, targetKinds: correction.targetKinds },
+            provenance: { ...record.provenance, runtimeNamespaceCorrection: correction } };
+    });
+}
+
+function semanticPayloads(bundle, destination, scannerSource, handoff, observations, conflicts) {
     const generator = require('../generate-semantic-runtime-v2.cjs');
-    const scannerGroups = generator.groupedByPrefix(bundle.scanners, record => record.keyword);
+    const scanners = generator.attachDefinitionValueDomains(bundle.scanners,
+        [...scannerSource.handoff.descriptors, ...scannerSource.exact.descriptors]);
+    const scannerGroups = generator.groupedByPrefix(scanners, record => record.keyword);
     const descriptors = [
-        ...[...generator.groupedByPrefix(bundle.references, record => record.field.keyword)].map(([prefix, records]) =>
+        ...[...generator.groupedByPrefix(rebindReferenceNamespaces(bundle.references, handoff, observations, conflicts), record => record.field.keyword)].map(([prefix, records]) =>
             generator.writeShard(destination, 'references', prefix, records, scannerGroups.get(prefix))),
         ...[...generator.groupedByPrefix(bundle.options, record => record.targets[0]?.spelling || record.canonicalSectionId)].map(([prefix, records]) =>
             generator.writeShard(destination, 'options', prefix, records)),
@@ -137,6 +173,9 @@ function rebuild(root = ROOT, destination) {
     const { manifest, bundles, compilerInputs } = readSources(root);
     const outputs = new Map();
     const bindingObservations = [];
+    const referenceNamespaceCorrections = [];
+    const manualReferenceNamespaceCorrections = [];
+    const referenceNamespaceConflicts = [];
     const inputs = { 'keywords/sources/manifest.json': sha(fs.readFileSync(path.join(root, 'keywords/sources/manifest.json'))) };
     for (const source of manifest.bundles) inputs[source.path] = source.sha256;
     for (const source of manifest.compilerInputs || []) inputs[source.path] = source.sha256;
@@ -151,12 +190,27 @@ function rebuild(root = ROOT, destination) {
         outputs.set(`keywords/runtime/engineering/${name}.json`,engineeringRuntimeBytes(fs.readFileSync(path.join(root,file))));
     }
     for (const [file,bytes] of outputs) write(destination,file,bytes);
+    const thermalPath = 'keywords/sources/contact-thermal/import-v2.json';
+    const thermalSource = compilerInputs[thermalPath];
+    assert.equal(thermalSource.source.schemaCheckpointSha256, manifest.bundles.find(b => b.bundle === 'schema').sha256);
+    assert.equal(thermalSource.source.inputFormCheckpointSha256, manifest.bundles.find(b => b.bundle === 'input-form').sha256);
+    const thermalSchema = applyHelpCorrections(structuredClone(bundles.schema.payloads.find(p => p.path === 'field_data.json').value),
+        read(path.join(root, 'keywords/authoring/field-help-corrections.json')));
+    const thermalRuntime = require('../compile-contact-thermal.cjs').compileContactThermal(thermalSource, thermalSchema, bundles['input-form'],
+        compilerInputs[thermalSource.definitionsFrom]);
+    outputs.set('keywords/runtime/engineering/contactThermal.json', json(thermalRuntime));
+    write(destination, 'keywords/runtime/engineering/contactThermal.json', json(thermalRuntime));
     // The compiled schema helper imports native reader modules eagerly. Give each
     // stage its own verified checkpoint inputs before loading that helper.
     for (const [name,bundle] of Object.entries(bundles)) if (name!=='semantic-v2') {
         for (const item of bundle.payloads) write(destination,`${bundle.outputRoot}/${item.path}`,encode(item.value,item.storage).bytes);
         if (bundle.manifest) write(destination,`${bundle.outputRoot}/manifest.json`,encode(bundle.manifest.value,bundle.manifest.storage).bytes);
     }
+    const constrainedFormat = encode(require('../generate-native-input-format.cjs').compileConstrainedFormat(
+        compilerInputs['keywords/sources/semantic-inputs/lspp_constrained_input_format.v1.json.gz']),
+        { indent: 2, newline: true }).bytes;
+    outputs.set('keywords/runtime/native-readers/lspp-constrained-input-format.json', constrainedFormat);
+    write(destination, 'keywords/runtime/native-readers/lspp-constrained-input-format.json', constrainedFormat);
     const coreRoot = path.resolve(root,'out/core');
     const buildGenerators = ['generate-field-reference-index.cjs','generate-manual-semantic-runtime.cjs'];
     for (const file of Object.keys(require.cache)) if (file.startsWith(coreRoot+path.sep) ||
@@ -176,16 +230,34 @@ function rebuild(root = ROOT, destination) {
     }
     for (const [name, bundle] of Object.entries(bundles)) {
         const base = bundle.outputRoot;
-        const payloads = name === 'semantic-v2' ? semanticPayloads(bundle, path.join(destination,base)) : bundle.payloads;
+        const payloads = name === 'semantic-v2' ? semanticPayloads(bundle, path.join(destination,base),
+            compilerInputs['keywords/sources/definition-scanners/authoring.json.gz'],
+            compilerInputs['keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz'], referenceNamespaceCorrections, referenceNamespaceConflicts) : bundle.payloads;
         const descriptors = new Map();
         for (const item of payloads) {
-            let value = name === 'schema' && item.path === 'field_data.json'
-                ? applyHelpCorrections(structuredClone(item.value), read(path.join(root, 'keywords/authoring/field-help-corrections.json'))) : item.value;
+            let value = name === 'schema' && item.path === 'field_data.json' ? thermalSchema : item.value;
+            if (name === 'categories') {
+                value = structuredClone(value);
+                value.source.fieldDataSha256 = sha(outputs.get('keywords/runtime/schema/field_data.json'));
+                if (value.keywordToCategory) {
+                    for (const [keyword,binding] of Object.entries(thermalRuntime.spellings)) {
+                        if (!thermalSchema[keyword] || value.keywordToCategory[keyword]) continue;
+                        const baseCategory = value.keywordToCategory[binding.baseKeyword];
+                        assert.equal(baseCategory.primaryCategory, 'CONTACT');
+                        value.keywordToCategory[keyword] = {...baseCategory, source:'contact-thermal-import'};
+                        value.summary.confidenceCounts[baseCategory.confidence]++;
+                        value.summary.sourceCounts['contact-thermal-import'] = (value.summary.sourceCounts['contact-thermal-import'] || 0) + 1;
+                    }
+                    value.summary.schemaKeywordCount = Object.keys(thermalSchema).length;
+                }
+            }
             if (name === 'manual-semantics') {
                 const generator = require('../generate-manual-semantic-runtime.cjs');
                 const schema = JSON.parse(outputs.get('keywords/runtime/schema/field_data.json'));
                 const keywordSchema = require(path.join(coreRoot,'keywordSchema'));
-                value = { ...value, rules: value.rules.map(rule => {
+                value = { ...value, rules: rebindReferenceNamespaces(value.rules,
+                    compilerInputs['keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz'],
+                    manualReferenceNamespaceCorrections, referenceNamespaceConflicts).map(rule => {
                     const compiled = generator.compileRule(rule, schema, keywordSchema);
                     assert.ok(compiled.rule, `Approved manual rule no longer binds: ${rule.ruleId} (${compiled.blocked?.reason})`);
                     if (rule.selector) {
@@ -255,11 +327,12 @@ function rebuild(root = ROOT, destination) {
     outputs.set('keywords/runtime/definitions/family_definition_scanner.runtime.json.gz', encode(scanner,{gzip:true,sorted:true}).bytes);
     const referenceGenerator = require('../generate-field-reference-index.cjs');
     const manual = referenceGenerator.readManualRuntime(path.join(destination,'keywords/runtime/manual-semantics'));
-    const handoffPath = 'keywords/sources/semantic-inputs/lspp_reference_handoff.json.gz';
+    const handoffPath = 'keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz';
     const handoff = compilerInputs[handoffPath];
     const index = referenceGenerator.buildIndex(JSON.parse(outputs.get('keywords/runtime/schema/field_data.json')),manual.rules,
         {runtimeId:manual.manifest.runtimeId,manifestSha256:manual.manifestSha256,lsppHandoffSha256:inputs[handoffPath]},handoff,
-        require(path.join(coreRoot,'keywordSchema')));
+        require(path.join(coreRoot,'keywordSchema')),
+        compilerInputs['keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz']);
     index.lsppBlockedReferences = referenceGenerator.writeBlockedRuntime(index.blockedReferences,
         path.join(destination,'keywords/runtime/references/lspp_reference_blockers.runtime.json.gz'));
     delete index.blockedReferences;
@@ -288,10 +361,10 @@ function rebuild(root = ROOT, destination) {
         }
     }
     collect(path.join(destination,'out/runtime'));
-    const compilerTools = Object.fromEntries(['keywords/data.cjs','generate-field-schema-runtime.cjs','generate-field-help-runtime.cjs',
+    const compilerTools = Object.fromEntries(['keywords/data.cjs','publish-files.cjs','generate-field-schema-runtime.cjs','generate-field-help-runtime.cjs',
         'generate-field-help-zh-delta.cjs','generate-semantic-runtime-v2.cjs','generate-manual-semantic-runtime.cjs',
         'generate-keyword-structure-runtime-v2.cjs','generate-definition-registry.cjs','generate-family-definition-scanner-runtime.cjs',
-        'generate-field-reference-index.cjs','generate-lspp-input-form-runtime.cjs']
+        'generate-field-reference-index.cjs','generate-lspp-input-form-runtime.cjs','compile-contact-thermal.cjs']
         .map(file=>[`scripts/build/${file}`,sha(fs.readFileSync(path.join(__dirname,'..',file)))]));
     for (const file of Object.keys(require.cache)) if (file.startsWith(coreRoot+path.sep) && file.endsWith('.js')) {
         const relative = `src/core/${path.relative(coreRoot,file).slice(0,-3).split(path.sep).join('/')}.ts`;
@@ -301,7 +374,9 @@ function rebuild(root = ROOT, destination) {
     const lineage = { schemaVersion: 1, kind: 'dynasense-local-data-projection',
         sourceIdentity: manifest.sourceIdentity, verification: { logicalCheckpointIntegrity: true,
             externalProducerReplay: 'unverified', sourcePermissions: 'inherited-from-unchanged-verified-checkpoints',
-            manualBindingObservations:bindingObservations },
+            supplementalImports: [{input:thermalPath,kind:thermalSource.kind,manualSourceSha256:thermalSource.source.manual.sha256,
+                verification:thermalSource.source.verification}],
+            manualBindingObservations:bindingObservations, referenceNamespaceCorrections, manualReferenceNamespaceCorrections, referenceNamespaceConflicts },
         inputs, tools: compilerTools,
         derived: Object.fromEntries([...derived].sort(([a],[b])=>a.localeCompare(b)).map(([file,bytes])=>[file,sha(bytes)])),
         outputs: Object.fromEntries([...outputs].sort(([a], [b]) => a.localeCompare(b)).map(([file, bytes]) => [file, sha(bytes)])) };
@@ -345,38 +420,22 @@ function obsolete(root, outputs) {
 
 // Complete both rebuilds before changing any tracked artifact. Restore the previous
 // file set if publishing fails; authoring and source checkpoints never enter this set.
-function publish(root, outputs, backupRoot, {derived = false} = {}) {
+function publish(root, outputs, _backupRoot, {derived = false} = {}) {
     fs.mkdirSync(root,{recursive:true});
-    const changed = [];
-    try {
-        for (const [file,bytes] of outputs) {
-            assert.ok(file.startsWith('keywords/runtime/') || file === 'snippets/lsdyna.json' ||
-                file === 'keywords/provenance/current-data.json' || (derived && file.startsWith('out/runtime/')),
-                `Not a generated artifact: ${file}`);
-            const target = within(root,file);
-            let parent = path.dirname(target);
-            while (!fs.existsSync(parent)) parent = path.dirname(parent);
-            const actual = fs.realpathSync(parent), resolved = fs.realpathSync(root);
-            assert.ok(actual===resolved || actual.startsWith(resolved+path.sep),'Output escaped checkout');
-            if (fs.existsSync(target)) {
-                assert.equal(fs.lstatSync(target).isSymbolicLink(),false,'Symlink generated artifact');
-                write(backupRoot,file,fs.readFileSync(target));
-            }
-            changed.push({file,existed:fs.existsSync(target)});
-            if (bytes === null) fs.rmSync(target,{force:true});
-            else {
-                fs.mkdirSync(path.dirname(target),{recursive:true});
-                fs.writeFileSync(`${target}.data-next`,bytes); fs.renameSync(`${target}.data-next`,target);
-            }
-        }
-    } catch(error) {
-        for (const item of changed.reverse()) {
-            if (item.existed) write(root,item.file,fs.readFileSync(within(backupRoot,item.file)));
-            else fs.rmSync(within(root,item.file),{force:true});
-            fs.rmSync(`${within(root,item.file)}.data-next`,{force:true});
-        }
-        throw error;
+    const files = [];
+    for (const [file,bytes] of outputs) {
+        assert.ok(file.startsWith('keywords/runtime/') || file === 'snippets/lsdyna.json' ||
+            file === 'keywords/provenance/current-data.json' || (derived && file.startsWith('out/runtime/')),
+            `Not a generated artifact: ${file}`);
+        const target = within(root,file);
+        let parent = path.dirname(target);
+        while (!fs.existsSync(parent)) parent = path.dirname(parent);
+        const actual = fs.realpathSync(parent), resolved = fs.realpathSync(root);
+        assert.ok(actual===resolved || actual.startsWith(resolved+path.sep),'Output escaped checkout');
+        if (fs.existsSync(target)) assert.equal(fs.lstatSync(target).isSymbolicLink(),false,'Symlink generated artifact');
+        files.push({path:target,bytes});
     }
+    require('../publish-files.cjs')(files);
 }
 
 function main(args = process.argv.slice(2), root = ROOT) {
@@ -394,8 +453,8 @@ function main(args = process.argv.slice(2), root = ROOT) {
                 'Runtime file set differs from declared generated outputs');
             for (const [file, bytes] of a.outputs) assert.equal(sha(fs.readFileSync(within(root, file))), sha(bytes), `Generated data is stale: ${file}`);
             assert.deepEqual(read(path.join(root, 'keywords/provenance/current-data.json')), a.lineage, 'Data lineage is stale');
-        } else if (args[0] === '--build') {
-            const target = path.join(root, 'out/data-build');
+        } else {
+            const target = args[0] === '--build' ? path.join(root, 'out/data-build') : root;
             const stale = obsolete(target,a.outputs);
             const oldStageLineage = path.join(target,'keywords/provenance/current-data.json');
             if (fs.existsSync(oldStageLineage)) for (const [file,digest] of Object.entries(read(oldStageLineage).derived || {})) {
@@ -406,10 +465,7 @@ function main(args = process.argv.slice(2), root = ROOT) {
                 }
             }
             publish(target,new Map([...stale,...a.outputs,...a.derived,
-                ['keywords/provenance/current-data.json',json(a.lineage)]]),path.join(temporary,'stage-rollback'),{derived:true});
-        } else {
-            publish(root,new Map([...obsolete(root,a.outputs),...a.outputs,['keywords/provenance/current-data.json',json(a.lineage)]]),path.join(temporary,'rollback'));
-            for (const [file, bytes] of a.derived) write(root,file,bytes);
+                ['keywords/provenance/current-data.json',json(a.lineage)]]),undefined,{derived:true});
         }
         return a.lineage;
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
@@ -419,4 +475,4 @@ if (require.main === module) try { const result = main(); console.log(JSON.strin
     localProjection: 'verified', externalProducerReplay: result.verification.externalProducerReplay })); }
 catch (error) { console.error(error.message); process.exitCode = 1; }
 module.exports = { rebuild, readSources, applyHelpCorrections, compare, main, canonical, encode, updateDescriptors, publish,
-    obsolete, runtimeFiles, validateEngineeringSource, engineeringRuntimeBytes };
+    obsolete, runtimeFiles, validateEngineeringSource, engineeringRuntimeBytes, rebindReferenceNamespaces };

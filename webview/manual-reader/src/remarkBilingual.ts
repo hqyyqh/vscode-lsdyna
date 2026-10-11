@@ -98,11 +98,12 @@ function splitText(value: string, pairs: SentencePair[]): Node[] {
 
 const SKIP_TYPES = new Set(['code', 'inlineCode', 'html', 'math', 'inlineMath', 'bilingualText']);
 
-export const remarkBilingual: Plugin<[{ sentencePairs: SentencePair[] }], Node> = function (options) {
+export const remarkBilingual: Plugin<[{ sentencePairs: SentencePair[]; comparison?: boolean }], Node> = function (options) {
     const pairs = [...(options?.sentencePairs || [])]
         .filter(pair => pair.primary && pair.secondary && pair.primary !== pair.secondary)
         .sort((left, right) => right.primary.length - left.primary.length);
     return (tree: Node) => {
+        if (options.comparison) return;
         const visit = (node: Node): void => {
             if (!node.children || SKIP_TYPES.has(node.type)) return;
             // Process text siblings even when the parent also holds raw HTML
@@ -118,6 +119,60 @@ export const remarkBilingual: Plugin<[{ sentencePairs: SentencePair[] }], Node> 
                 }
             }
             node.children = next;
+        };
+        visit(tree);
+    };
+};
+
+type HtmlNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: HtmlNode[] };
+
+/** Pair rendered blocks, including the pack's HTML tables, without changing their structure. */
+export const rehypeBilingualComparison: Plugin<[{ sentencePairs: SentencePair[]; comparison?: boolean }], HtmlNode> = function (options) {
+    const textOf = (node: HtmlNode): string => node.value ?? (node.children || []).map(textOf).join('');
+    const plain = (value: string) => value.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^(?:[•*-] |\d+\. )/, '');
+    const pairs = options.sentencePairs.map(pair => ({ ...pair, primary: plain(pair.primary), key: normalizeMatchText(plain(pair.primary)) }));
+    const translations = new Map<string, Set<string>>();
+    for (const pair of pairs) {
+        const key = normalizeMatchText(pair.primary);
+        const values = translations.get(key) || new Set<string>();
+        values.add(pair.secondary);
+        translations.set(key, values);
+    }
+    // Repeated labels with different meanings cannot be aligned safely from text alone.
+    const unambiguous = pairs.filter(pair => translations.get(normalizeMatchText(pair.primary))?.size === 1);
+    return tree => {
+        const used = new Set<string>();
+        const visit = (node: HtmlNode) => {
+            if (!node.children || ['pre', 'code', 'math', 'svg'].includes(node.tagName || '')) return;
+            if (['p', 'td', 'th', 'li', 'h1', 'h2', 'h3', 'h4'].includes(node.tagName || '')
+                && !node.children.some(child => ['p', 'ul', 'ol', 'table'].includes(child.tagName || ''))) {
+                const text = normalizeMatchText(textOf(node));
+                const matches = unambiguous.filter(pair => pair.key.length > 1)
+                    .map(pair => ({ pair, span: { index: text.indexOf(pair.key), length: pair.key.length } }))
+                    .filter(entry => entry.span.index >= 0)
+                    .sort((a, b) => a.span.index - b.span.index || b.span.length - a.span.length);
+                let end = -1;
+                const selected = matches.filter(({ span }) => {
+                    if (span.index < end) return false;
+                    end = span.index + span.length;
+                    return true;
+                });
+                if (selected.length) {
+                    const unitId = selected[0]!.pair.unitId;
+                    const properties: Record<string, unknown> = { className: ['bilingual-primary'], lang: 'zh' };
+                    if (unitId && !used.has(unitId)) {
+                        node.properties = { ...node.properties, id: node.properties?.id || `reader-unit-${unitId}`, dataUnitId: unitId };
+                        used.add(unitId);
+                    }
+                    if (options.comparison) node.children = [
+                        { type: 'element', tagName: 'span', properties, children: node.children },
+                        { type: 'element', tagName: 'span', properties: { className: ['bilingual-secondary'], lang: 'en' },
+                            children: [{ type: 'text', value: selected.map(({ pair }) => pair.secondary.replace(/^(?:[•*-] |\d+\. )/, '')).join(' ') }] },
+                    ];
+                }
+                return;
+            }
+            node.children.forEach(visit);
         };
         visit(tree);
     };

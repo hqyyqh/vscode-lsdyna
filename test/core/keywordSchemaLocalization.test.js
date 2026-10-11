@@ -38,6 +38,28 @@ function fixture() {
 describe('keyword schema field-help localization', () => {
     afterEach(() => keywordSchema.resetKeywordSchemaCache());
 
+    it('rejects array runtime and authoring roots without poisoning the cache', () => {
+        keywordSchema.resetKeywordSchemaCache();
+        const originalRead = fs.readFileSync;
+        let authoring = '[{"c":[]}]';
+        fs.readFileSync = function (filePath, ...args) {
+            const normalized = String(filePath).replace(/\\/g, '/');
+            if (normalized.endsWith('/out/runtime/field_schema.runtime.json.gz')) {
+                return zlib.gzipSync(JSON.stringify({ formatVersion: 1, baseSha256: 'a'.repeat(64),
+                    keywordCount: 1, helpSlotCount: 0, schema: [{ c: [] }] }));
+            }
+            if (normalized.endsWith('/schema/field_data.json')) return authoring;
+            return originalRead.call(this, filePath, ...args);
+        };
+        try {
+            assert.throws(() => keywordSchema.loadKeywordSchema(), /invalid field schema source/);
+            authoring = '{"DEMO":{"c":[[{"n":"ID","p":0,"w":10,"h":"Identifier."}]]}}';
+            const schema = keywordSchema.loadKeywordSchema();
+            assert.ok(!Array.isArray(schema));
+            assert.equal(schema.DEMO.c[0][0].h, 'Identifier.');
+        } finally { fs.readFileSync = originalRead; }
+    });
+
     it('maps an exact ordinal delta without changing English field help', () => {
         const { schema, baseSha256, delta } = fixture();
         const idField = schema.DEMO.c[0][0];
@@ -52,6 +74,33 @@ describe('keyword schema field-help localization', () => {
         assert.equal(result.cache.get(nested), '嵌套说明。');
         assert.equal(result.helpSlotCount, 3);
         assert.equal(result.localizedCount, 2);
+    });
+
+    it('keeps sparse delta slots out of the localized cache', () => {
+        const { schema, baseSha256, delta } = fixture();
+        delta.values = new Array(3);
+        delta.values[0] = '标识符。';
+        delta.localizedCount = 1;
+        const result = keywordSchema.buildLocalizedHelpCache(schema, baseSha256, delta);
+        assert.equal(result.cache.get(schema.DEMO.c[0][0]), '标识符。');
+        assert.equal(result.cache.has(schema.DEMO.c[0][1]), false);
+        assert.equal(result.cache.has(schema.DEMO.v.nested[0]), false);
+        assert.equal(result.helpSlotCount, 3);
+        assert.equal(result.localizedCount, 1);
+    });
+
+    it('keeps applicability conditions on CRVOPT and IDRFLG in the generated help', () => {
+        const schema = keywordSchema.loadKeywordSchema();
+        const { selectFieldHelp } = require('../../src/core/hover/fieldHelpPresentation');
+        for (const [field, english, localized] of [
+            [schema.BOUNDARY_ACOUSTIC_NON_REFLECTING.c[0][4], 'Coordinate Yc for CRVOPT = 2.', 'CRVOPT = 2 时的 Yc 坐标。'],
+            [schema.CONTROL_DYNAMIC_RELAXATION.c[3][0], 'Part set ID for IDRFLG = 2.', 'IDRFLG = 2 时的部件集 ID。'],
+        ]) {
+            assert.equal(keywordSchema.getEnglishFieldHelp(field), english);
+            assert.equal(keywordSchema.getLocalizedFieldHelp(field), localized);
+            assert.deepEqual(selectFieldHelp(english, localized, 'en'), { primary: english, secondary: null });
+            assert.deepEqual(selectFieldHelp(english, localized, 'zh-cn'), { primary: localized, secondary: english });
+        }
     });
 
     it('rejects base, slot, value, and localized-count mismatches atomically', () => {

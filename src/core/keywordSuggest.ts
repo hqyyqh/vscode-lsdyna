@@ -7,7 +7,7 @@
  * @module core/keywordSuggest
  */
 
-import { loadKeywordSchema } from './keywordSchema';
+import { loadKeywordSchema, lookupKeywordSchema } from './keywordSchema';
 
 export type SuggestTier = 'high' | 'medium' | 'none';
 
@@ -31,7 +31,7 @@ export type SuggestOptions = {
 };
 
 let cachedCandidateList: string[] | null = null;
-let cachedCandidateSet: Set<string> | null = null;
+let cachedCandidateSchema: object | null = null;
 
 const OPTION_LIKE_TOKENS = new Set([
     'ID',
@@ -51,7 +51,7 @@ function normalizeName(raw: string): string {
     return String(raw || '')
         .trim()
         .toUpperCase()
-        .replace(/^\*+/, '')
+        .replace(/^\*/, '')
         .split(/[\s,$]/)[0];
 }
 
@@ -63,10 +63,10 @@ function resolveCandidates(options?: SuggestOptions): string[] {
     if (options && Array.isArray(options.candidates)) {
         return [...new Set(options.candidates.map(normalizeName).filter(Boolean))];
     }
-    if (!cachedCandidateList) {
-        const schema = loadKeywordSchema(() => 'en');
+    const schema = loadKeywordSchema(() => 'en');
+    if (!cachedCandidateList || schema !== cachedCandidateSchema) {
+        cachedCandidateSchema = schema;
         cachedCandidateList = Object.keys(schema);
-        cachedCandidateSet = new Set(cachedCandidateList);
     }
     return cachedCandidateList;
 }
@@ -74,7 +74,7 @@ function resolveCandidates(options?: SuggestOptions): string[] {
 /** Test helper: clear process-level candidate cache. */
 export function resetKeywordSuggestCache(): void {
     cachedCandidateList = null;
-    cachedCandidateSet = null;
+    cachedCandidateSchema = null;
 }
 
 /**
@@ -187,7 +187,7 @@ function rankAgainst(query: string, candidates: string[]): Ranked[] {
             continue;
         }
 
-        // Same base, option tokens are permutation or near (e.g. ID_OFFSET vs OFFSET_ID)
+        // Same base, option tokens are near.
         const qSplit = splitBaseAndOptions(qToks);
         const kSplit = splitBaseAndOptions(kToks);
         if (
@@ -196,16 +196,6 @@ function rankAgainst(query: string, candidates: string[]): Ranked[] {
             && qSplit.options.length > 0
             && kSplit.options.length > 0
         ) {
-            if (isTokenPermutation(qSplit.options, kSplit.options)) {
-                out.push({
-                    keyword: k,
-                    score: 98,
-                    reason: 'token-permutation',
-                    dist: 0,
-                    prefixTokens,
-                });
-                continue;
-            }
             // Option multiset differs by at most one token and shared base is long
             const qOpt = sortedJoin(qSplit.options);
             const kOpt = sortedJoin(kSplit.options);
@@ -265,6 +255,7 @@ export function suggestSimilarKeywords(rawName: string, options: SuggestOptions 
         return { tier: 'none', items: [] };
     }
 
+    if (!options.candidates && lookupKeywordSchema(rawName, loadKeywordSchema(() => 'en'))) return { tier: 'none', items: [] };
     const candidates = resolveCandidates(options);
     const candidateSet = new Set(candidates);
 
@@ -317,5 +308,5 @@ export function isKnownKeywordName(rawName: string, options: SuggestOptions = {}
     const name = normalizeName(rawName);
     if (!name) return false;
     const candidates = resolveCandidates(options);
-    return candidates.includes(name);
+    return candidates.includes(name) || (!options.candidates && !!lookupKeywordSchema(rawName, loadKeywordSchema(() => 'en')));
 }

@@ -33,8 +33,6 @@ export function chapterKeyFromPath(pathEn: string): string {
     const normalized = (pathEn || '').replace(/\\/g, '/');
     const match = normalized.match(/\/chunks\/([^/]+)\//);
     if (match) return match[1];
-    // File directly under chunks/ with no subdirectory
-    if (/\/chunks\/[^/]+\.md$/i.test(normalized)) return ROOT_CHAPTER_KEY;
     return ROOT_CHAPTER_KEY;
 }
 

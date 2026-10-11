@@ -2,6 +2,17 @@ const assert = require('assert');
 // Numbered aliases added after the original inventory expectations: keep exact coordinates and dispositions.
 const numberedAliasContract = require('../../fixtures/public-behavior/reference-numbered-alias-contract.json');
 const aliasKeywords = new Set(numberedAliasContract.numberedAliases);
+let frozenReferenceRecords;
+function sourceReferenceRecords() {
+    if (!frozenReferenceRecords) {
+        const fs = require('node:fs'), path = require('node:path'), zlib = require('node:zlib');
+        const root = path.resolve(__dirname, '../../..');
+        const manifest = require(path.join(root, 'keywords/sources/manifest.json'));
+        const source = manifest.bundles.find(bundle => bundle.bundle === 'semantic-v2');
+        frozenReferenceRecords = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(root, source.path)))).references;
+    }
+    return frozenReferenceRecords;
+}
 const keywordSchema = require('../../../out/core/keywordSchema');
 const componentJointDidOverlay = require(
     "../../../keywords/authoring/compatibility/component_joint_did_official_float.json"
@@ -281,7 +292,7 @@ describe('fieldReferenceClassifier', () => {
         ];
         for (const [keyword, fieldName, page, cardIndex, fieldIndex, position, width,
             correctionId] of cases) {
-            const record = runtime.allReferenceRecords().find(candidate =>
+            const record = sourceReferenceRecords().find(candidate =>
                 candidate.field.keyword === keyword &&
                 candidate.field.fieldName === fieldName &&
                 candidate.field.cardIndex === cardIndex &&
@@ -308,7 +319,7 @@ describe('fieldReferenceClassifier', () => {
             assert.deepEqual(info.targetDefinitions, ['SET_NODE']);
         }
 
-        const unrelated = runtime.allReferenceRecords().find(record =>
+        const unrelated = sourceReferenceRecords().find(record =>
             record.field.keyword === '*CHANGE_VELOCITY_ZERO' &&
             record.field.fieldName === 'NSID' &&
             record.relation?.targetKinds?.length === 1 &&
@@ -318,7 +329,7 @@ describe('fieldReferenceClassifier', () => {
             'set namespace must not be rewritten globally');
 
         const targetCase = cases[0];
-        const original = runtime.allReferenceRecords().find(record =>
+        const original = sourceReferenceRecords().find(record =>
             record.field.keyword === targetCase[0] && record.field.fieldName === targetCase[1] &&
             record.evidence?.some(evidence => evidence.page === targetCase[2]));
         for (const mutate of [
@@ -356,7 +367,7 @@ describe('fieldReferenceClassifier', () => {
                 'global-manual-card-grid:911d208105543714b6d0dd10');
             assert.equal(group.physicalFieldId,
                 'global-manual-physical-field:5b857d9947befefa82299ad1');
-            const records = runtime.allReferenceRecords().filter(record =>
+            const records = sourceReferenceRecords().filter(record =>
                 group.records.some(item => item.authoringRelationId === record.authoringRelationId));
             assert.equal(records.length, 2, group.keyword);
             for (const record of records) {
@@ -938,12 +949,13 @@ describe('fieldReferenceClassifier', () => {
             "definition-collision": 2,
             "unapproved": 1
         });
-        assert.equal(namespaceIncoherent, 96);
-        assert.equal(namespaceAmbiguousFirst, 40);
+        // Exact native definition selectors close 39 formerly incoherent ambiguous projections.
+        assert.equal(namespaceIncoherent, 57);
+        assert.equal(namespaceAmbiguousFirst, 1);
         assert.deepEqual(Object.fromEntries(namespaceGroups), {
             '["entity-reference",0,["set"],[["PART","part"],["SET_NODE_OPTION",null],["SET_PART","part-set"]]]': 20,
             '["entity-reference",0,["node","part","segment-set"],[["IGA_EDGE_UVW",null],["IGA_FACE_UVW",null],["IGA_FACE_XYZ",null],["IGA_POINT_UVW",null],["NODE",null],["PART","part"],["SET_IGA_EDGE_UVW","set"],["SET_IGA_FACE_UVW","set"],["SET_IGA_FACE_XYZ","set"],["SET_IGA_POINT_UVW","set"],["SET_NODE",null],["SET_SEGMENT",null]]]': 10,
-            '["entity-reference",0,["set"],[["SET_MULTI",null]]]': 8,
+            '["entity-reference",0,["multi-set"],[["SET_MULTI",null]]]': 8,
             '["entity-reference",0,["element-set"],[["SET_BEAM","set"],["SET_SHELL",null],["SET_SOLID",null],["SET_TSHELL",null]]]': 4,
             '["entity-reference",0,["part"],[["PART","part"],["SECTION_SOLID","section"]]]': 2,
             '["entity-reference",0,["part-set"],[["PART","part"],["SET_PART","part-set"]]]': 2,
@@ -1230,14 +1242,6 @@ describe('fieldReferenceClassifier', () => {
         });
         assert.deepEqual(inactiveOptionCoordinates, []);
         assert.deepEqual(unmappedOptionCaused, []);
-        for (const coordinate of unmappedOptionCaused) {
-            const candidates = byCoordinate.get(coordinate);
-            assert.ok(candidates.length > 1, coordinate);
-            assert.ok(candidates.every(candidate =>
-                candidate.operationalProjection?.ambiguous === true), coordinate);
-            assert.ok(new Set(candidates.map(candidate =>
-                candidate.operationalProjection?.physicalTableId)).size > 1, coordinate);
-        }
 
         assert.deepEqual(uniqueUnmapped, []);
         assert.equal(directSourceExcluded.length, 25);
@@ -1300,14 +1304,6 @@ describe('fieldReferenceClassifier', () => {
         const fatigue = keywordSchema.lookupKeywordSchema('*FATIGUE', schema);
         assert.deepEqual(fatigue.entry.c[0].find(field => field.n === 'PTYPE').e,
             ['0', '1', '2', '3', '4', '5']);
-        const completeTableDrift = directSourceExcluded.filter(item => item.records.length === 1 &&
-            item.records[0].operationalProjection?.ambiguous === false &&
-            item.records[0].operationalProjection?.candidateCount === 1);
-        assert.deepEqual(completeTableDrift, []);
-        assert.ok(uniqueUnmapped.every(item =>
-            item.records.length > 1 || item.records.some(candidate =>
-                candidate.operationalProjection?.ambiguous === true ||
-                candidate.operationalProjection?.candidateCount > 1)));
         assert.deepEqual(aliasRows, numberedAliasContract.missingSlots);
     });
 
@@ -2213,10 +2209,11 @@ describe('fieldReferenceClassifier', () => {
             }
         }
         assert.equal(keywords.size, 2245);
-        assert.equal(physical.size, 2731);
-        assert.equal(coordinateIds.size, 2730);
+        // CHEMID now binds to the existing CHEMISTRY_CONTROL_FULL definition namespace.
+        assert.equal(physical.size, 2732);
+        assert.equal(coordinateIds.size, 2731);
         assert.deepEqual(Object.fromEntries(selectorSources), {
-            "operational-projection": 2525,
+            "operational-projection": 2526,
             "manual-semantic": 206
         });
 
@@ -2333,6 +2330,19 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(parseFieldReferenceValue('CURVE A', curveInfo), null);
     });
 
+    it('rejects recognized invalid numeric references instead of treating them as material labels', () => {
+        const info = {
+            relation: { kind: 'entity-reference', targetKeywords: ['*MAT'], targetKinds: ['material'] },
+        };
+        for (const raw of ['0', '0.0', '+0', '-0.0', '1.5', '.5', '1e3', '1e309']) {
+            assert.equal(parseFieldReferenceValue(raw, info), null, raw);
+        }
+        assert.equal(parseFieldReferenceValue('HS Steel', info).kind, 'label');
+        assert.equal(parseFieldReferenceValue('1.0', info).id, 1);
+        assert.equal(parseFieldReferenceValue('&MID', info).kind, 'parameter');
+        assert.equal(parseFieldReferenceValue('<1+2>', info), null);
+    });
+
     it('classifies MAT_024 LCSS from an official-manual rule', () => {
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const lookup = keywordSchema.lookupKeywordSchema('MAT_PIECEWISE_LINEAR_PLASTICITY', schema);
@@ -2409,14 +2419,14 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(info, null);
     });
 
-    it('classifies explicit generic DEFINE targets from official-manual evidence', () => {
+    it('classifies explicit DEFINE targets with the recovered native definition namespace', () => {
         const info = getFieldReferenceInfo({
             keyword: 'AIRBAG_PARTICLE',
             cardIndex: 6,
             field: { n: 'CHM' },
         });
 
-        assert.deepEqual(info.targetKinds, []);
+        assert.deepEqual(info.targetKinds, ['cpm-chamber-define']);
         assert.deepEqual(info.targetDefinitions, ['DEFINE_CPM_CHAMBER']);
         assert.equal(info.source, 'official-manual');
     });

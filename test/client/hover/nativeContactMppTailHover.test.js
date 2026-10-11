@@ -71,6 +71,70 @@ describe('shared native seven-card CONTACT MPP tail', function () {
                     `${task.id}: unread tail must not use static help`);
         }
     });
+    it('keeps unread eighth and later tail rows unavailable without losing the real prefix or seven tail cards', async () => {
+        const api = require("../../../out/extension")._internals;
+        const { vscodeMock } = require("../../support/helpers");
+        const { nativeSpellingBinding, nativeFileLayoutKind } = require("../../../out/core/semantics/catalogNativeFileLayout");
+        const { nativeFileReadContext } = require("../../../out/core/semantics/nativeFileReadContext");
+        const catalog = api.getCatalogInputFormCatalogV4();
+        const provider = new LsdynaFieldHoverProvider();
+        const tasks = specimens.tasks.filter(task => task.keyword === 'CONTACT_RIGID_BODY_ONE_WAY_TO_RIGID_BODY_ID_MPP');
+        assert.equal(tasks.length, 4);
+        for (const task of tasks) {
+            for (const keyword of [task.keyword, task.keyword.replace(/_ID_MPP$/, '_MPP_ID')]) {
+                const lines = task.lines.slice();
+                lines[0] = lines[0].replace(task.keyword, keyword);
+                const text = [...lines, '*END'].join('\n');
+                const doc = { ...fakeDoc(text), version: 1 };
+                const binding = nativeSpellingBinding(keyword);
+                const form = catalog.formForKeyword(binding.baseKeyword, false);
+                const rule = { ...form.rules[form.reference.formRuleIds[0]], catalogSource: form.source };
+                const reading = nativeFileReadContext(rule, lines[0], lines.slice(1), 'standard');
+                const selected = reading.select();
+                assert.ok(selected, `${task.id}: previous records remain readable`);
+                assert.equal(selected.current[0].cardIndex, 0);
+                assert.equal(selected.current[1].cardIndex, -1);
+                assert.deepEqual(selected.current.slice(6, 13).map(record => record.cardIndex), [5,6,7,8,9,10,11]);
+                assert.equal(reading.writeCompatible(selected.current), false);
+                for (const record of task.records) {
+                    const info = resolve(doc, record.lineOffset).cardInfo;
+                    assert.deepEqual(info?.card.map(field => field.nativeIdentity.fieldRecordId), record.fieldAddresses,
+                        `${keyword}: real record ${record.lineOffset}`);
+                }
+                assert.ok(lines.length - 1 > task.records.length + 1);
+                for (let line = task.records.length + 1; line < lines.length; line++) {
+                    assert.equal(reading.cards.has(selected.current[line - 1].cardIndex), false, `${keyword}: no overflow descriptor`);
+                    const result = resolve(doc, line);
+                    assert.equal(result.cardInfo, null, `${keyword}: unread row ${line}`);
+                    assert.equal(result.reason, 'native-field-descriptor-unavailable');
+                    const hover = await provider.provideHover(doc, { line, character: 0 });
+                    assert.ok(hover, `${keyword}: retain the existing unresolved-field notice`);
+                    assert.doesNotMatch(hover.contents[0].value, /\*\*(?:CID|TITLE)\*\*/);
+                }
+                for (const forged of [{ ...rule, catalogSource: { ...form.source, datasetSha256: 'wrong-source' } },
+                    { ...rule, cardSetId: '0x0' }]) {
+                    assert.equal(nativeFileLayoutKind(forged, keyword), 'unsupported-source');
+                    assert.equal(nativeFileReadContext(forged, lines[0], lines.slice(1), 'standard').select(), null);
+                }
+                assert.equal(nativeFileReadContext(rule, '*' + keyword + ' %', lines.slice(1), 'long').readInputFailure,
+                    'native-mixed-global-long-local-i10-flags-unimplemented');
+                const editor = { document: doc, selection: { active: { line: task.records.length + 1, character: 0 } } };
+                const model = api.buildKeywordOptionViewModel(editor, editor.selection.active.line, {});
+                assert.equal(model.plan.status, 'blocked');
+                assert.equal(api.buildKeywordOptionsViewState(model).canApply, false);
+                assert.deepEqual(model.plan.replacementRecords, []);
+                assert.ok(model.managerCards.every(card => card.line <= task.records.length + 1 && card.fields.every(field => !field.editable)));
+                const applyEdit = vscodeMock.workspace.applyEdit;
+                let writes = 0;
+                vscodeMock.workspace.applyEdit = async () => { writes++; return true; };
+                try {
+                    assert.equal(await api.applyKeywordOptionViewModel({ getModel: () => model, markStale() {} }, editor), null);
+                    assert.equal(writes, 0);
+                    assert.equal(doc.getText(), text);
+                } finally { vscodeMock.workspace.applyEdit = applyEdit; }
+            }
+        }
+    });
     it('maps all eight special-card zero, one and seven boundaries through the provider', async () => {
         const provider = new LsdynaFieldHoverProvider();
         for (const task of specialBoundaries.tasks) {

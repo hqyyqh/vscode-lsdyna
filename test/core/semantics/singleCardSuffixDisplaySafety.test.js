@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const vscode = require('vscode');
 const { fakeDoc } = require("../../support/helpers");
 const extension = require("../../../out/extension")._internals;
+const assertNativeReferenceAuthority = require("../../support/native-reference-authority");
 const { nativeKeywordTemplate } = require("../../../out/core/completion/nativeKeywordTemplate");
 const { nativeSpellingBinding, nativeSpellingGap } = require("../../../out/core/semantics/catalogNativeFileLayout");
 const path = require('node:path');
@@ -46,7 +47,7 @@ describe('single-card suffix display-only operation boundaries', function () {
             assert.equal(nativeKeywordTemplate(keyword).reason, 'native-edit-binding-unverified', keyword);
         }
     });
-    it('blocks manager writes and reference lookup on displayed fields', async () => {
+    it('blocks manager writes while references require independent native authority', async () => {
         const references = new extension.LsdynaReferenceProvider();
         for (const keyword of plan.identities) {
             if (!published(keyword)) continue;
@@ -65,7 +66,7 @@ describe('single-card suffix display-only operation boundaries', function () {
                 keyword + ': unauthorized manager edit');
             const card = extension.getCardInfoForDocumentLineWithSuggest(doc, 1).cardInfo.card;
             const position = new vscode.Position(1, card[0].nativeRange.start);
-            assert.equal(extension.fieldReferenceAtPosition(doc, position), null, keyword);
+            assertNativeReferenceAuthority(extension, doc, position, card[0], card, keyword, 'standard', keyword);
             assert.deepEqual(await references.provideReferences(doc, position,
                 { includeDeclaration: true }, { isCancellationRequested: false }), [], keyword);
         }

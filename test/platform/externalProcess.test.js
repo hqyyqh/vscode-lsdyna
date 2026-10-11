@@ -3,6 +3,15 @@
 const assert = require('assert');
 
 describe('external process safety', () => {
+    it('keeps the direct detached-launch export and its returned child', () => {
+        const { launchDetached } = require('../../out/platform/externalProcess');
+        let unrefCount = 0;
+        const child = { unref() { unrefCount++; } };
+        const result = launchDetached('tool', ['opaque file'], () => child);
+        assert.strictEqual(result, child);
+        assert.equal(unrefCount, 1);
+    });
+
     it('passes hostile Unicode Windows paths as opaque spawn arguments', () => {
         const { openPdfWithSumatra } = require('../../out/platform/externalProcess');
         const executable = 'C:\\手册 (2026) & data\\SumatraPDF.exe';

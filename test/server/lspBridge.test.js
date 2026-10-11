@@ -1,6 +1,24 @@
 'use strict';
 
 const assert = require('assert');
+
+describe('locked LanguageClient startup contract', () => {
+    it('waits for async invalidation delivery and reports rejection to its caller', async () => {
+        const { createIndexClient } = require('../../out/client/services/indexClient');
+        let finish;
+        const languageClient = { sendRequest: async () => null,
+            sendNotification: () => new Promise(resolve => { finish = resolve; }) };
+        const index = createIndexClient({ languageClient });
+        let settled = false;
+        const invalidated = index.invalidate('/model.k').then(() => { settled = true; });
+        await Promise.resolve();
+        assert.equal(settled, false);
+        finish();
+        await invalidated;
+        languageClient.sendNotification = async () => { throw Error('controlled inactive connection'); };
+        await assert.rejects(index.invalidate('/model.k'), /controlled inactive connection/);
+    });
+});
 const path = require('path');
 const { initializeSession, getActiveSession, shutdownSession } = require('../../src/server/sessionManager');
 const { handleRequest, handleNotification } = require('../../src/server/requestRouter');
@@ -10,6 +28,69 @@ const { createIndexClient } = require('../../src/client/services/indexClient');
 describe('LSP server-client bridge', () => {
     afterEach(async () => {
         await shutdownSession();
+    });
+    const temporary = require('../support/tempDirectories').trackTempDirectories();
+
+    it('restores project views from shared SQLite file facts without writing project JSON snapshots', async function() {
+        this.timeout(20000);
+        const fs = require('fs'), os = require('os');
+        const root = temporary(path.join(os.tmpdir(), 'session-sqlite-')), file = path.join(root, 'model.k');
+        const storage = path.join(root, 'storage');
+        fs.writeFileSync(file, '*KEYWORD\n*DEFINE_CURVE\n1\n0,0\n1,1\n*END\n');
+        let session = initializeSession({ globalStoragePath: storage });
+        const first = await session.indexClient.loadProjectSnapshot(file);
+        assert.equal(fs.existsSync(path.join(storage, 'index.json')), false);
+        assert.equal(fs.existsSync(path.join(storage, 'file-scans', 'file-scan-index.json')), false);
+        await shutdownSession();
+        session = initializeSession({ globalStoragePath: storage });
+        const restored = await session.indexClient.loadProjectSnapshot(file);
+        assert.deepEqual(restored.keywordMap, first.keywordMap);
+        assert.equal(restored.stats.scannedFileCount, 0);
+        assert.ok(restored.stats.reusedFileCount >= 1);
+    });
+
+    it('routes entity pages directly to the worker without transferring a project snapshot', async () => {
+        const session = initializeSession();
+        const request = { rootFile: path.resolve('model.k'), scope: 'single-file', id: 1, targetKind: 'node' };
+        const token = { isCancellationRequested: false };
+        const response = { status: 'ready', revision: 'v1', result: { locations: [] } };
+        session.indexClient.loadProjectSnapshot = async () => { throw Error('Entity page must not request a host snapshot'); };
+        session.projectIndexLoader.queryEntity = async (params, progress, passedToken) => {
+            assert.deepEqual(params, request); assert.equal(progress, null); assert.strictEqual(passedToken, token);
+            return response;
+        };
+        const client = createIndexClient({ languageClient: { sendNotification() {},
+            sendRequest: (method, params, cancellationToken) => handleRequest(method, params, null, cancellationToken) } });
+        assert.strictEqual(await client.queryEntity(request, token), response);
+        session.projectIndexLoader.queryEntity = async () => {
+            throw require('../../out/core/scanner/scannerContracts').createCancellationError();
+        };
+        await assert.rejects(client.queryEntity(request, token), error => error.name === 'CancellationError');
+    });
+
+    it('preserves server cancellation across JSON-RPC without hiding real failures', async () => {
+        const { createCancellationError } = require('../../src/core/scanner/scannerContracts');
+        const { ResponseError, LSPErrorCodes } = require('vscode-languageserver-protocol');
+        const session = initializeSession();
+        let failure = createCancellationError();
+        session.indexClient.loadProjectSnapshot = async () => { throw failure; };
+        const client = createIndexClient({ languageClient: {
+            sendNotification() {},
+            sendRequest: async (method, params) => {
+                try { return await handleRequest(method, params); }
+                catch (error) {
+                    if (error instanceof ResponseError) {
+                        const wire = JSON.parse(JSON.stringify(error.toJson()));
+                        assert.equal(wire.code, LSPErrorCodes.RequestCancelled);
+                        throw new ResponseError(wire.code, wire.message, wire.data);
+                    }
+                    throw error;
+                }
+            },
+        } });
+        await assert.rejects(client.loadProjectSnapshot(path.resolve('main.k')), error => error.name === 'CancellationError');
+        failure = new Error('controlled disk read failure');
+        await assert.rejects(client.loadProjectSnapshot(path.resolve('main.k')), /controlled disk read failure/);
     });
 
     it('sessionManager initializes, gets and shuts down session correctly', async () => {
@@ -125,6 +206,35 @@ describe('LSP server-client bridge', () => {
 
         assert.deepEqual(await handleRequest(protocol.CLEAR_CACHES_REQUEST), expected);
         assert.equal(calls, 1);
+    });
+    it('includes worker-owned entity cache statistics without loading a project snapshot', async () => {
+        const session = initializeSession();
+        session.indexClient.getCacheStats = async () => ({ cachedSnapshotCount: 2 });
+        session.indexClient.loadProjectSnapshot = async () => { throw new Error('unexpected snapshot'); };
+        session.projectIndexLoader.getEntityIndexStats = async () => ({ sqlite: { bytes: 4096 }, memoryBudget: 1024 });
+        assert.deepEqual(await handleRequest(protocol.GET_CACHE_STATS_REQUEST), {
+            cachedSnapshotCount: 2, entityIndex: { sqlite: { bytes: 4096 }, memoryBudget: 1024 } });
+    });
+
+    it('propagates unconfirmed worker shutdown through cache-clear and session disposal', async () => {
+        const { createProjectIndexLoader } = require('../../src/worker/projectIndexLoader');
+        const failure = new Error('worker stop unavailable');
+        const session = initializeSession();
+        const originalLoader = session.projectIndexLoader;
+        session.projectIndexLoader = createProjectIndexLoader({
+            createPool: () => ({
+                async buildProjectIndex(rootFile) { return { rootFile }; },
+                async dispose() { throw failure; },
+            }),
+        });
+        try {
+            await session.projectIndexLoader.buildProjectIndex('main.k');
+            await assert.rejects(handleRequest(protocol.CLEAR_CACHES_REQUEST), error => error === failure);
+            await assert.rejects(session.dispose(), error => error === failure);
+            await assert.rejects(session.dispose(), error => error === failure);
+        } finally {
+            session.projectIndexLoader = originalLoader;
+        }
     });
 
     it('indexClient in LSP mode delegates calls to LanguageClient', async () => {

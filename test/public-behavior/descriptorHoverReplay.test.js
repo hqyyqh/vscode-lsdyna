@@ -4,22 +4,24 @@ const { fakeDoc } = require("../support/helpers");
 const schema = require('../../out/core/keywordSchema');
 const { LsdynaFieldHoverProvider, getCardFieldsForLine, buildKeywordOptionViewModel,
     buildKeywordOptionsViewState, LsdynaFieldCompletionProvider } = require('../../out/extension')._internals;
-const plain = value => String(value || '').replace(/<\/?(?:span|br|p|em|strong|code)(?:\s[^<>]*)?\/?>/g, '')
+const plain = value => String(value || '').replace(/<\/?(?:span|br|wbr|p|em|strong|code)(?:\s[^<>]*)?\/?>/g, '')
     .replace(/\\([*_`])/g, '$1').replace(/\s+/g, ' ').trim();
 
 describe('descriptor reader provider replay and editing boundaries', function () {
-    this.timeout(900000); // 682154 retained queries: measured warm ~0.5-0.7 ms/query plus cold catalogs and CI I/O.
-    it('replays every retained input against expected field titles, help and physical ranges', async () => {
-        const file = path.join(__dirname, '../fixtures/public-behavior/conditional-hover-replay.json.gz');
-        const payload = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)));
-        assert.equal(payload.schemaVersion, 1);
-        assert.equal(payload.fixtures.length, payload.coverage.documents);
-        const provider = new LsdynaFieldHoverProvider();
-        let count = 0;
-        for (const fixture of payload.fixtures) {
+    this.timeout(120000); // Each document has at most 12,880 queries; keep per-document failures visible.
+    const file = path.join(__dirname, '../fixtures/public-behavior/conditional-hover-replay.json.gz');
+    let payload = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)));
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.fixtures.length, payload.coverage.documents);
+    const provider = new LsdynaFieldHoverProvider();
+    let count = 0;
+    after(() => { payload = null; });
+    for (let index = 0; index < payload.fixtures.length; index++) {
+        it(`replays retained input ${index + 1} with complete field help and physical ranges`, async () => {
+            const fixture = payload.fixtures[index];
             const document = { ...fakeDoc(fixture.text), version: 1 };
             for (const query of fixture.queries) {
-                const hover = await provider.provideHover(document, { line: query.line, character: query.character },
+                const hover = await provider.provideDetailedHover(document, { line: query.line, character: query.character },
                     { isCancellationRequested: false });
                 assert.ok(hover, `${query.line}:${query.character} ${query.name}`);
                 assert.ok(hover.contents.some(content => content.value?.toUpperCase().includes(`**${query.name.toUpperCase()}**`)), query.name);
@@ -27,7 +29,9 @@ describe('descriptor reader provider replay and editing boundaries', function ()
                 assert.deepEqual({ start: hover.range.start.character, end: hover.range.end.character }, query.range, query.name);
                 count++;
             }
-        }
+        });
+    }
+    it('retains the complete replay query count', () => {
         assert.equal(count, payload.coverage.queries);
         assert.ok(count > 200000, 'Full branch/format replay coverage must remain present');
     });

@@ -26,6 +26,7 @@ function legacyDescriptor(descriptor) {
             i10Width: i10.width,
             longWidth: long.width,
             standardWidth: standard.width,
+            ...descriptor.valueDomain,
         },
     };
 }

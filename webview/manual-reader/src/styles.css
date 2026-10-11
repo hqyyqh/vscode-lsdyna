@@ -137,7 +137,6 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     transition: background 80ms ease, border-color 80ms ease, opacity 80ms ease;
     width: var(--reader-toolbar-control);
 }
-.reader-toolbar__button svg,
 .reader-toolbar__icon {
     display: block;
     flex: 0 0 auto;
@@ -153,7 +152,6 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     opacity: .38;
 }
 .reader-toolbar__btn-label { display: none; }
-.reader-toolbar__lang-pill { font-size: 12px; font-weight: 600; line-height: 1; }
 
 .reader-search-popover {
     background: var(--reader-surface);
@@ -282,6 +280,7 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     max-width: none;
     width: auto;
 }
+.reader-request-banner button { flex-shrink: 0; white-space: nowrap; }
 .reader-pending { color: var(--vscode-descriptionForeground); font-size: 12px; }
 .reader-loading { display: grid; gap: 14px; justify-items: start; }
 .reader-skeleton { display: grid; gap: 12px; width: 100%; }
@@ -559,7 +558,7 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     .reader-toolbar__cluster { border: 1px solid CanvasText; background: transparent; }
     .reader-toolbar__button--text,
     .reader-toolbar__button--search { border: 1px solid ButtonText; }
-    .reader-toolbar__lang-pill { border: 1px solid ButtonText; }
+
     .bilingual-text { border-bottom-color: LinkText; }
 }
 
@@ -567,3 +566,12 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     html { scroll-behavior: auto; }
     *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
 }
+
+.reader-language { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.reader-language select { max-width: 76px; padding: 3px 1px; color: var(--vscode-foreground); background: var(--vscode-dropdown-background); border: 1px solid transparent; border-radius: 3px; font: inherit; }
+.reader-language select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.bilingual-primary, .bilingual-secondary { display: block; }
+.bilingual-secondary { margin-top: .25em; font-size: .92em; color: var(--vscode-descriptionForeground); }
+.markdown-body [data-unit-id] { scroll-margin-top: calc(var(--reader-toolbar-height, 48px) + 12px); }
+
+@media (forced-colors: active) { .reader-language select { border-color: ButtonText; } }

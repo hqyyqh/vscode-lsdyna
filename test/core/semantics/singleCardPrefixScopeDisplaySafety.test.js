@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const vscode = require('vscode');
 const { fakeDoc } = require("../../support/helpers");
 const extension = require("../../../out/extension")._internals;
+const assertNativeReferenceAuthority = require("../../support/native-reference-authority");
 const { nativeKeywordTemplate } = require("../../../out/core/completion/nativeKeywordTemplate");
 const { nativeSpellingBinding, nativeSpellingGap } = require("../../../out/core/semantics/catalogNativeFileLayout");
 const fixture = require("../../fixtures/public-behavior/single-card-prefix-scope-display.json");
@@ -49,10 +50,19 @@ describe('single-card prefix scope display-only operation boundaries', function 
                             task.id + ':' + line + ': wrong native prefix/body identity');
                         assert.equal(extension.getCardFieldsForLine(doc, line), null, task.id + ': formatting authorized');
                         for (const field of card) {
-                            const position = new vscode.Position(line, field.nativeRange.start);
-                            assert.equal(extension.fieldReferenceAtPosition(doc, position), null, task.id);
+                            const position = new vscode.Position(line, field.p + Math.floor(field.w / 2));
+                            assertNativeReferenceAuthority(extension, doc, position, field, card, keyword, format, task.id);
                             assert.deepEqual(await references.provideReferences(doc, position,
                                 { includeDeclaration: true }, { isCancellationRequested: false }), [], task.id);
+                        }
+                        if (keyword === 'AIRBAG_REFERENCE_GEOMETRY_RDT_TITLE' && format === 'standard' &&
+                            blockStart === 0 && record.lineOffset === 2) {
+                            const nid = card.find(field => field.n === 'NID'), x = card.find(field => field.n === 'X');
+                            assert.equal(nid.nativeIdentity.fieldRecordId, "record:be72f73ab914ef36120044a5:0c0853ccac229175cbbcf08d");
+                            assert.equal(x.p, nid.p + nid.w);
+                            assert.equal(doc.lineAt(line).text.slice(nid.p, nid.p + nid.w).trim(), '1000305');
+                            assertNativeReferenceAuthority(extension, doc, new vscode.Position(line, x.p),
+                                nid, card, keyword, format, task.id + ': caret after NID');
                         }
                     }
                 }

@@ -189,7 +189,7 @@ function finalize(out: ChangeMarksDiffResult): ChangeMarksDiffResult {
     const take = (lines: number[]): number[] => {
         const result: number[] = [];
         for (const n of uniqueSorted(lines)) {
-            if (n < 0 || taken.has(n)) continue;
+            if (taken.has(n)) continue;
             taken.add(n);
             result.push(n);
         }
@@ -274,7 +274,7 @@ function alignPair(left: string[], right: string[], work?: AlignmentWork) {
             j--;
         }
     }
-    return { origins, deletions: uniqueSorted([...deletions]) };
+    return { origins, deletions: [...deletions].sort((a, b) => a - b) };
 }
 
 export function alignLines(left: string[], right: string[]): AlignRow[] {

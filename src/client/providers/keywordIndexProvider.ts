@@ -59,6 +59,7 @@ type KeywordOccurrence = {
 };
 
 type KeywordIndexProviderOptions = {
+    resolveActiveUri?: () => any;
     collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
@@ -589,8 +590,10 @@ class LsdynaKeywordIndexProvider {
     _openDocuments: Map<string, any>;
     _projectFileOrderByKey: Map<string, number>;
     _localRefreshGeneration: number;
+    resolveActiveUri: () => any;
 
     constructor({
+        resolveActiveUri = getActiveUri,
         collectIncludeFiles,
         loadProjectSnapshot,
         invalidateProjectSnapshot,
@@ -602,6 +605,7 @@ class LsdynaKeywordIndexProvider {
         documentIndexYieldInterval,
         maxIncrementalRescanLines,
     }: KeywordIndexProviderOptions = {}) {
+        this.resolveActiveUri = resolveActiveUri;
         this.collectIncludeFiles = collectIncludeFiles;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.invalidateProjectSnapshot = invalidateProjectSnapshot;
@@ -698,7 +702,7 @@ class LsdynaKeywordIndexProvider {
     private isCurrentDocument(document) {
         const editor = vscode.window.activeTextEditor;
         return editor ? editor.document === document
-            : normalizeFileKey(getActiveUri()?.fsPath) === normalizeFileKey(document?.uri?.fsPath);
+            : normalizeFileKey(this.resolveActiveUri()?.fsPath) === normalizeFileKey(document?.uri?.fsPath);
     }
 
     stopAutomaticWork() {
@@ -784,9 +788,14 @@ class LsdynaKeywordIndexProvider {
     }
 
     _updateContexts() {
-        vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', this._mode);
-        vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexLayout', this._layout);
-        vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexFollowCursor', this._followCursor);
+        for (const [key, value] of [
+            ['lsdyna.keywordIndexMode', this._mode],
+            ['lsdyna.keywordIndexScanning', this.scanState === 'scanning'],
+            ['lsdyna.keywordIndexLayout', this._layout],
+            ['lsdyna.keywordIndexFollowCursor', this._followCursor],
+        ]) {
+            try { void Promise.resolve(vscode.commands.executeCommand('setContext', key, value)).catch(() => undefined); } catch (_) { /* best effort */ }
+        }
     }
 
     _updateTreeDescription() {
@@ -814,7 +823,7 @@ class LsdynaKeywordIndexProvider {
     setLayout(layout: KeywordIndexLayout) {
         if (!VALID_LAYOUTS.has(layout) || layout === this._layout) return false;
         this._layout = layout;
-        try { this.workspaceState?.update?.(LAYOUT_STATE_KEY, layout); } catch (_) { /* best effort */ }
+        try { void Promise.resolve(this.workspaceState?.update?.(LAYOUT_STATE_KEY, layout)).catch(() => undefined); } catch (_) { /* best effort */ }
         this._lastRevealKey = '';
         this._rebuildProjection();
         this._updateContexts();
@@ -1021,25 +1030,22 @@ class LsdynaKeywordIndexProvider {
     async _buildRootsAsync(filePaths, rootDir) {
         const keywordMap = new Map();
         for (const filePath of filePaths) {
-            if (!fs.existsSync(filePath)) continue;
             const keywords = await keywordScanner.collectKeywordsFromFile(filePath);
             for (const { keyword, lineIndex } of keywords) {
                 if (!keywordMap.has(keyword)) keywordMap.set(keyword, []);
                 keywordMap.get(keyword).push({ filePath, lineIndex });
             }
         }
-        return this._buildRootsFromKeywordMap(keywordMap, rootDir);
+        return this._buildRootsFromSnapshot({ keywordMap, files: filePaths }, rootDir);
     }
 
     _buildRootsFromSnapshot(snapshot, rootDir) {
-        if (!snapshotFileIndexes(snapshot)) {
-            return this._buildRootsFromKeywordMap(snapshot?.keywordMap || new Map(), rootDir);
-        }
+        const indexes = snapshotFileIndexes(snapshot);
         const occurrences = occurrencesFromSnapshot(snapshot);
         this._baseProjectOccurrences = occurrences;
         const files = Array.isArray(snapshot?.files)
             ? snapshot.files
-            : [...snapshotFileIndexes(snapshot).keys()];
+            : indexes ? [...indexes.keys()] : [...new Set(occurrences.map(item => item.filePath))];
         this._projectFileOrderByKey = new Map(
             files.map((filePath, index) => [normalizeFileKey(filePath), index]),
         );
@@ -1056,7 +1062,8 @@ class LsdynaKeywordIndexProvider {
             this._documentOverlays.set(fileKey, this._occurrencesFromBlockIndex(blockIndex, fileOrder));
         }
         this._setOccurrences(this._mergedProjectOccurrences(), rootDir);
-        return this.roots;
+        return indexes || this._documentOverlays.size > 0
+            ? this.roots : this._buildRootsFromKeywordMap(snapshot?.keywordMap || new Map(), rootDir);
     }
 
     _createDocumentIndex(document) {
@@ -1413,10 +1420,9 @@ class LsdynaKeywordIndexProvider {
                             blockIndex.buildIndexFromFile(filePath, { cancellationToken }),
                     );
                 } catch (error) {
-                    if (error?.name === 'CancellationError') return;
                     if (!isCurrentLocalRefresh()) return;
-                    this.roots = [];
-                    this._occurrences = [];
+                    this.scanState = 'incomplete';
+                    this._setOccurrences([], path.dirname(filePath));
                     this._onDidChangeTreeData.fire(undefined);
                     return;
                 }
@@ -1433,13 +1439,17 @@ class LsdynaKeywordIndexProvider {
         }
 
         if (!isCurrentLocalRefresh()) return;
+        this.scanState = 'complete';
         this._setOccurrences(this._occurrencesFromBlockIndex(blockIndex), path.dirname(filePath));
         this._onDidChangeTreeData.fire(undefined);
     }
 
     async scan(scanOptions: any = {}) {
-        if (this.scanState === 'scanning') return false;
-        const uri = scanOptions.rootFile ? vscode.Uri.file(scanOptions.rootFile) : getActiveUri();
+        if (this.scanState === 'scanning') {
+            void vscode.window.showInformationMessage(i18n.get('indexingKeywords'));
+            return false;
+        }
+        const uri = scanOptions.rootFile ? vscode.Uri.file(scanOptions.rootFile) : this.resolveActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
             const editor = vscode.window.activeTextEditor;
             const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
@@ -1458,6 +1468,7 @@ class LsdynaKeywordIndexProvider {
         let completed = false;
         const scanGeneration = ++this.scanGeneration;
         this.scanState = 'scanning';
+        this._updateContexts();
         this._updateTreeDescription();
         try {
             await vscode.window.withProgress(
@@ -1500,6 +1511,7 @@ class LsdynaKeywordIndexProvider {
         } finally {
             if (scanGeneration === this.scanGeneration) {
                 this.scanState = completed ? 'complete' : 'incomplete';
+                this._updateContexts();
                 this._updateTreeDescription();
             }
         }
@@ -1515,11 +1527,15 @@ class LsdynaKeywordIndexProvider {
         this._projectFileOrderByKey = new Map();
         this._documentOverlays.clear();
         const editor = vscode.window.activeTextEditor;
-        const uri = editor?.document || getActiveUri();
+        const uri = editor?.document || this.resolveActiveUri();
         if (uri && (isLsdynaUri(uri.uri || uri) || uri.languageId === 'lsdyna')) return this.refreshFromUriOrDocument(uri);
         this._setOccurrences([], '');
         this._onDidChangeTreeData.fire(undefined);
         return undefined;
+    }
+
+    setRecursive() {
+        return this.scan();
     }
 
     findOccurrence(filePath, lineIndex) {

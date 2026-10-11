@@ -283,7 +283,11 @@ export function analyzeGrammarStructure(
     const minimum = Math.min(...bestByPath.map(candidate => candidate.alignment.score.edits));
     const minimumCandidates = bestByPath.filter(candidate => candidate.alignment.score.edits === minimum);
     if (minimumCandidates.some(candidate => candidate.alignment.unsupported)) {
-        return emptyResult(block, 'unsupported-input', 'record-format-or-geometry-unsupported', {
+        const integerUnsupported = minimumCandidates.some(candidate => candidate.alignment.matches.some(
+            ({ match }) => match.reason?.startsWith('field-integer-unrepresentable:'),
+        ));
+        return emptyResult(block, 'unsupported-input', integerUnsupported
+            ? 'integer-value-unrepresentable' : 'record-format-or-geometry-unsupported', {
             ...base,
             dependencies: [...new Set(minimumCandidates.flatMap(candidate => candidate.unresolved))],
         });

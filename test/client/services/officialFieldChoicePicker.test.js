@@ -246,6 +246,26 @@ describe('official field choice picker', () => {
         assert.ok(!enItems[0].detail.includes('坐标轴'));
     });
 
+    for (const stage of ['title', 'hide-listener', 'show']) it(`releases the QuickPick and acquired listeners when ${stage} fails`, async () => {
+        let pickerDisposals = 0, listenerDisposals = 0;
+        const quickPick = {
+            onDidAccept() { return { dispose() { listenerDisposals++; } }; },
+            onDidHide() {
+                if (stage === 'hide-listener') throw Error('setup failed');
+                return { dispose() { listenerDisposals++; } };
+            },
+            show() { throw Error('setup failed'); },
+            dispose() { pickerDisposals++; },
+        };
+        if (stage === 'title') Object.defineProperty(quickPick, 'title', { set() { throw Error('setup failed'); } });
+        const harness = createHarness({ deps: { pickChoice: undefined, vscode: { ...vscodeMock,
+            window: { ...vscodeMock.window, createQuickPick: () => quickPick } } } });
+        await assert.rejects(() => harness.picker.pick(), /setup failed/);
+        assert.equal(pickerDisposals, 1);
+        assert.equal(listenerDisposals, stage === 'title' ? 0 : stage === 'hide-listener' ? 1 : 2);
+        assert.equal(harness.edits.length, 0);
+    });
+
     it('re-plans before and after the pick, then replaces exactly one fixed-width cell', async () => {
         const harness = createHarness();
         const result = await harness.picker.pick({

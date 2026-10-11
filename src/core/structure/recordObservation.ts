@@ -3,6 +3,7 @@ import type {
     ObservedKeywordBlock,
     ObservedRecord,
 } from './types';
+import { isKeywordCommentLine } from '../parser/keywordLine';
 
 export type SourceLine = string | { line: number; text: string };
 
@@ -39,6 +40,7 @@ function isPreprocessorMetadata(text: string): boolean {
 }
 
 function commentKind(text: string): ObservedComment['kind'] {
+    text = text.trimStart();
     return /^\$#/.test(text) || (/^\$/.test(text) && text.includes('|'))
         ? 'field-header'
         : 'comment';
@@ -46,8 +48,8 @@ function commentKind(text: string): ObservedComment['kind'] {
 
 /**
  * Observes a single keyword body without assigning any solver meaning to comments.
- * Only a dollar sign in column one makes a line non-consuming; indented `$` text is
- * deliberately retained as a physical data record.
+ * ASCII spaces before `$` do not make a comment consume a record. Other leading
+ * whitespace remains data, matching the shared pinned-reader comment classifier.
  */
 export function observeKeywordBlock(
     keywordLineText: string,
@@ -81,7 +83,7 @@ export function observeKeywordBlock(
             break;
         }
         endLine = source.line;
-        if (text.startsWith('$')) {
+        if (isKeywordCommentLine(text)) {
             pendingComments.push({ line: source.line, text, kind: commentKind(text) });
             continue;
         }

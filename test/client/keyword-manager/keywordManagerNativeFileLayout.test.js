@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
 const { fakeDoc } = require("../../support/helpers");
-const { buildKeywordOptionViewModel: model, buildKeywordOptionsViewState: view, applyKeywordOptionViewModel: apply } = require("../../../out/extension")._internals;
+const { buildKeywordOptionViewModel: model, buildKeywordOptionsViewState: view, applyKeywordOptionViewModel: apply,
+    keywordManagerHelpState, keywordManagerEditField } = require("../../../out/extension")._internals;
 const { getCatalogInputFormCatalogV4 } = require("../../../out/core/semantics/catalogInputFormCatalogV4");
 const fixtures = path.join(__dirname, "../../fixtures/public-behavior/native-inputs");
 const cases = require("../../fixtures/public-behavior/dynamic-file-layout-cases.json");
@@ -19,8 +20,9 @@ function cards(keyword) {
     return f.rules[f.reference.formRuleIds[0]].cards;
 }
 function source(keyword, indexes, values = {}, title = false) {
+    const schemaCards = cards(keyword);
     return ['*' + keyword + (title ? '_TITLE' : ''), ...(title ? ['keep this title'] : []),
-        ...indexes.map(i => cards(keyword)[i - 1].fields.map(f => Number(f.type) === 0 ?
+        ...indexes.map(i => schemaCards[i - 1].fields.map(f => Number(f.type) === 0 ?
             String(values[f.name] ?? '').padEnd(f.width) : String(values[f.name] ?? '').padStart(f.width)).join('')), '*END'].join('\n');
 }
 function changed(text, name, value, line = 0) {
@@ -37,6 +39,105 @@ function reopen(m) {
 }
 
 describe('native file-reader dynamic layouts', () => {
+    it('reads the AIRBAG file cards while retaining the original source pool and refusing unverified writes', async () => {
+        const text = '*AIRBAG_FLUID_AND_GAS\n1,2,3,4,5,6,7,8\n9,10,11,12,13,14,15\n*END';
+        const e = editor(text), m = model(e, 0, {});
+        assert.equal(m.inputFormResolution.status, 'resolved');
+        assert.deepEqual(m.managerCards.map(card => card.fields[0].name), ['XWINI', 'GDIR']);
+        assert.deepEqual(m.managerCards.map(card => card.fields[0].value), ['1', '9']);
+        assert.equal(m.helpContext.nativeForm.cards.length, 3);
+        assert.equal(m.helpContext.nativeForm.cardSetId, "record:40a8cc6df9c65f8a9f28a264:2a5c4d96e1cf1d9a46301da1");
+        assert.equal(m.plan.status, 'blocked');
+        assert.equal(m.plan.reason, 'native-file-write-unverified');
+        assert.deepEqual(m.plan.replacementRecords, []);
+        assert.ok(m.managerCards.every(card => card.fields.every(field => !field.editable)));
+        const first = m.managerCards[0].fields[0];
+        const help = keywordManagerHelpState({ ...m, selectedFieldId: first.fieldId });
+        assert.equal(help.schemaName, 'XWINI');
+        const form = getCatalogInputFormCatalogV4().formForKeyword('AIRBAG_FLUID_AND_GAS');
+        const rule = form.rules[form.reference.formRuleIds[0]];
+        assert.equal(help.english, rule.cards[1].fields[0].help.trim());
+        assert.equal(keywordManagerEditField(m, first.fieldId, '42'), null);
+        assert.equal(view(m).mode, 'fields');
+        assert.equal(view(m).canApply, false);
+        const original = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            for (const proposed of [m, { ...m, plan: { ...m.plan, status: 'ready', reason: 'forged-ready' } }]) {
+                assert.equal(await apply({ getModel: () => proposed, markStale() {} }, e), null);
+            }
+            assert.equal(writes, 0);
+        } finally { vscode.workspace.applyEdit = original; }
+        assert.equal(e.document.getText(), text);
+    });
+    it('keeps omitted GUI cards out of each projected reader and isolates repeated source instances', () => {
+        for (const [keyword, indexes, names] of [
+            ['DEFINE_DEATH_TIMES_RIGID', [1, 2], ['GEO', 'X_T']],
+            ['USER_NONLOCAL_SEARCH', [1, 2], ['SSID', 'NFREQ']],
+            ['LOAD_NODE_SET', [1], ['NSID']],
+            ['ELEMENT_SOLID_T20', [1, 2, 3], ['EID', 'N1', 'N11']],
+        ]) {
+            const text = source(keyword, indexes), e = editor(text), m = model(e, 0, {});
+            assert.equal(m.inputFormResolution.status, 'resolved', keyword);
+            assert.deepEqual(m.managerCards.map(card => card.fields[0].name), names, keyword);
+            assert.equal(view(m).canApply, false, keyword);
+            assert.deepEqual(m.plan.replacementRecords, [], keyword);
+            assert.equal(e.document.getText(), text);
+        }
+        const text = '*AIRBAG_FLUID_AND_GAS\n1,2,3,4,5,6,7,8\n9,10,11,12,13,14,15\n21,22,23,24,25,26,27,28\n29,30,31,32,33,34,35\n*END';
+        const m = model(editor(text, 3), 3, {});
+        const instances = m.managerInstances.filter(instance => instance.keyword === '*AIRBAG_FLUID_AND_GAS');
+        assert.equal(instances.length, 2);
+        assert.equal(instances.filter(instance => instance.selected).length, 1);
+        assert.deepEqual(m.managerCards.map(card => card.fields[0].value), ['21', '29']);
+        assert.equal(view(m).canApply, false);
+    });
+    it('rejects empty, incomplete, extra and unapproved projected sources without writing', async () => {
+        const text = '*AIRBAG_FLUID_AND_GAS\n1,2,3,4,5,6,7,8\n9,10,11,12,13,14,15\n*END';
+        const catalog = getCatalogInputFormCatalogV4(), originalForm = catalog.formForKeyword;
+        const originalApply = vscode.workspace.applyEdit;
+        let writes = 0;
+        vscode.workspace.applyEdit = async () => { writes++; return true; };
+        try {
+            for (const [input, status] of [['*AIRBAG_FLUID_AND_GAS\n*END', 'no-change'],
+                ['*AIRBAG_FLUID_AND_GAS\n1,2,3,4,5,6,7,8\n*END', 'blocked'],
+                [text.replace('*END', '21,22,23,24,25,26,27,28\n*END'), 'blocked'],
+                [text.replace('*AIRBAG_FLUID_AND_GAS', '*AIRBAG_FLUID_AND_GAS_UNVERIFIED'), 'blocked']]) {
+                const e = editor(input), m = model(e, 0, {});
+                assert.equal(m.plan.status, status);
+                assert.deepEqual(m.plan.replacementRecords, []);
+                assert.equal(view(m).canApply, false);
+                assert.ok(m.managerCards.every(card => card.fields.every(field => !field.editable)));
+                if (status === 'no-change') {
+                    assert.deepEqual(m.managerCards, []);
+                    assert.equal(view(m).mode, 'none');
+                }
+                assert.equal(await apply({ getModel: () => m, markStale() {} }, e), null);
+                assert.equal(e.document.getText(), input);
+            }
+            for (const defect of ['source', 'address', 'captured-card-count']) {
+                catalog.formForKeyword = function(keyword) {
+                    const form = originalForm.call(this, keyword);
+                    if (keyword.replace(/^\*/, '') !== 'AIRBAG_FLUID_AND_GAS' || !form) return form;
+                    if (defect === 'source') form.source.datasetSha256 = '0'.repeat(64);
+                    else for (const id of form.reference.formRuleIds) {
+                        if (defect === 'address') form.rules[id].cardSetId = '0x0';
+                        else form.rules[id].cards = form.rules[id].cards.slice(1);
+                    }
+                    return form;
+                };
+                const e = editor(text), m = model(e, 0, {});
+                assert.equal(m.plan.status, 'blocked', defect);
+                assert.equal(m.plan.reason, 'lspp-input-form-source-layout-unresolved', defect);
+                assert.deepEqual(m.plan.replacementRecords, [], defect);
+                assert.equal(view(m).canApply, false, defect);
+                assert.equal(await apply({ getModel: () => m, markStale() {} }, e), null, defect);
+                assert.equal(e.document.getText(), text);
+            }
+            assert.equal(writes, 0);
+        } finally { catalog.formForKeyword = originalForm; vscode.workspace.applyEdit = originalApply; }
+    });
     it('edits one rubber tail occurrence without changing the others', function () {
         this.timeout(10000);
         for (const [keyword, tail, prefix] of [['MAT_077_O', 6, [1, 4, 5]], ['MAT_077_H', 5, [1, 4]]]) {
@@ -184,10 +285,10 @@ describe('native file-reader dynamic layouts', () => {
     });
     it('opens every native saved block and preserves its source record count', () => {
         const text = fs.readFileSync(path.join(fixtures, 'dynamic-file-layout-saved.k'), 'utf8');
-        const lines = text.split(/\r?\n/);
+        const lines = text.split(/\r?\n/), e = editor(text);
         for (let line = 0; line < lines.length; line++) {
             if (!/^\*(SECTION_BEAM|SECTION_SHELL|MAT_COMPOSITE_TABULATED_PLASTICITY_DAMAGE)$/.test(lines[line])) continue;
-            const m = model(editor(text, line), line, {});
+            const m = model(e, line, {});
             assert.notEqual(m.plan.status, 'blocked', `${line}: ${m.plan.reason}`);
             assert.equal(m.plan.replacementRecords.length, m.block.records.length);
         }

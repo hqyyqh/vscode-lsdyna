@@ -52,6 +52,7 @@ out/**
 !keywords/runtime/native-readers/lspp-generic-file-readers.json
 !keywords/runtime/native-readers/lspp-conditional-layout-readers.json
 !keywords/runtime/native-readers/lspp-native-input-format.json
+!keywords/runtime/native-readers/lspp-constrained-input-format.json
 !keywords/runtime/native-readers/lspp-optional-form-header-readers.json
 !keywords/runtime/native-readers/lspp-single-card-readers.json
 !keywords/runtime/native-readers/lspp-standard-repeat-readers.json
@@ -88,8 +89,16 @@ out/runtime/field_help_zh.delta.json.gz
 
 !keywords/runtime/engineering/keywordSpellingAliases.json
 !keywords/runtime/engineering/keywordLayoutCorrections.json
+!keywords/runtime/engineering/contactThermal.json
 !keywords/runtime/engineering/runtimeSemanticRelationCorrections.json
 !keywords/runtime/engineering/runtimeTableLayoutCorrections.json
+
+node_modules/@vscode/sqlite3/build/**
+node_modules/@vscode/sqlite3/deps/**
+node_modules/@vscode/sqlite3/src/**
+node_modules/@vscode/sqlite3/binding.gyp
+!node_modules/@vscode/sqlite3/build/Release/vscode-sqlite3.node
+!node_modules/@vscode/sqlite3/build/native-build.json
 
 runtime-data/
 public-source-manifest.json

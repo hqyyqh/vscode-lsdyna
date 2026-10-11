@@ -1,15 +1,14 @@
 'use strict';
+const { fetchJson, openSocket, createCdp } = require('../../test/support/devtools.cjs');
 
 const assert = require('assert');
 const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const net = require('net');
-const os = require('os');
 const path = require('path');
 
 const repoRoot = path.resolve(__dirname, "../..");
-const runtimePrefix = 'vscode-lsdyna-editor-safety-close-dialog-';
 
 function resolveVSCodeExecutable() {
     if (process.env.VSCODE_EXECUTABLE_PATH) {
@@ -55,8 +54,7 @@ async function connectWorkbenchDevTools(port) {
     let target = null;
     while (Date.now() < deadline && !target) {
         try {
-            const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-            const targets = response.ok ? await response.json() : [];
+            const targets = await fetchJson(`http://127.0.0.1:${port}/json/list`, Math.min(3000, deadline - Date.now()));
             target = targets.find(item =>
                 item.type === 'page' &&
                 typeof item.url === 'string' &&
@@ -70,49 +68,9 @@ async function connectWorkbenchDevTools(port) {
     }
     if (!target) throw new Error('VS Code Workbench DevTools target was not published');
 
-    const socket = new WebSocket(target.webSocketDebuggerUrl);
-    await Promise.race([
-        new Promise((resolve, reject) => {
-            socket.addEventListener('open', resolve, { once: true });
-            socket.addEventListener('error', reject, { once: true });
-        }),
-        delay(5000).then(() => {
-            throw new Error('Timed out connecting to VS Code Workbench DevTools');
-        }),
-    ]);
-
-    let nextId = 1;
-    const pending = new Map();
-    socket.addEventListener('message', event => {
-        let message;
-        try {
-            message = JSON.parse(String(event.data));
-        } catch (_) {
-            return;
-        }
-        if (!message.id || !pending.has(message.id)) return;
-        const entry = pending.get(message.id);
-        pending.delete(message.id);
-        if (message.error) entry.reject(new Error(message.error.message));
-        else entry.resolve(message.result || {});
-    });
-
-    return {
-        socket,
-        call(method, params = {}) {
-            const id = nextId++;
-            const command = new Promise((resolve, reject) => {
-                pending.set(id, { resolve, reject });
-                socket.send(JSON.stringify({ id, method, params }));
-            });
-            return Promise.race([
-                command,
-                delay(5000).then(() => {
-                    throw new Error(`Timed out waiting for CDP ${method}`);
-                }),
-            ]);
-        },
-    };
+    const socket = await openSocket(target.webSocketDebuggerUrl, Math.min(5000, deadline - Date.now()));
+    const cdp = createCdp(socket, 5000);
+    return { socket, ...cdp };
 }
 
 async function evaluate(devTools, expression) {
@@ -182,28 +140,6 @@ function workspaceSnapshot(workspaceDirectory) {
     return result;
 }
 
-function createEvidenceDirectory() {
-    const parent = path.join(os.tmpdir(), 'vscode-lsdyna-editor-safety-evidence');
-    fs.mkdirSync(parent, { recursive: true });
-    return fs.mkdtempSync(path.join(parent, 'close-dialog-'));
-}
-
-function removeRuntimeDirectory(runtimeDirectory) {
-    const resolved = path.resolve(runtimeDirectory);
-    if (
-        path.dirname(resolved) !== path.resolve(os.tmpdir()) ||
-        !path.basename(resolved).startsWith(runtimePrefix)
-    ) {
-        throw new Error(`Refusing to remove unexpected runtime directory: ${resolved}`);
-    }
-    fs.rmSync(resolved, {
-        recursive: true,
-        force: true,
-        maxRetries: 20,
-        retryDelay: 100,
-    });
-}
-
 async function stopChildProcess(child, timeoutMs = 5000) {
     if (!child.pid) return true;
     if (child.exitCode !== null || child.signalCode !== null) return true;
@@ -230,11 +166,13 @@ async function main() {
     }
 
     const vscodeExecutablePath = resolveVSCodeExecutable();
-    const runtimeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), runtimePrefix));
+    const { createTempRun, finishTempRun } = require('./temp-runs.cjs');
+    const evidenceDirectory = createTempRun('dynasense-close-dialog-');
+    const runtimeDirectory = path.join(evidenceDirectory, 'runtime');
+    fs.mkdirSync(runtimeDirectory);
     const workspaceDirectory = path.join(runtimeDirectory, 'workspace');
     const userDataDirectory = path.join(runtimeDirectory, 'user-data');
     const extensionsDirectory = path.join(runtimeDirectory, 'extensions');
-    const evidenceDirectory = createEvidenceDirectory();
     fs.mkdirSync(workspaceDirectory);
     fs.mkdirSync(path.join(userDataDirectory, 'User'), { recursive: true });
     fs.mkdirSync(extensionsDirectory);
@@ -277,7 +215,11 @@ async function main() {
     child.on('error', error => logs.push(`[process error] ${error.stack || error}\n`));
 
     let devTools = null;
-    let passed = false;
+    let retainRuntime = false;
+    const writeEvidence = (...args) => {
+        try { fs.writeFileSync(...args); }
+        catch (error) { retainRuntime = true; throw error; }
+    };
     try {
         await childStarted;
         devTools = await connectWorkbenchDevTools(port);
@@ -347,7 +289,7 @@ async function main() {
             captureBeyondViewport: false,
             fromSurface: true,
         });
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, 'cancelled-dirty-close.png'),
             Buffer.from(screenshot.data, 'base64'),
         );
@@ -376,34 +318,35 @@ async function main() {
             after: workspaceSnapshot(workspaceDirectory),
             diskClean: true,
         };
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, 'result.json'),
             `${JSON.stringify(result, null, 2)}\n`,
             'utf8',
         );
-        passed = true;
         console.log(`[close dialog] evidence: ${evidenceDirectory}`);
         console.log('[close dialog] native Cancel preserved the dirty editor and disk bytes');
     } finally {
-        if (devTools) devTools.socket.close();
-        const stopped = await stopChildProcess(child);
-        fs.writeFileSync(path.join(evidenceDirectory, 'code.log'), logs.join(''), 'utf8');
-        if (passed && stopped) {
-            removeRuntimeDirectory(runtimeDirectory);
-        } else {
-            console.error(`[close dialog] failed runtime preserved: ${runtimeDirectory}`);
-            console.error(`[close dialog] evidence preserved: ${evidenceDirectory}`);
-        }
-        if (!stopped) {
-            throw new Error(
-                `VS Code process ${child.pid} did not exit; runtime directory was preserved`,
-            );
+        let stopped = false;
+        try {
+            if (devTools) devTools.close();
+            stopped = await stopChildProcess(child);
+            writeEvidence(path.join(evidenceDirectory, 'code.log'), logs.join(''), 'utf8');
+            console.log(`[close dialog] evidence: ${evidenceDirectory}`);
+            if (!stopped) {
+                throw new Error(
+                    `VS Code process ${child.pid} did not exit; runtime directory was preserved`,
+                );
+            }
+        } finally {
+            if (retainRuntime || !stopped || child.signalCode) {
+                finishTempRun(evidenceDirectory, { retain: true });
+                console.error(`[close dialog] runtime reservation retained: ${evidenceDirectory}`);
+            }
         }
     }
 }
 
 module.exports = {
-    removeRuntimeDirectory,
     resolveVSCodeExecutable,
     stopChildProcess,
 };

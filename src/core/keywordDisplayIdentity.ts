@@ -1,4 +1,3 @@
-import { keywordDataPath } from "./keywordDataPath";
 'use strict';
 
 /**
@@ -16,10 +15,11 @@ const {
     loadKeywordSchema,
     lookupKeywordSchema,
 } = require('./keywordSchema');
-const referenceIndex = require(keywordDataPath("references/field_reference_index.json"));
+const { getReferenceRuleCatalog } = require('./references/referenceRuleCatalog');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { StringDecoder } = require('node:string_decoder');
 const { formattedFields } = require('./edit/keywordRecordSerializer');
 
 const {
@@ -42,7 +42,7 @@ function loadKeywordLayoutSchema() {
         ));
         const runtime = JSON.parse(zlib.gunzipSync(encoded).toString('utf8'));
         if (!runtime || runtime.formatVersion !== KEYWORD_LAYOUT_RUNTIME_FORMAT_VERSION
-            || !runtime.schema || typeof runtime.schema !== 'object'
+            || !runtime.schema || typeof runtime.schema !== 'object' || Array.isArray(runtime.schema)
             || !Number.isSafeInteger(runtime.keywordCount)
             || runtime.keywordCount !== Object.keys(runtime.schema).length) {
             throw new Error('invalid keyword layout runtime contract');
@@ -75,6 +75,7 @@ type KeywordDisplayIdentity = {
     identity?: { field: string; value: string };
     missingIdentity?: { field: string; status: 'empty' | 'unresolved' };
     signature?: Array<{ field: string; value: string }>;
+    summary?: Array<{ field: string; value: string }>;
     collection?: { kind: 'data-lines' | 'definitions'; count: number };
     dataLineCount: number;
     confidence: 'verified' | 'schema' | 'fallback';
@@ -248,7 +249,7 @@ function splitSyntheticTitleCard(keyword: string, dataLines: string[], lookup: a
 function firstValue(values: DisplayFieldValue[], names: string[]): DisplayFieldValue | null {
     const normalizedNames = names.map(normalizeFieldName);
     for (const name of normalizedNames) {
-        const match = values.find(item => item.name === name && item.value !== '');
+        const match = values.find(item => item.name === name);
         if (match) return match;
     }
     return null;
@@ -259,14 +260,15 @@ function strongIdentityCandidate(
     lookup: any,
     values: DisplayFieldValue[],
     dataLines: string[],
+    confirmedNames = false,
 ): DisplayFieldValue | null {
-    const generic = referenceIndex.definitionKeywords?.generic?.[keyword];
+    const generic = getReferenceRuleCatalog().metadata('definitionKeywords')?.generic?.[keyword];
     if (generic) {
         const exact = values.find(item =>
             item.cardIndex === Number(generic.cardIndex)
             && item.fieldIndex === Number(generic.fieldIndex)
         );
-        if (exact) return exact;
+        if (exact && (!confirmedNames || exact.name === normalizeFieldName(generic.fieldName))) return exact;
         const byName = firstValue(values, [generic.fieldName]);
         if (byName) return byName;
     }
@@ -332,6 +334,8 @@ function summarizeKeywordIdentity(
         dataLineCount?: number;
         longFormat?: boolean;
         percentFormat?: boolean;
+        managerSummary?: boolean;
+        sourceValues?: DisplayFieldValue[];
     } = {},
 ): KeywordDisplayIdentity {
     const keyword = normalizeKeyword(rawKeyword);
@@ -342,11 +346,11 @@ function summarizeKeywordIdentity(
     const lookup = Object.prototype.hasOwnProperty.call(options, 'lookup')
         ? options.lookup
         : lookupKeywordSchema(keyword, schema);
-    const syntheticTitle = splitSyntheticTitleCard(keyword, dataLines, lookup);
-    const { values } = collectFieldValues(keyword, syntheticTitle.schemaDataLines, schema, {
+    const syntheticTitle = options.sourceValues ? { title: '', schemaDataLines: dataLines } : splitSyntheticTitleCard(keyword, dataLines, lookup);
+    const values = options.sourceValues || collectFieldValues(keyword, syntheticTitle.schemaDataLines, schema, {
         ...options,
         lookup,
-    });
+    }).values;
     const canonicalKeyword = lookup?.canonicalName || keyword;
     const base: KeywordDisplayIdentity = {
         kind: 'keyword',
@@ -355,6 +359,13 @@ function summarizeKeywordIdentity(
         dataLineCount,
         confidence: lookup ? 'schema' : 'fallback',
     };
+    // ponytail: two confirmed source fields, extend only for a reviewed keyword layout.
+    if (options.managerSummary) {
+        const names = keyword === 'DATABASE_SLEOUT' ? ['DT', 'BINARY'] :
+            /^MAT(?:_|$)/.test(keyword) ? ['RO', 'E'] : [];
+        base.summary = names.map(name => firstValue(values, [name])).filter(Boolean)
+            .map(item => ({ field: item!.name, value: item!.value }));
+    }
 
     if (keyword === 'TITLE') {
         const title = compactText(dataLines[0] || '');
@@ -374,6 +385,7 @@ function summarizeKeywordIdentity(
         lookup,
         values,
         syntheticTitle.schemaDataLines,
+        !!options.sourceValues,
     );
     const title = syntheticTitle.title || titleValue?.value || '';
     if (title) {
@@ -441,6 +453,7 @@ function createKeywordIdentityAccumulator(
         percentFormat?: boolean;
         maxDataLines?: number;
         maxBytes?: number;
+        managerSummary?: boolean;
     } = {},
 ): IdentityAccumulator {
     const dataLines: string[] = [];
@@ -454,10 +467,12 @@ function createKeywordIdentityAccumulator(
             const text = Buffer.isBuffer(line) ? line.toString('utf8') : String(line || '');
             if (isCommentOrBlank(text)) return false;
             const remaining = maxBytes - capturedBytes;
-            const clipped = Buffer.from(text, 'utf8').subarray(0, remaining).toString('utf8');
+            const bytes = Buffer.from(text, 'utf8');
+            const clipped = new StringDecoder('utf8').write(bytes.subarray(0, remaining));
+            // A partial code point exhausts the prefix; do not borrow bytes from the next physical line.
+            capturedBytes += Math.min(bytes.length, remaining);
             if (!clipped) return false;
             dataLines.push(clipped);
-            capturedBytes += Buffer.byteLength(clipped, 'utf8');
             return true;
         },
         isCaptureComplete() {

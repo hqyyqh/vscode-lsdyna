@@ -119,7 +119,7 @@ export function createEffectiveSearchPathCache() {
         const fileKey = normalizeSearchPathFileKey(filePath);
         const exactRoot = roots.find(root => root.rootKey === fileKey);
         if (exactRoot && exactRoot.pathsByFile.has(fileKey)) {
-            return exactRoot.pathsByFile.get(fileKey) || null;
+            return exactRoot.pathsByFile.get(fileKey)!;
         }
         const matches = roots
             .map(root => root.pathsByFile.get(fileKey))

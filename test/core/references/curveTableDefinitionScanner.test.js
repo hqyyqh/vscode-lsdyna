@@ -14,6 +14,64 @@ async function buildFileIndex(filePath) {
 }
 
 describe('scanCurveTableDefinitionsFromFileIndex', () => {
+    it('uses verified specialized parsers before generic lookup and keeps unverified-prefix fallback', async () => {
+        const keywords = ['DEFINE_CURVE', 'DEFINE_TABLE_2D', 'DEFINE_CURVE_UNREVIEWED', 'SET_CUSTOM',
+            'DEFINE_CUSTOM', 'KEYWORD+', 'END'];
+        const descriptor = {
+            target: 'CUSTOM', cardIndex: 1, fieldIndex: 0,
+            fieldName: 'ID', fieldType: 'integer', position: 0, width: 10,
+        };
+        const lookups = [];
+        const reads = [];
+        const result = await scanCurveTableDefinitionsFromFileIndex(
+            { keywordBlocks: keywords.map((keyword, index) => ({
+                keyword, filePath: '/model/definitions.k', startLine: index * 3, endLine: index * 3 + 2,
+            })) },
+            async block => {
+                reads.push(block.keyword);
+                return `*${block.keyword}\n${block.startLine + 1}\n0,1`;
+            },
+            {
+                scanned: ['DEFINE_CURVE', 'DEFINE_TABLE_2D'],
+                generic: { DEFINE_CUSTOM: descriptor },
+            },
+            { registryCatalog: { definitionDescriptorForKeyword(keyword) {
+                lookups.push(keyword);
+                return { ...descriptor, target: keyword };
+            } } },
+        );
+        assert.deepEqual(lookups, ['DEFINE_CURVE_UNREVIEWED', 'SET_CUSTOM']);
+        assert.deepEqual(reads, keywords.slice(0, 5));
+        assert.deepEqual(result.curves.map(value => [value.keyword, value.id]), [['*DEFINE_CURVE', 1]]);
+        assert.deepEqual(result.tables.map(value => [value.keyword, value.id]), [['*DEFINE_TABLE_2D', 4]]);
+        assert.deepEqual(result.genericDefinitions.map(value => [value.keyword, value.targetKeyword, value.id]), [
+            ['*DEFINE_CURVE_UNREVIEWED', 'DEFINE_CURVE_UNREVIEWED', 7],
+            ['*SET_CUSTOM', 'SET_CUSTOM', 10],
+            ['*DEFINE_CUSTOM', 'CUSTOM', 13],
+        ]);
+    });
+
+    it('retains short curve and multidimensional table records as incomplete observations', () => {
+        const { parseCurveBlock, parseTableBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
+        for (const keyword of ['DEFINE_CURVE', 'DEFINE_TABLE_2D', 'DEFINE_TABLE_4D']) {
+            for (const prefix of ['', '0 1\n']) {
+                const parse = keyword === 'DEFINE_CURVE' ? parseCurveBlock : parseTableBlock;
+                const result = parse({ keyword, startLine: 7 }, `*${keyword}\n17\n${prefix}2\n*END`);
+                const records = result.points || result.rows;
+                assert.equal(records.length, prefix ? 2 : 1);
+                const last = records.at(-1);
+                assert.equal(last.lineIndex, prefix ? 10 : 9);
+                assert.equal(keyword === 'DEFINE_CURVE' ? last.yRaw : last.childIdRaw, '');
+                assert.equal(keyword === 'DEFINE_CURVE' ? last.y : last.childId, null);
+                assert.equal(result.dataCompleteness.state, 'incomplete');
+                assert.ok(result.dataCompleteness.reasons.includes('reference-data-unresolved'));
+            }
+        }
+        const oneDimensional = parseTableBlock({ keyword: 'DEFINE_TABLE', startLine: 0 }, '*DEFINE_TABLE\n17\n2\n*END');
+        assert.equal(oneDimensional.rows.length, 1);
+        assert.equal(oneDimensional.dataCompleteness.state, 'complete');
+    });
+
     it('preserves curve points and scaling in all four native format fixtures', () => {
         const { parseCurveBlock } = require('../../../out/core/references/curveTableDefinitionScanner');
         for (const mode of ['standard', 'long', 'i10', 'free']) {

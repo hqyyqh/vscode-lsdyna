@@ -1,8 +1,8 @@
 'use strict';
 
 import type { NotificationType, RequestType } from 'vscode-messenger-common';
-import type { ManualLanguage, ManualLocation, ManualSearchMode, ManualSearchResult, ManualSearchScope } from './manualTypes';
-export type { ManualLanguage, ManualLocation, ManualSearchMode, ManualSearchResult, ManualSearchScope } from './manualTypes';
+import type { ManualLanguage, ManualReadingMode, ManualLocation, ManualSearchMode, ManualSearchResult, ManualSearchScope } from './manualTypes';
+export type { ManualLanguage, ManualReadingMode, ManualLocation, ManualSearchMode, ManualSearchResult, ManualSearchScope } from './manualTypes';
 
 export type ReaderUiLocale = 'en' | 'zh';
 
@@ -20,6 +20,8 @@ export interface ReaderViewModel {
     revision: number;
     location: ManualLocation;
     language: ManualLanguage;
+    readingMode?: ManualReadingMode;
+    canCompareLanguages?: boolean;
     uiLocale: ReaderUiLocale;
     /** False for English-only packs — host/UI hide language toggle. */
     canToggleLanguage: boolean;
@@ -29,6 +31,7 @@ export interface ReaderViewModel {
         | {
             kind: 'document';
             markdown: string;
+            comparison?: boolean;
             chunkBaseUri: string;
             sentencePairs: Array<{ primary: string; secondary: string; unitId?: string }>;
         }
@@ -65,7 +68,7 @@ export interface ReaderScrollChanged extends ReaderRevisionRequest { scrollY: nu
 
 export const ReaderReadyRequest: RequestType<ReaderRevisionRequest, ReaderViewModel> = { method: 'reader/ready' };
 export const ReaderNavigateRequestType: RequestType<ReaderNavigateRequest, boolean> = { method: 'reader/navigate' };
-export const ReaderToggleLanguageRequest: RequestType<ReaderRevisionRequest, boolean> = { method: 'reader/toggleLanguage' };
+export const ReaderToggleLanguageRequest: RequestType<ReaderRevisionRequest & { mode?: ManualReadingMode; anchorId?: string }, boolean> = { method: 'reader/toggleLanguage' };
 export const ReaderSearchRequestType: RequestType<ReaderSearchRequest, boolean> = { method: 'reader/search' };
 export const ReaderOpenLinkRequestType: RequestType<ReaderOpenLinkRequest, boolean> = { method: 'reader/openLink' };
 export const ReaderOpenPdfRequest: RequestType<ReaderRevisionRequest, boolean> = { method: 'reader/openPdf' };

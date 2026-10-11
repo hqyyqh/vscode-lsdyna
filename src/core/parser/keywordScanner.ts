@@ -20,6 +20,7 @@ const { scanKeywordSkeletonFromFile } = require('../scanner/keywordSkeletonScann
 
 type LargeFileScanOptions = {
     fullScanLargeFiles?: boolean;
+    cancellationToken?: { isCancellationRequested?: boolean };
 };
 
 /**
@@ -65,17 +66,13 @@ function collectKeywordsFromLineReader(lineCount, getLine, filePath) {
  * @returns {Promise<ScannedKeyword[]>} Scanned keywords array.
  */
 async function collectKeywordsFromFile(filePath, options: LargeFileScanOptions = {}) {
-    try {
-        const blocks = await scanKeywordSkeletonFromFile(filePath, options);
-        await new Promise(r => setImmediate(r));
-        return blocks.map(block => ({
-            keyword: block.keyword.slice(1),
-            filePath: block.filePath,
-            lineIndex: block.startLine,
-        }));
-    } catch (_e) {
-        return [];
-    }
+    const blocks = await scanKeywordSkeletonFromFile(filePath, options);
+    await new Promise(r => setImmediate(r));
+    return blocks.map(block => ({
+        keyword: block.keyword.slice(1),
+        filePath: block.filePath,
+        lineIndex: block.startLine,
+    }));
 }
 
 module.exports = {

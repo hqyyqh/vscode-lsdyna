@@ -3,14 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
-const { getCatalogInputFormCatalogV4 } = require(path.join(
+const { keywordManagerCatalogNativeFormRule } = require(path.join(
     vscode.extensions.getExtension('hqyyqh.dynasense').extensionPath, 'out/extension'))._internals;
 
 function sharedByteFixture() {
-    const keyword = 'CONSTRAINED_SOIL_PILE_CONSTANTS';
-    const rule = getCatalogInputFormCatalogV4().formForKeyword(keyword).rules['input-form-1198'];
-    assert.ok(rule.cards[1].sharedByteEditing, 'the candidate must contain the real projected contract');
-    // A hand-authored edit fixture using the complete EXE card geometry.
+    const keyword = 'BOUNDARY_FLUIDM';
+    const rule = keywordManagerCatalogNativeFormRule(keyword);
+    assert.ok(rule.cards[0].sharedByteEditing, 'the candidate must contain the real projected contract');
+    // A supported native file layout with two names sharing the same physical bytes.
     const cards = rule.cards.map(card => {
         const bytes = Array(Math.max(...card.fields.map(field => field.position + field.width))).fill(' ');
         for (const field of card.fields) bytes[field.position + field.width - 1] = '0';
@@ -74,13 +74,13 @@ async function checkSafety(root, api, results) {
     await check('shared-byte edit, linked preview, atomic undo and reopen', async result => {
         const { keyword, cards, text: before } = sharedByteFixture();
         const opened = await open('shared-byte.k', before, `*${keyword}`);
-        const { model } = stage(opened, 'TIMSTR', '12');
+        const { model } = stage(opened, 'ICURV', '12');
         const view = api.buildKeywordOptionsViewState(model);
-        assert.deepEqual(view.preview.sharedByteChanges, ['TIMSTR: 0 → 12', 'ICD7A: 0 → 12']);
+        assert.deepEqual(view.preview.sharedByteChanges, ['ICURV: 0 → 12', 'BESIMF: 0 → 12']);
         assert.ok(await apply(opened, model));
         const after = opened.document.getText();
         const expected = [...cards];
-        expected[1] = expected[1].slice(0, 30) + '12'.padStart(10) + expected[1].slice(40);
+        expected[0] = expected[0].slice(0, 30) + '12'.padStart(10) + expected[0].slice(40);
         assert.equal(after, ['*KEYWORD', `*${keyword}`, ...expected, '*END', ''].join('\n'));
         await vscode.commands.executeCommand('undo');
         assert.equal(opened.document.getText(), before);
@@ -89,7 +89,7 @@ async function checkSafety(root, api, results) {
         assert.ok(await opened.document.save());
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
         assert.equal((await vscode.workspace.openTextDocument(opened.uri)).getText(), after);
-        result.linkedFields = ['TIMSTR', 'ICD7A'];
+        result.linkedFields = ['ICURV', 'BESIMF'];
         result.modifiedByteRange = [30, 40];
     });
 

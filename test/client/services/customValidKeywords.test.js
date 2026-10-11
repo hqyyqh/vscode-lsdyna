@@ -75,6 +75,7 @@ describe('customValidKeywords service', () => {
             assert.equal(isCoveredByCustomList('*END', list), true);
             assert.equal(isCoveredByCustomList('*MAT_001', list), true);
             assert.equal(isCoveredByCustomList('*NODE', list), false);
+            assert.equal(isCoveredByCustomList('*MAT_001', [' mat_* ']), true);
         });
     });
 
@@ -186,6 +187,95 @@ describe('customValidKeywords service', () => {
     });
 
     describe('inspect and helpers', () => {
+        it('does not assign effective-only or scoped entries to a writable layer', () => {
+            const entry = '*UNKNOWN_OWNER';
+            assert.equal(resolveEntrySource(entry, { config: { get: () => [entry] } }), 'unknown');
+            for (const layer of ['workspaceFolderValue', 'defaultLanguageValue', 'globalLanguageValue',
+                'workspaceLanguageValue', 'workspaceFolderLanguageValue']) {
+                const config = createConfigMock({ effective: [entry], globalValue: [entry] });
+                const inspect = config.inspect;
+                config.inspect = () => ({ ...inspect(), [layer]: [entry] });
+                assert.equal(resolveEntrySource(entry, { config }), 'unknown', layer);
+            }
+        });
+
+        it('attributes array settings to the effective layer and refuses inconsistent adapter metadata', () => {
+            const config = createConfigMock({ effective: ['*FOO'], globalValue: ['*FOO'], workspaceValue: ['*FOO'] });
+            assert.equal(resolveEntrySource('*FOO', { config }), 'workspace');
+            assert.equal(resolveEntrySource('*NOT_EFFECTIVE', { config }), 'none');
+            const inconsistent = createConfigMock({ effective: ['*FOO'], globalValue: ['*FOO', '*BAR'] });
+            assert.equal(resolveEntrySource('*FOO', { config: inconsistent }), 'unknown');
+        });
+
+        it('rechecks a selected entry before offering writes and explains unknown ownership', async () => {
+            const { showManageCustomValidKeywordsPick } = require('../../../src/client/services/customValidKeywordsUi');
+            const i18n = require('../../../src/core/i18n');
+            let effective = ['*OLD'], reads = 0;
+            const warnings = [], updates = [];
+            const config = { get: () => effective, inspect: () => ({ globalValue: ['*OLD'] }),
+                update: (...args) => updates.push(args) };
+            await showManageCustomValidKeywordsPick({ config,
+                showQuickPick: async items => {
+                    assert.equal(items[0].action, 'add', 'must not offer edit/delete for an unknown source');
+                    if (reads++ > 0) return undefined;
+                    const item = items.find(item => item.entry === '*OLD');
+                    assert.equal(item.source, 'global');
+                    effective = ['*OLD', '*UNKNOWN_OWNER'];
+                    return item;
+                },
+                showWarningMessage: async message => { warnings.push(message); },
+                showInputBox: async () => { throw new Error('must not request a replacement'); },
+            });
+            assert.equal(warnings.length, 1);
+            assert.equal(warnings[0], i18n.get('customValidKeywordSourceUnknownReadOnly', '*OLD'));
+            assert.deepEqual(updates, []);
+        });
+
+        it('rejects ownership changes while choosing an action or entering a replacement', async () => {
+            const { showManageCustomValidKeywordsPick } = require('../../../src/client/services/customValidKeywordsUi');
+            for (const phase of ['selection', 'delete', 'edit']) {
+                let workspaceValue, rootReads = 0;
+                const warnings = [], updates = [];
+                const config = { get: () => ['*OLD'], inspect: () => ({ globalValue: ['*OLD'], workspaceValue }),
+                    update: (...args) => updates.push(args) };
+                await showManageCustomValidKeywordsPick({ config,
+                    showQuickPick: async items => {
+                        if (items[0].action === 'add') {
+                            if (rootReads++ > 0) return undefined;
+                            const item = items.find(item => item.entry === '*OLD');
+                            if (phase === 'selection') workspaceValue = ['*OLD'];
+                            return item;
+                        }
+                        if (phase === 'delete') workspaceValue = ['*OLD'];
+                        return items.find(item => item.action === phase);
+                    },
+                    showInputBox: async () => { workspaceValue = ['*OLD']; return '*NEW'; },
+                    showWarningMessage: async message => { warnings.push(message); },
+                });
+                assert.equal(warnings.length, 1, phase);
+                assert.deepEqual(updates, [], phase);
+            }
+        });
+
+        it('opens the affected setting from the unknown-source warning without a write', async () => {
+            const { showManageCustomValidKeywordsPick } = require('../../../src/client/services/customValidKeywordsUi');
+            const i18n = require('../../../src/core/i18n');
+            const commands = [], updates = [];
+            await showManageCustomValidKeywordsPick({
+                config: { get: () => ['*UNKNOWN_OWNER'], update: (...args) => updates.push(args) },
+                showQuickPick: async items => {
+                    const item = items.find(item => item.entry === '*UNKNOWN_OWNER');
+                    assert.equal(item.source, 'unknown');
+                    assert.equal(item.description, i18n.get('customValidKeywordSourceUnknown'));
+                    return item;
+                },
+                showWarningMessage: async (_message, action) => action,
+                executeCommand: async (...args) => { commands.push(args); },
+            });
+            assert.deepEqual(commands, [['workbench.action.openSettings', 'lsdyna.customValidKeywords']]);
+            assert.deepEqual(updates, []);
+        });
+
         it('lists effective keywords and inspect layers', () => {
             const config = createConfigMock({
                 effective: ['*END', '*FOO'],

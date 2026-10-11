@@ -2,9 +2,9 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { runTests } = require('./vsix-host.cjs');
+const { createTempRun, finishTempRun, createEvidenceDirectory, writeEvidence } = require('./temp-runs.cjs');
 
 const {
     copyDirectoryExact,
@@ -13,7 +13,6 @@ const {
 } = require("../../test/support/editor-safety/fileOracle");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const isolationPrefix = 'vscode-lsdyna-editor-safety-vehicles-';
 
 function resolveVSCodeExecutable() {
     if (process.env.VSCODE_EXECUTABLE_PATH) {
@@ -43,15 +42,6 @@ function resolveSourceRoot() {
     );
 }
 
-function createEvidenceDirectory(sourceRoot) {
-    const evidenceParent = path.join(
-        path.dirname(sourceRoot),
-        'vscode-lsdyna-editor-safety-evidence',
-    );
-    fs.mkdirSync(evidenceParent, { recursive: true });
-    return fs.mkdtempSync(path.join(evidenceParent, 'vehicles-'));
-}
-
 function modelDirectoryNames(root) {
     return fs.readdirSync(root, { withFileTypes: true })
         .filter(entry => entry.isDirectory())
@@ -65,7 +55,7 @@ async function snapshotModels(root, modelNames, evidenceDirectory, phase) {
         const started = Date.now();
         const snapshot = await snapshotDirectory(path.join(root, modelName));
         result[modelName] = snapshot;
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, `${modelName}.${phase}.json`),
             `${JSON.stringify(snapshot, null, 2)}\n`,
             'utf8',
@@ -97,18 +87,6 @@ function assertCleanModelDiffs(before, after) {
     return summaries;
 }
 
-function removeIsolationDirectory(isolationRoot, sourceRoot) {
-    const resolved = path.resolve(isolationRoot);
-    const expectedParent = path.resolve(path.dirname(sourceRoot));
-    if (
-        path.dirname(resolved) !== expectedParent ||
-        !path.basename(resolved).startsWith(isolationPrefix)
-    ) {
-        throw new Error(`Refusing to remove unexpected isolation directory: ${resolved}`);
-    }
-    fs.rmSync(resolved, { recursive: true, force: true });
-}
-
 async function main() {
     const sourceRoot = resolveSourceRoot();
     const sourceStat = fs.statSync(sourceRoot);
@@ -123,25 +101,22 @@ async function main() {
         `Expected the six supplied vehicle directories, found ${modelNames.length}`,
     );
 
-    const evidenceDirectory = createEvidenceDirectory(sourceRoot);
-    const isolationRoot = fs.mkdtempSync(
-        path.join(path.dirname(sourceRoot), isolationPrefix),
-    );
+    const isolationRoot = createTempRun('dynasense-editor-safety-vehicles-');
+    const evidenceDirectory = createEvidenceDirectory('editor-safety-vehicles');
     const workspaceDirectory = path.join(isolationRoot, 'workspace');
     const userDataDirectory = path.join(isolationRoot, 'user-data');
     const extensionsDirectory = path.join(isolationRoot, 'extensions');
-    const progressFile = path.join(isolationRoot, 'extension-host-progress.json');
+    const progressFile = path.join(evidenceDirectory, 'extension-host-progress.json');
     fs.mkdirSync(userDataDirectory);
     fs.mkdirSync(extensionsDirectory);
 
-    let passed = false;
     let before;
     let after;
-    const sourceBefore = await snapshotDirectory(sourceRoot);
-    console.log(`[vehicle safety] source baseline: ${sourceBefore.summary.treeSha256}`);
-    console.log(`[vehicle safety] copying isolated workspace to ${workspaceDirectory}`);
-
     try {
+        const sourceBefore = await snapshotDirectory(sourceRoot);
+        writeEvidence(path.join(evidenceDirectory, 'source-before.json'), JSON.stringify(sourceBefore));
+        console.log(`[vehicle safety] source baseline: ${sourceBefore.summary.treeSha256}`);
+        console.log(`[vehicle safety] copying isolated workspace to ${workspaceDirectory}`);
         await copyDirectoryExact(sourceRoot, workspaceDirectory);
         before = await snapshotModels(
             workspaceDirectory,
@@ -198,21 +173,36 @@ async function main() {
             noProgressTimeoutMs: 120000,
             models: modelResults,
         };
-        fs.writeFileSync(
+        writeEvidence(
             path.join(evidenceDirectory, 'result.json'),
             `${JSON.stringify(result, null, 2)}\n`,
             'utf8',
         );
         console.log(`[vehicle safety] evidence: ${evidenceDirectory}`);
         console.log('[vehicle safety] six isolated vehicle workflows are byte-clean');
-        passed = true;
-    } finally {
-        if (passed) {
-            removeIsolationDirectory(isolationRoot, sourceRoot);
-        } else {
-            console.error(`[vehicle safety] failed isolation preserved: ${isolationRoot}`);
-            console.error(`[vehicle safety] evidence preserved: ${evidenceDirectory}`);
+    } catch (error) {
+        const retainRuntime = Boolean(error.signal || error.runtimeMayBeActive || error.evidenceSaveFailed);
+        if (retainRuntime) finishTempRun(isolationRoot, { retain: true });
+        try {
+            writeEvidence(path.join(evidenceDirectory, 'failure.json'), JSON.stringify({
+                status: 'failed', sourceRoot, error: error.stack || String(error),
+                runtimeReservation: retainRuntime ? isolationRoot : null,
+            }, null, 2));
+            if (!retainRuntime && fs.existsSync(workspaceDirectory) && !after) {
+                try { await snapshotModels(workspaceDirectory, modelNames, evidenceDirectory, 'after'); }
+                catch (captureError) {
+                    if (captureError.evidenceSaveFailed) throw captureError;
+                    writeEvidence(path.join(evidenceDirectory, 'snapshot-error.json'), JSON.stringify({ error: String(captureError) }));
+                }
+            }
+        } catch (saveError) {
+            if (!retainRuntime) finishTempRun(isolationRoot, { retain: true });
+            console.error(`[vehicle safety] diagnostics could not be saved; runtime retained: ${isolationRoot}`, saveError);
+            throw Object.assign(error, { evidenceSaveFailed: true, evidenceError: saveError });
         }
+        if (retainRuntime) console.error(`[vehicle safety] runtime reservation retained: ${isolationRoot}`);
+        console.error(`[vehicle safety] failure evidence: ${evidenceDirectory}`);
+        throw error;
     }
 }
 

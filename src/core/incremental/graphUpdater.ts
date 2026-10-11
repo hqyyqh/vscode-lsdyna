@@ -6,17 +6,20 @@
  * 
  * When a file in the project changes, this module re-scans only the affected file,
  * diffs its include list and keywords against the previous state, and patches the
- * in-memory ProjectGraph and keywordMap without requiring a full tree rebuild.
+ * in-memory ProjectGraph and keywordMap. Callers must rebuild before publication
+ * when the result reports requiresFullRebuild.
  * 
  * For the common case (file edited without changing its include list), the update is
- * essentially free. When includes change, only the added/removed subtrees are traversed.
- * 
- * Role in System: Enables near-instant incremental updates after FileSystemWatcher events,
- * avoiding the cost of re-scanning the entire project (which may contain 100+ files of 100-500MB each).
+ * limited to that file's scans and metadata. Root reachability determines which
+ * detached files can be removed; new subtrees and rich indexes require a rebuild.
+ *
+ * Role in System: Legacy snapshot update API, currently exercised by tests rather
+ * than a production watcher. It does not certify a complete new project scan.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { isDeepStrictEqual } = require('util');
 
 const includeScanner = require('../parser/includeScanner');
 const keywordScanner = require('../parser/keywordScanner');
@@ -57,7 +60,8 @@ async function resolveIncludeAsync(fileName, searchPaths) {
         try {
             await fs.promises.access(fullPath, fs.constants.F_OK);
             return fullPath;
-        } catch (_error) {
+        } catch (error) {
+            if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
             continue;
         }
     }
@@ -71,7 +75,7 @@ async function resolveIncludeAsync(fileName, searchPaths) {
  * @property {string[]} removedFiles - Files removed from the graph (orphaned).
  * @property {boolean} includesChanged - Whether the include structure changed.
  * @property {boolean} keywordsChanged - Whether keywords changed.
- * @property {boolean} [requiresFullRebuild] - PATH cards changed; caller should invalidate root and rebuild.
+ * @property {boolean} [requiresFullRebuild] - PATH/structure changed or rich indexes need refresh; caller must rebuild before publication.
  */
 
 /**
@@ -113,7 +117,7 @@ function createGraphUpdater({
      */
     function resolveSearchPathsForFile(resolvedPath, newIncludes, snapshot) {
         const fromSnapshot = getEffectiveSearchPathsFromSnapshot(resolvedPath, snapshot);
-        if (Array.isArray(fromSnapshot) && fromSnapshot.length > 0) {
+        if (fromSnapshot) {
             return fromSnapshot;
         }
         return newIncludes.searchPaths || [path.dirname(resolvedPath)];
@@ -144,13 +148,12 @@ function createGraphUpdater({
     }
 
     async function updateFile(changedFilePath, snapshot) {
-        const resolvedPath = resolveFile(changedFilePath);
         const { graph, keywordMap, files } = snapshot;
 
         // Check if file is part of this project
-        const fileKey = normalizeKey(resolvedPath);
-        const isTracked = files.some(f => normalizeKey(f) === fileKey);
-        if (!isTracked) {
+        const fileKey = normalizeKey(changedFilePath);
+        const resolvedPath = files.find(file => normalizeKey(file) === fileKey);
+        if (!resolvedPath) {
             return {
                 changed: false,
                 addedFiles: [],
@@ -167,8 +170,8 @@ function createGraphUpdater({
             const includeResult = await collectIncludeDirectivesFromFile(resolvedPath);
             newIncludes = includeResult;
             newKeywords = await collectKeywordsFromFile(resolvedPath);
-        } catch (_error) {
-            // File may have been deleted or become unreadable
+        } catch (error) {
+            if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
             return removeFile(changedFilePath, snapshot);
         }
 
@@ -187,6 +190,14 @@ function createGraphUpdater({
         }
 
         const searchPaths = resolveSearchPathsForFile(resolvedPath, newIncludes, snapshot);
+
+        // Resolve once before mutating either keywords or graph records.
+        const resolvedIncludes = [];
+        for (const entry of newIncludes.includeEntries) {
+            const resolved = await resolveInclude(entry.fileName, searchPaths);
+            const canonical = resolved && (files.find(file => normalizeKey(file) === normalizeKey(resolved)) || resolved);
+            resolvedIncludes.push({ entry, resolved: canonical });
+        }
 
         // --- Update keywords ---
         let keywordsChanged = false;
@@ -212,134 +223,72 @@ function createGraphUpdater({
             }
         }
 
-        // --- Update includes ---
+        // Child membership and ordered statement metadata have different responsibilities.
         const oldChildren = graph.getChildren(resolvedPath);
-        const newChildPaths = [];
-
-        for (const entry of newIncludes.includeEntries) {
-            const resolved = await resolveInclude(entry.fileName, searchPaths);
-            if (resolved) {
-                newChildPaths.push(resolved);
-            }
-        }
-
         const oldChildSet = new Set(oldChildren.map(normalizeKey));
-        const newChildSet = new Set(newChildPaths.map(normalizeKey));
-
+        const newChildSet = new Set(resolvedIncludes.filter(item => item.resolved).map(item => normalizeKey(item.resolved)));
         const includesChanged = oldChildSet.size !== newChildSet.size ||
-            [...oldChildSet].some(k => !newChildSet.has(k));
+            [...oldChildSet].some(key => !newChildSet.has(key));
+        const fromChangedFile = entry => normalizeKey(entry.fromFile) === fileKey;
+        const previousOccurrences = graph.includeOccurrences.filter(fromChangedFile);
+        const insertionIndex = graph.includeOccurrences.findIndex(fromChangedFile);
+        graph.includeOccurrences = graph.includeOccurrences.filter(entry => !fromChangedFile(entry));
+        const retainedOccurrenceCount = graph.includeOccurrences.length;
+
+        for (const child of oldChildren) {
+            graph.parents.set(child, graph.getParents(child).filter(parent => normalizeKey(parent) !== fileKey));
+        }
+        graph.children.set(resolvedPath, []);
+        graph.includeEntries.set(resolvedPath, []);
+        graph.missingFiles = graph.missingFiles.filter(entry => !fromChangedFile(entry));
+        graph.cycles = graph.cycles.filter(entry => !fromChangedFile(entry));
 
         const addedFiles = [];
-        const removedFiles = [];
-
-        if (includesChanged) {
-            // Clear old edges from this file
-            const childrenList = graph.children.get(resolvedPath);
-            if (childrenList) {
-                for (const oldChild of [...childrenList]) {
-                    // Remove parent reference
-                    const parentList = graph.parents.get(oldChild);
-                    if (parentList) {
-                        const idx = parentList.indexOf(resolvedPath);
-                        if (idx >= 0) parentList.splice(idx, 1);
-                    }
-                }
-                childrenList.length = 0;
+        const children = includeChildren(graph);
+        for (const { entry, resolved } of resolvedIncludes) {
+            if (!resolved) {
+                const candidatePaths = [...new Map(searchPaths.map(searchPath => {
+                    const candidate = path.resolve(searchPath, entry.fileName);
+                    return [normalizeKey(candidate), candidate];
+                })).values()];
+                graph.addMissingFile({
+                    ...entry,
+                    fromFile: resolvedPath,
+                    filePath: candidatePaths[0] || path.resolve(path.dirname(resolvedPath), entry.fileName),
+                    candidatePaths,
+                });
+                continue;
             }
-
-            // Clear old include entries for this file
-            graph.includeEntries.set(resolvedPath, []);
-
-            // Remove old missing file records from this file
-            snapshot.missingFiles = (snapshot.missingFiles || []).filter(
-                m => normalizeKey(m.fromFile) !== fileKey
-            );
-            graph.missingFiles = graph.missingFiles.filter(
-                m => normalizeKey(m.fromFile) !== fileKey
-            );
-
-            // Remove cycles from this file
-            snapshot.cycles = (snapshot.cycles || []).filter(
-                c => normalizeKey(c.fromFile) !== fileKey
-            );
-            graph.cycles = graph.cycles.filter(
-                c => normalizeKey(c.fromFile) !== fileKey
-            );
-
-            // Add new edges
-            for (const entry of newIncludes.includeEntries) {
-                const resolved = await resolveInclude(entry.fileName, searchPaths);
-                if (!resolved) {
-                    const candidatePaths = [];
-                    const seenCandidates = new Set();
-                    for (const searchPath of searchPaths) {
-                        const candidatePath = path.resolve(searchPath, entry.fileName);
-                        const candidateKey = normalizeKey(candidatePath);
-                        if (seenCandidates.has(candidateKey)) continue;
-                        seenCandidates.add(candidateKey);
-                        candidatePaths.push(candidatePath);
-                    }
-                    const missingRecord = {
-                        fromFile: resolvedPath,
-                        fileName: entry.fileName,
-                        lineIndex: entry.lineIndex,
-                        startChar: entry.startChar,
-                        endChar: entry.endChar,
-                        filePath: candidatePaths[0] || path.resolve(path.dirname(resolvedPath), entry.fileName),
-                        candidatePaths,
-                    };
-                    graph.addMissingFile(missingRecord);
-                    if (!snapshot.missingFiles) snapshot.missingFiles = [];
-                    snapshot.missingFiles.push(missingRecord);
-                    continue;
-                }
-
-                graph.addIncludeEdge(resolvedPath, resolved);
-
-                // If this is a newly added file, track it
-                if (!files.some(f => normalizeKey(f) === normalizeKey(resolved))) {
-                    files.push(resolved);
-                    addedFiles.push(resolved);
-                }
+            const cyclePath = findIncludePath(children, resolved, resolvedPath);
+            if (cyclePath) {
+                graph.addCycle({ ...entry, fromFile: resolvedPath, toFile: resolved, path: [resolvedPath, ...cyclePath] });
+                graph.addIncludeOccurrence(resolvedPath, { ...entry, filePath: resolved, cycle: true });
+            } else {
+                graph.addIncludeEdge(resolvedPath, resolved, { ...entry, filePath: resolved });
             }
-
-            // Find orphaned files (files that no longer have any parent in the graph)
-            for (const oldChild of oldChildren) {
-                const childKey = normalizeKey(oldChild);
-                if (newChildSet.has(childKey)) continue;
-
-                const parents = graph.getParents(oldChild);
-                if (parents.length === 0 && normalizeKey(oldChild) !== normalizeKey(snapshot.rootFile)) {
-                    // This file is orphaned - collect it and its subtree
-                    const orphans = collectOrphans(oldChild, graph, snapshot.rootFile);
-                    for (const orphan of orphans) {
-                        const orphanKey = normalizeKey(orphan);
-                        const idx = files.findIndex(f => normalizeKey(f) === orphanKey);
-                        if (idx >= 0) {
-                            files.splice(idx, 1);
-                            removedFiles.push(orphan);
-                        }
-                        // Clean up keywords for removed files
-                        for (const [keyword, entries] of keywordMap.entries()) {
-                            const filtered = entries.filter(e => normalizeKey(e.filePath) !== orphanKey);
-                            if (filtered.length === 0) {
-                                keywordMap.delete(keyword);
-                            } else {
-                                keywordMap.set(keyword, filtered);
-                            }
-                        }
-                    }
-                }
+            if (!files.some(file => normalizeKey(file) === normalizeKey(resolved))) {
+                files.push(resolved);
+                addedFiles.push(resolved);
             }
         }
+        const updatedOccurrences = graph.includeOccurrences.splice(retainedOccurrenceCount);
+        graph.includeOccurrences.splice(insertionIndex < 0 ? retainedOccurrenceCount : insertionIndex, 0, ...updatedOccurrences);
+        const metadataChanged = !isDeepStrictEqual(previousOccurrences, updatedOccurrences);
+        const removedFiles = pruneFiles(snapshot, collectOrphans(graph, snapshot.rootFile, files));
+        snapshot.missingFiles = graph.missingFiles;
+        snapshot.cycles = graph.cycles;
+        if (snapshot.stats) snapshot.stats.includeOccurrenceCount = graph.includeOccurrences.length;
+        // The legacy collectors cannot rebuild rich file indexes, new subtrees or ancestor cycle contexts.
+        const requiresFullRebuild = includesChanged || Boolean(snapshot.fileIndexes) || graph.cycles.length > 0;
+        if (requiresFullRebuild) graph.includeOccurrencesComplete = false;
 
         return {
-            changed: keywordsChanged || includesChanged,
+            changed: keywordsChanged || includesChanged || metadataChanged,
             addedFiles,
             removedFiles,
             includesChanged,
             keywordsChanged,
-            requiresFullRebuild: false,
+            requiresFullRebuild,
         };
     }
 
@@ -353,62 +302,24 @@ function createGraphUpdater({
     function removeFile(removedFilePath, snapshot) {
         const resolvedPath = resolveFile(removedFilePath);
         const fileKey = normalizeKey(resolvedPath);
-        const { graph, keywordMap, files } = snapshot;
+        const { graph, files } = snapshot;
 
         const isTracked = files.some(f => normalizeKey(f) === fileKey);
         if (!isTracked) {
             return { changed: false, addedFiles: [], removedFiles: [], includesChanged: false, keywordsChanged: false };
         }
 
-        // Remove keywords
-        for (const [keyword, entries] of keywordMap.entries()) {
-            const filtered = entries.filter(e => normalizeKey(e.filePath) !== fileKey);
-            if (filtered.length === 0) {
-                keywordMap.delete(keyword);
-            } else {
-                keywordMap.set(keyword, filtered);
-            }
-        }
-
-        // Remove from files list
-        const idx = files.findIndex(f => normalizeKey(f) === fileKey);
-        if (idx >= 0) files.splice(idx, 1);
-
-        // Remove edges
-        const children = graph.getChildren(resolvedPath);
-        for (const child of children) {
-            const parentList = graph.parents.get(child);
-            if (parentList) {
-                const pIdx = parentList.indexOf(resolvedPath);
-                if (pIdx >= 0) parentList.splice(pIdx, 1);
-            }
-        }
-
-        const parents = graph.getParents(resolvedPath);
-        for (const parent of parents) {
-            const childList = graph.children.get(parent);
-            if (childList) {
-                const cIdx = childList.indexOf(resolvedPath);
-                if (cIdx >= 0) childList.splice(cIdx, 1);
-            }
-            const entries = graph.includeEntries.get(parent);
-            if (entries) {
-                const filtered = entries.filter(e => normalizeKey(e.filePath) !== fileKey);
-                graph.includeEntries.set(parent, filtered);
-            }
-        }
-
-        graph.children.delete(resolvedPath);
-        graph.includeEntries.delete(resolvedPath);
-        graph.parents.delete(resolvedPath);
+        graph.includeOccurrencesComplete = false;
+        const removedFiles = pruneFiles(snapshot, [resolvedPath]);
+        removedFiles.push(...pruneFiles(snapshot, collectOrphans(graph, snapshot.rootFile, files)));
 
         return {
             changed: true,
             addedFiles: [],
-            removedFiles: [resolvedPath],
+            removedFiles,
             includesChanged: true,
             keywordsChanged: true,
-            requiresFullRebuild: false,
+            requiresFullRebuild: true,
         };
     }
 
@@ -416,37 +327,99 @@ function createGraphUpdater({
 }
 
 /**
- * Collects all orphaned files reachable from a starting node that have no other parents.
- * 
- * @param {string} startFile - Starting orphan file.
+ * Collects tracked files no longer reachable from the root, including detached cycles.
+ *
  * @param {ProjectGraph} graph - The project graph.
  * @param {string} rootFile - The project root file (never orphaned).
+ * @param {string[]} files - Tracked files.
  * @returns {string[]} List of orphaned file paths.
  */
-function collectOrphans(startFile, graph, rootFile) {
-    const orphans = [];
-    const queue = [startFile];
-    const visited = new Set();
-
-    while (queue.length > 0) {
-        const current = queue.shift();
+function collectOrphans(graph, rootFile, files) {
+    // ponytail: one full graph traversal per structural edit; use incremental reachability if profiling shows a bottleneck.
+    const rootKey = normalizeKey(rootFile);
+    const queue = [files.find(file => normalizeKey(file) === rootKey) || rootFile];
+    const children = includeChildren(graph);
+    const reachable = new Set();
+    while (queue.length) {
+        const current = queue.pop();
         const key = normalizeKey(current);
-        if (visited.has(key)) continue;
-        visited.add(key);
+        if (reachable.has(key)) continue;
+        reachable.add(key);
+        queue.push(...(children.get(key) || []));
+    }
+    return files.filter(file => !reachable.has(normalizeKey(file)));
+}
 
-        if (normalizeKey(current) === normalizeKey(rootFile)) continue;
+/** Include cycle statements participate in reachability even though collapsed edges omit them. */
+function includeChildren(graph) {
+    const children = new Map([...graph.children].map(([file, entries]) => [normalizeKey(file), [...entries]]));
+    for (const entry of graph.includeOccurrences) {
+        if (entry.missing) continue;
+        const key = normalizeKey(entry.fromFile);
+        if (!children.has(key)) children.set(key, []);
+        children.get(key).push(entry.filePath);
+    }
+    return children;
+}
 
-        const parents = graph.getParents(current);
-        if (parents.length > 0) continue; // Still reachable
-
-        orphans.push(current);
-        const children = graph.getChildren(current);
-        for (const child of children) {
-            queue.push(child);
+/** Find one closing path for a changed Include statement, without recursive cycle expansion. */
+function findIncludePath(children, start, target) {
+    // ponytail: one graph search per Include statement; cache paths if measured edit latency requires it.
+    const targetKey = normalizeKey(target);
+    const pending = [start];
+    const previous = new Map([[normalizeKey(start), null]]);
+    while (pending.length) {
+        const current = pending.pop();
+        if (normalizeKey(current) === targetKey) {
+            const found = [];
+            for (let file = current; file; file = previous.get(normalizeKey(file))) found.unshift(file);
+            return found;
+        }
+        for (const child of children.get(normalizeKey(current)) || []) {
+            const key = normalizeKey(child);
+            if (previous.has(key)) continue;
+            previous.set(key, current);
+            pending.push(child);
         }
     }
+    return null;
+}
 
-    return orphans;
+/** Remove files and every dependent graph/snapshot record together. */
+function pruneFiles(snapshot, removedFiles) {
+    if (!removedFiles.length) return [];
+    const removed = new Set(removedFiles.map(normalizeKey));
+    const keepPath = file => !removed.has(normalizeKey(file));
+    const { graph, files, keywordMap } = snapshot;
+    const trackedRemoved = files.filter(file => !keepPath(file));
+    files.splice(0, files.length, ...files.filter(keepPath));
+    for (const [keyword, entries] of keywordMap) {
+        const retained = entries.filter(entry => keepPath(entry.filePath));
+        if (retained.length) keywordMap.set(keyword, retained);
+        else keywordMap.delete(keyword);
+    }
+    for (const map of [graph.children, graph.parents, graph.includeEntries]) {
+        for (const [file, entries] of map) {
+            if (!keepPath(file)) map.delete(file);
+            else map.set(file, entries.filter(entry => keepPath(typeof entry === 'string' ? entry : entry.filePath)));
+        }
+    }
+    graph.includeOccurrences = graph.includeOccurrences.filter(entry => keepPath(entry.fromFile) && keepPath(entry.filePath));
+    graph.missingFiles = graph.missingFiles.filter(entry => keepPath(entry.fromFile));
+    graph.cycles = graph.cycles.filter(entry => keepPath(entry.fromFile) && entry.path.every(keepPath));
+    snapshot.missingFiles = graph.missingFiles;
+    snapshot.cycles = graph.cycles;
+    for (const name of ['fileIndexes', 'effectiveSearchPathsByFile']) {
+        const collection = snapshot[name];
+        if (collection instanceof Map) {
+            for (const file of collection.keys()) if (!keepPath(file)) collection.delete(file);
+        } else if (Array.isArray(collection)) {
+            snapshot[name] = collection.filter(([file]) => keepPath(file));
+        } else if (collection) {
+            for (const file of Object.keys(collection)) if (!keepPath(file)) delete collection[file];
+        }
+    }
+    return trackedRemoved;
 }
 
 module.exports = {

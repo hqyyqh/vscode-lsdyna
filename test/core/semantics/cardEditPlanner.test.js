@@ -327,4 +327,33 @@ describe('verified conditional-card planner', () => {
         assert.equal(result.cardsToAppend.length, 1);
         assert.equal(result.insertion.text, `${result.cardsToAppend[0].headerText}\r\n${' '.repeat(80)}\r\n`);
     });
+
+    it('rejects a borrowed layout whose target shrinks during the boundary read', () => {
+        const { ManualSemanticCatalog } = require('../../../out/core/semantics/manualSemanticCatalog');
+        const catalog = new ManualSemanticCatalog();
+        const rule = catalog.rulesForKeyword(keyword).find(item => item.cardEditLayout);
+        assert.strictEqual(catalog.rulesForKeyword(keyword).find(item => item.cardEditLayout), rule);
+        const lines = [keyword, ...coreCards(2), '*END'];
+        const document = fakeDoc(lines);
+        const readLine = document.lineAt;
+        document.lineAt = index => {
+            const line = readLine(index);
+            if (index === 3) rule.cardEditLayout.targetPhysicalCard = 1;
+            return line;
+        };
+
+        const rejected = planVerifiedConditionalCards(document, 0, fieldData, { catalog });
+        assert.equal(rejected.status, 'unexpected-card-count');
+        assert.equal(rejected.reason, 'physical-card-count-exceeds-layout');
+        assert.equal(rejected.existingPhysicalCards, 2);
+        assert.equal(rejected.insertion, null);
+        assert.deepEqual(rejected.cardsToAppend, []);
+
+        // A later call revalidates the current borrowed layout; cache eviction reloads the source.
+        assert.equal(plan(lines, { catalog }).result.status, 'schema-mismatch');
+        catalog.clearCache();
+        const restored = plan(lines, { catalog }).result;
+        assert.equal(restored.status, 'ready');
+        assert.deepEqual(restored.cardsToAppend.map(card => card.physicalCardIndex), [3, 4, 5, 6, 7]);
+    });
 });

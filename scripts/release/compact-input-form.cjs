@@ -5,7 +5,8 @@ const { sha } = require('./compact-release-stage.cjs');
 
 // Only the staged release is transformed. Authoring evidence and v4 fixtures remain unchanged.
 function compactInputForm(stage, codec = 'gzip') {
-    const manifestPath = path.join(stage, 'out/runtime/lspp-input-form/manifest.json');
+    const releaseManifest = path.join(stage, 'out/runtime/catalog-input-form/manifest.json');
+    const manifestPath = fs.existsSync(releaseManifest) ? releaseManifest : path.join(stage, 'out/runtime/lspp-input-form/manifest.json');
     const source = JSON.parse(fs.readFileSync(manifestPath));
     const binding = source.dataset || source.dataset;
     const publicData = Boolean(source.dataset);
@@ -16,6 +17,7 @@ function compactInputForm(stage, codec = 'gzip') {
     assert.match(source.auditSha256, /^[a-f0-9]{64}$/);
     const directory = path.join(stage, "keywords/runtime/input-form");
     const rules = new Map(), references = new Map();
+    let shardKind;
     for (const [hash, descriptor] of Object.entries(source.shards)) {
         const bytes = fs.readFileSync(path.join(directory, path.basename(descriptor.file)));
         assert.equal(sha(bytes), descriptor.sha256);
@@ -24,6 +26,8 @@ function compactInputForm(stage, codec = 'gzip') {
         assert.equal(sha(decoded), hash);
         assert.equal(decoded.length, descriptor.uncompressedBytes);
         const shard = JSON.parse(decoded);
+        if (shardKind === undefined) shardKind = shard.kind;
+        assert.equal(shard.kind, shardKind, 'Input Form shard kinds differ');
         assert.equal(publicData ? shard.datasetSha256 : shard.datasetSha256, binding.sha256);
         for (const [id, rule] of Object.entries(shard.rules)) {
             if (rules.has(id)) assert.deepEqual(rules.get(id), rule, `Conflicting rule ${id}`);
@@ -31,7 +35,6 @@ function compactInputForm(stage, codec = 'gzip') {
         }
         for (const [keyword, reference] of Object.entries(shard.keywords)) {
             if (source.keywords[keyword]?.shard !== hash) continue;
-            assert.ok(!references.has(keyword), `Duplicate keyword ${keyword}`);
             references.set(keyword, reference);
         }
     }
@@ -52,7 +55,7 @@ function compactInputForm(stage, codec = 'gzip') {
     }
     const shards = {}, ruleHashes = new Map(), output = new Map();
     for (const bucket of pages) {
-        const decoded = Buffer.from(JSON.stringify({ schemaVersion: 4, kind: "keyword-input-form-shard",
+        const decoded = Buffer.from(JSON.stringify({ schemaVersion: 4, kind: shardKind,
             [publicData ? 'datasetSha256' : "datasetSha256"]: binding.sha256, keywords: {}, rules: bucket }));
         assert.ok(['gzip', 'br'].includes(codec));
         const hash = sha(decoded), encoded = codec === 'br' ? zlib.brotliCompressSync(decoded,

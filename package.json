@@ -31,6 +31,7 @@
         "onCommand:extension.searchIncludeTree",
         "onCommand:extension.searchKeywordIndex",
         "onCommand:extension.keywordIndexSetLocal",
+        "onCommand:extension.keywordIndexSetRecursive",
         "onCommand:extension.keywordIndexChooseScope",
         "onCommand:extension.keywordIndexRefresh",
         "onCommand:extension.addCustomValidKeyword",
@@ -64,6 +65,11 @@
         "onCommand:extension.searchLsdynaReferenceInWorkspace",
         "onCommand:extension.queryLsdynaEntityId",
         "onCommand:extension.entityReferences.refresh",
+        "onCommand:extension.entityReferences.search",
+        "onCommand:extension.entityReferences.toggleFollow",
+        "onCommand:extension.entityReferences.toggleFollowActive",
+        "onCommand:extension.entityReferences.setScopeFile",
+        "onCommand:extension.entityReferences.setScopeProject",
         "onCommand:extension.entityReferences.pin",
         "onCommand:extension.entityReferences.unpin",
         "onCommand:extension.entityReferences.remove",
@@ -78,6 +84,7 @@
         "onCommand:extension.pickOfficialFieldValue",
         "onCommand:extension.keywordIndexChooseLayout",
         "onCommand:extension.keywordIndexToggleFollow",
+        "onCommand:extension.keywordIndexToggleFollowActive",
         "onCommand:extension.openLsdynaLargeFileViewer",
         "onCustomEditor:lsdyna.largeFileViewer",
         "onCommand:extension.keywordOptions.apply",
@@ -102,6 +109,8 @@
         "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts && vitest run --config webview/entity-references/vitest.config.ts && vitest run --config webview/keyword-options/vitest.config.ts && vitest run --config webview/large-file-viewer/vitest.config.ts",
         "pretest": "npm run build:webview",
         "watch": "tsc -watch -p .",
+        "prepare:debug": "node scripts/release/build-public-runtime-data.cjs --if-current && npm run typecheck:webview:debug",
+        "typecheck:webview:debug": "tsc --noEmit --incremental --tsBuildInfoFile out/debug-manual.tsbuildinfo -p webview/manual-reader/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-references.tsbuildinfo -p webview/entity-references/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-keywords.tsbuildinfo -p webview/keyword-options/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-large-file.tsbuildinfo -p webview/large-file-viewer/tsconfig.json",
         "test": "npm run compile && npm run test:unit && npm run test:data",
         "test:editor-safety:host": "npm run compile && node scripts/host/run-editor-safety-extension-host.cjs",
         "test:editor-safety:close-dialog": "npm run compile && node scripts/host/run-editor-safety-close-dialog.cjs",
@@ -113,6 +122,7 @@
         "build:field-schema-runtime": "node scripts/build/generate-field-schema-runtime.cjs",
         "build:field-help-runtime": "node scripts/build/generate-field-help-runtime.cjs",
         "build:runtime-data": "node scripts/release/build-public-runtime-data.cjs",
+        "build:native-sqlite": "node scripts/release/build-native-sqlite.cjs",
         "build": "npm run vscode:prepublish",
         "data:build": "node scripts/build/keywords/data.cjs --build",
         "data:update": "node scripts/build/keywords/data.cjs --update",
@@ -132,12 +142,16 @@
         "@types/vscode": "^1.100.0",
         "@vitejs/plugin-react": "^6.0.3",
         "@vscode-elements/elements": "^2.5.1",
+        "@vscode/codicons": "0.0.45",
         "@vscode/test-electron": "^2.5.2",
-        "@vscode/vsce": "^3.9.2",
+        "@vscode/vsce": "^4.0.0",
         "esbuild": "0.28.2",
         "github-markdown-css": "^5.9.0",
+        "htmlparser2": "^12.0.0",
+        "js-yaml": "^5.4.3",
         "jsdom": "^29.1.1",
-        "katex": "^0.16.47",
+        "katex": "^0.19.0",
+        "markdown-it": "^15.0.2",
         "mocha": "^11.7.6",
         "ovsx": "^1.0.1",
         "react": "^19.2.7",
@@ -146,6 +160,7 @@
         "rehype-katex": "^7.0.1",
         "rehype-raw": "^7.0.0",
         "remark-gfm": "^4.0.1",
+        "semver": "^7.8.5",
         "typescript": "^6.0.3",
         "vite": "^8.1.4",
         "vitest": "^4.1.10",
@@ -337,6 +352,11 @@
             {
                 "command": "extension.keywordIndexSetLocal",
                 "title": "%commands.keywordIndexSetLocal.title%",
+                "icon": "$(library)"
+            },
+            {
+                "command": "extension.keywordIndexSetRecursive",
+                "title": "%commands.keywordIndexSetRecursive.title%",
                 "icon": "$(file-text)"
             },
             {
@@ -472,6 +492,33 @@
                 "icon": "$(refresh)"
             },
             {
+                "command": "extension.entityReferences.search",
+                "title": "%commands.entityReferences.search.title%",
+                "icon": "$(search)"
+            },
+            {
+                "command": "extension.entityReferences.toggleFollow",
+                "title": "%commands.entityReferences.toggleFollow.title%",
+                "icon": "$(eye-closed)",
+                "enablement": "!lsdynaEntityReferences.pinned"
+            },
+            {
+                "command": "extension.entityReferences.toggleFollowActive",
+                "title": "%commands.entityReferences.toggleFollow.title%",
+                "icon": "$(eye)",
+                "enablement": "!lsdynaEntityReferences.pinned"
+            },
+            {
+                "command": "extension.entityReferences.setScopeFile",
+                "title": "%commands.entityReferences.setScopeFile.title%",
+                "icon": "$(library)"
+            },
+            {
+                "command": "extension.entityReferences.setScopeProject",
+                "title": "%commands.entityReferences.setScopeProject.title%",
+                "icon": "$(file-text)"
+            },
+            {
                 "command": "extension.entityReferences.pin",
                 "title": "%commands.entityReferences.pin.title%",
                 "icon": "$(pin)"
@@ -479,7 +526,7 @@
             {
                 "command": "extension.entityReferences.unpin",
                 "title": "%commands.entityReferences.unpin.title%",
-                "icon": "$(pinned-dirty)"
+                "icon": "$(pinned)"
             },
             {
                 "command": "extension.entityReferences.remove",
@@ -576,7 +623,12 @@
             {
                 "command": "extension.keywordIndexToggleFollow",
                 "title": "%commands.keywordIndexToggleFollow.title%",
-                "icon": "$(target)"
+                "icon": "$(eye-closed)"
+            },
+            {
+                "command": "extension.keywordIndexToggleFollowActive",
+                "title": "%commands.keywordIndexToggleFollow.title%",
+                "icon": "$(eye)"
             },
             {
                 "command": "extension.openLsdynaLargeFileViewer",
@@ -924,6 +976,20 @@
                     ],
                     "description": "%config.include.pathCaseCheck.description%"
                 },
+                "lsdyna.cache.entityIndexMemoryMaxMiB": {
+                    "type": "number",
+                    "default": 512,
+                    "minimum": 128,
+                    "maximum": 4096,
+                    "description": "%config.cache.entityIndexMemoryMaxMiB.description%"
+                },
+                "lsdyna.cache.entityIndexDiskMaxMiB": {
+                    "type": "number",
+                    "default": 4096,
+                    "minimum": 128,
+                    "maximum": 65536,
+                    "description": "%config.cache.entityIndexDiskMaxMiB.description%"
+                },
                 "lsdyna.cache.memoryMaxMiB": {
                     "type": "number",
                     "default": 48,
@@ -936,14 +1002,18 @@
                     "default": 256,
                     "minimum": 32,
                     "maximum": 256,
-                    "description": "%config.cache.projectSnapshotDiskMaxMiB.description%"
+                    "description": "%config.cache.projectSnapshotDiskMaxMiB.description%",
+                    "deprecationMessage": "%config.cache.legacyDiskBudget.deprecationMessage%",
+                    "markdownDeprecationMessage": "%config.cache.legacyDiskBudget.markdownDeprecationMessage%"
                 },
                 "lsdyna.cache.fileScanDiskMaxMiB": {
                     "type": "number",
                     "default": 256,
                     "minimum": 32,
                     "maximum": 256,
-                    "description": "%config.cache.fileScanDiskMaxMiB.description%"
+                    "description": "%config.cache.fileScanDiskMaxMiB.description%",
+                    "deprecationMessage": "%config.cache.legacyDiskBudget.deprecationMessage%",
+                    "markdownDeprecationMessage": "%config.cache.legacyDiskBudget.markdownDeprecationMessage%"
                 },
                 "lsdyna.cache.fileScanMemoryMaxMiB": {
                     "type": "number",
@@ -972,6 +1042,16 @@
             }
         },
         "menus": {
+            "commandPalette": [
+                {
+                    "command": "extension.keywordIndexToggleFollowActive",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.entityReferences.toggleFollowActive",
+                    "when": "false"
+                }
+            ],
             "view/title": [
                 {
                     "command": "extension.searchIncludeTree",
@@ -989,8 +1069,13 @@
                     "group": "navigation@1"
                 },
                 {
-                    "command": "extension.keywordIndexChooseScope",
-                    "when": "view == lsdynaKeywordIndex",
+                    "command": "extension.keywordIndexSetLocal",
+                    "when": "view == lsdynaKeywordIndex && (lsdyna.keywordIndexMode == 'recursive' || lsdyna.keywordIndexScanning)",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "extension.keywordIndexSetRecursive",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'local' && !lsdyna.keywordIndexScanning",
                     "group": "navigation@2"
                 },
                 {
@@ -1001,7 +1086,42 @@
                 {
                     "command": "extension.entityReferences.refresh",
                     "when": "view == lsdynaEntityReferences",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "extension.entityReferences.setScopeFile",
+                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.scope == 'project'",
                     "group": "navigation@1"
+                },
+                {
+                    "command": "extension.entityReferences.setScopeProject",
+                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.scope != 'project'",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "extension.entityReferences.search",
+                    "when": "view == lsdynaEntityReferences",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "extension.entityReferences.toggleFollow",
+                    "when": "view == lsdynaEntityReferences && !lsdynaEntityReferences.following",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "extension.entityReferences.toggleFollowActive",
+                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.following",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "extension.entityReferences.pin",
+                    "when": "view == lsdynaEntityReferences && !lsdynaEntityReferences.pinned",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.entityReferences.unpin",
+                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.pinned",
+                    "group": "navigation@5"
                 },
                 {
                     "command": "extension.keywordIndexChooseLayout",
@@ -1010,7 +1130,12 @@
                 },
                 {
                     "command": "extension.keywordIndexToggleFollow",
-                    "when": "view == lsdynaKeywordIndex",
+                    "when": "view == lsdynaKeywordIndex && !lsdyna.keywordIndexFollowCursor",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "extension.keywordIndexToggleFollowActive",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexFollowCursor",
                     "group": "navigation@4"
                 }
             ],
@@ -1106,6 +1231,7 @@
         ]
     },
     "dependencies": {
+        "@vscode/sqlite3": "5.1.14-vscode",
         "vscode-languageclient": "^10.1.0",
         "vscode-languageserver": "^10.1.0",
         "vscode-messenger": "^0.6.1",
@@ -1113,6 +1239,12 @@
     },
     "overrides": {
         "serialize-javascript": "^7.0.6",
-        "diff": "^8.0.4"
+        "diff": "^8.0.4",
+        "rehype-katex": {
+            "katex": "$katex"
+        },
+        "ovsx": {
+            "@vscode/vsce": "$@vscode/vsce"
+        }
     }
 }

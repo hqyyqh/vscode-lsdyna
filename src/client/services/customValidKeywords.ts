@@ -53,7 +53,7 @@ function normalizeCustomKeywordEntry(raw) {
 function matchKey(entry) {
     const normalized = normalizeCustomKeywordEntry(entry);
     if (!normalized) return '';
-    return normalized.startsWith('*') ? normalized.slice(1) : normalized;
+    return normalized.slice(1);
 }
 
 /**
@@ -66,7 +66,7 @@ function normalizeList(list) {
     for (const item of Array.isArray(list) ? list : []) {
         const n = normalizeCustomKeywordEntry(item);
         if (!n) continue;
-        const key = matchKey(n);
+        const key = n.slice(1);
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(n);
@@ -101,13 +101,19 @@ function listCustomValidKeywords(options: { config?: any } = {}) {
  * Layered inspect of the setting.
  *
  * @param {{ config?: any }} [options]
- * @returns {{ effective: string[], global: string[]|undefined, workspace: string[]|undefined, default: string[]|undefined }}
+ * @returns {{ effective: string[], effectiveSource: string, global: string[]|undefined, workspace: string[]|undefined, default: string[]|undefined }}
  */
 function inspectCustomValidKeywords(options: { config?: any } = {}) {
     const config = resolveConfig(options.config);
     const info = typeof config.inspect === 'function' ? config.inspect(CONFIG_KEY) : null;
     return {
         effective: listCustomValidKeywords({ config }),
+        effectiveSource: !info || ['workspaceFolderValue', 'defaultLanguageValue', 'globalLanguageValue',
+            'workspaceLanguageValue', 'workspaceFolderLanguageValue'].some(key => info[key] != null)
+            ? 'unknown'
+            : info.workspaceValue != null ? 'workspace'
+            : info.globalValue != null ? 'global'
+            : info.defaultValue != null ? 'default' : 'unknown',
         global: info && info.globalValue != null ? normalizeList(info.globalValue) : undefined,
         workspace: info && info.workspaceValue != null ? normalizeList(info.workspaceValue) : undefined,
         default: info && info.defaultValue != null
@@ -253,7 +259,7 @@ async function removeCustomValidKeyword(options) {
     }
     const config = resolveConfig(configOpt);
     const target = resolveTarget(targetOpt);
-    const removeKey = matchKey(entry);
+    const removeKey = entry.slice(1);
     const info = typeof config.inspect === 'function' ? config.inspect(CONFIG_KEY) : null;
     const layerRaw = target === vscode.ConfigurationTarget.Workspace
         ? (info && info.workspaceValue)
@@ -262,7 +268,7 @@ async function removeCustomValidKeyword(options) {
         return { ok: false, status: 'missing', entry };
     }
     const layer = normalizeList(layerRaw);
-    const next = layer.filter(item => matchKey(item) !== removeKey);
+    const next = layer.filter(item => item.slice(1) !== removeKey);
     if (next.length === layer.length) {
         return { ok: false, status: 'missing', entry, list: layer };
     }
@@ -292,11 +298,11 @@ async function replaceCustomValidKeyword(options) {
     if (layerRaw == null) {
         return { ok: false, status: 'missing' };
     }
-    const fromKey = matchKey(fromEntry);
+    const fromKey = fromEntry.slice(1);
     const layer = normalizeList(layerRaw);
     let found = false;
     const mapped = layer.map(item => {
-        if (matchKey(item) === fromKey) {
+        if (item.slice(1) === fromKey) {
             found = true;
             return toEntry;
         }
@@ -326,29 +332,22 @@ function suggestPrefixWildcard(keyword) {
 }
 
 /**
- * Classify which layer currently owns an exact stored entry (for manage UI).
+ * Classify the effective array's supported settings layer (for manage UI).
+ * Effective-only, scoped or inconsistent adapter data has no writable owner.
  *
  * @param {string} keyword
  * @param {{ config?: any }} [options]
- * @returns {'workspace'|'global'|'default'|'none'}
+ * @returns {'workspace'|'global'|'default'|'unknown'|'none'}
  */
 function resolveEntrySource(keyword, options: { config?: any } = {}) {
-    const key = matchKey(normalizeCustomKeywordEntry(keyword) || keyword);
+    const key = matchKey(keyword);
     if (!key) return 'none';
     const layers = inspectCustomValidKeywords(options);
-    if (layers.workspace && layers.workspace.some(item => matchKey(item) === key)) {
-        return 'workspace';
-    }
-    if (layers.global && layers.global.some(item => matchKey(item) === key)) {
-        return 'global';
-    }
-    if (layers.default && layers.default.some(item => matchKey(item) === key)) {
-        return 'default';
-    }
-    if (layers.effective.some(item => matchKey(item) === key)) {
-        return 'global';
-    }
-    return 'none';
+    if (!layers.effective.some(item => item.slice(1) === key)) return 'none';
+    const stored = layers[layers.effectiveSource];
+    return Array.isArray(stored) && stored.length === layers.effective.length &&
+        stored.every((item, index) => item === layers.effective[index])
+        ? layers.effectiveSource : 'unknown';
 }
 
 module.exports = {

@@ -3,30 +3,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
-const WebSocket = globalThis.WebSocket || require('undici').WebSocket;
+const { fetchJson, openSocket, createCdp } = require('../../support/devtools.cjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Inspect and click the real workbench Hover, not a separately rendered Markdown fixture.
 exports.check = async (file, root, checks) => {
-    const targets = await (await fetch(`http://127.0.0.1:${process.env.LSDYNA_RELEASE_CDP_PORT}/json/list`)).json();
+    const targets = await fetchJson(`http://127.0.0.1:${process.env.LSDYNA_RELEASE_CDP_PORT}/json/list`);
     const target = targets.find(item => item.type === 'page' && item.url.includes('workbench'));
     assert.ok(target, 'VS Code workbench target');
-    const socket = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-    let id = 0;
-    const pending = new Map();
-    socket.onmessage = event => {
-        const message = JSON.parse(String(event.data)), request = pending.get(message.id);
-        if (!request) return;
-        pending.delete(message.id); clearTimeout(request.timer);
-        message.error ? request.reject(Error(message.error.message)) : request.resolve(message.result);
-    };
-    const call = (method, params = {}) => new Promise((resolve, reject) => {
-        const requestId = ++id;
-        const timer = setTimeout(() => { pending.delete(requestId); reject(Error(`CDP timeout: ${method}`)); }, 10000);
-        pending.set(requestId, { resolve, reject, timer });
-        socket.send(JSON.stringify({ id: requestId, method, params }));
-    });
+    const socket = await openSocket(target.webSocketDebuggerUrl);
+    const cdp = createCdp(socket, 10000), call = cdp.call;
     const evaluate = async expression => {
         const result = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
         assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
@@ -97,7 +83,6 @@ exports.check = async (file, root, checks) => {
         fs.writeFileSync(path.join(root, 'table-hover.json'), JSON.stringify(evidence, null, 2));
         checks.push('table-hover: 48 real DOM viewpoint switches, EN/ZH, definition/reference, caret inside/outside/boundary, selections and document preserved');
     } finally {
-        socket.close();
-        for (const request of pending.values()) clearTimeout(request.timer);
+        cdp.close();
     }
 };

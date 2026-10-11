@@ -22,6 +22,7 @@ const {
     throwIfCancellationRequested,
 } = require('../../core/scanner/scannerContracts');
 const protocol = require('../../shared/protocol');
+const { LSPErrorCodes } = require('vscode-languageserver-protocol');
 
 const DEFAULT_MAX_SNAPSHOT_BYTES = 48 * 1024 * 1024;
 
@@ -30,6 +31,8 @@ type IndexClientOptions = {
     getFileSignature?: (filePath: string) => Promise<any>;
     estimateSnapshotSize?: (snapshot: any) => number;
     maxSnapshotBytes?: number;
+    cacheSingleFileSnapshots?: boolean;
+    excludeMeshEntities?: boolean;
     manifestStore?: any;
     persistentCache?: any;
     languageClient?: any;
@@ -116,7 +119,8 @@ function areFileSignaturesEqual(left, right) {
     return left
         && right
         && left.mtimeMs === right.mtimeMs
-        && left.size === right.size;
+        && left.size === right.size
+        && left.sourceRevision === right.sourceRevision;
 }
 
 /**
@@ -181,15 +185,12 @@ async function isSnapshotValid(entry, getFileSignature) {
         return false;
     }
 
-    for (const trackedFile of entry.trackedFiles) {
-        try {
-            const currentSignature = await getFileSignature(trackedFile.filePath);
-            if (!areFileSignaturesEqual(currentSignature, trackedFile.signature)) {
-                return false;
-            }
-        } catch (_error) {
-            return false;
-        }
+    for (let offset = 0; offset < entry.trackedFiles.length; offset += 8) {
+        const valid = await Promise.all(entry.trackedFiles.slice(offset, offset + 8).map(async trackedFile => {
+            try { return areFileSignaturesEqual(await getFileSignature(trackedFile.filePath), trackedFile.signature); }
+            catch { return false; }
+        }));
+        if (valid.includes(false)) return false;
     }
 
     return true;
@@ -201,8 +202,8 @@ async function isSnapshotValid(entry, getFileSignature) {
  * @param {Object} snapshot - Snapshot object.
  * @returns {number} Byte count.
  */
-function estimateSnapshotSize(snapshot) {
-    return require('../../core/cache/memorySize').estimateMemorySize(snapshot, DEFAULT_MAX_SNAPSHOT_BYTES);
+function estimateSnapshotSize(snapshot, budget = DEFAULT_MAX_SNAPSHOT_BYTES) {
+    return require('../../core/cache/memorySize').estimateMemorySize(snapshot, budget);
 }
 
 /**
@@ -253,8 +254,10 @@ function getSnapshotCacheStats(snapshots) {
 function createIndexClient({
     buildProjectIndex,
     getFileSignature = readFileSignature,
-    estimateSnapshotSize: getSnapshotSize = estimateSnapshotSize,
     maxSnapshotBytes = DEFAULT_MAX_SNAPSHOT_BYTES,
+    estimateSnapshotSize: getSnapshotSize = snapshot => estimateSnapshotSize(snapshot, maxSnapshotBytes),
+    cacheSingleFileSnapshots = false,
+    excludeMeshEntities = false,
     manifestStore = createCacheManifestStore(),
     persistentCache = null,
     languageClient = null,
@@ -267,57 +270,54 @@ function createIndexClient({
         let lastSnapshot = null;
         const requests = new Map();
         
-        // Delay binding the notification until the client is fully initialized
-        const bindNotification = async () => {
-            while (true) {
-                try {
-                    languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
-                        const request = requests.get(params?.requestId);
-                        if (request && !request.cancellationToken?.isCancellationRequested && params.event &&
-                            typeof params.event.rootFile === 'string' &&
-                            getRootCacheKey(params.event.rootFile) === request.rootKey) {
-                            const event = params.event;
-                            request.onProgress?.(event.type === 'structureReady'
-                                ? { ...event, snapshot: hydrateProjectSnapshot(event.snapshot) } : event);
-                            return;
-                        }
-                        if (!request || request.cancellationToken?.isCancellationRequested ||
-                            typeof params.snapshot?.rootFile !== 'string' ||
-                            getRootCacheKey(params.snapshot?.rootFile) !== request.rootKey) return;
-                        request.onProgress?.(hydrateProjectSnapshot(params.snapshot));
-                    });
-                    languageClient.onNotification(protocol.SNAPSHOT_REFERENCES_NOTIFICATION, (params) => {
-                        const request = requests.get(params?.requestId);
-                        if (!request || request.cancellationToken?.isCancellationRequested || request.error) return;
-                        try {
-                            receiveSnapshotChunk(request.chunks, params);
-                            if (params.field !== 'keywordBlocks') {
-                                const records = request.chunks.get(JSON.stringify([params.filePath, params.field]));
-                                for (let i = params.offset; i < records.length; i++) request.intern(records[i]);
-                            }
-                        } catch (error) { request.error = error; }
-
-                    });
-                    break; // Successfully bound
-                } catch (e) {
-                    if (e && e.message && e.message.includes('not ready yet')) {
-                        await new Promise(r => setTimeout(r, 100)); // Retry after 100ms
-                    } else {
-                        console.error('[lsdyna] Failed to bind progress notification:', e);
-                        break;
-                    }
-                }
-            }
-        };
+        // The locked LanguageClient queues handlers registered before start.
         if (typeof languageClient.onNotification === 'function') {
-            bindNotification();
+            try {
+                languageClient.onNotification(protocol.SCAN_PROGRESS_NOTIFICATION, (params) => {
+                    const request = requests.get(params?.requestId);
+                    if (request && !request.cancellationToken?.isCancellationRequested && params.event &&
+                        typeof params.event.rootFile === 'string' &&
+                        getRootCacheKey(params.event.rootFile) === request.rootKey) {
+                        const event = params.event;
+                        request.onProgress?.(event.type === 'structureReady'
+                            ? { ...event, snapshot: hydrateProjectSnapshot(event.snapshot) } : event);
+                        return;
+                    }
+                    if (!request || request.cancellationToken?.isCancellationRequested ||
+                        typeof params.snapshot?.rootFile !== 'string' ||
+                        getRootCacheKey(params.snapshot?.rootFile) !== request.rootKey) return;
+                    request.onProgress?.(hydrateProjectSnapshot(params.snapshot));
+                });
+                languageClient.onNotification(protocol.SNAPSHOT_REFERENCES_NOTIFICATION, (params) => {
+                    const request = requests.get(params?.requestId);
+                    if (!request || request.cancellationToken?.isCancellationRequested || request.error) return;
+                    try {
+                        receiveSnapshotChunk(request.chunks, params);
+                        if (params.field !== 'keywordBlocks') {
+                            const records = request.chunks.get(JSON.stringify([params.filePath, params.field]));
+                            for (let i = params.offset; i < records.length; i++) request.intern(records[i]);
+                        }
+                    } catch (error) { request.error = error; }
+
+                });
+            } catch (error) {
+                console.error('[lsdyna] Failed to bind progress notification:', error);
+            }
         }
         return {
-            async loadProjectSnapshot(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+            async queryEntity(request, cancellationToken = null) {
                 throwIfCancellationRequested(cancellationToken);
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
+                try {
+                    return await languageClient.sendRequest(protocol.QUERY_ENTITY_REQUEST,
+                        { ...request, rootFile: resolveRootFile(request.rootFile) }, cancellationToken || undefined);
+                } catch (error) {
+                    if (error?.code === LSPErrorCodes.RequestCancelled) throw createCancellationError();
+                    throw error;
                 }
+            },
+            async loadProjectSnapshot(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+                if (excludeMeshEntities) options = { ...options, excludeMeshEntities: true };
+                throwIfCancellationRequested(cancellationToken);
                 const resolvedRootFile = resolveRootFile(rootFile);
                 const previous = lastSnapshot;
                 const requestId = String(++requestSequence);
@@ -346,36 +346,29 @@ function createIndexClient({
                     const snapshot = hydrateProjectSnapshot(serialized);
                     if (serialized.snapshotId) lastSnapshot = { rootFile: resolvedRootFile, id: serialized.snapshotId, snapshot };
                     return snapshot;
+                } catch (error) {
+                    if (error?.code === LSPErrorCodes.RequestCancelled) {
+                        throw createCancellationError();
+                    }
+                    throw error;
                 } finally {
                     requests.delete(requestId);
                 }
             },
             async invalidate(rootFile) {
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
-                }
                 const resolvedRootFile = resolveRootFile(rootFile);
-                languageClient.sendNotification(
+                await languageClient.sendNotification(
                     protocol.INVALIDATE_NOTIFICATION,
                     { rootFile: resolvedRootFile }
                 );
             },
             async getManifestEntries() {
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
-                }
                 return await languageClient.sendRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST);
             },
             async getCacheStats() {
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
-                }
                 return await languageClient.sendRequest(protocol.GET_CACHE_STATS_REQUEST);
             },
             async clearCaches() {
-                if (typeof languageClient.onReady === 'function') {
-                    await languageClient.onReady();
-                }
                 return await languageClient.sendRequest(protocol.CLEAR_CACHES_REQUEST);
             },
         };
@@ -411,6 +404,7 @@ function createIndexClient({
 
     function touchSnapshotEntry(entry) {
         entry.lastAccessedAt = ++accessSequence;
+        if (entry.snapshot.scope === 'single-file') return;
         const missingDependencyPaths = [];
         const seenMissingPaths = new Set();
         for (const record of entry.snapshot.missingFiles || []) {
@@ -462,13 +456,13 @@ function createIndexClient({
     }
 
     async function loadProjectSnapshot(rootFile, options: any = {}, onProgress = null, cancellationToken = null) {
+        if (excludeMeshEntities) options = { ...options, excludeMeshEntities: true };
         throwIfCancellationRequested(cancellationToken);
         const resolvedRootFile = resolveRootFile(rootFile);
 
-        // Single-file semantic queries reuse the worker's per-file L1/L1.5 caches, but must not
-        // enter project snapshot memory, manifest, or persistent caches: they do not represent an
-        // Include closure and therefore cannot be reused as a project-scoped snapshot.
-        if (options?.singleFileOnly === true) {
+        // Only the entity worker retains single-file snapshots. Scope remains part of the
+        // cache identity; these entries never enter project manifests or disk snapshots.
+        if (options?.singleFileOnly === true && !cacheSingleFileSnapshots) {
             return buildProjectIndex(
                 resolvedRootFile,
                 { ...options, singleFileOnly: true },
@@ -533,7 +527,7 @@ function createIndexClient({
             }
         };
         const promise = (async () => {
-            if (persistentCache) {
+            if (persistentCache && !options.singleFileOnly) {
                 try {
                     const restored = await persistentCache.restore(resolvedRootFile);
                     throwIfCancellationRequested(cancellationToken);
@@ -590,7 +584,7 @@ function createIndexClient({
                     touchSnapshotEntry(entry);
                     snapshots.set(rootCacheKey, entry);
                     evictSnapshotsIfNeeded(rootCacheKey);
-                    if (persistentCache) {
+                    if (persistentCache && !options.singleFileOnly) {
                         const persistenceEpoch = cacheEpoch;
                         Promise.resolve()
                             .then(() => {

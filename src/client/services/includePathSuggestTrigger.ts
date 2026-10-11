@@ -90,7 +90,7 @@ export function createIncludePathSuggestTrigger(deps: IncludePathSuggestTriggerD
             if (effectiveIncludePathPrefixLength(active.document, pos) < 2) return;
             if (deps.isSuggestVisible && deps.isSuggestVisible()) return;
             try {
-                deps.executeCommand('editor.action.triggerSuggest');
+                void Promise.resolve(deps.executeCommand('editor.action.triggerSuggest')).catch(() => undefined);
             } catch (_e) {
                 // ignore command failures in tests / missing host
             }

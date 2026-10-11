@@ -36,6 +36,12 @@ function contrast(left, right) {
 }
 
 describe('extensionTheme', () => {
+    it('rejects inherited palette properties and retains the established dark fallback', () => {
+        for (const themeKind of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'unknown']) {
+            assert.equal(themeKindFromRenderOptions({ themeKind }), 'dark');
+            assert.deepEqual(resolveExtensionThemePalette(themeKind), resolveExtensionThemePalette('dark'));
+        }
+    });
     it('maps all VS Code ColorThemeKind values and legacy render options', () => {
         assert.equal(themeKindFromVscode(1), 'light');
         assert.equal(themeKindFromVscode(2), 'dark');

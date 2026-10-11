@@ -8,6 +8,7 @@ from __future__ import annotations
 import ast
 import gzip
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
@@ -36,18 +37,52 @@ def key(text: str) -> str:
 
 def native_sources() -> set[str]:
     root = ROOT / "keywords/runtime/native-help"
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest_bytes = (root / "manifest.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
     fields = {}
     for shard in manifest["shards"].values():
         encoded = (root / shard["file"]).read_bytes()
         if hashlib.sha256(encoded).hexdigest() != shard["sha256"]:
             raise ValueError(f"Native source hash mismatch: {shard['file']}")
         fields.update(json.loads(gzip.decompress(encoded)))
-    supplement = json.loads(gzip.decompress((root / "native-null-help.json.gz").read_bytes()))
+    descriptor = json.loads((root / "native-null-help.manifest.json").read_bytes())
+    size = descriptor["uncompressedBytes"]
+    if (descriptor["file"] != "native-null-help.json.gz"
+            or descriptor["sourceSha256"] != manifest["sourceSha256"]
+            or descriptor["catalogSha256"] != hashlib.sha256(manifest_bytes).hexdigest()
+            or type(size) is not int or not 0 < size <= 8 * 1024 * 1024):
+        raise ValueError("Native null-help supplement identity mismatch")
+    encoded = (root / descriptor["file"]).read_bytes()
+    if hashlib.sha256(encoded).hexdigest() != descriptor["sha256"]:
+        raise ValueError("Native null-help supplement hash mismatch")
+    with gzip.GzipFile(fileobj=io.BytesIO(encoded)) as stream:
+        decoded = stream.read(size + 1)
+    if len(decoded) != size or hashlib.sha256(decoded).hexdigest() != descriptor["uncompressedSha256"]:
+        raise ValueError("Native null-help supplement content mismatch")
+    supplement = json.loads(decoded)
+    if (supplement["sourceSha256"] != manifest["sourceSha256"]
+            or type(descriptor["nativeHelpFields"]) is not int
+            or len(supplement["fields"]) != descriptor["nativeHelpFields"]):
+        raise ValueError("Native null-help supplement payload mismatch")
     for address, field in supplement["fields"].items():
-        if not isinstance(fields.get(address, {}).get("help"), str):
-            fields[address] = field
-    return {field["help"] for field in fields.values() if isinstance(field.get("help"), str) and field["help"].strip()}
+        native = fields.get(address)
+        if (not native or isinstance(native.get("help"), str)
+                or native["name"] != field["name"] or native["type"] != field["type"]
+                or type(field["type"]) is not int
+                or not isinstance(field["help"], str) or not field["help"].strip()):
+            raise ValueError(f"Native null-help supplement field mismatch: {address}")
+        fields[address] = field
+    sources = {field["help"] for field in fields.values() if isinstance(field.get("help"), str) and field["help"].strip()}
+    # Strict spelling readers use captured file-reader help outside the GUI catalog.
+    for name in ["lspp-contact-id-mpp-fixed-readers.json", "lspp-contact-mpp-tail-readers.json"]:
+        reader = json.loads((ROOT / "keywords/runtime/native-readers" / name).read_bytes())
+        if reader["sourceSha256"] != manifest["sourceSha256"]:
+            raise ValueError(f"Native reader source mismatch: {name}")
+        texts = reader["fieldHelpByAddress"].values()
+        if any(not isinstance(text, str) for text in texts):
+            raise ValueError(f"Native reader help is not text: {name}")
+        sources.update(text for text in texts if text.strip())
+    return sources
 
 
 def parameter_sources() -> set[str]:
@@ -96,7 +131,7 @@ def runtime_translation_errors(entries: dict, shards: dict, shard_size: int,
     for english in sorted(sources):
         identity = key(english)
         value = entries.get(identity)
-        if isinstance(value, int):
+        if isinstance(value, int) and not isinstance(value, bool):
             shard = shards.get(value // shard_size)
             offset = value - shard["start"] if shard else -1
             if not shard or not 0 <= offset < len(shard["english"]):

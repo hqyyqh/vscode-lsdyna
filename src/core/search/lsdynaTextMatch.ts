@@ -151,7 +151,7 @@ function tokenRangesInLabel(label: string): Array<{ start: number; text: string 
         const start = i;
         while (i < s.length && !/[\s_\-./\\]/.test(s[i])) i += 1;
         const text = s.slice(start, i);
-        if (text) ranges.push({ start, text });
+        ranges.push({ start, text });
     }
     return ranges;
 }
@@ -229,7 +229,7 @@ export function scoreFuzzyText(query: string, text: string): number {
                     hit = true;
                     break;
                 }
-                if (q.length >= 1 && isSubsequence(q, t)) {
+                if (isSubsequence(q, t)) {
                     ti = j + 1;
                     hit = true;
                     break;
@@ -251,9 +251,8 @@ export function scoreFuzzyText(query: string, text: string): number {
     // Full-query ordered character subsequence (rgv → rogue-v3, ctltime → CONTROL_TIMESTEP)
     if (qFuzzy && tFuzzy && isSubsequence(qFuzzy, tFuzzy)) {
         const end = subsequenceEnd(qFuzzy, tFuzzy, 0);
-        const span = Math.max(1, end);
-        const density = qFuzzy.length / span;
-        const compact = qFuzzy.length / Math.max(1, tFuzzy.length);
+        const density = qFuzzy.length / end;
+        const compact = qFuzzy.length / tFuzzy.length;
         bump(Math.min(78, Math.round(58 + density * 12 + compact * 8)));
     }
 

@@ -8,7 +8,7 @@ function ratioAt(scrollY: number): number {
 }
 
 export function useRestoreReadingPosition(view: ReaderViewModel | null): void {
-    const contentKey = view?.content.kind === 'document' ? `${view.language}\0${view.content.chunkBaseUri}\0${view.content.markdown}` : view?.revision;
+    const contentKey = view?.content.kind === 'document' ? `${view.readingMode ?? view.language}\0${view.content.chunkBaseUri}\0${view.content.markdown}` : view?.revision;
     useLayoutEffect(() => {
         if (!view) return;
         if (view.restore.anchorId) {
@@ -37,7 +37,7 @@ export function useReadingPosition(view: ReaderViewModel | null, transport: Read
         let activeAnchor: string | null = null;
         let frame: number | ReturnType<typeof setTimeout> | undefined;
         let notifyTimer: ReturnType<typeof setTimeout> | undefined;
-        const anchors = [...document.querySelectorAll<HTMLElement>('.markdown-body a[id]')];
+        const anchors = [...document.querySelectorAll<HTMLElement>('.markdown-body a[id], .markdown-body [data-unit-id][id]')];
         const toolbarHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--reader-toolbar-height')) || 48;
         const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
             const visible = entries.filter(entry => entry.isIntersecting && (entry.target as HTMLElement).id).at(-1);

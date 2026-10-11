@@ -30,7 +30,7 @@ function sourceLabel(source) {
     if (source === 'workspace') return i18n.get('customValidKeywordSourceWorkspace');
     if (source === 'global') return i18n.get('customValidKeywordSourceUser');
     if (source === 'default') return i18n.get('customValidKeywordSourceDefault');
-    return i18n.get('customValidKeywordSourceUser');
+    return i18n.get('customValidKeywordSourceUnknown');
 }
 
 /**
@@ -77,6 +77,14 @@ async function showManageCustomValidKeywordsPick(options: ManageUiOptions = {}) 
     const executeCommand = options.executeCommand
         || ((command, ...args) => vscode.commands.executeCommand(command, ...args));
     const config = options.config;
+    const warnSourceChanged = async entry => {
+        const action = i18n.get('customValidKeywordManageOpenSettings');
+        if (await showWarningMessage(i18n.get('customValidKeywordSourceUnknownReadOnly', entry), action) !== action) {
+            return false;
+        }
+        await executeCommand('workbench.action.openSettings', 'lsdyna.customValidKeywords');
+        return true;
+    };
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -161,9 +169,13 @@ async function showManageCustomValidKeywordsPick(options: ManageUiOptions = {}) 
         }
 
         if (picked.action === 'item' && picked.entry) {
-            const source = picked.source || resolveEntrySource(picked.entry, { config });
+            const source = resolveEntrySource(picked.entry, { config });
             if (source === 'default') {
                 await showWarningMessage(i18n.get('customValidKeywordDefaultReadOnly', picked.entry));
+                continue;
+            }
+            if (source === 'unknown' || source === 'none' || source !== picked.source) {
+                if (await warnSourceChanged(picked.entry)) return;
                 continue;
             }
             const action = await showQuickPick([
@@ -181,6 +193,10 @@ async function showManageCustomValidKeywordsPick(options: ManageUiOptions = {}) 
                 ignoreFocusOut: true,
             });
             if (!action) {
+                continue;
+            }
+            if (resolveEntrySource(picked.entry, { config }) !== source) {
+                if (await warnSourceChanged(picked.entry)) return;
                 continue;
             }
             const target = source === 'workspace'
@@ -212,6 +228,10 @@ async function showManageCustomValidKeywordsPick(options: ManageUiOptions = {}) 
                         : i18n.get('customValidKeywordInvalid'),
                 });
                 if (value == null) {
+                    continue;
+                }
+                if (resolveEntrySource(picked.entry, { config }) !== source) {
+                    if (await warnSourceChanged(picked.entry)) return;
                     continue;
                 }
                 const result = await replaceCustomValidKeyword({

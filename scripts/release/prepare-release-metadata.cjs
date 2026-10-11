@@ -3,7 +3,35 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const ts = require('typescript');
 const { releasePath } = require('./release-resource-paths.cjs');
 
+function projectEvidenceComments(stage) {
+    const removed = {};
+    const visit = directory => {
+        if (!fs.existsSync(directory)) return;
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            const file = path.join(directory, entry.name);
+            if (entry.isDirectory()) { visit(file); continue; }
+            if (!file.endsWith('.js')) continue;
+            const relative = path.relative(stage, file).replace(/\\/g, '/');
+            const findings = require('./validate-public-source-boundary.cjs').scanPublicSourceBoundary(stage, [relative]).findings;
+            let source = fs.readFileSync(file, 'utf8');
+            for (const finding of findings.filter(item => item.location.startsWith('comment:'))
+                .sort((a, b) => Number(b.location.slice(8)) - Number(a.location.slice(8)))) {
+                const replacement = finding.value.replace(/docs[\\/]+lspp-native-[^\s"']+\.gz|test[\\/]+fixtures[\\/]+lspp-native-formats[\\/]+provenance\.json/g,
+                    'internal maintenance evidence');
+                if (replacement === finding.value) continue;
+                removed[`${relative}#${finding.location}`] = finding.value;
+                const start = Number(finding.location.slice(8));
+                source = source.slice(0, start) + replacement + source.slice(start + finding.value.length);
+            }
+            if (Object.keys(removed).some(key => key.startsWith(relative + '#'))) fs.writeFileSync(file, source);
+        }
+    };
+    visit(path.join(stage, 'out'));
+    return removed;
+}
+
 function prepareReleaseMetadata(stage, { renameResources = true } = {}) {
+    const evidenceComments = projectEvidenceComments(stage);
     const manifestPath = path.join(stage, 'out/runtime/lspp-input-form/manifest.json');
     const manifest = JSON.parse(fs.readFileSync(manifestPath));
     // These three fields have no runtime consumers. Version and hashes still bind verified readers.
@@ -35,7 +63,7 @@ function prepareReleaseMetadata(stage, { renameResources = true } = {}) {
     const pkg = JSON.parse(fs.readFileSync(packagePath));
     delete pkg.scripts; delete pkg.devDependencies;
     fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
-    if (!renameResources) return { removedProducer, renamed: [] };
+    if (!renameResources) return { removedProducer, evidenceComments, renamed: [] };
     const renamed = [];
     const components = new Set();
     function collect(directory) {
@@ -79,6 +107,6 @@ function prepareReleaseMetadata(stage, { renameResources = true } = {}) {
     visit(path.join(stage, 'out')); visit(path.join(stage, 'keywords'));
     const ignorePath = path.join(stage, '.vscodeignore');
     fs.writeFileSync(ignorePath, releasePath(fs.readFileSync(ignorePath, 'utf8')));
-    return { removedProducer, renamed };
+    return { removedProducer, evidenceComments, renamed };
 }
 module.exports = { prepareReleaseMetadata };

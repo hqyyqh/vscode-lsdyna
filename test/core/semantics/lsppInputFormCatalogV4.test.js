@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const Module = require('node:module');
 const {
     CatalogInputFormCatalogV4,
     getCatalogInputFormCatalogV4,
@@ -14,9 +15,10 @@ const {
 
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const descriptorFixture = require('../../fixtures/public-behavior/synthetic-descriptor-identities.json').extent;
+const makeTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
 function catalogFixture(formOverride) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lspp-input-form-v4-'));
+    const root = makeTempDirectory(path.join(os.tmpdir(), 'lspp-input-form-v4-'));
     const datasetSha256 = 'a'.repeat(64);
     const formRule = formOverride || {
         ruleId: 'lspp-native-input-form', cards: [{ cardIndex: 1, fields: [
@@ -62,6 +64,40 @@ function catalogFixture(formOverride) {
 }
 
 describe("keyword catalog Input Form catalog v4", () => {
+    it('reports missing or malformed alias data consistently and preserves custom-root aliases', async () => {
+        const rootDir = catalogFixture();
+        const aliasFile = path.join(rootDir, 'aliases.json');
+        const catalog = new CatalogInputFormCatalogV4({ rootDir });
+        const originalLoad = Module._load;
+        const catalogFile = require.resolve("../../../out/core/semantics/catalogInputFormCatalogV4");
+        Module._load = function (request, parent, isMain) {
+            return originalLoad.call(this, parent?.filename === catalogFile &&
+                request.endsWith('lspp-node-readers.json') ? aliasFile : request, parent, isMain);
+        };
+        try {
+            for (const malformed of [false, true]) {
+                if (malformed) fs.writeFileSync(aliasFile, '{');
+                const expected = malformed ? SyntaxError : { code: 'MODULE_NOT_FOUND' };
+                assert.throws(() => catalog.formForKeyword('SYNTHETIC_ALIAS'), expected);
+                assert.throws(() => catalog.resolveFormForKeyword('UNKNOWN'), expected);
+                await assert.rejects(catalog.prepareKeyword('SYNTHETIC_ALIAS'), expected);
+                await assert.rejects(catalog.prepareKeyword('UNKNOWN'), expected);
+                assert.ok(catalog.formForKeyword('MAT_BARLAT_YLD2000'), 'indexed forms do not require aliases');
+                await catalog.prepareKeyword('MAT_BARLAT_YLD2000');
+            }
+            fs.writeFileSync(aliasFile, JSON.stringify({ bindings: {
+                SYNTHETIC_ALIAS: { aliasOf: 'MAT_BARLAT_YLD2000' },
+            } }));
+            await catalog.prepareKeyword('*synthetic_alias');
+            assert.deepEqual(catalog.formForKeyword('*synthetic_alias'), catalog.formForKeyword('MAT_BARLAT_YLD2000'));
+            assert.equal(catalog.resolveFormForKeyword('UNKNOWN'), null);
+            await catalog.prepareKeyword('UNKNOWN');
+        } finally {
+            Module._load = originalLoad;
+            delete require.cache[aliasFile];
+        }
+    });
+
     it('coalesces async preparation and preserves the verified synchronous form', async () => {
         const rootDir = catalogFixture();
         let reads = 0;
@@ -80,16 +116,11 @@ describe("keyword catalog Input Form catalog v4", () => {
             if (file.endsWith('.gz')) shardReads++;
             return fs.readFileSync(file);
         } });
-        try {
-            await Promise.all([catalog.prepareKeyword('MAT_BARLAT_YLD2000'), catalog.prepareKeyword('CONTROL_IMPLICIT_MODES')]);
-            const form = catalog.formForKeyword('MAT_BARLAT_YLD2000');
-            assert.equal(form.source.conservationSatisfied, true);
-            assert.equal(form.keyword, 'MAT_BARLAT_YLD2000');
-            assert.equal(shardReads, 1);
-        } finally {
-            assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
-            fs.rmSync(root, { recursive: true, force: true });
-        }
+        await Promise.all([catalog.prepareKeyword('MAT_BARLAT_YLD2000'), catalog.prepareKeyword('CONTROL_IMPLICIT_MODES')]);
+        const form = catalog.formForKeyword('MAT_BARLAT_YLD2000');
+        assert.equal(form.source.conservationSatisfied, true);
+        assert.equal(form.keyword, 'MAT_BARLAT_YLD2000');
+        assert.equal(shardReads, 1);
     });
 
     it('rejects corrupted bytes during asynchronous preparation without installing a form', async () => {
@@ -97,12 +128,25 @@ describe("keyword catalog Input Form catalog v4", () => {
         const catalog = new CatalogInputFormCatalogV4({ rootDir: root });
         const shard = fs.readdirSync(root).find(name => name.endsWith('.gz'));
         fs.writeFileSync(path.join(root, shard), 'corrupt');
-        try {
-            await assert.rejects(catalog.prepareKeyword('MAT_BARLAT_YLD2000'), /integrity/);
-            assert.throws(() => catalog.formForKeyword('MAT_BARLAT_YLD2000'), /integrity/);
-        } finally {
-            assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir()));
-            fs.rmSync(root, { recursive: true, force: true });
+        await assert.rejects(catalog.prepareKeyword('MAT_BARLAT_YLD2000'), /integrity/);
+        assert.throws(() => catalog.formForKeyword('MAT_BARLAT_YLD2000'), /integrity/);
+    });
+
+    it('keeps path, producer and content checks across both loading paths', async () => {
+        for (const [change, expected] of [
+            [(manifest, descriptor) => { descriptor.file = '../escaped.json.gz'; }, /path is unsafe/],
+            [(manifest, descriptor) => { descriptor.sha256 = '0'.repeat(64); }, /integrity mismatch/],
+            [(manifest, descriptor) => { descriptor.uncompressedBytes++; }, /content mismatch/],
+            [(manifest) => { manifest.dataset.sha256 = 'c'.repeat(64); }, /payload is invalid/],
+        ]) {
+            const rootDir = catalogFixture();
+            const manifestFile = path.join(rootDir, 'manifest.json');
+            const manifest = JSON.parse(fs.readFileSync(manifestFile));
+            change(manifest, Object.values(manifest.shards)[0]);
+            fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+            const catalog = new CatalogInputFormCatalogV4({ rootDir });
+            assert.throws(() => catalog.formForKeyword('MAT_BARLAT_YLD2000'), expected);
+            await assert.rejects(catalog.prepareKeyword('MAT_BARLAT_YLD2000'), expected);
         }
     });
 
@@ -216,6 +260,55 @@ describe("keyword catalog Input Form catalog v4", () => {
         assert.ok(form.reference.fieldRuleIds.length > 0);
         assert.ok(catalog.formForKeyword('*CONTROL_IMPLICIT_MODES'));
         assert.equal(catalog.formForKeyword('*IMPLICIT_MODES'), null);
+    });
+
+    it('isolates returned references and nested rules from a shared shard cache', async () => {
+        for (const prepare of [false, true]) {
+            const catalog = new CatalogInputFormCatalogV4({ rootDir: catalogFixture() });
+            if (prepare) await catalog.prepareKeyword('MAT_BARLAT_YLD2000');
+            const first = catalog.formForKeyword('MAT_BARLAT_YLD2000');
+            first.reference.formRuleIds.push('consumer-only');
+            first.rules.form.cards[0].fields[0].name = 'CHANGED';
+            first.rules.form.cards[0].fields[0].choices.push('consumer-only');
+            for (const keyword of ['MAT_BARLAT_YLD2000', 'CONTROL_IMPLICIT_MODES']) {
+                const next = catalog.resolveFormForKeyword(keyword);
+                assert.deepEqual(next.reference.formRuleIds, ['form']);
+                assert.equal(next.rules.form.cards[0].fields[0].name, 'FIT');
+                assert.deepEqual(next.rules.form.cards[0].fields[0].choices, ['0.0', '1.0']);
+            }
+        }
+    });
+
+    it('preserves numeric value semantics in isolated warmed rules and aliases', async () => {
+        const rootDir = catalogFixture({ ruleId: 'lspp-native-input-form', cards: [{ cardIndex: 1,
+            fields: [{ name: 'FIT', choices: ['0.0', '1.0'], defaultValue: 'signed-zero', largeExponent: 'overflow' }] }] });
+        const manifestPath = path.join(rootDir, 'manifest.json'), manifest = JSON.parse(fs.readFileSync(manifestPath));
+        const descriptor = Object.values(manifest.shards)[0];
+        // These valid JSON numbers must survive an isolated copy, including their sign/range.
+        const decoded = Buffer.from(zlib.gunzipSync(fs.readFileSync(path.join(rootDir,
+            descriptor.file.replace(/^card_conditions\.v4[\\/]/, '')))).toString('utf8')
+            .replace('"signed-zero"', '-0').replace('"overflow"', '1e400'));
+        const hash = digest(decoded), encoded = zlib.gzipSync(decoded), file = `${hash}.json.gz`;
+        fs.writeFileSync(path.join(rootDir, file), encoded);
+        manifest.shards = { [hash]: { file: `card_conditions.v4/${file}`, sha256: digest(encoded),
+            uncompressedSha256: hash, compressedBytes: encoded.length, uncompressedBytes: decoded.length } };
+        for (const index of Object.values(manifest.keywords)) index.shard = hash;
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+        for (const prepare of [false, true]) {
+            const catalog = new CatalogInputFormCatalogV4({ rootDir });
+            if (prepare) await catalog.prepareKeyword('MAT_BARLAT_YLD2000');
+            const first = catalog.formForKeyword('MAT_BARLAT_YLD2000'), field = first.rules.form.cards[0].fields[0];
+            assert.ok(Object.is(field.defaultValue, -0));
+            assert.equal(field.largeExponent, Infinity);
+            field.defaultValue = 0; field.largeExponent = 0;
+            first.source.datasetSha256 = 'consumer-only';
+            for (const keyword of ['MAT_BARLAT_YLD2000', 'CONTROL_IMPLICIT_MODES']) {
+                const next = catalog.resolveFormForKeyword(keyword).rules.form.cards[0].fields[0];
+                assert.ok(Object.is(next.defaultValue, -0));
+                assert.equal(next.largeExponent, Infinity);
+                assert.equal(catalog.formForKeyword(keyword).source.datasetSha256, 'a'.repeat(64));
+            }
+        }
     });
 
     it('resolves an EXE input-form state suffix without a keyword-specific case', () => {

@@ -40,7 +40,7 @@ interface ViteManifestEntry {
 }
 
 function locationKey(location: ManualLocation): string {
-    return `${location.manualId}\u0000${location.sectionId}\u0000${location.anchorId || ''}`;
+    return JSON.stringify([location.manualId, location.sectionId, location.anchorId || '']);
 }
 
 function isLocation(value: unknown): value is ManualLocation {
@@ -69,6 +69,7 @@ export class ManualReaderPanel {
     private historyIndex = -1;
     private revision = 0;
     private language: ManualLanguage = 'zh';
+    private comparison = false;
     private location: ManualLocation | undefined;
     private scrollY = 0;
     private scrollRatio = 0;
@@ -79,17 +80,15 @@ export class ManualReaderPanel {
     private scrollSaveTimer: NodeJS.Timeout | undefined;
     private persistTimer: NodeJS.Timeout | undefined;
     private sentencesWarmScheduled = false;
-    /** Per-manual PDF absolute paths; avoid re-reading manifest on every PDF click. */
-    private readonly pdfPathByManualId = new Map<string, string | null>();
-    /** Section markdown cache: manualId\0sectionId\0language → chunk. */
+    /** Section markdown cache keyed by [manualId, sectionId, language]. */
     private readonly chunkCache = new Map<string, { markdown: string; chunkDirectory: string }>();
     private static readonly CHUNK_CACHE_MAX = 16;
 
     private constructor(
         private readonly packRoot: string,
-        private readonly repository: ManualIndexRepository,
-        private readonly manager: ManualPackManager,
-        private readonly onLocationChanged?: (location: ManualLocation) => void,
+        private repository: ManualIndexRepository,
+        private manager: ManualPackManager,
+        private onLocationChanged?: (location: ManualLocation) => void,
     ) {
         this.panel = vscode.window.createWebviewPanel(
             'lsdynaManualReader',
@@ -132,6 +131,38 @@ export class ManualReaderPanel {
             ManualReaderPanel.current.panel.dispose();
         }
         let preserveRestoredScroll = false;
+        const previous = ManualReaderPanel.current;
+        if (previous && previous.repository !== repository) {
+            const caps = repository.getCapabilities();
+            preserveRestoredScroll = Boolean(previous.location && locationKey(previous.location) === locationKey(location));
+            previous.repository = repository;
+            previous.chunkCache.clear();
+            previous.sentencesWarmScheduled = false;
+            if (!caps.canToggleLanguage) previous.language = 'en';
+            if (!caps.canToggleLanguage || !caps.features.sentenceMap) previous.comparison = false;
+            if (!caps.features.searchZh) previous.searchScope = 'en';
+            const section = repository.getSection(location.manualId, location.sectionId);
+            if (section) location = {
+                ...location,
+                title: previous.language === 'zh' && section.titleZh ? section.titleZh : section.titleEn,
+                pdfPage: section.pdfPage ?? null,
+                anchorId: location.anchorId && section.anchors.includes(location.anchorId) ? location.anchorId : section.anchors[0] || null,
+            };
+            let historyIndex = -1;
+            const history = previous.history.map((entry, index) => {
+                const section = repository.getSection(entry.manualId, entry.sectionId);
+                if (!section) return null;
+                if (index <= previous.historyIndex) historyIndex++;
+                return {
+                    ...entry,
+                    title: previous.language === 'zh' && section.titleZh ? section.titleZh : section.titleEn,
+                    pdfPage: section.pdfPage ?? null,
+                    anchorId: entry.anchorId && section.anchors.includes(entry.anchorId) ? entry.anchorId : section.anchors[0] || null,
+                };
+            }).filter(Boolean);
+            previous.history.splice(0, previous.history.length, ...history);
+            previous.historyIndex = historyIndex;
+        }
         if (!ManualReaderPanel.current) {
             ManualReaderPanel.current = new ManualReaderPanel(packRoot, repository, manager, onLocationChanged);
             const caps = repository.getCapabilities();
@@ -151,12 +182,19 @@ export class ManualReaderPanel {
                 ManualReaderPanel.current.searchScope = 'en';
             }
             if (restored) {
+                ManualReaderPanel.current.comparison = caps.canToggleLanguage && caps.features.sentenceMap && restored.readingMode === 'bilingual';
+                if (ManualReaderPanel.current.comparison) {
+                    ManualReaderPanel.current.language = 'zh';
+                    ManualReaderPanel.current.searchScope = 'both';
+                }
                 ManualReaderPanel.current.scrollY = restored.scrollY;
                 ManualReaderPanel.current.scrollRatio = Number.isFinite(restored.scrollRatio) ? Math.min(1, Math.max(0, Number(restored.scrollRatio))) : 0;
                 preserveRestoredScroll = true;
             }
         }
         const current = ManualReaderPanel.current;
+        current.manager = manager;
+        current.onLocationChanged = onLocationChanged;
         current.open(location, true, !preserveRestoredScroll);
         // Stay in the existing editor group. reveal(ViewColumn.Beside) is relative
         // to the *active* group, so every TOC click re-ran split layout and the
@@ -187,8 +225,15 @@ export class ManualReaderPanel {
             if (!this.accepts(request.revision)) return false;
             // English-only packs cannot toggle; bilingual packs always can (independent of VS Code UI locale).
             if (!this.repository.getCapabilities().canToggleLanguage) return false;
-            this.language = this.language === 'zh' ? 'en' : 'zh';
-            this.searchScope = this.language;
+            if (request.mode !== undefined && !['en', 'zh', 'bilingual'].includes(request.mode)) return false;
+            if (request.mode === 'bilingual' && !this.repository.getCapabilities().features.sentenceMap) return false;
+            this.comparison = request.mode === 'bilingual';
+            this.language = this.comparison ? 'zh' : request.mode === 'en' || request.mode === 'zh'
+                ? request.mode : this.language === 'zh' ? 'en' : 'zh';
+            this.searchScope = this.comparison ? 'both' : this.language;
+            if (this.location && typeof request.anchorId === 'string' && request.anchorId.length < 1024) {
+                this.location = { ...this.location, anchorId: request.anchorId };
+            }
             if (this.location) {
                 const section = this.repository.getSection(this.location.manualId, this.location.sectionId);
                 if (section) {
@@ -242,7 +287,7 @@ export class ManualReaderPanel {
     }
 
     private accepts(revision: number): boolean {
-        return Number.isFinite(revision) && revision === this.revision;
+        return revision === this.revision;
     }
 
     private open(location: ManualLocation, pushHistory: boolean, resetScroll = true): boolean {
@@ -267,8 +312,6 @@ export class ManualReaderPanel {
         this.searchResults = [];
         this.publishState();
         this.onLocationChanged?.(this.location);
-        // Warm PDF path while the user reads so toolbar PDF is a cache hit (hover-like).
-        this.warmPdfPath(this.location.manualId);
         this.warmSectionChunks(this.location.manualId, this.location.sectionId);
         this.scheduleSentencesWarm();
         return true;
@@ -284,7 +327,6 @@ export class ManualReaderPanel {
         this.searchResults = [];
         this.publishState();
         if (this.location) this.onLocationChanged?.(this.location);
-        this.warmPdfPath(this.location.manualId);
         this.warmSectionChunks(this.location.manualId, this.location.sectionId);
         this.scheduleSentencesWarm();
         return true;
@@ -334,7 +376,12 @@ export class ManualReaderPanel {
 
     private openPdf(): boolean {
         if (!this.location) return false;
-        const pdfPath = this.resolvePdfPath(this.location.manualId);
+        let pdfPath: string | null;
+        try {
+            pdfPath = this.repository.resolveDocumentPdfPath(this.location.manualId);
+        } catch {
+            pdfPath = null;
+        }
         if (!pdfPath) {
             void vscode.window.showInformationMessage(i18n.get('manualReaderPdfNotFound'));
             return false;
@@ -347,32 +394,8 @@ export class ManualReaderPanel {
         return true;
     }
 
-    /** Prefetch into the path cache without blocking navigation. */
-    private warmPdfPath(manualId: string): void {
-        if (!manualId || this.pdfPathByManualId.has(manualId)) return;
-        try {
-            this.resolvePdfPath(manualId);
-        } catch {
-            // ignore warm failures; openPdf will surface missing PDF
-        }
-    }
-
-    private resolvePdfPath(manualId: string): string | null {
-        if (this.pdfPathByManualId.has(manualId)) {
-            return this.pdfPathByManualId.get(manualId) ?? null;
-        }
-        let resolved: string | null = null;
-        try {
-            resolved = this.repository.resolveDocumentPdfPath(manualId);
-        } catch {
-            resolved = null;
-        }
-        this.pdfPathByManualId.set(manualId, resolved);
-        return resolved;
-    }
-
     private chunkCacheKey(manualId: string, sectionId: string, language: ManualLanguage): string {
-        return `${manualId}\u0000${sectionId}\u0000${language}`;
+        return JSON.stringify([manualId, sectionId, language]);
     }
 
     private readChunkFor(manualId: string, sectionId: string, language: ManualLanguage): { markdown: string; chunkDirectory: string } | null {
@@ -387,8 +410,7 @@ export class ManualReaderPanel {
         this.chunkCache.set(key, entry);
         // Simple FIFO trim so long sessions do not retain every visited section × language.
         while (this.chunkCache.size > ManualReaderPanel.CHUNK_CACHE_MAX) {
-            const oldest = this.chunkCache.keys().next().value;
-            if (oldest === undefined) break;
+            const oldest = this.chunkCache.keys().next().value!;
             this.chunkCache.delete(oldest);
         }
         return entry;
@@ -480,12 +502,15 @@ export class ManualReaderPanel {
             revision: this.revision,
             location: this.location,
             language: this.language,
+            readingMode: this.comparison ? 'bilingual' : this.language,
             // uiLocale only drives chrome strings (toolbar labels); document language is independent.
             uiLocale: readerUiLocale(),
             canToggleLanguage: caps.canToggleLanguage,
+            canCompareLanguages: caps.canToggleLanguage && caps.features.sentenceMap,
             chrome: readerChromeIdentity(this.repository.listDocuments(), sections, this.location),
             content: chunk ? {
                 kind: 'document',
+                comparison: this.comparison,
                 markdown: chunk.markdown,
                 chunkBaseUri,
                 sentencePairs: this.bilingualPairs(),
@@ -534,6 +559,7 @@ export class ManualReaderPanel {
             manifestIdentity: this.repository.getManifestIdentity(),
             location: this.location,
             language: this.language,
+            readingMode: this.comparison ? 'bilingual' : this.language,
             scrollY: this.scrollY,
             scrollRatio: this.scrollRatio,
         });

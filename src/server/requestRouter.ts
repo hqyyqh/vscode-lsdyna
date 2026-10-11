@@ -15,6 +15,7 @@
 const { getActiveSession } = require('./sessionManager');
 const { serializeProjectSnapshot, serializeProjectSnapshotForClient } = require('../core/cache/snapshotSerializer');
 const protocol = require('../shared/protocol');
+const { ResponseError, LSPErrorCodes } = require('vscode-languageserver/node');
 const snapshotIds = new WeakMap();
 let snapshotSequence = 0;
 
@@ -34,7 +35,10 @@ async function handleRequest(method, params, connection = null, cancellationToke
         throw new Error('No active server session initialized');
     }
 
-    switch (method) {
+    try { switch (method) {
+        case protocol.QUERY_ENTITY_REQUEST: {
+            return await session.projectIndexLoader.queryEntity(params, null, cancellationToken);
+        }
         case protocol.LOAD_PROJECT_SNAPSHOT_REQUEST: {
             const { rootFile, options, requestId, reuseSnapshotId } = params;
             const snapshot = await session.indexClient.loadProjectSnapshot(rootFile, options || {}, (partialSnapshot) => {
@@ -68,13 +72,20 @@ async function handleRequest(method, params, connection = null, cancellationToke
             return session.indexClient.getManifestEntries();
         }
         case protocol.GET_CACHE_STATS_REQUEST: {
-            return session.indexClient.getCacheStats();
+            const stats = await session.indexClient.getCacheStats();
+            const entityIndex = await session.projectIndexLoader?.getEntityIndexStats?.();
+            return entityIndex ? { ...stats, entityIndex } : stats;
         }
         case protocol.CLEAR_CACHES_REQUEST: {
             return session.clearCaches();
         }
         default:
             throw new Error(`Unsupported custom request method: ${method}`);
+    } } catch (error) {
+        if (error?.name === 'CancellationError') {
+            throw new ResponseError(LSPErrorCodes.RequestCancelled, error.message);
+        }
+        throw error;
     }
 }
 

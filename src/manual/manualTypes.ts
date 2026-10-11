@@ -1,6 +1,7 @@
 'use strict';
 
 export type ManualLanguage = 'en' | 'zh';
+export type ManualReadingMode = ManualLanguage | 'bilingual';
 export type ManualSearchScope = ManualLanguage | 'both';
 /** Keyword: resolve + keywords + titles. Fulltext: also section preview/excerpt. */
 export type ManualSearchMode = 'keyword' | 'fulltext';

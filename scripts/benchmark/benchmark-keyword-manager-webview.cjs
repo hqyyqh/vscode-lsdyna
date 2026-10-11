@@ -1,7 +1,7 @@
 'use strict';
+const { fetchJson, openSocket, createCdp } = require('../../test/support/devtools.cjs');
 // Real VS Code Webview timings, through its production transport and extension host.
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
 const { runTests } = require("../host/vsix-host.cjs");
@@ -11,13 +11,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function main() {
     const startup = process.argv.includes('--startup');
     const startupBlocks = Number(process.env.KEYWORD_STARTUP_BLOCKS || 10000);
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-refresh-webview-'));
+    const { createTempRun, finishTempRun, writeEvidence } = require('../host/temp-runs.cjs');
+    const root = createTempRun('dynasense-refresh-webview-');
+    let runtimeRetained = false;
+    const retainRuntime = () => {
+        if (!runtimeRetained) { finishTempRun(root, { retain: true }); runtimeRetained = true; }
+    };
+    try {
     const port = await new Promise(resolve => {
         const server = net.createServer();
         server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
     });
     fs.mkdirSync(path.join(root, 'profile', 'User'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'profile', 'User', 'settings.json'), JSON.stringify({
+    writeEvidence(path.join(root, 'profile', 'User', 'settings.json'), JSON.stringify({
         'workbench.startupEditor': 'none',
     }));
     console.log(`Renderer evidence: ${root}`);
@@ -31,28 +37,23 @@ async function main() {
             '--skip-welcome', '--skip-release-notes', `--user-data-dir=${path.join(root, 'profile')}`,
             `--extensions-dir=${path.join(root, 'extensions')}`, '--remote-debugging-address=127.0.0.1',
             `--remote-debugging-port=${port}`],
-    }).catch(error => { hostError = error; });
+    }).catch(error => { hostError = error; if (error.signal || error.runtimeMayBeActive || error.evidenceSaveFailed) retainRuntime(); });
     let socket;
     const deadline = Date.now() + 120000;
     while (!socket && Date.now() < deadline) {
         if (hostError) throw hostError;
         try {
-            const info = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
-            socket = new WebSocket(info.webSocketDebuggerUrl);
-            await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+            const info = await fetchJson(`http://127.0.0.1:${port}/json/version`, Math.min(3000, deadline - Date.now()));
+            socket = await openSocket(info.webSocketDebuggerUrl, Math.min(3000, deadline - Date.now()));
         } catch { socket = null; await delay(100); }
     }
     if (!socket) throw new Error('No DevTools endpoint');
-    const pending = new Map(), contexts = new Map(), attached = new Set();
-    let id = 0;
-    const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-        const requestId = ++id;
-        const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timeout: ${method}`)); }, 30000);
-        pending.set(requestId, { resolve, reject, timer });
-        socket.send(JSON.stringify({ id: requestId, method, params, sessionId }));
-    });
+    const contexts = new Map(), attached = new Set();
+    const cdp = createCdp(socket);
+    const call = cdp.call;
     socket.onmessage = event => {
-        const message = JSON.parse(String(event.data));
+        let message;
+        try { message = JSON.parse(String(event.data)); } catch { return; }
         if (message.method === 'Runtime.executionContextCreated') {
             const context = message.params.context;
             contexts.set(`${message.sessionId}:${context.id}`, { contextId: context.id, sessionId: message.sessionId });
@@ -60,11 +61,6 @@ async function main() {
         if (message.method === 'Runtime.executionContextDestroyed') contexts.delete(`${message.sessionId}:${message.params.executionContextId}`);
         if (message.method === 'Runtime.executionContextsCleared') {
             for (const [key, value] of contexts) if (value.sessionId === message.sessionId) contexts.delete(key);
-        }
-        const entry = pending.get(message.id);
-        if (entry) {
-            clearTimeout(entry.timer); pending.delete(message.id);
-            if (message.error) entry.reject(new Error(message.error.message)); else entry.resolve(message.result);
         }
     };
     const evaluate = async (context, expression) => {
@@ -75,7 +71,7 @@ async function main() {
     };
     const results = [];
     try {
-        if (startup) fs.writeFileSync(path.join(root, 'renderer-attached'), '1');
+        if (startup) writeEvidence(path.join(root, 'renderer-attached'), '1');
         for (const blocks of startup ? [startupBlocks] : [1000, 10000]) {
             let context;
             const until = Date.now() + 90000;
@@ -93,7 +89,7 @@ async function main() {
                 }
                 for (const candidate of contexts.values()) {
                     try {
-                        if (await evaluate(candidate, `typeof document !== 'undefined' && document.querySelector('.fieldHelp .fullValue code')?.textContent === '${blocks}'`)) { context = candidate; break; }
+                        if (await evaluate(candidate, `typeof document !== 'undefined' && document.querySelector('.fieldEditor input')?.value === '${blocks}' && document.querySelector('main')?.getAttribute('aria-busy') === 'false'`)) { context = candidate; break; }
                     } catch { /* A disposed iframe is not the current manager. */ }
                 }
                 if (!context) await delay(100);
@@ -102,7 +98,7 @@ async function main() {
             if (startup) {
                 if (!await evaluate(context, `document.querySelector('main')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.fieldEditor input, .fieldEditor select').length >= 5`))
                     throw Error('Fields found but manager is not usable');
-                fs.writeFileSync(path.join(root, 'startup-visible'), '1');
+                writeEvidence(path.join(root, 'startup-visible'), '1');
             }
             // Warm interaction samples start after both packages finish directory preparation.
             const directoryDeadline = Date.now() + 90000;
@@ -111,11 +107,11 @@ async function main() {
                 await delay(10);
             }
             const label = await evaluate(context, `document.querySelector('.instanceTrigger').textContent`);
-            if (!label.trim().endsWith('/' + (blocks + 1))) throw Error(`Unexpected complete directory: ${label}`);
+            if (!label.trim().endsWith('/' + blocks)) throw Error(`Unexpected complete directory: ${label}`);
             if (startup) {
-                fs.writeFileSync(path.join(root, 'startup-directory'), '1');
+                writeEvidence(path.join(root, 'startup-directory'), '1');
                 await delay(30);
-                fs.writeFileSync(path.join(root, `${blocks}.done`), '1');
+                writeEvidence(path.join(root, `${blocks}.done`), '1');
                 continue;
             }
             const samples = [];
@@ -129,8 +125,8 @@ async function main() {
                 if (before.length < 5) throw new Error('Expected five native fields');
                 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
                 const main = document.querySelector('main');
-                const refresh = document.querySelector('.headerActions button');
-                if (!/^(Refresh|刷新)$/.test(refresh.textContent.trim()) || refresh.disabled || main.getAttribute('aria-busy') !== 'false')
+                const refresh = [...document.querySelectorAll('.headerActions button')].find(button => /^(Reload this instance|重新读取当前实例)$/.test(button.title));
+                if (!refresh || refresh.disabled || main.getAttribute('aria-busy') !== 'false')
                     throw new Error('Current-instance Refresh is not ready');
                 const directory = document.querySelector('.instanceTrigger').textContent;
                 await new Promise((resolve, reject) => {
@@ -184,8 +180,8 @@ async function main() {
                         const timer = setTimeout(() => { observer.disconnect(); reject(new Error('Help timed out')); }, 5000);
                         const check = () => {
                             const panel = document.querySelector('.fieldHelp');
-                            if (panel.querySelector('strong')?.textContent === name &&
-                                !/Loading|正在加载/.test(panel.textContent) && panel.querySelector('.fieldHelpLocalized')) {
+                            if (panel.querySelector('.fieldHelpName')?.textContent.split('（')[0] === name &&
+                                !/Loading|正在加载/.test(panel.textContent) && panel.querySelector('.fieldHelpText:not(.loading)')?.textContent.trim()) {
                                 clearTimeout(timer); observer.disconnect();
                                 requestAnimationFrame(() => resolve());
                             }
@@ -204,7 +200,7 @@ async function main() {
             const measurement = { samples: samples.length, medianMs: samples[Math.floor(samples.length / 2)],
                 p95Ms: samples[Math.ceil(samples.length * .95) - 1], maxMs: samples.at(-1) };
             results.push({ blocks, measuredAction: 'field-focus-to-help', preparationAction: 'refresh-current-instance', ...measurement });
-            fs.writeFileSync(path.join(root, `${blocks}.done`), 'done');
+            writeEvidence(path.join(root, `${blocks}.done`), 'done');
         }
         await host;
         if (hostError) throw hostError;
@@ -213,11 +209,18 @@ async function main() {
             console.log(JSON.stringify({ startup: samples, evidence: root }));
             return;
         }
-        fs.writeFileSync(path.join(root, 'results.json'), JSON.stringify(results, null, 2));
+        writeEvidence(path.join(root, 'results.json'), JSON.stringify(results, null, 2));
         console.log(JSON.stringify(results, null, 2));
         if (results.some(result => result.samples < 100 || result.p95Ms > 100)) {
             throw new Error('Keyword Manager field-help P95 exceeds the 100 ms release budget');
         }
-    } finally { socket.close(); }
+    } finally { cdp.close(); }
+    } catch (error) {
+        if (error.evidenceSaveFailed) {
+            retainRuntime();
+            console.error(`Required renderer evidence could not be saved; runtime retained: ${root}`);
+        }
+        throw error;
+    }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -437,6 +437,66 @@ describe('bounded LS-DYNA formatting planner', () => {
 
 
 describe('data-only batch formatting', () => {
+    it('preserves tab and nonbreaking-space prefixes as data records', async () => {
+        const document = documentFromLines(['*TEST', '\t$ data', '\u00a0$ data', '1']);
+        const seen = [];
+        const result = await planLsdynaFormatting({ document, selections: [selection(0, 0)] }, defaultDependencies({
+            resolveCard: ({ lineNum, dataLineOrdinal, observedDataLines }) => {
+                seen.push({ lineNum, dataLineOrdinal, records: [...observedDataLines] });
+                return null;
+            },
+        }));
+        assert.equal(result.status, 'ok');
+        assert.deepStrictEqual(result.edits, []);
+        assert.deepStrictEqual(seen, [
+            { lineNum: 1, dataLineOrdinal: 1, records: ['\t$ data'] },
+            { lineNum: 2, dataLineOrdinal: 2, records: ['\t$ data', '\u00a0$ data'] },
+            { lineNum: 3, dataLineOrdinal: 3, records: ['\t$ data', '\u00a0$ data', '1'] },
+        ]);
+    });
+
+    it('rejects a later unknown opaque state before resolving or exposing any partial edits', async () => {
+        const document = documentFromLines(['*NODE', '1', '2']);
+        const result = await planLsdynaFormatting({ document, selections: [selection(1, 0, 2, 1)] }, defaultDependencies({
+            resolveOpaqueState: position => position.line === 2 ? 'unknown' : 'active',
+            resolveCard: () => { throw new Error('Must reject before resolving cards'); },
+        }));
+        assert.equal(result.status, 'rejected');
+        assert.equal(result.reason, 'opaque-state-unknown');
+        assert.equal(result.metrics.cardResolutions, 0);
+        assert.equal(result.metrics.replacementChars, 0);
+        assert.equal(Object.prototype.hasOwnProperty.call(result, 'edits'), false);
+    });
+
+    it('keeps native ASCII-space comments out of supplied card ordinals and record prefixes', async () => {
+        const { getCardInfoForDocumentLine } = require('../../../src/core/keywordSchema');
+        const schema = { TEST: { c: [[{ n: 'FIRST', p: 0, w: 10 }], [{ n: 'SECOND', p: 0, w: 20 }]] } };
+        for (const comment of ['$ note', ' $ note', '  $# SECOND']) {
+            const lines = ['*TEST', comment, '1', '$ between cards', '2'];
+            const document = documentFromLines(lines);
+            const seen = [];
+            const result = await planLsdynaFormatting({ document, selections: [selection(0, 0)] }, defaultDependencies({
+                resolveCard: ({ lineNum, dataLineOrdinal, observedDataLines, ...options }) => {
+                    seen.push({ lineNum, dataLineOrdinal, records: [...observedDataLines] });
+                    return getCardInfoForDocumentLine(document, lineNum, schema, {
+                        ...options, dataLineOrdinal, observedDataLines,
+                    });
+                },
+                alignLine: (text, card) => ({ status: 'aligned', text: text.padStart(card[0].w) }),
+            }));
+            assert.equal(result.status, 'ok', comment);
+            assert.deepStrictEqual(seen, [
+                { lineNum: 2, dataLineOrdinal: 1, records: ['1'] },
+                { lineNum: 4, dataLineOrdinal: 2, records: ['1', '2'] },
+            ], comment);
+            assert.deepStrictEqual(result.edits.map(edit => [edit.startLine, edit.newText]), [
+                [2, '         1'], [4, '                   2'],
+            ], comment);
+            assert.equal(document.lineAt(1).text, comment);
+            assert.equal(document.lineAt(3).text, '$ between cards');
+        }
+    });
+
     it('shares the same prefix when selected headers precede one data record', async () => {
         const document = documentFromLines(['*TEST', '1', '$# first', '$ note', '$# second', '2']);
         const observed = [];

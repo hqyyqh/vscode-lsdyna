@@ -1,111 +1,64 @@
 # Contributing / 参与贡献
 
-Code, documentation, translations, engineering rules and regression fixtures are
-open to contributions. Read [DEVELOPMENT.md](DEVELOPMENT.md) and its mandatory
-language acceptance requirements before starting. Report private security or
-conduct concerns using [SECURITY.md](SECURITY.md) and
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+[English](#english) · [中文](#中文)
 
-欢迎贡献代码、文档、翻译、工程规则和回归测试样例。开始前请阅读
-[DEVELOPMENT.md](DEVELOPMENT.md)，并遵守其中的“信达雅”语言验收要求。
-私密安全或行为报告请使用 [SECURITY.md](SECURITY.md) 和
-[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) 中的渠道。
+---
 
-## Start / 开始
+## English
 
-Use Node.js 22 and Python 3.12 or newer. Fork the public repository, create a branch
-from public `dev`, and install the locked dependencies:
+Thank you for your interest in contributing to DynaSense! We welcome bug fixes, documentation improvements, new keyword definitions, and feature contributions.
 
-使用 Node.js 22 和 Python 3.12 或更新版本。Fork 公开仓库，从公开 `dev`
-创建贡献分支，然后按锁文件安装依赖：
+### Quick Start
+1. Fork this repository and create a branch for your feature or fix.
+2. Use Node.js 22 or newer. Install dependencies:
+   ```bash
+   npm ci
+   python -m pip install -r requirements-dev.txt
+   npm run build
+   ```
+3. Open in VS Code and press `F5` to launch the Extension Development Host.
+4. Run tests to ensure everything passes:
+   ```bash
+   npm test
+   ```
+5. Submit a Pull Request with a clear description of your changes.
 
-```bash
-npm ci
-python -m pip install -r requirements-dev.txt
-npm run build
-```
+---
 
-Open the folder in VS Code and press F5 using “DynaSense: Extension Development Host”.
-The pre-launch task builds the extension and all four Webviews. F5 runs a development
-checkout; package acceptance separately installs and verifies the actual VSIX.
+## 中文
 
-在 VS Code 中打开目录，选择“DynaSense: Extension Development Host”后按 F5。
-启动前任务会构建扩展和全部四个 Webview。F5 调试开发源码；包验收另外安装并核验
-真实 VSIX。
+感谢对 DynaSense 的关注与支持！欢迎提交问题修复、文档改进、关键字卡片补充以及新功能贡献。
 
-## Code and data / 代码与数据
+### 参与步骤
+1. Fork 本仓库并基于最新分支创建您的功能分支。
+2. 使用 Node.js 22 或更新版本，安装依赖并完成初次编译：
+   ```bash
+   npm ci
+   python -m pip install -r requirements-dev.txt
+   npm run build
+   ```
+3. 在 VS Code 中打开本仓库，按 `F5` 启动调试窗口即可进行实时测试。
+4. 运行自动化测试以确保现有功能正常：
+   ```bash
+   npm test
+   ```
+5. 提交 Pull Request，简明说明您的修改内容及使用场景即可。
 
-Keep changes focused and add a regression fixture or behavior test when appropriate.
-Ordinary fixtures and localization source files can be edited. Engineering data
-follows the public workflow in [DATA_REGENERATION.md](DATA_REGENERATION.md): edit
-`keywords/authoring/`, run `npm run data:update`, then `npm run data:check`. Submit the authoring
-inputs and generated runtime changes together. An original source snapshot update
-must preserve the previous version and explain its actual origin and redistribution
-permission. A local correction is not a new native-source certification.
+## Development and data / 开发与数据
 
-保持变更聚焦，在适用时添加回归样例或行为测试。普通测试样例和本地化源码可编辑。
-工程数据遵循 [DATA_REGENERATION.md](DATA_REGENERATION.md) 中的公开流程：
-编辑 `keywords/authoring/`，运行 `npm run data:update`，再运行 `npm run data:check`，
-同时提交作者输入和生成的运行时变更。更新原始来源快照时，必须保留旧版本，并说明
-真实出处及再分发许可。本地修正不构成新的原生来源认证。
+See [public source checks](docs/public-source-boundary.md) for build and verification commands, and [keyword data](keywords/README.md) before changing generated data. Do not edit generated runtime data directly.
 
-Engineering layout, type, relation and editing-permission changes require an
-independently reviewed source version before the build can accept them. Keep the
-previous approved checkpoint; ordinary translation and help changes do not refresh
-that approval. See the protected engineering-input rules in DATA_REGENERATION.md.
+构建与验证命令见[公开源码检查](docs/public-source-boundary.md)；修改生成数据前阅读[关键字数据说明](keywords/README.md)，不要直接编辑生成的运行时数据。
 
-工程布局、类型、关联及编辑权限的变更须先完成独立来源版本审查，构建才能接受。
-保留先前已审批检查点；普通翻译和帮助修改不会刷新该审批。具体规则见
-DATA_REGENERATION.md 中受保护工程输入的说明。
+## Platform packages / 平台安装包
 
-After adding, removing, or changing public files, refresh the inventory only after
-data checks pass:
+Before packaging, run `npm run build:native-sqlite` on the target platform, then
+`npm run package`. Windows x64 builds need MSVC with the matching Spectre libraries;
+Linux and macOS need their native C++ build tools. The packaged driver is verified
+against its platform, binary hash and locked npm integrity. End users only install
+the matching VSIX; no compiler or SQLite installation is needed.
 
-增加、删除或修改公开文件后，先通过数据检查，再刷新文件清单：
-
-```bash
-npm run update:source-manifest -- --write
-npm run update:source-manifest -- --check
-npm run check:contracts
-npm test
-npm run test:webview
-python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
-npm run check:field-data-zh
-npm run check:native-help-zh
-npm run check:manual-semantics-zh
-npm audit
-npm run check:package-contents
-```
-
-In Windows PowerShell, use `npm.cmd` when forwarding CLI options, for example:
-
-```powershell
-npm.cmd run update:source-manifest -- --write
-npm.cmd run update:source-manifest -- --check
-```
-
-在 Windows PowerShell 中，传递 CLI 选项时请使用 `npm.cmd`，例如上述清单命令，确保 `--write` 和 `--check` 传到实际工具。
-
-The manifest records current bytes and file roles. Refreshing it does not authorize
-changes to upstream provenance, authority locks, or historical acceptance evidence.
-See the CI workflow for the installed-package matrix. Missing UI/host environments
-must be recorded as unverified, not passed. Automated translation checks do not
-replace actual English and Chinese UI review.
-
-清单记录当前文件字节和职责。刷新清单不授权改写上游来源记录、权威锁或历史验收证据。
-真实安装包的宿主矩阵见 CI 工作流。缺少界面或宿主环境时应记录“未验证”，不能记作通过。
-自动翻译检查不能代替中英文实际界面审查。
-
-## Pull requests / 拉取请求
-
-Target public `dev`. Explain the problem, resulting behavior, data lineage changes,
-and commands actually run. Use synthetic examples without licensed manuals,
-customer decks or private paths. Public CI checks the same candidate VSIX on three
-operating systems and both supported matrix versions. Maintainer review is required;
-opening a pull request does not authorize a release, tag, or merge to `master`.
-
-向公开 `dev` 提交拉取请求，说明问题、修改后的行为、来源记录变更和实际执行的命令。
-使用合成示例，不提交受许可约束的手册、客户模型或私密路径。公开 CI 在三个操作系统
-和两个矩阵版本上检查同一份候选 VSIX。合并需要维护者审查；创建拉取请求不授权发布、
-打标签或合并到 `master`。
-
+打包前，在目标平台运行 `npm run build:native-sqlite`，再运行 `npm run package`。
+Windows x64 构建需要 MSVC 及对应的 Spectre 库；Linux 和 macOS 需要本机 C++ 构建工具。
+打包流程校验驱动的平台、二进制摘要及 npm 锁文件完整性。用户只需安装对应平台的
+VSIX，无需安装编译器或 SQLite。
