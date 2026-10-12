@@ -727,7 +727,7 @@
     {
       "path": "keywords/provenance/current-data.json",
       "role": "generated-artifact",
-      "sha256": "726c8856c9673b91346c65c46b5a30afa6efb15daabb119a5a2b57917fe174f9",
+      "sha256": "9c88780c516e4ff6039f96ab349855bdd0c5357736ebeda30d09738540294157",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -3673,7 +3673,7 @@
     {
       "path": "src/core/semantics/catalogInputFormCatalogV4.ts",
       "role": "editable-source",
-      "sha256": "055eea22c482b40b25253784a7e2ee11dead2de44002809845dc2a82d7997819",
+      "sha256": "55bc6a028bbab2c46da07d6d0ce34a85501fd9ec6d2682c82adc6bb07f109ffd",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -6745,7 +6745,7 @@
     {
       "path": "test/scripts/release/compactInputForm.test.js",
       "role": "editable-source",
-      "sha256": "cdb5029e274e80e704a4eb86fe48e744fffebcf057d47b27ea40918efdfc8b3a",
+      "sha256": "afa9e6dd987d712e4914a0c07e672a5b98b4cd91b25a3672e973cd51fc402917",
       "reason": "public-build-or-package-regression"
     },
     {

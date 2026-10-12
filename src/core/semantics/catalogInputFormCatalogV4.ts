@@ -47,6 +47,9 @@ type LoadedShard = {
     keywords: Record<string, Record<string, string[] | string | undefined>>;
     rules: Record<string, any>;
     projectedRules: Map<string, any>;
+    ruleOwners?: Map<string, LoadedShard>;
+    cacheKey?: string;
+    cacheBytes?: number;
 };
 
 /** Adapt verified raw branch descriptors into effective GUI cards, retaining
@@ -188,6 +191,7 @@ export class CatalogInputFormCatalogV4 {
     private readonly preparing = new Map<string, Promise<void>>();
     private manifestPreparation: Promise<any> | undefined;
     private readonly cache: ByteLru<LoadedShard>;
+    private readonly maximumCacheBytes: number;
     private readonly allowUnaudited: boolean;
 
     constructor(options: CatalogInputFormCatalogOptions = {}) {
@@ -196,11 +200,9 @@ export class CatalogInputFormCatalogV4 {
         this.readFileAsync = options.readFile ? async filePath => this.readFile(filePath)
             : filePath => fs.promises.readFile(filePath);
         this.allowUnaudited = options.allowUnaudited ?? (process.env.DYNASENSE_ALLOW_UNAUDITED_CATALOG === '1');
-        this.cache = new ByteLru<LoadedShard>(
-            Number.isFinite(options.maximumCacheBytes)
-                ? Math.max(0, Number(options.maximumCacheBytes))
-                : DEFAULT_CACHE_BYTES,
-        );
+        this.maximumCacheBytes = Number.isFinite(options.maximumCacheBytes)
+            ? Math.max(0, Number(options.maximumCacheBytes)) : DEFAULT_CACHE_BYTES;
+        this.cache = new ByteLru<LoadedShard>(this.maximumCacheBytes);
     }
 
     private loadManifest(prepared?: Buffer): any {
@@ -276,7 +278,7 @@ export class CatalogInputFormCatalogV4 {
             throw new Error(`Input Form shard payload is invalid: ${contentHash}`);
         }
         const loaded: LoadedShard = { keywords: payload.keywords, rules: payload.rules,
-            projectedRules: new Map() };
+            projectedRules: new Map(), cacheKey: contentHash, cacheBytes: decoded.length };
         this.cache.set(contentHash, loaded, decoded.length);
         return loaded;
     }
@@ -330,16 +332,18 @@ export class CatalogInputFormCatalogV4 {
 
     private compactShard(keyword: string, index: any, manifest: any): LoadedShard {
         const rules: Record<string, any> = {};
+        const ruleOwners = new Map<string, LoadedShard>();
         const ids = new Set<string>(Object.values(index.reference || {}).filter(Array.isArray).flat() as string[]);
         for (const hash of this.compactRuleShards(index)) {
             const shard = this.loadShard(hash, manifest);
             for (const id of ids) if (Object.prototype.hasOwnProperty.call(shard.rules, id)) {
                 if (Object.prototype.hasOwnProperty.call(rules, id)) throw new Error(`Duplicate shared rule: ${id}`);
-                // Never expose objects held by the shared bucket cache to consumers.
-                rules[id] = JSON.parse(JSON.stringify(shard.rules[id]));
+                // Keep source ownership internally; form reads deserialize an independent projection.
+                rules[id] = shard.rules[id];
+                ruleOwners.set(id, shard);
             }
         }
-        return { keywords: { [keyword]: JSON.parse(JSON.stringify(index.reference)) }, rules, projectedRules: new Map() };
+        return { keywords: { [keyword]: index.reference }, rules, projectedRules: new Map(), ruleOwners };
     }
 
     private async prepareShard(hash: string, manifest: any): Promise<void> {
@@ -399,19 +403,25 @@ export class CatalogInputFormCatalogV4 {
         // A shard contains many unrelated forms. Validate/project only the requested
         // rules here; eagerly joining native help for every form blocks first Hover.
         const rules = Object.fromEntries(ruleIds.map(ruleId => {
-            if (!shard.projectedRules.has(ruleId)) {
+            const owner = shard.ruleOwners?.get(ruleId) || shard;
+            let encoded = owner.projectedRules.get(ruleId);
+            if (!encoded) {
                 const nativeHelp = !manifest.isUnauditedDiagnostic && this.rootDir === path.resolve(defaultRuntimeRoot())
                     ? require('./nativeDescriptorHelp').withNativeDescriptorHelp : (rule: any) => rule;
                 const projected = nativeHelp(projectNativeDescriptorExtent(shard.rules[ruleId], manifest.dataset.sha256));
-                // Serialize legacy projections once; each read still owns its nested values.
-                shard.projectedRules.set(ruleId, manifest.storageVersion === 1 ? projected : serialize(projected));
+                encoded = serialize(projected);
+                // Projection storage shares the existing shard budget and eviction lifetime.
+                if (owner.cacheBytes + encoded.length <= this.maximumCacheBytes) {
+                    owner.projectedRules.set(ruleId, encoded);
+                    owner.cacheBytes += encoded.length;
+                    this.cache.set(owner.cacheKey, owner, owner.cacheBytes);
+                }
             }
-            const projected = shard.projectedRules.get(ruleId);
-            return [ruleId, manifest.storageVersion === 1 ? projected : deserialize(projected)];
+            return [ruleId, deserialize(encoded)];
         }));
         const form: CatalogInputForm = {
             keyword: normalized,
-            reference: manifest.storageVersion === 1 ? reference : structuredClone(reference),
+            reference: structuredClone(reference),
             rules,
             source: {
                 schemaVersion: 4,

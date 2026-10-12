@@ -37,6 +37,30 @@ for (const codec of ['gzip', 'br']) describe(`shared Input Form release format (
         assert.equal(compact.formForKeyword('UNKNOWN'), null);
         assert.ok(!fs.readFileSync(manifestPath, 'utf8').includes('private/path'));
     });
+    it('reuses shared projections without sharing mutable form values or exceeding the cache budget', () => {
+        compactInputForm(root, codec);
+        const compact = catalog();
+        const original = compact.formForKeyword('A');
+        const manifest = JSON.parse(fs.readFileSync(manifestPath));
+        const hash = manifest.keywords.A.ruleShards[0];
+        const owner = compact.cache.get(hash), encoded = owner.projectedRules.get('rule');
+        assert.ok(Buffer.isBuffer(encoded), 'shared projections must persist with their source shard');
+        const bytes = owner.cacheBytes;
+        original.rules.rule.values.push('mutation'); original.reference.formRuleIds.push('mutation');
+        assert.deepEqual(compact.formForKeyword('B').rules.rule.values, [null, '', 0, false]);
+        assert.deepEqual(compact.formForKeyword('A').reference.formRuleIds, ['rule']);
+        assert.equal(owner.projectedRules.get('rule'), encoded);
+        assert.equal(owner.cacheBytes, bytes);
+        assert.equal(compact.cache.bytes, bytes);
+        const limited = new CatalogInputFormCatalogV4({ rootDir: directory,
+            maximumCacheBytes: manifest.shards[hash].uncompressedBytes });
+        limited.formForKeyword('A');
+        assert.equal(limited.cache.get(hash).projectedRules.size, 0);
+        assert.equal(limited.cache.bytes, manifest.shards[hash].uncompressedBytes);
+        compact.cache.set('evict', {}, 64 * 1024 * 1024);
+        fs.appendFileSync(path.join(directory, manifest.shards[hash].file), 'tampered');
+        assert.throws(() => compact.formForKeyword('A'), /integrity mismatch/);
+    });
     it('keeps projected dataset bindings through shared-rule compaction', () => {
         // Construct the old schema keys: source projection also rewrites literal field names in tests.
         const sourceKey = ['pro', 'ducer'].join(''), shardSourceKey = sourceKey + 'Sha256';
