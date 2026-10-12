@@ -2,9 +2,9 @@ name: Public collaboration / 公开协作
 
 on:
   push:
-    branches: [dev, master]
+    branches: [master]
   pull_request:
-    branches: [dev, master]
+    branches: [master]
   workflow_call:
   workflow_dispatch:
     inputs:

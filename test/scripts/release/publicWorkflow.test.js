@@ -4,6 +4,28 @@ const yaml = require('js-yaml');
 const root = path.resolve(__dirname, '../../..');
 const read = file => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8'));
 describe('platform release workflow dependency closure', () => {
+    it('bounds dev feedback without replacing complete release acceptance', () => {
+        const quick = read('fast-ci.yml'), full = read('public-ci.yml');
+        assert.deepEqual(quick.on.push.branches, ['dev']);
+        assert.deepEqual(quick.on.pull_request.branches, ['dev']);
+        assert.deepEqual(full.on.push.branches, ['master']);
+        assert.deepEqual(full.on.pull_request.branches, ['master']);
+        assert.ok('workflow_dispatch' in full.on && 'workflow_call' in full.on);
+        assert.equal(quick.jobs.build.needs, undefined);
+        assert.equal(quick.jobs.contracts.needs, undefined);
+        for (const job of Object.values(quick.jobs)) assert.equal(job['timeout-minutes'], 10);
+        assert.deepEqual(quick.jobs.build.strategy.matrix.os, ['windows-2022', 'ubuntu-22.04', 'macos-14']);
+        const commands = quick.jobs.build.steps.map(step => step.run || '').join('\n');
+        assert.ok(commands.includes('npm run build\n'));
+        assert.ok(commands.includes('--bail'));
+        assert.ok(commands.includes('official field value completions'));
+        assert.ok(commands.includes('npm run test:webview'));
+        const checks = quick.jobs.contracts.steps.map(step => step.run || '').join('\n');
+        assert.ok(checks.indexOf('npm run compile') >= 0 && checks.indexOf('npm run compile') < checks.indexOf('check:contracts'));
+        assert.ok(!commands.includes('npm run test:unit'));
+        assert.ok(!JSON.stringify(quick).includes('vsce publish'));
+        assert.equal(read('release.yml').jobs.build.uses, './.github/workflows/public-ci.yml');
+    });
     it('builds SQLite and a target VSIX on each matching runner and tests that artifact twice', () => {
         const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'], host = workflow.jobs['installed-host'];
         assert.ok('workflow_call' in workflow.on);

@@ -371,9 +371,15 @@
       "reason": "product-test-or-build-dependency"
     },
     {
+      "path": ".github/workflows/fast-ci.yml",
+      "role": "editable-source",
+      "sha256": "6a1fd47dc7764fa5218985edbcfbe2942d980a324d90da6f567f61ff51e499aa",
+      "reason": "public-contribution"
+    },
+    {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "aa86a13543dbdba3e7af29b7bc6b5a01adef88c61e8b0ae53314f60d66cbf759",
+      "sha256": "e87dbb2c24e82f26ae64d58528fb379782d79630fccf5c241149fb3ec833fb9a",
       "reason": "public-contribution-workflow"
     },
     {
@@ -6757,7 +6763,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "68a836bdaef143dde474df1990f2bad0ff9be6ab6e39ab22b6f9262dfea0b471",
+      "sha256": "9966efaa64c92673f680665f368d266ad158661501e4c526677c3ae5fed0c4c4",
       "reason": "public-build-or-package-regression"
     },
     {
