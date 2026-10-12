@@ -34,15 +34,20 @@ async function main() {
         ...['upgrade', 'reload', 'offline', 'missing-external-manual', ...(process.platform === 'win32' ? ['ordinary-project-f5'] : [])]
             .map(name => ['run-release-lifecycle.cjs', name]),
     ];
-    for (const [script, ...args] of cases) {
-        const name = script === 'run-release-lifecycle.cjs' ? args[0]
-            : [path.basename(script), ...args.map(arg => path.basename(arg).replace(/^--/, ''))].join('-');
+    const caseName = ([script, ...args]) => script === 'run-release-lifecycle.cjs' ? args[0]
+        : [path.basename(script), ...args.map(arg => path.basename(arg).replace(/^--/, ''))].join('-');
+    const selected = process.env.LSDYNA_ACCEPTANCE_CASE;
+    if (selected && !cases.slice(1).some(item => caseName(item) === selected))
+        throw Error(`Unknown installed acceptance case: ${selected}`);
+    for (const entry of cases) {
+        const [script, ...args] = entry, name = caseName(entry);
         // Always recheck package integrity; only reuse explicitly passed host cases.
         if (script !== '../release/verify-release-hash.cjs' && previous?.cases.some(item => item.name === name && item.passed === true)) {
             report.cases.push({ name, passed: true, reused: true });
             fs.writeFileSync(file, JSON.stringify(report, null, 2));
             continue;
         }
+        if (selected && script !== '../release/verify-release-hash.cjs' && name !== selected) continue;
         const result = spawnSync(process.execPath, [path.join(__dirname, script), ...args], { env, encoding: 'utf8', windowsHide: true,
             maxBuffer: 32 * 1024 * 1024, timeout: 600000 });
         fs.writeFileSync(path.join(directory, name + '.log'), (result.stdout || '') + (result.stderr || ''));
@@ -60,6 +65,7 @@ async function main() {
     if (versions.length !== 1 || (report.requestedVscodeVersion && versions[0] !== report.requestedVscodeVersion))
         throw Error('Installed host identity must record one actual target VS Code version');
     report.vscodeVersion = versions[0];
-    report.complete = true; fs.writeFileSync(file, JSON.stringify(report, null, 2));
+    report.complete = cases.every(entry => report.cases.some(item => item.name === caseName(entry) && item.passed === true));
+    fs.writeFileSync(file, JSON.stringify(report, null, 2));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

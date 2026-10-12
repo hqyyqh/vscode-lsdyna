@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), vm = require('node:vm'), crypto = require('node:crypto');
 const script = path.resolve(__dirname, '../../../scripts/host/run-installed-acceptance.cjs');
-async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true, resume, failScript }) {
+async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true, resume, failScript, selected }) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installed-acceptance-test-'));
     const vsix = path.join(root, 'candidate.vsix'), evidence = path.join(root, 'evidence');
     fs.writeFileSync(vsix, 'synthetic package identity');
@@ -12,6 +12,7 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     const processMock = { argv: [], platform: process.platform, arch: process.arch, execPath: process.execPath, env: {
         LSDYNA_TEST_VSIX: vsix, ...(explicitEvidence ? { LSDYNA_TEST_VSIX_EVIDENCE: evidence } : {}), VSCODE_TEST_VERSION: '1.100.0',
         ...(executable ? { VSCODE_EXECUTABLE_PATH: executable } : {}),
+        ...(selected ? { LSDYNA_ACCEPTANCE_CASE: selected } : {}),
     } };
     if (resume) {
         processMock.env.LSDYNA_ACCEPTANCE_RESUME = path.join(root, 'previous.json');
@@ -46,6 +47,34 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('reuses only the selected platform successful package job, without requiring unrelated platforms', () => {
+        const { validateBuild } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
+        const run = { workflowName: 'Public collaboration / 公开协作', jobs: [
+            {name:'Build, data, tests, audit and actual VSIX (windows-2022, win32-x64)',conclusion:'success'},
+            {name:'Build, data, tests, audit and actual VSIX (ubuntu-22.04, linux-x64)',conclusion:'failure'},
+        ] };
+        validateBuild(run, 'win32-x64');
+        assert.throws(() => validateBuild(run, 'linux-x64'));
+        run.jobs = [{name:'Selected node / Node / win32-x64 / package',conclusion:'success'}];
+        validateBuild(run, 'win32-x64');
+        run.jobs[0].conclusion = 'failure';
+        assert.throws(() => validateBuild(run, 'win32-x64'));
+        run.jobs[0].conclusion = 'success'; run.workflowName = 'unrelated';
+        assert.throws(() => validateBuild(run, 'win32-x64'));
+    });
+    it('runs only the selected failed case and integrity check, retaining earlier passes as partial evidence', async () => {
+        const result = await scenario({ selected: 'run-keyword-manager-gui.cjs', resume: {
+            sourceRun: '123', cases: [{ name: 'run-release-host.cjs-catalog', passed: true }],
+        } });
+        assert.equal(result.exitCode, undefined);
+        assert.equal(result.commands.length, 2);
+        assert.ok(result.commands.includes('run-keyword-manager-gui.cjs'));
+        assert.equal(result.report.complete, false);
+        assert.ok(result.report.cases.find(item => item.name.endsWith('-catalog')).reused);
+        const invalid = await scenario({ selected: 'misspelled-case' });
+        assert.equal(invalid.exitCode, 1);
+        assert.equal(invalid.commands.length, 0);
+    });
     it('resumes passed cases but reruns failed cases and preserves diagnostics', async () => {
         const resume = { sourceRun: '123', cases: [
             { name: 'run-release-host.cjs-catalog', passed: true },

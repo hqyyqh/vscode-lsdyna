@@ -8,6 +8,30 @@ on:
   workflow_call:
   workflow_dispatch:
     inputs:
+      node:
+        description: 'Single node only; empty runs complete acceptance'
+        type: choice
+        options: ['', build, unit, webview, contracts, language, audit, package, installed, performance]
+      target:
+        description: 'Platform for a single node'
+        type: choice
+        options: [win32-x64, linux-x64, darwin-arm64]
+        default: linux-x64
+      vscode:
+        description: 'VS Code for a single installed or performance node'
+        type: choice
+        options: ['1.100.0', '1.139.1']
+        default: '1.100.0'
+      test_grep:
+        description: 'Required Mocha name pattern for the unit node'
+        type: string
+      test_file:
+        description: 'Single test file for the unit node, relative to test/'
+        type: string
+        default: integration/extension.test.js
+      host_case:
+        description: 'Required exact installed case name for the installed node'
+        type: string
       build_run:
         description: 'Reuse passed platform builds from this run (or leave empty for full CI)'
         type: string
@@ -23,12 +47,25 @@ permissions:
   actions: read
 
 concurrency:
-  group: public-${{ github.workflow }}-${{ github.ref }}-${{ inputs.build_run || 'build' }}
+  group: public-${{ github.workflow }}-${{ github.ref }}-${{ inputs.node || 'full' }}-${{ inputs.target }}-${{ inputs.vscode }}-${{ inputs.host_case }}-${{ inputs.build_run || 'build' }}
   cancel-in-progress: true
 
 jobs:
+  selected-node:
+    name: Selected node
+    if: ${{ inputs.node }}
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      node: ${{ inputs.node }}
+      target: ${{ inputs.target }}
+      vscode: ${{ inputs.vscode }}
+      test_grep: ${{ inputs.test_grep }}
+      test_file: ${{ inputs.test_file }}
+      host_case: ${{ inputs.host_case }}
+      build_run: ${{ inputs.build_run }}
+      resume_run: ${{ inputs.resume_run }}
   public-checks:
-    if: ${{ !inputs.build_run }}
+    if: ${{ !inputs.node && !inputs.build_run }}
     name: Build, data, tests, audit and actual VSIX
     strategy:
       fail-fast: false
@@ -113,7 +150,7 @@ jobs:
   installed-host:
     name: Same VSIX / ${{ matrix.platform.os }} / VS Code ${{ matrix.vscode }}
     needs: public-checks
-    if: ${{ !cancelled() && (needs.public-checks.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_run)) }}
+    if: ${{ !inputs.node && !cancelled() && (needs.public-checks.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_run)) }}
     strategy:
       fail-fast: false
       matrix:

@@ -81,7 +81,7 @@ describe('platform release workflow dependency closure', () => {
         const workflow = read('public-ci.yml'), host = workflow.jobs['installed-host'];
         assert.ok(workflow.on.workflow_dispatch.inputs.build_run);
         for (const name of ['public-ci.yml', 'ci.yml', 'release.yml']) assert.equal(read(name).permissions.actions, 'read');
-        assert.equal(workflow.jobs['public-checks'].if, '${{ !inputs.build_run }}');
+        assert.equal(workflow.jobs['public-checks'].if, '${{ !inputs.node && !inputs.build_run }}');
         assert.ok(host.if.includes("needs.public-checks.result == 'success'"));
         assert.ok(host.if.includes("github.event_name == 'workflow_dispatch'"));
         const prepare = host.steps.findIndex(step => step.run?.includes('run-installed-acceptance-retry.cjs'));
@@ -90,5 +90,35 @@ describe('platform release workflow dependency closure', () => {
         assert.equal(host.steps.find(step => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
         assert.equal(host.steps.find(step => step.uses?.startsWith('actions/download-artifact@')).with['run-id'], '${{ inputs.build_run || github.run_id }}');
         assert.ok(host.steps[run].run.includes('LSDYNA_REUSE_PERFORMANCE'));
+    });
+    it('routes a selected node away from the full build and installed matrices', () => {
+        const full = read('public-ci.yml'), node = read('ci-node.yml');
+        assert.equal(full.jobs['selected-node'].uses, './.github/workflows/ci-node.yml');
+        assert.ok(full.jobs['public-checks'].if.includes('!inputs.node'));
+        assert.ok(full.jobs['installed-host'].if.includes('!inputs.node'));
+        assert.ok(full.on.workflow_dispatch.inputs.node.options.includes('installed'));
+        assert.ok(!node.on.push && !node.on.pull_request);
+        const steps = node.jobs.node.steps, text = steps.map(step => step.run || '').join('\n');
+        assert.ok(text.includes('--fail-zero') && text.includes('"test/$TEST_FILE"'));
+        assert.ok(text.includes('refs/heads/dev'));
+        const guard = steps.findIndex(step => step.run === 'node scripts/host/run-installed-acceptance-retry.cjs');
+        const host = steps.findIndex(step => step.run?.includes('node scripts/host/run-installed-acceptance.cjs'));
+        assert.ok(guard >= 0 && guard < host);
+        assert.equal(node.jobs.node.env.LSDYNA_ACCEPTANCE_CASE, '${{ inputs.host_case }}');
+    });
+    it('rejects empty selections, escaped test paths and non-dev node requests before execution', () => {
+        const run = read('ci-node.yml').jobs.node.steps.find(step => step.name === 'Validate request and record exact source').run;
+        const source = run.split("node <<'NODE'\n")[1].split('\nNODE')[0];
+        const execute = values => require('node:vm').runInNewContext(source, {
+            process: { platform: process.platform, arch: process.arch, env: {
+                CI_NODE: 'unit', EXPECTED_TARGET: `${process.platform}-${process.arch}`, TEST_GREP: 'workflow',
+                TEST_FILE: 'scripts/release/publicWorkflow.test.js', GITHUB_REF: 'refs/heads/dev', ...values,
+            } },
+            require: name => name === 'node:fs' ? { ...fs, mkdirSync() {}, writeFileSync() {} } : require(name),
+        });
+        execute({});
+        for (const values of [{TEST_GREP:''}, {TEST_GREP:'['}, {TEST_FILE:'../package.json'},
+            {GITHUB_REF:'refs/heads/master'}, {CI_NODE:'unknown'}, {CI_NODE:'installed',LSDYNA_ACCEPTANCE_CASE:''}])
+            assert.throws(() => execute(values));
     });
 });

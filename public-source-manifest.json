@@ -365,6 +365,12 @@
       "reason": "public-contribution-workflow"
     },
     {
+      "path": ".github/workflows/ci-node.yml",
+      "role": "editable-source",
+      "sha256": "a95ff31d2635d3f687d1c61bd91bd645e2ab9b92ca5a3a2e5495190753770aca",
+      "reason": "public-contribution"
+    },
+    {
       "path": ".github/workflows/ci.yml",
       "role": "editable-source",
       "sha256": "91b6103180f901aad2054505fdc1388e72149366a6c1d92079fcde5f844e6f8f",
@@ -379,7 +385,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "e87dbb2c24e82f26ae64d58528fb379782d79630fccf5c241149fb3ec833fb9a",
+      "sha256": "0a7f531a7376e1fc0031e96faa987b1f10a26c071829748b8a6c09b5dee5decb",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2671,13 +2677,13 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "f44ce73febd7ba833048a1f5a7f63198535360de9d10a6cef8b54da3a07440f2",
+      "sha256": "e86228af0e6c478daa345fea8181d2888bb19245bb5829ebf229adcb10ae3d50",
       "reason": "public-contribution"
     },
     {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "cc53430756acacfe9116884ca84608cbc27f4826956bc8a648adb5d6070efab0",
+      "sha256": "655f1d8af494bd6e38783aedcb5d724728d9ba83e664a803919c819b64777479",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -6697,7 +6703,7 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "aa911acf812f7d60c5ea9ffc2e0f9e72c9b7943c856d688426fa3e428ecae087",
+      "sha256": "38083e29ca4b957c3ef45502109fd9984e6da4d2426c5a64696dccf188ab98b6",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6763,7 +6769,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "9966efaa64c92673f680665f368d266ad158661501e4c526677c3ae5fed0c4c4",
+      "sha256": "e389463d905875b9382614e2775df484ca63e6b394d51d5e930d176ec7fb0c60",
       "reason": "public-build-or-package-regression"
     },
     {

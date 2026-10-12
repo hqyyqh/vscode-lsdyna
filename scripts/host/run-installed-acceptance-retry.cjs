@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const crypto = require('node:crypto'), { execFileSync } = require('node:child_process');
 
 // Reuse product builds only for these host-side changes; invalidate every affected host case.
-const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
+const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
     'scripts/host/run-installed-acceptance.cjs', 'scripts/host/run-installed-acceptance-retry.cjs',
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
     'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
@@ -31,29 +31,39 @@ function validateReport(report, { digest, target, version }) {
     assert.ok(!report.vscodeVersion || report.vscodeVersion === version, 'Previous actual version mismatch');
     assert.ok(Array.isArray(report.cases), 'Previous report has no case results');
 }
+function validateBuild(run, target) {
+    assert.equal(run.workflowName, 'Public collaboration / 公开协作');
+    assert.ok(run.jobs.some(job => job.conclusion === 'success' && (
+        (job.name.startsWith('Build, data, tests, audit and actual VSIX') && job.name.endsWith(`${target})`)) ||
+        job.name === `Selected node / Node / ${target} / package`
+    )), `Missing passed build for ${target}`);
+}
 function main() {
     const { BUILD_RUN: buildRun, RESUME_RUN: resumeRun, GITHUB_REPOSITORY: repo,
         EXPECTED_TARGET: target, VSCODE_TEST_VERSION: version, GITHUB_ENV: githubEnv } = process.env;
-    for (const run of [buildRun, resumeRun]) assert.match(run || '', /^\d+$/);
+    assert.match(buildRun || '', /^\d+$/);
+    if (resumeRun) assert.match(resumeRun, /^\d+$/);
     assert.ok(['win32-x64', 'linux-x64', 'darwin-arm64'].includes(target));
     assert.ok(['1.100.0', '1.139.1'].includes(version));
     assert.equal(process.platform + '-' + process.arch, target);
     const command = (exe, args) => execFileSync(exe, args, { encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024 }).trim();
     const readRun = id => JSON.parse(command('gh', ['run', 'view', id, '--repo', repo, '--json', 'headSha,headBranch,event,jobs,workflowName']));
-    const build = readRun(buildRun), previousRun = buildRun === resumeRun ? build : readRun(resumeRun);
+    const build = readRun(buildRun), previousRun = !resumeRun ? null : buildRun === resumeRun ? build : readRun(resumeRun);
     let invalidated;
-    for (const run of [build, previousRun]) {
+    for (const run of [build, previousRun].filter(Boolean)) {
         assert.equal(run.headBranch, 'dev');
         assert.equal(run.workflowName, 'Public collaboration / 公开协作');
         assert.ok(['push', 'workflow_dispatch'].includes(run.event));
         command('git', ['merge-base', '--is-ancestor', run.headSha, 'HEAD']);
         invalidated = validateChanges(command('git', ['diff', '--name-only', run.headSha, 'HEAD']).split('\n').filter(Boolean));
     }
-    for (const platform of ['win32-x64', 'linux-x64', 'darwin-arm64'])
-        assert.ok(build.jobs.some(job => job.name.startsWith('Build, data, tests, audit and actual VSIX')
-            && job.name.endsWith(`${platform})`) && job.conclusion === 'success'), `Missing passed build for ${platform}`);
+    validateBuild(build, target);
+    command(process.execPath, ['scripts/release/verify-release-hash.cjs', 'dist/candidate.vsix']);
+    if (!previousRun) return;
     const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
-    assert.ok(previousRun.jobs.some(job => job.name === `Same VSIX / ${os} / VS Code ${version}` && job.status === 'completed'),
+    assert.ok(previousRun.jobs.some(job => [
+        `Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`,
+    ].includes(job.name) && job.status === 'completed'),
         'Previous host is not finished');
     const directory = path.resolve('.artifacts/previous-host');
     command('gh', ['run', 'download', resumeRun, '--repo', repo, '--name', `installed-${target}-${version}`, '--dir', directory]);
@@ -82,4 +92,4 @@ function main() {
     console.log(`Reuse build ${buildRun}, completed host cases from ${resumeRun}, exact package ${digest}`);
 }
 if (require.main === module) main();
-module.exports = { validateChanges, validateReport };
+module.exports = { validateChanges, validateReport, validateBuild };
