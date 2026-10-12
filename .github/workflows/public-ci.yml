@@ -56,9 +56,7 @@ jobs:
       - name: Build all product components
         run: npm run build
       - name: Verify deterministic public data and source inventory
-        run: |
-          npm run update:source-manifest -- --check
-          npm run check:contracts
+        run: npm run check:contracts
       - name: Test the existing build; replay the full corpus once
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then

@@ -371,7 +371,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "e9bf44ad7637a4736b117448c662be4416f2ec82a43472cfd22d65ca9325fb13",
+      "sha256": "101d843a1f234ce7499ec33acd9cbfb6372a1529c2656a495af67948b9cc6e26",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2729,7 +2729,7 @@
     {
       "path": "scripts/maintenance/validate-project-contracts.cjs",
       "role": "editable-source",
-      "sha256": "05b5794334a81b8b3358ee6b204ab1581f7f3646167bbee421e27f916be59220",
+      "sha256": "a133a58a696bc536e9b0a69dedb60cb3b20eb37e261c80978d5c64bbb0416c72",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6737,7 +6737,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "b6512709a6f8fee4b543911fe0f24d9d2642ab5670b547032f80fdd818aaa76c",
+      "sha256": "b42e2fe365cb45080588152ec41d7222345c3e448f5bd07092a27d89459cc78a",
       "reason": "public-build-or-package-regression"
     },
     {

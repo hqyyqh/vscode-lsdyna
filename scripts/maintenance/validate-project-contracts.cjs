@@ -386,7 +386,7 @@ function validateWorkflowCoverage(root, errors) {
     // Source checkpoints make public builds independent of private native producers.
     // Both entry points delegate to this one platform build/installed-host workflow.
     const shared = decodeUtf8Strict(path.join(root, '.github/workflows/public-ci.yml'));
-    for (const command of ['npm run check:contracts', 'npm test', 'npm run test:webview',
+    for (const command of ['npm run check:contracts', 'npm run build', 'npm run test:unit', 'npm run test:data', 'npm run test:webview',
         'python -m unittest discover -s test/scripts/build/keywords', 'npm run check:field-data-zh',
         'npm run check:native-help-zh', 'npm run check:manual-semantics-zh', 'npm audit',
         'npm run build:native-sqlite', 'node scripts/release/package-hover-release.cjs',

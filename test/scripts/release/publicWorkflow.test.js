@@ -28,7 +28,10 @@ describe('platform release workflow dependency closure', () => {
         assert.equal((commands.match(/^npm run build$/gm) || []).length, 1);
         assert.ok(!/npm test(?:\s|$)/.test(commands));
         assert.ok(!commands.includes('npm run data:check'));
-        assert.ok(commands.includes('npm run update:source-manifest -- --check'));
+        assert.ok(!commands.includes('npm run update:source-manifest'));
+        assert.ok(commands.includes('npm run check:contracts'));
+        const contract = fs.readFileSync(path.join(root, 'scripts/release/validate-public-source-contracts.cjs'), 'utf8');
+        assert.ok(contract.includes('updateSourceManifest(process.cwd())'));
         const tests = build.steps.find(step => step.name?.startsWith('Test the existing build'));
         assert.ok(tests.run.includes('if [[ "$RUNNER_OS" == "Linux" ]]'));
         assert.ok(tests.run.includes('npm run test:unit\n'));
