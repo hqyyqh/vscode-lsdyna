@@ -8,7 +8,9 @@ const viewType = tab => String(tab.input?.viewType || '').replace(/^mainThreadWe
 exports.run = async () => {
     const root = process.env.LSDYNA_RELEASE_HOST_ROOT, phase = process.env.LSDYNA_RELEASE_HOST_PHASE;
     const metrics = [], checks = [], output = path.join(root, 'result.json');
-    const measure = async (name, operation) => {
+    const measure = async (name, operation) => withCpuProfile(process.env.LSDYNA_PROFILE_CPU === name ||
+        (process.env.LSDYNA_PROFILE_CPU === '1' && name === 'first-hover'),
+        path.join(root, name + '.cpuprofile'), async () => {
         await delay(10);
         let previous = performance.now(), maxEventLoopGapMs = 0;
         const gaps = [];
@@ -19,9 +21,7 @@ exports.run = async () => {
         let peakRss = memoryBefore.rss;
         const memoryTimer = setInterval(() => { peakRss = Math.max(peakRss, process.memoryUsage().rss); }, 2);
         try {
-            return await withCpuProfile(process.env.LSDYNA_PROFILE_CPU === name ||
-                (process.env.LSDYNA_PROFILE_CPU === '1' && name === 'first-hover'),
-                path.join(root, name + '.cpuprofile'), operation);
+            return await operation();
         }
         finally {
             const durationMs = performance.now() - start;
@@ -31,7 +31,7 @@ exports.run = async () => {
             peakRss = Math.max(peakRss, memoryAfter.rss, process.resourceUsage().maxRSS * 1024);
             metrics.push({ name, durationMs, maxEventLoopGapMs, peakRss, peakRssScope: 'extension-host process high-water mark', memoryBefore, memoryAfter, ...(gaps.length ? { gaps } : {}) });
         }
-    };
+    });
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
     assert.ok(extension);
     const result = { phase, vscodeVersion: vscode.version, platform: process.platform, arch: process.arch,

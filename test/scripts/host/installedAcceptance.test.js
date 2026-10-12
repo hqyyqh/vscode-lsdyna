@@ -99,8 +99,9 @@ describe('installed acceptance executable and measured version', () => {
     it('rejects evidence reuse after product or case changes and mismatched report identities', () => {
         const { validateChanges, validateReport } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         validateChanges(['scripts/host/run-installed-acceptance.cjs', '.github/workflows/public-ci.yml']);
-        for (const file of ['src/extension.ts', 'package-lock.json', 'test/host/release/host.cjs', 'test/support/devtools.cjs'])
+        for (const file of ['src/extension.ts', 'package-lock.json', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
+        assert.deepEqual([...validateChanges(['test/host/release/host.cjs', 'test/scripts/host/hostInstrumentation.test.js'])], ['*']);
         assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs']);
         assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
             ['run-editor-safety-extension-host.cjs']);

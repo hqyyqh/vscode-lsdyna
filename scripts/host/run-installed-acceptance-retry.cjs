@@ -8,8 +8,10 @@ const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflow
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
     'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
     'test/scripts/release/publicWorkflow.test.js', 'test/scripts/release/publicReleaseReports.test.js',
-    'test/scripts/host/vsixHost.test.js', 'test/scripts/host/hostBenchmark.test.js']);
+    'test/scripts/host/vsixHost.test.js', 'test/scripts/host/hostBenchmark.test.js', 'test/scripts/host/hostInstrumentation.test.js']);
 const affectedCases = {
+    // This external test driver is excluded from VSIX; its changes invalidate host evidence, not the package.
+    'test/host/release/host.cjs': ['*'],
     'scripts/benchmark/benchmark-release-hosts.cjs': ['performance'],
     'test/support/release/rendered.cjs': ['performance', 'offline', 'missing-external-manual'],
     'scripts/host/vsix-host.cjs': ['*'],
