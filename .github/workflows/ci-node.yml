@@ -62,6 +62,7 @@ jobs:
           }
           if (node === 'installed') assert.ok(hostCase.trim(), 'Select one installed case');
           if (node === 'profile') assert.ok(['hover','manager'].includes(hostCase), 'Select one diagnostic phase');
+          if (node === 'performance') assert.ok(['','hover','manager','experience'].includes(hostCase), 'Unknown performance phase');
           if (['installed','performance','profile'].includes(node)) assert.match(build, /^\d+$/);
           if (resume) { assert.equal(node, 'installed'); assert.match(resume, /^\d+$/); }
           fs.mkdirSync('.artifacts/node', {recursive:true});
@@ -127,6 +128,7 @@ jobs:
           elif [[ "$CI_NODE" == "installed" ]]; then
             "${launcher[@]}" node scripts/host/run-installed-acceptance.cjs
           else
+            export LSDYNA_PERFORMANCE_PHASE="$LSDYNA_ACCEPTANCE_CASE"
             "${launcher[@]}" node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
           fi
       - name: Preserve diagnostic CPU profile (not acceptance evidence)

@@ -31,4 +31,10 @@ describe('public release report boundary', () => {
         assert.ok(!/path:.*\.vsix.*\*/.test(workflow));
         assert.ok(!workflow.includes('path: .artifacts/'));
     });
+    it('preserves a passed selected phase as incomplete public evidence', () => {
+        const report=performanceReport({complete:false,phases:['experience'],selectedPhasesPassed:true,
+            scope:'two-round performance spot check (not percentile certification)',metrics:[]});
+        assert.equal(report.complete,false);assert.equal(report.selectedPhasesPassed,true);
+        assert.deepEqual(report.phases,['experience']);assert.match(report.scope,/not percentile/);
+    });
 });

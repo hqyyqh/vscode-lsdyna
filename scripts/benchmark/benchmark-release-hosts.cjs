@@ -3,11 +3,14 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const { spawnSync } = require('node:child_process');
 const [baseline, candidate, report] = process.argv.slice(2).map(value => path.resolve(value));
 const results = { baseline: [], candidate: [] }, failures = [];
+const selectedPhase = process.env.LSDYNA_PERFORMANCE_PHASE || '';
+assert.ok(['', 'hover', 'manager', 'experience'].includes(selectedPhase), 'Unknown performance phase');
+const phases = selectedPhase ? [selectedPhase] : ['hover', 'manager', 'experience'];
 const sha = file => require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const identity = { baselineSha256: sha(baseline), candidateSha256: sha(candidate) };
 fs.mkdirSync(path.dirname(report), { recursive: true });
 try {
-    for (const phase of ['hover', 'manager', 'experience']) for (let run = 0; run < 2; run++) {
+    for (const phase of phases) for (let run = 0; run < 2; run++) {
         for (const name of run % 2 ? ['candidate', 'baseline'] : ['baseline', 'candidate']) {
             const child = spawnSync(process.execPath, [path.join(__dirname, "../host/run-release-host.cjs"), phase], {
                 env: { ...process.env, NODE_PATH: '', LSDYNA_TEST_VSIX: name === 'baseline' ? baseline : candidate },
@@ -20,7 +23,7 @@ try {
                 (phase === 'experience' ? ['first-manager-rendered', 'manager-refresh', 'manual-open', 'scan'] : ['activation', 'first-' + phase]).every(metricName => result.metrics.some(item => item.name === metricName));
             if (child.status !== 0 || result.status !== 'passed' || result.warmSampleCount !== 2 || !hasMetrics)
                 failures.push(`${name}/${phase}/${run}: ${result.error || child.error?.message || (!hasMetrics ? 'missing metrics' : 'incomplete samples')}`);
-            fs.writeFileSync(report, JSON.stringify({ ...identity, complete: false, samples: results, failures }, null, 2));
+            fs.writeFileSync(report, JSON.stringify({ ...identity, complete: false, phases, samples: results, failures }, null, 2));
             console.log(`${phase} ${run+1}/2 ${name} ${result.status}`);
         }
     }
@@ -35,7 +38,7 @@ try {
         metrics.push({ name, field, statistic: 'maximum', before, after, allowance, passed, baselineCount: values('baseline').length, candidateCount: values('candidate').length });
         if (!passed) failures.push(`${name}/${field}/maximum`);
     }
-    fs.writeFileSync(report, JSON.stringify({ ...identity, complete: !failures.length, scope: 'two-round performance spot check (not percentile certification); installed activation, Hover, rendered manager and refresh, manual rendering and scan; peak RSS is extension-host high-water mark',
+    fs.writeFileSync(report, JSON.stringify({ ...identity, complete: !selectedPhase && !failures.length, phases, selectedPhasesPassed: !failures.length, scope: 'two-round performance spot check (not percentile certification); only listed phases; peak RSS is extension-host high-water mark',
         metrics, samples: results, failures }, null, 2));
     assert.deepEqual(failures, []);
 } catch (error) {

@@ -107,6 +107,8 @@ describe('installed acceptance executable and measured version', () => {
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);
+        assert.deepEqual([...validateChanges(['test/support/release/rendered.cjs'])], ['performance', 'offline', 'missing-external-manual']);
+        assert.deepEqual([...validateChanges(['scripts/benchmark/benchmark-release-hosts.cjs'])], ['performance']);
         const report = { vsixSha256: 'a', platform: 'linux', arch: 'x64', cases: [] };
         const expected = { digest: 'a', target: 'linux-x64', version: '1.100.0' };
         validateReport(report, expected);

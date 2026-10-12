@@ -8,8 +8,10 @@ const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflow
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
     'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
     'test/scripts/release/publicWorkflow.test.js', 'test/scripts/release/publicReleaseReports.test.js',
-    'test/scripts/host/vsixHost.test.js']);
+    'test/scripts/host/vsixHost.test.js', 'test/scripts/host/hostBenchmark.test.js']);
 const affectedCases = {
+    'scripts/benchmark/benchmark-release-hosts.cjs': ['performance'],
+    'test/support/release/rendered.cjs': ['performance', 'offline', 'missing-external-manual'],
     'scripts/host/vsix-host.cjs': ['*'],
     'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs'],
     'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs'],
@@ -79,7 +81,7 @@ function main() {
     fs.writeFileSync(resume, JSON.stringify(report));
     fs.appendFileSync(githubEnv, `LSDYNA_ACCEPTANCE_RESUME=${resume}\n`);
     const performanceFile = path.join(directory, 'performance.json');
-    if (!invalidated.has('*') && fs.existsSync(performanceFile)) {
+    if (!invalidated.has('*') && !invalidated.has('performance') && fs.existsSync(performanceFile)) {
         const performance = JSON.parse(fs.readFileSync(performanceFile));
         if (performance.complete === true && performance.candidateSha256 === digest
             && performance.baselineSha256 === hash('dist/candidate.vsix.baseline.vsix')

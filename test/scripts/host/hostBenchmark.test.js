@@ -22,7 +22,8 @@ describe('host benchmark evidence contracts', function () {
             samples:[{ version:'1.100.0',phase:'activation',run:0,name:'baseline',result:{vscodeVersion:'1.139.1'} }],failures:[]}));
         const relative = editor ? 'scripts/benchmark/benchmark-editor-hosts.cjs' : 'scripts/benchmark/benchmark-release-hosts.cjs';
         const script = path.join(repo,relative);
-        const proc = {argv:[process.execPath,script,baseline,candidate,output,...(mode==='fixed-wrong-version'?[fixed]:[])],execPath:process.execPath,env:{}};
+        const proc = {argv:[process.execPath,script,baseline,candidate,output,...(mode==='fixed-wrong-version'?[fixed]:[])],execPath:process.execPath,
+            env:mode.startsWith('phase-')?{LSDYNA_PERFORMANCE_PHASE:mode.slice(6)}:{}};
         const context = {__dirname:path.dirname(script),process:proc,console:{log(){},error(){}},require(name){
             if(name==='node:fs')return {...fs,existsSync(file){
                 if(editor&&String(file).endsWith('Code.exe'))return mode!=='missing-executable';
@@ -86,5 +87,46 @@ describe('host benchmark evidence contracts', function () {
         assert.equal(result.error,undefined);assert.equal(result.report.complete,true);assert.equal(result.calls.length,12);
         assert.ok(result.report.metrics.length>0);
         assert.ok(result.report.metrics.every(item=>item.statistic==='maximum' && !('percentile' in item)));
+    });
+    it('runs four paired launches for one phase without certifying complete performance',()=>{
+        for(const phase of ['hover','manager','experience']) {
+            const result=scenario('release','phase-'+phase);
+            assert.equal(result.error,undefined);assert.equal(result.exitCode,undefined);
+            assert.equal(result.calls.length,4);assert.ok(result.calls.every(call=>call.args[1]===phase));
+            assert.equal(result.report.complete,false);assert.equal(result.report.selectedPhasesPassed,true);
+            assert.deepEqual(result.report.phases,[phase]);
+        }
+        const invalid=scenario('release','phase-typo');
+        assert.match(invalid.error.message,/Unknown performance phase/);assert.equal(invalid.calls.length,0);
+    });
+    it('observes a ready frame while an unrelated frame evaluation remains pending',async()=>{
+        let listener, releaseSlow, closed=false;
+        const slow=new Promise(resolve=>{releaseSlow=resolve;});
+        const script=path.join(repo,'test/support/release/rendered.cjs');
+        const context={module:{exports:{}},setTimeout,require(name){
+            assert.equal(name,'../devtools.cjs');
+            return {fetchJson:async()=>({webSocketDebuggerUrl:'synthetic'}),
+                openSocket:async()=>({addEventListener(_event,callback){listener=callback;}}),
+                createCdp:()=>({close(){closed=true;},async call(method,params,session){
+                    if(method==='Target.getTargets')return {targetInfos:[{type:'page',targetId:'slow'},{type:'iframe',targetId:'ready'}]};
+                    if(method==='Target.attachToTarget')return {sessionId:params.targetId};
+                    if(method==='Runtime.enable'){
+                        listener({data:JSON.stringify({method:'Runtime.executionContextCreated',sessionId:session,params:{context:{id:1}}})});
+                        return {};
+                    }
+                    assert.equal(method,'Runtime.evaluate');
+                    return session==='slow'?slow:{result:{value:true}};
+                }})};
+        }};
+        vm.runInNewContext(fs.readFileSync(script,'utf8'),context,{filename:script});
+        const renderer=await context.module.exports.connect(1234);
+        const waiting=renderer.wait('actual readiness predicate');
+        try {
+            const result=await Promise.race([waiting,new Promise(resolve=>setImmediate(()=>resolve(null)))]);
+            assert.equal(result?.sessionId,'ready','An unrelated pending evaluation delayed the ready view');
+        } finally {
+            releaseSlow({result:{value:false}});await waiting;renderer.close();
+        }
+        assert.equal(closed,true);
     });
 });

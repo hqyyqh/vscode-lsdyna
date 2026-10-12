@@ -12,7 +12,7 @@ function acceptanceReport(report) {
         cases: report.cases.map(item => pick(item, ['name', 'passed', 'reused'])) };
 }
 function performanceReport(report) {
-    return { ...pick(report, ['complete', 'baselineSha256', 'candidateSha256']),
+    return { ...pick(report, ['complete', 'baselineSha256', 'candidateSha256', 'phases', 'selectedPhasesPassed', 'scope']),
         metrics: (report.metrics || []).map(item => pick(item,
             ['name', 'field', 'statistic', 'before', 'after', 'allowance', 'passed', 'baselineCount', 'candidateCount'])),
         samples: Object.fromEntries(['baseline', 'candidate'].map(side => [side,

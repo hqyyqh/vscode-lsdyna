@@ -38,9 +38,13 @@ async function connect(port, { offline = false } = {}) {
                         attached.add(target.targetId);
                     } catch { /* Navigation may replace the target. */ }
                 }
-                for (const context of contexts.values()) {
-                    try { if (await evaluate(context, expression)) return context; } catch { /* Other/disposed context. */ }
-                }
+                // A busy unrelated frame must not delay observing the ready view.
+                try {
+                    return await Promise.any([...contexts.values()].map(async context => {
+                        if (await evaluate(context, expression)) return context;
+                        throw Error('Other or unready context');
+                    }));
+                } catch { /* No current context is ready; navigation may replace it. */ }
                 await delay(20);
             }
             throw Error('Rendered view did not become ready: ' + expression);
