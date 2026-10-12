@@ -24,6 +24,7 @@ describe('release stage compaction', () => {
                 console: { log() {}, error: message => errors.push(String(message)) },
                 require: name => {
                     if (name === 'node:fs') return {
+                        realpathSync: file => file,
                         existsSync: file => file.endsWith('public-source-manifest.json') && failedReport !== 'projection.json',
                         mkdirSync() {}, copyFileSync() {}, rmSync() {}, appendFileSync() {},
                         readFileSync: file => {

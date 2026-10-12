@@ -36,6 +36,7 @@ export async function activate(context) {
         // Use the entry's resolution cache too, so it does not repeat synchronous path lookups.
         ...[
             "./core/semantics/nativeConditionalLayout", "./core/semantics/catalogNativeFileLayout",
+            "./core/semantics/semanticRuntimeV2",
             "./core/references/onDemandDefinitionScanner", "./core/references/indexedEntityQuery",
             "./core/keywordSchema",
             "./client/EntityReferencesWebviewProvider", "./client/providers/keywordIndexProvider",

@@ -130,6 +130,8 @@ exports.run = async () => {
                 const scanned = await measure('scan', () => vscode.commands.executeCommand('extension.scanIncludeTree'));
                 assert.equal(path.basename(scanned?.rootFile || ''), 'main.k');
                 assert.equal(scanned?.snapshot?.files?.length, 2, 'The scan must complete both fixture files');
+                assert.ok(metrics.find(item => item.name === 'scan').maxEventLoopGapMs <= 250,
+                    'First project scan must yield while preparing shared reference rules');
                 checks.push('rendered-manager-refresh-manual-scan');
                 assert.equal(document.getText(), original.toString());
                 result.warmSampleCount = metrics.filter(item => item.name === 'manager-refresh').length;

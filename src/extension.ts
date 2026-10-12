@@ -3216,7 +3216,7 @@ class LsdynaFieldHoverProvider {
         const parameterAtCursor = getParameterAtCursor(document, position);
         let nativeParameterMarkdown = '';
         if (parameterAtCursor) {
-            await prepareReferenceDirectory();
+            await prepareReferenceDirectory(cancellationToken);
             if (!isCurrent()) return null;
             const located = (await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { cancellationToken })).cardInfo;
             if (!isCurrent()) return null;
@@ -3288,7 +3288,7 @@ class LsdynaFieldHoverProvider {
             let previewDefinition = null;
             const normalizedKw = kwName.toUpperCase();
             if (normalizedKw.startsWith('DEFINE_CURVE') || normalizedKw.startsWith('DEFINE_TABLE')) {
-                await prepareReferenceDirectory();
+                await prepareReferenceDirectory(cancellationToken);
                 if (!isCurrent()) return null;
                 const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
             if (!isCurrent() || referenceIndexState?.unavailable) return null;
@@ -3564,7 +3564,7 @@ class LsdynaFieldHoverProvider {
             if (!isCurrent()) return null;
             // An object's own ID cannot be a reference; its scanner needs only one shard.
             if (!isScannerDefinitionField(referenceOptions) && hasPotentialFieldReference(referenceOptions)) {
-                await prepareReferenceDirectory();
+                await prepareReferenceDirectory(cancellationToken);
                 if (!isCurrent()) return null;
                 referenceInfo = getActionableFieldReferenceInfo(referenceOptions);
             }
@@ -8289,7 +8289,9 @@ let keywordOptionsModel = null;
         const requestEpoch = activeProjectCacheEpoch;
         const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress, cancellationToken);
         if (snapshot?.scope === 'single-file' || options?.singleFileOnly === true) return snapshot;
-        if (requestEpoch !== activeProjectCacheEpoch) return snapshot;
+        if (requestEpoch !== activeProjectCacheEpoch || cancellationToken?.isCancellationRequested) return snapshot;
+        await prepareReferenceDirectory(cancellationToken);
+        if (requestEpoch !== activeProjectCacheEpoch || cancellationToken?.isCancellationRequested) return snapshot;
         entityReferenceProvider.markStaleForRoot(snapshot.rootFile);
         cacheReferenceIndexFromSnapshot(snapshot);
         refreshMainDeckContextUi();
@@ -10527,8 +10529,17 @@ const { getDefinitionRegistryCatalog } = require('./core/references/definitionRe
 
 const { familyDefinitionKeywords, prepareFamilyDefinitionScannerCatalog } = require('./core/references/familyDefinitionScannerCatalog');
 
-async function prepareReferenceDirectory() {
-    await Promise.all([getDefinitionRegistryCatalog().prepare(), prepareFamilyDefinitionScannerCatalog()]);
+async function prepareReferenceDirectory(cancellationToken = null) {
+    if (cancellationToken?.isCancellationRequested) return;
+    const preparation = Promise.all([getDefinitionRegistryCatalog().prepare(), prepareFamilyDefinitionScannerCatalog()]);
+    if (!cancellationToken?.onCancellationRequested) { await preparation; return; }
+    let subscription;
+    try {
+        // Release only this waiter; other queries may still need the shared rule loading.
+        await Promise.race([preparation, new Promise<void>(resolve => {
+            subscription = cancellationToken.onCancellationRequested(() => resolve());
+        })]);
+    } finally { subscription?.dispose(); }
 }
 
 const {
@@ -15862,7 +15873,7 @@ Object.assign(module.exports._internals, {
 
 module.exports._internals.HOVER_TRUST = HOVER_TRUST;
 
-Object.assign(module.exports._internals, { setReferenceSnapshotLoaderForTesting, getReferenceIndexForDocument, parseKeywordBlocksFromDocumentAsync, buildLiveRegistryReferenceFileIndex });
+Object.assign(module.exports._internals, { prepareReferenceDirectory, setReferenceSnapshotLoaderForTesting, getReferenceIndexForDocument, parseKeywordBlocksFromDocumentAsync, buildLiveRegistryReferenceFileIndex });
 
 Object.assign(module.exports._internals, { buildControlConditionMarkdown, buildFieldHelpMarkdown, getRelaxedModelEvidenceV1Catalog, buildProvisionalManualContext, resolveProvisionalFieldHelp, getKeywordSemanticAdviceForDocument, keywordSemanticAdviceCache, getKeywordSemanticAdvice, predicateFieldsForCardAdvice, buildSemanticDocumentContext, inlineSemanticLabel, semanticApplicabilityPresentation, semanticEvidencePageLinks, getManualSemanticCatalog, semanticEvidenceTargets, semanticEvidenceTargetLabel, semanticEvidenceLocationPresentation, buildKeywordSemanticAdviceMarkdown, semanticEvidenceFailureMessage, handleOpenSemanticEvidenceCommand, semanticEvidenceResolver, SemanticEvidenceResolver, keywordHoverMarkdown, supportedKeywordOptions, keywordOptionIsSupported, getStructuredManualContext, getManualChapterPresentation, appendManualLinks, cardCommentNoticeAppliesToField, buildCardCommentNoticeMarkdown, cardCommentRewriteRequest, analyzeKeywordStructureForDocument, DEFAULT_STRUCTURE_SOURCE_PROFILE_EN, KeywordStructureCatalog, analyzeKeywordStructureLines, keywordStructureCatalog, KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES, boundedCardCommentRewriteEnd, CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES, readyCardEditBlockIndex, cardEditKeywordIndexProviderRef, getCachedKeywordStructureAnalysis, keywordStructureAnalysisCache, CARD_COMMENT_REWRITE_MAX_DATA_LINES, cacheKeywordStructureAnalysis, estimateKeywordStructureAnalysisBytes, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES, buildKeywordStructureIssueMarkdown, keywordStructureCheckLink, keywordStructureCheckRequest, keywordStructureDefiniteLabel, keywordStructureRepairRequest, keywordStructureDiagnosticIdentity, keywordStructureCheckMessage, handleCheckKeywordStructureCommand, buildPrefixLayoutIssueMarkdown, buildUnknownKeywordHoverMarkdown, LsdynaFieldHoverProvider, collectBoundedPrefixDataRecords, MAXIMUM_PREFIX_CARD_POSITION_LINES });
 

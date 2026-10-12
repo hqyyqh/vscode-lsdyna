@@ -186,6 +186,7 @@
       "test/core/references/parameterDefinitionScanner.test.js",
       "test/core/references/parameterEnvironment.test.js",
       "test/core/references/projectReferenceIndex.test.js",
+      "test/core/references/referenceDirectoryPreparation.test.js",
       "test/core/references/referenceNavigation.test.js",
       "test/core/references/referencePresentation.test.js",
       "test/core/references/referenceRuleCatalog.test.js",
@@ -2890,7 +2891,7 @@
     {
       "path": "src/client/bootstrap.ts",
       "role": "editable-source",
-      "sha256": "63998b3eec39eba118b068e2b09db99bb295c941a7bfcdbd1f80995895eb92e0",
+      "sha256": "5184c44520466f0b136f5fa24bbfb522f8ca9488e98ebae0c9adeb0b1aeb2420",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3904,7 +3905,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "383219d4c8408d1383b1973c65dcd421f66409100119d1d6152049448f91e192",
+      "sha256": "cd3f2da145b51dabac074603e7822ad8415ef0185b68c0a836f7c25b95ee4180",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -5142,6 +5143,12 @@
       "role": "editable-source",
       "sha256": "7195f4143517f569de9fbf45662f6034f7bdab6ac9309c62a2fc2bc40d990164",
       "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/core/references/referenceDirectoryPreparation.test.js",
+      "role": "editable-source",
+      "sha256": "333b52f42408622b057e54e49a05af4318cd4008c0b4233ad57415eb9de032f1",
+      "reason": "public-contribution"
     },
     {
       "path": "test/core/references/referenceNavigation.test.js",
@@ -6472,7 +6479,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "b7a01688c375a2011ff53efb5ae180a107aece95eb40156c9595d0063a12a222",
+      "sha256": "ee2f5d1cb684c208b6321e544703e1c3a1b6a6fa4394e3267f5e7bd60de8c618",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6712,7 +6719,7 @@
     {
       "path": "test/scripts/release/compactReleaseStage.test.js",
       "role": "editable-source",
-      "sha256": "0892a21feb47079828b851ba421def8cd74ca9b8f89430a64f765dd7792c724b",
+      "sha256": "3609c0c9252d38e750caf4ff62caebad6b52ab38657d27e38c658cdf263f6111",
       "reason": "public-build-or-package-regression"
     },
     {
