@@ -2827,7 +2827,7 @@
     {
       "path": "scripts/release/public-release-reports.cjs",
       "role": "editable-source",
-      "sha256": "6e77fbfcf9b893c86478fccbd2cabd2ac0ea9b678004fb5c793454ee8e9a48c3",
+      "sha256": "efda5672eb905991827f9be4e0009036188659bbb4180186db03e1312c6a4d2d",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6499,7 +6499,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "58ceaa28319d6036f5ae2720fd6382181f822f5ea0de574daae6ddd2bbbb579a",
+      "sha256": "8fe02e05ea45e8c0ce69cf8d94f851510132fe5062b4f2e6ecb92b06e9a04134",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6757,7 +6757,7 @@
     {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
-      "sha256": "495972a1a2569c2d1fb6653d749e4873e9e266eb3b8ec78b9816c1ef1d613916",
+      "sha256": "0ac02043067c6389c12c0fd559b3502c1ae1c142d8de2634eeb9a560c92d8957",
       "reason": "public-build-or-package-regression"
     },
     {

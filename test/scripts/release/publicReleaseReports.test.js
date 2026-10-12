@@ -37,4 +37,13 @@ describe('public release report boundary', () => {
         assert.equal(report.complete,false);assert.equal(report.selectedPhasesPassed,true);
         assert.deepEqual(report.phases,['experience']);assert.match(report.scope,/not percentile/);
     });
+    it('preserves interval diagnostics without exporting nested private data', () => {
+        const report = performanceReport({ samples: { candidate: [{ phase: 'manager', metrics: [{
+            name: 'first-manager', durationMs: 250, maxEventLoopGapMs: 180, file: 'private',
+            gaps: [{ ms: 180, activeMs: 5, idleMs: 175, endUs: 123456, error: 'private' }],
+        }] }] } });
+        assert.deepEqual(report.samples.candidate[0].metrics, [{ name: 'first-manager', durationMs: 250,
+            maxEventLoopGapMs: 180, gaps: [{ ms: 180, activeMs: 5, idleMs: 175 }] }]);
+        assert.ok(!JSON.stringify(report).includes('private'));
+    });
 });

@@ -16,7 +16,9 @@ function performanceReport(report) {
         metrics: (report.metrics || []).map(item => pick(item,
             ['name', 'field', 'statistic', 'before', 'after', 'allowance', 'passed', 'baselineCount', 'candidateCount'])),
         samples: Object.fromEntries(['baseline', 'candidate'].map(side => [side,
-            (report.samples?.[side] || []).map(item => pick(item, ['phase', 'status', 'warmSampleCount', 'vscodeVersion', 'platform', 'arch']))])) };
+            (report.samples?.[side] || []).map(item => ({ ...pick(item, ['phase', 'status', 'warmSampleCount', 'vscodeVersion', 'platform', 'arch']),
+                ...(item.metrics ? { metrics: item.metrics.map(metric => ({ ...pick(metric, ['name', 'durationMs', 'maxEventLoopGapMs']),
+                    ...(metric.gaps ? { gaps: metric.gaps.map(gap => pick(gap, ['ms', 'activeMs', 'idleMs'])) } : {}) })) } : {}) }))])) };
 }
 function exportHostReports(input, output) {
     fs.mkdirSync(output, { recursive: true });

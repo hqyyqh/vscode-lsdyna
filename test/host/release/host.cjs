@@ -13,9 +13,14 @@ exports.run = async () => {
         path.join(root, name + '.cpuprofile'), async () => {
         await delay(10);
         let previous = performance.now(), maxEventLoopGapMs = 0;
+        let previousUtilization = performance.eventLoopUtilization();
         const gaps = [];
         const timer = setInterval(() => { const now = performance.now(); maxEventLoopGapMs = Math.max(maxEventLoopGapMs, now - previous);
-            if (process.env.LSDYNA_PROFILE_CPU && now - previous > 40) gaps.push({ endUs: Number(process.hrtime.bigint() / 1000n), ms: now - previous });
+            const utilization = performance.eventLoopUtilization();
+            // Diagnostic only: active time includes synchronous waits, not just product CPU work.
+            if (now - previous > 40) gaps.push({ endUs: Number(process.hrtime.bigint() / 1000n), ms: now - previous,
+                activeMs: utilization.active - previousUtilization.active, idleMs: utilization.idle - previousUtilization.idle });
+            previousUtilization = utilization;
             previous = now; }, 2);
         const memoryBefore = process.memoryUsage(), start = performance.now();
         let peakRss = memoryBefore.rss;
