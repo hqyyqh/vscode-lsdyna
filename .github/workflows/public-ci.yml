@@ -57,10 +57,16 @@ jobs:
         run: npm run build
       - name: Verify deterministic public data and source inventory
         run: |
-          npm run data:check
           npm run update:source-manifest -- --check
           npm run check:contracts
-      - run: npm test
+      - name: Test the existing build; replay the full corpus once
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            npm run test:unit
+          else
+            npm run test:unit -- --grep '\[full-corpus\]' --invert
+          fi
+          npm run test:data
         env:
           # Full source-data replay shares one test process; installed hosts keep their default heap.
           NODE_OPTIONS: --max-old-space-size=4096

@@ -17,7 +17,7 @@ describe('descriptor reader provider replay and editing boundaries', function ()
     let count = 0;
     after(() => { payload = null; });
     for (let index = 0; index < payload.fixtures.length; index++) {
-        it(`replays retained input ${index + 1} with complete field help and physical ranges`, async () => {
+        it(`[full-corpus] replays retained input ${index + 1} with complete field help and physical ranges`, async () => {
             const fixture = payload.fixtures[index];
             const document = { ...fakeDoc(fixture.text), version: 1 };
             for (const query of fixture.queries) {
@@ -31,7 +31,7 @@ describe('descriptor reader provider replay and editing boundaries', function ()
             }
         });
     }
-    it('retains the complete replay query count', () => {
+    it('[full-corpus] retains the complete replay query count', () => {
         assert.equal(count, payload.coverage.queries);
         assert.ok(count > 200000, 'Full branch/format replay coverage must remain present');
     });

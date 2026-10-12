@@ -22,6 +22,20 @@ describe('platform release workflow dependency closure', () => {
         const acceptance = host.steps.find(step => step.run?.includes('run-installed-acceptance.cjs'));
         assert.ok(acceptance.run.includes('benchmark-release-hosts.cjs'));
     });
+    it('reuses the build and same-run Linux corpus check without skipping platform tests', () => {
+        const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'];
+        const commands = build.steps.map(step => step.run || '').join('\n');
+        assert.equal((commands.match(/^npm run build$/gm) || []).length, 1);
+        assert.ok(!/npm test(?:\s|$)/.test(commands));
+        assert.ok(!commands.includes('npm run data:check'));
+        assert.ok(commands.includes('npm run update:source-manifest -- --check'));
+        const tests = build.steps.find(step => step.name?.startsWith('Test the existing build'));
+        assert.ok(tests.run.includes('if [[ "$RUNNER_OS" == "Linux" ]]'));
+        assert.ok(tests.run.includes('npm run test:unit\n'));
+        assert.ok(tests.run.includes("npm run test:unit -- --grep '\\[full-corpus\\]' --invert"));
+        assert.ok(tests.run.includes('npm run test:data'));
+        assert.equal(workflow.jobs['installed-host'].needs, 'public-checks');
+    });
     it('publishes only after the reusable checks and target-specific evidence verification', () => {
         const release = read('release.yml');
         assert.equal(release.jobs.build.uses, './.github/workflows/public-ci.yml');

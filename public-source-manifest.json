@@ -371,7 +371,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "fc5770671558c938027cc988381210976983258acf99799d35716c264478b929",
+      "sha256": "e9bf44ad7637a4736b117448c662be4416f2ec82a43472cfd22d65ca9325fb13",
       "reason": "public-contribution-workflow"
     },
     {
@@ -6605,7 +6605,7 @@
     {
       "path": "test/public-behavior/descriptorHoverReplay.test.js",
       "role": "editable-source",
-      "sha256": "f26bb56e077a11d21d1240205ea3752f96dbab8d0fdd19f29d1eb0e38b61fcab",
+      "sha256": "6afd8197c192f323bac1dd9d8c9a582193d06a645abc84fdb45c66f6072d8dd5",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6737,7 +6737,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "a5d5c51ea7abc3c89b7b6c7c93aab5c52d4fa0134a298cebed347642cc41144b",
+      "sha256": "b6512709a6f8fee4b543911fe0f24d9d2642ab5670b547032f80fdd818aaa76c",
       "reason": "public-build-or-package-regression"
     },
     {
