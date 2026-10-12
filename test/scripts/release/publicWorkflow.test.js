@@ -117,8 +117,24 @@ describe('platform release workflow dependency closure', () => {
             require: name => name === 'node:fs' ? { ...fs, mkdirSync() {}, writeFileSync() {} } : require(name),
         });
         execute({});
+        execute({CI_NODE:'profile', LSDYNA_ACCEPTANCE_CASE:'manager', BUILD_RUN:'123'});
         for (const values of [{TEST_GREP:''}, {TEST_GREP:'['}, {TEST_FILE:'../package.json'},
+            {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'../manager',BUILD_RUN:'123'},
+            {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'manager',BUILD_RUN:''},
             {GITHUB_REF:'refs/heads/master'}, {CI_NODE:'unknown'}, {CI_NODE:'installed',LSDYNA_ACCEPTANCE_CASE:''}])
             assert.throws(() => execute(values));
+    });
+    it('keeps one-phase profiling separate from acceptance and preserves profiles on failure', () => {
+        const steps = read('ci-node.yml').jobs.node.steps;
+        const run = steps.find(step => step.name === 'Run selected installed case or paired performance check');
+        assert.ok(run.if.includes("inputs.node == 'profile'"));
+        assert.match(run.run, /LSDYNA_PROFILE_CPU="first-\$LSDYNA_ACCEPTANCE_CASE"/);
+        const profile = run.run.split('elif')[0];
+        assert.ok(profile.includes('run-release-host.cjs') && !profile.includes('benchmark-release-hosts.cjs'));
+        const capture = steps.find(step => step.name === 'Preserve diagnostic CPU profile (not acceptance evidence)');
+        assert.ok(capture.if.includes('always()') && capture.run.includes('.cpuprofile'));
+        const acceptance = steps.find(step => step.name === 'Prepare public case evidence');
+        assert.ok(!acceptance.if.includes("inputs.node == 'profile'"));
+        assert.ok(steps.find(step => step.name === 'Build necessary source dependencies').if.includes("inputs.node != 'profile'"));
     });
 });

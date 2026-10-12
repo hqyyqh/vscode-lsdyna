@@ -11,7 +11,7 @@ on:
       node:
         description: 'Single node only; empty runs complete acceptance'
         type: choice
-        options: ['', build, unit, webview, contracts, language, audit, package, installed, performance]
+        options: ['', build, unit, webview, contracts, language, audit, package, installed, performance, profile]
       target:
         description: 'Platform for a single node'
         type: choice
@@ -30,7 +30,7 @@ on:
         type: string
         default: integration/extension.test.js
       host_case:
-        description: 'Required exact installed case name for the installed node'
+        description: 'Installed case name; profile node accepts hover or manager (diagnostic only)'
         type: string
       build_run:
         description: 'Reuse passed platform builds from this run (or leave empty for full CI)'

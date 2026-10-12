@@ -367,7 +367,7 @@
     {
       "path": ".github/workflows/ci-node.yml",
       "role": "editable-source",
-      "sha256": "a95ff31d2635d3f687d1c61bd91bd645e2ab9b92ca5a3a2e5495190753770aca",
+      "sha256": "b31f24d30ab895d61bd75c075d7cdcef2a1707d329b299b029e0b21c83ef0261",
       "reason": "public-contribution"
     },
     {
@@ -385,7 +385,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "0a7f531a7376e1fc0031e96faa987b1f10a26c071829748b8a6c09b5dee5decb",
+      "sha256": "28ef1f4f0ed5a6dc53af034311fa2b7234c2a1c1ca77d8064530a38ec97ef2c3",
       "reason": "public-contribution-workflow"
     },
     {
@@ -6391,7 +6391,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "0580a713914e4d7cc3dfbd55a3721ebc587679598ebd09b814f2fdc6c802b316",
+      "sha256": "f387aa0656c3af5d5873b6f78a4d358e1a7d56535df1a2a5fcdf87a5070f7722",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6769,7 +6769,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "e389463d905875b9382614e2775df484ca63e6b394d51d5e930d176ec7fb0c60",
+      "sha256": "90947eb1f9eff8bdc5ca36480cfb7e6fdec60d971151310d6e8cf524a1617019",
       "reason": "public-build-or-package-regression"
     },
     {

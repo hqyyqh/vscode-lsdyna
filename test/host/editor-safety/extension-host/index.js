@@ -5011,7 +5011,10 @@ async function runPasteIntoSelectedCellAssertions() {
     editor.selection = new vscode.Selection(2, 0, 2, 0);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('12345678901234567');
+    const beforeOverflowPasteVersion = document.version;
     await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+    // Unchanged text only proves rollback after the native edit has reached this host.
+    await waitForAssertion(() => assert.ok(document.version > beforeOverflowPasteVersion));
     await settleCardCellPostEdit(document);
     await waitForAssertion(() => {
         assert.strictEqual(document.getText(), original);
