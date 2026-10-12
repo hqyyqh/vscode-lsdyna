@@ -3925,7 +3925,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "2d13e145b889db10d615053f9f7ee7eeadb8c0d14b6247b3c5f209416be059d6",
+      "sha256": "1057898194ed840f5e29e2133c3a5750d8444986aead2cdbe8afafdbf8e6fd5b",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4471,7 +4471,7 @@
     {
       "path": "test/client/services/keywordManagerApplyGuard.test.js",
       "role": "editable-source",
-      "sha256": "ba263580b90efe729513a8815acb2307a2afe83be109eb72b0fc552fb10be1ec",
+      "sha256": "075b042594fb143f5f8c6c0c3f135c2e461e51ec7394d8e1ac10a89578e1a350",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

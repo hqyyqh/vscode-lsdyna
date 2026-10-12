@@ -113,6 +113,10 @@ describe('manager transition answers stay with the prompted proposal', () => {
             findKeywordLineForLine: (doc, line) => { assert.equal(doc.lineAt(line).text, '*NODE'); return line; },
             keywordSpellingFromLine, isKeywordManagerUnauditedCatalogAllowed: () => false,
             getCatalogInputFormCatalogV4: () => ({ prepareKeyword: () => prepare('catalog') }),
+            lookupKeywordInfo: () => ({ canonicalName: 'NODE' }),
+            getManualSemanticCatalog: () => ({ prepareKeyword: keyword => {
+                assert.equal(keyword, '*NODE'); return prepare('semantic');
+            } }),
             require: request => {
                 if (request === './core/keywordSchema') return { prepareKeywordSchema: () => prepare('schema'),
                     prepareFieldHelpTextIndex: () => prepare('help') };
@@ -193,7 +197,7 @@ describe('manager transition answers stay with the prompted proposal', () => {
             vscode.window.activeTextEditor = originalEditor;
         }
     }
-    for (const boundary of ['schema', 'structure', 'catalog', 'help', 'yield']) for (const answer of ['apply', 'discard'])
+    for (const boundary of ['schema', 'structure', 'catalog', 'semantic', 'help', 'yield']) for (const answer of ['apply', 'discard'])
         it(`rejects old ${answer} after an earlier ${boundary} refresh publishes`, () => run(boundary, answer));
     for (const answer of ['apply', 'discard', 'cancel'])
         it(`preserves same-proposal ${answer}`, () => run(null, answer));

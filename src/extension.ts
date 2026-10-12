@@ -7848,6 +7848,12 @@ let keywordOptionsModel = null;
             try { await getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() })
                 .prepareKeyword(require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword)); }
             catch { /* Model construction reports the catalog error without authorizing writes. */ }
+            if (!isCurrent()) return null;
+            const canonical = lookupKeywordInfo(keyword)?.canonicalName;
+            if (canonical) {
+                try { await getManualSemanticCatalog().prepareKeyword(`*${canonical}`); }
+                catch { /* Model construction preserves unavailable semantic advice and planner guards. */ }
+            }
         }
         await require('./core/keywordSchema').prepareFieldHelpTextIndex();
         // Let UI work run between cold catalog decoding and synchronous model construction.
