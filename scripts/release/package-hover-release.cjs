@@ -14,7 +14,8 @@ const manifest = require("../../package.json");
 const output = path.resolve(process.argv[2] || `${manifest.name}-${manifest.version}.vsix`);
 const target = process.argv[3] || `${process.platform}-${process.arch}`;
 const temporaryRun = createTempRun('dynasense-package-');
-const stage = path.join(temporaryRun, 'stage');
+// npm reports real dependency paths; VSCE must use the same root for macOS /var aliases.
+const stage = path.join(fs.realpathSync(temporaryRun), 'stage');
 fs.mkdirSync(stage);
 const internalDirectory = createEvidenceDirectory('package');
 const publicIdentity = require('./public-release-reports.cjs').identityReport;

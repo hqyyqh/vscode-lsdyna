@@ -62,6 +62,36 @@ function rewriteFirstOptionCandidate(root, mutate) {
 }
 
 describe('semantic runtime catalog v2', () => {
+    it('prepares just the requested scanner shard and merges concurrent reads', async () => {
+        const catalog = new SemanticRuntimeCatalogV2();
+        const expected = new SemanticRuntimeCatalogV2().definitionScannersForKeyword('MAT_ELASTIC');
+        assert.ok(expected.length);
+        const reads = [], original = fs.promises.readFile;
+        fs.promises.readFile = async function (file, ...args) {
+            reads.push(String(file));
+            return original.call(this, file, ...args);
+        };
+        try {
+            await Promise.all(Array.from({ length: 5 }, () => catalog.prepareDefinitionScannersForKeyword('*MAT_ELASTIC')));
+            assert.deepEqual(catalog.definitionScannersForKeyword('MAT_ELASTIC'), expected);
+            assert.equal(reads.filter(file => !file.endsWith('manifest.json')).length, 1);
+            const all = await catalog.prepareReferences();
+            assert.equal(all.records.length, catalog.manifest().summary.referenceRelations);
+            assert.ok(all.scanners.some(scanner => scanner.keyword === expected[0].keyword));
+        } finally { fs.promises.readFile = original; }
+    });
+
+    it('rejects a damaged shard before exposing asynchronously prepared scanners', async () => {
+        const catalog = new SemanticRuntimeCatalogV2();
+        catalog.manifest();
+        const original = fs.promises.readFile;
+        fs.promises.readFile = async () => Buffer.from('truncated');
+        try {
+            await assert.rejects(catalog.prepareDefinitionScannersForKeyword('MAT_ELASTIC'), /compressed drift/);
+        } finally { fs.promises.readFile = original; }
+        await catalog.prepareDefinitionScannersForKeyword('MAT_ELASTIC');
+        assert.ok(catalog.definitionScannersForKeyword('MAT_ELASTIC').length);
+    });
     it('keeps synchronous shard failures closed during async preparation until a new catalog is created', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'semantic-runtime-v2-retry-'));
         try {

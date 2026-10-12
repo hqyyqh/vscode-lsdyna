@@ -31,6 +31,38 @@ describe('native file field hover without GUI', function () {
     // These tests load native catalog shards and replay many real provider calls.
     // Latency budgets are asserted by the dedicated large-file benchmarks.
     this.timeout(30000);
+    it('renders a definition ID without preparing the global reference directory', async () => {
+        const registry = require('../../../out/core/references/definitionRegistry').getDefinitionRegistryCatalog();
+        const prepare = registry.prepare;
+        let calls = 0;
+        registry.prepare = async () => { calls++; throw new Error('unexpected global reference preparation'); };
+        try {
+            for (const [text, field] of [['*MAT_ELASTIC\n         1       1.0       2.0       0.3', 'MID'],
+                ['*NODE\n       1             0.0             0.0             0.0', 'NID']]) {
+                const doc = { ...fakeDoc(text), version: 1 };
+                const hover = await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 1 });
+                assert.ok(hover?.contents[0].value.includes(field));
+            }
+            assert.equal(calls, 0);
+        } finally { registry.prepare = prepare; }
+    });
+
+    it('drops a hover edited while its scanner shard is loading', async () => {
+        const catalog = require('../../../out/core/semantics/semanticRuntimeV2').getSemanticRuntimeCatalogV2();
+        const prepare = catalog.prepareDefinitionScannersForKeyword;
+        const doc = { ...fakeDoc('*NODE\n       1             0.0             0.0             0.0'), version: 1 };
+        let reads = 0;
+        catalog.prepareDefinitionScannersForKeyword = async keyword => {
+            await prepare.call(catalog, keyword);
+            reads++;
+            doc.version++;
+        };
+        try {
+            assert.equal(await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 1 }), null);
+            assert.equal(reads, 1);
+        } finally { catalog.prepareDefinitionScannersForKeyword = prepare; }
+        assert.ok(await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 1 }));
+    });
     it('agrees with the observed BEAM read across indented comments and manager source positions', async () => {
         const fs = require('node:fs'), path = require('node:path');
         const proof = JSON.parse(fs.readFileSync(path.join(__dirname, "../../fixtures/public-behavior/mixed-field-records.json")));

@@ -1488,13 +1488,8 @@ function getFieldReferenceInfo({ keyword, cardIndex, field }) {
     };
 }
 
-function getActionableFieldReferenceInfo(options) {
-    const info = getFieldReferenceInfo(options);
-    const registryCatalog = getDefinitionRegistryCatalog();
-    const exactDefinition = registryRelationsForField(registryCatalog,
-        options.keyword, options.cardIndex, options.field,
-    ).some(record => record.kind === 'entity-definition');
-    const scannerDefinition = getSemanticRuntimeCatalogV2()
+function isScannerDefinitionField(options) {
+    return getSemanticRuntimeCatalogV2()
         .definitionScannersForKeyword(options.keyword)
         .some(scanner => {
             const standard = (scanner.formatContracts || []).find(contract =>
@@ -1504,6 +1499,23 @@ function getActionableFieldReferenceInfo(options) {
                 normalizeFieldName(scanner.definitionField) === normalizeFieldName(options.field?.n) &&
                 standard?.position === options.field?.p && standard?.width === options.field?.w;
         });
+}
+
+function hasPotentialFieldReference(options) {
+    if (chooseReferenceRule(manualRulesForField(options.keyword, options.cardIndex, options.field))) return true;
+    const catalog = getSemanticRuntimeCatalogV2();
+    const records = catalog.referenceRecordsForKeyword(options.keyword);
+    // Only rule absence avoids global preparation; every potential reference still needs registry approval.
+    return !catalog.status().ready || Boolean(chooseReferenceRule(records.map(record => applyRuntimeSemanticRelationCorrection(record))));
+}
+
+function getActionableFieldReferenceInfo(options) {
+    if (options.field?.di === 'self' || isScannerDefinitionField(options) || !hasPotentialFieldReference(options)) return null;
+    const info = getFieldReferenceInfo(options);
+    const registryCatalog = getDefinitionRegistryCatalog();
+    const exactDefinition = registryRelationsForField(registryCatalog,
+        options.keyword, options.cardIndex, options.field,
+    ).some(record => record.kind === 'entity-definition');
     const exactManualSelector = info?.definitionRegistry?.selectorSource !== 'manual-semantic' ||
         manualRulesForField(options.keyword, options.cardIndex, options.field).some(rule =>
             rule.ruleId === info.ruleId &&
@@ -1512,8 +1524,7 @@ function getActionableFieldReferenceInfo(options) {
             )
         );
     return info?.definitionRegistry?.approved === true &&
-        options.field?.di !== 'self' &&
-        !exactDefinition && !scannerDefinition &&
+        !exactDefinition &&
         exactManualSelector &&
         isUnambiguousOperationalProjection(info.definitionRegistry) &&
         isCoherentReferenceTargetNamespace(info) &&
@@ -1690,6 +1701,8 @@ module.exports = {
     buildRuntimeTableLayoutIndex,
     applyRuntimeSemanticRelationCorrection,
     getActionableFieldReferenceInfo,
+    isScannerDefinitionField,
+    hasPotentialFieldReference,
     getFieldReferenceInfo,
     getRegistryApprovedFieldReferenceInfo,
     isCoherentReferenceTargetNamespace,

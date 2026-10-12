@@ -354,6 +354,7 @@ export class SemanticRuntimeCatalogV2 {
     private failureReasonValue = '';
     private readonly cache = new Map<string, CachedShard>();
     private clock = 0;
+    private readonly shardPreparations = new Map<string, Promise<CachedShard>>();
     private preparation: Promise<{ records: any[]; scanners: any[] }> | null = null;
 
     constructor(root = semanticRuntimeV2Root()) { this.root = root; }
@@ -416,6 +417,37 @@ export class SemanticRuntimeCatalogV2 {
         return payload.records;
     }
 
+    private prepareReferenceShard(prefix: string): Promise<CachedShard> {
+        const pending = this.shardPreparations.get(prefix);
+        if (pending) return pending;
+        const preparation = (async () => {
+            assertContract(!this.failureReasonValue, this.failureReasonValue);
+            if (!this.manifestValue) this.manifest(await fs.promises.readFile(path.join(this.root, 'manifest.json'), 'utf8'));
+            const key = `references:${prefix}`;
+            const cached = this.cache.get(key);
+            if (cached) { cached.lastAccessed = ++this.clock; return cached; }
+            const descriptor = this.descriptor('references', prefix);
+            const compressed = await fs.promises.readFile(path.join(this.root, descriptor.path));
+            assertContract(compressed.length === descriptor.compressedBytes && sha256(compressed) === descriptor.sha256,
+                `semantic references shard compressed drift: ${prefix}`);
+            const raw = await new Promise<Buffer>((resolve, reject) => {
+                const done = (error: Error | null, value: Buffer) => error ? reject(error) : resolve(value);
+                const options = { maxOutputLength: descriptor.uncompressedBytes };
+                if (descriptor.codec === 'br') zlib.brotliDecompress(compressed, options, done);
+                else zlib.gunzip(compressed, options, done);
+            });
+            assertContract(!this.failureReasonValue, this.failureReasonValue);
+            this.load('references', prefix, { compressed, raw });
+            return this.cache.get(key)!;
+        })().finally(() => { this.shardPreparations.delete(prefix); });
+        this.shardPreparations.set(prefix, preparation);
+        return preparation;
+    }
+
+    async prepareDefinitionScannersForKeyword(keyword: string): Promise<void> {
+        await this.prepareReferenceShard(sha256(Buffer.from(normalizeKeyword(keyword))).slice(0, 1));
+    }
+
     /** Global relation identities require every reference shard, but never option shards. */
     prepareReferences(): Promise<{ records: any[]; scanners: any[] }> {
         if (this.preparation) return this.preparation;
@@ -425,21 +457,9 @@ export class SemanticRuntimeCatalogV2 {
             if (!this.manifestValue) this.manifest(await fs.promises.readFile(path.join(this.root, 'manifest.json'), 'utf8'));
             const records = [], scanners = [];
             for (const descriptor of this.manifest().referenceShards) {
-                const cached = this.cache.get(`references:${descriptor.prefix}`);
-                if (cached) records.push(...cached.records);
-                else {
-                    const compressed = await fs.promises.readFile(path.join(this.root, descriptor.path));
-                    assertContract(compressed.length === descriptor.compressedBytes && sha256(compressed) === descriptor.sha256,
-                        `semantic references shard compressed drift: ${descriptor.prefix}`);
-                    const raw = await new Promise<Buffer>((resolve, reject) => {
-                        const done = (error: Error | null, value: Buffer) => error ? reject(error) : resolve(value);
-                        const options = { maxOutputLength: descriptor.uncompressedBytes };
-                        if (descriptor.codec === 'br') zlib.brotliDecompress(compressed, options, done);
-                        else zlib.gunzip(compressed, options, done);
-                    });
-                    records.push(...this.load('references', descriptor.prefix, { compressed, raw }));
-                }
-                scanners.push(...(this.cache.get(`references:${descriptor.prefix}`)?.scanners || []));
+                const shard = await this.prepareReferenceShard(descriptor.prefix);
+                records.push(...shard.records);
+                scanners.push(...shard.scanners);
                 await new Promise<void>(resolve => setImmediate(resolve));
             }
             assertContract(!this.failureReasonValue, this.failureReasonValue);

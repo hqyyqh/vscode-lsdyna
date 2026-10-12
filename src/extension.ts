@@ -101,9 +101,12 @@ const { createWorkerPool } = require('./worker/workerPool');
 const { createProjectIndexLoader } = require('./worker/projectIndexLoader');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 const i18n = require('./core/i18n');
+const { getSemanticRuntimeCatalogV2 } = require('./core/semantics/semanticRuntimeV2');
 const {
     getFieldReferenceInfo,
     getActionableFieldReferenceInfo,
+    isScannerDefinitionField,
+    hasPotentialFieldReference,
     isUnambiguousOperationalProjection,
     parseFieldReferenceValue,
 } = require('./core/references/fieldReferenceClassifier');
@@ -3204,8 +3207,6 @@ class LsdynaFieldHoverProvider {
         }
 
         if (!await prepareFieldInteraction(document, position, { cancellationToken }) || !isCurrent()) return null;
-        await prepareReferenceDirectory();
-        if (!isCurrent()) return null;
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
@@ -3215,6 +3216,8 @@ class LsdynaFieldHoverProvider {
         const parameterAtCursor = getParameterAtCursor(document, position);
         let nativeParameterMarkdown = '';
         if (parameterAtCursor) {
+            await prepareReferenceDirectory();
+            if (!isCurrent()) return null;
             const located = (await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { cancellationToken })).cardInfo;
             if (!isCurrent()) return null;
             const isParameterKeyword = located?.keywordName ? Boolean(classifyParameterKeyword(located.keywordName)) : false;
@@ -3285,6 +3288,8 @@ class LsdynaFieldHoverProvider {
             let previewDefinition = null;
             const normalizedKw = kwName.toUpperCase();
             if (normalizedKw.startsWith('DEFINE_CURVE') || normalizedKw.startsWith('DEFINE_TABLE')) {
+                await prepareReferenceDirectory();
+                if (!isCurrent()) return null;
                 const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
             if (!isCurrent() || referenceIndexState?.unavailable) return null;
                 const fileIndex = lookupNormalizedFileIndex(referenceIndexState?.snapshot?.fileIndexes, document.uri.fsPath) || getFileIndexForDocument(document);
@@ -3552,11 +3557,18 @@ class LsdynaFieldHoverProvider {
 
         const gridTable = compactFieldGrid([card], field.n);
         const rawFieldValue = field.rawValue ?? text.slice(field.p, field.p + field.w);
-        const referenceInfo = field.nativeIdentity && !field.nativeStaticBinding ? null : getActionableFieldReferenceInfo({
-            keyword: helpKeywordName,
-            cardIndex: cardInfo.cardIndex,
-            field,
-        });
+        const referenceOptions = { keyword: helpKeywordName, cardIndex: cardInfo.cardIndex, field };
+        let referenceInfo = null;
+        if (!(field.nativeIdentity && !field.nativeStaticBinding) && field.di !== 'self') {
+            await getSemanticRuntimeCatalogV2().prepareDefinitionScannersForKeyword(helpKeywordName);
+            if (!isCurrent()) return null;
+            // An object's own ID cannot be a reference; its scanner needs only one shard.
+            if (!isScannerDefinitionField(referenceOptions) && hasPotentialFieldReference(referenceOptions)) {
+                await prepareReferenceDirectory();
+                if (!isCurrent()) return null;
+                referenceInfo = getActionableFieldReferenceInfo(referenceOptions);
+            }
+        }
         const referenceValue = referenceInfo ? parseFieldReferenceValue(rawFieldValue, referenceInfo) : null;
         const manualKw = resolvedCard.suggestedName || kwName;
         const officialChoicePlan = resolvedCard.viaSuggest || (field.nativeIdentity && !field.nativeStaticBinding)

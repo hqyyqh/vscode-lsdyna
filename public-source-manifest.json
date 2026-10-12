@@ -2794,7 +2794,7 @@
     {
       "path": "scripts/release/package-hover-release.cjs",
       "role": "editable-source",
-      "sha256": "3954d935f4d5d9ad523f81e6d2ecae0980114b17714243fae33e5ef827ee9926",
+      "sha256": "cd41ef8f763bed0e2d9f4115405a3ef76c04fc0458f52c6443e3badba2bdf46b",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -3484,7 +3484,7 @@
     {
       "path": "src/core/references/fieldReferenceClassifier.ts",
       "role": "editable-source",
-      "sha256": "fe05f80eaaf0212e22455728734f471ee1edc080591c3537577c94affd0be6c0",
+      "sha256": "fdb1583df48ea0e98961772acb3816db2189751fc78eb095406988499c65b289",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3820,7 +3820,7 @@
     {
       "path": "src/core/semantics/semanticRuntimeV2.ts",
       "role": "editable-source",
-      "sha256": "6b7b7c10d6544a00c51737dd68dc77b764d966cb287a58ce966705be5e102f14",
+      "sha256": "5771ee6f2d461f42c3f0e333b8d65db62417f76ee8e9ff8de2d469018f5954a6",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3904,7 +3904,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "e59890e5152d8d3040c582433370c7598e8d12261fdb3d8c65567cbb2a4889b1",
+      "sha256": "383219d4c8408d1383b1973c65dcd421f66409100119d1d6152049448f91e192",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4174,7 +4174,7 @@
     {
       "path": "test/client/hover/nativeFieldHover.test.js",
       "role": "editable-source",
-      "sha256": "e148c05135bb5918d56d8097b53c8ca1e8031889308f8d86fde5099b10bb19da",
+      "sha256": "9919d8925d4f6cbc3f61b0875dd2d678f3995fb956ab3aa570880e8e38c065a0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5548,7 +5548,7 @@
     {
       "path": "test/core/semantics/semanticRuntimeV2.test.js",
       "role": "editable-source",
-      "sha256": "f6b262cccd8ec6d4565292108539859135cf641c90eb1de0524d2af9fea4862b",
+      "sha256": "b7e1ac3fcf496f03bc174f1eeb76350a3daaa689dd7acfb754623e4227bfdff7",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
