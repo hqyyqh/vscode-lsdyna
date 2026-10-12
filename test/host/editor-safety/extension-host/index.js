@@ -176,6 +176,21 @@ async function waitForRendererActionWidget(devTools) {
     );
 }
 
+async function waitForRendererRefactorPreview(devTools) {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+        const response = await devTools.call('Runtime.evaluate', {
+            expression: `Array.from(document.querySelectorAll('.bulk-edit-panel[data-state="data"]'))
+                .some(element => element.offsetParent !== null && element.querySelector('.monaco-list-row'))`,
+            returnByValue: true,
+        });
+        if (response.result?.value === true) return;
+        await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    await captureRendererDiagnostic(devTools, 'refactor-preview');
+    throw new Error('Refactor preview did not finish loading its proposed edits');
+}
+
 async function getRendererMenuItemState(devTools, expectedKeybinding) {
     const response = await devTools.call('Runtime.evaluate', {
         expression: `(() => {
@@ -3075,26 +3090,6 @@ async function assertParameterRenameRendererCancelAndAcceptAreScoped() {
         );
     };
 
-    const waitForPreview = async () => {
-        const deadline = Date.now() + 3000;
-        while (Date.now() < deadline) {
-            const response = await devTools.call('Runtime.evaluate', {
-                expression: `Array.from(document.querySelectorAll('.bulk-edit-panel'))
-                    .some(element => element.offsetParent !== null)`,
-                returnByValue: true,
-            });
-            if (response.result && response.result.value === true) return;
-            await new Promise(resolve => setTimeout(resolve, 25));
-        }
-        const diagnostic = await captureRendererDiagnostic(
-            devTools,
-            'rename-preview-after-ctrl-enter',
-        );
-        throw new Error(
-            `Rename preview did not become visible: ${JSON.stringify(diagnostic)}`,
-        );
-    };
-
     const settleRenameWidget = async (newName, finalKey) => {
         const { renameCommand } = await prepareRenameWidget(newName);
         await dispatchRendererKey(
@@ -3119,7 +3114,7 @@ async function assertParameterRenameRendererCancelAndAcceptAreScoped() {
         const { renameCommand: previewRenameCommand } =
             await prepareRenameWidget('previewed');
         await dispatchRendererKey(devTools, 'Enter', 'Enter', 13, 2);
-        await waitForPreview();
+        await waitForRendererRefactorPreview(devTools);
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
         assert.strictEqual(otherDocument.getText(), otherOriginal);
@@ -3407,6 +3402,7 @@ async function assertIncludeCaseQuickFixPreviewIsNonMutating() {
         'strict',
         vscode.ConfigurationTarget.Global,
     );
+    const devTools = await connectWorkbenchDevTools();
     try {
         const { document, editor } = await openFixture('include-case.key');
         const original = document.getText();
@@ -3422,21 +3418,22 @@ async function assertIncludeCaseQuickFixPreviewIsNonMutating() {
             apply: 'never',
             preferred: true,
         });
-        await new Promise(resolve => setTimeout(resolve, 100));
-        await vscode.commands.executeCommand('previewSelectedCodeAction');
-        await actionMenu;
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await waitForRendererActionWidget(devTools);
+        const preview = vscode.commands.executeCommand('previewSelectedCodeAction');
+        await waitForRendererRefactorPreview(devTools);
 
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
-        await vscode.commands.executeCommand('refactorPreview.discard');
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await withTimeout(Promise.all([preview, actionMenu,
+            vscode.commands.executeCommand('refactorPreview.discard')]), 5000,
+            'Include repair preview discard did not settle');
         assert.strictEqual(document.getText(), original);
         assert.strictEqual(document.isDirty, false);
     } finally {
         await vscode.commands.executeCommand('hideCodeActionWidget');
         await vscode.commands.executeCommand('refactorPreview.discard');
+        devTools.close();
         await configuration.update(
             'include.pathCaseCheck',
             undefined,
@@ -6504,6 +6501,13 @@ async function runScenarios() {
             'mouse-multicursor': assertRendererAltClickMultiCursorActionsAreAtomic,
             'mouse-drag': assertRendererMouseDragSelectionsAreScopedAndUndoable,
             'mouse-context-menu': assertRendererContextMenuPasteAndCutAreScopedAndUndoable,
+            'include-preview-sequence': async () => {
+                await assertStaleIncludeCaseQuickFixFailsClosed();
+                await assertIncludeCaseQuickFixCancelIsNoOp();
+                await assertIncludeCaseQuickFixPreviewIsNonMutating();
+                await assertIncludeCaseActionRevalidatesAfterMenuWait();
+                await assertIncludeCaseActionRevalidatesAfterCaseOnlyRename();
+            },
             'include-stale': assertStaleIncludeCaseQuickFixFailsClosed,
             'mouse-code-action': assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
             'line-comment': assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly,

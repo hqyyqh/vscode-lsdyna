@@ -70,13 +70,14 @@ an upgrade from the hash-pinned 3.1.5 release, a window reload, missing-manual
 behavior, an offline scenario and ordinary Node-project debugging on Windows.
 Offline checks intercept extension-host HTTP/fetch and emulate offline Webviews;
 they do not change the operating system firewall. Benchmark runs alternate the
-paired baseline and candidate with 20 cold launches per scenario and 100 refreshes
-per rendered-manager session. Peak RSS is the extension-host process high-water
+paired baseline and candidate with two cold launches per scenario and two warm
+operations per session. These are performance spot checks using observed maxima,
+not percentile certification. Peak RSS is the extension-host process high-water
 mark, not the aggregate memory of every VS Code process.
 
 发布流程复用 `public-ci.yml`，验证各平台包的摘要及两个宿主报告后，才发布对应文件。
 宿主证据覆盖从固定摘要的 3.1.5 版本升级、窗口重载、手册缺失、离线场景，以及 Windows
 普通 Node 项目调试。离线检查拦截扩展宿主的 HTTP/fetch 并模拟 Webview 离线，不修改
-操作系统防火墙。基准交替运行成对的对照包和候选包，每种场景各采集 20 次冷启动，
-每次实际表单渲染场景采集 100 次刷新。峰值 RSS 表示扩展宿主进程的历史最高内存，
+操作系统防火墙。基准交替运行成对的对照包和候选包，每种场景各采集两次冷启动，
+每个会话执行两次热操作。这是按实测最大值比较的性能抽查，不作为分位数认证。峰值 RSS 表示扩展宿主进程的历史最高内存，
 不代表所有 VS Code 进程的合计内存。

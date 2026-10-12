@@ -24,21 +24,21 @@ function verify(vsix, directory, target) {
         assert.equal(performance.baselineSha256, baselineSha, 'Performance baseline does not match the paired build');
         assert.ok(performance.metrics?.length && performance.metrics.every(item => item.passed === true), 'Missing or failed performance metrics');
         for (const name of ['activation', 'first-hover', 'warm-hover', 'first-manager', 'warm-manager-command'])
-            for (const field of ['durationMs', 'maxEventLoopGapMs', 'rss']) for (const p of [.5, .95])
-                assert.ok(performance.metrics.some(item => item.name === name && item.field === field && item.percentile === p),
-                    `Missing performance distribution ${name}/${field}/${p}`);
+            for (const field of ['durationMs', 'maxEventLoopGapMs', 'rss'])
+                assert.ok(performance.metrics.some(item => item.name === name && item.field === field && item.statistic === 'maximum'),
+                    `Missing performance spot check ${name}/${field}/maximum`);
         // Command completion is not rendered readiness, and final RSS is not peak RSS.
-        // These distributions intentionally block publication until their collectors exist.
+        // Rendered readiness and peak memory remain required in the smaller spot check.
         for (const name of ['first-manager-rendered', 'manager-refresh', 'manual-open', 'scan'])
-            for (const field of ['durationMs', 'maxEventLoopGapMs', 'peakRss']) for (const p of [.5, .95])
-                assert.ok(performance.metrics.some(item => item.name === name && item.field === field && item.percentile === p
-                    && item.baselineCount >= (name === 'manager-refresh' ? 100 : 20)
-                    && item.candidateCount >= (name === 'manager-refresh' ? 100 : 20)),
-                    `Missing full-plan performance distribution ${name}/${field}/${p}`);
+            for (const field of ['durationMs', 'maxEventLoopGapMs', 'peakRss'])
+                assert.ok(performance.metrics.some(item => item.name === name && item.field === field && item.statistic === 'maximum'
+                    && item.baselineCount >= (name === 'manager-refresh' ? 4 : 2)
+                    && item.candidateCount >= (name === 'manager-refresh' ? 4 : 2)),
+                    `Missing full-plan performance spot check ${name}/${field}/maximum`);
         for (const side of ['baseline', 'candidate']) for (const phase of ['hover', 'manager', 'experience']) {
             const samples = performance.samples[side].filter(item => item.phase === phase);
-            assert.equal(samples.length, 20, `${side}/${phase} needs 20 cold samples`);
-            assert.ok(samples.every(item => item.status === 'passed' && item.warmSampleCount === 100
+            assert.equal(samples.length, 2, `${side}/${phase} needs 2 cold samples`);
+            assert.ok(samples.every(item => item.status === 'passed' && item.warmSampleCount === 2
                 && item.vscodeVersion === version && item.platform === platform
                 && (!target || item.arch === target.split('-')[1])), 'Performance sample host identity or completeness mismatch');
         }

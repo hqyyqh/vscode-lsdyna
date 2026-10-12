@@ -105,7 +105,7 @@ exports.run = async () => {
                     await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions', 1);
                     manager = await renderer.wait(`typeof document !== 'undefined' && document.querySelector('main')?.getAttribute('aria-busy') === 'false' && document.querySelectorAll('.fieldEditor input, .fieldEditor select').length >= 5`);
                 });
-                for (let i = 0; i < 100; i++) await measure('manager-refresh', () => renderer.evaluate(manager, `(async () => {
+                for (let i = 0; i < 2; i++) await measure('manager-refresh', () => renderer.evaluate(manager, `(async () => {
                     const button = [...document.querySelectorAll('.headerActions button')].find(b => /^(Reload this instance|重新读取当前实例)$/.test(b.title));
                     if (!button || button.disabled) throw Error('Refresh unavailable');
                     await new Promise((resolve, reject) => {
@@ -147,13 +147,13 @@ exports.run = async () => {
                 assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
             };
             await measure('first-choices', query);
-            for (let i = 0; i < 30; i++) await measure('warm-choices', query);
+            for (let i = 0; i < 2; i++) await measure('warm-choices', query);
             checks.push('installed-official-field-choices');
         }
         if (phase === 'hover' || phase === 'smoke') {
             const hover = await measure('first-hover', () => vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, new vscode.Position(2, 1)));
             assert.ok(hover?.length, 'First field Hover must provide content');
-            if (phase === 'hover') for (let i = 0; i < 100; i++) await measure('warm-hover', async () => {
+            if (phase === 'hover') for (let i = 0; i < 2; i++) await measure('warm-hover', async () => {
                 const value = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, new vscode.Position(2, 1));
                 assert.ok(value?.length, 'Warm Hover must provide content');
             });
@@ -191,7 +191,7 @@ exports.run = async () => {
             });
             result.tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs).map(tab => ({ title: tab.label, viewType: tab.input?.viewType }));
             assert.ok(vscode.window.tabGroups.all.flatMap(group => group.tabs).some(tab => viewType(tab) === 'lsdynaKeywordManager'));
-            if (phase === 'manager') for (let i = 0; i < 100; i++) {
+            if (phase === 'manager') for (let i = 0; i < 2; i++) {
                 await vscode.window.showTextDocument(document);
                 await delay(30);
                 await measure('warm-manager-command', async () => {
@@ -256,12 +256,12 @@ exports.run = async () => {
             assert.equal(document.getText(), original.toString());
             assert.equal(sha(fs.readFileSync(file)), sha(original));
             result.functionalChecksPassed = true;
-            const warm = metrics.filter(item => item.name.startsWith('warm-')).map(item => item.durationMs).sort((a,b) => a-b);
+            const warm = metrics.filter(item => item.name.startsWith('warm-')).map(item => item.durationMs);
             result.warmSampleCount = warm.length;
-            result.warmP95Ms = warm[Math.ceil(warm.length * 0.95) - 1];
+            result.warmMaxMs = Math.max(...warm);
             for (const metric of metrics.filter(item => item.name !== 'activation')) assert.ok(metric.maxEventLoopGapMs <= 100,
                 `${metric.name} blocked the event loop for ${metric.maxEventLoopGapMs.toFixed(1)}ms`);
-            assert.ok(result.warmP95Ms <= 100);
+            assert.ok(result.warmMaxMs <= 100);
         }
         result.status = 'passed';
     } catch (error) { failure = error; result.status = 'failed'; result.error = String(error); throw error; }

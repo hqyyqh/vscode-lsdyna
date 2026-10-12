@@ -449,7 +449,7 @@
     {
       "path": "docs/public-source-boundary.md",
       "role": "editable-source",
-      "sha256": "0558f224828a4146c878906144c8c47daf19da8ad2bc7694aff1cc401d99c625",
+      "sha256": "aa5b24f6647a483748e1ad735cda9a897a9ca037417a860d94eb90e09c85407a",
       "reason": "public-source-maintenance-contract"
     },
     {
@@ -2471,19 +2471,19 @@
     {
       "path": "scripts/benchmark/benchmark-editor-hosts.cjs",
       "role": "editable-source",
-      "sha256": "be0ec06369ae8b68b26e61af9a1ec916ae35e9bf919ccc528b615e5435ea1a67",
+      "sha256": "a22f14095d9ceb745dac281478c895660e4b7839e0c5f6894c2e6eab9c036110",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "scripts/benchmark/benchmark-keyword-manager-webview.cjs",
       "role": "editable-source",
-      "sha256": "268a329632f68acd3e9a1b9534d821ddc48d27a80336694ac9e6b5bee90fb6b5",
+      "sha256": "a28eee37dbc8482f8da6751ffeb39d5079f82763bcbde6e4510e6bd63593b750",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "scripts/benchmark/benchmark-release-hosts.cjs",
       "role": "editable-source",
-      "sha256": "185c32d9b7f2e3e257bcf3a1017b0a6cb1adc8084f02cabbb17cb31218abb03e",
+      "sha256": "8aaac0a726e426d6c67deb6f1d4a9bd47f265d738435382c60dbfe9c173349e6",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2807,7 +2807,7 @@
     {
       "path": "scripts/release/public-release-reports.cjs",
       "role": "editable-source",
-      "sha256": "8bb9c794ba401768634dc8941278c25372861ea517ffac5cf57e320216962053",
+      "sha256": "0a2f27247afd35a4530afe8281919abf5e0bb8af39a95780f38c4e03b4145f02",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2855,7 +2855,7 @@
     {
       "path": "scripts/release/verify-release-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "6f617e7d8c3d597c905e27720f5b35ca3e948fccc7fb1234c9ea83816d4ea297",
+      "sha256": "941d56176af70992da97e7166c61224261917695c17c3362dac7fd04ecd323f0",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6371,7 +6371,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "8942ab1a4b5c4db4d680b6667deb27a20e117e2066e90372df7cdf2add0ab4cd",
+      "sha256": "d185c0dee6c423dd49feebedd9fc940a7526a0ba4ec84f1b8e44372689a0b7c0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6479,7 +6479,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "ee2f5d1cb684c208b6321e544703e1c3a1b6a6fa4394e3267f5e7bd60de8c618",
+      "sha256": "8835d197a52892d43be54c683bb529b5037fede333b92ce596919a62496f094b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6677,7 +6677,7 @@
     {
       "path": "test/scripts/host/hostBenchmark.test.js",
       "role": "editable-source",
-      "sha256": "4c458678b4df9571cc5b3db40aec8da7ebc27a7158655c195e535fb62bc67b3b",
+      "sha256": "10334347a955df3f205e5734635eae65f0183fcf20b4e1ebe9a9a8bbfdbb0318",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6725,7 +6725,7 @@
     {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
-      "sha256": "2b65a03b172d40fb48b92651302236952b71f5019ec384154741364b7514f7b0",
+      "sha256": "419802051fed184b05ccbe2a7325dddd4d8f319580f14e8cefddb256b5083266",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6743,7 +6743,7 @@
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "7c98f82b34d813b8b2e3321e813e32c5ad94cf84bdc3126fc7447e026effb69e",
+      "sha256": "6647b9506b886ce7ac38f80951f066827b270bcd2bb8c0b7dfa8529a6d125d6c",
       "reason": "public-build-or-package-regression"
     },
     {

@@ -12,11 +12,11 @@ describe('public release report boundary', () => {
             ...privateData, cases: [{ name: 'catalog', passed: false, ...privateData }] });
         assert.deepEqual(acceptance.cases, [{ name: 'catalog', passed: false }]);
         const performance = performanceReport({ complete: true, ...privateData, baselineSha256: 'b'.repeat(64), candidateSha256: 'a'.repeat(64),
-            metrics: [{ name: 'scan', field: 'peakRss', percentile: .95, before: 1, after: 1, allowance: 1,
-                passed: true, baselineCount: 20, candidateCount: 20, ...privateData }],
-            samples: { baseline: [{ phase: 'hover', status: 'passed', warmSampleCount: 100, ...privateData }], candidate: [] } });
-        assert.equal(performance.metrics[0].baselineCount, 20);
-        assert.deepEqual(performance.samples.baseline, [{ phase: 'hover', status: 'passed', warmSampleCount: 100 }]);
+            metrics: [{ name: 'scan', field: 'peakRss', statistic: 'maximum', before: 1, after: 1, allowance: 1,
+                passed: true, baselineCount: 2, candidateCount: 2, ...privateData }],
+            samples: { baseline: [{ phase: 'hover', status: 'passed', warmSampleCount: 2, ...privateData }], candidate: [] } });
+        assert.equal(performance.metrics[0].baselineCount, 2);
+        assert.deepEqual(performance.samples.baseline, [{ phase: 'hover', status: 'passed', warmSampleCount: 2 }]);
         assert.ok(!JSON.stringify([identity, acceptance, performance]).includes('private'));
     });
     it('uploads only declared packages and public summaries in both workflows', () => {

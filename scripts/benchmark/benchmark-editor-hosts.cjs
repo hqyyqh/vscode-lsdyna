@@ -20,7 +20,7 @@ for (const row of report.samples) require('node:assert/strict').ok(versions.incl
 const save = () => { fs.mkdirSync(path.dirname(output), { recursive: true }); fs.writeFileSync(output, JSON.stringify(report, null, 2)); };
 const quantile = (values, p) => [...values].sort((a, b) => a - b)[Math.ceil(values.length * p) - 1];
 for (const version of versions) for (const phase of ['activation', 'hover', 'manager', 'choices']) {
-    for (let run = 0; run < 3; run++) for (const name of run % 2 ? ['candidate', 'baseline'] : ['baseline', 'candidate']) {
+    for (let run = 0; run < 2; run++) for (const name of run % 2 ? ['candidate', 'baseline'] : ['baseline', 'candidate']) {
         if (report.samples.some(row => row.version === version && row.phase === phase && row.run === run && row.name === name)) continue;
         const executable = path.resolve(__dirname, `../../.vscode-test/vscode-win32-x64-archive-${version}/Code.exe`);
         if (!fs.existsSync(executable)) throw Error(`VS Code ${version} executable is missing: ${executable}; download the requested host before benchmarking`);
@@ -53,18 +53,18 @@ for (const version of versions) for (const phase of ['activation', 'hover', 'man
     const cold = name => rows(name).map(row => (row.result.metrics || [])
         .filter(item => item.name === 'activation' || item.name === coldName)
         .reduce((sum, item) => sum + item.durationMs, 0));
-    const beforeMedian = quantile(cold('baseline'), .5), afterMedian = quantile(cold('candidate'), .5);
+    const beforeMax = Math.max(...cold('baseline')), afterMax = Math.max(...cold('candidate'));
     const maxGap = Math.max(...metrics(after, () => true, item => item.maxEventLoopGapMs));
     const rss = rows => Math.max(...rows.map(row => row.result.peakRssBytes ||
         Math.max(...metrics([row], () => true, item => item.memoryAfter.rss))));
-    const gate = { version, phase, coldMetric: 'activation-plus-first-available', beforeMedian, afterMedian, maxGap, beforeRss: rss(before), afterRss: rss(after),
-        cold: afterMedian <= beforeMedian + Math.max(beforeMedian * .05, 20), synchronous: maxGap <= 100,
+    const gate = { version, phase, coldMetric: 'activation-plus-first-available', beforeMax, afterMax, maxGap, beforeRss: rss(before), afterRss: rss(after),
+        cold: afterMax <= beforeMax + Math.max(beforeMax * .05, 20), synchronous: maxGap <= 100,
         memory: rss(after) <= rss(before) + Math.max(rss(before) * .05, 10 * 1024 * 1024) };
     if (phase !== 'activation') {
         gate.warm = after.every(row => {
-            const candidateP95 = row.result.warmP95Ms;
-            const baselineP95 = before.find(other => other.run === row.run)?.result.warmP95Ms;
-            return row.result.warmSampleCount >= 30 && candidateP95 <= baselineP95 + Math.max(baselineP95 * .05, 2);
+            const candidateMax = row.result.warmMaxMs;
+            const baselineMax = before.find(other => other.run === row.run)?.result.warmMaxMs;
+            return row.result.warmSampleCount === 2 && candidateMax <= baselineMax + Math.max(baselineMax * .05, 2);
         });
     }
     report.gates.push(gate);

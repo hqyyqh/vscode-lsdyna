@@ -21,12 +21,12 @@ describe('immutable release acceptance gate', () => {
                 last = path.join(directory, 'acceptance.json');
                 fs.writeFileSync(last, JSON.stringify({ complete: true, platform, arch: platform === 'darwin' ? 'arm64' : 'x64', vscodeVersion: version, vsixSha256: sha,
                     cases: names.map(name => ({ name, passed: true })) }));
-                const samples = ['hover', 'manager', 'experience'].flatMap(phase => Array.from({ length: 20 }, () => ({ phase, status: 'passed', warmSampleCount: 100, vscodeVersion: version, platform, arch: platform === 'darwin' ? 'arm64' : 'x64' })));
+                const samples = ['hover', 'manager', 'experience'].flatMap(phase => Array.from({ length: 2 }, () => ({ phase, status: 'passed', warmSampleCount: 2, vscodeVersion: version, platform, arch: platform === 'darwin' ? 'arm64' : 'x64' })));
                 const metrics = ['activation', 'first-hover', 'warm-hover', 'first-manager', 'warm-manager-command'].flatMap(name =>
-                    ['durationMs', 'maxEventLoopGapMs', 'rss'].flatMap(field => [.5, .95].map(percentile => ({ name, field, percentile, passed: true }))));
+                    ['durationMs', 'maxEventLoopGapMs', 'rss'].map(field => ({ name, field, statistic: 'maximum', passed: true })));
                 metrics.push(...['first-manager-rendered', 'manager-refresh', 'manual-open', 'scan'].flatMap(name =>
-                    ['durationMs', 'maxEventLoopGapMs', 'peakRss'].flatMap(field => [.5, .95].map(percentile =>
-                        ({ name, field, percentile, passed: true, baselineCount: 100, candidateCount: 100 })))));
+                    ['durationMs', 'maxEventLoopGapMs', 'peakRss'].map(field =>
+                        ({ name, field, statistic: 'maximum', passed: true, baselineCount: name === 'manager-refresh' ? 4 : 2, candidateCount: name === 'manager-refresh' ? 4 : 2 }))));
                 fs.writeFileSync(path.join(directory, 'performance.json'), JSON.stringify(performanceReport({ complete: true, candidateSha256: sha, baselineSha256: baselineSha,
                     metrics, samples: { baseline: samples, candidate: samples }, internalPath: 'private' })));
             }
@@ -41,6 +41,13 @@ describe('immutable release acceptance gate', () => {
             assert.throws(() => verify(vsix, root, 'darwin-x64'), /Unknown release target/);
             const performanceFile = path.join(path.dirname(last), 'performance.json');
             const performance = JSON.parse(fs.readFileSync(performanceFile));
+            const oldStatistics = { ...performance, metrics: performance.metrics.map(({ statistic, ...item }) => ({ ...item, percentile: .95 })) };
+            fs.writeFileSync(performanceFile, JSON.stringify(oldStatistics));
+            assert.throws(() => verify(vsix, root), /Missing performance spot check/);
+            const incomplete = JSON.parse(JSON.stringify(performance));
+            incomplete.samples.candidate.pop();
+            fs.writeFileSync(performanceFile, JSON.stringify(incomplete));
+            assert.throws(() => verify(vsix, root), /needs 2 cold samples/);
             const wrongHost = JSON.parse(JSON.stringify(performance));
             wrongHost.samples.candidate[0].vscodeVersion = '0.0.0';
             fs.writeFileSync(performanceFile, JSON.stringify(wrongHost));

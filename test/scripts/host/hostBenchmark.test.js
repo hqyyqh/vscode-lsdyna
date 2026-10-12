@@ -5,7 +5,7 @@ const repo = path.resolve(__dirname, '../../..');
 const create = require('../../support/tempDirectories.js').trackTempDirectories();
 
 describe('host benchmark evidence contracts', function () {
-    this.timeout(10000); // New regression writes 48/80 synthetic child reports; no real host timing claim.
+    this.timeout(10000); // Synthetic child reports; no real host timing claim.
     function scenario(kind, mode = 'passed') {
         const root = create(path.join(os.tmpdir(), 'host-benchmark-test-'));
         const baseline = path.join(root,'baseline.vsix'), candidate = path.join(root,'candidate.vsix'), output = path.join(root,'report.json');
@@ -33,10 +33,10 @@ describe('host benchmark evidence contracts', function () {
                 const requested = editor ? /archive-(\d+\.\d+\.\d+)/.exec(env.VSCODE_EXECUTABLE_PATH)[1] : '1.100.0';
                 const phase=args[1],metric=name=>({name,durationMs:1,maxEventLoopGapMs:1,peakRss:100,memoryAfter:{rss:100}});
                 const metrics=[metric('activation'), ...(phase === 'experience'
-                    ? ['first-manager-rendered','manual-open','scan',...Array(100).fill('manager-refresh')]
-                    : ['first-'+phase, ...Array(editor ? 30 : 100).fill(phase === 'hover' ? 'warm-hover' : 'warm-manager-command')]).map(metric)];
+                    ? ['first-manager-rendered','manual-open','scan',...Array(2).fill('manager-refresh')]
+                    : ['first-'+phase, ...Array(2).fill(phase === 'hover' ? 'warm-hover' : 'warm-manager-command')]).map(metric)];
                 const result={status:'passed',vscodeVersion:mode==='wrong-version'?'0.0.0':requested,
-                    functionalChecksPassed:true,metrics,warmSampleCount:editor?30:100,warmP95Ms:1,peakRssBytes:100};
+                    functionalChecksPassed:true,metrics,warmSampleCount:2,warmMaxMs:1,peakRssBytes:100};
                 if(mode==='empty-metrics')result.metrics=[];
                 if(mode==='missing-metrics')delete result.metrics;
                 if(mode==='wrong-phase-metrics')result.metrics=result.metrics.filter(item=>item.name==='activation');
@@ -51,7 +51,7 @@ describe('host benchmark evidence contracts', function () {
     }
     it('uses the repository download directory and binds each launch to its requested host version',()=>{
         const result=scenario('editor');
-        assert.equal(result.error,undefined);assert.equal(result.report.complete,true);assert.equal(result.calls.length,48);
+        assert.equal(result.error,undefined);assert.equal(result.report.complete,true);assert.equal(result.calls.length,32);
         for(const {env} of result.calls){
             const version=/archive-(\d+\.\d+\.\d+)/.exec(env.VSCODE_EXECUTABLE_PATH)[1];
             assert.equal(env.VSCODE_EXECUTABLE_PATH,path.join(repo,`.vscode-test/vscode-win32-x64-archive-${version}/Code.exe`));
@@ -75,15 +75,16 @@ describe('host benchmark evidence contracts', function () {
         });
     }
     for(const mode of ['empty-metrics','missing-metrics','wrong-phase-metrics']){
-        it(`rejects release samples with ${mode} despite a passed status and 100 warm samples`,()=>{
+        it(`rejects release samples with ${mode} despite a passed status and two warm samples`,()=>{
             const result=scenario('release',mode);
             assert.equal(result.report.complete,false);assert.equal(result.exitCode,1);
             assert.ok(result.report.failures.length>0);
         });
     }
-    it('keeps complete release samples and all 120 alternating launches',()=>{
+    it('keeps complete release samples and 12 alternating launches, without claiming percentiles',()=>{
         const result=scenario('release');
-        assert.equal(result.error,undefined);assert.equal(result.report.complete,true);assert.equal(result.calls.length,120);
+        assert.equal(result.error,undefined);assert.equal(result.report.complete,true);assert.equal(result.calls.length,12);
         assert.ok(result.report.metrics.length>0);
+        assert.ok(result.report.metrics.every(item=>item.statistic==='maximum' && !('percentile' in item)));
     });
 });

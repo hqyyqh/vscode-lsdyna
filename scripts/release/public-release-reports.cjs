@@ -14,7 +14,7 @@ function acceptanceReport(report) {
 function performanceReport(report) {
     return { ...pick(report, ['complete', 'baselineSha256', 'candidateSha256']),
         metrics: (report.metrics || []).map(item => pick(item,
-            ['name', 'field', 'percentile', 'before', 'after', 'allowance', 'passed', 'baselineCount', 'candidateCount'])),
+            ['name', 'field', 'statistic', 'before', 'after', 'allowance', 'passed', 'baselineCount', 'candidateCount'])),
         samples: Object.fromEntries(['baseline', 'candidate'].map(side => [side,
             (report.samples?.[side] || []).map(item => pick(item, ['phase', 'status', 'warmSampleCount', 'vscodeVersion', 'platform', 'arch']))])) };
 }
