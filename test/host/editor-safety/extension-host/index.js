@@ -773,16 +773,17 @@ function latencySummary(samples) {
         count: sorted.length,
         minMs: Number(sorted[0].toFixed(1)),
         medianMs: Number(percentile(0.5).toFixed(1)),
-        p95Ms: Number(percentile(0.95).toFixed(1)),
         maxMs: Number(sorted[sorted.length - 1].toFixed(1)),
     };
 }
 
-function assertLatencyBudget(label, samples, p95BudgetMs, maxBudgetMs) {
+function assertLatencyBudget(label, samples, sampleBudgetMs, maxBudgetMs) {
     const summary = latencySummary(samples);
+    // These 4/12-sample checks use the observed maximum, not a population P95.
+    console.log(`Editor safety latency samples: ${JSON.stringify({ label, samplesMs: samples, summary })}`);
     assert.ok(
-        summary.p95Ms <= p95BudgetMs,
-        `${label} p95 ${summary.p95Ms} ms exceeded ${p95BudgetMs} ms`,
+        summary.maxMs <= sampleBudgetMs,
+        `${label} sample maximum ${summary.maxMs} ms exceeded ${sampleBudgetMs} ms`,
     );
     assert.ok(
         summary.maxMs <= maxBudgetMs,
@@ -965,6 +966,7 @@ async function assertInteractiveLatencyBaseline() {
     const devTools = await connectWorkbenchDevTools();
     const tabSamples = [];
     const typeSamples = [];
+    const rendererTimings = [];
 
     try {
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
@@ -981,18 +983,24 @@ async function assertInteractiveLatencyBaseline() {
 
             let started = performance.now();
             await dispatchRendererKey(devTools, 'Tab', 'Tab', 9);
+            const tabDispatched = performance.now();
             await waitForAssertion(() => {
                 assert.strictEqual(fixedEditor.selection.start.character, 9);
                 assert.strictEqual(fixedEditor.selection.end.character, 24);
             });
             tabSamples.push(performance.now() - started);
+            const tabDispatchMs = tabDispatched - started;
 
             started = performance.now();
             await dispatchRendererKey(devTools, '9', 'Digit9', 57);
+            const typeDispatched = performance.now();
             await waitForAssertion(() => {
                 assert.strictEqual(fixedDocument.lineAt(2).text.slice(8, 24).trim(), '9');
             });
             typeSamples.push(performance.now() - started);
+            rendererTimings.push({ iteration, tabDispatchMs,
+                tabObservedMs: tabSamples[iteration], typeDispatchMs: typeDispatched - started,
+                typeObservedMs: typeSamples[iteration] });
 
             await vscode.commands.executeCommand('undo');
             await waitForAssertion(() => {
@@ -1001,6 +1009,7 @@ async function assertInteractiveLatencyBaseline() {
             });
         }
     } finally {
+        console.log(`Editor safety renderer timing: ${JSON.stringify(rendererTimings)}`);
         devTools.close();
     }
 
