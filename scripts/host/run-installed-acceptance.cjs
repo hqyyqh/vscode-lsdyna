@@ -37,8 +37,11 @@ async function main() {
     const caseName = ([script, ...args]) => script === 'run-release-lifecycle.cjs' ? args[0]
         : [path.basename(script), ...args.map(arg => path.basename(arg).replace(/^--/, ''))].join('-');
     const selected = process.env.LSDYNA_ACCEPTANCE_CASE;
-    if (selected && !cases.slice(1).some(item => caseName(item) === selected))
-        throw Error(`Unknown installed acceptance case: ${selected}`);
+    const selectedCases = selected ? new Set(selected.split(',').map(name => name.trim())) : null;
+    for (const name of selectedCases || []) {
+        if (!cases.slice(1).some(item => caseName(item) === name))
+            throw Error(`Unknown installed acceptance case: ${name}`);
+    }
     for (const entry of cases) {
         const [script, ...args] = entry, name = caseName(entry);
         // Always recheck package integrity; only reuse explicitly passed host cases.
@@ -47,7 +50,7 @@ async function main() {
             fs.writeFileSync(file, JSON.stringify(report, null, 2));
             continue;
         }
-        if (selected && script !== '../release/verify-release-hash.cjs' && name !== selected) continue;
+        if (selectedCases && script !== '../release/verify-release-hash.cjs' && !selectedCases.has(name)) continue;
         const result = spawnSync(process.execPath, [path.join(__dirname, script), ...args], { env, encoding: 'utf8', windowsHide: true,
             maxBuffer: 32 * 1024 * 1024, timeout: 600000 });
         fs.writeFileSync(path.join(directory, name + '.log'), (result.stdout || '') + (result.stderr || ''));
@@ -55,7 +58,8 @@ async function main() {
         fs.writeFileSync(file, JSON.stringify(report, null, 2));
         if (result.status !== 0) {
             console.error(`Failed installed case: ${name}\n${result.stdout || ''}\n${result.stderr || ''}`);
-            throw Error(`Installed acceptance failed: ${name} (${result.error?.message || result.signal || result.status}); see ${file}`);
+            if (!selectedCases || selectedCases.size === 1 || result.error || result.signal)
+                throw Error(`Installed acceptance failed: ${name} (${result.error?.message || result.signal || result.status}); see ${file}`);
         }
     }
     const identities = fs.readdirSync(directory).filter(name => /^\d+-\d+\.json$/.test(name))
@@ -67,5 +71,6 @@ async function main() {
     report.vscodeVersion = versions[0];
     report.complete = cases.every(entry => report.cases.some(item => item.name === caseName(entry) && item.passed === true));
     fs.writeFileSync(file, JSON.stringify(report, null, 2));
+    if (report.cases.some(item => item.passed === false)) throw Error(`Selected acceptance cases failed; see ${file}`);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -47,6 +47,24 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('runs a selected batch once without claiming unselected cases passed', async () => {
+        const result = await scenario({ selected: 'run-release-host.cjs-catalog, reload,run-release-host.cjs-catalog' });
+        assert.equal(result.exitCode, undefined);
+        assert.equal(result.commands.length, 3);
+        assert.equal(result.commands.filter(name => name === 'catalog').length, 1);
+        assert.ok(result.commands.includes('reload'));
+        assert.equal(result.report.complete, false);
+        assert.ok(!result.report.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs'));
+        const failed = await scenario({ selected: 'run-release-host.cjs-catalog,reload', failScript: 'run-release-host.cjs' });
+        assert.equal(failed.exitCode, 1);
+        assert.ok(failed.commands.includes('reload'));
+        assert.equal(failed.report.complete, false);
+        assert.equal(failed.report.cases.find(item => item.name === 'run-release-host.cjs-catalog').passed, false);
+        assert.equal(failed.report.cases.find(item => item.name === 'reload').passed, true);
+        const invalid = await scenario({ selected: 'reload,misspelled-case' });
+        assert.equal(invalid.exitCode, 1);
+        assert.equal(invalid.commands.length, 0);
+    });
     it('reuses only the selected platform successful package job, without requiring unrelated platforms', () => {
         const { validateBuild } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         const run = { workflowName: 'Public collaboration / 公开协作', jobs: [

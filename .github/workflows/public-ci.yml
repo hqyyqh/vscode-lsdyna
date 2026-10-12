@@ -30,7 +30,7 @@ on:
         type: string
         default: integration/extension.test.js
       host_case:
-        description: 'Installed case name; performance: hover/manager/experience (empty = all); profile: hover/manager/manager-control'
+        description: 'Installed case names (comma-separated); performance: hover/manager/experience; profile: hover/manager/manager-control'
         type: string
       build_run:
         description: 'Reuse passed platform builds from this run (or leave empty for full CI)'
