@@ -7,16 +7,28 @@ on:
     branches: [dev, master]
   workflow_call:
   workflow_dispatch:
+    inputs:
+      build_run:
+        description: 'Reuse passed platform builds from this run (or leave empty for full CI)'
+        type: string
+      resume_run:
+        description: 'Resume installed cases from this run (defaults to build_run)'
+        type: string
+      retry_exclude:
+        description: 'Optional JSON matrix exclusions for installation-only retries'
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: public-${{ github.workflow }}-${{ github.ref }}
+  group: public-${{ github.workflow }}-${{ github.ref }}-${{ inputs.build_run || 'build' }}
   cancel-in-progress: true
 
 jobs:
   public-checks:
+    if: ${{ !inputs.build_run }}
     name: Build, data, tests, audit and actual VSIX
     strategy:
       fail-fast: false
@@ -101,6 +113,7 @@ jobs:
   installed-host:
     name: Same VSIX / ${{ matrix.platform.os }} / VS Code ${{ matrix.vscode }}
     needs: public-checks
+    if: ${{ !cancelled() && (needs.public-checks.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_run)) }}
     strategy:
       fail-fast: false
       matrix:
@@ -109,12 +122,14 @@ jobs:
           - { os: ubuntu-22.04, target: linux-x64 }
           - { os: macos-14, target: darwin-arm64 }
         vscode: ['1.100.0', '1.139.1']
+        exclude: ${{ fromJSON(inputs.build_run && inputs.retry_exclude || '[]') }}
     runs-on: ${{ matrix.platform.os }}
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
@@ -124,6 +139,17 @@ jobs:
         with:
           name: candidate-${{ matrix.platform.target }}
           path: dist
+          run-id: ${{ inputs.build_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify unchanged inputs and resume completed cases
+        if: ${{ inputs.build_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          RESUME_RUN: ${{ inputs.resume_run || inputs.build_run }}
+          EXPECTED_TARGET: ${{ matrix.platform.target }}
+          VSCODE_TEST_VERSION: ${{ matrix.vscode }}
+        run: node scripts/host/run-installed-acceptance-retry.cjs
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
@@ -137,10 +163,14 @@ jobs:
           node scripts/release/verify-release-hash.cjs "$LSDYNA_TEST_VSIX"
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a node scripts/host/run-installed-acceptance.cjs
-            xvfb-run -a node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
+            if [[ "$LSDYNA_REUSE_PERFORMANCE" != "1" ]]; then
+              xvfb-run -a node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
+            fi
           else
             node scripts/host/run-installed-acceptance.cjs
-            node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
+            if [[ "$LSDYNA_REUSE_PERFORMANCE" != "1" ]]; then
+              node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
+            fi
           fi
       - name: Prepare public acceptance evidence
         if: always()

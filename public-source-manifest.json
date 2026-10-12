@@ -365,19 +365,19 @@
     {
       "path": ".github/workflows/ci.yml",
       "role": "editable-source",
-      "sha256": "c2377018cdf85977d8080b81d7a65b1d809bc8b4122a84842b37c0e810760a79",
+      "sha256": "91b6103180f901aad2054505fdc1388e72149366a6c1d92079fcde5f844e6f8f",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "101d843a1f234ce7499ec33acd9cbfb6372a1529c2656a495af67948b9cc6e26",
+      "sha256": "f0282d9655a16fb986d9642df20c02f8f532d4656b5136cb52d2e057f3b1981c",
       "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/release.yml",
       "role": "editable-source",
-      "sha256": "a35681a88f6539f44015afa59b2fdb96291ae443aac161f62db2a957671ce5e0",
+      "sha256": "e46f91bb679f00d89e4a4aead11147d5f180faf8206cad67532c61791d34f16d",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2661,9 +2661,15 @@
       "reason": "installed-product-host-acceptance"
     },
     {
+      "path": "scripts/host/run-installed-acceptance-retry.cjs",
+      "role": "editable-source",
+      "sha256": "1d78979dbb8adf983da405a608213c9eb453957b2c8e60c0a1f934f017c0ce80",
+      "reason": "public-contribution"
+    },
+    {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "c20f49ba77bf0a2cc74c2fc7c8da4e0ef338abc3d608ee6e814834f53d6f74e9",
+      "sha256": "26185e8d9cc9add98eb1d36235120ef609419effbae2bcf8be5e4c8e19d75e0f",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2807,7 +2813,7 @@
     {
       "path": "scripts/release/public-release-reports.cjs",
       "role": "editable-source",
-      "sha256": "0a2f27247afd35a4530afe8281919abf5e0bb8af39a95780f38c4e03b4145f02",
+      "sha256": "b8ef34c93f340c19a17f7173da1615fa341902ba7062f27fe08ab31a44bdec7c",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6683,7 +6689,7 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "4ca259a43bd4ab7bc24762d995467f8cb87cac59a6ee753bc2db0cc9c225f00f",
+      "sha256": "3751b5c5eda02172062259c3a956b9dbf8a7a79137223c77e79b0ee057f64c01",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6737,7 +6743,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "b42e2fe365cb45080588152ec41d7222345c3e448f5bd07092a27d89459cc78a",
+      "sha256": "68a836bdaef143dde474df1990f2bad0ff9be6ab6e39ab22b6f9262dfea0b471",
       "reason": "public-build-or-package-regression"
     },
     {

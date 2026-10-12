@@ -10,6 +10,7 @@ describe('platform release workflow dependency closure', () => {
         const targets = ['win32-x64', 'linux-x64', 'darwin-arm64'];
         assert.deepEqual(build.strategy.matrix.include.map(row => row.target), targets);
         assert.deepEqual(host.strategy.matrix.platform.map(row => row.target), targets);
+        assert.equal(host.strategy.matrix.exclude, "${{ fromJSON(inputs.build_run && inputs.retry_exclude || '[]') }}");
         assert.deepEqual(host.strategy.matrix.vscode, ['1.100.0', '1.139.1']);
         const commands = build.steps.map(step => step.run || '').join('\n');
         assert.ok(commands.indexOf('build:native-sqlite') < commands.indexOf('package-hover-release.cjs'));
@@ -53,5 +54,19 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(fs.existsSync(path.join(root, '.github/scripts/marketplace-release.cjs')));
         assert.ok(fs.existsSync(path.join(root, '.github/release-appendix.md')));
         assert.ok(read('verify-marketplace.yml').jobs);
+    });
+    it('allows installation-only retries only with verified source builds and case reports', () => {
+        const workflow = read('public-ci.yml'), host = workflow.jobs['installed-host'];
+        assert.ok(workflow.on.workflow_dispatch.inputs.build_run);
+        for (const name of ['public-ci.yml', 'ci.yml', 'release.yml']) assert.equal(read(name).permissions.actions, 'read');
+        assert.equal(workflow.jobs['public-checks'].if, '${{ !inputs.build_run }}');
+        assert.ok(host.if.includes("needs.public-checks.result == 'success'"));
+        assert.ok(host.if.includes("github.event_name == 'workflow_dispatch'"));
+        const prepare = host.steps.findIndex(step => step.run?.includes('run-installed-acceptance-retry.cjs'));
+        const run = host.steps.findIndex(step => step.run?.includes('node scripts/host/run-installed-acceptance.cjs'));
+        assert.ok(prepare >= 0 && prepare < run);
+        assert.equal(host.steps.find(step => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
+        assert.equal(host.steps.find(step => step.uses?.startsWith('actions/download-artifact@')).with['run-id'], '${{ inputs.build_run || github.run_id }}');
+        assert.ok(host.steps[run].run.includes('LSDYNA_REUSE_PERFORMANCE'));
     });
 });

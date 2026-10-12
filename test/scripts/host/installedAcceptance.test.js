@@ -2,18 +2,23 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), vm = require('node:vm'), crypto = require('node:crypto');
 const script = path.resolve(__dirname, '../../../scripts/host/run-installed-acceptance.cjs');
-async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true }) {
+async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true, resume, failScript }) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installed-acceptance-test-'));
     const vsix = path.join(root, 'candidate.vsix'), evidence = path.join(root, 'evidence');
     fs.writeFileSync(vsix, 'synthetic package identity');
     fs.writeFileSync(vsix + '.data-equivalence.json', JSON.stringify({ keywords: 1, formsFingerprint: 'synthetic' }));
     const digest = crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex');
-    let downloads = 0; const executables = [];
-    const processMock = { argv: [], platform: process.platform, execPath: process.execPath, env: {
+    let downloads = 0; const executables = [], commands = [], errors = [];
+    const processMock = { argv: [], platform: process.platform, arch: process.arch, execPath: process.execPath, env: {
         LSDYNA_TEST_VSIX: vsix, ...(explicitEvidence ? { LSDYNA_TEST_VSIX_EVIDENCE: evidence } : {}), VSCODE_TEST_VERSION: '1.100.0',
         ...(executable ? { VSCODE_EXECUTABLE_PATH: executable } : {}),
     } };
-    const context = { process: processMock, __dirname: path.dirname(script), console: { error() {} }, require(name) {
+    if (resume) {
+        processMock.env.LSDYNA_ACCEPTANCE_RESUME = path.join(root, 'previous.json');
+        fs.writeFileSync(processMock.env.LSDYNA_ACCEPTANCE_RESUME, JSON.stringify({ vsixSha256: digest,
+            platform: process.platform, arch: process.arch, requestedVscodeVersion: '1.100.0', ...resume }));
+    }
+    const context = { process: processMock, __dirname: path.dirname(script), console: { error(value) { errors.push(String(value)); } }, require(name) {
         if (name === 'node:path') return { ...path, resolve: (...args) => args[0] === '.artifacts/release-rebuild/installed-hosts' ? evidence : path.resolve(...args) };
         if (name === '@vscode/test-electron') return { async downloadAndUnzipVSCode() { downloads++; return 'downloaded-vscode'; } };
         if (name === 'node:child_process') return { spawnSync(_node, _args, { env }) {
@@ -21,6 +26,8 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
             assert.equal(path.dirname(env.LSDYNA_EXPECTED_CATALOG), evidence);
             assert.equal(JSON.parse(fs.readFileSync(env.LSDYNA_EXPECTED_CATALOG)).fingerprint, 'synthetic');
             executables.push(env.VSCODE_EXECUTABLE_PATH);
+            commands.push(_args.slice(1).join(' ') || path.basename(_args[0]));
+            if (path.basename(_args[0]) === failScript) return { status: 1, stdout: 'failed assertion detail', stderr: 'host stderr' };
             fs.writeFileSync(path.join(evidence, '1-1.json'), JSON.stringify({ sha256: digest, status: 'passed', vscodeVersion: actualVersion }));
             return { status: 0, stdout: '', stderr: '' };
         } };
@@ -29,14 +36,48 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     try {
         vm.runInNewContext(fs.readFileSync(script, 'utf8').replace('main().catch', 'globalThis.completed = main().catch'), context);
         await context.completed;
-        const report = JSON.parse(fs.readFileSync(path.join(evidence, 'acceptance.json')));
-        return { downloads, executables, report, exitCode: processMock.exitCode };
+        const file = path.join(evidence, 'acceptance.json');
+        const report = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : null;
+        return { downloads, executables, commands, errors, report, exitCode: processMock.exitCode };
     } finally {
         assert.equal(path.dirname(fs.realpathSync(root)), fs.realpathSync(os.tmpdir()));
         fs.rmSync(root, { recursive: true, force: true });
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('resumes passed cases but reruns failed cases and preserves diagnostics', async () => {
+        const resume = { sourceRun: '123', cases: [
+            { name: 'run-release-host.cjs-catalog', passed: true },
+            { name: 'run-release-host.cjs-smoke', passed: false }] };
+        const result = await scenario({ resume });
+        assert.ok(!result.commands.includes('catalog'));
+        assert.ok(result.commands.includes('smoke'));
+        assert.equal(result.report.complete, true);
+        assert.equal(result.report.reusedFromRun, '123');
+        assert.ok(result.report.cases.find(item => item.name.endsWith('-catalog')).reused);
+        const failed = await scenario({ resume, failScript: 'run-release-host.cjs' });
+        assert.equal(failed.exitCode, 1);
+        assert.equal(failed.report.complete, false);
+        assert.ok(failed.errors.join('\n').includes('failed assertion detail'));
+        assert.ok(failed.errors.join('\n').includes('host stderr'));
+        for (const identity of [{ vsixSha256: 'wrong' }, { requestedVscodeVersion: '1.139.1' }, { arch: 'wrong' }]) {
+            const rejected = await scenario({ resume: { ...resume, ...identity } });
+            assert.equal(rejected.exitCode, 1);
+            assert.equal(rejected.commands.length, 0);
+        }
+    });
+    it('rejects evidence reuse after product or case changes and mismatched report identities', () => {
+        const { validateChanges, validateReport } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
+        validateChanges(['scripts/host/run-installed-acceptance.cjs', '.github/workflows/public-ci.yml']);
+        for (const file of ['src/extension.ts', 'package-lock.json', 'test/host/release/host.cjs', 'scripts/host/vsix-host.cjs'])
+            assert.throws(() => validateChanges([file]), /Cannot reuse/);
+        const report = { vsixSha256: 'a', platform: 'linux', arch: 'x64', cases: [] };
+        const expected = { digest: 'a', target: 'linux-x64', version: '1.100.0' };
+        validateReport(report, expected);
+        assert.throws(() => validateReport({ ...report, vsixSha256: 'b' }, expected), /another VSIX/);
+        assert.throws(() => validateReport({ ...report, arch: 'arm64' }, expected), /target mismatch/);
+        assert.throws(() => validateReport({ ...report, vscodeVersion: '1.139.1' }, expected), /actual version/);
+    });
     it('uses an explicit executable before downloading and records the actual host identity', async () => {
         const explicit = await scenario({ executable: 'existing-vscode' });
         assert.equal(explicit.downloads, 0);
