@@ -3885,11 +3885,15 @@ async function assertStandardFormattingEntrypointsAreUnclaimed() {
         editor.selection = new vscode.Selection(range.start, range.end);
         await writeClipboardText(pasted);
         await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
-        assert.strictEqual(document.lineAt(2).text, pasted);
-        assert.strictEqual(document.isDirty, true);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.lineAt(2).text, pasted);
+            assert.strictEqual(document.isDirty, true);
+        });
         await vscode.commands.executeCommand('undo');
-        assert.strictEqual(document.getText(), original);
-        assert.strictEqual(document.isDirty, false);
+        await waitForAssertion(() => {
+            assert.strictEqual(document.getText(), original);
+            assert.strictEqual(document.isDirty, false);
+        });
     } finally {
         try {
             await configuration.update(
@@ -6552,6 +6556,7 @@ async function runScenarios() {
             'composition-overwidth': assertRendererImeCompositionOverWidthIsRejected,
             latency: assertInteractiveLatencyBaseline,
             paste: assertPasteIntoSelectedCellKeepsColumns,
+            'standard-formatting': assertStandardFormattingEntrypointsAreUnclaimed,
             'mouse-multicursor': assertRendererAltClickMultiCursorActionsAreAtomic,
             'mouse-drag': assertRendererMouseDragSelectionsAreScopedAndUndoable,
             'mouse-context-menu': assertRendererContextMenuPasteAndCutAreScopedAndUndoable,
