@@ -93,6 +93,26 @@ async function run() {
             await new Promise((resolve, reject) => {
                 if (fs.existsSync(path.join(root, 'gui-finish.json'))) { resolve(); return; }
                 let lastEditorRequest;
+                let applyingTheme = false, appliedTheme;
+                const applyThemeRequest = async () => {
+                    if (applyingTheme) return;
+                    applyingTheme = true;
+                    try {
+                        let theme;
+                        try { theme = JSON.parse(fs.readFileSync(path.join(root, 'theme-request.json'), 'utf8')); }
+                        catch (error) { if (error.code === 'ENOENT') return; throw error; }
+                        if (theme === appliedTheme) return;
+                        await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Global);
+                        if ((await vscode.commands.getCommands()).includes('notifications.clearAll'))
+                            await vscode.commands.executeCommand('notifications.clearAll');
+                        fs.writeFileSync(path.join(root, 'theme-applied.json'), JSON.stringify(theme));
+                        appliedTheme = theme;
+                    } catch (error) {
+                        clearInterval(timer);
+                        watcher.close();
+                        reject(error);
+                    } finally { applyingTheme = false; }
+                };
                 const watcher = fs.watch(root, async (_event, name) => {
                     if (String(name) === 'editor-request.json') {
                         try {
@@ -163,14 +183,7 @@ async function run() {
                         return;
                     }
                     if (String(name) === 'theme-request.json') {
-                        try {
-                            const theme = JSON.parse(fs.readFileSync(path.join(root, String(name)), 'utf8'));
-                            await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Global);
-                            if ((await vscode.commands.getCommands()).includes('notifications.clearAll'))
-                                await vscode.commands.executeCommand('notifications.clearAll');
-                            fs.writeFileSync(path.join(root, 'theme-applied.json'), JSON.stringify(theme));
-                        } catch {}
-                        return;
+                        return applyThemeRequest();
                     }
                     if (String(name) !== 'gui-finish.json') return;
                     clearInterval(timer);
@@ -181,7 +194,11 @@ async function run() {
                 // fs.watch can lose the completion filename on Windows; the saved signal is authoritative.
                 const timer = setInterval(() => {
                     const finished = fs.existsSync(path.join(root, 'gui-finish.json'));
-                    if (!finished && Date.now() < deadline) return;
+                    if (!finished && Date.now() < deadline) {
+                        // A saved request remains actionable even when fs.watch loses its rename event.
+                        void applyThemeRequest();
+                        return;
+                    }
                     clearInterval(timer);
                     watcher.close();
                     if (finished) resolve();

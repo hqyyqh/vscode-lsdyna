@@ -6427,7 +6427,7 @@
     {
       "path": "test/host/keyword-manager/extension-host.cjs",
       "role": "editable-source",
-      "sha256": "b5fef38dbf0a475ada99801a7930d270afda934b9cecafadeff03ba33f089f3f",
+      "sha256": "a3bc2d90e86e9af04040d15430e92f4da040923133884cbe2983b27d188036f3",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
