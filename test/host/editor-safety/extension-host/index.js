@@ -826,6 +826,33 @@ async function waitForAssertion(assertion, timeoutMs = 1500) {
     throw lastError || new Error('Timed out waiting for editor state');
 }
 
+async function measureEditorAction(subscribe, action, assertion) {
+    // Timestamp the state event; polling or a delayed key-up acknowledgement adds harness latency.
+    let subscription, timer, started;
+    const observed = new Promise((resolve, reject) => {
+        subscription = subscribe(() => {
+            if (started === undefined) return;
+            try {
+                assertion();
+                resolve(performance.now() - started);
+            } catch (_) { /* Wait for the matching editor state. */ }
+        });
+        timer = setTimeout(() => reject(new Error('Timed out waiting for editor state event')), 1500);
+    });
+    try {
+        started = performance.now();
+        const [observedMs, dispatchMs] = await Promise.all([
+            observed,
+            Promise.resolve().then(action).then(() => performance.now() - started),
+        ]);
+        assertion();
+        return { observedMs, dispatchMs };
+    } finally {
+        clearTimeout(timer);
+        subscription?.dispose();
+    }
+}
+
 async function settleQuickPickCommand(commandPromise, commands) {
     await new Promise(resolve => setTimeout(resolve, 150));
     for (const command of commands) {
@@ -981,26 +1008,21 @@ async function assertInteractiveLatencyBaseline() {
             await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
             await waitForRendererEditorFocus(devTools);
 
-            let started = performance.now();
-            await dispatchRendererKey(devTools, 'Tab', 'Tab', 9);
-            const tabDispatched = performance.now();
-            await waitForAssertion(() => {
+            const tabTiming = await measureEditorAction(
+                listener => vscode.window.onDidChangeTextEditorSelection(listener),
+                () => dispatchRendererKey(devTools, 'Tab', 'Tab', 9), () => {
                 assert.strictEqual(fixedEditor.selection.start.character, 9);
                 assert.strictEqual(fixedEditor.selection.end.character, 24);
             });
-            tabSamples.push(performance.now() - started);
-            const tabDispatchMs = tabDispatched - started;
+            tabSamples.push(tabTiming.observedMs);
 
-            started = performance.now();
-            await dispatchRendererKey(devTools, '9', 'Digit9', 57);
-            const typeDispatched = performance.now();
-            await waitForAssertion(() => {
+            const typeTiming = await measureEditorAction(
+                listener => vscode.workspace.onDidChangeTextDocument(listener),
+                () => dispatchRendererKey(devTools, '9', 'Digit9', 57), () => {
                 assert.strictEqual(fixedDocument.lineAt(2).text.slice(8, 24).trim(), '9');
             });
-            typeSamples.push(performance.now() - started);
-            rendererTimings.push({ iteration, tabDispatchMs,
-                tabObservedMs: tabSamples[iteration], typeDispatchMs: typeDispatched - started,
-                typeObservedMs: typeSamples[iteration] });
+            typeSamples.push(typeTiming.observedMs);
+            rendererTimings.push({ iteration, tab: tabTiming, type: typeTiming });
 
             await vscode.commands.executeCommand('undo');
             await waitForAssertion(() => {

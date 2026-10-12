@@ -6391,7 +6391,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "09d30852dcacbea214802ec28d848b690b21f9a079f1d3107aebc48b7f0d5631",
+      "sha256": "da2e52d0432f2a65a2ba801fac59839185be3a1b3657fae50449cd7b69e84f1d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
