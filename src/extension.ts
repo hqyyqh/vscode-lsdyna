@@ -7840,6 +7840,7 @@ let keywordOptionsModel = null;
         const isCurrent = () => generation === keywordOptionsRefreshGeneration && !document.isClosed &&
             document.version === version && editor.document === document && epoch === activeProjectCacheEpoch;
         await require('./core/keywordSchema').prepareKeywordSchema();
+        await keywordStructureCatalog.prepare();
         if (!isCurrent()) return null;
         const keywordLine = findKeywordLineForLine(document, requestedLine);
         if (Number.isInteger(keywordLine)) {
@@ -7848,6 +7849,9 @@ let keywordOptionsModel = null;
                 .prepareKeyword(require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword)); }
             catch { /* Model construction reports the catalog error without authorizing writes. */ }
         }
+        await require('./core/keywordSchema').prepareFieldHelpTextIndex();
+        // Let UI work run between cold catalog decoding and synchronous model construction.
+        await new Promise(resolve => setTimeout(resolve, 0));
         if (!isCurrent()) return null;
         const model = buildKeywordOptionViewModel(editor, requestedLine, {
             ...staged,

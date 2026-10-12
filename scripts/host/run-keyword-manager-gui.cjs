@@ -540,6 +540,9 @@ async function main() {
             writeEvidence(path.join(root, 'repeated-' + language + '.png'), Buffer.from(shot.data, 'base64'));
         }
         writeEvidence(path.join(root, 'gui-finish.json'), JSON.stringify({ fields: repeated ? {} : comments ? comments === 'missing' ? {} : { RO: '7.85' } : incomplete ? { RO: '7.85' } : { ICURV: '12', BESIMF: '12' } }));
+        console.log('Manager GUI: renderer checks complete; closing DevTools before host exit');
+        // A debugger attached to the renderer must not outlive the UI checks.
+        cdp.close();
         await host;
         if (hostError) throw hostError;
         console.log(JSON.stringify({ passed: true, hostLocale: locale, pluginLanguage: language,

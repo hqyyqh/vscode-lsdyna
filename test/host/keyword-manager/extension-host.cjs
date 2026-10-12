@@ -183,8 +183,10 @@ async function run() {
                 }, 600_000);
             });
             const expected = JSON.parse(fs.readFileSync(path.join(root, 'gui-finish.json'), 'utf8'));
+            console.log('Manager GUI host: renderer completion received');
             if (expected.error) throw Error(expected.error);
             assert.ok(await document.save());
+            console.log('Manager GUI host: document saved');
             assert.equal(fs.readFileSync(uri.fsPath, 'utf8'), document.getText());
             const view = api.buildKeywordOptionViewModel(editor, line, { provisional: true });
             const fields = view.managerCards.flatMap(card => card.fields);
@@ -241,6 +243,7 @@ async function run() {
             }
             results.push({ mode: 'GUI', passed: true, afterSha256: hash(document.getText()),
                 expectedFields: expected.fields });
+            console.log('Manager GUI host: document checks complete');
             return;
         }
         for (const format of ['standard', 'long', 'i10', 'free']) {

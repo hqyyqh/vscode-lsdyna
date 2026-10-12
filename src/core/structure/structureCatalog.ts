@@ -216,6 +216,7 @@ export class KeywordStructureCatalog {
     private readonly cache: ByteLru<LoadedShard>;
     private manifest: any = null;
     private manifestError: string | null = null;
+    private preparation: Promise<void> | undefined;
     private manifestReads = 0;
     private shardReads = 0;
 
@@ -226,11 +227,25 @@ export class KeywordStructureCatalog {
         this.cache = new ByteLru(options.cacheBytes || DEFAULT_CACHE_BYTES);
     }
 
-    private loadManifest(): any {
+    async prepare(): Promise<void> {
+        if (this.manifest || this.manifestError) return;
+        if (!this.preparation) {
+            const pending = fs.promises.readFile(path.join(this.runtimeRoot, 'manifest.json')).then(bytes => {
+                if (this.preparation === pending) this.loadManifest(bytes);
+            }).catch(error => {
+                if (this.preparation === pending && !this.manifest && !this.manifestError)
+                    this.manifestError = `structure-runtime-manifest-unavailable:${error?.message || error}`;
+            });
+            this.preparation = pending;
+        }
+        await this.preparation;
+    }
+
+    private loadManifest(prepared?: Buffer): any {
         if (this.manifest) return this.manifest;
         if (this.manifestError) throw new Error(this.manifestError);
         try {
-            const bytes = fs.readFileSync(path.join(this.runtimeRoot, 'manifest.json'));
+            const bytes = prepared || fs.readFileSync(path.join(this.runtimeRoot, 'manifest.json'));
             this.manifestReads++;
             if (bytes.length > this.maximumManifestBytes) {
                 throw new Error('manifest-capacity-exceeded');
@@ -435,6 +450,7 @@ export class KeywordStructureCatalog {
     }
 
     clear(): void {
+        this.preparation = undefined;
         this.cache.clear();
         this.manifest = null;
         this.manifestError = null;

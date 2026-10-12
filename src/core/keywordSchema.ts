@@ -191,6 +191,7 @@ type FieldHelpRuntimeManifest = {
 };
 
 let fieldHelpTextIndex: Record<string, number | string> | null | undefined;
+let fieldHelpTextIndexPreparation: Promise<void> | undefined;
 
 type FieldHelpShard = {
     formatVersion: number;
@@ -599,6 +600,7 @@ export function buildLocalizedHelpCache(
 
 export function resetKeywordSchemaCache(): void {
     fieldHelpTextIndex = undefined;
+    fieldHelpTextIndexPreparation = undefined;
     schemaPreparation = undefined;
     schemaCache = undefined;
     clearFieldContextCache();
@@ -689,26 +691,63 @@ export function getLocalizedFieldHelp(field: object | null | undefined): string 
     return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+function fieldHelpTextIndexPath(manifest: FieldHelpRuntimeManifest): string {
+    const descriptor = manifest.textIndex!;
+    if (descriptor.file !== `text-index.json.${manifest.storageCodec === 'br' ? 'br' : 'gz'}`) throw new Error('Invalid help text index path');
+    return path.join(runtimeDataDir(), FIELD_HELP_RUNTIME_DIRECTORY, descriptor.file);
+}
+
+function loadFieldHelpTextIndex(manifest: FieldHelpRuntimeManifest, prepared?: { encoded: Buffer; decoded: Buffer }): void {
+    if (fieldHelpTextIndex === undefined) {
+        fieldHelpTextIndex = null;
+        try {
+            const descriptor = manifest.textIndex!;
+            const encoded = prepared?.encoded || fs.readFileSync(fieldHelpTextIndexPath(manifest));
+            if (crypto.createHash('sha256').update(encoded).digest('hex') !== descriptor.sha256) {
+                throw new Error('Help text index hash mismatch');
+            }
+            const decoded = prepared?.decoded || (manifest.storageCodec === 'br' ? zlib.brotliDecompressSync : zlib.gunzipSync)(encoded,
+                { maxOutputLength: 16 * 1024 * 1024 });
+            fieldHelpTextIndex = JSON.parse(decoded.toString('utf8'));
+        } catch (error) {
+            console.warn(`[DynaSense] Help text translations unavailable: ${error}`);
+        }
+    }
+}
+
+/** Prepare the shared translation index before the first synchronous manager model. */
+export async function prepareFieldHelpTextIndex(): Promise<void> {
+    const manifest = loadFieldHelpManifest();
+    if (!manifest?.textIndex || fieldHelpTextIndex !== undefined) return;
+    if (!fieldHelpTextIndexPreparation) {
+        fieldHelpTextIndexPreparation = (async () => {
+            try {
+                const encoded = await fs.promises.readFile(fieldHelpTextIndexPath(manifest));
+                if (sha256(encoded) !== manifest.textIndex!.sha256) throw new Error('Help text index hash mismatch');
+                const decoded = await new Promise<Buffer>((resolve, reject) => {
+                    const callback = (error: Error | null, value: Buffer) => error ? reject(error) : resolve(value);
+                    const options = { maxOutputLength: 16 * 1024 * 1024 };
+                    if (manifest.storageCodec === 'br') zlib.brotliDecompress(encoded, options, callback);
+                    else zlib.gunzip(encoded, options, callback);
+                });
+                if (fieldHelpManifest === manifest) loadFieldHelpTextIndex(manifest, { encoded, decoded });
+            } catch (error) {
+                if (fieldHelpManifest === manifest && fieldHelpTextIndex === undefined) {
+                    fieldHelpTextIndex = null;
+                    console.warn(`[DynaSense] Help text translations unavailable: ${error}`);
+                }
+            }
+        })();
+    }
+    await fieldHelpTextIndexPreparation;
+}
+
 /** Reuse only complete source text, allowing layout whitespace differences. */
 export function getLocalizedHelpForText(english: string): string | null {
     if (!english?.trim()) return null;
     const manifest = loadFieldHelpManifest();
     if (!manifest?.textIndex) return null;
-    if (fieldHelpTextIndex === undefined) {
-        fieldHelpTextIndex = null;
-        try {
-            const descriptor = manifest.textIndex;
-            if (descriptor.file !== `text-index.json.${manifest.storageCodec === 'br' ? 'br' : 'gz'}`) throw new Error('Invalid help text index path');
-            const encoded = fs.readFileSync(path.join(runtimeDataDir(), FIELD_HELP_RUNTIME_DIRECTORY, descriptor.file));
-            if (crypto.createHash('sha256').update(encoded).digest('hex') !== descriptor.sha256) {
-                throw new Error('Help text index hash mismatch');
-            }
-            fieldHelpTextIndex = JSON.parse((manifest.storageCodec === 'br' ? zlib.brotliDecompressSync : zlib.gunzipSync)(encoded,
-                { maxOutputLength: 16 * 1024 * 1024 }).toString('utf8'));
-        } catch (error) {
-            console.warn(`[DynaSense] Help text translations unavailable: ${error}`);
-        }
-    }
+    loadFieldHelpTextIndex(manifest);
     const normalized = english.trim().replace(/\s+/gu, ' ');
     const key = crypto.createHash('sha256').update(normalized).digest('hex');
     const value = fieldHelpTextIndex?.[key];

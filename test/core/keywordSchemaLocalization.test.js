@@ -38,6 +38,62 @@ function fixture() {
 describe('keyword schema field-help localization', () => {
     afterEach(() => keywordSchema.resetKeywordSchemaCache());
 
+    it('prepares one shared translation index without a synchronous index read', async () => {
+        const schema = keywordSchema.loadKeywordSchema();
+        const english = keywordSchema.getEnglishFieldHelp(schema.MAT_001.c[0][0]);
+        const expected = keywordSchema.getLocalizedHelpForText(english);
+        assert.ok(expected);
+        keywordSchema.resetKeywordSchemaCache();
+        await keywordSchema.prepareKeywordSchema();
+        const read = fs.promises.readFile, syncRead = fs.readFileSync;
+        let reads = 0;
+        fs.promises.readFile = async (...args) => { reads++; return read(...args); };
+        fs.readFileSync = function (file, ...args) {
+            assert.ok(!String(file).includes('text-index.json'), 'Index preparation must avoid synchronous I/O');
+            return syncRead.call(this, file, ...args);
+        };
+        try {
+            await Promise.all([keywordSchema.prepareFieldHelpTextIndex(), keywordSchema.prepareFieldHelpTextIndex()]);
+            assert.equal(reads, 1);
+            assert.equal(keywordSchema.getLocalizedHelpForText(english), expected);
+        } finally { fs.promises.readFile = read; fs.readFileSync = syncRead; }
+    });
+
+    it('rejects corrupted prepared translations without retrying or inventing help', async () => {
+        const schema = keywordSchema.loadKeywordSchema();
+        const english = keywordSchema.getEnglishFieldHelp(schema.MAT_001.c[0][0]);
+        const read = fs.promises.readFile, warn = console.warn;
+        let reads = 0, warnings = 0;
+        fs.promises.readFile = async () => { reads++; return Buffer.from('corrupted index'); };
+        console.warn = () => { warnings++; };
+        try {
+            await keywordSchema.prepareFieldHelpTextIndex();
+            await keywordSchema.prepareFieldHelpTextIndex();
+            assert.equal(keywordSchema.getLocalizedHelpForText(english), null);
+            assert.equal(reads, 1); assert.equal(warnings, 1);
+        } finally { fs.promises.readFile = read; console.warn = warn; }
+    });
+
+    it('ignores a pending translation read when the schema cache is reset', async () => {
+        const schema = keywordSchema.loadKeywordSchema();
+        const english = keywordSchema.getEnglishFieldHelp(schema.MAT_001.c[0][0]);
+        const read = fs.promises.readFile, syncRead = fs.readFileSync;
+        let release, file, syncIndexReads = 0;
+        fs.promises.readFile = target => { file = target; return new Promise(resolve => { release = resolve; }); };
+        try {
+            const pending = keywordSchema.prepareFieldHelpTextIndex();
+            const bytes = syncRead(file);
+            keywordSchema.resetKeywordSchemaCache();
+            release(bytes); await pending;
+            fs.readFileSync = function (target, ...args) {
+                if (String(target).includes('text-index.json')) syncIndexReads++;
+                return syncRead.call(this, target, ...args);
+            };
+            assert.ok(keywordSchema.getLocalizedHelpForText(english));
+            assert.equal(syncIndexReads, 1, 'The invalidated prepared index must not be installed');
+        } finally { fs.promises.readFile = read; fs.readFileSync = syncRead; }
+    });
+
     it('rejects array runtime and authoring roots without poisoning the cache', () => {
         keywordSchema.resetKeywordSchemaCache();
         const originalRead = fs.readFileSync;

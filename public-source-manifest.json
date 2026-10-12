@@ -371,7 +371,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "f0282d9655a16fb986d9642df20c02f8f532d4656b5136cb52d2e057f3b1981c",
+      "sha256": "aa86a13543dbdba3e7af29b7bc6b5a01adef88c61e8b0ae53314f60d66cbf759",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2675,7 +2675,7 @@
     {
       "path": "scripts/host/run-keyword-manager-gui.cjs",
       "role": "editable-source",
-      "sha256": "45c5f27486dcbbdab21008fe98a929f714c50c3e93e23aec14e0ad707f98f5e7",
+      "sha256": "2525e781a53c8bf92c9e4897accb4a494b59f902e10d22be1206c09c6eaa6802",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -3275,7 +3275,7 @@
     {
       "path": "src/core/keywordSchema.ts",
       "role": "editable-source",
-      "sha256": "51d65d6c22527cca94f1edc0212ba1c0db2b9fd6906800b5b523898afe72d2ad",
+      "sha256": "53c21e04ce685dcff2d6d7da903403f787ed086aec50800019915c6ef1b4f1be",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3887,7 +3887,7 @@
     {
       "path": "src/core/structure/structureCatalog.ts",
       "role": "editable-source",
-      "sha256": "f276d0410e9ec02893f85adfce3809673b61d4dfb62f64c7ec4279384c3f8e32",
+      "sha256": "42dba52a33509d7c008fdbb016ec494e590efcc50677aaecbbacbf486aec0a82",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3911,7 +3911,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "cd3f2da145b51dabac074603e7822ad8415ef0185b68c0a836f7c25b95ee4180",
+      "sha256": "6fbad7d438703a7edd8fdff6a40e1dbfc33b26fe91df72221a0c9bf2bc831ef5",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4457,7 +4457,7 @@
     {
       "path": "test/client/services/keywordManagerApplyGuard.test.js",
       "role": "editable-source",
-      "sha256": "a4ee25567f4eb65e4d8ae7942ae81037130bc34b32b1c32e67aede3dff905317",
+      "sha256": "ba263580b90efe729513a8815acb2307a2afe83be109eb72b0fc552fb10be1ec",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4763,7 +4763,7 @@
     {
       "path": "test/core/keywordSchemaLocalization.test.js",
       "role": "editable-source",
-      "sha256": "9ae04f1777f7230dace81f8b005f7613bded646a05b3d645612324c257a66c8d",
+      "sha256": "e86b07715820211b5815c617f4e3d42402d301722ffe70ab1ec885fdd9a730bc",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5627,7 +5627,7 @@
     {
       "path": "test/core/structure/structureCatalog.test.js",
       "role": "editable-source",
-      "sha256": "b85d5f1a3c1c58b3aadd8778ce24b0012478abfd0b0d5ba64ecba678342fca40",
+      "sha256": "647bf27f9c0dd9c0e89457348632e9c390661f40fd4fff9982140b2891e52697",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6377,7 +6377,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "bdd0f91c7c5ddb2cf82bb2981cddb0eacf30679b4e0ad8bbcea28508a0a841b1",
+      "sha256": "12056bcf8fab24da3c5b02353f35c23717ef2610c72cc5d120518dcef5cc36b0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6413,7 +6413,7 @@
     {
       "path": "test/host/keyword-manager/extension-host.cjs",
       "role": "editable-source",
-      "sha256": "d617e26416ef6e658fd935bd2fda9577dff49032b1848edb6220c349e4680c9b",
+      "sha256": "329c5f9afe4cbf1e5074e916727dc670a23218ab35156a6971a3ed63e2b4aee3",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

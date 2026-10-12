@@ -6134,7 +6134,7 @@ async function assertSemanticEvidenceGatesInTheActualHost() {
                             const item = Array.from(document.querySelectorAll('.notification-list-item'))
                                 .find(element => element.textContent.includes(${JSON.stringify(expected)}));
                             if (!item) return false;
-                            item.querySelector('[aria-label="Expand Notification (RightArrow)"]')?.click();
+                            item.querySelector('[aria-label="Expand Notification (${process.platform === 'darwin' ? '→' : 'RightArrow'})"]')?.click();
                             return true;
                         })()`, returnByValue: true,
                     });
@@ -6159,7 +6159,7 @@ async function assertSemanticEvidenceGatesInTheActualHost() {
                         notifications: response.result.value, results }, null, 2));
                     notification = response.result.value.find(item => item.visible && item.text.includes(expected));
                     assert.ok(notification, expected);
-                    assert.ok(notification.actions.includes('Collapse Notification (LeftArrow)'));
+                    assert.ok(notification.actions.includes(`Collapse Notification (${process.platform === 'darwin' ? '←' : 'LeftArrow'})`), JSON.stringify(notification.actions));
                     assert.ok(notification.message && notification.message.text.includes(expected));
                     assert.ok(notification.message.height > 0 && notification.message.scrollHeight <= notification.message.height + 1);
                     assert.ok(notification.message.scrollWidth <= notification.message.width + 1);

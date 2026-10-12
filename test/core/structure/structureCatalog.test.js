@@ -16,6 +16,46 @@ const repositoryRoot = path.resolve(__dirname, '..', '..', '..');
 const runtimeRoot = path.join(repositoryRoot, "keywords/runtime/structure-v2");
 
 describe('KeywordStructureCatalog', () => {
+    it('prepares one validated manifest for concurrent callers without loading a grammar', async () => {
+        const catalog = new KeywordStructureCatalog({ runtimeRoot });
+        const read = fs.promises.readFile;
+        let reads = 0;
+        fs.promises.readFile = async (...args) => { reads++; return read(...args); };
+        try {
+            await Promise.all([catalog.prepare(), catalog.prepare()]);
+            assert.equal(reads, 1);
+            assert.equal(catalog.hasKeywordIdentity('*NODE'), true);
+            assert.equal(catalog.cacheStats().manifestReads, 1);
+            assert.equal(catalog.cacheStats().shardReads, 0);
+        } finally { fs.promises.readFile = read; }
+    });
+
+    it('does not reinstall a manifest after clear interrupts its asynchronous read', async () => {
+        const catalog = new KeywordStructureCatalog({ runtimeRoot });
+        const bytes = fs.readFileSync(path.join(runtimeRoot, 'manifest.json'));
+        const read = fs.promises.readFile;
+        let release;
+        fs.promises.readFile = () => new Promise(resolve => { release = resolve; });
+        try {
+            const pending = catalog.prepare();
+            catalog.clear(); release(bytes); await pending;
+            assert.equal(catalog.cacheStats().manifestReads, 0);
+            assert.equal(catalog.hasKeywordIdentity('*NODE'), true);
+            assert.equal(catalog.cacheStats().manifestReads, 1);
+        } finally { fs.promises.readFile = read; }
+    });
+
+    it('retains fail-closed manifest validation after asynchronous preparation', async () => {
+        const catalog = new KeywordStructureCatalog({ runtimeRoot });
+        const read = fs.promises.readFile;
+        fs.promises.readFile = async () => Buffer.from('{"schemaVersion":2}');
+        try {
+            await catalog.prepare();
+            assert.equal(catalog.hasKeywordIdentity('*NODE'), null);
+            assert.equal(catalog.lookupBinding(DEFAULT_STRUCTURE_SOURCE_PROFILE_EN, '*NODE').status, 'unsupported-input');
+        } finally { fs.promises.readFile = read; }
+    });
+
     it('selects exact source profiles and does not load a shard for inventory-only lookups', () => {
         const catalog = new KeywordStructureCatalog({ runtimeRoot });
         const verified = catalog.lookupBinding(

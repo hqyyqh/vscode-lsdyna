@@ -106,13 +106,16 @@ describe('manager transition answers stay with the prompted proposal', () => {
         const shown = new Promise(resolve => { modalShown = resolve; });
         const prepare = async stage => { if (boundary === stage) { preparationStarted(); await preparing; } };
         const context = { module: { exports: {} }, vscode, i18n, keywordOptionsModel: initial,
+            setTimeout: callback => { void prepare('yield').then(callback); },
+            keywordStructureCatalog: { prepare: () => prepare('structure') },
             keywordOptionsPinned: true, keywordOptionsRefreshGeneration: 0, activeProjectCacheEpoch: 0,
             isLsdynaFile: doc => doc.languageId === 'lsdyna', readyCardEditBlockIndex: () => ({}),
             findKeywordLineForLine: (doc, line) => { assert.equal(doc.lineAt(line).text, '*NODE'); return line; },
             keywordSpellingFromLine, isKeywordManagerUnauditedCatalogAllowed: () => false,
             getCatalogInputFormCatalogV4: () => ({ prepareKeyword: () => prepare('catalog') }),
             require: request => {
-                if (request === './core/keywordSchema') return { prepareKeywordSchema: () => prepare('schema') };
+                if (request === './core/keywordSchema') return { prepareKeywordSchema: () => prepare('schema'),
+                    prepareFieldHelpTextIndex: () => prepare('help') };
                 assert.equal(request, "./core/semantics/catalogNativeFileLayout");
                 return require("../../../src/core/semantics/catalogNativeFileLayout");
             },
@@ -190,7 +193,7 @@ describe('manager transition answers stay with the prompted proposal', () => {
             vscode.window.activeTextEditor = originalEditor;
         }
     }
-    for (const boundary of ['schema', 'catalog']) for (const answer of ['apply', 'discard'])
+    for (const boundary of ['schema', 'structure', 'catalog', 'help', 'yield']) for (const answer of ['apply', 'discard'])
         it(`rejects old ${answer} after an earlier ${boundary} refresh publishes`, () => run(boundary, answer));
     for (const answer of ['apply', 'discard', 'cancel'])
         it(`preserves same-proposal ${answer}`, () => run(null, answer));

@@ -160,6 +160,10 @@ jobs:
           VSCODE_TEST_VERSION: ${{ matrix.vscode }}
           LSDYNA_TEST_VSIX_EVIDENCE: .artifacts/public-host
         run: |
+          # macOS Unix sockets cannot use the long default per-user temporary path.
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            export TMPDIR="$(mktemp -d /tmp/ds.XXXXXX)"
+          fi
           node scripts/release/verify-release-hash.cjs "$LSDYNA_TEST_VSIX"
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a node scripts/host/run-installed-acceptance.cjs
