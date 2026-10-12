@@ -69,6 +69,8 @@ export function nativeAuxiliaryReferenceSource(): any {
 export function nativeContactOptionalBinding(rule: any, name: string, source?: any): any | null {
     const keyword = name.replace(/^\*/, '');
     if (rule?.catalogSource?.datasetSha256 !== executable) return null;
+    // The pinned shared table only owns CONTACT spellings; unrelated cards must not load it.
+    if (source === undefined && !keyword.startsWith('CONTACT_')) return null;
     const input = source === undefined ? nativeAuxiliaryReferenceSource() : source;
     if (!input) return null;
     const binding = input.contactOptionalBindings?.find((item: any) => item.keyword === keyword);

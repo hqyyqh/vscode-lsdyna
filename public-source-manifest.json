@@ -727,7 +727,7 @@
     {
       "path": "keywords/provenance/current-data.json",
       "role": "generated-artifact",
-      "sha256": "4973e2b93eb9be976a776354b6042f3fcdd55a6bc78ab2d5af58eaddae17bcc9",
+      "sha256": "726c8856c9673b91346c65c46b5a30afa6efb15daabb119a5a2b57917fe174f9",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -3733,7 +3733,7 @@
     {
       "path": "src/core/semantics/nativeContactOptionalReferences.ts",
       "role": "editable-source",
-      "sha256": "992a5af7c43ab650985147fb2cef5bcf2e1d43993067115101907f7f589ec8dd",
+      "sha256": "364e5d80d90529419980c3e015f1961e4946f8c8df0e9046aacccee34222d3c2",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -5041,7 +5041,7 @@
     {
       "path": "test/core/references/nativeContactOriginalReferences.test.js",
       "role": "editable-source",
-      "sha256": "a9894a08241032fa8173dd929cc02ca24ca6959a7ebf18655e37f9eda007790d",
+      "sha256": "8e2e7726fa849d5e0247fe823a7af65fd405260030436465ffcb05238b7f129c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6391,7 +6391,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "f387aa0656c3af5d5873b6f78a4d358e1a7d56535df1a2a5fcdf87a5070f7722",
+      "sha256": "7c47174d9d7e759b90c5a071b28b2b0c33ccf34ae643ac85d383d6650aeffafb",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6715,7 +6715,7 @@
     {
       "path": "test/scripts/host/nativeMenu.test.js",
       "role": "editable-source",
-      "sha256": "c45ee41fb97fb6bf4f1b178c662cc0ae2b7961888239526546b99d19138c325e",
+      "sha256": "9adc68e6ef59cff3179054ebdbaaadb39db5485cc5b08d6a487a02979923aeda",
       "reason": "public-contribution"
     },
     {

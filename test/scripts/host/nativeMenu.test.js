@@ -3,6 +3,33 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 
 describe('macOS context menu ownership and action checks', () => {
+    const create = require('../../support/tempDirectories.js').trackTempDirectories();
+    it('retains macOS menu evidence without masking failure when native capture is unavailable', async () => {
+        const script = path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js');
+        const hostRequire = require('node:module').createRequire(script);
+        const root = create(path.join(require('node:os').tmpdir(), 'host-menu-diagnostic-'));
+        const sandbox = { module: { exports: {} }, __dirname: path.join(root, 'test/host/editor-safety/extension-host'),
+            process: { platform: 'darwin', env: { GITHUB_ACTIONS: 'true', LSDYNA_EDITOR_SAFETY_WORKSPACE: path.join(root, 'workspace') } },
+            console: { error() {} }, setTimeout, clearTimeout, Buffer, require(name) {
+                if (name === 'vscode') return {};
+                if (name === 'node:child_process') return { execFileSync(file, args, options) {
+                    assert.equal(file, '/usr/sbin/screencapture');
+                    assert.equal(options.timeout, 5000);
+                    assert.equal(path.dirname(args[1]), path.join(root, '.artifacts/node/editor-diagnostics'));
+                    throw Error('Screen capture unavailable');
+                } };
+                return hostRequire(name);
+            } };
+        vm.runInNewContext(fs.readFileSync(script, 'utf8') + '\nmodule.exports = captureRendererDiagnostic;', sandbox);
+        const state = { activeElement: null, visibleContextOrMenuElements: [] };
+        const result = await sandbox.module.exports({ call: async method => method === 'Page.captureScreenshot'
+            ? { data: Buffer.from('fixture pixels').toString('base64') } : { result: { value: state } } }, 'context-menu-Ctrl-V');
+        assert.equal(result, state);
+        const output = path.join(root, '.artifacts/node/editor-diagnostics/context-menu-Ctrl-V');
+        assert.equal(fs.readFileSync(output + '.png', 'utf8'), 'fixture pixels');
+        assert.deepEqual(JSON.parse(fs.readFileSync(output + '.json')), state);
+    });
+
     function fixture({ owner = 'com.microsoft.VSCode', labels = ['Paste', 'Cut'], enabled = true, menus = 1, frontmost = true, inaccessible = false } = {}) {
         const pressed = [], source = fs.readFileSync(path.resolve(__dirname, '../../support/editor-safety/native-menu.cjs'), 'utf8');
         const module = { exports: {} };

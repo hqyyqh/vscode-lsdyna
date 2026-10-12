@@ -683,6 +683,17 @@ async function captureRendererDiagnostic(devTools, name) {
     );
     console.error(`Renderer diagnostic screenshot: ${basePath}.png`);
     console.error(`Renderer diagnostic state: ${basePath}.json`);
+    if (process.env.GITHUB_ACTIONS === 'true' && process.platform === 'darwin' && name.startsWith('context-menu-')) {
+        // Native menus are outside Chromium screenshots. Retain the CI fixture's screen before cleanup.
+        try {
+            assert.strictEqual(path.basename(name), name);
+            const output = path.resolve(__dirname, '../../../../.artifacts/node/editor-diagnostics');
+            fs.mkdirSync(output, { recursive: true });
+            for (const suffix of ['.png', '.json']) fs.copyFileSync(basePath + suffix, path.join(output, name + suffix));
+            require('node:child_process').execFileSync('/usr/sbin/screencapture',
+                ['-x', path.join(output, name + '-native.png')], { timeout: 5000 });
+        } catch (error) { console.error('Native menu diagnostic capture failed:', error.message); }
+    }
     return diagnostic;
 }
 

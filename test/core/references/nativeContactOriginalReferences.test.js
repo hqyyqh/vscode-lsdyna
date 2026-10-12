@@ -10,6 +10,23 @@ const {coverageGapMatches}=require('../../../src/core/references/registryReferen
 describe('original CONTACT reference owners',function(){
  this.timeout(30000);
  const tempDirectory=trackTempDirectories();
+ it('does not load CONTACT metadata for unrelated cards, while CONTACT still requires verified data',()=>{
+  const vm=require('node:vm'),file=path.resolve('out/core/semantics/nativeContactOptionalReferences.js');
+  const hostRequire=require('node:module').createRequire(file),module={exports:{}};
+  const missing=Error('CONTACT metadata read'); let reads=0;
+  vm.runInNewContext(fs.readFileSync(file,'utf8'),{module,exports:module.exports,Buffer,
+   require:name=>name==='../references/referenceRuleCatalog'
+    ?{getReferenceRuleCatalog:()=>({metadata(){reads++;throw missing;}})}:hostRequire(name)});
+  const bind=module.exports.nativeContactOptionalBinding,nodeRule=rule('NODE');
+  for(const name of ['NODE','*NODE','MAT_ELASTIC','PART'])assert.equal(bind(nodeRule,name),null);
+  assert.equal(reads,0);
+  const contactRule=rule('CONTACT_AUTOMATIC_SURFACE_TO_SURFACE');
+  assert.throws(()=>bind(contactRule,'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE'),error=>error===missing);
+  assert.equal(reads,1);
+  const input=require('../../../src/core/semantics/nativeContactOptionalReferences').nativeAuxiliaryReferenceSource();
+  assert.ok(input.contactOptionalBindings.every(binding=>binding.keyword.startsWith('CONTACT_')));
+  assert.ok(bind(contactRule,'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',input));
+ });
  const fixed=['CONTACT_FORMING_NODES_TO_SURFACE','CONTACT_FORMING_NODES_TO_SURFACE_SMOOTH',
   'CONTACT_RIGID_BODY_ONE_WAY_TO_RIGID_BODY','CONTACT_RIGID_BODY_TWO_WAY_TO_RIGID_BODY','CONTACT_RIGID_NODES_TO_RIGID_BODY'];
  const aliases=['CONTACT_DRAWBEAD',...fixed.slice(2)].flatMap(base=>['_MPP_ID','_ID_MPP'].map(suffix=>base+suffix));
