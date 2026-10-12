@@ -6391,7 +6391,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "c93b4194fdec4188c77fc646473124d4e90be71aee52c68fcb80fb924da79b36",
+      "sha256": "7faa3472f04be62d84b4aa1b650f3acda072b1b6dbc06a3d7bba9b7a27f869b0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6715,7 +6715,7 @@
     {
       "path": "test/scripts/host/nativeMenu.test.js",
       "role": "editable-source",
-      "sha256": "374dd7aa27299bd2854cf2458e66c5e9231e161dae5f2594f108422a04ea4959",
+      "sha256": "9adc68e6ef59cff3179054ebdbaaadb39db5485cc5b08d6a487a02979923aeda",
       "reason": "public-contribution"
     },
     {
@@ -6835,7 +6835,7 @@
     {
       "path": "test/support/editor-safety/native-menu.cjs",
       "role": "editable-source",
-      "sha256": "d96a7fa6c2c7f5350a397d1dbd258693587c542bff6858a0e4c19ea7fefd303c",
+      "sha256": "5770fa66176e9bf71d4a5495055a1d835e951ed1676e23f92a2bbdc2e1bf6930",
       "reason": "public-contribution"
     },
     {

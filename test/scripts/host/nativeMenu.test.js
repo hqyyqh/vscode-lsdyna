@@ -65,14 +65,6 @@ describe('macOS context menu ownership and action checks', () => {
         await f.menu('Cut', true);
         assert.deepEqual(f.pressed, ['Cut']);
     });
-    it('captures only the owned AX tree without performing an action', async () => {
-        const f=fixture();
-        const result=await f.menu('Inspect');
-        assert.equal(result.pid,321);assert.equal(result.tree.children[0].role,'AXWindow');
-        assert.ok(result.focused.error);assert.deepEqual(f.pressed,[]);
-        await assert.rejects(f.menu('Inspect',true));
-        await assert.rejects(fixture({owner:'another.app'}).menu('Inspect'));
-    });
     it('dismisses only the owned foreground native menu and preserves empty-menu diagnostics', async () => {
         const f = fixture({menus: 0});
         const empty = await f.menu('Paste');

@@ -8,17 +8,6 @@ const script = `function run(args) {
     if (processes.length !== 1) throw Error('Test host native process is unavailable');
     const host = processes[0];
     if (host.bundleIdentifier() !== 'com.microsoft.VSCode') throw Error('Unexpected native menu owner');
-    if (args[2] === 'Inspect') {
-        const inspect = read => { try { return read(); } catch (error) { return {error: String(error)}; } };
-        let remaining = 128;
-        const walk = (element, depth) => {
-            if (remaining <= 0 || depth > 4) return {truncated: true};
-            remaining--;
-            return {role: inspect(() => element.role()), children: inspect(() => element.uiElements().slice(0, Math.min(32, remaining)).map(child => walk(child, depth + 1)))};
-        };
-        return JSON.stringify({pid: Number(args[0]), frontmost: host.frontmost(),
-            focused: inspect(() => walk(host.attributes.byName('AXFocusedUIElement').value(), 0)), tree: walk(host, 0)});
-    }
     if (args[2] === 'Focus') {
         host.frontmost = true;
         if (!host.frontmost()) throw Error('Test host did not become foreground');
@@ -53,7 +42,7 @@ const script = `function run(args) {
 }`;
 
 module.exports = async function nativeMenu(label, click = false) {
-    if (process.platform !== 'darwin' || !['Paste', 'Cut', 'Escape', 'Focus', 'Inspect'].includes(label) || (['Escape', 'Focus'].includes(label) && !click) || (label === 'Inspect' && click)) throw Error('Unsupported native menu action');
+    if (process.platform !== 'darwin' || !['Paste', 'Cut', 'Escape', 'Focus'].includes(label) || (['Escape', 'Focus'].includes(label) && !click)) throw Error('Unsupported native menu action');
     const { stdout } = await promisify(execFile)('/usr/bin/osascript',
         ['-l', 'JavaScript', '-e', script, String(process.ppid), click ? 'click' : 'read', label],
         { timeout: 5000, maxBuffer: 64 * 1024 });
