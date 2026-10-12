@@ -14165,11 +14165,17 @@ function keywordCardMaintenanceAction(document, keywordLine) {
 }
 
 class LsdynaKeywordCardsCodeActionProvider {
-    provideCodeActions(document, range, _context, token) {
+    async provideCodeActions(document, range, _context, token) {
         if (!isLsdynaFile(document) || token?.isCancellationRequested || range.start.line !== range.end.line) return [];
         if (_context.only && !_context.only.contains(vscode.CodeActionKind.QuickFix)) return [];
         const line = range.start.line;
         const keywordLine = isKeywordLineText(document.lineAt(line).text) ? line : findEnclosingKeywordLine(document, line);
+        const current = createDocumentReadGuard(document, token);
+        // Automatic code actions must not synchronously load catalogs ahead of Hover or the manager.
+        if (!await prepareFieldInteraction(document, range.start, { keywordLine, cancellationToken: token }) || !current()) return [];
+        await keywordStructureCatalog.prepare();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (!current()) return [];
         const available = keywordCardMaintenanceAction(document, keywordLine);
         if (!available || token?.isCancellationRequested) return [];
         const action = new vscode.CodeAction(available.title, vscode.CodeActionKind.QuickFix);

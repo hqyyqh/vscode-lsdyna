@@ -173,14 +173,20 @@ async function run() {
                         return;
                     }
                     if (String(name) !== 'gui-finish.json') return;
-                    clearTimeout(timer);
+                    clearInterval(timer);
                     watcher.close();
                     resolve();
                 });
-                const timer = setTimeout(() => {
+                const deadline = Date.now() + 600_000;
+                // fs.watch can lose the completion filename on Windows; the saved signal is authoritative.
+                const timer = setInterval(() => {
+                    const finished = fs.existsSync(path.join(root, 'gui-finish.json'));
+                    if (!finished && Date.now() < deadline) return;
+                    clearInterval(timer);
                     watcher.close();
-                    reject(new Error('GUI validation reached its ten-minute bound'));
-                }, 600_000);
+                    if (finished) resolve();
+                    else reject(new Error('GUI validation reached its ten-minute bound'));
+                }, 100);
             });
             const expected = JSON.parse(fs.readFileSync(path.join(root, 'gui-finish.json'), 'utf8'));
             console.log('Manager GUI host: renderer completion received');

@@ -291,6 +291,8 @@
       "test/scripts/build/keywords/dataConsumption.test.js",
       "test/scripts/host/hostBenchmark.test.js",
       "test/scripts/host/installedAcceptance.test.js",
+      "test/scripts/host/managerGuiCompletion.test.js",
+      "test/scripts/host/nativeMenu.test.js",
       "test/scripts/host/vsixHost.test.js",
       "test/scripts/maintenance/projectContracts.test.js",
       "test/scripts/release/bundleRelease.test.js",
@@ -2663,7 +2665,7 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "af9be5efcdabb76480b6626bff583e6b17d95f60b5def8d65fe94eb666dc1cd0",
+      "sha256": "f44ce73febd7ba833048a1f5a7f63198535360de9d10a6cef8b54da3a07440f2",
       "reason": "public-contribution"
     },
     {
@@ -3911,7 +3913,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "6fbad7d438703a7edd8fdff6a40e1dbfc33b26fe91df72221a0c9bf2bc831ef5",
+      "sha256": "2d13e145b889db10d615053f9f7ee7eeadb8c0d14b6247b3c5f209416be059d6",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4709,7 +4711,7 @@
     {
       "path": "test/core/keywordCardMaintenance.test.js",
       "role": "editable-source",
-      "sha256": "28d01c9cb7aebb5cc423e0a7c7f7c49578fe138d9db2ddafe2c9bf529ae53311",
+      "sha256": "cb821b419d83c06341166af6a2fd0f049e97a2c41f9e79aa9767426630d370c1",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6377,7 +6379,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "12056bcf8fab24da3c5b02353f35c23717ef2610c72cc5d120518dcef5cc36b0",
+      "sha256": "91c07184bae166444032c9beb680c68aafc9c413236049f3204d0f397d2ba661",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6413,7 +6415,7 @@
     {
       "path": "test/host/keyword-manager/extension-host.cjs",
       "role": "editable-source",
-      "sha256": "329c5f9afe4cbf1e5074e916727dc670a23218ab35156a6971a3ed63e2b4aee3",
+      "sha256": "b5fef38dbf0a475ada99801a7930d270afda934b9cecafadeff03ba33f089f3f",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6689,8 +6691,20 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "f9e08c863666749f6ebc43b38e946f6144c626dc39db5b473a83dd216f14d8f4",
+      "sha256": "aa911acf812f7d60c5ea9ffc2e0f9e72c9b7943c856d688426fa3e428ecae087",
       "reason": "public-build-or-package-regression"
+    },
+    {
+      "path": "test/scripts/host/managerGuiCompletion.test.js",
+      "role": "editable-source",
+      "sha256": "b46a5b9bc81b90db95f3372020d10d13e95fe6b8fff8acbaa711b9892813f946",
+      "reason": "public-contribution"
+    },
+    {
+      "path": "test/scripts/host/nativeMenu.test.js",
+      "role": "editable-source",
+      "sha256": "f6c9ce4ea4b7410095274358e8f86182bca8e83ea4eb5fb2ac44a8e7643dd6fa",
+      "reason": "public-contribution"
     },
     {
       "path": "test/scripts/host/vsixHost.test.js",
@@ -6805,6 +6819,12 @@
       "role": "editable-source",
       "sha256": "d2b49f961ab6562a685263de8e3e4d9a47362d4daec13c6eaea7fad17c761c6b",
       "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/support/editor-safety/native-menu.cjs",
+      "role": "editable-source",
+      "sha256": "a7a652f4858489f7fe59b9dd6e0caea4d86fec5b123aac1ce37a241b754aa680",
+      "reason": "public-contribution"
     },
     {
       "path": "test/support/helpers.js",

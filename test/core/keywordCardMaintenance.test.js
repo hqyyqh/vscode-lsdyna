@@ -21,10 +21,27 @@ function edited(document, edit) {
         .sort((a, b) => b.start - a.start || b.end - a.end).reduce((value, item) => value.slice(0, item.start) + item.text + value.slice(item.end), text);
 }
 describe('keyword card maintenance', () => {
-    it('offers one native action at the keyword and inside its bounded block', () => {
+    for (const outcome of ['edited', 'closed', 'cancelled']) it(`rejects ${outcome} documents while preparing code actions`, async () => {
+        const schema = require('../../out/core/keywordSchema');
+        const originalPrepare = schema.prepareKeywordSchema;
+        let resume;
+        schema.prepareKeywordSchema = () => new Promise(resolve => { resume = resolve; });
+        try {
+            const document = doc(['*MAT_024', row, '*END']);
+            const token = { isCancellationRequested: false };
+            const pending = new Provider().provideCodeActions(document, new vscode.Range(0, 0, 0, 3), {}, token);
+            assert.equal(typeof resume, 'function');
+            if (outcome === 'edited') document.version++;
+            if (outcome === 'closed') document.isClosed = true;
+            if (outcome === 'cancelled') token.isCancellationRequested = true;
+            resume();
+            assert.deepEqual(await pending, []);
+        } finally { schema.prepareKeywordSchema = originalPrepare; }
+    });
+    it('offers one native action at the keyword and inside its bounded block', async () => {
         const document = doc(['*MAT_024', row, '*END']);
         for (const line of [0, 1]) {
-            const actions = new Provider().provideCodeActions(document, new vscode.Range(line, 0, line, 3), {}, {});
+            const actions = await new Provider().provideCodeActions(document, new vscode.Range(line, 0, line, 3), {}, {});
             assert.equal(actions.length, 1);
             assert.equal(actions[0].command.command, 'extension.updateKeywordCards');
             assert.equal(actions[0].command.arguments[0].kind, 'comments');
@@ -74,11 +91,11 @@ describe('keyword card maintenance', () => {
         assert.deepEqual(result.split('\r\n').filter(line => !/^[$*]/.test(line)), ['Steel', ...rows]);
         assert.equal(action(doc(result.split('\r\n'), 2), 0), null);
     });
-    it('does not relabel data with trailing comments or unresolved tokens as an existing title', () => {
+    it('does not relabel data with trailing comments or unresolved tokens as an existing title', async () => {
         for (const first of [row + ' $ material note', row.replace('       7.8', '       NaN'), row.replace('       7.8', '     &rho')]) {
             const document = doc(['*MAT_024_TITLE', header, first, row, '*END']);
             assert.equal(action(document, 0), null);
-            assert.deepEqual(new Provider().provideCodeActions(document, new vscode.Range(0, 0, 0, 3), {}, {}), []);
+            assert.deepEqual(await new Provider().provideCodeActions(document, new vscode.Range(0, 0, 0, 3), {}, {}), []);
         }
     });
     for (const outcome of ['cancel', 'stale', 'closed', 'invalid']) it(`does not edit after ${outcome} during title entry`, async () => {
@@ -117,15 +134,15 @@ describe('keyword card maintenance', () => {
         document.uri.scheme = 'untitled';
         assert.equal(await apply(request, { editor: { document }, applyEdit: async () => false }), false);
     });
-    it('stays bounded and skips cancellation, repeated or unsupported layouts', () => {
+    it('stays bounded and skips cancellation, repeated or unsupported layouts', async () => {
         let reads = 0;
         const large = { ...doc(['*MAT_024']), lineCount: 2_000_000,
             lineAt: line => { reads++; assert.ok(line <= 256); return { text: line ? row : '*MAT_024' }; } };
         assert.equal(plan(large, 0), null); assert.ok(reads <= 257);
         reads = 0;
-        assert.deepEqual(new Provider().provideCodeActions(large, new vscode.Range(0, 0, 0, 1), {}, { isCancellationRequested: true }), []);
+        assert.deepEqual(await new Provider().provideCodeActions(large, new vscode.Range(0, 0, 0, 1), {}, { isCancellationRequested: true }), []);
         assert.equal(reads, 0);
-        assert.deepEqual(new Provider().provideCodeActions(large, new vscode.Range(0, 0, 0, 1), { only: { contains: () => false } }, {}), []);
+        assert.deepEqual(await new Provider().provideCodeActions(large, new vscode.Range(0, 0, 0, 1), { only: { contains: () => false } }, {}), []);
         assert.equal(reads, 0);
         assert.equal(action(doc(['*MAT_024', '1,2,3', '*END']), 0), null);
         assert.equal(action(doc(['*NODE', '       1             0.0             0.0             0.0', '       2             0.0             0.0             0.0', '*END']), 0), null);

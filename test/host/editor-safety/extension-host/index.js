@@ -192,6 +192,10 @@ async function waitForRendererRefactorPreview(devTools) {
 }
 
 async function getRendererMenuItemState(devTools, expectedKeybinding) {
+    if (process.platform === 'darwin') {
+        const label = { 'Ctrl+V': 'Paste', 'Ctrl+X': 'Cut' }[expectedKeybinding];
+        return require('../../../support/editor-safety/native-menu.cjs')(label);
+    }
     const response = await devTools.call('Runtime.evaluate', {
         expression: `(() => {
             const normalize = value => String(value || '').replace(/\\s+/g, '').toLowerCase();
@@ -1888,7 +1892,8 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
             pasteSelectionBeforeMenu,
         );
         await new Promise(resolve => setTimeout(resolve, 150));
-        await dispatchRendererMouseClick(devTools, pasteMenuPoint);
+        if (pasteMenuPoint.nativeItem) await require('../../../support/editor-safety/native-menu.cjs')(pasteMenuPoint.nativeItem, true);
+        else await dispatchRendererMouseClick(devTools, pasteMenuPoint);
         try {
             // Renderer text and the Extension Host TextDocument are updated on
             // separate IPC turns. Busy startup notifications can make the old
@@ -1956,7 +1961,8 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
             cutSelectionBeforeMenu,
         );
         await new Promise(resolve => setTimeout(resolve, 150));
-        await dispatchRendererMouseClick(devTools, cutMenuPoint);
+        if (cutMenuPoint.nativeItem) await require('../../../support/editor-safety/native-menu.cjs')(cutMenuPoint.nativeItem, true);
+        else await dispatchRendererMouseClick(devTools, cutMenuPoint);
         await settleCardCellPostEdit(document);
         await waitForAssertion(() => {
             const changedLine = document.lineAt(2).text;

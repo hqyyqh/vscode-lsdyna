@@ -6,11 +6,13 @@ const crypto = require('node:crypto'), { execFileSync } = require('node:child_pr
 const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
     'scripts/host/run-installed-acceptance.cjs', 'scripts/host/run-installed-acceptance-retry.cjs',
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
+    'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
     'test/scripts/release/publicWorkflow.test.js', 'test/scripts/release/publicReleaseReports.test.js',
     'test/scripts/host/vsixHost.test.js']);
 const affectedCases = {
     'scripts/host/vsix-host.cjs': ['*'],
     'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs'],
+    'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs'],
     'scripts/host/run-keyword-manager-gui.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
     'test/host/keyword-manager/extension-host.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
 };

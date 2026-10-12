@@ -73,6 +73,8 @@ describe('installed acceptance executable and measured version', () => {
         for (const file of ['src/extension.ts', 'package-lock.json', 'test/host/release/host.cjs', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
         assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs']);
+        assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
+            ['run-editor-safety-extension-host.cjs']);
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);
