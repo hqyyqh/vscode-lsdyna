@@ -713,7 +713,7 @@
     {
       "path": "keywords/provenance/current-data.json",
       "role": "generated-artifact",
-      "sha256": "635fd8eab4ba08e6eb70b09caa4dcc2ec47af280a5ffa9edf027d68f89ad73ac",
+      "sha256": "4973e2b93eb9be976a776354b6042f3fcdd55a6bc78ab2d5af58eaddae17bcc9",
       "reason": "final-data-or-product-language-check"
     },
     {
