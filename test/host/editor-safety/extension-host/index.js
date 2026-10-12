@@ -692,6 +692,8 @@ async function captureRendererDiagnostic(devTools, name) {
             for (const suffix of ['.png', '.json']) fs.copyFileSync(basePath + suffix, path.join(output, name + suffix));
             require('node:child_process').execFileSync('/usr/sbin/screencapture',
                 ['-x', path.join(output, name + '-native.png')], { timeout: 5000 });
+            const native = await require('../../../support/editor-safety/native-menu.cjs')('Inspect');
+            fs.writeFileSync(path.join(output, name + '-native.json'), JSON.stringify(native, null, 2));
         } catch (error) { console.error('Native menu diagnostic capture failed:', error.message); }
     }
     return diagnostic;
