@@ -2663,19 +2663,19 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "1d78979dbb8adf983da405a608213c9eb453957b2c8e60c0a1f934f017c0ce80",
+      "sha256": "af9be5efcdabb76480b6626bff583e6b17d95f60b5def8d65fe94eb666dc1cd0",
       "reason": "public-contribution"
     },
     {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "26185e8d9cc9add98eb1d36235120ef609419effbae2bcf8be5e4c8e19d75e0f",
+      "sha256": "cc53430756acacfe9116884ca84608cbc27f4826956bc8a648adb5d6070efab0",
       "reason": "installed-product-host-acceptance"
     },
     {
       "path": "scripts/host/run-keyword-manager-gui.cjs",
       "role": "editable-source",
-      "sha256": "ab82ec0bb166165f88536d9b5de8dc4c5e7f79f1e7a657e22158324e45a60a51",
+      "sha256": "45c5f27486dcbbdab21008fe98a929f714c50c3e93e23aec14e0ad707f98f5e7",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -2729,7 +2729,7 @@
     {
       "path": "scripts/host/vsix-host.cjs",
       "role": "editable-source",
-      "sha256": "a14944ba538d105d40d2476bf69535c70cc26ee95bf7bdbc79a359d864496c11",
+      "sha256": "ce7d6eea0d63f71c2f8f5888aa0c5ab5529a95b33d4cf54c3a76e666779ed140",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -6377,7 +6377,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "d185c0dee6c423dd49feebedd9fc940a7526a0ba4ec84f1b8e44372689a0b7c0",
+      "sha256": "bdd0f91c7c5ddb2cf82bb2981cddb0eacf30679b4e0ad8bbcea28508a0a841b1",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6413,7 +6413,7 @@
     {
       "path": "test/host/keyword-manager/extension-host.cjs",
       "role": "editable-source",
-      "sha256": "0b7bb47536f03a91ec2122dcbfd3c749e78d5ddd4c59378c72462750e54fcb0b",
+      "sha256": "d617e26416ef6e658fd935bd2fda9577dff49032b1848edb6220c349e4680c9b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6689,13 +6689,13 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "3751b5c5eda02172062259c3a956b9dbf8a7a79137223c77e79b0ee057f64c01",
+      "sha256": "f9e08c863666749f6ebc43b38e946f6144c626dc39db5b473a83dd216f14d8f4",
       "reason": "public-build-or-package-regression"
     },
     {
       "path": "test/scripts/host/vsixHost.test.js",
       "role": "editable-source",
-      "sha256": "a2d1d2de0c6ad927d1fd3c0a29711949c83a57d12c60e5684c622b3e22926427",
+      "sha256": "5956acbcad6f23d68dcc37a4e8179587c5d40df03c94d54c3a24815c802a57f3",
       "reason": "public-build-or-package-regression"
     },
     {

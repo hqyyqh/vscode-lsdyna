@@ -3159,6 +3159,28 @@ async function assertParameterRenameRendererCancelAndAcceptAreScoped() {
     }
 }
 
+async function assertCaseSensitiveIncludeRemainsUnresolved() {
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const api = require(path.join(extension.extensionPath, 'out/extension'))._internals;
+    const { resolveIncludeWithCaseCheck } = require(path.join(extension.extensionPath, 'out/core/fs/pathCaseFidelity'));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, 'Sub/Part.key')));
+    assert.ok(!fs.existsSync(path.join(workspaceRoot, 'sub/part.key')));
+    assert.strictEqual((await resolveIncludeWithCaseCheck('sub/part.key', [workspaceRoot])).status, 'missing');
+    const before = workspaceSnapshot();
+    for (const name of ['include-case.key', 'include-case-continued.key']) {
+        const { document } = await openFixture(name);
+        const original = document.getText();
+        const diagnostics = await api.collectIncludePathCaseDiagnostics(document, { mode: 'strict' });
+        assert.strictEqual(diagnostics.length, 0, 'An unresolved path must not become a case-correction diagnosis');
+        const actions = new api.LsdynaIncludePathCaseCodeActionProvider().provideCodeActions(
+            document, new vscode.Range(2, 0, 2, document.lineAt(2).text.length), { diagnostics });
+        assert.strictEqual(actions.length, 0, 'No case correction may be offered for an unresolved path');
+        assert.strictEqual(document.getText(), original);
+        assert.strictEqual(document.isDirty, false);
+    }
+    assert.deepStrictEqual(workspaceSnapshot(), before);
+}
+
 async function assertIncludeCaseQuickFixIsLocalAndUndoable() {
     const configuration = vscode.workspace.getConfiguration('lsdyna');
     await configuration.update(
@@ -6509,6 +6531,10 @@ async function runScenarios() {
                 await assertIncludeCaseActionRevalidatesAfterCaseOnlyRename();
             },
             'include-stale': assertStaleIncludeCaseQuickFixFailsClosed,
+            'include-filesystem': async () => {
+                if (fs.existsSync(path.join(workspaceRoot, 'sub/part.key'))) await assertIncludeCaseQuickFixIsLocalAndUndoable();
+                else await assertCaseSensitiveIncludeRemainsUnresolved();
+            },
             'mouse-code-action': assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
             'line-comment': assertLineCommentInsertsAtColumnZeroAndUncommentsStrictly,
             'comment-roundtrip': assertKeywordCommentUsesManualInlineFormAndRoundTripsMixedBody,
@@ -6541,6 +6567,8 @@ async function runScenarios() {
         return;
     }
 
+    const caseInsensitiveIncludes = fs.existsSync(path.join(workspaceRoot, 'sub/part.key'));
+    assert.ok(fs.existsSync(path.join(workspaceRoot, 'Sub/Part.key')), 'Include case fixture must exist');
     const caseResults = [];
     for (const scenario of [
         assertPassiveOperationsDoNotWrite,
@@ -6584,7 +6612,7 @@ async function runScenarios() {
         assertParameterRenameIsDocumentLocalAndUndoable,
         assertParameterRenameKeepsFixedColumns,
         assertParameterRenameRendererCancelAndAcceptAreScoped,
-        assertIncludeCaseQuickFixIsLocalAndUndoable,
+        ...(caseInsensitiveIncludes ? [assertIncludeCaseQuickFixIsLocalAndUndoable,
         assertIncludeCaseQuickFixMouseClickIsLocalAndUndoable,
         assertStaleIncludeCaseQuickFixFailsClosed,
         assertIncludeCaseQuickFixCancelIsNoOp,
@@ -6592,7 +6620,7 @@ async function runScenarios() {
         assertIncludeCaseActionRevalidatesAfterMenuWait,
         assertIncludeCaseActionRevalidatesAfterCaseOnlyRename,
         assertIncludeCaseQuickFixCannotModifyReadonlyDeck,
-        assertIncludeCaseActionDoesNotOverwriteMenuTimeEdit,
+        assertIncludeCaseActionDoesNotOverwriteMenuTimeEdit] : [assertCaseSensitiveIncludeRemainsUnresolved]),
         assertCellTypeIsLocalAndUndoable,
         assertCommaTabRequiresExplicitConversionAndUndo,
         assertOverWidthTypeIsRejectedAtomically,

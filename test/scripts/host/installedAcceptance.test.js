@@ -21,6 +21,7 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     const context = { process: processMock, __dirname: path.dirname(script), console: { error(value) { errors.push(String(value)); } }, require(name) {
         if (name === 'node:path') return { ...path, resolve: (...args) => args[0] === '.artifacts/release-rebuild/installed-hosts' ? evidence : path.resolve(...args) };
         if (name === '@vscode/test-electron') return { async downloadAndUnzipVSCode() { downloads++; return 'downloaded-vscode'; } };
+        if (name === './vsix-host.cjs') return { resolveExecutable: value => value };
         if (name === 'node:child_process') return { spawnSync(_node, _args, { env }) {
             assert.equal(env.LSDYNA_TEST_VSIX_EVIDENCE, evidence);
             assert.equal(path.dirname(env.LSDYNA_EXPECTED_CATALOG), evidence);
@@ -69,8 +70,12 @@ describe('installed acceptance executable and measured version', () => {
     it('rejects evidence reuse after product or case changes and mismatched report identities', () => {
         const { validateChanges, validateReport } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         validateChanges(['scripts/host/run-installed-acceptance.cjs', '.github/workflows/public-ci.yml']);
-        for (const file of ['src/extension.ts', 'package-lock.json', 'test/host/release/host.cjs', 'scripts/host/vsix-host.cjs'])
+        for (const file of ['src/extension.ts', 'package-lock.json', 'test/host/release/host.cjs', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
+        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs']);
+        assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
+            ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
+        assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);
         const report = { vsixSha256: 'a', platform: 'linux', arch: 'x64', cases: [] };
         const expected = { digest: 'a', target: 'linux-x64', version: '1.100.0' };
         validateReport(report, expected);

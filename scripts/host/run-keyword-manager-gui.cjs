@@ -110,6 +110,7 @@ async function main() {
         } catch { socket = null; await delay(100); }
     }
     if (!socket) throw new Error('No DevTools endpoint');
+    console.log('Manager GUI: DevTools connected');
     const contexts = new Map(), attached = new Set();
     const cdp = createCdp(socket);
     const call = cdp.call;
@@ -163,6 +164,7 @@ async function main() {
         return context;
         };
         const context = await findManagerContext();
+        console.log('Manager GUI: field renderer located');
         const hostState = JSON.parse(fs.readFileSync(path.join(root, instanceSelector ? 'selector-ready.json' : 'gui-ready.json')));
         if (hostState.hostLanguage !== locale) throw Error(`Host language ${hostState.hostLanguage} does not match ${locale}`);
         writeEvidence(path.join(root, 'initial-render.json'), JSON.stringify(await evaluate(context,
@@ -544,6 +546,7 @@ async function main() {
             layouts: result.layouts?.length, editorActions: result.editor?.length, evidence: root }));
     } catch (error) {
         rendererError = error;
+        console.error('Manager GUI renderer failed:', error);
         throw error;
     } finally {
         cdp.close();

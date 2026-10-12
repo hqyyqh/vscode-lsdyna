@@ -6,9 +6,10 @@ async function main() {
     const vsix = path.resolve(process.env.LSDYNA_TEST_VSIX || process.argv[2]);
     const directory = path.resolve(process.env.LSDYNA_TEST_VSIX_EVIDENCE || '.artifacts/release-rebuild/installed-hosts');
     fs.mkdirSync(directory, { recursive: true });
-    const executable = process.env.VSCODE_EXECUTABLE_PATH || (process.env.VSCODE_TEST_VERSION
+    const downloaded = process.env.VSCODE_EXECUTABLE_PATH || (process.env.VSCODE_TEST_VERSION
         ? await require('@vscode/test-electron').downloadAndUnzipVSCode(process.env.VSCODE_TEST_VERSION)
         : require('./run-editor-safety-extension-host.cjs').resolveVSCodeExecutable());
+    const executable = require('./vsix-host.cjs').resolveExecutable(downloaded);
     const parity = JSON.parse(fs.readFileSync(vsix + '.data-equivalence.json'));
     const expected = path.join(directory, 'catalog.json');
     fs.writeFileSync(expected, JSON.stringify({ keywords: parity.keywords, fingerprint: parity.formsFingerprint }));

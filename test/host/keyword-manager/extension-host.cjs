@@ -15,6 +15,7 @@ async function run() {
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
     assert.ok(extension, 'development extension must be loaded');
     await extension.activate();
+    if (process.env.KEYWORD_MANAGER_GUI === '1') console.log('Manager GUI host: extension activated');
     const manifestPath = path.join(extension.extensionPath, 'out/runtime',
         fs.existsSync(path.join(extension.extensionPath, 'out/runtime/catalog-input-form/manifest.json'))
             ? 'catalog-input-form' : 'lspp-input-form', 'manifest.json');
@@ -26,9 +27,10 @@ async function run() {
     };
     let restorePreparation, releasePreparation, failure;
     try {
-        const entryPath = path.join(extension.extensionPath, 'out/extension.js');
-        const loadedEntry = Object.keys(require.cache).find(file => file.toLowerCase() === entryPath.toLowerCase());
-        assert.ok(loadedEntry, 'use the activated extension module without loading a second Windows path casing');
+        const entryPath = fs.realpathSync(path.join(extension.extensionPath, 'out/extension.js'));
+        const loadedEntry = Object.keys(require.cache).find(file => process.platform === 'win32'
+            ? file.toLowerCase() === entryPath.toLowerCase() : file === entryPath);
+        assert.ok(loadedEntry, 'use the activated extension module at its canonical path');
         const api = require.cache[loadedEntry].exports._internals;
         fs.writeFileSync(path.join(root, 'loaded-runtime-modules.json'), JSON.stringify(Object.keys(require.cache)
             .filter(file => /(?:extension|(?:catalog|lspp)InputFormCatalogV4)\.js$/i.test(file)), null, 2));
@@ -79,6 +81,7 @@ async function run() {
                 text === (standardRepeat ? '*LOAD_POINT_UVW' : unverified ? '*MAT_DAMAGE_1' : repeated ? '*SET_PART_ADD' : comments ? '*MAT_BARLAT_YLD2000' : incomplete ? '*MAT_DAMAGE_1_TITLE' : shared ? `*${shared.keyword}` : '*DEFINE_CURVE_TITLE'));
             editor.selection = new vscode.Selection(line, 0, line, 0);
             await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions');
+            console.log('Manager GUI host: manager opened');
             await vscode.commands.executeCommand('workbench.action.closeSidebar');
             await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
             fs.writeFileSync(path.join(root, 'gui-ready.json'), JSON.stringify({
@@ -86,6 +89,7 @@ async function run() {
                 source: uri.fsPath, keywordLine: line, beforeSha256: hash(document.getText()),
                 scope: diagnostic ? 'diagnostic GUI with unpublished data' : 'published catalog with default product settings',
             }));
+            console.log('Manager GUI host: ready for renderer');
             await new Promise((resolve, reject) => {
                 if (fs.existsSync(path.join(root, 'gui-finish.json'))) { resolve(); return; }
                 let lastEditorRequest;

@@ -6,6 +6,17 @@ const crypto = require('node:crypto');
 const { spawnSync, spawn } = require('node:child_process');
 const { runTests: runDevelopmentTests } = require('@vscode/test-electron');
 
+function resolveExecutable(executable, platform = process.platform) {
+    if (!executable || platform !== 'darwin' || fs.existsSync(executable)) return executable;
+    const directory = path.dirname(executable);
+    const plist = fs.readFileSync(path.resolve(directory, '../Info.plist'), 'utf8');
+    const name = /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1];
+    assert.ok(name && path.basename(name) === name, 'Missing or unsafe macOS bundle executable');
+    const actual = path.join(directory, name);
+    assert.ok(fs.statSync(actual).isFile(), 'macOS bundle executable is missing');
+    return actual;
+}
+
 function resolveCliEntry(executable) {
     const root = path.dirname(executable);
     const standard = process.platform === 'darwin'
@@ -22,6 +33,8 @@ function resolveCliEntry(executable) {
 // Existing scenarios can test either the development tree or an installed VSIX.
 // The development extension in installed mode is only a test driver, never DynaSense.
 async function runTests(options) {
+    const executable = resolveExecutable(options.vscodeExecutablePath);
+    if (executable !== options.vscodeExecutablePath) options = { ...options, vscodeExecutablePath: executable };
     if (!process.env.LSDYNA_TEST_VSIX) return runDevelopmentTests(options);
     const vsix = path.resolve(process.env.LSDYNA_TEST_VSIX);
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex');
@@ -150,4 +163,4 @@ const extension=vscode.extensions.getExtension('hqyyqh.dynasense');
         }
     }
 }
-module.exports = { runTests, resolveCliEntry };
+module.exports = { runTests, resolveCliEntry, resolveExecutable };

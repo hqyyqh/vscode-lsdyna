@@ -15,6 +15,8 @@ describe('installed host diagnostic failure propagation', () => {
         const cli = path.join(root, process.platform === 'darwin'
             ? 'Code.app/Contents/Resources/app/out/cli.js' : 'resources/app/out/cli.js');
         fs.mkdirSync(path.dirname(cli), { recursive: true });
+        fs.mkdirSync(path.dirname(executable), { recursive: true });
+        fs.writeFileSync(executable, 'synthetic executable');
         fs.writeFileSync(cli, '');
         fs.writeFileSync(vsix, 'synthetic install identity; subprocess verification is stubbed');
         const saveError = Object.assign(Error('Injected diagnostic failure'), { code: 'ENOSPC' });
@@ -121,6 +123,24 @@ it('resolves the macOS installed CLI inside the app bundle', () => {
     assert.equal(context.module.exports.resolveCliEntry(executable), expected);
 });
 
+it('resolves a renamed macOS executable from the bundle declaration and rejects traversal', () => {
+    const root = create(path.join(os.tmpdir(), 'vscode-bundle-test-'));
+    const old = path.join(root, 'Contents/MacOS/Electron'), actual = path.join(root, 'Contents/MacOS/Code');
+    fs.mkdirSync(path.dirname(old), { recursive: true });
+    fs.writeFileSync(actual, 'synthetic executable');
+    const plist = path.join(root, 'Contents/Info.plist');
+    const { resolveExecutable } = require(script);
+    assert.equal(resolveExecutable(undefined, 'darwin'), undefined);
+    fs.writeFileSync(plist, '<key>CFBundleExecutable</key>\n<string>Code</string>');
+    assert.equal(resolveExecutable(old, 'darwin'), actual);
+    assert.equal(resolveExecutable(actual, 'darwin'), actual);
+    assert.equal(resolveExecutable(old, 'linux'), old);
+    fs.writeFileSync(plist, '<key>CFBundleExecutable</key><string>../outside</string>');
+    assert.throws(() => resolveExecutable(old, 'darwin'), /unsafe/);
+    fs.writeFileSync(plist, '<key>CFBundleExecutable</key><string>missing</string>');
+    assert.throws(() => resolveExecutable(old, 'darwin'), /ENOENT/);
+});
+
 it('uses macOS Command shortcuts without changing Control-Space', async () => {
     const source = fs.readFileSync(path.join(repo, 'test/host/editor-safety/extension-host/index.js'), 'utf8');
     const start = source.indexOf('async function dispatchRendererKey(');
@@ -134,5 +154,34 @@ it('uses macOS Command shortcuts without changing Control-Space', async () => {
             assert.equal(events.length, 2);
             assert.ok(events.every(event => event.modifiers === (platform === 'darwin' && code !== 'Space' ? 4 : 2)));
         }
+    }
+});
+
+it('case-sensitive host acceptance rejects invented fixes and document mutations', async () => {
+    const source = fs.readFileSync(path.join(repo, 'test/host/editor-safety/extension-host/index.js'), 'utf8');
+    const start = source.indexOf('async function assertCaseSensitiveIncludeRemainsUnresolved()');
+    const body = source.slice(start, source.indexOf('\n}', start) + 2);
+    for (const failure of [null, 'resolved', 'diagnostic', 'action', 'mutation']) {
+        let text = '*INCLUDE\nsub/part.key', opened = 0;
+        const document = { getText: () => text, isDirty: false, lineAt: () => ({ text: 'sub/part.key' }) };
+        const context = { assert, path, workspaceRoot: '/fixture',
+            fs: { existsSync: file => file.endsWith(path.join('Sub', 'Part.key')) },
+            workspaceSnapshot: () => ({ original: true }),
+            openFixture: async () => { opened++; return { document }; },
+            vscode: { extensions: { getExtension: () => ({ extensionPath: '/installed' }) }, Range: class {} },
+            require: () => ({ resolveIncludeWithCaseCheck: async () => ({ status: failure === 'resolved' ? 'exact' : 'missing' }),
+                _internals: {
+                    collectIncludePathCaseDiagnostics: async () => failure === 'diagnostic' ? [{ code: 'include-path-case-mismatch' }] : [],
+                    LsdynaIncludePathCaseCodeActionProvider: class {
+                        provideCodeActions() {
+                            if (failure === 'mutation') text = 'changed';
+                            return failure === 'action' ? [{ edit: {} }] : [];
+                        }
+                    },
+                } }),
+        };
+        vm.runInNewContext(body, context);
+        if (failure) await assert.rejects(context.assertCaseSensitiveIncludeRemainsUnresolved());
+        else { await context.assertCaseSensitiveIncludeRemainsUnresolved(); assert.equal(opened, 2); }
     }
 });
