@@ -4385,7 +4385,7 @@
     {
       "path": "test/client/services/asyncRequestFailures.test.js",
       "role": "editable-source",
-      "sha256": "6d23b85a26069d644ff24418d88f011a743189e2bdc12478aef775be310f4bb3",
+      "sha256": "33f6f260fd3ba185b772776599597f155156c4f216989bcfa10f16c5a76c7b86",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5183,7 +5183,7 @@
     {
       "path": "test/core/references/registryReferenceScanner.test.js",
       "role": "editable-source",
-      "sha256": "3ea7b239a7f0336f05b6de5ae3bb91f2671285fcfe3ac2098a5619a974efbe2f",
+      "sha256": "c6e2715e2d6b2aa8e0c36c055446c5285a44fa6afbcf49ced19b476ca3dd780b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

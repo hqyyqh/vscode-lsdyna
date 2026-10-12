@@ -706,7 +706,7 @@ describe('registryReferenceScanner', () => {
     });
 
     it('scans every actionable rendered product field from a generated physical block', async function () {
-        this.timeout(30_000);
+        this.timeout(60_000); // Generates and checks all 2,732 blocks; not an interactive latency budget.
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const runtime = getSemanticRuntimeCatalogV2();
         const keywords = new Set(runtime.allReferenceRecords().map(record => record.field.keyword));

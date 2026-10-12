@@ -93,15 +93,16 @@ async function main() {
     console.log(name + ': handled');
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-else describe('best-effort UI request failures', () => {
+else describe('best-effort UI request failures', function () {
+    this.timeout(10_000); // Includes an isolated Node process and cold extension loading.
     for (const name of ['invalidation-batched', 'invalidation-manifest']) it(`observes mixed async/sync failures from ${name}`, () => {
-        const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', __filename, name], { encoding: 'utf8' });
+        const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', __filename, name], { encoding: 'utf8', timeout: 8_000, windowsHide: true });
         assert.equal(result.status, 0, result.stderr);
         assert.ok(result.stdout.includes(`${name}: handled`));
     });
     for (const surface of ['suggest', 'layout', 'context', 'discovery', 'english', 'fallback', 'evidence', 'plan']) for (const failure of ['reject', 'throw']) {
         it(`observes ${failure} from ${surface} without an unhandled process rejection`, () => {
-            const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', __filename, `${surface}-${failure}`], { encoding: 'utf8' });
+            const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', __filename, `${surface}-${failure}`], { encoding: 'utf8', timeout: 8_000, windowsHide: true });
             assert.equal(result.status, 0, result.stderr);
             assert.ok(result.stdout.includes(`${surface}-${failure}: handled`));
         });
