@@ -118,6 +118,7 @@ describe('platform release workflow dependency closure', () => {
         });
         execute({});
         execute({CI_NODE:'profile', LSDYNA_ACCEPTANCE_CASE:'manager', BUILD_RUN:'123'});
+        execute({CI_NODE:'profile', LSDYNA_ACCEPTANCE_CASE:'manager-control', BUILD_RUN:'123'});
         for (const values of [{TEST_GREP:''}, {TEST_GREP:'['}, {TEST_FILE:'../package.json'},
             {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'../manager',BUILD_RUN:'123'},
             {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'manager',BUILD_RUN:''},
@@ -129,12 +130,30 @@ describe('platform release workflow dependency closure', () => {
         const run = steps.find(step => step.name === 'Run selected installed case or paired performance check');
         assert.ok(run.if.includes("inputs.node == 'profile'"));
         assert.match(run.run, /LSDYNA_PROFILE_CPU="first-\$LSDYNA_ACCEPTANCE_CASE"/);
-        const profile = run.run.split('elif')[0];
+        const profile = run.run.split('elif')[1];
         assert.ok(profile.includes('run-release-host.cjs') && !profile.includes('benchmark-release-hosts.cjs'));
         const capture = steps.find(step => step.name === 'Preserve diagnostic CPU profile (not acceptance evidence)');
         assert.ok(capture.if.includes('always()') && capture.run.includes('.cpuprofile'));
         const acceptance = steps.find(step => step.name === 'Prepare public case evidence');
         assert.ok(!acceptance.if.includes("inputs.node == 'profile'"));
         assert.ok(steps.find(step => step.name === 'Build necessary source dependencies').if.includes("inputs.node != 'profile'"));
+    });
+    it('keeps same-package control results diagnostic even when every metric passes', () => {
+        const steps = read('ci-node.yml').jobs.node.steps;
+        const run = steps.find(step => step.name === 'Run selected installed case or paired performance check').run;
+        assert.ok(run.includes('"$LSDYNA_TEST_VSIX" "$LSDYNA_TEST_VSIX" .artifacts/public-host/control.json'));
+        const capture = steps.find(step => step.name === 'Preserve same-package repeatability diagnostic (not acceptance)');
+        const source = capture.run.split("node <<'NODE'\n")[1].split('\nNODE')[0];
+        let saved;
+        const input = { complete: true, baselineSha256: 'a', candidateSha256: 'a', phases: ['manager'], metrics: [] };
+        const execute = () => require('node:vm').runInNewContext(source, { require: name => name === 'node:fs'
+            ? { readFileSync: () => JSON.stringify(input), writeFileSync: (file, text) => { saved = {file, report:JSON.parse(text)}; } }
+            : name.startsWith('./scripts/') ? require('../../../scripts/release/public-release-reports.cjs') : require(name) });
+        execute();
+        assert.equal(saved.file, '.artifacts/node/manager-control.json');
+        assert.equal(saved.report.complete, false);
+        assert.match(saved.report.scope, /not acceptance/);
+        input.candidateSha256 = 'b';
+        assert.throws(execute);
     });
 });

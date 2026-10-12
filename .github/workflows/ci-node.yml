@@ -61,7 +61,7 @@ jobs:
             assert.ok(fs.statSync(file).isFile());
           }
           if (node === 'installed') assert.ok(hostCase.trim(), 'Select one installed case');
-          if (node === 'profile') assert.ok(['hover','manager'].includes(hostCase), 'Select one diagnostic phase');
+          if (node === 'profile') assert.ok(['hover','manager','manager-control'].includes(hostCase), 'Select one diagnostic phase');
           if (node === 'performance') assert.ok(['','hover','manager','experience'].includes(hostCase), 'Unknown performance phase');
           if (['installed','performance','profile'].includes(node)) assert.match(build, /^\d+$/);
           if (resume) { assert.equal(node, 'installed'); assert.match(resume, /^\d+$/); }
@@ -122,7 +122,10 @@ jobs:
           if [[ "$RUNNER_OS" == "macOS" ]]; then export TMPDIR="$(mktemp -d /tmp/ds.XXXXXX)"; fi
           launcher=()
           if [[ "$RUNNER_OS" == "Linux" ]]; then launcher=(xvfb-run -a); fi
-          if [[ "$CI_NODE" == "profile" ]]; then
+          if [[ "$CI_NODE" == "profile" && "$LSDYNA_ACCEPTANCE_CASE" == "manager-control" ]]; then
+            export LSDYNA_PERFORMANCE_PHASE=manager
+            "${launcher[@]}" node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX" "$LSDYNA_TEST_VSIX" .artifacts/public-host/control.json
+          elif [[ "$CI_NODE" == "profile" ]]; then
             export LSDYNA_PROFILE_CPU="first-$LSDYNA_ACCEPTANCE_CASE"
             "${launcher[@]}" node scripts/host/run-release-host.cjs "$LSDYNA_ACCEPTANCE_CASE" 2>&1 | tee .artifacts/node/profile.log
           elif [[ "$CI_NODE" == "installed" ]]; then
@@ -132,7 +135,7 @@ jobs:
             "${launcher[@]}" node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
           fi
       - name: Preserve diagnostic CPU profile (not acceptance evidence)
-        if: ${{ always() && inputs.node == 'profile' }}
+        if: ${{ always() && inputs.node == 'profile' && inputs.host_case != 'manager-control' }}
         run: |
           node <<'NODE'
           const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
@@ -146,6 +149,19 @@ jobs:
           for (const name of ['result.json', `first-${phase}.cpuprofile`]) {
             fs.copyFileSync(path.join(root, name), path.join('.artifacts/node', name));
           }
+          NODE
+      - name: Preserve same-package repeatability diagnostic (not acceptance)
+        if: ${{ always() && inputs.node == 'profile' && inputs.host_case == 'manager-control' }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs'), assert = require('node:assert/strict');
+          const report = require('./scripts/release/public-release-reports.cjs').performanceReport(
+            JSON.parse(fs.readFileSync('.artifacts/public-host/control.json')));
+          assert.equal(report.baselineSha256, report.candidateSha256);
+          assert.deepEqual(report.phases, ['manager']);
+          report.complete = false;
+          report.scope = 'Same-package manager repeatability diagnostic; not acceptance or percentile certification';
+          fs.writeFileSync('.artifacts/node/manager-control.json', JSON.stringify(report, null, 2));
           NODE
       - name: Prepare public case evidence
         if: ${{ always() && (inputs.node == 'installed' || inputs.node == 'performance') }}
