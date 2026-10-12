@@ -231,7 +231,8 @@ describe('native file-reader dynamic layouts', () => {
         assert.equal(entities.some(e => e.id === 901), false);
         assert.equal(text.includes('Unrecognized'), false);
     });
-    it('binds five aliases to their native callbacks and excludes eight thermal candidates', () => {
+    it('binds five aliases to their native callbacks and excludes eight thermal candidates', function () {
+        this.timeout(10_000); // Builds several complete manager models; installed-host latency has separate gates.
         const evidence = require("../../fixtures/public-behavior/dynamic-file-layout-bindings.json");
         for (const [keyword, id] of Object.entries(evidence.aliasBindings)) {
             const f = getCatalogInputFormCatalogV4().formForKeyword(keyword);

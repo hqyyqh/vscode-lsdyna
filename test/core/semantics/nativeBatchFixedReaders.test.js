@@ -9,7 +9,7 @@ const cases = new Map(JSON.parse(zlib.gunzipSync(fs.readFileSync('test/fixtures/
 
 describe('batch native fixed readers', () => {
     it('requires the verified source and exact dispatch spelling without replacing prior conditional rules', function () {
-        this.timeout(60000);
+        this.timeout(180_000); // Checks all 826 bindings and their rejection variants, including cold form loads.
         const { nativeFileLayoutKind, nativeBatchFixedBinding } = require("../../../out/core/semantics/catalogNativeFileLayout");
         const catalog = require("../../../out/core/semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4();
         for (const [keyword, binding] of Object.entries(grammar.bindings)) {

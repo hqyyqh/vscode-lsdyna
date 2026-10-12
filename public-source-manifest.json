@@ -4289,7 +4289,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerNativeFileLayout.test.js",
       "role": "editable-source",
-      "sha256": "d538b1b15e822cf68adb013d529e73cc7afa820debe14e3bba3f639146599631",
+      "sha256": "d516919d6e844f1d300768e613bd9f6ba29a7f4443e7022c835e24692df24a12",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4967,7 +4967,7 @@
     {
       "path": "test/core/references/fieldReferenceClassifier.test.js",
       "role": "editable-source",
-      "sha256": "30acf292777fc8630e3be6bc511a2166b9349096c73c5213b1dcaafd6f537ae0",
+      "sha256": "925dfe342bb02d238cc8fc05707ea82412ceae16e52a9ba09d99c419449e0931",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4979,7 +4979,7 @@
     {
       "path": "test/core/references/fieldReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "d8e16802d3b0de76c979a2e8106eee64e4ace2f30c7427fc7e76606fd123782c",
+      "sha256": "1bf21c2a252b477982066a6c255116b8f257f5fa4e6c4819e1aea6c7564ffd7c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5183,13 +5183,13 @@
     {
       "path": "test/core/references/registryReferenceNetwork.test.js",
       "role": "editable-source",
-      "sha256": "d8404050082e3e3cafac1e7854251055602242c690745034b0407e8ca829beb1",
+      "sha256": "37738e1737fa75a82fdd3c5460353d30ee08bd1cff4c45f7aac7c740633d7c7d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/references/registryReferenceScanner.test.js",
       "role": "editable-source",
-      "sha256": "c6e2715e2d6b2aa8e0c36c055446c5285a44fa6afbcf49ced19b476ca3dd780b",
+      "sha256": "02fb469e9e7e2468a6a0cb154ce2ffaf89dca4422411d9e910626ebdf6b95e61",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5303,7 +5303,7 @@
     {
       "path": "test/core/semantics/nativeBatchFixedReaders.test.js",
       "role": "editable-source",
-      "sha256": "3ebb9fb5f607418a163b9d5ecf30bdc425f896cab89159ae1169fb8db9580eb6",
+      "sha256": "a157cabe7a04e0f88fd789977cfd63778204851ad30c421d5673bc026be9739b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

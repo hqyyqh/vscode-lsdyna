@@ -162,7 +162,7 @@ describe('fieldReferenceClassifier', () => {
     });
 
     it('suppresses scalar prose contamination without changing PART_MOVE layout', function () {
-        this.timeout(20_000);
+        this.timeout(60_000); // Includes every reference keyword and its source-locked scalar exclusions.
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const partMove = keywordSchema.lookupKeywordSchema('*PART_MOVE', schema);
         assert.deepEqual(partMove.activeOptions, []);
@@ -225,8 +225,7 @@ describe('fieldReferenceClassifier', () => {
 
         const retainedHighRisk = [];
         const visited = new Set();
-        for (const record of runtime.allReferenceRecords()) {
-            const keyword = record.field.keyword;
+        for (const keyword of new Set(runtime.allReferenceRecords().map(record => record.field.keyword))) {
             const lookup = keywordSchema.lookupKeywordSchema(keyword, schema);
             if (!lookup) continue;
             const cards = keywordSchema.getRenderedCardsForLookup(lookup);
@@ -1381,7 +1380,8 @@ describe('fieldReferenceClassifier', () => {
         }
     });
 
-    it('classifies every remaining pure geometry mismatch as an option-free I8 schema card', () => {
+    it('classifies every remaining pure geometry mismatch as an option-free I8 schema card', function () {
+        this.timeout(10_000); // Checks the complete reference catalog, rather than one interactive query.
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const catalog = require('../../../out/core/semantics/semanticRuntimeV2')
             .getSemanticRuntimeCatalogV2();

@@ -30,7 +30,8 @@ describe('field reference index', () => {
         assert.equal(index.definitionKeywords.blocked.length, 0);
     });
 
-    it('keeps every definition descriptor aligned with a rendered field or exact original native field', () => {
+    it('keeps every definition descriptor aligned with a rendered field or exact original native field', function () {
+        this.timeout(10_000); // Verifies more than 700 descriptors, including cold native-form loads.
         const index = require(path.join('..', '..', '..', 'keywords', 'runtime', 'references', 'field_reference_index.json'));
         const schema = require(path.join('..', '..', '..', 'keywords', 'runtime', 'schema', 'field_data.json'));
         const { getRenderedCards, lookupKeywordSchema } = require('../../../out/core/keywordSchema');

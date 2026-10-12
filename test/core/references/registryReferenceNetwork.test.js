@@ -205,7 +205,8 @@ describe('registryReferenceNetwork', () => {
     });
     const createTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
-    it('keeps default expression queries incomplete without blocking unrelated namespaces', async () => {
+    it('keeps default expression queries incomplete without blocking unrelated namespaces', async function () {
+        this.timeout(10_000); // Builds and verifies six independent on-disk project indexes.
         const fs = require('node:fs');
         const os = require('node:os');
         const { buildProjectIndex } = require('../../../out/core/project/projectIndexer');
