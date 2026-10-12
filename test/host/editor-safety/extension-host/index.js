@@ -1863,7 +1863,7 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     const workspaceBefore = workspaceSnapshot();
     const originalClipboardText = await vscode.env.clipboard.readText();
-    let devTools = null;
+    let devTools = null, scenarioError;
 
     try {
         devTools = await connectWorkbenchDevTools();
@@ -1992,11 +1992,19 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
         });
         assert.strictEqual(document.eol, vscode.EndOfLine.CRLF);
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
+    } catch (error) {
+        scenarioError = error; throw error;
     } finally {
         try {
             if (devTools) {
                 try {
-                    await dispatchRendererKey(devTools, 'Escape', 'Escape', 27);
+                    // A native macOS menu does not receive renderer CDP key events.
+                    if (process.platform === 'darwin') await require('../../../support/editor-safety/native-menu.cjs')('Escape', true);
+                    else await dispatchRendererKey(devTools, 'Escape', 'Escape', 27);
+                } catch (error) {
+                    if (!scenarioError) throw error;
+                    scenarioError.cleanupError = error;
+                    console.error('Native menu cleanup failed after scenario failure:', error);
                 } finally {
                     devTools.close();
                 }
