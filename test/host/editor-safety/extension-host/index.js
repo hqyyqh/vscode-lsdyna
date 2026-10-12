@@ -1885,6 +1885,7 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
         // Right-click inside the selected field and click the visible Paste row.
         const pasteSelectionBeforeMenu = selectionRangeShape(editor.selection);
         const pasteClickPoint = await getRendererEditorPositionPoint(devTools, 3, 12);
+        if (process.platform === 'darwin') await require('../../../support/editor-safety/native-menu.cjs')('Focus', true);
         await dispatchRendererMouseClick(devTools, pasteClickPoint, 0, 'right');
         const pasteMenuPoint = await waitForRendererMenuItem(devTools, 'Ctrl+V');
         assert.deepStrictEqual(
@@ -1954,6 +1955,7 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
         });
         const cutSelectionBeforeMenu = selectionRangeShape(editor.selection);
         const cutClickPoint = await getRendererEditorPositionPoint(devTools, 3, 22);
+        if (process.platform === 'darwin') await require('../../../support/editor-safety/native-menu.cjs')('Focus', true);
         await dispatchRendererMouseClick(devTools, cutClickPoint, 0, 'right');
         const cutMenuPoint = await waitForRendererMenuItem(devTools, 'Ctrl+X');
         assert.deepStrictEqual(

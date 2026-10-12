@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 
 describe('macOS context menu ownership and action checks', () => {
-    function fixture({ owner = 'com.microsoft.VSCode', labels = ['Paste', 'Cut'], enabled = true, menus = 1, frontmost = true } = {}) {
+    function fixture({ owner = 'com.microsoft.VSCode', labels = ['Paste', 'Cut'], enabled = true, menus = 1, frontmost = true, inaccessible = false } = {}) {
         const pressed = [], source = fs.readFileSync(path.resolve(__dirname, '../../support/editor-safety/native-menu.cjs'), 'utf8');
         const module = { exports: {} };
         const execFile = (_file, args, options, callback) => {
@@ -12,7 +12,7 @@ describe('macOS context menu ownership and action checks', () => {
                 assert.equal(name, 'System Events');
                 return { keyCode: code => pressed.push(code), applicationProcesses: { whose(query) {
                     assert.equal(query.unixId, 321);
-                    return () => [{ bundleIdentifier: () => owner, frontmost: () => frontmost, uiElements: () => [{role: () => 'AXWindow'}], windows: () => [{role: () => 'AXWindow', uiElements: () => [], menus: () => []}], menus: () => Array.from({ length: menus }, () => ({
+                    return () => [{ bundleIdentifier: () => owner, get frontmost() { return () => frontmost; }, set frontmost(value) { frontmost = value; }, uiElements: () => { if(inaccessible) throw Error('Cannot get object'); return [{role: () => 'AXWindow'}]; }, windows: () => [{role: () => 'AXWindow', uiElements: () => [], menus: () => []}], menus: () => Array.from({ length: menus }, () => ({
                         menuItems: () => labels.map(label => ({ name: () => label, enabled: () => enabled,
                             click: () => pressed.push(label) })),
                     })) }];
@@ -52,6 +52,17 @@ describe('macOS context menu ownership and action checks', () => {
         }
         await assert.rejects(f.menu('Escape'));
     });
+    it('focuses only the owned test host and keeps optional AX diagnostic errors separate', async () => {
+        const f = fixture({frontmost:false,menus:0,inaccessible:true});
+        assert.equal((await f.menu('Focus',true)).focused,true);
+        const state = await f.menu('Paste');
+        assert.equal(state.native.frontmost,true);
+        assert.match(state.native.roles.error,/Cannot get object/);
+        assert.equal(state.point,null);
+        const wrong = fixture({owner:'another.app'});
+        await assert.rejects(wrong.menu('Focus',true));
+        assert.deepEqual(wrong.pressed,[]);
+    });
     for (const [name, options] of [['wrong owner', { owner: 'another.app' }],
         ['closed menu', { menus: 0 }], ['multiple menus', { menus: 2 }],
         ['duplicate action', { labels: ['Paste', 'Paste'] }], ['disabled action', { enabled: false }]]) {
@@ -77,7 +88,7 @@ it('preserves the menu failure when native cleanup also fails and still closes C
         openFixture:async()=>({document:{getText:()=>'',lineAt:()=>({text:''})},editor:{}}),
         waitForRendererEditorFocus:async()=>{},writeClipboardText:async value=>{if(value==='original')restored=true;},
         getRendererEditorPositionPoint:async()=>({}),dispatchRendererMouseClick:async()=>{},
-        waitForRendererMenuItem:async()=>{throw primary;},require:()=>async()=>{throw cleanup;},
+        waitForRendererMenuItem:async()=>{throw primary;},require:()=>async label=>{if(label!=='Focus')throw cleanup;},
     };
     const run = vm.runInNewContext(source.slice(start,end)+'; assertRendererContextMenuPasteAndCutAreScopedAndUndoable',context);
     await assert.rejects(run(),error=>error===primary && error.cleanupError===cleanup);
