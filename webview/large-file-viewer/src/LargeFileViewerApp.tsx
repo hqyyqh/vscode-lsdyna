@@ -42,6 +42,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
     const currentState = useRef<LargeFileViewerState | null>(null);
     const mounted = useRef(false);
     const actionSequence = useRef(0);
+    const modeReset = useRef<Promise<void> | null>(null);
     const gotoFocused = useRef(false);
     const navigationInFlight = useRef(false);
     const navigateTimer = useRef<number | undefined>(undefined);
@@ -224,7 +225,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         desiredLine.current = null;
         wheelPixels.current = 0;
         setPixelOffset(0);
-        void run(action, reportFalse);
+        return run(action, reportFalse);
     };
     const submitGoto = (event: FormEvent) => {
         event.preventDefault();
@@ -234,17 +235,21 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             navigate(parsed - 1);
         }
     };
-    const submitSearch = (event: FormEvent) => {
+    const submitSearch = async (event: FormEvent, direction: -1 | 1 = 1) => {
         event.preventDefault();
         if (state.stale) return;
-        if (searchMode === 'keyword') jump(next => transport.navigateKeyword(next.revision, 1, searchText.trim()));
-        else if (searchText.trim() === state.search.query && state.search.count > 0) jump(next => transport.searchStep(next.revision, 1));
-        else jump(next => transport.search(next.revision, searchText.trim()));
+        if (modeReset.current) {
+            const sequence = ++actionSequence.current;
+            await modeReset.current;
+            if (!mounted.current || currentState.current?.stale || sequence !== actionSequence.current) return;
+        }
+        if (searchMode === 'keyword') jump(next => transport.navigateKeyword(next.revision, direction, searchText.trim()));
+        else jump(next => searchText.trim() === next.search.query && next.search.count > 0
+            ? transport.searchStep(next.revision, 1) : transport.search(next.revision, searchText.trim()));
     };
     const searchKey = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'Enter' && searchMode === 'keyword' && !state.stale) {
-            event.preventDefault();
-            jump(next => transport.navigateKeyword(next.revision, event.shiftKey ? -1 : 1, searchText.trim()));
+            void submitSearch(event, event.shiftKey ? -1 : 1);
             return;
         }
         if (event.key !== 'Enter' || state.stale || state.search.loading ||
@@ -309,7 +314,16 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             <button type="button" className="search-mode" aria-pressed={searchMode === 'keyword'}
                 title={searchMode === 'text' ? state.labels.textMode : state.labels.keywordMode}
                 aria-label={searchMode === 'text' ? state.labels.textMode : state.labels.keywordMode}
-                onClick={() => { setSearchMode(mode => mode === 'text' ? 'keyword' : 'text'); jump(next => transport.search(next.revision, '')); searchInput.current?.focus(); }}>
+                onClick={() => {
+                    setSearchMode(mode => mode === 'text' ? 'keyword' : 'text');
+                    ++actionSequence.current;
+                    if (!modeReset.current) {
+                        const pending = jump(next => transport.search(next.revision, ''));
+                        modeReset.current = pending;
+                        void pending.finally(() => { if (modeReset.current === pending) modeReset.current = null; });
+                    }
+                    searchInput.current?.focus();
+                }}>
                 <span className={`codicon codicon-${searchMode === 'text' ? 'search' : 'symbol-keyword'}`} aria-hidden="true" />
             </button>
             <div className="search-input">

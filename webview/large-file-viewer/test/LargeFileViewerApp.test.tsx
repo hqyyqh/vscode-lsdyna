@@ -169,6 +169,45 @@ test('keeps one inline search with keyboard focus, clear action and literal sear
     expect(api.search).toHaveBeenLastCalledWith(4, '');
 });
 
+test.each(['submitted', 'superseded', 'stale', 'unmounted', 'keyword-keyboard'])('handles a %s text search when the mode reset notification arrives late', async outcome => {
+    const api = transport(viewState());
+    let notify!: (value: LargeFileViewerState) => void;
+    let finishReset!: () => void;
+    let hostRevision = 4;
+    const acceptedQueries: string[] = [];
+    api.onStateChanged = handler => { notify = handler; return () => undefined; };
+    api.search = vi.fn(async (revision, query) => {
+        if (revision !== hostRevision) return false;
+        if (!query) {
+            hostRevision++;
+            await new Promise<void>(resolve => { finishReset = resolve; });
+        } else acceptedQueries.push(query);
+        return true;
+    });
+    const view = render(<LargeFileViewerApp transport={api} />);
+    await screen.findByDisplayValue('101');
+    fireEvent.click(document.querySelector('.search-mode')!);
+    fireEvent.change(document.querySelector('.search-float input')!, { target: { value: 'B07_TARGET_MARKER' } });
+    fireEvent.submit(document.querySelector('.search-float')!);
+    if (outcome === 'superseded') {
+        fireEvent.change(document.querySelector('.search-float input')!, { target: { value: 'LATEST_QUERY' } });
+        fireEvent.submit(document.querySelector('.search-float')!);
+    }
+    if (outcome === 'unmounted') view.unmount();
+    if (outcome === 'keyword-keyboard') {
+        fireEvent.click(document.querySelector('.search-mode')!);
+        fireEvent.change(document.querySelector('.search-float input')!, { target: { value: '*MAT' } });
+        fireEvent.keyDown(document.querySelector('.search-float input')!, { key: 'Enter', shiftKey: true });
+        expect(api.navigateKeyword).not.toHaveBeenCalled();
+    }
+    await act(async () => {
+        notify(viewState({ revision: 5, stale: outcome === 'stale' }));
+        finishReset();
+    });
+    expect(acceptedQueries).toEqual(outcome === 'submitted' ? ['B07_TARGET_MARKER'] : outcome === 'superseded' ? ['LATEST_QUERY'] : []);
+    if (outcome === 'keyword-keyboard') expect(api.navigateKeyword).toHaveBeenCalledWith(5, -1, '*MAT');
+});
+
 test('highlights the current search line without changing source text and disables old-query arrows', async () => {
     const api = transport(viewState({search: {query:'2000101',loading:false,count:23,currentIndex:0,currentLine:100,truncated:false,message:''}}));
     render(<LargeFileViewerApp transport={api} />);

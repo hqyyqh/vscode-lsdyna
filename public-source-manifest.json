@@ -7147,7 +7147,7 @@
     {
       "path": "webview/large-file-viewer/src/LargeFileViewerApp.tsx",
       "role": "editable-source",
-      "sha256": "cdf2d1222d2ebf45d7a065ad96e18c52444da59afd65a6b62640b6e56fff7e59",
+      "sha256": "97610ac7926780b82932cb2862c0c241ff117407caa4704b4191b7def4c562e1",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7177,7 +7177,7 @@
     {
       "path": "webview/large-file-viewer/test/LargeFileViewerApp.test.tsx",
       "role": "editable-source",
-      "sha256": "00ae612df2c4f7ef322ef83e44871d041052928fed659c820ae89d31cd029853",
+      "sha256": "546e6bcea350342627593dc298a3ef0ef365a3d1264906443cd9bdbb29617247",
       "reason": "editable-product-source-or-resource"
     },
     {
