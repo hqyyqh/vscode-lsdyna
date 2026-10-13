@@ -12,6 +12,7 @@ describe('immutable release acceptance gate', () => {
             report: { cases: [{ name: 'run-editor-safety-extension-host.cjs-after-ime', passed: true }] },
             remaining: { required, cases: required.slice(split + 2).map(name => ({ name, status: 'passed' })) } };
         assert.deepEqual(combineEditor(input), required);
+        assert.deepEqual(combineEditor({ ...input, log: input.log.replaceAll('"status"', '\u001b[32m"status"\u001b[0m') }), required);
         assert.throws(() => combineEditor({ ...input, log: '' }), /Missing prior/);
         assert.throws(() => combineEditor({ ...input, pairSource: currentSource + '\nconst changedHelper = true;' }), /assertions changed/);
         assert.throws(() => combineEditor({ ...input, prefixSource: currentSource + '\nconst changedHelper = true;' }), /helpers changed/);

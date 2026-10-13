@@ -2845,7 +2845,7 @@
     {
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
-      "sha256": "7b03f9de68614dde81b46a0529ababa0f73f7a4cb49019e4f16705b9625c5a41",
+      "sha256": "9390850a150a1aa2bace8e67eebf0bb51b226cabce4c85c3d06afa23cd17ce6b",
       "reason": "public-contribution"
     },
     {
@@ -6781,7 +6781,7 @@
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "fee42f5fd5be6eb7862204828760d39893a5b4bb0007f4e82d142d67fc0d0b27",
+      "sha256": "970a7553d6fefd2ddd7270f098c563690a2f566e2ce2ec1af9a2cc587147d0f0",
       "reason": "public-build-or-package-regression"
     },
     {

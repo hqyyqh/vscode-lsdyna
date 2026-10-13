@@ -2,6 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const crypto = require('node:crypto'), vm = require('node:vm'), ts = require('typescript');
 const { execFileSync } = require('node:child_process');
+const { stripVTControlCharacters } = require('node:util');
 const { validateChanges, validateBuild, validateReport } = require('../host/run-installed-acceptance-retry.cjs');
 const { verify } = require('./verify-release-acceptance.cjs');
 const targets = ['win32-x64', 'linux-x64', 'darwin-arm64'], versions = ['1.100.0', '1.139.1'];
@@ -34,7 +35,7 @@ function combineEditor({ prefixSource, pairSource, currentSource, log, pairRepor
     assert.ok(pairReport.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs-autosave-committed-ime' && item.passed === true));
     assert.ok(report.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs-after-ime' && item.passed === true));
     assert.deepEqual(remaining.required, required);
-    const prefix = new Set([...log.matchAll(/\{"name":"(assert\w+)","status":"passed"\}/g)].map(match => match[1]));
+    const prefix = new Set([...stripVTControlCharacters(log).matchAll(/\{"name":"(assert\w+)","status":"passed"\}/g)].map(match => match[1]));
     const split = required.indexOf(pair[0]); assert.ok(split > 0); assert.equal(required[split + 1], pair[1]);
     for (const name of required.slice(0, split)) assert.ok(prefix.has(name), `Missing prior editor scenario: ${name}`);
     const tail = remaining.cases.filter(item => item.required !== false);
@@ -91,7 +92,7 @@ function main() {
                 const paired = host(id(plan.editorRecovery.pairRun), target, version);
                 assert.equal(prefix.job.conclusion, 'failure');
                 assert.ok(prefix.report.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs-ci-functional' && item.passed === false));
-                const log = command('gh', ['api', `repos/${repo}/actions/jobs/${prefix.job.databaseId}/logs`]);
+                const log = command('gh', ['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${prefix.job.databaseId}/logs`]);
                 const source = revision => command('git', ['show', `${revision}:${editorFile}`]);
                 const currentSource = fs.readFileSync(editorFile, 'utf8');
                 assert.equal(stableEditorSource(source(entry.run.headSha), false), stableEditorSource(currentSource, false), 'Remaining editor assertions changed');
