@@ -47,6 +47,17 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('reuses only passed editor scenarios with unchanged transitive helpers and initialization', () => {
+        const { reusableEditorScenarios } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
+        const before = 'const setting=1; function helper(){return 1} function middle(){return helper()} function assertOne(){middle()} function assertTwo(){return 2} function assertThree(){return 3}';
+        const names = ['assertOne', 'assertTwo', 'assertThree'];
+        const log = '\u001b[32m{"name":"assertOne","status":"passed"}\u001b[0m\n{"name":"assertTwo","status":"passed"}';
+        assert.deepEqual(reusableEditorScenarios(before, before, names, log), ['assertOne', 'assertTwo']);
+        assert.deepEqual(reusableEditorScenarios(before, before.replace('helper(){return 1}', 'helper(){return 4}'), names, log), ['assertTwo']);
+        assert.deepEqual(reusableEditorScenarios(before, before.replace('assertTwo(){return 2}', 'assertTwo(){return 4}'), names, log), ['assertOne']);
+        assert.throws(() => reusableEditorScenarios(before, before.replace('setting=1', 'setting=2'), names, log), /initialization/);
+        assert.throws(() => reusableEditorScenarios(before, before, ['assertMissing'], '{"name":"assertMissing","status":"passed"}'), /Missing/);
+    });
     it('runs only the post-IME editor scenarios in the remaining entry', async () => {
         const source = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
         const body = source.slice(source.indexOf('    const caseInsensitiveIncludes ='), source.indexOf('\nasync function run()')).trim().replace(/}$/, '');

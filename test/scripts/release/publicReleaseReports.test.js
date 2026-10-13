@@ -31,7 +31,8 @@ describe('public release report boundary', () => {
         assert.ok(workflow.includes('node scripts/release/public-release-reports.cjs'));
         assert.ok(workflow.includes('path: public-acceptance'));
         assert.ok(!/path:.*\.vsix.*\*/.test(workflow));
-        assert.ok(!workflow.includes('path: .artifacts/'));
+        // Scoped unit continuation publishes its reviewed provenance bundle only.
+        assert.deepEqual(workflow.match(/path: \.artifacts\/[^\r\n]+/g), ['path: .artifacts/unit-recovery']);
     });
     it('preserves a passed selected phase as incomplete public evidence', () => {
         const report=performanceReport({complete:false,phases:['experience'],selectedPhasesPassed:true,

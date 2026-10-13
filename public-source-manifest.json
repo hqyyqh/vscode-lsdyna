@@ -298,6 +298,7 @@
       "test/scripts/host/installedAcceptance.test.js",
       "test/scripts/host/managerGuiCompletion.test.js",
       "test/scripts/host/nativeMenu.test.js",
+      "test/scripts/host/viewerReload.test.js",
       "test/scripts/host/vsixHost.test.js",
       "test/scripts/maintenance/projectContracts.test.js",
       "test/scripts/release/bundleRelease.test.js",
@@ -2699,7 +2700,7 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "b4ee90f408d9321149e70bfad78e49c6d355c2ff99c0a9b0a50bb9991f1c38b9",
+      "sha256": "a01c06c4fbf8f40557c1d86ab40c3bcfb496f35d180df04a1e89f278504bc6a8",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2729,7 +2730,7 @@
     {
       "path": "scripts/host/run-large-file-viewer-host.cjs",
       "role": "editable-source",
-      "sha256": "baf88dd03fa7c05ff25a552fd11ff2e00fbc5915f8a515031b3c9e7c10c4b9bb",
+      "sha256": "12cf6d4bfcbe8d2a1ad0c32fcfcc5a705cb4bae26e990487cb2a32cf9acbea95",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2849,7 +2850,7 @@
     {
       "path": "scripts/release/public-release-reports.cjs",
       "role": "editable-source",
-      "sha256": "dd7c46164bb5def024bf2b6617500a0def024e34332436215ec86cf99bed8367",
+      "sha256": "3a89c637ef831c5ec2db0f17154d178fc29dca1482ca589623482f2fabd87572",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6527,7 +6528,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "711577e2a011f23ba61c4b5ed83ed577f7a6efc8a78723da6f4e5c7d1da8d215",
+      "sha256": "ae2703c6a6e5927effa165d0010ebc9d30962d0d87705a7ea063af21a1e6cc05",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6839,7 +6840,7 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "0f242b030a446aca40b48e5debdcdf3cfac2a650c2ca906fe32ef0ddb3238d03",
+      "sha256": "cab0a981af32a318cf463629193c6b889da1aba9fb9e75fa12fa09d4ea336523",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6852,6 +6853,12 @@
       "path": "test/scripts/host/nativeMenu.test.js",
       "role": "editable-source",
       "sha256": "9adc68e6ef59cff3179054ebdbaaadb39db5485cc5b08d6a487a02979923aeda",
+      "reason": "public-contribution"
+    },
+    {
+      "path": "test/scripts/host/viewerReload.test.js",
+      "role": "editable-source",
+      "sha256": "e04a693cc01c0eeee4ccd4800b0ab1f7bd25e15e9b7af5c5741faab7b2693656",
       "reason": "public-contribution"
     },
     {
@@ -6899,7 +6906,7 @@
     {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
-      "sha256": "b92051f8f7f63696251ddad56563506ca7b13f9238d3d3e07aa2202af215a79b",
+      "sha256": "39258e14a7a4e54c8a9f6f9197031078063da955f117af63df7aad49ef431f8d",
       "reason": "public-build-or-package-regression"
     },
     {

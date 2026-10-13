@@ -6,10 +6,11 @@ const crypto = require('node:crypto'), { execFileSync } = require('node:child_pr
 const retryFiles = new Set(['scripts/release/reuse-release-evidence.cjs','scripts/maintenance/validate-project-contracts.cjs', 'scripts/release/verify-release-acceptance.cjs', 'test/scripts/release/releaseAcceptanceGate.test.js', 'test/integration/extension.test.js', 'test/core/keywordIndexPerformance.test.js', 'test/core/scanner/scannerBenchmark.test.js', '.github/workflows/public-ci.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
     'scripts/host/run-installed-acceptance.cjs', 'scripts/host/run-installed-acceptance-retry.cjs',
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
-    'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
+    'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js', 'test/scripts/host/viewerReload.test.js',
     'test/scripts/release/publicWorkflow.test.js', 'test/scripts/release/publicReleaseReports.test.js',
     'test/scripts/host/vsixHost.test.js', 'test/scripts/host/hostBenchmark.test.js', 'test/scripts/host/hostInstrumentation.test.js']);
 const affectedCases = {
+    'scripts/host/run-large-file-viewer-host.cjs': ['run-large-file-viewer-host.cjs'],
     // This external test driver is excluded from VSIX; its changes invalidate host evidence, not the package.
     'test/host/release/host.cjs': ['*'],
     'scripts/benchmark/benchmark-release-hosts.cjs': ['performance'],
@@ -42,6 +43,40 @@ function validateBuild(run, target) {
         (job.name.startsWith('Build, data, tests, audit and actual VSIX') && job.name.endsWith(`${target})`)) ||
         job.name === `Selected node / Node / ${target} / package`
     )), `Missing passed build for ${target}`);
+}
+function reusableEditorScenarios(previous, current, required, log) {
+    const ts = require('typescript');
+    const parse = source => {
+        const tree = ts.createSourceFile('host.js', source, ts.ScriptTarget.Latest, true);
+        const functions = new Map(), globals = [];
+        for (const statement of tree.statements) {
+            if (ts.isFunctionDeclaration(statement) && statement.name) functions.set(statement.name.text, statement);
+            else globals.push(statement.getText(tree).replace(/\r\n/g, '\n'));
+        }
+        return { tree, functions, globals };
+    };
+    const before = parse(previous), after = parse(current);
+    assert.deepEqual(after.globals, before.globals, 'Editor initialization changed');
+    const changed = new Set();
+    for (const [name, node] of after.functions) {
+        if (node.getText(after.tree).replace(/\r\n/g, '\n') !== before.functions.get(name)?.getText(before.tree).replace(/\r\n/g, '\n')) changed.add(name);
+    }
+    for (const name of before.functions.keys()) if (!after.functions.has(name)) changed.add(name);
+    const affected = (name, seen = new Set()) => {
+        if (changed.has(name)) return true;
+        if (seen.has(name)) return false;
+        seen.add(name);
+        let result = false;
+        const visit = node => {
+            if (ts.isIdentifier(node) && after.functions.has(node.text) && affected(node.text, seen)) result = true;
+            ts.forEachChild(node, visit);
+        };
+        const node = after.functions.get(name); assert.ok(node, `Missing editor scenario ${name}`);
+        ts.forEachChild(node, visit);
+        return result;
+    };
+    const passed = new Set([...require('node:util').stripVTControlCharacters(log).matchAll(/\{"name":"(assert\w+)","status":"passed"\}/g)].map(match => match[1]));
+    return required.filter(name => passed.has(name) && !affected(name));
 }
 function main() {
     const { BUILD_RUN: buildRun, RESUME_RUN: resumeRun, GITHUB_REPOSITORY: repo,
@@ -76,6 +111,22 @@ function main() {
     const digest = hash('dist/candidate.vsix');
     const report = JSON.parse(fs.readFileSync(path.join(directory, 'acceptance.json'), 'utf8'));
     validateReport(report, { digest, target, version });
+    const editorCase = 'run-editor-safety-extension-host.cjs-ci-functional';
+    if (invalidated.has(editorCase) && report.cases.some(item => item.name === editorCase)) {
+        const editorFile = 'test/host/editor-safety/extension-host/index.js';
+        const previous = command('git', ['show', `${previousRun.headSha}:${editorFile}`]);
+        const current = fs.readFileSync(editorFile, 'utf8');
+        const { editorNames } = require('../release/reuse-release-evidence.cjs');
+        const required = editorNames(current);
+        assert.deepEqual(editorNames(previous), required, 'Editor scenario inventory changed');
+        const job = previousRun.jobs.find(item => [`Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(item.name));
+        const log = command('gh', ['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]);
+        const reused = reusableEditorScenarios(previous, current, required, log);
+        const editorResume = path.join(directory, 'editor-resume.json');
+        fs.writeFileSync(editorResume, JSON.stringify({ sourceRun: resumeRun, sourceCommit: previousRun.headSha,
+            vsixSha256: digest, target, version, required, reused }));
+        fs.appendFileSync(githubEnv, `LSDYNA_EDITOR_SAFETY_RESUME=${editorResume}\n`);
+    }
     report.cases = report.cases.filter(item => !invalidated.has('*') && !invalidated.has(item.name));
     console.log(`Invalidated host evidence: ${[...invalidated].join(', ') || 'none'}`);
     // Older partial reports omitted the requested version; the verified run's matrix supplies it.
@@ -85,5 +136,5 @@ function main() {
     fs.appendFileSync(githubEnv, `LSDYNA_ACCEPTANCE_RESUME=${resume}\n`);
     console.log(`Reuse build ${buildRun}, completed host cases from ${resumeRun}, exact package ${digest}`);
 }
+module.exports = { validateChanges, validateReport, validateBuild, reusableEditorScenarios };
 if (require.main === module) main();
-module.exports = { validateChanges, validateReport, validateBuild };

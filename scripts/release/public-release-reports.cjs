@@ -22,6 +22,14 @@ function performanceReport(report) {
 }
 function exportHostReports(input, output) {
     fs.mkdirSync(output, { recursive: true });
+    const recovery = path.join(input, 'editor-recovery.json');
+    if (fs.existsSync(recovery)) {
+        const report = JSON.parse(fs.readFileSync(recovery));
+        fs.writeFileSync(path.join(output, 'editor-recovery.json'), JSON.stringify({
+            ...pick(report, ['sourceRun', 'sourceCommit', 'vsixSha256', 'target', 'version', 'required', 'reused']),
+            cases: report.cases.map(item => pick(item, ['name', 'status', 'required', 'reason', 'reused', 'sourceRun'])),
+        }, null, 2));
+    }
     const editor = path.join(input, 'editor-remaining.json');
     if (fs.existsSync(editor)) {
         const report = JSON.parse(fs.readFileSync(editor));

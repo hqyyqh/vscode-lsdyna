@@ -65,6 +65,7 @@ async function getRendererActiveElement(devTools) {
             return element ? {
                 tagName: element.tagName,
                 className: String(element.className || ''),
+                inEditor: !!element.closest('.part.editor'),
                 value: typeof element.value === 'string' ? element.value : null
             } : null;
         })()`,
@@ -98,7 +99,7 @@ async function waitForRendererEditorFocus(devTools) {
     while (Date.now() < deadline) {
         activeElement = await getRendererActiveElement(devTools);
         if (
-            activeElement &&
+            activeElement && activeElement.inEditor &&
             (
                 (
                     activeElement.tagName === 'TEXTAREA' &&
@@ -289,6 +290,7 @@ async function getRendererSuggestionWidget(devTools) {
             );
             return {
                 text: String(element.innerText || '').trim().slice(0, 500),
+                selected: String(element.querySelector('.monaco-list-row.focused')?.textContent || '').trim(),
                 rows
             };
         })()`,
@@ -884,6 +886,13 @@ async function runInlineEditChoice(commandFactory, expectedRowFragment, commands
             `Inline edit choices did not show ${JSON.stringify(expectedRowFragment)}: ${JSON.stringify(widget.rows)}`,
         );
         for (const command of commands) {
+            if (command === 'acceptSelectedSuggestion') {
+                await waitForAssertion(async () => {
+                    const selected = await getRendererSuggestionWidget(devTools);
+                    assert.ok(selected?.selected.includes(expectedRowFragment),
+                        `Wrong inline edit choice: ${JSON.stringify(selected)}`);
+                });
+            }
             await vscode.commands.executeCommand(command);
             await new Promise(resolve => setTimeout(resolve, 75));
         }
@@ -4818,6 +4827,8 @@ async function assertOfficialFormatCorpusFailsClosedInRealHost() {
         'Interpret by value order',
         ['selectNextSuggestion', 'acceptSelectedSuggestion'],
     );
+    // Accepting a suggestion does not await its extension-side edit command.
+    await waitForAssertion(() => assert.ok(!mixedDocument.lineAt(3).text.includes(',')));
     const convertedCommaLine = mixedDocument.lineAt(3).text;
     assert.ok(!convertedCommaLine.includes(','));
     assert.deepStrictEqual(
@@ -6791,8 +6802,23 @@ async function runScenarios() {
         assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible,
     ];
     const remaining = process.env.LSDYNA_EDITOR_SAFETY_AFTER_IME === '1';
+    const resumed = process.env.LSDYNA_EDITOR_SAFETY_RESUME
+        ? JSON.parse(fs.readFileSync(process.env.LSDYNA_EDITOR_SAFETY_RESUME, 'utf8')) : null;
+    const required = scenarios.filter(item => item !== assertInteractiveLatencyBaseline && item !== assertRendererContextMenuPasteAndCutAreScopedAndUndoable).map(item => item.name);
+    if (resumed) {
+        assert.deepStrictEqual(resumed.required, required);
+        assert.ok(resumed.reused.every(name => required.includes(name)));
+        assert.strictEqual(resumed.target, `${process.platform}-${process.arch}`);
+        assert.strictEqual(resumed.version, vscode.version);
+        assert.strictEqual(resumed.vsixSha256, require('node:crypto').createHash('sha256').update(fs.readFileSync(process.env.LSDYNA_TEST_VSIX)).digest('hex'));
+    }
     const selected = remaining ? scenarios.slice(scenarios.indexOf(assertCommittedImeTextIsEditorLocalAndUndoable) + 1) : scenarios;
     for (const scenario of selected) {
+        if (resumed?.reused.includes(scenario.name)) {
+            caseResults.push({ name: scenario.name, status: 'passed', reused: true, sourceRun: resumed.sourceRun });
+            console.log(JSON.stringify(caseResults[caseResults.length - 1]));
+            continue;
+        }
         if (scenario === assertInteractiveLatencyBaseline && process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1') {
             const excluded = { name: scenario.name, status: 'unverified', required: false, reason: 'Performance is outside CI acceptance' };
             caseResults.push(excluded);
@@ -6818,6 +6844,10 @@ async function runScenarios() {
         console.log(JSON.stringify(caseResults[caseResults.length - 1]));
     }
     fs.writeFileSync(path.join(workspaceRoot, 'host-results.json'), JSON.stringify(caseResults, null, 2));
+    if (resumed && process.env.LSDYNA_TEST_VSIX_EVIDENCE) {
+        fs.writeFileSync(path.join(process.env.LSDYNA_TEST_VSIX_EVIDENCE, 'editor-recovery.json'),
+            JSON.stringify({ ...resumed, cases: caseResults }, null, 2));
+    }
     if (remaining && process.env.LSDYNA_TEST_VSIX_EVIDENCE) {
         fs.writeFileSync(path.join(process.env.LSDYNA_TEST_VSIX_EVIDENCE, 'editor-remaining.json'), JSON.stringify({
             required: scenarios.filter(item => item !== assertInteractiveLatencyBaseline && item !== assertRendererContextMenuPasteAndCutAreScopedAndUndoable).map(item => item.name),

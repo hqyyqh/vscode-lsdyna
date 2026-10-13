@@ -188,16 +188,31 @@ async function main() {
         }
         fs.writeFileSync(path.join(evidenceRoot,'layouts.json'),JSON.stringify(layouts,null,2));
         if(await hash()!==before)throw Error('Viewer changed source bytes');
+        await evaluate(context, `(() => {
+            window.reloadTrace = [];
+            window.addEventListener('message', event => {
+                const message = event.data;
+                if (message?.method === 'largeFile/stateChanged') {
+                    const { revision, stale, indexing, indexingMessage, fileSize } = message.params;
+                    window.reloadTrace.push({ at: performance.now(), revision, stale, indexing, indexingMessage, fileSize });
+                }
+            });
+        })()`);
         fs.appendFileSync(file, '$ controlled external edit\n');
         const changed = await hash();
         const reload = await evaluate(context, '(' + (async () => {
             const wait=ms=>new Promise(r=>setTimeout(r,ms));
-            const until=async check=>{const deadline=performance.now()+20000;while(!check()){if(performance.now()>deadline)throw Error('Stale/reload timeout');await wait(25);}};
+            const until=async (check,budget=20000)=>{const deadline=performance.now()+budget;while(!check()){if(performance.now()>deadline)throw Error('Stale/reload timeout: '+JSON.stringify({status:document.querySelector('.status')?.innerText,warning:!!document.querySelector('.status.warning'),navigationDisabled:document.querySelector('.goto button')?.disabled,trace:window.reloadTrace}));await wait(25);}};
             await until(()=>document.querySelector('.status.warning button'));
             if(!document.querySelector('.goto button').disabled)throw Error('Stale viewer permits navigation');
             document.querySelector('.status.warning button').click();
-            await until(()=>!document.querySelector('.status.warning')&&!document.querySelector('.goto button').disabled);
-            return { staleDetected:true, staleNavigationBlocked:true, reloaded:true };
+            await until(()=>!document.querySelector('.status.warning'));
+            // Reload scans the same 200 MiB fixture as initial opening: use its execution budget.
+            await until(()=>{
+                if(document.querySelector('.status.warning'))throw Error('Reload became stale or failed: '+JSON.stringify(window.reloadTrace));
+                return !document.querySelector('.goto button').disabled;
+            },120000);
+            return { staleDetected:true, staleNavigationBlocked:true, reloaded:true, reloadTrace:window.reloadTrace };
         }).toString() + ')()');
         if(await hash()!==changed)throw Error('Reload changed source bytes');
         const evidence={...result,...reload,sourceUnchanged:true,initialSha256:before,externalEditSha256:changed};
