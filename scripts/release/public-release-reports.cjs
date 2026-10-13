@@ -22,6 +22,11 @@ function performanceReport(report) {
 }
 function exportHostReports(input, output) {
     fs.mkdirSync(output, { recursive: true });
+    const editor = path.join(input, 'editor-remaining.json');
+    if (fs.existsSync(editor)) {
+        const report = JSON.parse(fs.readFileSync(editor));
+        fs.writeFileSync(path.join(output, 'editor-remaining.json'), JSON.stringify({ required: report.required, cases: report.cases.map(item => pick(item, ['name', 'status', 'required', 'reason'])) }, null, 2));
+    }
     for (const [name, summarize] of [['acceptance.json', acceptanceReport], ['performance.json', performanceReport]]) {
         const file = path.join(input, name);
         if (fs.existsSync(file)) fs.writeFileSync(path.join(output, name), JSON.stringify(summarize(JSON.parse(fs.readFileSync(file))), null, 2));

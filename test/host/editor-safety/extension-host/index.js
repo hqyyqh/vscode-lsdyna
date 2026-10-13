@@ -6704,7 +6704,7 @@ async function runScenarios() {
     const caseInsensitiveIncludes = fs.existsSync(path.join(workspaceRoot, 'sub/part.key'));
     assert.ok(fs.existsSync(path.join(workspaceRoot, 'Sub/Part.key')), 'Include case fixture must exist');
     const caseResults = [];
-    for (const scenario of [
+    const scenarios = [
         assertPassiveOperationsDoNotWrite,
         assertSemanticEvidenceGatesInTheActualHost,
         assertCustomKeywordOwnershipInTheActualHost,
@@ -6788,7 +6788,10 @@ async function runScenarios() {
         assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged,
         assertRendererCtrlSlashFiresColumnZeroComment,
         assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible,
-    ]) {
+    ];
+    const remaining = process.env.LSDYNA_EDITOR_SAFETY_AFTER_IME === '1';
+    const selected = remaining ? scenarios.slice(scenarios.indexOf(assertCommittedImeTextIsEditorLocalAndUndoable) + 1) : scenarios;
+    for (const scenario of selected) {
         if (scenario === assertInteractiveLatencyBaseline && process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1') {
             const excluded = { name: scenario.name, status: 'unverified', required: false, reason: 'Performance is outside CI acceptance' };
             caseResults.push(excluded);
@@ -6814,6 +6817,12 @@ async function runScenarios() {
         console.log(JSON.stringify(caseResults[caseResults.length - 1]));
     }
     fs.writeFileSync(path.join(workspaceRoot, 'host-results.json'), JSON.stringify(caseResults, null, 2));
+    if (remaining && process.env.LSDYNA_TEST_VSIX_EVIDENCE) {
+        fs.writeFileSync(path.join(process.env.LSDYNA_TEST_VSIX_EVIDENCE, 'editor-remaining.json'), JSON.stringify({
+            required: scenarios.filter(item => item !== assertInteractiveLatencyBaseline && item !== assertRendererContextMenuPasteAndCutAreScopedAndUndoable).map(item => item.name),
+            cases: caseResults,
+        }, null, 2));
+    }
     const gaps = caseResults.filter(item => item.required !== false && item.status !== 'passed');
     if (gaps.length) throw new Error('Host acceptance incomplete: ' + gaps.map(item => item.name).join(', '));
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');

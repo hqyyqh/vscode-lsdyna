@@ -47,6 +47,21 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('runs only the post-IME editor scenarios in the remaining entry', async () => {
+        const source = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
+        const body = source.slice(source.indexOf('    const caseInsensitiveIncludes ='), source.indexOf('\nasync function run()')).trim().replace(/}$/, '');
+        const called = []; let evidence;
+        const context = { assert, path, workspaceRoot: 'fixture', process: { env: { LSDYNA_CI_FUNCTIONAL_ONLY: '1', LSDYNA_EDITOR_SAFETY_AFTER_IME: '1', LSDYNA_TEST_VSIX_EVIDENCE: 'evidence' } },
+            console: { log() {} }, vscode: { commands: { async executeCommand() {} } },
+            fs: { existsSync: () => true, writeFileSync(file, value) { if (file.endsWith('editor-remaining.json')) evidence = JSON.parse(value); } } };
+        for (const name of new Set(body.match(/\bassert[A-Z]\w+/g))) context[name] = Object.defineProperty(async () => called.push(name), 'name', { value: name });
+        await vm.runInNewContext('(async () => {' + body + '})()', context);
+        assert.equal(called[0], 'assertRendererImeCompositionIsLocalAndUndoable');
+        assert.ok(!called.some(name => /Latency|ContextMenu|assertAutoSave|assertCommittedIme/.test(name)));
+        assert.deepEqual(called, evidence.required.slice(evidence.required.indexOf('assertCommittedImeTextIsEditorLocalAndUndoable') + 1));
+        const result = await scenario({ selected: 'run-editor-safety-extension-host.cjs-after-ime' });
+        assert.equal(result.report.complete, false); assert.deepEqual(result.commands.slice(1), ['--after-ime']);
+    });
     it('runs only the autosave/IME pair without certifying complete acceptance', async () => {
         const result = await scenario({ selected: 'run-editor-safety-extension-host.cjs-autosave-committed-ime' });
         assert.equal(result.exitCode, undefined);
@@ -182,9 +197,9 @@ describe('installed acceptance executable and measured version', () => {
         for (const file of ['src/extension.ts', 'package-lock.json', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
         assert.deepEqual([...validateChanges(['test/host/release/host.cjs', 'test/scripts/host/hostInstrumentation.test.js'])], ['*']);
-        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime']);
+        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime', 'run-editor-safety-extension-host.cjs-after-ime']);
         assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
-            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime']);
+            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime', 'run-editor-safety-extension-host.cjs-after-ime']);
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);

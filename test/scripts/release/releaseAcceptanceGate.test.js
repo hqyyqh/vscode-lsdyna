@@ -2,6 +2,23 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { verify } = require("../../../scripts/release/verify-release-acceptance.cjs");
 describe('immutable release acceptance gate', () => {
+    it('composes editor coverage only from unchanged assertions and all remaining passes', () => {
+        const { combineEditor, editorNames } = require('../../../scripts/release/reuse-release-evidence.cjs');
+        const currentSource = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
+        const required = editorNames(currentSource), split = required.indexOf('assertAutoSaveFormatIsLocalAndUndoable');
+        const input = { currentSource, prefixSource: currentSource, pairSource: currentSource,
+            log: required.slice(0, split).map(name => JSON.stringify({ name, status: 'passed' })).join('\n'),
+            pairReport: { complete: false, cases: [{ name: 'run-editor-safety-extension-host.cjs-autosave-committed-ime', passed: true }] },
+            report: { cases: [{ name: 'run-editor-safety-extension-host.cjs-after-ime', passed: true }] },
+            remaining: { required, cases: required.slice(split + 2).map(name => ({ name, status: 'passed' })) } };
+        assert.deepEqual(combineEditor(input), required);
+        assert.throws(() => combineEditor({ ...input, log: '' }), /Missing prior/);
+        assert.throws(() => combineEditor({ ...input, pairSource: currentSource + '\nconst changedHelper = true;' }), /assertions changed/);
+        assert.throws(() => combineEditor({ ...input, prefixSource: currentSource + '\nconst changedHelper = true;' }), /helpers changed/);
+        assert.throws(() => combineEditor({ ...input, remaining: { required, cases: input.remaining.cases.slice(1) } }), /remaining editor/);
+        const failed = structuredClone(input.remaining); failed.cases[0].status = 'failed';
+        assert.throws(() => combineEditor({ ...input, remaining: failed }), /safety failed/);
+    });
     it('requires all six platform/version reports for exactly the candidate hash', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-gate-test-')), vsix = path.join(root, 'candidate.vsix');
         try {

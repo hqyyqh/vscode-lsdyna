@@ -6,6 +6,10 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
+      reuse_plan:
+        description: 'JSON buildRun and six host run IDs; empty builds fresh evidence'
+        type: string
+        default: ''
       publish:
         description: Publish to Visual Studio Marketplace and Open VSX
         required: true
@@ -22,8 +26,37 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ !inputs.reuse_plan }}
     needs: metadata
     uses: ./.github/workflows/public-ci.yml
+  reuse:
+    needs: metadata
+    if: ${{ inputs.reuse_plan != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify existing artifacts and acceptance provenance without rerunning tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_PLAN: ${{ inputs.reuse_plan }}
+        run: node scripts/release/reuse-release-evidence.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-reuse-bundle
+          path: |
+            packages
+            acceptance-evidence
+            reuse-verification.json
+          if-no-files-found: error
+          retention-days: 14
   metadata:
     runs-on: ubuntu-latest
     outputs:
@@ -76,8 +109,8 @@ jobs:
 
 
   publish:
-    needs: [build, metadata]
-    if: needs.metadata.outputs.publish == 'true'
+    needs: [build, reuse, metadata]
+    if: ${{ always() && needs.metadata.result == 'success' && needs.metadata.outputs.publish == 'true' && (needs.build.result == 'success' || needs.reuse.result == 'success') }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -92,13 +125,20 @@ jobs:
           cache: npm
       - run: npm ci
       - uses: actions/download-artifact@v4
+        if: ${{ !inputs.reuse_plan }}
         with:
           pattern: candidate-*
           path: packages
       - uses: actions/download-artifact@v4
+        if: ${{ !inputs.reuse_plan }}
         with:
           pattern: installed-*
           path: acceptance-evidence
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.reuse_plan != '' }}
+        with:
+          name: verified-reuse-bundle
+          path: .
       - name: Verify immutable release artifact and acceptance matrix
         run: |
           for target in win32-x64 linux-x64 darwin-arm64; do

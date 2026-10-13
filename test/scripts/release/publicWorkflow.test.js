@@ -65,6 +65,11 @@ describe('platform release workflow dependency closure', () => {
     });
     it('publishes only after the reusable checks and target-specific evidence verification', () => {
         const release = read('release.yml');
+        assert.equal(release.on.workflow_dispatch.inputs.publish.default, false);
+        assert.match(release.jobs.build.if, /!inputs.reuse_plan/);
+        assert.match(JSON.stringify(release.jobs.reuse), /reuse-release-evidence.cjs/);
+        assert.ok(release.jobs.publish.needs.includes('reuse'));
+        assert.match(release.jobs.publish.if, /needs.reuse.result == 'success'/);
         assert.equal(release.jobs.build.uses, './.github/workflows/public-ci.yml');
         assert.ok(release.jobs.publish.needs.includes('build'));
         const steps = release.jobs.publish.steps;
