@@ -24,7 +24,9 @@ const {
 } = require('../../core/project/includeSearchPathResolve');
 
 type IncludeTreeProviderOptions = {
+    loadProjectStructure?: (rootFile: string, options?: any, onProgress?: any, token?: any) => Promise<any>;
     resolveActiveUri?: () => any;
+    onSelectProject?: (rootFile: string) => void;
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
@@ -297,8 +299,10 @@ function isLsdynaFile(document) {
  */
 class LsdynaIncludeTreeProvider {
     resolveActiveUri: () => any;
+    onSelectProject?: (rootFile: string) => void;
     showSize = true;
     sortMode = 'tree';
+    loadProjectStructure?: (rootFile: string, options?: any, onProgress?: any, token?: any) => Promise<any>;
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
@@ -316,10 +320,12 @@ class LsdynaIncludeTreeProvider {
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
      * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Invalidate cache.
      */
-    constructor({ searchFileFromPaths, loadProjectSnapshot, invalidateProjectSnapshot, resolveActiveUri = getActiveUri }: IncludeTreeProviderOptions = {}) {
+    constructor({ searchFileFromPaths, loadProjectSnapshot, loadProjectStructure, invalidateProjectSnapshot, resolveActiveUri = getActiveUri, onSelectProject }: IncludeTreeProviderOptions = {}) {
         this.resolveActiveUri = resolveActiveUri;
+        this.onSelectProject = onSelectProject;
         this.searchFileFromPaths = searchFileFromPaths;
         this.loadProjectSnapshot = loadProjectSnapshot;
+        this.loadProjectStructure = loadProjectStructure;
         this.invalidateProjectSnapshot = invalidateProjectSnapshot;
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -411,7 +417,7 @@ class LsdynaIncludeTreeProvider {
         this.scanPhase = 'incomplete';
         this.updateTreeDescription();
         if (this.root && this.root === this.structureRoot) {
-            this.root.description = `${this.structureDescription} · ${i18n.get('scanReferencesIncomplete')}`;
+            this.root.description = `${this.structureDescription} · ${i18n.get(this.loadProjectStructure ? 'scanStructureIncomplete' : 'scanReferencesIncomplete')}`;
             this.refresh();
         }
     }
@@ -421,6 +427,7 @@ class LsdynaIncludeTreeProvider {
         const missing = new Set<string>();
         let incomplete = false;
         const visit = (item) => {
+            if (item.pending) return;
             if (item.scanFailed) incomplete = true;
             const key = normalizePathKey(item.filePath);
             if (isMissingIncludeItem(item)) missing.add(key);
@@ -431,22 +438,43 @@ class LsdynaIncludeTreeProvider {
         return { resolved, missing, incomplete };
     }
 
-    acceptStructure(snapshot, rootFile) {
+    acceptStructure(snapshot, rootFile, complete = false) {
         const root = this._buildRootFromSnapshot(snapshot, rootFile);
         if (!root) return;
         const { resolved, missing } = this._collectTreePaths(root);
         root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         this.structureDescription = root.description || '';
-        root.description = `${this.structureDescription} · ${i18n.get('scanReferencesPending')}`;
-        this.structureRoot = root;
-        this.root = root;
+        if (!complete) root.description = `${this.structureDescription} · ${i18n.get(snapshot.structureOnly ? 'scanStructureProgress' : 'scanReferencesPending')}`;
+        const changed = new Set<any>();
+        const reconcile = (previous, next) => {
+            if (!previous || previous.id !== next.id) return next;
+            const oldChildren = new Map(previous.children.map(child => [child.id, child]));
+            const children = next.children.map(child => reconcile(oldChildren.get(child.id), child));
+            const before = JSON.stringify([previous.label, previous.description, previous.contextValue,
+                previous.children.map(child => child.id)]);
+            const after = JSON.stringify([next.label, next.description, next.contextValue, children.map(child => child.id)]);
+            Object.assign(previous, next, { children });
+            if (before !== after) changed.add(previous);
+            return previous;
+        };
+        const previous = this.root;
+        this.root = reconcile(previous, root);
+        attachParentLinks(this.root, null);
+        this.structureRoot = this.root;
         this.resolvedPaths = resolved;
         this.missingPaths = missing;
-        this.refresh();
+        this.updateTreeDescription();
+        if (previous !== this.root) this._onDidChangeTreeData.fire(undefined);
+        else for (const item of changed) this._onDidChangeTreeData.fire(item);
     }
 
-    async scan() {
-        const uri = this.resolveActiveUri();
+    updateProjectStructure(snapshot) {
+        if (!this.loadProjectStructure || !this.root || normalizePathKey(this.root.filePath) !== normalizePathKey(snapshot.rootFile)) return;
+        this.scanPhase = 'complete'; this.acceptStructure(snapshot, snapshot.rootFile, true);
+    }
+
+    async scan(rootFile?: string) {
+        const uri = rootFile ? vscode.Uri.file(rootFile) : this.resolveActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
             const editor = vscode.window.activeTextEditor;
             const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
@@ -460,12 +488,14 @@ class LsdynaIncludeTreeProvider {
             vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
             return;
         }
+        this.onSelectProject?.(uri.fsPath);
         const generation = ++this.scanGeneration;
         const document = [vscode.window.activeTextEditor?.document, ...(vscode.workspace.textDocuments || [])]
             .find(candidate => candidate && !candidate.isClosed && normalizePathKey(candidate.uri.fsPath) === normalizePathKey(uri.fsPath));
         const version = document?.version;
+        const wasDirty = document?.isDirty;
         const isCurrent = () => generation === this.scanGeneration &&
-            (!document || (!document.isClosed && document.version === version));
+            (!document || (document.version === version && (!wasDirty || !document.isClosed)));
         this.scanPhase = 'structure';
         this.updateTreeDescription();
         let activeCancellationToken: any = null;
@@ -487,11 +517,14 @@ class LsdynaIncludeTreeProvider {
                     activeCancellationToken = scanToken;
 
                     let nextRoot = null;
-                    if (this.loadProjectSnapshot) {
+                    if (this.loadProjectStructure || this.loadProjectSnapshot) {
                         const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
-                        const snapshot = await this.loadProjectSnapshot(uri.fsPath, options, (event) => {
+                        const snapshot = await (this.loadProjectStructure || this.loadProjectSnapshot)(uri.fsPath, options, (event) => {
                             if (!isCurrent() || cancellationToken?.isCancellationRequested) return;
-                            if (event?.type === 'structureReady') {
+                            if (event?.type === 'structureProgress') {
+                                this.acceptStructure(event.snapshot, uri.fsPath);
+                                progress.report({ message: i18n.get('scannedFilesProgress', event.snapshot.files.length) });
+                            } else if (event?.type === 'structureReady') {
                                 this.acceptStructure(event.snapshot, uri.fsPath);
                                 this.scanPhase = 'references';
                                 progress.report({ message: i18n.get('scanReferencesProgress') });
@@ -558,9 +591,20 @@ class LsdynaIncludeTreeProvider {
      * @param {string} rootPath - Ancestor file path.
      * @returns {IncludeItem} Assembled tree item.
      */
-    _buildItemFromTreeNode(node, rootPath) {
-        const item = new IncludeItem(node.filePath, !node.missing);
-        if (node.cycle) {
+    _buildItemFromTreeNode(node, rootPath, parentId = '') {
+        const item = new IncludeItem(node.filePath, !node.missing && !node.pending);
+        item.id = parentId ? `${parentId}/${node.occurrenceId || `${node.fromFile}:${node.lineIndex}`}` : `include:${node.filePath}`;
+        if (node.pending) {
+            item.pending = true;
+            item.label = node.fileName;
+            item.description = i18n.get('projectIncludePending');
+            item.iconPath = new vscode.ThemeIcon('loading~spin');
+            item.command = undefined; item.resourceUri = undefined;
+            item.contextValue = 'includePending';
+            item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            item.tooltip = i18n.get('projectIncludePending');
+            return item;
+        } else if (node.cycle) {
             item.description = 'circular';
             item.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
@@ -569,7 +613,7 @@ class LsdynaIncludeTreeProvider {
             item.iconPath = new vscode.ThemeIcon('warning');
             item.collapsibleState = vscode.TreeItemCollapsibleState.None;
         } else {
-            item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode, rootPath || node.filePath));
+            item.children = (node.children || []).map(childNode => this._buildItemFromTreeNode(childNode, rootPath || node.filePath, item.id));
             item.collapsibleState = item.children.length > 0
                 ? vscode.TreeItemCollapsibleState.Collapsed
                 : vscode.TreeItemCollapsibleState.None;
@@ -583,6 +627,14 @@ class LsdynaIncludeTreeProvider {
             dirStr = relDir === '.' ? '' : relDir;
         }
         applyVividDescription(item, dirStr, this.showSize ?? true);
+        if (!node.cycle && !node.missing && ['waiting', 'scanning'].includes(node.scanState)) {
+            item.description = `${item.description || ''} · ${i18n.get(node.scanState === 'waiting' ? 'projectFileWaiting' : 'projectFileScanning')}`;
+            item.iconPath = new vscode.ThemeIcon(node.scanState === 'waiting' ? 'clock' : 'loading~spin');
+        }
+        if (node.scanState === 'failed') {
+            item.description = `${item.description || ''} · ${i18n.get('scanStructureIncomplete')}`;
+            item.iconPath = new vscode.ThemeIcon('warning');
+        }
 
         const tooltip = new vscode.MarkdownString();
         tooltip.appendMarkdown(`### ${i18n.get('includeFile')}: **${path.basename(node.filePath)}**\n\n`);
@@ -590,6 +642,8 @@ class LsdynaIncludeTreeProvider {
         if (node.cycle) {
             tooltip.supportThemeIcons = true;
             tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('circularDependency')}\n`);
+        } else if (node.scanState === 'failed') {
+            tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('scanStructureIncomplete')}\n`);
         } else if (!node.missing && item.children.length > 0) {
             tooltip.appendMarkdown(`- **${i18n.get('subIncludes')}**: ${item.children.length}\n`);
         }
@@ -759,6 +813,9 @@ class LsdynaIncludeTreeProvider {
             tooltip.appendMarkdown(`- **${i18n.get('path')}**: \`${item.filePath}\`\n`);
             if (item.fileSizeStr) {
                 tooltip.appendMarkdown(`- **${i18n.get('size')}**: \`${item.fileSizeStr}\`\n`);
+            }
+            if (item.scanFailed) {
+                tooltip.appendMarkdown(`- **${i18n.get('status')}**: ${i18n.get('scanStructureIncomplete')}\n`);
             }
             
             if (item.contextValue !== 'file-missing') {

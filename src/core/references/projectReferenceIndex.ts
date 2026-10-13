@@ -9,6 +9,7 @@ const {
     snapshotVisibleParameterBindings,
     getVisibleParameterBinding,
     resolveIntegerParameter,
+    resolveIntegerParameterInput,
 } = require('./parameterEnvironment');
 const { resolveReferenceValueSemantics } = require('./fieldReferenceClassifier');
 const { getDefinitionRegistryCatalog } = require('./definitionRegistry');
@@ -161,8 +162,8 @@ function targetCollections(index, kind, keyword, targetKind = null) {
 
 function resolveParameterizedDefinition(definition, bindings) {
     const input = definition && definition.idInput;
-    if (!input || input.kind !== 'parameter') return definition;
-    const resolution = resolveIntegerParameter(bindings, input.name, input.negated);
+    if (!input || !['parameter', 'expression'].includes(input.kind)) return definition;
+    const resolution = resolveIntegerParameterInput(bindings, input);
     if (!resolution.resolved || resolution.value <= 0) {
         return {
             ...definition,
@@ -293,7 +294,7 @@ function transformReasons(
         for (const key of INCLUDE_OFFSET_KEYS) {
             const input = transform.offsets?.[key];
             const value = !input || input.kind === 'blank' ? 0 : input.kind === 'numeric' ? input.value :
-                input.kind === 'parameter' ? resolveIntegerParameter(bindings, input.name, input.negated).value : null;
+                ['parameter', 'expression'].includes(input.kind) ? resolveIntegerParameterInput(bindings, input).value : null;
             if (value === 0) continue;
             offsetDepths[key] = (offsetDepths[key] || 0) + 1;
             const sum = includeOffsets[key] + value;
@@ -376,15 +377,17 @@ function recordParameterPoint(
     if (!index.parameterContextsByFile.get(filePath).includes(runtimeContext)) {
         index.parameterContextsByFile.get(filePath).push(runtimeContext);
     }
+    return point;
 }
 
-function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
+function* buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
     const occurrencesByParent = groupOccurrencesByParent(snapshot.graph);
     const visitCountsByFile = new Map();
     const parameterState = createParameterRuntimeState();
     const nativeEmState = require('../semantics/nativeEmReadState').createNativeEmReadState();
 
-    function visit(filePath, context, ancestry) {
+    function* visit(filePath, context, ancestry) {
+        yield;
         index.occurrenceCount += 1;
         const priorVisitCount = visitCountsByFile.get(filePath) || 0;
         visitCountsByFile.set(filePath, priorVisitCount + 1);
@@ -408,6 +411,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         };
         enterParameterFile(parameterState, context.occurrenceId, filePath);
         recordParameterPoint(index, filePath, runtimeParameterContext, -1, parameterState);
+        yield runtimeParameterContext;
 
         const actions = [
             ...(fileIndex?.nativeReadEvents || []).map(event => ({
@@ -443,24 +447,25 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         );
 
         for (const action of actions) {
+            yield;
             if (action.type === 'native-read') {
                 if (action.event.kind === 'input-format') {
                     nativeInputFormat = require('../parser/inputFormat').globalInputFormatFromKeywordLine(action.event.rawKeyword, nativeInputFormat);
                     continue;
                 }
                 const selected = nativeEmState.apply(action.event.variants?.[nativeInputFormat] || action.event, raw => {
-                    if (!raw.includes('&')) return raw;
+                    if (!/[&<]/.test(raw)) return raw;
                     const parsed = require('./referenceInputValue').parseNumericInput(raw);
-                    if (parsed.kind !== 'parameter') return raw;
-                    const value = resolveIntegerParameter(snapshotVisibleParameterBindings(parameterState), parsed.name, parsed.negated, true);
+                    if (!['parameter', 'expression'].includes(parsed.kind)) return raw;
+                    const value = resolveIntegerParameterInput(snapshotVisibleParameterBindings(parameterState), parsed, true);
                     return value.resolved ? String(value.value) : raw;
                 });
-                if (selected) runtimeParameterContext.nativeEmReadLayouts.set(action.event.startLine, selected);
+                if (selected) { runtimeParameterContext.nativeEmReadLayouts.set(action.event.startLine, selected); yield selected; }
                 continue;
             }
             if (action.type === 'parameter') {
                 applyParameterEvent(parameterState, action.event);
-                recordParameterPoint(
+                yield recordParameterPoint(
                     index,
                     filePath,
                     runtimeParameterContext,
@@ -472,7 +477,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             }
             if (action.type === 'definition') {
                 const bindings = action.definition && action.definition.idInput &&
-                    action.definition.idInput.kind === 'parameter'
+                    ['parameter', 'expression'].includes(action.definition.idInput.kind)
                     ? snapshotVisibleParameterBindings(parameterState)
                     : null;
                 addDefinitionOccurrence(
@@ -482,6 +487,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                     bindings,
                     bindings ? [...parameterState.uncertaintyReasons] : []
                 );
+                yield index.allDefinitionOccurrences[index.allDefinitionOccurrences.length - 1];
                 continue;
             }
 
@@ -545,7 +551,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             );
             childReasons.push(...transformState.reasons);
             const globalChangeStart = parameterState.globalChanges.length;
-            visit(childPath, {
+            yield* visit(childPath, {
                 occurrenceId: edge.occurrenceId,
                 occurrencePath: [...context.occurrencePath, edge.occurrenceId],
                 occurrencePathLabels: [...context.occurrencePathLabels, occurrenceLabel],
@@ -557,7 +563,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                 offsetDepths: transformState.offsetDepths,
                 inputFormatMode: edge.inputFormatOverride || nativeInputFormat,
             }, [...ancestry, childPath]);
-            recordParameterPoint(
+            yield recordParameterPoint(
                 index,
                 filePath,
                 runtimeParameterContext,
@@ -570,7 +576,7 @@ function buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
         leaveParameterFile(parameterState);
     }
 
-    visit(snapshot.rootFile, {
+    yield* visit(snapshot.rootFile, {
         occurrenceId: 'root',
         occurrencePath: ['root'],
         occurrencePathLabels: ['root'],
@@ -599,7 +605,7 @@ function buildLegacyFileIndex(index, files, fileIndexes) {
     }
 }
 
-function buildProjectReferenceIndex(snapshot) {
+function* buildProjectReferenceIndexSteps(snapshot) {
     if (!snapshot) {
         return emptyReferenceIndex();
     }
@@ -610,13 +616,15 @@ function buildProjectReferenceIndex(snapshot) {
             ? [...fileIndexes.keys()]
             : Object.keys(fileIndexes);
     const index = emptyReferenceIndex(files);
+    yield index;
     index.rootFile = snapshot.rootFile || null;
+    if (snapshot.failedFiles?.length) index.completenessReasons.push('project-scan-unavailable');
     const occurrences = snapshot.graph && snapshot.graph.includeOccurrences;
 
     if (snapshot.rootFile &&
         Array.isArray(occurrences) &&
         snapshot.graph.includeOccurrencesComplete !== false) {
-        buildOccurrenceAwareIndex(index, snapshot, fileIndexes);
+        yield* buildOccurrenceAwareIndex(index, snapshot, fileIndexes);
     } else {
         buildLegacyFileIndex(index, files, fileIndexes);
         index.completenessReasons.push('project-scan-unavailable');
@@ -624,6 +632,7 @@ function buildProjectReferenceIndex(snapshot) {
 
     let registryReferenceScanComplete = files.length > 0;
     for (const filePath of files) {
+        yield;
         const fileIndex = getFileIndex(fileIndexes, filePath);
         const registryReferences = fileIndex?.registryReferences;
         index.registryReferenceOccurrences.push(...(registryReferences?.referenceOccurrences || []).map(occurrence => ({
@@ -675,6 +684,30 @@ function buildProjectReferenceIndex(snapshot) {
     );
 
     return index;
+}
+
+function buildProjectReferenceIndex(snapshot) {
+    const steps = buildProjectReferenceIndexSteps(snapshot);
+    for (;;) { const next = steps.next(); if (next.done) return next.value; }
+}
+
+async function buildProjectReferenceIndexAsync(snapshot, token, budget = 64 * 1024 * 1024) {
+    const steps = buildProjectReferenceIndexSteps(snapshot);
+    let started = performance.now(), retained = 0;
+    const { estimateMemorySize } = require('../cache/memorySize');
+    for (;;) {
+        require('../scanner/scannerContracts').throwIfCancellationRequested(token);
+        const next = steps.next();
+        if (next.done) return next.value;
+        if (next.value) {
+            retained += estimateMemorySize(next.value, budget - retained);
+            if (retained > budget) throw new RangeError(`Reference context exceeds build budget (${budget} bytes; ${Object.keys(next.value).join(',')})`);
+        }
+        if (performance.now() - started >= 8) {
+            await new Promise(resolve => setImmediate(resolve));
+            started = performance.now();
+        }
+    }
 }
 
 function resolveReferenceDefinitions(referenceIndex, id, targetKinds, targetDefinitions = []) {
@@ -788,7 +821,7 @@ function selectReferenceTargetSearch(referenceIndex, id, targetSearch, transform
         const kinds = keywords.size ? [] : target.targetKinds;
         const definitions = resolveReferenceDefinitions(referenceIndex, targetId, target.targetKinds, target.targetKeywords)
             .filter(definition => !keywords.size ||
-                keywords.has(normalizeKeyword(definition.targetKeyword || definition.keyword)));
+                keywords.has(normalizeKeyword(definition.targetKeyword)) || keywords.has(normalizeKeyword(definition.keyword)));
         if (definitions.length) return { ready: true, target, definitions, reasons: [], ...extra };
         const reasons = [...(referenceIndex.completenessReasons || []),
             ...targetCoverageReasons(referenceIndex, kinds, target.targetKeywords, targetId),
@@ -868,7 +901,12 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
         for (const reason of point.reasons) {
             reasons.add(reason);
         }
-        const result = (options?.allowRealValue === true ? require('./parameterEnvironment').resolveNumericParameter : resolveIntegerParameter)(
+        const expressionResult = referenceValue.expression
+            ? require('./parameterExpression').evaluateParameterExpression(referenceValue.expression, name => point.bindings.get(name)) : null;
+        const result = expressionResult
+            ? expressionResult.resolved && options?.allowRealValue !== true && !Number.isSafeInteger(expressionResult.value)
+                ? { resolved: false, reason: 'parameter-value-unsafe' } : expressionResult
+            : (options?.allowRealValue === true ? require('./parameterEnvironment').resolveNumericParameter : resolveIntegerParameter)(
             point.bindings,
             referenceValue.parameterName,
             referenceValue.isSignedSwitch,
@@ -918,6 +956,8 @@ function resolveParameterReferenceAtLocation(referenceIndex, referenceValue, opt
 /** A layout controller is a value, not a reference ID: zero remains meaningful. */
 function analyzeIntegerParameterValueAtLocation(referenceIndex, rawValue, options) {
     const parsed = require('./referenceInputValue').parseNumericInput(rawValue);
+    if (parsed.kind === 'expression') return resolveParameterReferenceAtLocation(referenceIndex,
+        { expression: parsed.raw.slice(1, -1) }, { ...options, allowZero: true, allowRealInteger: true });
     if (parsed.kind !== 'parameter') return { resolved: false, reasons: ['parameter-syntax-unresolved'] };
     return resolveParameterReferenceAtLocation(referenceIndex, {
         parameterName: parsed.name, isSignedSwitch: parsed.negated,
@@ -926,6 +966,8 @@ function analyzeIntegerParameterValueAtLocation(referenceIndex, rawValue, option
 
 function analyzeNumericParameterValueAtLocation(referenceIndex, rawValue, options) {
     const parsed = require('./referenceInputValue').parseNumericInput(rawValue);
+    if (parsed.kind === 'expression') return resolveParameterReferenceAtLocation(referenceIndex,
+        { expression: parsed.raw.slice(1, -1) }, { ...options, allowZero: true, allowRealValue: true });
     if (parsed.kind !== 'parameter') return { resolved: false, reasons: ['parameter-syntax-unresolved'] };
     return resolveParameterReferenceAtLocation(referenceIndex, {
         parameterName: parsed.name, isSignedSwitch: parsed.negated,
@@ -1100,10 +1142,10 @@ function analyzeReference(
     let effectiveTargetDefinitions = referenceValue.targetDefinitions || options.targetDefinitions || [];
     let targetSearch = referenceValue.targetSearch || referenceValue.semanticRelation?.targetSearch;
     let parameterResolution = null;
-    if (referenceValue.kind === 'parameter') {
+    if (referenceValue.kind === 'parameter' || referenceValue.kind === 'expression') {
         parameterResolution = resolveParameterReferenceAtLocation(
             referenceIndex,
-            referenceValue,
+            referenceValue.kind === 'expression' ? { ...referenceValue, expression: referenceValue.raw.slice(1, -1) } : referenceValue,
             options
         );
         if (!parameterResolution.resolved) {
@@ -1350,6 +1392,7 @@ function attachResolvedTableChildren(
 
 module.exports = {
     buildProjectReferenceIndex,
+    buildProjectReferenceIndexAsync,
     resolveReferenceDefinitions,
     selectReferenceTargetSearch,
     analyzeReference,

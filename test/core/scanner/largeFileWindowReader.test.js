@@ -34,6 +34,9 @@ describe('largeFileWindowReader', () => {
         assert.equal(window.lines[0].lineNumber, 4097);
         assert.equal(window.lines[0].text, 'line-4097');
         assert.ok(window.lines.length <= 240);
+        const bounded = await readLargeFileWindow(filePath, { stride: 4096, lineCount: lines.length,
+            baseLine: 4096, offsets: [index.largeFileLineMap.offsets[1]] }, 4097);
+        assert.deepEqual(bounded.lines, window.lines);
     });
 
     it('bounds pathological lines and detects stale signatures', async () => {

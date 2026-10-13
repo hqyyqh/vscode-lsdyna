@@ -105,7 +105,11 @@ describe('manager transition answers stay with the prompted proposal', () => {
         const modal = new Promise(resolve => { answerModal = resolve; });
         const shown = new Promise(resolve => { modalShown = resolve; });
         const prepare = async stage => { if (boundary === stage) { preparationStarted(); await preparing; } };
+        const parameterContext = { flush: async () => { await prepare('parameters'); return false; } };
         const context = { module: { exports: {} }, vscode, i18n, keywordOptionsModel: initial,
+            nativeParameterContextForDocument: () => parameterContext,
+            getMainDeckContextForDocumentPath: () => ({ state: 'none' }),
+            nativeParameterRootVersions: new Map(), normalizeSnapshotRootKey: value => value,
             setTimeout: callback => { void prepare('yield').then(callback); },
             keywordStructureCatalog: { prepare: () => prepare('structure') },
             keywordOptionsPinned: true, keywordOptionsRefreshGeneration: 0, activeProjectCacheEpoch: 0,
@@ -197,7 +201,7 @@ describe('manager transition answers stay with the prompted proposal', () => {
             vscode.window.activeTextEditor = originalEditor;
         }
     }
-    for (const boundary of ['schema', 'structure', 'catalog', 'semantic', 'help', 'yield']) for (const answer of ['apply', 'discard'])
+    for (const boundary of ['schema', 'structure', 'catalog', 'semantic', 'help', 'yield', 'parameters']) for (const answer of ['apply', 'discard'])
         it(`rejects old ${answer} after an earlier ${boundary} refresh publishes`, () => run(boundary, answer));
     for (const answer of ['apply', 'discard', 'cancel'])
         it(`preserves same-proposal ${answer}`, () => run(null, answer));

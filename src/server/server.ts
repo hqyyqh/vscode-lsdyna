@@ -27,6 +27,7 @@ const connection = createConnection(ProposedFeatures.all);
 connection.onInitialize((params) => {
     const initOptions = params.initializationOptions || {};
     initializeSession({
+        readDocumentSource: request => connection.sendRequest(protocol.DOCUMENT_SOURCE_REQUEST, request),
         globalStoragePath: initOptions.globalStoragePath,
         entityMemoryBytes: initOptions.entityMemoryBytes,
         entityDiskBytes: initOptions.entityDiskBytes,
@@ -40,7 +41,8 @@ connection.onInitialize((params) => {
 
     return {
         capabilities: {
-            textDocumentSync: TextDocumentSyncKind.Incremental,
+            textDocumentSync: TextDocumentSyncKind.None,
+            experimental: { projectIndexProtocol: require('../shared/indexPages').INDEX_PROTOCOL_VERSION },
         },
     };
 });
@@ -56,6 +58,8 @@ connection.onRequest(protocol.LOAD_PROJECT_SNAPSHOT_REQUEST, async (params, canc
 });
 connection.onRequest(protocol.QUERY_ENTITY_REQUEST, (params, cancellationToken) =>
     handleRequest(protocol.QUERY_ENTITY_REQUEST, params, connection, cancellationToken));
+connection.onRequest(protocol.PROJECT_SESSION_REQUEST, (params, cancellationToken) =>
+    handleRequest(protocol.PROJECT_SESSION_REQUEST, params, connection, cancellationToken));
 
 // Bind custom request handler for retrieving cache manifests.
 connection.onRequest(protocol.GET_MANIFEST_ENTRIES_REQUEST, async (params) => {

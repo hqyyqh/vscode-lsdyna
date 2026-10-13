@@ -1,5 +1,7 @@
 'use strict';
 
+const { evaluateParameterExpression } = require('./parameterExpression');
+
 function createParameterRuntimeState() {
     return {
         globals: new Map(),
@@ -44,7 +46,20 @@ function acceptsDuplicate(state, existing) {
     return state.duplicationFlag === 2 || state.duplicationFlag === 4;
 }
 
-function createBinding(event, existing = null) {
+function createBinding(event, existing = null, state = null) {
+    let evaluated: any = {};
+    if (state && ['I', 'R'].includes(event.parameterType) &&
+        (event.expression || event.reason === 'parameter-definition-reference-unresolved')) {
+        const result = evaluateParameterExpression(event.rawValue,
+            name => getVisibleParameterBinding(state, name), { self: event.name });
+        if (result.resolved) {
+            const integer = event.parameterType === 'I';
+            const value = integer ? Math.trunc(result.value) : result.value;
+            evaluated = integer && !Number.isSafeInteger(value)
+                ? { value: null, valueState: 'unknown', reason: 'parameter-value-unsafe' }
+                : { value, valueState: integer ? 'integer' : 'real', reason: null, dependencyDepth: result.dependencyDepth };
+        } else evaluated = { value: null, valueState: 'unknown', reason: result.reason };
+    }
     return {
         name: event.name,
         rawName: event.rawName,
@@ -61,6 +76,7 @@ function createBinding(event, existing = null) {
         parameterUsageType: event.parameterUsageType || null,
         definitionLine: event.lineIndex,
         keyword: event.keyword,
+        ...evaluated,
     };
 }
 
@@ -76,7 +92,7 @@ function applyDefinition(state, event) {
         if (existingLocal && !acceptsDuplicate(state, existingLocal)) {
             return;
         }
-        frame.bindings.set(event.name, createBinding(event, existingLocal));
+        frame.bindings.set(event.name, createBinding(event, existingLocal, state));
         return;
     }
 
@@ -84,7 +100,7 @@ function applyDefinition(state, event) {
     if (existingGlobal && !acceptsDuplicate(state, existingGlobal)) {
         return;
     }
-    state.globals.set(event.name, createBinding(event, existingGlobal));
+    state.globals.set(event.name, createBinding(event, existingGlobal, state));
     state.globalChanges.push(event.name);
 }
 
@@ -150,6 +166,13 @@ function resolveIntegerParameter(bindings, name, negated = false, allowRealInteg
     };
 }
 
+function resolveIntegerParameterInput(bindings, input, allowRealInteger = false) {
+    if (input?.kind !== 'expression') return resolveIntegerParameter(bindings, input?.name, input?.negated, allowRealInteger);
+    const result = evaluateParameterExpression(input.raw.slice(1, -1), name => bindings?.get(name));
+    return result.resolved && !Number.isSafeInteger(result.value)
+        ? { resolved: false, reason: 'parameter-value-unsafe' } : result;
+}
+
 /** Layout values may be real; this does not relax integer reference IDs. */
 function resolveNumericParameter(bindings, name, negated = false) {
     const binding = bindings && bindings.get(String(name || '').toUpperCase());
@@ -167,6 +190,7 @@ module.exports = {
     snapshotVisibleParameterBindings,
     getVisibleParameterBinding,
     resolveIntegerParameter,
+    resolveIntegerParameterInput,
     resolveNumericParameter,
 };
 

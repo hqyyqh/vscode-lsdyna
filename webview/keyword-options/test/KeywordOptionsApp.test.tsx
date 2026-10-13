@@ -60,6 +60,38 @@ function linkedState(changed = false): KeywordOptionsViewState {
     });
 }
 
+it('shows every field choice regardless of the current value and selects without applying the file', async () => {
+    const initial = linkedState();
+    initial.cards[0].fields[0].choices = ['MIRROR', 'TRANSL', 'ROTATE'];
+    initial.cards[0].fields[0].value = 'TRANSL';
+    const t = transport(initial);
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        left: 10, right: 170, top: 30, bottom: 58, width: 160, height: 28, x: 10, y: 30, toJSON() {},
+    });
+    try {
+        render(<KeywordOptionsApp transport={t.api} />);
+        const input = await screen.findByRole('combobox', { name: 'TIMSTR' });
+        await userEvent.click(input);
+        await userEvent.keyboard('{ArrowDown}');
+        expect(await screen.findAllByRole('option')).toHaveLength(3);
+        const list = screen.getByRole('listbox');
+        Object.defineProperty(list, 'clientHeight', { value: 28 });
+        for (const [index, option] of screen.getAllByRole('option').entries()) {
+            Object.defineProperty(option, 'offsetTop', { value: index * 28 });
+            Object.defineProperty(option, 'offsetHeight', { value: 28 });
+        }
+        await userEvent.keyboard('{ArrowDown}');
+        expect(list.scrollTop).toBe(56);
+        await userEvent.keyboard('{Escape}');
+        expect(input).toHaveValue('TRANSL');
+        await userEvent.keyboard('{ArrowDown}');
+        await userEvent.click(screen.getByRole('option', { name: 'ROTATE' }));
+        expect(input).toHaveValue('ROTATE');
+        expect(t.api.apply).not.toHaveBeenCalled();
+        expect(screen.queryByRole('listbox')).toBeNull();
+    } finally { rect.mockRestore(); }
+});
+
 function selectorState(): KeywordOptionsViewState {
     const ids = ['9007199254740993', '2', '2', '&midA'];
     return { ...linkedState(), currentKeyword: '*MAT_ELASTIC', selectedInstanceId: 'i0', directoryStatus: 'ready',
@@ -285,6 +317,17 @@ test('shows a simple no-options state without internal diagnostics', async () =>
     await userEvent.click(screen.getByRole('button', { name: '打开手册' }));
     expect(api.locateSource).toHaveBeenCalledWith(1);
     expect(api.openManual).toHaveBeenCalledWith(1);
+});
+
+test.each(['zh', 'en'] as const)('explains a remaining write restriction in %s', async locale => {
+    const initial = { ...linkedState(), locale, selectedFieldId: 'TIMSTR' };
+    initial.cards[0].fields[0].editable = false;
+    initial.cards[0].fields[0].reason = 'native-file-write-unverified';
+    const { api } = transport(initial);
+    render(<KeywordOptionsApp transport={api} />);
+    expect(await screen.findByText(locale === 'zh'
+        ? /管理器暂不支持写入当前记录格式/ : /The manager cannot write this record format yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/部分信息尚未确认|Some information could not be confirmed/)).not.toBeInTheDocument();
 });
 
 test('replaces an empty read-only card shell with a concise source-edit message', async () => {

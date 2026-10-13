@@ -133,6 +133,7 @@ async function queryIndexedEntityId({
     snapshot,
     id,
     targetKind,
+    targetDefinitions = [],
     cancellationToken = null,
     definitionKeywords = runtimeDefinitionKeywords({ allowCandidate: false }),
     scanDefinitions = scanOnDemandDefinitions,
@@ -140,6 +141,7 @@ async function queryIndexedEntityId({
     collectReferences = collectRegistryReferenceMatches,
     queryReferences = queryRegistryReferences,
     onPhase = undefined,
+    onLocations = undefined,
     referenceIndex: suppliedReferenceIndex = undefined,
 } = {} as any) {
     let phaseStarted = performance.now();
@@ -159,7 +161,7 @@ async function queryIndexedEntityId({
 
     let referenceIndex = suppliedReferenceIndex || buildProjectReferenceIndex(snapshot);
     phase('reference-index');
-    const query = { id: entityId, targetKinds: [kind], targetDefinitions: [] };
+    const query = { id: entityId, targetKinds: [kind], targetDefinitions };
     const indexedDefinitions = definitionLocations(referenceIndex, query);
     const lookupKinds = new Set([kind]);
     for (const occurrence of referenceIndex.registryReferenceOccurrences || []) {
@@ -168,7 +170,16 @@ async function queryIndexedEntityId({
             for (const target of search) for (const candidate of target.targetKinds) lookupKinds.add(candidate);
         }
     }
-    const descriptors = selectOnDemandDefinitionDescriptors([...lookupKinds], [], definitionKeywords);
+    const descriptors = selectOnDemandDefinitionDescriptors([...lookupKinds], targetDefinitions, definitionKeywords);
+    const publishDefinitions = onLocations && (async definitions => {
+        const locations = definitions.filter(definition => !definition.targetKind || definition.targetKind === kind)
+            .map(definition => ({ filePath: definition.filePath, line: definition.idLine,
+                startCharacter: definition.idStartChar, endCharacter: definition.idEndChar,
+                role: 'definition', keyword: definition.keyword || definition.targetKeyword || '',
+                fieldName: definition.fieldName || 'ID', entityId: String(entityId), entityKind: kind,
+                ...(definition.title ? { entityName: definition.title } : {}) }));
+        for (let offset = 0; offset < locations.length; offset += 200) await onLocations(locations.slice(offset, offset + 200));
+    });
     let definitionLookup = { state: 'complete', definitions: [], reasons: [] } as any;
     if (descriptors.length > 0) {
         definitionLookup = await scanDefinitions({
@@ -176,10 +187,11 @@ async function queryIndexedEntityId({
             fileIndexes: snapshot.fileIndexes,
             effectiveId: entityId,
             targetKinds: [...lookupKinds],
-            targetDefinitions: [],
+            targetDefinitions,
             projectScoped: snapshot.scope !== 'single-file',
             cancellationToken,
             definitionKeywords,
+            ...(publishDefinitions ? { onDefinitions: publishDefinitions } : {}),
             ...(typeof scanBlockLines === 'function' ? { scanBlockLines } : {}),
         });
     } else if (!referenceIndex.indexedTargetKinds?.has(kind)) {
@@ -201,8 +213,14 @@ async function queryIndexedEntityId({
     referenceIndex = { ...referenceIndex, queryDefinitionLookup: { ...definitionLookup, id: entityId,
         targetKinds: descriptors.map(descriptor => descriptor.targetKind).filter(Boolean),
         targetDefinitions: descriptors.map(descriptor => descriptor.keyword) } };
+    if (onLocations) {
+        const definitions = indexedDefinitions.map(location => ({ ...location, role: 'definition', entityId: String(entityId), entityKind: kind }));
+        for (let offset = 0; offset < definitions.length; offset += 200) await onLocations(definitions.slice(offset, offset + 200));
+        if (!definitionLookup.definitionsStreamed) await publishDefinitions(definitionLookup.definitions || []);
+    }
     const references = await queryReferences({ referenceIndex,
         fileIndexes: snapshot.fileIndexes, query, cancellationToken, collectReferences,
+        ...(onLocations ? { onLocations } : {}),
         retainVerifiedMatchesOnIncomplete: true,
         ...(typeof scanBlockLines === 'function' ? { scanBlockLines } : {}) });
     referenceIndex = references.referenceIndex;
@@ -211,6 +229,14 @@ async function queryIndexedEntityId({
         scannedLines: referenceLookup?.scannedLines || 0 });
     if (references.state === 'cancelled') return { state: 'cancelled', id: entityId, targetKind: kind,
         locations: [], reasons: references.reasons || ['cancelled'], referenceIndex, definitionLookup };
+    if (onLocations) {
+        // Bounded fallback readers may return retained matches; persistent readers deliver them while reading pages.
+        for (let offset = 0; offset < references.locations.length; offset += 200)
+            await onLocations(references.locations.slice(offset, offset + 200).map(location => ({ ...location, role: 'reference' })));
+        const complete = references.state === 'complete' && definitionLookup.state === 'complete';
+        return { state: complete ? 'complete' : 'incomplete', locations: [],
+            reasons: complete ? [] : compactIndexedEntityReasons([...(references.reasons || []), ...(definitionLookup.reasons || [])]) };
+    }
 
     const fileBlocks = new Map((snapshot.fileIndexes instanceof Map
         ? [...snapshot.fileIndexes] : Object.entries(snapshot.fileIndexes))

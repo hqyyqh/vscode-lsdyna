@@ -1,7 +1,7 @@
 'use strict';
 
 // Increment whenever the persisted file-index shape or scanner semantics change.
-const SCANNER_VERSION = 61;
+const SCANNER_VERSION = 66;
 
 function createCancellationError(message = 'Operation cancelled') {
     const error = new Error(message);

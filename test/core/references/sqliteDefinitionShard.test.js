@@ -53,6 +53,28 @@ describe('SQLite streaming definition shards', function() {
         assert.equal((await store.page('changed', 'v1', 'node', 1, 'definition')).state, 'miss');
         await assert.rejects(buildSqliteDefinitionShard(store, 'stale', 'v1', file, index, 'p', options), /source revision is stale/);
     });
+    it('batches small blocks together while preserving each block template and bounded writes', async () => {
+        const { file, options } = await input();
+        fs.writeFileSync(file, '*KEYWORD\n' + Array.from({ length: 600 }, (_, i) =>
+            `*NODE\n${i + 1},0,0,0\n`).join('') + '*END\n');
+        const index = await buildFileIndex(file), sourceRevision = await entityFileRevision(file);
+        const writes = [], append = store.append.bind(store);
+        store.append = (build, records, token, templates) => {
+            writes.push({ count: records.length, bytes: Buffer.byteLength(JSON.stringify([records, templates])) });
+            return append(build, records, token, templates);
+        };
+        const result = await buildSqliteDefinitionShard(store, 'many-blocks', 'v1', file, index, 'p', { ...options, sourceRevision });
+        assert.equal(result.state, 'complete');
+        assert.equal(result.totalMatchCount, 600);
+        assert.ok(writes.length < 10, `Expected bounded batches, received ${writes.length} writes`);
+        assert.ok(writes.every(write => write.count <= 512 && write.bytes < 512 * 1024));
+        for (const id of [1, 300, 600]) {
+            const page = await store.page('many-blocks', 'v1', 'node', id, 'definition');
+            assert.equal(page.records.length, 1);
+            assert.equal(page.records[0].idLine, id * 2);
+            assert.equal(page.records[0].startLine, id * 2 - 1);
+        }
+    });
     it('writes block metadata only for the requested type and its format dependencies', async () => {
         const { file, options } = await input();
         fs.writeFileSync(file, '*KEYWORD\n*NODE\n1,0,0,0\n*DEFINE_CURVE\n7\n0,0\n1,1\n*END\n');

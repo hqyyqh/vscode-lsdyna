@@ -236,6 +236,8 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
 .reader-search-results small { color: var(--vscode-descriptionForeground); margin-top: 3px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .reader-search-results strong { overflow-wrap: anywhere; }
 .reader-search-results mark { background: var(--vscode-editor-findMatchHighlightBackground); color: inherit; }
+.reader-search-results button[aria-selected="true"] small { color: inherit; }
+.reader-search-results button[aria-selected="true"] mark { background: transparent; color: var(--vscode-list-focusHighlightForeground, inherit); text-decoration: underline; }
 
 /* Full panel width: no fixed max-width column; only horizontal padding. */
 .reader-content, .reader-footer {
@@ -387,6 +389,12 @@ summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-v
     white-space: normal;
 }
 /* Prose / default: fill the content column and wrap long DESCRIPTION cells. */
+.markdown-body .reader-table-scroll td.reader-identifier-cell,
+.markdown-body .reader-table-scroll td.reader-identifier-cell code {
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: normal;
+}
 .markdown-body .reader-table-scroll.reader-table--prose table,
 .markdown-body .reader-table-scroll.reader-table--default table {
     width: 100%;

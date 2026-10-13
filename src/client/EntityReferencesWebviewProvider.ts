@@ -69,6 +69,8 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
     private input = { targetKind: 'curve', id: '', scopePreference: 'auto' as EntityReferenceScopePreference };
     private scopeContext: ScopeContext = {};
     private visibleCounts = new Map<string, { definition: number; reference: number }>();
+    private visibleQueryRevision?: string;
+    private visibleQueryKey?: string;
     private locationsByToken = new Map<string, { session: any; location: any }>();
     private tokensByLocation = new WeakMap<object, string>();
     private pathLabelSource: any[] | undefined;
@@ -77,6 +79,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
     private message = '';
     private following = false;
     private searchPending = false;
+    private searchSequence = 0;
     private kindsReady: boolean;
     private groupedLocations = new WeakMap<any[], { definitions: any[]; references: any[] }>();
     private searchPicker: vscode.QuickPick<any> | undefined;
@@ -121,12 +124,13 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         if (this.pendingFocus) this.focusForm();
     }
 
-    setScopeContext(context: ScopeContext): void {
+    setScopeContext(context: ScopeContext, selectProject = false): void {
         const next = {
             filePath: context.filePath ? path.resolve(context.filePath) : undefined,
             projectRoot: context.projectRoot ? path.resolve(context.projectRoot) : undefined,
         };
-        if (JSON.stringify(next) === JSON.stringify(this.scopeContext)) return;
+        if (selectProject && next.projectRoot) this.input.scopePreference = 'project';
+        else if (JSON.stringify(next) === JSON.stringify(this.scopeContext)) return;
         this.scopeContext = next;
         this.publish();
     }
@@ -219,6 +223,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
 
     async search(): Promise<boolean> {
         if (this.searchPending) return true;
+        const sequence = ++this.searchSequence;
         this.searchPending = true;
         this.actions.stopFollow?.();
         this.setMessage('');
@@ -285,17 +290,22 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             void this.workspaceState?.update(LAST_SEARCH_KIND_KEY, selected.targetKind).then(undefined,
                 error => console.warn('Unable to save entity search preference', error));
             const scope = this.input.scopePreference === 'auto' ? 'file' : this.input.scopePreference;
+            // The picker owns this lock; a background query must not lock the next search.
+            this.searchPicker = undefined;
+            this.searchPending = false;
             const result = await this.actions.query(selected.targetKind, selected.id, scope);
-            if (!result) this.setMessage(i18n.get('entityReferencesIncompleteHint'));
+            if (!result && sequence === this.searchSequence) this.setMessage(i18n.get('entityReferencesIncompleteHint'));
             return result;
         } catch {
-            this.setMessage(i18n.get('entityReferencesIncompleteHint'));
+            if (sequence === this.searchSequence) this.setMessage(i18n.get('entityReferencesIncompleteHint'));
             return false;
         } finally {
             listeners.forEach(listener => listener.dispose());
             picker.dispose();
-            this.searchPicker = undefined;
-            this.searchPending = false;
+            if (this.searchPicker === picker) {
+                this.searchPicker = undefined;
+                this.searchPending = false;
+            }
         }
     }
 
@@ -425,7 +435,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             label: `${this.shortKindLabel(session.identity.targetKind)} ${session.identity.id}`,
             entityId: String(session.identity.id),
             entityKindLabel: this.shortKindLabel(session.identity.targetKind),
-            ...(definitions === 1 ? { entityName: groups.definitions[0].entityName,
+            ...(definitions === 1 && groups.definitions[0] && !session.scanning ? { entityName: groups.definitions[0].entityName,
                 keyword: groups.definitions[0].keyword } : {}),
             state: session.state === 'ready' ? 'ready' : session.state,
             pinned: !!session.pinned,
@@ -468,8 +478,8 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         };
     }
 
-    private viewState(page?: { baseRevision: number; role: 'definition' | 'reference'; start: number }): EntityReferencesViewState {
-        if (!page) this.locationsByToken.clear();
+    private viewState(page?: { baseRevision: number; role: 'definition' | 'reference'; start: number }, retainBaseRevision?: number): EntityReferencesViewState {
+        if (!page && retainBaseRevision === undefined) this.locationsByToken.clear();
         for (const key of this.visibleCounts.keys()) {
             if (!this.model.getSession(key)) this.visibleCounts.delete(key);
         }
@@ -478,16 +488,19 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             this.pathLabelSource = active?.locations;
             this.pathLabels = displayPathLabels((active?.locations || []).map((location: any) => location.filePath));
         }
-        const counts = active
+        let counts = active
             ? this.visibleCounts.get(active.key) || { definition: PAGE_SIZE, reference: PAGE_SIZE }
             : { definition: PAGE_SIZE, reference: PAGE_SIZE };
+        const previousCounts = { ...counts };
+        if (retainBaseRevision !== undefined) counts = {
+            definition: Math.max(PAGE_SIZE, counts.definition), reference: Math.max(PAGE_SIZE, counts.reference) };
         if (active && !this.visibleCounts.has(active.key)) this.visibleCounts.set(active.key, counts);
         const { definitions: allDefinitions, references: allReferences } = this.resultGroups(active);
         const selectedScope = active?.identity?.scope?.kind === 'project' ||
             (!active && this.input.scopePreference === 'project') ? 'project' : 'file';
         const status = !active ? 'empty' : active.state === 'ready' && active.locations.length === 0
             ? 'missing' : active.state;
-        return {
+        const state: EntityReferencesViewState = {
             locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en',
             following: this.following && !active?.pinned,
             revision: this.revision,
@@ -503,6 +516,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             },
             status,
             ambiguous: active?.resolution === 'ambiguous',
+            scanning: active?.scanning === true,
             activeSession: active ? this.sessionSummary(active) : null,
             definitions: allDefinitions.slice(page ? page.role === 'definition' ? page.start : counts.definition : 0,
                 counts.definition).map((location: any) =>
@@ -518,6 +532,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             hasMoreDefinitions: allDefinitions.length > counts.definition || !!active?.page?.next?.definition,
             hasMoreReferences: allReferences.length > counts.reference || !!active?.page?.next?.reference,
             reasons: [...(active?.reasons || [])],
+            reasonDetails: [],
             pinnedSessions: (this.model.pinnedKeys || [])
                 .map((key: string) => this.model.getSession(key))
                 .filter(Boolean)
@@ -562,6 +577,8 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 clear: i18n.get('entityReferencesClear'), openSide: i18n.getLanguage() === 'zh-cn' ? '侧边打开' : 'Open to side',
                 details: i18n.getLanguage() === 'zh-cn' ? '详情' : 'Details',
                 loading: i18n.get('entityReferencesLoading'), missing: i18n.get('entityReferencesMissing'),
+                partial: i18n.getLanguage() === 'zh-cn' ? '部分结果' : 'Partial results',
+                finding: i18n.getLanguage() === 'zh-cn' ? '已找到 {0} 处，仍在查找…' : 'Locations found: {0}. Still searching…',
                 invalid: i18n.get('entityReferencesInvalidId'),
                 openLargeFile: i18n.get('entityReferencesOpenLargeFile'),
                 modify: i18n.get('entityReferencesModify'),
@@ -574,12 +591,32 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
                 partialPageCount: i18n.get('entityReferencesPartialPageCount'),
             },
         };
+        const { boundedIndexPage, assertIndexPayload } = require('../shared/indexPages');
+        const records: any[] = boundedIndexPage([...state.definitions, ...state.references],
+            { ...state, definitions: [], references: [] });
+        const definitions = records.filter(row => row.role === 'definition');
+        const references = records.filter(row => row.role === 'reference');
+        state.hasMoreDefinitions ||= definitions.length < state.definitions.length;
+        state.hasMoreReferences ||= references.length < state.references.length;
+        state.definitions = definitions; state.references = references;
+        if (retainBaseRevision !== undefined) state.retainResults = { baseRevision: retainBaseRevision };
+        if (active) this.visibleCounts.set(active.key, page ? { ...counts,
+            [page.role]: page.start + (page.role === 'definition' ? definitions.length : references.length) }
+            : retainBaseRevision !== undefined ? {
+                definition: Math.max(previousCounts.definition, definitions.length),
+                reference: Math.max(previousCounts.reference, references.length),
+            } : { definition: definitions.length, reference: references.length });
+        return assertIndexPayload(state);
     }
 
     private publish(page?: { baseRevision: number; role: 'definition' | 'reference'; start: number }): void {
-        if (!page) this.visibleCounts.clear();
-        this.revision++;
         const active = this.model.getActiveSession?.();
+        const retain = !page && active?.page?.revision && this.visibleQueryRevision === active.page.revision &&
+            this.visibleQueryKey === active.key && ['ready', 'partial'].includes(active.state);
+        const baseRevision = this.revision;
+        if (!page && !retain) this.visibleCounts.clear();
+        this.visibleQueryRevision = active?.page?.revision; this.visibleQueryKey = active?.key;
+        this.revision++;
         if (this.view) {
             const project = active ? active.identity.scope.kind === 'project' : this.input.scopePreference === 'project';
             this.view.description = i18n.get(project ? 'keywordIndexScopeProject' : 'keywordIndexScopeCurrentFile');
@@ -591,7 +628,7 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             : this.input.scopePreference);
         if (this.participant) {
             this.messenger.sendNotification(EntityReferencesStateChangedNotification,
-                this.participant, this.viewState(page));
+                this.participant, this.viewState(page, retain ? baseRevision : undefined));
         }
     }
 

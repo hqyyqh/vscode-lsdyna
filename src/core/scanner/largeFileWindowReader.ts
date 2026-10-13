@@ -7,6 +7,7 @@ export type LargeFileLineMap = {
     stride: 4096;
     offsets: number[];
     lineCount: number;
+    baseLine?: number;
 };
 
 export type LargeFileSignature = { size: number; mtimeMs: number };
@@ -32,15 +33,16 @@ async function signature(filePath: string): Promise<LargeFileSignature> {
     return { size: value.size, mtimeMs: value.mtimeMs };
 }
 
-async function scanPhysicalLines(
+export async function scanPhysicalLines(
     filePath: string,
     startOffset: number,
     startLine: number,
-    accept: (line: Buffer, lineNumber: number, truncated: boolean) => boolean,
-    options: { cancellationToken?: CancellationToken; maxLineBytes: number; isCurrent?: () => boolean },
+    accept: (line: Buffer, lineNumber: number, truncated: boolean) => boolean | Promise<boolean>,
+    options: { cancellationToken?: CancellationToken; maxLineBytes: number; isCurrent?: () => boolean; endOffset?: number },
 ): Promise<void> {
     const stream = fs.createReadStream(filePath, {
         start: Math.max(0, startOffset),
+        ...(options.endOffset === undefined ? {} : { end: options.endOffset - 1 }),
         highWaterMark: 128 * 1024,
     });
     let parts: Buffer[] = [];
@@ -59,14 +61,14 @@ async function scanPhysicalLines(
         }
         if (value.length > remaining) lineTruncated = true;
     };
-    const finishLine = () => {
+    const finishLine = async () => {
         let line = partBytes === 0 ? Buffer.alloc(0) : Buffer.concat(parts, partBytes);
         if (line.length > 0 && line[line.length - 1] === 0x0d) line = line.subarray(0, line.length - 1);
         if (lineNumber === 0 && line.length >= 3 &&
             line[0] === 0xef && line[1] === 0xbb && line[2] === 0xbf) {
             line = line.subarray(3);
         }
-        const keepGoing = accept(line, lineNumber, lineTruncated);
+        const keepGoing = await accept(line, lineNumber, lineTruncated);
         lineNumber++;
         parts = [];
         partBytes = 0;
@@ -93,12 +95,12 @@ async function scanPhysicalLines(
                     break;
                 }
                 append(chunk.subarray(cursor, newline));
-                finishLine();
+                await finishLine();
                 cursor = newline + 1;
             }
             if (stopped) break;
         }
-        if (!stopped && (partBytes > 0 || lineTruncated)) finishLine();
+        if (!stopped && (partBytes > 0 || lineTruncated)) await finishLine();
     } finally {
         stream.destroy();
     }
@@ -132,10 +134,10 @@ export async function readLargeFileWindow(
         ? 0
         : Math.min(requested, Math.max(0, knownCount - 1));
     const checkpoint = lineMap
-        ? Math.min(Math.floor(targetLine / lineMap.stride), Math.max(0, lineMap.offsets.length - 1))
+        ? Math.min(Math.max(0, Math.floor((targetLine - (lineMap.baseLine || 0)) / lineMap.stride)), Math.max(0, lineMap.offsets.length - 1))
         : 0;
     const startOffset = lineMap?.offsets[checkpoint] || 0;
-    const startLine = lineMap ? checkpoint * lineMap.stride : 0;
+    const startLine = lineMap ? (lineMap.baseLine || 0) + checkpoint * lineMap.stride : 0;
     const lines: LargeFileWindowLine[] = [];
     const maxLines = Math.max(1, Math.min(300, options.maxLines || LARGE_FILE_WINDOW_LINES));
     const maxBytes = Math.max(1, Math.min(LARGE_FILE_WINDOW_MAX_BYTES,

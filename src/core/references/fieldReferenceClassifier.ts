@@ -1640,14 +1640,14 @@ function parseFieldReferenceValue(rawValue, info = null) {
     // Product features always pass an official-manual relation through getFieldReferenceInfo().
     if (!info?.relation) return parseLegacyReferenceValue(input, raw, info);
 
-    if (input.kind === 'parameter') {
+    if (input.kind === 'parameter' || input.kind === 'expression') {
         const targets = referenceTargets(info.relation);
         if (targets.targetKinds.length === 0 && targets.targetDefinitions.length === 0) return null;
         return {
-            kind: 'parameter',
-            parameterName: input.name,
+            kind: input.kind,
+            ...(input.kind === 'parameter' ? { parameterName: input.name } : {}),
             raw: input.raw,
-            isSignedSwitch: input.negated,
+            isSignedSwitch: input.kind === 'parameter' && input.negated,
             input,
             semanticRelation: info.relation,
             ...targets,

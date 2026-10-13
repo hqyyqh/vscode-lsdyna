@@ -603,7 +603,7 @@ describe('registryReferenceScanner', () => {
             .semantic.role, 'unparsed-input');
     });
 
-    it('keeps recognized reference expressions unresolved with a scoped coverage gap', async () => {
+    it('retains reference expressions for context-aware binding after physical scanning', async () => {
         const block = { filePath: '/fixture/main.k', keyword: '*LOAD_BODY_Z',
             rawKeyword: '*LOAD_BODY_Z', startLine: 0, endLine: 1 };
         for (const referenceCatalog of [LEGACY_REFERENCE_CATALOG, undefined]) {
@@ -613,25 +613,19 @@ describe('registryReferenceScanner', () => {
                 ]]), undefined, { referenceCatalog });
                 const occurrence = result.valueDomainOccurrences.find(item => item.fieldName === 'LCID');
                 assert.equal(occurrence.rawValue, raw);
-                assert.deepEqual(occurrence.semantic,
-                    { state: 'indeterminate', reason: 'parameter-expression-unresolved' });
-                assert.equal(result.referenceOccurrences.some(item => item.fieldName === 'LCID'), false);
+                assert.deepEqual(occurrence.semantic, { state: 'reference-potential', role: 'reference' });
+                const reference = result.referenceOccurrences.find(item => item.fieldName === 'LCID');
+                assert.equal(reference.referenceValue.kind, 'expression');
+                assert.equal(reference.referenceValue.raw, raw);
                 assert.equal(result.complete, true);
                 assert.deepEqual(result.reasons, []);
-                assert.equal(result.referenceCoverage.complete, false);
-                const gaps = result.referenceCoverage.gaps;
-                assert.equal(gaps.length, 1, 'The native field rule supersedes its duplicate semantic projection');
-                for (const gap of gaps) {
-                    assert.equal(gap.reason, 'parameter-expression-unresolved');
-                    assert.equal(gap.scope, 'namespaces');
-                    assert.deepEqual(gap.targetKinds, ['curve']);
-                    assert.equal(gap.startLine, 1);
-                }
+                assert.equal(result.referenceCoverage.complete, true,
+                    'Physical coverage is complete; binding must still resolve the symbolic value');
             }
         }
     });
 
-    it('keeps expression gaps on the operational coordinate path', () => {
+    it('retains expressions on the operational coordinate path', () => {
         const result = { complete: true, reasons: [], referenceOccurrences: [],
             valueDomainOccurrences: [], referenceCoverage: { complete: true, gaps: [] } };
         const relation = lsppReferenceRecordsForKeyword('LOAD_BODY_Z')
@@ -645,10 +639,10 @@ describe('registryReferenceScanner', () => {
                 maxReferenceOccurrences: 100, maxValueDomainOccurrences: 100 },
         });
         assert.deepEqual(result.valueDomainOccurrences[0].semantic,
-            { state: 'indeterminate', reason: 'parameter-expression-unresolved' });
-        assert.deepEqual(result.referenceOccurrences, []);
-        assert.equal(result.referenceCoverage.gaps[0].startLine, 4);
-        assert.deepEqual(result.referenceCoverage.gaps[0].targetKinds, ['curve']);
+            { state: 'reference-potential', role: 'reference' });
+        assert.equal(result.referenceOccurrences[0].referenceValue.kind, 'expression');
+        assert.equal(result.referenceOccurrences[0].lineIndex, 4);
+        assert.deepEqual(result.referenceCoverage.gaps, []);
         assert.equal(result.complete, true);
     });
 

@@ -28,6 +28,7 @@ type KeywordBlock = {
     displaySourceEndLine?: number;
     opaqueKind?: 'comment' | 'comment-noecho';
     opaqueStartCharacter?: number;
+    contentVersion?: number;
 };
 
 /**
@@ -292,9 +293,10 @@ class BlockIndex {
 
         const block = this.findBlockAtLine(startLine);
         if (!block || startLine === block.startLine) return false;
-        if (block.opaqueKind) return true;
+        if (block.opaqueKind) { block.contentVersion = (block.contentVersion || 0) + 1; return true; }
         const finalLine = getLineAfterChange(startLine);
         if (classifyKeywordLine(finalLine).isKeyword) return false;
+        block.contentVersion = (block.contentVersion || 0) + 1;
 
         const displaySourceEndLine = Number.isFinite(block.displaySourceEndLine)
             ? block.displaySourceEndLine

@@ -38,6 +38,15 @@ function memoryState(initial = []) {
 }
 
 describe('LsdynaEntityReferenceProvider', () => {
+    it('retains the in-flight query when the same identity is searched again', () => {
+        const provider = new LsdynaEntityReferenceProvider(), released = [];
+        try {
+            provider.publish(identity(1), { ...result(), state: 'partial', scanning: true,
+                release: retain => released.push(retain) });
+            provider.publish(identity(1), { state: 'loading', locations: [] });
+            assert.deepStrictEqual(released, [true]);
+        } finally { provider.dispose(); }
+    });
     it('appends worker pages once and rejects pages from a replaced query or revision', async () => {
         const provider = new LsdynaEntityReferenceProvider();
         let finish;
@@ -47,7 +56,7 @@ describe('LsdynaEntityReferenceProvider', () => {
         const session = provider.publish(identity(1), first());
         const pending = provider.loadNextPage(session, 'reference');
         assert.equal(await provider.loadNextPage(session, 'reference'), false);
-        finish({ status: 'ready', revision: 'v1', result: { locations: result(undefined, 1).locations.slice(1),
+        finish({ status: 'ready', revision: 'v1', result: { locations: result(undefined, 2).locations.slice(2),
             page: { appendRole: 'reference', next: {} } } });
         assert.equal(await pending, true);
         assert.equal(session.locations.length, 3);

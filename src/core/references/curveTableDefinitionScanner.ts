@@ -434,6 +434,8 @@ async function scanCurveTableDefinitionsFromFileIndex(
         cancellationToken?: { isCancellationRequested?: boolean };
         registryCatalog?: any;
         targetKinds?: string[];
+        definitionCache?: any;
+        maxRetainedBytes?: number;
     } = {}
 ) {
     const curves = [];
@@ -447,6 +449,22 @@ async function scanCurveTableDefinitionsFromFileIndex(
     const cancelledResult = () => ({ curves, tables, genericDefinitions, cancelled: true });
 
     const descriptors = new Map();
+    let retainedBytes = 0;
+    const retainedLimit = options.maxRetainedBytes ?? 64 * 1024 * 1024;
+    const parse = (block, text, kind, parser) => {
+        let value;
+        if (!block.contentIdentity || !options.definitionCache) value = parser(block, text);
+        else {
+            const key = JSON.stringify(['live-definition-block', block.contentIdentity, block.startLine, block.endLine, kind]);
+            let cached = options.definitionCache.get(key);
+            if (!cached) { cached = { value: parser(block, text) }; options.definitionCache.set(key, cached); }
+            // Tables add child bindings below; never mutate the cached physical parse.
+            value = structuredClone(cached.value);
+        }
+        retainedBytes += require('../cache/memorySize').estimateMemorySize(value, retainedLimit - retainedBytes);
+        if (retainedBytes > retainedLimit) throw new RangeError('Definition preview exceeds retained budget');
+        return value;
+    };
     for (let i = 0; i < fileIndex.keywordBlocks.length; i++) {
         if (isCancelled()) return cancelledResult();
         const block = fileIndex.keywordBlocks[i];
@@ -456,6 +474,9 @@ async function scanCurveTableDefinitionsFromFileIndex(
         const verifiedScanned = isVerifiedScannedDefinition(keyword, definitionKeywords);
         const curveDefinition = verifiedScanned && isCurveKeyword(keyword);
         const tableDefinition = verifiedScanned && isTableKeyword(keyword);
+        // Curves and tables share child lookup; other object queries need neither preview.
+        if ((curveDefinition || tableDefinition) && options.targetKinds?.length &&
+            !options.targetKinds.some(kind => ['curve', 'functionCurve', 'table'].includes(kind))) continue;
         if (!curveDefinition && !tableDefinition && !descriptors.has(normalized)) {
             descriptors.set(normalized, genericDefinitionDescriptor(keyword, definitionKeywords, options.registryCatalog));
         }
@@ -468,12 +489,12 @@ async function scanCurveTableDefinitionsFromFileIndex(
         const text = await readBlockText(block, genericDescriptor?.cardIndex);
         if (isCancelled()) return cancelledResult();
         if (curveDefinition) {
-            const definition = parseCurveBlock(block, text);
+            const definition = parse(block, text, 'curve', parseCurveBlock);
             if (definition) {
                 curves.push(definition);
             }
         } else if (tableDefinition) {
-            const definition = parseTableBlock(block, text);
+            const definition = parse(block, text, 'table', parseTableBlock);
             if (definition) {
                 tables.push(definition);
                 
@@ -491,7 +512,7 @@ async function scanCurveTableDefinitionsFromFileIndex(
                         if (isVerifiedScannedDefinition(nextKeyword, definitionKeywords) && isCurveKeyword(nextKeyword)) {
                             const curveText = await readBlockText(nextBlock);
                             if (isCancelled()) return cancelledResult();
-                            const curveDef = parseCurveBlock(nextBlock, curveText);
+                            const curveDef = parse(nextBlock, curveText, 'curve', parseCurveBlock);
                             if (curveDef) {
                                 const row = definition.rows[childCount];
                                 row.childIdRaw = curveDef.idRaw;
@@ -503,7 +524,7 @@ async function scanCurveTableDefinitionsFromFileIndex(
                         } else if (isVerifiedScannedDefinition(nextKeyword, definitionKeywords) && isTableKeyword(nextKeyword)) {
                             const tableText = await readBlockText(nextBlock);
                             if (isCancelled()) return cancelledResult();
-                            const tableDef = parseTableBlock(nextBlock, tableText);
+                            const tableDef = parse(nextBlock, tableText, 'table', parseTableBlock);
                             if (tableDef) {
                                 const row = definition.rows[childCount];
                                 row.childIdRaw = tableDef.idRaw;
@@ -520,7 +541,8 @@ async function scanCurveTableDefinitionsFromFileIndex(
                 }
             }
         } else {
-            const definition = parseGenericDefineBlock(block, text, genericDescriptor);
+            const definition = parse(block, text, genericDescriptor.targetKind || 'generic',
+                (block, text) => parseGenericDefineBlock(block, text, genericDescriptor));
             if (definition) {
                 genericDefinitions.push(definition);
             }

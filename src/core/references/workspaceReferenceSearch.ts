@@ -41,7 +41,7 @@ function effectiveWorkspaceSearchId(referenceValue, analysis = null) {
         analysis.transformResolution.resolved !== true) {
         return null;
     }
-    if (referenceValue.kind === 'parameter' &&
+    if (['parameter', 'expression'].includes(referenceValue.kind) &&
         !(analysis && analysis.parameterResolution && analysis.parameterResolution.resolved)) {
         return null;
     }

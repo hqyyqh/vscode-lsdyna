@@ -49,6 +49,8 @@ export type EntityReferencesViewState = {
     revision: number;
     /** A bounded next page, appended only to this exact preceding view revision. */
     appendPage?: { baseRevision: number; role: 'definition' | 'reference' };
+    /** Progress updates replace matching visible positions, preserving manually requested pages. */
+    retainResults?: { baseRevision: number };
     input: {
         targetKind: string;
         id: string;
@@ -64,6 +66,7 @@ export type EntityReferencesViewState = {
     };
     status: EntityReferenceViewStatus;
     ambiguous?: boolean;
+    scanning?: boolean;
     activeSession: EntityReferenceSessionSummary | null;
     definitions: EntityReferenceLocationItem[];
     references: EntityReferenceLocationItem[];
@@ -71,6 +74,7 @@ export type EntityReferencesViewState = {
     hasMoreDefinitions: boolean;
     hasMoreReferences: boolean;
     reasons: string[];
+    reasonDetails?: string[];
     pinnedSessions: EntityReferenceSessionSummary[];
     message: string;
     largeFileOffer?: {

@@ -118,6 +118,7 @@ describe('project contracts', () => {
             '.github/release-appendix.md',
             '.github/release-draft.md',
             '.github/workflows/ci.yml',
+            '.github/workflows/ci-node.yml',
             'keywords/field_data_translation_review.py',
         ], errors);
         assert.deepEqual(errors, [

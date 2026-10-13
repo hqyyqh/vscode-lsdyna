@@ -180,7 +180,7 @@ describe('createFileScanCacheStore', () => {
         assert.equal(retrieved, null);
     });
 
-    it('rejects version 18 expression scans that falsely claimed complete reference coverage', async () => {
+    it('rejects version 18 expression scans and preserves deferred expression references', async () => {
         const { buildFileIndex } = require('../../../src/core/scanner/fileIndexBuilder');
         const filePath = path.join(tempDir, 'expression.k');
         fs.writeFileSync(filePath, '*LOAD_BODY_Z\n<17>,9806,0,0,0,0,0\n*END');
@@ -197,8 +197,10 @@ describe('createFileScanCacheStore', () => {
         await store.set(filePath, signature, current);
         const cached = await store.get(filePath, signature);
         assert.deepEqual(cached, current);
-        assert.ok(cached.fileIndex.registryReferences.referenceCoverage.gaps.some(gap =>
-            gap.reason === 'parameter-expression-unresolved' && gap.targetKinds.includes('curve')));
+        const reference = cached.fileIndex.registryReferences.referenceOccurrences.find(item => item.fieldName === 'LCID');
+        assert.equal(reference.referenceValue.kind, 'expression');
+        assert.equal(reference.referenceValue.raw, '<17>');
+        assert.ok(reference.referenceValue.targetKinds.includes('curve'));
     });
 
     it('rejects version 19 scans that split function arguments into later fields', async () => {
@@ -221,12 +223,15 @@ describe('createFileScanCacheStore', () => {
             item.referenceValue?.id === 9806), false);
     });
 
-    it('rejects version 20 caches that silently omitted missing blocker coverage', async () => {
+    it('rejects version 20 caches and preserves conditional expressions for contextual resolution', async () => {
         const { buildFileIndex } = require('../../../src/core/scanner/fileIndexBuilder');
         const filePath = path.join(tempDir, 'missing-blockers.k');
         fs.writeFileSync(filePath, '*PART\nOriginal blocker cache fixture\n1,0,17,0,0,0,<ADPOPT>,0\n*END');
         const current = { fileIndex: await buildFileIndex(filePath) };
-        assert.equal(current.fileIndex.registryReferences.referenceCoverage.complete, false);
+        const reference = current.fileIndex.registryReferences.referenceOccurrences.find(item => item.fieldName === 'ADPOPT');
+        assert.equal(reference.referenceValue.kind, 'expression');
+        assert.equal(reference.referenceValue.raw, '<ADPOPT>');
+        assert.equal(reference.semantic.state, 'reference-potential');
         const legacy = structuredClone(current);
         legacy.fileIndex.scannerVersion = 20;
         legacy.fileIndex.registryReferences.complete = true;

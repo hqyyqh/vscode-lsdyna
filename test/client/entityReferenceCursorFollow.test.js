@@ -100,3 +100,42 @@ describe('reference query cancellation forwarding', () => {
         assert.equal(result, null); assert.equal(queries, 0);
     });
 });
+
+
+describe('shared query source ownership', () => {
+    it('keeps progressive results and pages when an unrelated preview replaces a clean document', async () => {
+        const { fakeDoc, vscodeMock: vscode } = require('../support/helpers');
+        const original = vscode.workspace.textDocuments;
+        const filePath = path.resolve('preview-root.k');
+        const document = Object.assign(fakeDoc('*KEYWORD\n*END', filePath), { version: 1, isClosed: false });
+        const model = new LsdynaEntityReferenceProvider();
+        let sourceChanged = false, released = 0;
+        vscode.workspace.textDocuments = [document];
+        try {
+            const result = await handleIndexedEntityIdQueryCommand({
+                loadProjectSnapshot() { throw Error('unexpected snapshot'); },
+                queryEntity() { throw Error('must use shared progressive query'); },
+                async queryEntityProgressive(_request, progress) {
+                    document.isClosed = true;
+                    vscode.workspace.textDocuments = [fakeDoc('*END', path.resolve('unrelated.k'))];
+                    const response = { status: 'ready', revision: 'r1', result: { state: 'complete', locations: [],
+                        release() { released++; },
+                        async loadPage() { return { status: sourceChanged ? 'stale' : 'ready', locations: [] }; },
+                    } };
+                    progress(response);
+                    assert.equal(model.getActiveSession().state, 'ready');
+                    return response;
+                },
+            }, { targetKind: 'curve', id: 101 }, {
+                scope: { kind: 'project', rootFile: filePath, snapshot: { structureOnly: true } },
+                entityReferenceProvider: model, presentResult: false, silentStatus: true,
+                runWithProgress: operation => operation(),
+            });
+            assert.equal(result.state, 'complete');
+            assert.equal(released, 0);
+            assert.equal((await result.loadPage('next')).status, 'ready');
+            sourceChanged = true;
+            assert.equal((await result.loadPage('next')).status, 'stale', 'real worker source invalidation still reaches the UI');
+        } finally { model.dispose(); vscode.workspace.textDocuments = original; }
+    });
+});

@@ -38,6 +38,19 @@ const TEST_DEFINITION_KEYWORDS = {
 };
 
 describe('onDemandDefinitionScanner', () => {
+    it('reads declared non-first identity fields in standard, long and comma records', () => {
+        const descriptor = runtimeDefinitionKeywords().onDemand.DEFINE_DE_MESH_BEAM;
+        assert.equal(descriptor.fieldIndex, 5);
+        for (const [formatMode, line, start] of [
+            ['standard', ' '.repeat(50) + '42'.padStart(10), 58],
+            ['long', ' '.repeat(100) + '42'.padStart(20), 118],
+            ['standard', '0,0,0,0,0,42', 10],
+        ]) {
+            const candidate = parseOnDemandIdCandidates(line, descriptor, { formatMode })[0];
+            assert.equal(candidate.input.value, 42);
+            assert.equal(candidate.startCharacter, start);
+        }
+    });
     describe('occurrence coverage from disk', () => {
         let root;
         beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-on-demand-occurrences-')); });

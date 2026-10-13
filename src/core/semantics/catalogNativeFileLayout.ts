@@ -263,7 +263,7 @@ export function nativeGenericControlValue(branch: { blankValue: number }, raw: s
     const value = Number(text);
     return Number.isInteger(value) && value >= -2147483648 && value <= 2147483647 ? value : NaN;
 }
-export const NATIVE_FILE_SOURCE = "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb";
+export const NATIVE_FILE_SOURCE = "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168";
 
 // ten source bytes, before the ordinary fixed/comma/LONG field decoder.
 // The live file directory subkinds differ from the GUI directory subkinds.

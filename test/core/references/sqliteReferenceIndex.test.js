@@ -37,6 +37,48 @@ describe('SQLite reference candidates', function() {
     const deck = '*KEYWORD\n*BOUNDARY_SPC_NODE\n1,0,1,1,1,0,0,0\n*BOUNDARY_SPC_NODE\n2,0,1,1,1,0,0,0\n*END\n';
     const comparable = value => ({ state: value.state, locations: value.locations, reasons: value.reasons });
 
+    it('keeps a shared type scan alive after its first result subscriber leaves', async () => {
+        const { root, options } = await fixture(deck);
+        const stored = await open(root);
+        let release, entered;
+        const started = new Promise(resolve => { entered = resolve; });
+        const gate = new Promise(resolve => { release = resolve; });
+        let scans = 0;
+        const scanBlockLines = async (...args) => { scans++; entered(); await gate; return scanBlockLinesFromDisk(...args); };
+        const token = { isCancellationRequested: false };
+        const first = stored.query({ ...options, query: query(1), cancellationToken: token, scanBlockLines,
+            onLocations() { if (token.isCancellationRequested) { const error = new Error('Reader left'); error.name = 'CancellationError'; throw error; } } });
+        const rejected = assert.rejects(first, { name: 'CancellationError' });
+        await started;
+        const second = stored.query({ ...options, query: query(2), scanBlockLines });
+        while (![...stored.fallback.pending.values()].some(entry => entry.subscribers.size === 2))
+            await new Promise(resolve => setTimeout(resolve, 5));
+        token.isCancellationRequested = true; release();
+        await rejected;
+        const result = await second;
+        assert.equal(result.locations.length, 1);
+        assert.equal(scans, 2, 'one scan per block, shared across IDs');
+    });
+
+    it('emits confirmed references while the source block is still being read', async () => {
+        const { root, options } = await fixture('*KEYWORD\n*ELEMENT_SHELL\n' +
+            Array.from({ length: 300 }, (_, i) => `${i + 1},7,1,2,3,4\n`).join('') + '*END\n');
+        const stored = await open(root), locations = [];
+        let checkpoint;
+        const result = await stored.query({ ...options, query: query(1),
+            onLocations: rows => { locations.push(...rows); },
+            scanBlockLines: (block, visit, token) => scanBlockLinesFromDisk(block, async (...args) => {
+                await visit(...args);
+                if (args[1] === 252) {
+                    checkpoint = locations.slice();
+                }
+            }, token) });
+        assert(checkpoint?.length > 0, 'the first batch must precede completion of this block');
+        assert(checkpoint.every(row => row.line <= 252));
+        assert.equal(result.state, 'complete', JSON.stringify(result.reasons));
+        assert.equal(new Set(locations.map(row => row.line)).size, 300);
+    });
+
     it('restores another ID after reopening without scanning model content', async () => {
         const { root, options, reads } = await fixture(deck);
         const first = await open(root);
@@ -59,6 +101,20 @@ describe('SQLite reference candidates', function() {
             assert.deepEqual(comparable(actual), comparable(expected));
             assert.notEqual(actual.state, 'complete');
         }
+    });
+    it('persists large incomplete coverage separately from the completion record', async () => {
+        const { root, options } = await fixture('*KEYWORD\n' + '*BOUNDARY_SPC_NODE\n1,0,1,1,1,0,0,0\n'.repeat(1400) + '*END\n');
+        const stored = await open(root);
+        const partial = await stored.query({ ...options, query: query(1),
+            scanBlockLines: async () => ({ complete: false, reason: 'on-demand-reference-scan-incomplete' }) });
+        assert.notEqual(partial.state, 'complete');
+        assert.equal(partial.referenceLookup.scannedBlocks, 1400);
+        const saved = await stores[0].get("SELECT coverage FROM generations WHERE state='published'");
+        assert(Buffer.byteLength(saved.coverage) < 1024, 'completion must not contain the complete coverage collection');
+        assert.equal(JSON.parse(saved.coverage).records, 1400);
+        const restored = await stored.query({ ...options, query: query(1),
+            scanBlockLines: () => { throw Error('coverage reuse must not rescan'); } });
+        assert.deepEqual(comparable(restored), comparable(partial));
     });
     it('falls back after database failure and rejects a same-size changed source', async () => {
         const { root, options, file } = await fixture(deck);

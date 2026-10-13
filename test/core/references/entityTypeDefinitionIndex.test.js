@@ -41,6 +41,19 @@ describe('entity type definition shards', () => {
         assert.equal(reads.get(files[1]), before.get(files[1]));
         assert.equal((await scanIndexedTypeDefinitions({ ...options, effectiveId: 1 }, cache)).definitions.length, 0);
     });
+    it('publishes a confirmed file result before reading the next file', async () => {
+        const { options, files } = await input();
+        const batches = [], read = options.scanBlockLines;
+        const result = await scanIndexedTypeDefinitions({ ...options, effectiveId: 1,
+            onDefinitions: async rows => { batches.push(...rows); },
+            scanBlockLines: (block, visit, token) => {
+                if (block.filePath === files[1]) assert.equal(batches[0]?.id, 1);
+                return read(block, visit, token);
+            },
+        }, new EntityQueryCache());
+        assert.equal(result.state, 'complete');
+        assert.equal(batches.length, 1);
+    });
     it('falls back without a complete type cache when the managed budget is zero', async () => {
         const { options } = await input(), cache = new EntityQueryCache(0);
         const result = await scanIndexedTypeDefinitions({ ...options, effectiveId: 2 }, cache);

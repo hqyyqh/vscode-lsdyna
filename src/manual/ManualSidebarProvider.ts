@@ -367,8 +367,18 @@ body {
   font-size: var(--vscode-font-size);
   margin: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: 8px 0;
 }
+html { scrollbar-color: auto; scrollbar-width: auto; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { border-radius: 0; background: var(--vscode-scrollbarSlider-background); }
+::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+::-webkit-scrollbar-thumb:active { background: var(--vscode-scrollbarSlider-activeBackground); }
+body > :not(#toc):not(.search-panel) { margin-left: 8px; margin-right: 8px; }
+#toc, .search-results { padding: 0 8px; }
+.search-status { margin: 0 8px; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
@@ -390,7 +400,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 1px 
 .chapter__sections { padding: 0 0 4px 8px; }
 .section { background: transparent; border: 0; border-radius: 2px; display: block; line-height: 1.45; padding: 4px 4px 4px 22px; text-align: left; overflow-wrap: anywhere; width: 100%; }
 .section:hover { background: var(--vscode-list-hoverBackground); }
-.section.active, .result-row.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.section.active, .result-row.active { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+body.has-focus .section.active, body.has-focus .result-row.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .empty { color: var(--vscode-descriptionForeground); line-height: 1.6; padding: 8px; }
 .load-error { margin: 0; padding: 4px 8px; }
 .retry-load, .search-retry { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid var(--vscode-contrastBorder, transparent); padding: 5px 8px; white-space: normal; }
@@ -420,13 +431,16 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 1px 
 .result-group__title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: .9em; font-weight: 600; }
 .result-group__count { flex: 0 0 auto; margin-left: 6px; color: var(--vscode-descriptionForeground); font-size: .85em; }
 .result-row { border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent)); }
-.result-row:hover, .result-row:focus-within { background: var(--vscode-list-hoverBackground); }
+.result-row:not(.active):hover, .result-row:not(.active):focus-within { background: var(--vscode-list-hoverBackground); color: var(--vscode-list-hoverForeground, var(--vscode-foreground)); }
 .result-row:focus-within { box-shadow: inset 2px 0 var(--vscode-focusBorder); }
 .search-result { background: transparent; border: 0; display: block; line-height: 1.5; padding: 9px 6px 7px; text-align: left; width: 100%; }
 .search-result strong { display: block; font-family: var(--vscode-editor-font-family, monospace); font-size: .95em; font-weight: 500; overflow-wrap: anywhere; }
 .search-result small { display: block; color: var(--vscode-descriptionForeground); font-size: .9em; line-height: 1.6; margin-top: 5px; overflow-wrap: anywhere; }
 .search-result .result-source { font-size: .85em; margin: 0 0 5px; }
 mark { background: transparent; color: var(--vscode-list-highlightForeground, var(--vscode-focusBorder)); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.result-row.active small, .result-row.active .result-copy { color: inherit; }
+.result-row.active mark { color: inherit; }
+.result-row.active { outline: 1px solid var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
 .result-actions { display: flex; justify-content: flex-end; padding: 0 5px 6px; min-height: 28px; visibility: hidden; }
 .result-row:hover .result-actions, .result-row:focus-within .result-actions, .result-row.active .result-actions { visibility: visible; }
 .result-copy { background: transparent; border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent)); border-radius: 3px; padding: 2px 6px; font-size: .85em; line-height: 1.4; white-space: normal; }
@@ -435,7 +449,7 @@ mark { background: transparent; color: var(--vscode-list-highlightForeground, va
 #toc.hidden { display: none !important; }
 @media (max-height: 350px) {
   body { overflow: auto; }
-  .search-panel, #toc { flex: 0 0 auto; }
+  .search-panel, #toc { flex: 0 0 auto; overflow: visible; }
   .search-results { flex: 0 0 auto; overflow: visible; }
 }
 </style>
@@ -445,6 +459,11 @@ ${searchChrome}
 <div id="toc">${content}</div>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
+const updateFocus = () => document.body.classList.toggle('has-focus', document.hasFocus());
+window.addEventListener('focus', updateFocus);
+window.addEventListener('blur', updateFocus);
+document.addEventListener('focusin', updateFocus);
+updateFocus();
 const revision = ${this.pageRevision};
 const labels = ${JSON.stringify(labels)};
 const DEBOUNCE_MS = 250;

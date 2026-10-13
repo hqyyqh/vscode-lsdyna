@@ -92,6 +92,7 @@ out/runtime/field_help_zh.delta.json.gz
 !keywords/runtime/engineering/contactThermal.json
 !keywords/runtime/engineering/runtimeSemanticRelationCorrections.json
 !keywords/runtime/engineering/runtimeTableLayoutCorrections.json
+!keywords/runtime/engineering/fileWriteLayouts.json
 
 node_modules/@vscode/sqlite3/build/**
 node_modules/@vscode/sqlite3/deps/**

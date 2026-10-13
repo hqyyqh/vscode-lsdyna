@@ -205,13 +205,13 @@ describe('registryReferenceNetwork', () => {
     });
     const createTempDirectory = require('../../support/tempDirectories').trackTempDirectories();
 
-    it('keeps default expression queries incomplete without blocking unrelated namespaces', async function () {
+    it('resolves supported expressions and scopes unresolved expressions to their reference namespace', async function () {
         this.timeout(10_000); // Builds and verifies six independent on-disk project indexes.
         const fs = require('node:fs');
         const os = require('node:os');
         const { buildProjectIndex } = require('../../../out/core/project/projectIndexer');
         const root = createTempDirectory(path.join(os.tmpdir(), 'dynasense-expression-network-'));
-        for (const raw of ['<CID>', '<17>', '<min(CID,17)>', '17', '&CID', 'UNKNOWN']) {
+        for (const raw of ['<CID>', '<17>', '<min(CID,17)>', '<missing>', '<unsupported(17)>', '17', '&CID', 'UNKNOWN']) {
             const file = path.join(root, `case-${raw.replace(/[^A-Za-z0-9]/g, '_')}.k`);
             const text = `*KEYWORD\n*PARAMETER\niCID,17\n*DEFINE_CURVE\n17,0,1,1,0,0\n0,0\n1,1\n*LOAD_BODY_Z\n${raw},9806,0,0,0,0,0\n*LOAD_BODY_Z\n17,9806,0,0,0,0,0\n*END\n`;
             fs.writeFileSync(file, text);
@@ -219,15 +219,15 @@ describe('registryReferenceNetwork', () => {
             const index = buildProjectReferenceIndex(snapshot);
             const query = { id: 17, targetKinds: ['curve'], targetDefinitions: ['DEFINE_CURVE'] };
             const curve = collectRegistryReferenceMatches(index, query);
-            if (raw.startsWith('<')) {
+            if (raw === '<missing>' || raw === '<unsupported(17)>') {
                 assert.equal(curve.state, 'incomplete', raw);
                 assert.deepEqual(curve.locations, []);
-                assert.ok(curve.reasons.some(reason => reason.endsWith(':9:parameter-expression-unresolved')));
+                assert.ok(curve.reasons.some(reason => /parameter|expression/.test(reason)));
                 const partial = collectRegistryReferenceMatches(index, query,
                     { retainVerifiedMatchesOnIncomplete: true });
                 assert.equal(partial.state, 'partial');
                 assert.deepEqual(partial.locations.map(location => location.line), [10]);
-                assert.ok(partial.reasons.some(reason => reason.endsWith(':9:parameter-expression-unresolved')));
+                assert.ok(partial.reasons.some(reason => /parameter|expression/.test(reason)));
                 const shifted = collectRegistryReferenceMatches(index, { ...query, id: 9806 },
                     { retainVerifiedMatchesOnIncomplete: true });
                 assert.deepEqual(shifted.locations, [], 'The scale factor must not become a curve reference');

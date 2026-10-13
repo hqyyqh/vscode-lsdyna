@@ -179,9 +179,9 @@ async function scanParameterEventsFromFileIndex(
                 globalLongFormat: globalInputFormat === 'long',
             }));
         } else {
-            events.push(...scanParameterDefinitionBlock(block, text, {
+            for (const event of scanParameterDefinitionBlock(block, text, {
                 globalLongFormat: globalInputFormat === 'long',
-            }));
+            })) events.push(event);
         }
     }
 

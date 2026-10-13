@@ -336,7 +336,7 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
 function sourceBoundDefinition(descriptor, source) {
     const address = value => require('../../out/core/semantics/descriptorIdentity').isDescriptorIdentity(value, true);
     const formats = descriptor.formatContracts || [];
-    return source?.datasetSha256 === "1e631456cbcdea5193fc695a2d1bc2a4c8075e88a7a0dc00451d76b24e9504bb" &&
+    return source?.datasetSha256 === "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168" &&
         descriptor.source === "keyword-catalog" && descriptor.fieldType === 'integer' &&
         (descriptor.recordMode === 'exact-data-record-ordinal' || descriptor.recordMode === 'repeat-data-record-template' &&
             Number.isSafeInteger(descriptor.recordStride) && descriptor.recordStride > 0 && descriptor.dataRecordOrdinal < descriptor.recordStride) &&

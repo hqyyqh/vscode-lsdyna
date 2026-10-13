@@ -299,6 +299,43 @@ trailer
             };
         });
 
+        it('drops obsolete bookmark metadata without deleting the manual or original model', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            const source = path.join(tempDir, 'original.k');
+            fs.writeFileSync(source, '*NODE\n1,0,0,0\n');
+            const originalPdf = fs.readFileSync(mockPdfPath);
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            try {
+                mockState.set('manuals_bookmark_cache', { [source]: { bookmarks: [{ title: '*OLD', page: 1 }] } });
+                await initialize(mockContext);
+                assert.deepEqual(Object.keys(mockState.get('manuals_bookmark_cache')), [mockPdfPath]);
+                assert.equal(getManualLocations('*NODE').length, 1);
+                assert.deepEqual(fs.readFileSync(mockPdfPath), originalPdf);
+                assert.equal(fs.readFileSync(source, 'utf8'), '*NODE\n1,0,0,0\n');
+                vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? path.join(tempDir, 'absent') : undefined });
+                await initialize(mockContext);
+                assert.equal(mockState.get('manuals_bookmark_cache'), undefined);
+                assert.deepEqual(fs.readFileSync(mockPdfPath), originalPdf);
+            } finally {
+                vscode.workspace.getConfiguration = originalGetConfiguration;
+                fs.unlinkSync(source);
+            }
+        });
+
+        it('keeps oversized bookmark sets usable without persisting an oversized cache', async () => {
+            const originalGetConfiguration = vscode.workspace.getConfiguration;
+            vscode.workspace.getConfiguration = () => ({ get: key => key === 'manualsDir' ? tempDir : undefined });
+            try {
+                await initialize(mockContext);
+                const entry = mockState.get('manuals_bookmark_cache')[mockPdfPath];
+                entry.bookmarks = [{ title: 'x'.repeat(9 * 1024 * 1024) + ' *NODE', page: 1 }];
+                await initialize(mockContext);
+                assert.equal(getManualLocations('*NODE').length, 1);
+                assert.equal(mockState.get('manuals_bookmark_cache'), undefined);
+                assert.equal(getManualFilesCount(), 1);
+            } finally { vscode.workspace.getConfiguration = originalGetConfiguration; }
+        });
+
         it('counts successful scans separately from discovered PDFs and uses that count in health readiness', async () => {
             const failedPdf = path.join(tempDir, 'failed.pdf');
             fs.copyFileSync(mockPdfPath, failedPdf);

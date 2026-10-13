@@ -30,7 +30,7 @@ describe('built data consumed by the development extension', function () {
             fs.cpSync(path.join(root, 'out/core'), path.join(temporary, 'out/core'), { recursive: true });
             fs.cpSync(path.join(root, 'src/core'), path.join(temporary, 'src/core'), { recursive: true });
             for (const name of ['keywordSpellingAliases', 'keywordLayoutCorrections',
-                'runtimeSemanticRelationCorrections', 'runtimeTableLayoutCorrections']) {
+                'runtimeSemanticRelationCorrections', 'runtimeTableLayoutCorrections', 'fileWriteLayouts']) {
                 const relative = 'keywords/authoring/engineering/' + name + '.json';
                 fs.mkdirSync(path.dirname(path.join(temporary, relative)), { recursive: true });
                 fs.copyFileSync(path.join(root, relative), path.join(temporary, relative));

@@ -42,4 +42,25 @@ describe('scanning from a Keyword Manager source', () => {
         assert.equal(await provider.scan(), null);
         assert.equal(provider.root, null);
     });
+    for (const dirty of [false, true]) it(`preview replacement ${dirty ? 'invalidates unsaved' : 'preserves disk-backed'} structure work`, async () => {
+        const source = Object.assign(fakeDoc('*KEYWORD\n*END', 'D:/model/source.k'), { version: 1, isDirty: dirty, isClosed: false });
+        vscode.window.activeTextEditor = { document: source };
+        vscode.workspace.textDocuments = [source];
+        let finish, token;
+        const provider = new LsdynaIncludeTreeProvider({ loadProjectStructure: async (file, _options, progress, received) => {
+            token = received;
+            progress({ type: 'structureProgress', snapshot: snapshot(file) });
+            return new Promise(resolve => { finish = () => resolve(snapshot(file)); });
+        } });
+        const pending = provider.scan();
+        source.isClosed = true;
+        vscode.workspace.textDocuments = [];
+        vscode.window.activeTextEditor = { document: fakeDoc('*KEYWORD\n*END', 'D:/model/other.k') };
+        assert.equal(token.isCancellationRequested, dirty);
+        finish();
+        const result = await pending;
+        assert.equal(result?.rootFile || null, dirty ? null : source.uri.fsPath);
+        if (!dirty) assert.equal(provider.scanPhase, 'complete');
+    });
+
 });

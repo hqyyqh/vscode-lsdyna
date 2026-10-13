@@ -24,6 +24,7 @@ const {
     resolveKeywordCategory,
 } = require('../../core/keywordCategory');
 const i18n = require('../../core/i18n');
+const { ProjectKeywordPages } = require('./projectKeywordPages');
 
 type KeywordIndexLayout = 'order' | 'alphabetical' | 'category';
 
@@ -59,7 +60,9 @@ type KeywordOccurrence = {
 };
 
 type KeywordIndexProviderOptions = {
+    projectSession?: (request: any, token?: any) => Promise<any>;
     resolveActiveUri?: () => any;
+    onSelectProject?: (rootFile: string) => void;
     collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
@@ -556,6 +559,8 @@ class FileGroupItem extends OccurrenceGroupItem {
 }
 
 class LsdynaKeywordIndexProvider {
+    private projectSession?: (request: any, token?: any) => Promise<any>;
+    private projectPages: any;
     collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
     invalidateProjectSnapshot?: (rootFile: string) => Promise<void>;
@@ -591,10 +596,13 @@ class LsdynaKeywordIndexProvider {
     _projectFileOrderByKey: Map<string, number>;
     _localRefreshGeneration: number;
     resolveActiveUri: () => any;
+    onSelectProject?: (rootFile: string) => void;
 
     constructor({
         resolveActiveUri = getActiveUri,
+        onSelectProject,
         collectIncludeFiles,
+        projectSession,
         loadProjectSnapshot,
         invalidateProjectSnapshot,
         shouldSkipAutomaticDocumentScan,
@@ -606,7 +614,9 @@ class LsdynaKeywordIndexProvider {
         maxIncrementalRescanLines,
     }: KeywordIndexProviderOptions = {}) {
         this.resolveActiveUri = resolveActiveUri;
+        this.onSelectProject = onSelectProject;
         this.collectIncludeFiles = collectIncludeFiles;
+        this.projectSession = projectSession;
         this.loadProjectSnapshot = loadProjectSnapshot;
         this.invalidateProjectSnapshot = invalidateProjectSnapshot;
         this.shouldSkipAutomaticDocumentScan = shouldSkipAutomaticDocumentScan;
@@ -672,6 +682,15 @@ class LsdynaKeywordIndexProvider {
             indexedVersion === currentVersion && this._documentIndexDocuments.get(uriKey) === document ? blockIndex : null;
     }
 
+    async ensureDocumentBlockIndex(document) {
+        const ready = this.getDocumentBlockIndexIfReady(document);
+        if (ready) return ready;
+        const uriKey = documentIndexKey(document);
+        this.documentIndices.delete(uriKey);
+        const version = document.version;
+        return this._documentIndexAsync(document, () => !document.isClosed && document.version === version);
+    }
+
     private scopeFile = '';
     private projectRoot = '';
     private scanState = 'idle';
@@ -720,7 +739,7 @@ class LsdynaKeywordIndexProvider {
             this._trackOpenDocument(document);
             this.pendingAutomaticDocuments.set(documentIndexKey(document), document);
         }
-        if (this._treeView?.visible !== true) return;
+        if (this._treeView?.visible !== true || (this.scanState === 'scanning' && this._mode === 'local')) return;
         const epoch = this.automaticEpoch;
         if (this._mode === 'recursive') {
             for (const [key, pending] of this.pendingAutomaticDocuments) {
@@ -758,6 +777,12 @@ class LsdynaKeywordIndexProvider {
 
     updateDocumentAutomatically(document, event) {
         if (!document || !isLsdynaFile(document)) return false;
+        const existingKey = documentIndexKey(document);
+        if (this.projectSession && this.documentIndices.has(existingKey) &&
+            this._documentIndexDocuments.get(existingKey) === document) {
+            const version = document.version;
+            return this.updateDocumentIndex(document, event, () => !document.isClosed && document.version === version);
+        }
         this.changedAutomaticDocuments.add(document);
         this.pendingAutomaticDocuments.set(documentIndexKey(document), document);
         this._trackOpenDocument(document);
@@ -808,7 +833,7 @@ class LsdynaKeywordIndexProvider {
         const status = this.scanState === 'scanning' ? i18n.get('sidebarScanning')
             : this.scanState === 'incomplete' ? i18n.get('sidebarIncomplete')
             : !file ? i18n.get('sidebarOpenFile')
-            : !this._occurrences.length ? i18n.get('sidebarNoKeywords') : '';
+            : !this.projectPages && !this._occurrences.length ? i18n.get('sidebarNoKeywords') : '';
         const source = file ? `${i18n.get(this._mode === 'recursive' ? 'sidebarMainFile' : 'keywordIndexScopeCurrentFile')}: ${path.basename(file)}` : '';
         this._treeView.message = [source, status, `${layoutLabel(this._layout)} · ${followLabel}`].filter(Boolean).join('\n');
     }
@@ -1445,7 +1470,7 @@ class LsdynaKeywordIndexProvider {
     }
 
     async scan(scanOptions: any = {}) {
-        if (this.scanState === 'scanning') {
+        if (this.scanState === 'scanning' && !scanOptions.replace) {
             void vscode.window.showInformationMessage(i18n.get('indexingKeywords'));
             return false;
         }
@@ -1463,6 +1488,7 @@ class LsdynaKeywordIndexProvider {
             return false;
         }
         const rootFile = uri.fsPath;
+        this.onSelectProject?.(rootFile);
         const rootDir = path.dirname(rootFile);
         let activeCancellationToken: any = null;
         let completed = false;
@@ -1472,12 +1498,39 @@ class LsdynaKeywordIndexProvider {
         this._updateTreeDescription();
         try {
             await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: i18n.get('indexingKeywords'), cancellable: true },
+                { location: scanOptions.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification,
+                    title: i18n.get('indexingKeywords'), cancellable: true },
                 async (progress, cancellationToken) => {
                     activeCancellationToken = cancellationToken;
-                    if (this.invalidateProjectSnapshot) await this.invalidateProjectSnapshot(rootFile);
                     let nextRoots;
-                    if (this.loadProjectSnapshot) {
+                    if (this.projectSession) {
+                        const handle = await this.projectSession({ action: 'open', rootFile }, cancellationToken);
+                        if (cancellationToken?.isCancellationRequested || scanGeneration !== this.scanGeneration) {
+                            await this.projectSession({ action: 'release', lease: handle.lease }); return;
+                        }
+                        this.projectPages?.dispose();
+                        const pages = new ProjectKeywordPages(this.projectSession, handle, rootFile, (row, parent, layout) =>
+                            new KeywordUsageItem(makeOccurrence(row, row.filePath, row.fileOrder || 0, row.startLine), rootDir, layout, parent));
+                        this.projectPages = pages;
+                        this.projectRoot = rootFile; this._setMode('recursive');
+                        let lastSequence = -1;
+                        while (!cancellationToken?.isCancellationRequested && scanGeneration === this.scanGeneration) {
+                            const status = await pages.status(cancellationToken);
+                            if (cancellationToken?.isCancellationRequested || scanGeneration !== this.scanGeneration) {
+                                pages.dispose(); return;
+                            }
+                            if (status.sequence !== lastSequence) {
+                                lastSequence = status.sequence;
+                                this._onDidChangeTreeData.fire(undefined);
+                            }
+                            if (status.state !== 'scanning') {
+                                if (status.state !== 'complete') throw new Error(i18n.get('scanStructureIncomplete'));
+                                completed = true; return;
+                            }
+                            await new Promise(resolve => setTimeout(resolve, 200));
+                        }
+                        pages.dispose(); return;
+                    } else if (this.loadProjectSnapshot) {
                         const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
                         const snapshot = await this.loadProjectSnapshot(rootFile, options, partialSnapshot => {
                             const filesScanned = partialSnapshot?.files?.length || 0;
@@ -1506,7 +1559,7 @@ class LsdynaKeywordIndexProvider {
                 },
             );
         } catch (error) {
-            if (activeCancellationToken?.isCancellationRequested || error?.name === 'CancellationError') return false;
+            if (scanGeneration !== this.scanGeneration || activeCancellationToken?.isCancellationRequested || error?.name === 'CancellationError') return false;
             throw error;
         } finally {
             if (scanGeneration === this.scanGeneration) {
@@ -1518,7 +1571,13 @@ class LsdynaKeywordIndexProvider {
         return completed;
     }
 
+    async updateProjectStructure(snapshot) {
+        if (this.scanState === 'scanning' || !this.projectPages || this._mode !== 'recursive' || normalizeFileKey(this.projectRoot) !== normalizeFileKey(snapshot.rootFile)) return;
+        await this.scan({ rootFile: snapshot.rootFile, quiet: true, replace: true });
+    }
+
     setLocal() {
+        this.projectPages?.dispose(); this.projectPages = undefined;
         this.scanGeneration++;
         this.scanState = 'idle';
         this.scopeFile = '';
@@ -1564,6 +1623,12 @@ class LsdynaKeywordIndexProvider {
             editor !== vscode.window.activeTextEditor) return false;
         if (this._treeView?.visible !== true) return false;
         const line = editor.selection?.active?.line ?? 0;
+        if (this.projectPages && this._mode === 'recursive') {
+            const item = await this.projectPages.find(editor.document.uri.fsPath, line, this._layout);
+            if (!item) return false;
+            try { await this._treeView.reveal(item, { select: true, focus: false, expand: false }); return true; }
+            catch { return false; }
+        }
         const text = editor.document.lineAt(line).text;
         const trimmed = String(text || '').trimStart();
         if ((trimmed === '' || (trimmed.startsWith('$') && !trimmed.startsWith('$#'))) && !options.force) {
@@ -1611,6 +1676,7 @@ class LsdynaKeywordIndexProvider {
     getTreeItem(element) { return element; }
 
     getChildren(element) {
+        if (this.projectPages && this._mode === 'recursive') return this.projectPages.children(this._layout, element);
         if (!element) return this.roots;
         if (typeof element.getIndexChildren === 'function') return element.getIndexChildren();
         return element.children || [];
@@ -1619,6 +1685,14 @@ class LsdynaKeywordIndexProvider {
     getParent(element) {
         return element?.parent || null;
     }
+
+    async searchProjectPages() {
+        if (!this.projectPages || this._mode !== 'recursive') return false;
+        await this.projectPages.search(row => vscode.commands.executeCommand('extension.goToKeywordUsage', row.filePath, row.startLine));
+        return true;
+    }
+
+    dispose() { this.stopAutomaticWork(); this.projectPages?.dispose(); this._onDidChangeTreeData.dispose(); }
 
     listSearchEntries() {
         if (this._occurrences.length === 0) {

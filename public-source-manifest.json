@@ -3,7 +3,7 @@
   "kind": "dynasense-public-source",
   "dataPolicy": "publicly-regenerable-with-source-snapshots",
   "generatorVersion": 2,
-  "generatorSha256": "77fa6a22518a61a38cfb4aa068b0e4995085f0b08bdd6446e3bac7511124a63b",
+  "generatorSha256": "41bea91067ff484b10e42dff616cc89d48792af39d1285b6b5c2f93c745c1d66",
   "acceptance": {
     "status": "requires-independent-validation",
     "unresolvedInternalEvidenceCount": 0,
@@ -35,10 +35,12 @@
       "test/client/hover/staticFallbackHoverPhysicalRange.test.js",
       "test/client/includeFilePreview.test.js",
       "test/client/includeTreeOpenFailure.test.js",
+      "test/client/keyword-manager/feedbackRegression.test.js",
       "test/client/keyword-manager/keywordManagerCatalogWriteAuthority.test.js",
       "test/client/keyword-manager/keywordManagerCommentInvariant.test.js",
       "test/client/keyword-manager/keywordManagerConditionalCards.test.js",
       "test/client/keyword-manager/keywordManagerContactThermal.test.js",
+      "test/client/keyword-manager/keywordManagerDisplayOnly.test.js",
       "test/client/keyword-manager/keywordManagerExplicitNavigation.test.js",
       "test/client/keyword-manager/keywordManagerIncompleteTemplate.test.js",
       "test/client/keyword-manager/keywordManagerNativeBeamInstances.test.js",
@@ -55,10 +57,12 @@
       "test/client/keywordStructureDiagnostics.test.js",
       "test/client/largeFileViewerIndexContract.test.js",
       "test/client/managerScanSource.test.js",
+      "test/client/projectSelection.test.js",
       "test/client/providers/advanced_features.test.js",
       "test/client/providers/entityReferenceProvider.test.js",
       "test/client/providers/fileScanFailures.test.js",
       "test/client/providers/keywordIndexModes.test.js",
+      "test/client/remoteParameterContext.test.js",
       "test/client/services/activeFieldChoiceController.test.js",
       "test/client/services/asyncRequestFailures.test.js",
       "test/client/services/cardCellEditGuard.test.js",
@@ -185,6 +189,7 @@
       "test/core/references/onDemandReferenceScanner.test.js",
       "test/core/references/parameterDefinitionScanner.test.js",
       "test/core/references/parameterEnvironment.test.js",
+      "test/core/references/parameterExpression.test.js",
       "test/core/references/projectReferenceIndex.test.js",
       "test/core/references/referenceDirectoryPreparation.test.js",
       "test/core/references/referenceNavigation.test.js",
@@ -310,10 +315,13 @@
       "test/server/snapshotTransfer.test.js",
       "test/support/tempDirectories.test.js",
       "test/worker/entityQueryWorker.test.js",
+      "test/worker/liveFileSource.test.js",
+      "test/worker/progressiveEntityQueries.test.js",
+      "test/worker/projectSessions.test.js",
       "test/worker/workerPool.test.js",
       "test/worker/workerTermination.test.js"
     ],
-    "maintenanceOnlyCount": 262
+    "maintenanceOnlyCount": 264
   },
   "files": [
     {
@@ -367,8 +375,8 @@
     {
       "path": ".github/workflows/ci-node.yml",
       "role": "editable-source",
-      "sha256": "8dc9e3a6146d79f049e925af59178717d7c24cffa87ceefb0622fd93352b0370",
-      "reason": "public-contribution"
+      "sha256": "c3889b93bbee7f046dab8f163bf3f5c51324bef7599b8d9c737e0a27d30e6d36",
+      "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/ci.yml",
@@ -379,8 +387,8 @@
     {
       "path": ".github/workflows/fast-ci.yml",
       "role": "editable-source",
-      "sha256": "041c5e843afa902bc94e74aeca4bdc9997040109ddd67d814e0db11b68a5032f",
-      "reason": "public-contribution"
+      "sha256": "cb04c8a3f48e52353953186edc0a34c0d8fde2973e61821014904f4505754a1b",
+      "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/public-ci.yml",
@@ -421,7 +429,7 @@
     {
       "path": ".vscodeignore",
       "role": "editable-source",
-      "sha256": "43dccd7ae30a224dc65dc631529eb827960ef53294c4468b0cc47c286b78b022",
+      "sha256": "0f651834881b9b51e4d1a70726ba3ae0c7d5f20766c90896dbf1ba882b405971",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -463,7 +471,7 @@
     {
       "path": "docs/public-source-boundary.md",
       "role": "editable-source",
-      "sha256": "aa5b24f6647a483748e1ad735cda9a897a9ca037417a860d94eb90e09c85407a",
+      "sha256": "8124c8964205996757b2d327cc52469102fce4ed9220540190b56ab33062caba",
       "reason": "public-source-maintenance-contract"
     },
     {
@@ -671,6 +679,12 @@
       "reason": "final-data-or-product-language-check"
     },
     {
+      "path": "keywords/authoring/engineering/fileWriteLayouts.json",
+      "role": "authoring-input",
+      "sha256": "453578e3d742a2a969876c8a9642c6d633efdcb0d9f1c72abd74ee11a7c6efc9",
+      "reason": "final-data-or-product-language-check"
+    },
+    {
       "path": "keywords/authoring/engineering/keywordLayoutCorrections.json",
       "role": "authoring-input",
       "sha256": "a84140176c757a98338bad7513c43aa8cd93fd3301c79fa0d7807976365083c7",
@@ -721,13 +735,13 @@
     {
       "path": "keywords/provenance/checkpoints/import.json",
       "role": "source-snapshot",
-      "sha256": "057bdb834e5d60b6a2a9526926105b8b26e721cb6d71b61396406845f572a1df",
+      "sha256": "fd500e4d0d08b6ec6bdc339612e76bd6d20024038e74d1810339c6e176f07706",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/provenance/current-data.json",
       "role": "generated-artifact",
-      "sha256": "9c88780c516e4ff6039f96ab349855bdd0c5357736ebeda30d09738540294157",
+      "sha256": "691f4f3f48b237e584c5afb20b87ade658a4a96949c58a88681b2934558e6e95",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -799,13 +813,13 @@
     {
       "path": "keywords/runtime/categories/keyword_category_crosswalk.json",
       "role": "generated-artifact",
-      "sha256": "3b1309f39a56db37245ed351941dfe2eb46f843a8606768169196d1881a3d3bf",
+      "sha256": "c4f789a850facf44947bba218da49f87a04da74b9132831debc3fbaf9f3fefd1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/categories/lspp_keyword_categories.runtime.json",
       "role": "generated-artifact",
-      "sha256": "ee5d0995a584ef1410cb956710f62e9b4170bcad3902ce56679b5d0da3765843",
+      "sha256": "c78ccee0e5ae92802807ba6e74f0945425f522109490772de9883ef4865026ba",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -823,7 +837,13 @@
     {
       "path": "keywords/runtime/engineering/contactThermal.json",
       "role": "generated-artifact",
-      "sha256": "049390b7b69d0f6b0bcacc52e46e241b0866f6eb64c98d6a1e26a0badbbef1bb",
+      "sha256": "a84a1230840940662263c0964976761ebf7a20970dd8dbfa91551f45d75eeaca",
+      "reason": "final-data-or-product-language-check"
+    },
+    {
+      "path": "keywords/runtime/engineering/fileWriteLayouts.json",
+      "role": "generated-artifact",
+      "sha256": "453578e3d742a2a969876c8a9642c6d633efdcb0d9f1c72abd74ee11a7c6efc9",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -851,105 +871,105 @@
       "reason": "final-data-or-product-language-check"
     },
     {
-      "path": "keywords/runtime/input-form/1158721b2d10e421f2ec9d3925755d3d31e374277a2d507fc8cea9c06b9d0296.json.gz",
+      "path": "keywords/runtime/input-form/054b41b1af902212a4e71f35dbdf828f998381d97222e6845660544e8723f406.json.gz",
       "role": "generated-artifact",
-      "sha256": "e9a84d58eab92d0d166c975e5f167bb2a5d3d30153b47ee0533afb55c94268a8",
+      "sha256": "bc012e7e2935d19d6562ac269836880ac7da5c0713ed45766f7c1812a1b0bf33",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/1dba1b9e09ea64f1ea3fe597d2ff3edb9bd54dc1e29cb9a8e79695f6b3344970.json.gz",
+      "path": "keywords/runtime/input-form/3ebe30484cd8299e322e8cf273e5742da42b893df17cf3de16bec5e18c533fad.json.gz",
       "role": "generated-artifact",
-      "sha256": "b348d4e311fac7931d6aa28b0ab5c7e128a0ff35ee8774e5d91dd11a6498b324",
+      "sha256": "75a11d8add0d06e4135a03431c518408ac76594a9cefaeea0adc4a8188c970e9",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/37853c0846132b45f97093d41838be2a58e8796f29eff56a4944bdcac03b3e5b.json.gz",
+      "path": "keywords/runtime/input-form/44e3765d604ccbe90176c5e0b5cd799f17dbfeae541e9b78957947184612869a.json.gz",
       "role": "generated-artifact",
-      "sha256": "ca9c6972830276862bca3234415c1c6417eb1232ced94f40481378f74e3c1d5c",
+      "sha256": "849709b741aab35cde66e632498902f67fe0d878ab69e70f2cd73926e8b8d82c",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/5435708b92b91908438ba0020c05ee5a0a58a4c4d83b0f055fd27bb728d03617.json.gz",
+      "path": "keywords/runtime/input-form/5da12a5d0b0ceac335203bf1d33a4a61cebd011f193d98e3d68e5502d3396c55.json.gz",
       "role": "generated-artifact",
-      "sha256": "047adfe7afa2b88e32dcee8fdb4586a81914cd374dfcdd2ce1f63d987557354f",
+      "sha256": "f1736189f38968200e023f760948e63f6fcca6d8ee534dc5f268662e10714f7c",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/628123eae349d0018e9a53437ee96b53b0cfd9211939d11e20277e9eef5ae50d.json.gz",
+      "path": "keywords/runtime/input-form/62f3c9174967807a275fb1a4c3c1e7924e0b5486eb28d08081dd9cf50fc4a624.json.gz",
       "role": "generated-artifact",
-      "sha256": "a509d982dd702be6f8b98d137148395a635a17fd87dcd8bef295ab31ec40d16b",
+      "sha256": "f6ed66d361e6742f6e741c406c7888a1e302b5148b98842e44897ff6e7591e27",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/68d254d301e8d5b603a2ad9d96e0c457a75d66abc4218f004bfd73efb01fd6f3.json.gz",
+      "path": "keywords/runtime/input-form/6b2383596bb2d5045eb69397f7c5a72544dead4a790f8cb7cebe0475793e077e.json.gz",
       "role": "generated-artifact",
-      "sha256": "c1c82a539b2b3fe5b14e45ad8ec073dc7581f3c765fead183171e8d33598fc2a",
+      "sha256": "70b34b36e1c78c7ea273e6b16c45ea07a8d0ff6ec420ee2b54022ced98cf82bc",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/87f304580efe2beb48a7bd558a999fa237d631fe73df4f61292f6425d2230036.json.gz",
+      "path": "keywords/runtime/input-form/9bb4e5d23b276862cbec6aca4654167849025bbd9ee6cde74e6b1c78280426c3.json.gz",
       "role": "generated-artifact",
-      "sha256": "56af780a617f123389b3b55f20f401d674638f8ae3b9ba7ba01ca80feba7171e",
+      "sha256": "b0d6c6faa2af52b868ddccc3a2d82244ef3ec3637c074060c9cac70e29c2bb93",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/91d4713587c40e7fb4c98a3d8494ce234b27620d11cb36b33758c54faf3362e8.json.gz",
+      "path": "keywords/runtime/input-form/a5c9535900b1aafe97863f3bdd28805c93122391c84866e6b07ff83528972c28.json.gz",
       "role": "generated-artifact",
-      "sha256": "06dd6f23f570d32970e8332b354b266f42a84f10d00492a8f3bd4eb6aaf4a9da",
+      "sha256": "6e6c30413e54f6a6162cd0fc79ac35ca7ca11673075c8a60d34ccf372468f385",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/9232e2f2f1d15ddf16049079f59ab98f054d86ba2fc10bd271bab4bae14815b6.json.gz",
+      "path": "keywords/runtime/input-form/a813d4df1c60e5e35021c516335d48f5f5291a286727210b741c3d6ff0d8927e.json.gz",
       "role": "generated-artifact",
-      "sha256": "52d8be26f8c95810a423f41a1133b89254e8bbc49461c997ce6950125aee694e",
+      "sha256": "86af723f4a5f861067c9364138cb804467ebc0d569950ab00443b1609680381a",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/a1a26ab6b07742baf519e21530780725aeb321ee6e202ae25256d9d93d38242c.json.gz",
+      "path": "keywords/runtime/input-form/aaf1820ee215e8465f743aeca2abd475c18acc0bcfc5f07ff691de8e261b92f5.json.gz",
       "role": "generated-artifact",
-      "sha256": "22c0982abf45678761957bbc939b08fdafd43bb2b111f95994a21039fb7079b9",
+      "sha256": "581407f7c5d0d5422d77020980ec45c9d7d16937558dff91e7d56dff3ac5c58d",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/a55eb9a94255acafd14c2cdbb7c933ff4f1a30f901117d11b14f7e99dde2ab44.json.gz",
+      "path": "keywords/runtime/input-form/bd1b8be11fa3b9c3a50522958656b0e925e5636ebc9a7ae1ea94d8ddfdad41c1.json.gz",
       "role": "generated-artifact",
-      "sha256": "edc2430026a3735bd51a8eae8f462a26290ba5204adec06edb7459cc8a66cba2",
+      "sha256": "047466052f05e79a5800774d51f34d279ce391ffc5ce1ef4508157fd7a54b5aa",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/ab78305308d5d4085e9e10ec37709514bc2df43a86c0483cdbaa41df66f74bed.json.gz",
+      "path": "keywords/runtime/input-form/cdea195ac6ae2cdfadf3b727a8e7626484055c061868b497f8227b441f1f3b07.json.gz",
       "role": "generated-artifact",
-      "sha256": "e26421f44135ded699ede6db276983eb3911a7d04679bd4b413b152033f4b731",
+      "sha256": "c6e19f81a2b1dddc6fa35ffdf09ad447db010b5f7087abcd0a05460ddb382fee",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/ae340e91ab5265410af7e45a19645fa7e9d88db32b0734cb07317475741829f5.json.gz",
+      "path": "keywords/runtime/input-form/dd17d3d714c3495eb33461e2972c81472d9f60f5d33c1e361d204756af22f17f.json.gz",
       "role": "generated-artifact",
-      "sha256": "10ef3afb515b30e907fc58b06d7f786d7a0b3eb8e727a2671f2aa916dfaf8a1b",
+      "sha256": "6a78d4f422636cf3e52248be3f405606c9f2bc1d166513bf13f1cac4ddd76482",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/bb6a03969670c66cb86e727084baf2c234828bb64ff77e58ad1b93727fc0f46a.json.gz",
+      "path": "keywords/runtime/input-form/e3ca9c96271af947cc73df3b2ba9777590504fd8577f330bc8b41c29ee0c9911.json.gz",
       "role": "generated-artifact",
-      "sha256": "dcdff055d28e9b35e2eddebd757c18111acb7cafdab65bd08fe5acb226a4b4b4",
+      "sha256": "8114f9fd5c77ff69c525e9065b489c642187d283b79e712b565609b123d68f5e",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/d45ea4eba2daf770a0c1268e3070141b2ec4bb268e085a4ce696c68ca8151d13.json.gz",
+      "path": "keywords/runtime/input-form/f7992562e7d111f3e3b0ec2fb6ed677d93344fcca8a8372cdd48ecb94899de73.json.gz",
       "role": "generated-artifact",
-      "sha256": "9a29384894f12e2d8f850abd0cd88d6c8be8dbf2a3647b5950f1bb90c6598b4f",
+      "sha256": "977230db48e43876c67b3ceaaedb73d42d84a60a65f1e1356aea5f301819cd83",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/e84b086785f8e2cb58db394252a647e6e76769ee3fe4900d1d7dbbd85a1262b5.json.gz",
+      "path": "keywords/runtime/input-form/f8a70675c47b27d410c494fa3cb1864e932c142d4621bf4656938902d26ee0b6.json.gz",
       "role": "generated-artifact",
-      "sha256": "b9f22d3ce9d8cbfc36ae1f2fdc54881bdafe1a6340363a5da3b7eb91f8728603",
+      "sha256": "db2c7cdeca06c286b6b116d34bc88e79f5bbba0a8b8c2fdd7d6c685991292dfb",
       "reason": "generated-final-runtime-projection"
     },
     {
       "path": "keywords/runtime/input-form/manifest.json",
       "role": "generated-artifact",
-      "sha256": "af6fdaf4673d22da63711c99ad4ea62d3b30a9a9031bdfd66eed40a81089d0c2",
+      "sha256": "8a4c6c1a1ab4f12739b8aff5c225c1c0be23de0fc02451b8a76a074606b0dfd6",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1327,169 +1347,169 @@
     {
       "path": "keywords/runtime/native-help/manifest.json",
       "role": "generated-artifact",
-      "sha256": "94221aac0006c7db81a2ee53f42d5ceeb4e73d3b1eae6649d9ffa1ee8cf02813",
+      "sha256": "89c62f4a7951881c48179838a3366e4a303d652b9ea5ffe163cd715f26426d2f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-help/native-null-help.json.gz",
       "role": "generated-artifact",
-      "sha256": "20b69ab4e9d2d15e73250a243afd5d1c0ee36de1c7347c2533de72c8da8d64ab",
+      "sha256": "c134f0abf0780ea4d3792759ba4364d411baecec2309615a58224f38406b4c00",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-help/native-null-help.manifest.json",
       "role": "generated-artifact",
-      "sha256": "96ea5dcc434a167c84d9985b494e7a5b6f229967b4b0ed8cb331315f130f2b62",
+      "sha256": "182a382cd94c05ab2150a18854ed383490bd249629643bfd98dd5adda6275e4c",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/descriptor-identities.json",
       "role": "generated-artifact",
-      "sha256": "2fae8afc2cceda4e6b7ef16774627954cbe3a273395d0a5476480bdd8c98510d",
+      "sha256": "048ed9e4da46bf45b844ae12887465f64454be58546ef0800a0d555e97ea1962",
       "reason": "generated-final-runtime-projection"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-batch-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "59da0cb9fce5de9f3aab1660384e912d5ce9c2c2360a0cf827110bef12260fcb",
+      "sha256": "2c36460b478ead38440454799ce7619c07672eb8b987fef3f70aa9afa69d4c2e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-conditional-layout-readers.json",
       "role": "generated-artifact",
-      "sha256": "b9e75b1502e7c329947456c5ec7e50ec58e9662ec7c7734a1cc70bd61c824586",
+      "sha256": "62473dec6691c114befc21380cacb9bb66f30fb60099d0e9b5e850584e8726ed",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-constrained-input-format.json",
       "role": "generated-artifact",
-      "sha256": "273269954b115c3fc70f93679b484c9d7db5636cd983ed94ae6d346d43e88588",
+      "sha256": "271ee943f257d92b67a9f007758339f1f94c85bde24900b293c98e79b4e11c7a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-contact-id-mpp-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "6bccdcca4d5f6e45cf41981d37d9f9bea29318229efe74daca0d71d5d13b54d0",
+      "sha256": "7b39d51afa024292a31696b97cfb02c89ab0e0211043f7cbdaca55a420efdbe5",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-contact-mpp-tail-readers.json",
       "role": "generated-artifact",
-      "sha256": "556047c413fdab8985c46bc0beb8f6d5e127f84f97ce5bb6dbba1cf341983908",
+      "sha256": "6957e448f70231828d7b590b10a7848962624282a42c0f10f25aef2cc4c0b014",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-element-readers.json",
       "role": "generated-artifact",
-      "sha256": "bc519d343ba72f6b58b1a34b0f2ab0b3714b8ac6a2463212c258ab21aa930f9b",
+      "sha256": "4da4ba7bf78634e898d6851e029d24d698b08a76c2428ce6b8784dfb0533ccde",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-eos-special-readers.json",
       "role": "generated-artifact",
-      "sha256": "61a8c002b979eb4d05518193b23ebe5a7cca2e79ad9798632e9b9d601eb17a5d",
+      "sha256": "1151e46a276ac063eb7560e38d45abe4170cc2537a922029c9f58242bb7c7b4f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-generic-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "6493957bd972b0d15db831663fd99441b7082b5da6dd9f9d9324f8a41dc12bfe",
+      "sha256": "5bb92c69cbe5f56f7a3b3ef375fa03332e0c4d890007d64d12dd0a0361d56b63",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-native-input-format.json",
       "role": "generated-artifact",
-      "sha256": "ff222fb195b1a16140a38bd5503a0c829b33c07081557d3f156dfa838379d81d",
+      "sha256": "b3bf51d8e05328a84d0e6bb01f5a2b4ae5b23221d6b0cc2e18366f06f6cc529c",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-node-readers.json",
       "role": "generated-artifact",
-      "sha256": "926404b027186a89e4416cfc9ea01798af31561082bf8d49cb93e2b4e5ad03f1",
+      "sha256": "8955b357becb66d3e55ff3e438fa049d88be63287b92863db617662c40097f8a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-occurrence-readers.json",
       "role": "generated-artifact",
-      "sha256": "c85b321ae0b6388c660e05630bf4ae0295933dc50d8fc43aeefd21242a504177",
+      "sha256": "bec377496a64454f848c4fa061097fcc3a67e410e2a1aeb37ea0f892ca5098f4",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-optional-form-header-readers.json",
       "role": "generated-artifact",
-      "sha256": "460466a5f50de703d3739744df00e6aa98c8969b1a0fd6071412683cb5e279f6",
+      "sha256": "3451fa7af549798c62d72163b0edeae3c1f0b3c0806091fcff1a48f61e118753",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-optional-tail-readers.json",
       "role": "generated-artifact",
-      "sha256": "3fe45a176f111e73a7e8bd1449fd8ecddd0788c6536d3b9929e2b94ff9b62413",
+      "sha256": "b3f902213d0a40d04e5c95a906a46cb3524cd8c09b015e01902142b349389e74",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-ordinal-conditional-readers.json",
       "role": "generated-artifact",
-      "sha256": "1c7bfde18514049b1ea77578e03c63123eb2e7071ecb53865623cc8bec0a172d",
+      "sha256": "2a1abf21179245ef06069de535d63cc9ce33a8c5d0362f47418b942100bf3729",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-ordinal-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "4d54def82fb3662bda9518d05521dbecbff2b1b44e8a2bdbc0453b84bc6c6087",
+      "sha256": "7f15b0b0decc924740573848f181189b2bf1bf7eb326ebd2bd0b7b2da7edbe02",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-composite-readers.json",
       "role": "generated-artifact",
-      "sha256": "2c853cc4f2eb350d2cd2e672b507798e709fe512c31d30f8a9440bfab8ef9159",
+      "sha256": "6cb6ce72f89cf9a6c1611863739124aa839c7d1502abfde7426e282d10e61ebb",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-modular-readers.json",
       "role": "generated-artifact",
-      "sha256": "5bebfc4bd8b25ec81402ac8e025c1810f3bd551475903e36fea7250b95b036cf",
+      "sha256": "0db47f1396d403f0af162fab8197df8a4d2cc07149a0de5937dcee79fac1a47a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-standalone-readers.json",
       "role": "generated-artifact",
-      "sha256": "27ee5634706b7f87111f811b3c7242cd4d0de8ed151d9809de4fbbf2e5b9889e",
+      "sha256": "546d85cb1d2aaf11e9ec16f4c62471f5c763270ebe6d0fc869229f384e963cb7",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-section-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "f5f66fdfd149d4e95371bc144c927807266ea1cf64a716cd9dbde7a8c7b7f2b1",
+      "sha256": "f8725049d0fa4fa0e1acd104758ed8e74af9e3546bdfb1520794fadbcc26c964",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-single-card-readers.json",
       "role": "generated-artifact",
-      "sha256": "1e38020c4598f0fcaf5c41ba46528578f9dc1a0db298a66a4c7ca3d76fb7f70b",
+      "sha256": "30a969e42e6fef6d3710decaa8d5549934e8fad25d7740d5984e2a2524ddc8b6",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-spelling-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "7ac8c0ed5f3b5c4e36d943497829e9e98bbbdf06fb50b180f5700d1766947b4d",
+      "sha256": "88732b19ef8481e174d8dd1b020557e50d4f4987672a581475916f7eae388643",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-standard-repeat-readers.json",
       "role": "generated-artifact",
-      "sha256": "9db92f6a7ffcd7288ad0950a27a96dc070e0b8273399d790211c4793f40eecf8",
+      "sha256": "4ba390a9768de3e42f74b00da4e456bcb99344b5287004240548dffa4a7e4dbd",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-suffix-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "ce450c0bb8518f3cacd85e229f8e65e934ef1c7816475c58dfcf48770280d2bb",
+      "sha256": "37042cae25138549381f68d01ad1a2b5d91f9aa89aab1858393a38f9e650635b",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-tail-repeat-readers.json",
       "role": "generated-artifact",
-      "sha256": "4e57075b8b1d2381f192e4371e0d5c41ed77609d8c4e8f3f982c7f65107e4994",
+      "sha256": "8b13f2a8ea1e22fb067fcab4c61ba0ac0c6ba4f4a6cd6f61d0c3e76ecd070ec2",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1513,7 +1533,7 @@
     {
       "path": "keywords/runtime/semantic-v2/manifest.json",
       "role": "generated-artifact",
-      "sha256": "c80bacbc0f3053c20ff9c3777bddfe01ce87cf80a84536b31617a8913a084dc3",
+      "sha256": "d37c5467d970e7a12018386a5274832785b7eb28f18bbc2f69519c0d52c5e185",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1615,97 +1635,97 @@
     {
       "path": "keywords/runtime/semantic-v2/references/0.json.gz",
       "role": "generated-artifact",
-      "sha256": "b13a6d3ad54d506cd5cac96b6d4f38398123f1c9a376a2fe7d8b3690db6aaddb",
+      "sha256": "770c0900634b6a29798deccff279cf62fc4ecf79285cb50835cf7f3f9ae33510",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/1.json.gz",
       "role": "generated-artifact",
-      "sha256": "07c7f4c566cb32b7132ef33435bb97a69ffe9e4fc03f14a78d1115043a06df39",
+      "sha256": "c80d6711b1e845a03221fa05e0a2e8e68888f5f3c9c409e201ca790bf59640d1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/2.json.gz",
       "role": "generated-artifact",
-      "sha256": "9b6d44b3d199b6ea313ff95b2dd47c5db0448a8436defd70ee76638279de5a1b",
+      "sha256": "1ef367ed7d5464c669630ed942c9f5543761470a4eb091eeb35f0b18cea125c7",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/3.json.gz",
       "role": "generated-artifact",
-      "sha256": "2d30bf984df9f95c99e2ff4f36d0b74ba67dd258d532d90b6e1ffe91c3f7eb91",
+      "sha256": "2241b35f3f27eb21290b0c70dc7e41aa86d9f477dc8a6689941e38bf0285c64d",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/4.json.gz",
       "role": "generated-artifact",
-      "sha256": "306780e9edbb560969fe99795b2f3ebbf4a36870454a3d74cb89709182a62ffc",
+      "sha256": "c70235d4ca49b8cbbf3ab3ef39b54cf9249c28f23b8a950645d9e9bf1f8643e7",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/5.json.gz",
       "role": "generated-artifact",
-      "sha256": "22d9a91cda5d1878755c5ddd1ec7d7f3029666da293bcb8167327a0dd1283c1a",
+      "sha256": "0feedb53bfa7ed05c313df8252ef8eb4f2284bb33afac93bad729da66e23e753",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/6.json.gz",
       "role": "generated-artifact",
-      "sha256": "bf6f84dd6023707db445c6c7cb71c7a05639c274a66ffb2f01942d0292a0e6b4",
+      "sha256": "626a293013428b5c1b8c51cb961eee133d0ca000b39117b0db2f89b56e098c9f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/7.json.gz",
       "role": "generated-artifact",
-      "sha256": "dd67ddd508626e3155cced3c02c0e420c923776d7d20c03f5ddf43ee3b702fc2",
+      "sha256": "f18b263e25ea3a50850b090586cc1aa0a88574fdd5c9b5ac9a30217562fda91e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/8.json.gz",
       "role": "generated-artifact",
-      "sha256": "5fd481a2fbc6c00a23736d17a9dc3ed2d05c7e8ab1ac60e0b62e46464f282919",
+      "sha256": "21557acccf1315213d0334c45453a951c51db951081e86ebc3b8e87a8b4b8687",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/9.json.gz",
       "role": "generated-artifact",
-      "sha256": "ec564aa9edf655df63ba353f40176c4063f178bb84704832025d36043d050c60",
+      "sha256": "03a4d449dd580f9779eca0ff35237d31c753b03ecf97bcb8f957501069f379d1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/a.json.gz",
       "role": "generated-artifact",
-      "sha256": "6833bdfcdaf9a5264955379b3ac95b3a0f7f97482ebb56a8604361fd562649cf",
+      "sha256": "7524de7f45aba3e31f4229e93539c91cdfede2dea657b891ffb46659d8d3614e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/b.json.gz",
       "role": "generated-artifact",
-      "sha256": "d5c56f044a9eb445a39b4ec8cb727542d5d2b2dc6369d80c29a0acab8f6abd86",
+      "sha256": "4afef32ff7a5ce0646e852ae03250cf01a601db4279473b0ed0e6651ce137dd6",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/c.json.gz",
       "role": "generated-artifact",
-      "sha256": "4b859d029f824c57a1104dcc15c46e26c7ddd8dd2449690642b1f82b1b0ac486",
+      "sha256": "bc3081b8640cf1b0e31885d33b03a3e6b25638ee91d300374d0c895dc242b7d6",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/d.json.gz",
       "role": "generated-artifact",
-      "sha256": "811e0589e31b3a0c95fa2530ec6243a35ac586675f59fc6fe4df1ab73632ac10",
+      "sha256": "04dd7b6e878de7ce00e66e984c0ba0ed64feb6cb7f31dfc97ce56b9686f9e0e9",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/e.json.gz",
       "role": "generated-artifact",
-      "sha256": "7ae5db5777bf7b44ee1cafd25516ae2b7504e10a23e7c914411e9d396a0e5bc6",
+      "sha256": "917a8ce05dc1cbde583c0d9b0edeaeb4e204dbb43b4a253ccf04f5b98232a3f2",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/f.json.gz",
       "role": "generated-artifact",
-      "sha256": "6b035eefd5ea670616dd5841e3da11b9fca494b1273f0fedb444ac6ea43a9d8d",
+      "sha256": "6524c1f8de9afff7eb3fd572133743e9f359f847afcdee9b0cc9d53f79324f9b",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1909,19 +1929,19 @@
     {
       "path": "keywords/sources/categories/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "9b52376ebf425e1027830219a17a09ed54eb28adc64b8b4939daa36cda62badd",
+      "sha256": "38b300e906c5b030cff940909fa6e08e96da6312a0fc9d48d6ec893d94d3d7a0",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v1.json",
       "role": "source-snapshot",
-      "sha256": "ae24d58c7f0a9a2ec97b1ece29f190577d9792858f12bee6f520defe2e95e71e",
+      "sha256": "04c7ffa931f6ddef9aa2941b20a8ca000c3e548a3ccb0bc9c6a4023091085af7",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v2.json",
       "role": "source-snapshot",
-      "sha256": "7832467e80a79d99108b1914c0f6b557f91524f1262aecdc42c4b2a539f4e46a",
+      "sha256": "9eae688ef2d046dd5170f72d6321b0e9d2604e7c03fdae5969370d0808187770",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1945,13 +1965,13 @@
     {
       "path": "keywords/sources/input-form/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "533c41699fc2e077121c63c6d7cbc1a16bff4a7752affc86e66eac2ccdab8798",
+      "sha256": "e0bb28634c0e864ab782a65daee794b2b3874fff8cf0d47c206aff88da993ce1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/manifest.json",
       "role": "source-snapshot",
-      "sha256": "597a421b28a97d0a38b7a08a168f69fa122f1652ddef91af76b237a677294d8d",
+      "sha256": "b8da89b536adf38d28288ed60b266df6350760786087475a70a0475d1ed463e3",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1963,19 +1983,19 @@
     {
       "path": "keywords/sources/native-help/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "bf7b416bd09d5e3ae855d6bb3d6ff90e720d964b51299ac69fc88f2a995dbd23",
+      "sha256": "330117a3c9b254eafe99c9c1543a88232ed481414428cd1cdad3a527b5d03720",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/native-readers/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "0190692a70ffacbf3e8d54fefa7e80a44239091a25f7a8ec438ea5dca7ed89ce",
+      "sha256": "06b7a528ee342891559c2b1e203ec977d7db6ff781b670e9c7eb1b3df7f4da63",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/references/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "2909af0af2c5c6569b5524ae32a0f27e778cd3bbf1f8226cde5dbeeb91fb2e90",
+      "sha256": "0f5896aec67b3043f9f9bcbda80926fdc33e254161a1dc34f97258f9a6ecac4b",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1993,7 +2013,7 @@
     {
       "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz",
       "role": "source-snapshot",
-      "sha256": "b4f9272bfaa0698372fdee54edf7abf4ee14be551ed483df9f2fc35cc99ced06",
+      "sha256": "8f607a1fd2ed77b94bddfcd34df03ee79fb748c615d4bb7a466fb399687326ca",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2377,7 +2397,7 @@
     {
       "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz",
       "role": "source-snapshot",
-      "sha256": "7c5567ada44eef1f739c9ab0a3022ad1b931cf5b93cfb299a11185bdd5a3799d",
+      "sha256": "e79eb7986765a884406611ff59115ecb3b32a6ec780c2350f504d740ac1db86a",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2455,7 +2475,7 @@
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "34f6d112c111c2653247ccc5d8e21c9408c9ea0803dbd3f27474ce3bb1b746f8",
+      "sha256": "4f6e3329a22e9bee6a6f506bf2bff06ede1b3d187883acc066bcbc1801ba0397",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2479,7 +2499,7 @@
     {
       "path": "runtime-data/lspp-input-form/manifest.json",
       "role": "generated-artifact",
-      "sha256": "9cacb478a712ab5f5fdf0772d4c7093fa7662fe98a84f1d855d0f25e446f3d5d",
+      "sha256": "c0d2bfc8b4f96b9348ec6309d4d03b96b15877b8b06013341ac4be825dc6b68a",
       "reason": "frozen-verified-public-runtime-projection"
     },
     {
@@ -2491,13 +2511,13 @@
     {
       "path": "scripts/benchmark/benchmark-keyword-manager-webview.cjs",
       "role": "editable-source",
-      "sha256": "a28eee37dbc8482f8da6751ffeb39d5079f82763bcbde6e4510e6bd63593b750",
+      "sha256": "300318bd2e25b1261d01ec5eb2b62140cea40ef3684b7a18773d13f7cbde014a",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "scripts/benchmark/benchmark-release-hosts.cjs",
       "role": "editable-source",
-      "sha256": "214b4899c477de380557f4de832c0494d92ad4c52ea118a7e2875e77ac1d266a",
+      "sha256": "4bcb8e08b606872b10ee5dab3500b3129b5775ceddf86db6309fabc102af6364",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2539,7 +2559,7 @@
     {
       "path": "scripts/build/generate-field-reference-index.cjs",
       "role": "editable-source",
-      "sha256": "51d70f0b9971e8cb4a4eddf7f2608ed3a793254bda858fc53554417fab7cac88",
+      "sha256": "97eb6cf13aaa106a5e9f45e2fd98fb2d79c6fae115f6b364f120e2200ee41355",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2599,7 +2619,7 @@
     {
       "path": "scripts/build/keywords/data.cjs",
       "role": "editable-source",
-      "sha256": "bc53c8109ccad00414b8c83bdc6e40d58379f19262ee237709a8b10866af6bf2",
+      "sha256": "0940a32c24cbc97722c03f856f426856ecc6cfb32ebdd512744d3444fc5d76d1",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2653,7 +2673,7 @@
     {
       "path": "scripts/host/run-editor-safety-extension-host.cjs",
       "role": "editable-source",
-      "sha256": "35a4167b5334c3a3fedd6eef6917d9a4c431f76b28d05aec41da8947f28434ef",
+      "sha256": "68097cc7bb63d229cb0a509c29974f89ea7beb27f22522cd714dcd6e2ea5970a",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2677,13 +2697,13 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "a6d2001a6de7821a90f851bc77bc52e62dc823b61b8ea1d453047932c07721cd",
-      "reason": "public-contribution"
+      "sha256": "b4ee90f408d9321149e70bfad78e49c6d355c2ff99c0a9b0a50bb9991f1c38b9",
+      "reason": "installed-product-host-acceptance"
     },
     {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "130406d65f8b9edc6f026223928bfd00cef3558e40d3b1d4f9242e4994ecddc2",
+      "sha256": "7377ac56eba743c3f9f362191a2e82b6188b656a66f547f2a1af1d9802f3e41a",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2749,7 +2769,7 @@
     {
       "path": "scripts/maintenance/validate-project-contracts.cjs",
       "role": "editable-source",
-      "sha256": "d831f6a1144aa198afb7e021b21d9ae1e4c8afde12016ac613176d422c61be83",
+      "sha256": "686a82c854d5dd88fa87690969c93c659a4d2933382b83ac2214ed49229fc684",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2815,7 +2835,7 @@
     {
       "path": "scripts/release/package-hover-release.cjs",
       "role": "editable-source",
-      "sha256": "cd41ef8f763bed0e2d9f4115405a3ef76c04fc0458f52c6443e3badba2bdf46b",
+      "sha256": "ab448cf9de769388e0afdae6806a81899c294f8f20cd4e5ec0cef8ec50676ba6",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2827,7 +2847,7 @@
     {
       "path": "scripts/release/public-release-reports.cjs",
       "role": "editable-source",
-      "sha256": "46c437c827abef5f3b875cb8194de6d13b45818c904c8489bc4191913aedda42",
+      "sha256": "dd7c46164bb5def024bf2b6617500a0def024e34332436215ec86cf99bed8367",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2846,7 +2866,7 @@
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
       "sha256": "9390850a150a1aa2bace8e67eebf0bb51b226cabce4c85c3d06afa23cd17ce6b",
-      "reason": "public-contribution"
+      "reason": "product-test-or-build-dependency"
     },
     {
       "path": "scripts/release/update-source-manifest.cjs",
@@ -2857,7 +2877,7 @@
     {
       "path": "scripts/release/validate-package-contents.cjs",
       "role": "editable-source",
-      "sha256": "d8ad25a62cbd1ddbe708fcd9d1db01d3bfc074ebab671a859a2353ad6b46187d",
+      "sha256": "17e51a4f10f7b68ca7a975c2ed064384f8f201e6652baa3e8afdf231149e7537",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2899,7 +2919,7 @@
     {
       "path": "src/client/EntityReferencesWebviewProvider.ts",
       "role": "editable-source",
-      "sha256": "f1dd5fe9ddd4180da139e27468b176c92948afd6efc45651e46fee7459b58b2a",
+      "sha256": "eeb4ec44ac9ac3bcf0ac2552fe186659c14eac2c914b1b765e8749099dc027be",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2911,7 +2931,7 @@
     {
       "path": "src/client/LargeFileViewerProvider.ts",
       "role": "editable-source",
-      "sha256": "b6297cda3892929ba37acaeeef9b70c2c3099c84da4906011965bf917dd41049",
+      "sha256": "b7c4a1e1b14fa2820c00cb5d5fa797f9cc877485e26b56d52efd691d182a48f4",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2971,7 +2991,7 @@
     {
       "path": "src/client/entityReferencesProtocol.ts",
       "role": "editable-source",
-      "sha256": "d9f3395460a103df840bbb63dc2f3ab842f69ae29f19447d8f468e1c1ca48826",
+      "sha256": "689104cb5531a9ca5331053a524f216c483872f7af66feae51f1eb4de42d2a7c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2989,19 +3009,25 @@
     {
       "path": "src/client/providers/entityReferenceProvider.ts",
       "role": "editable-source",
-      "sha256": "265b333bead29ee285f076ab6acd0494f3c263601f7ef63336e181189aa249a2",
+      "sha256": "7d2eef5df13b9d85b7e9b95e31781ad3a9958cbfc40c22732317c622ab3da852",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/providers/includeTreeProvider.ts",
       "role": "editable-source",
-      "sha256": "6eab9a68abd240cbd4ddababf853bcfc16d71cace8df76ec8927f6f6c2409a40",
+      "sha256": "bac3908bfd961b00f7a84b4d75a0b5508b58387dedad4408d5d8f11292094c45",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/providers/keywordIndexProvider.ts",
       "role": "editable-source",
-      "sha256": "e1cb9a25c4cb07820ea849c2443e0d5ed7064c1bc89a606df84342672af8cc20",
+      "sha256": "677ed5231a8b36bfe9b8c6719a2030aec9eefa299434f23bd98fd5808d4084a3",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/client/providers/projectKeywordPages.ts",
+      "role": "editable-source",
+      "sha256": "fc3c796aa4a3c92e024af886c02198f5505771414cf99785be4a6f0dfdb22620",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3035,6 +3061,12 @@
       "reason": "editable-product-source-or-resource"
     },
     {
+      "path": "src/client/services/documentSource.ts",
+      "role": "editable-source",
+      "sha256": "5314c9bb89d8a7b2bcae550ae3c4e48f1eeb4f10ecfcfecb251a5b990428d1cb",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
       "path": "src/client/services/healthService.ts",
       "role": "editable-source",
       "sha256": "2142c21233eec9523e36f08b1e1ee859c391b502623ea2b596a24e7cb881c22b",
@@ -3055,7 +3087,7 @@
     {
       "path": "src/client/services/indexClient.ts",
       "role": "editable-source",
-      "sha256": "bc83efdf0a32ee5da9710ebf664bd4e92599e9647631683a2548079419209983",
+      "sha256": "91d25cee130e22412974c00cbe0842b405162e9c0ed3482ac09c7d8a4a638e96",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3067,13 +3099,13 @@
     {
       "path": "src/client/services/keywordManager.ts",
       "role": "editable-source",
-      "sha256": "ba770ccc32866b5d5a6356c5d21102aa193d006badc55db759acbb2407da8c26",
+      "sha256": "75a90c6f6ddfc210611bc997d6a8c2341fb3fbab1b830191143afc6b7df551eb",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/services/keywordManagerApply.ts",
       "role": "editable-source",
-      "sha256": "6a7cfdd81fac71f90f47c042349da3083cbc1e834417c6be8334e20c0f645044",
+      "sha256": "6c8eb0df4c431497261216a9ede619c71cab0b5a124742d267f9a9614bed0090",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3095,9 +3127,27 @@
       "reason": "editable-product-source-or-resource"
     },
     {
+      "path": "src/client/services/progressiveEntityClient.ts",
+      "role": "editable-source",
+      "sha256": "7002585974e3478bb28e31edc3830ea76d739cd9bb671298b1bcc0c4f33cb137",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
       "path": "src/client/services/projectDiagnosticStore.ts",
       "role": "editable-source",
       "sha256": "b844ae4807a57d21d32261da1f604a3597d76501f5440377c9d98638163c201c",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/client/services/projectSessionClient.ts",
+      "role": "editable-source",
+      "sha256": "1e39260e327ebf8129e974020eb45a23e5ba8435a268c800fb6e0f70e59371ba",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/client/services/remoteParameterContext.ts",
+      "role": "editable-source",
+      "sha256": "2bafd6ffad4a073691737c49a8be12028e6c8fa9cb0b501e974fee11b8004549",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3151,7 +3201,7 @@
     {
       "path": "src/core/cache/entityIndexStore.ts",
       "role": "editable-source",
-      "sha256": "9a215bb06ae12ad1a43d98bfd2c72bd5cc3024ce40307ee1b0b9b068a94f366e",
+      "sha256": "9b49a5138d2e72e1810b2f62b10a59f46ae769fc3c0858c12553224fcf409dbe",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3253,13 +3303,13 @@
     {
       "path": "src/core/i18n.ts",
       "role": "editable-source",
-      "sha256": "2178c1c14394671c34e959d129e998063dbb62646b4bbde82107730ce70f1e67",
+      "sha256": "58782f23323689e0521c7a79c4a650bf9284a32c83dca916094bd52a18dfbd19",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/incremental/blockIndex.ts",
       "role": "editable-source",
-      "sha256": "b1b5e55b8b0df9b65066ffee11835fca4facbc1523884e7b63f9bb4d13013416",
+      "sha256": "4a513beda566850d7be5d560daa5138f64d20b7da846033a7b29065038c31fcf",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3295,7 +3345,7 @@
     {
       "path": "src/core/keywordSchema.ts",
       "role": "editable-source",
-      "sha256": "53c21e04ce685dcff2d6d7da903403f787ed086aec50800019915c6ef1b4f1be",
+      "sha256": "f2aeb83c3868444dfdaa6de78a6ce2b182de4bec900bb5bfc1efefcc948f038d",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3313,7 +3363,7 @@
     {
       "path": "src/core/manualIndexer.ts",
       "role": "editable-source",
-      "sha256": "2529c598b2c7ceb8a72ab3b388e311d46deff066711f03fb907f2a7a7decb83f",
+      "sha256": "353a72dd1091e507e0e43db3b25a25198810f9a1965f37a600e9f80dfcfaf065",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3445,7 +3495,7 @@
     {
       "path": "src/core/project/projectIndexer.ts",
       "role": "editable-source",
-      "sha256": "4dc46e74406a9f2b6607f01a9d0b1d617485eddd1d59a19202b8358206b75029",
+      "sha256": "f7348e7d2a1ee2409f60138883c146d8b65180f6750418099e3fac46e15fff34",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3457,7 +3507,7 @@
     {
       "path": "src/core/references/curveTableDefinitionScanner.ts",
       "role": "editable-source",
-      "sha256": "e52c82743ded267650581699960643d17d62f33962686cd1c31c50ba17986a65",
+      "sha256": "5bfdf929b42f34639e20b172613e5c65bf250b6681bfa640045c5daedac5201d",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3475,31 +3525,31 @@
     {
       "path": "src/core/references/entityPageDisplay.ts",
       "role": "editable-source",
-      "sha256": "34575b80d0a9f12b508fc632d41caa0e788916de1fd2baf2a600961c8729edbb",
+      "sha256": "cdb5f6193743698b2b8e8634c933c63671ccc9f5e497218ab3a792798f65a950",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/entityQueryCache.ts",
       "role": "editable-source",
-      "sha256": "8d00105d3145b07bff72811cb537f8ec7943a0621181d5117cb47aafe1173975",
+      "sha256": "6e357c8277d3d7e68a0775f0866f60823e5736cbb3345a7d8df78b22a66cba0f",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/entityReferenceQueryService.ts",
       "role": "editable-source",
-      "sha256": "09d45cf67be180051c44cc7afac09fe72178aaefa60a70fe0b60f83d7fcd9802",
+      "sha256": "c6d0c3f9d820e3f353e37fe622363d724eb39f9037f39ac1e4484f91d1af2eaf",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/entityTypeDefinitionIndex.ts",
       "role": "editable-source",
-      "sha256": "2583040e3374feaf25345c8cee64740968c829074db44b32256ad1b5d7083ad0",
+      "sha256": "3175423cb2844696305d6890682a8b39ad9773d52861a2ae8115898eacad8b5a",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/entityTypeReferenceIndex.ts",
       "role": "editable-source",
-      "sha256": "457b12685eb92fe70d9d38c1e91a49f7fd916559fdba03048d0aa58e1f650a4e",
+      "sha256": "5776bf94e46ea624c62f3cec2fa53d0c56198c6cb4099bbea1d223e2487e49a4",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3511,19 +3561,19 @@
     {
       "path": "src/core/references/fieldReferenceClassifier.ts",
       "role": "editable-source",
-      "sha256": "fdb1583df48ea0e98961772acb3816db2189751fc78eb095406988499c65b289",
+      "sha256": "486c5799c8a8c0a19fdc95ad305fdd8109b10401f028c7dcf38f24045b129f69",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/fieldReferenceHover.ts",
       "role": "editable-source",
-      "sha256": "26aa9cda6dfc6d6958519ed894b8bc8a1509c58fc5f7a6ddb1b7ea89836e8c3d",
+      "sha256": "7b10cd40b1b8e05e908fe4958dc4106dd00385d94ea9e0aba161397b8f708a62",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/indexedEntityQuery.ts",
       "role": "editable-source",
-      "sha256": "098be369aa197836de518c1f20c6c83fc6ca2b47a9533e18adbf8b3fccd098fa",
+      "sha256": "0eb14989e12e6123820648ef0987efb4d8bb5a633c6344bc2de0d4f6260f763c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3535,43 +3585,55 @@
     {
       "path": "src/core/references/onDemandDefinitionScanner.ts",
       "role": "editable-source",
-      "sha256": "457ff71b6167f2f1a357069e79c480721142932a6dbd14ea086467f722f32608",
+      "sha256": "0d3f0791c1409556b21081297c75552a69db56ae80d643abe1e1542d696a0697",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/onDemandReferenceScanner.ts",
       "role": "editable-source",
-      "sha256": "c8a8f6ef135a73662ee940dfed7a4dd1b07a4b4dc578b809b09eaebf949bd617",
+      "sha256": "dba801b4380b857a4171d3d832c66570fda6b9a8d7ddc644517f3728196d6249",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/parameterDefinitionScanner.ts",
       "role": "editable-source",
-      "sha256": "628aa614413e7d8282873112d170aafee9c97a6c9708e227c37a4d3973140743",
+      "sha256": "fc1ab25ce9147e94788bb1b3a33c595973db8f970f838f026b56b00526555de0",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/parameterEnvironment.ts",
       "role": "editable-source",
-      "sha256": "871802460e6a9ce3682f9b5624db3ad43b002b76576bb2492eb18cc1075a4cd1",
+      "sha256": "91624808fd68e4aae519fe657b098a5e800307253f3e25c1ee739775f1e15a24",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/core/references/parameterExpression.ts",
+      "role": "editable-source",
+      "sha256": "b62a88b122e67d31cd5be7d8d4383847a1167594e5ba7816b4400a5056e56363",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/projectReferenceIndex.ts",
       "role": "editable-source",
-      "sha256": "ad1f482331b9c377371d30fc57c34c965a1f1ecf3cc493185242e97899988f5a",
+      "sha256": "93f36670ec05b2f3af035c21f26f57fee8e5af18e5ad77bdd49a0c9c4c0549c4",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/referenceInputValue.ts",
       "role": "editable-source",
-      "sha256": "ba5cd8af1aa1e2507629a0e75095c43137cfaad59dbbbf529a12ef3f1f8d93db",
+      "sha256": "d96c00a2b0ff1fe2503d3335b97faf130a926ef5fdfbcc7f1bf6d92dfbae2cf7",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/referenceMetadata.ts",
       "role": "editable-source",
       "sha256": "3e6b71a174999784986b6736332c85d7d0b95521acdb11cd756e8bfa186fbd14",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/core/references/referenceMetadataPages.ts",
+      "role": "editable-source",
+      "sha256": "916402082bb31e30b1990bee8fb9a60df4e97c8890f9dd4a16b5498fc2f5efe9",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3595,25 +3657,25 @@
     {
       "path": "src/core/references/registryReferenceNetwork.ts",
       "role": "editable-source",
-      "sha256": "b474ad2fba83b353829147e9b2b2be011fdf8cfe0878c9aad8de5169c9827b86",
+      "sha256": "291287ac93ef38f07b1a5d2007d930b47e9c9eedee7059c589e113b63193c087",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/registryReferenceScanner.ts",
       "role": "editable-source",
-      "sha256": "0d6552ebe62d962980eb830ee1b4bc8edadad20b04887903c03eab6a7bdbcb50",
+      "sha256": "eaafa6017115112e3b91ba17ae96c3755ffdd960510a14a56ce8ac80195c42f3",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/sqliteDefinitionIndex.ts",
       "role": "editable-source",
-      "sha256": "f20ec913df17d0882fa5f7040fb573c14cfd0d7fded7221ff17ce008e4711a25",
+      "sha256": "19fff4fbba0bc21252ccd76ff1e64124b4469bc9b3965aebf06784842fbf08f6",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/sqliteDefinitionShard.ts",
       "role": "editable-source",
-      "sha256": "1c0588091ddcf94a79dd0f021f175476b52e4008ccdc2bc07568e801b3105a3f",
+      "sha256": "38bb0080f8fe796cc7f5dee3f53adb3c336fb6a06f0b5eea3ae21f5ba11aed82",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3625,13 +3687,13 @@
     {
       "path": "src/core/references/sqliteReferenceIndex.ts",
       "role": "editable-source",
-      "sha256": "fe836184c30218c24b380397c4f86ee000a5b1c34032878c5381fc7e70af4c25",
+      "sha256": "de5cd68c601424555bd26673b17f9760fb170b3dbb947c5af9496f06aad9ab3e",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/references/workspaceReferenceSearch.ts",
       "role": "editable-source",
-      "sha256": "0bdd8af4d729d5ed1fc5e81b0477ec89d8073db299a6911a4ae95297690a249f",
+      "sha256": "cf5430846a02b68eb0981fb43e5724334c8ff7a4f6b1b7280d464c72b0b861cd",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3643,25 +3705,25 @@
     {
       "path": "src/core/scanner/fileIndexBuilder.ts",
       "role": "editable-source",
-      "sha256": "6ef2c647c3ef8fa7d274afb8e1092e3c1be68718277b008a452ae230b0d2d44c",
+      "sha256": "03ba9819b24ad8e6fd7520fbec540b5ccdf3a68382195ee6abf9467d14b25028",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/scanner/keywordSkeletonScanner.ts",
       "role": "editable-source",
-      "sha256": "9c6ba98d2bad449cab71975dc4805895c389e3b6bfe36200cf7acaed737e768a",
+      "sha256": "728cb04f6d85f81ad890fdc14330e00dea0c144346a8572f1a64ec031ed18fa9",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/scanner/largeFileWindowReader.ts",
       "role": "editable-source",
-      "sha256": "7b83e3eed01c2a1da7237d8c160682720f4b407e59bb2b76b0c2a9634b3da426",
+      "sha256": "ce617f1cd3bc56a0e8bc89539cf399a6133cf2540663caeef835a062e4b43bbe",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/scanner/scannerContracts.ts",
       "role": "editable-source",
-      "sha256": "c1414fabbafa7137c9614d8072174642fcd91c14a93b81b354af3e647a863661",
+      "sha256": "8548b45f8aa1db75e5eb4109a081aeb0739cfdb258d06c95a2c026b1279bd0ec",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3685,7 +3747,7 @@
     {
       "path": "src/core/semantics/catalogNativeFileLayout.ts",
       "role": "editable-source",
-      "sha256": "fac02b011c3242cad37eb408bec74c6f7c813e871a5515103b34c59721917225",
+      "sha256": "c75ea1ebbf9f6eba9664fea948ccec3bbcfa1c8c058c1959096ec0ddf7fe11e1",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3715,7 +3777,7 @@
     {
       "path": "src/core/semantics/descriptorIdentity.ts",
       "role": "editable-source",
-      "sha256": "f695f82d585e7207bc03fc17e292f7e852abcb05e27c18e9659813578d515fc1",
+      "sha256": "b4543f869673435fc2e36ef36d5e9c8b88ba693f5b8f5e6eb8c12b12dbf7da68",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3733,13 +3795,13 @@
     {
       "path": "src/core/semantics/nativeConditionalLayout.ts",
       "role": "editable-source",
-      "sha256": "170ec7cc34ee5df519fc6c6c421da998db8f95532737026a5b4e2a69aa1379c2",
+      "sha256": "da71d9f7191d24b511209ea6b7c2e9946896e5a8ab7a636ea5eed427e77daacc",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeContactOptionalReferences.ts",
       "role": "editable-source",
-      "sha256": "364e5d80d90529419980c3e015f1961e4946f8c8df0e9046aacccee34222d3c2",
+      "sha256": "1318e465e437890eee14316007a7a90ddbb29a2d3ed71e452b2d544d049a3f30",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3751,13 +3813,13 @@
     {
       "path": "src/core/semantics/nativeDescriptorHelp.ts",
       "role": "editable-source",
-      "sha256": "4f5e06423637e4b4c2e2a091320175303153b353f97230e7aebc19b2148c8758",
+      "sha256": "cb4457d60b3cc8f526737e09e73cda5275df22364acfab448c316ee1d9502c51",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeEmReadState.ts",
       "role": "editable-source",
-      "sha256": "f655a569f54afba52b82bee7e3fa0ed96eea0a97fe949a92b90fe64e3367d33e",
+      "sha256": "d0a851ffc28a4ef9aa19a758191b07671965bea7abf6bc54a3b9ee2f626b133c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3781,19 +3843,19 @@
     {
       "path": "src/core/semantics/nativeFileReadContext.ts",
       "role": "editable-source",
-      "sha256": "620201def00f77bcddabc9843b8bdf821ef4abba3f148400826e93ae8a0e73ad",
+      "sha256": "ea6c5ffacf23e2bb0bf00ad64cbd4f929e03bd7fe4b9b212ed7be7db57fb478b",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeInputFormat.ts",
       "role": "editable-source",
-      "sha256": "0c623438c326bb0aaf22b6931a036296723bd1217591c80abf9bde122a8d99e1",
+      "sha256": "76cad35155ca2aca3828b2ae5f9ea9da33d25430b9f647b9c51aa17ad7a79084",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeParameterContext.ts",
       "role": "editable-source",
-      "sha256": "1e2899c39ef0a59b2cd96147c1055b5cdc1d8c1694238cfd0442220e2876c01a",
+      "sha256": "efed19bfa1efe945b30a25a12edf92ea9d6fef04699f43e7ffe4f7abb4da7a01",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3847,7 +3909,7 @@
     {
       "path": "src/core/semantics/semanticRuntimeV2.ts",
       "role": "editable-source",
-      "sha256": "5771ee6f2d461f42c3f0e333b8d65db62417f76ee8e9ff8de2d469018f5954a6",
+      "sha256": "add3462fcfc389818a3d65632f398928219828da7b0cb225f6e77791fc477612",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3925,13 +3987,13 @@
     {
       "path": "src/core/userFacingReason.ts",
       "role": "editable-source",
-      "sha256": "7f5ebbe3fceca3aaad289366ab55817c78586032c6489783a173470712434f8f",
+      "sha256": "3865620d1a7eab14ec93b1e68df88958aeb27d3199ae1402c0fda3d03973d969",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "1057898194ed840f5e29e2133c3a5750d8444986aead2cdbe8afafdbf8e6fd5b",
+      "sha256": "8ebfce495522daaf871fa9d5fedb8d52b8774f1faf994080551f8cf41f54a5d3",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3955,7 +4017,7 @@
     {
       "path": "src/manual/ManualSidebarProvider.ts",
       "role": "editable-source",
-      "sha256": "5e76e9e5add5de1e8bce90a0b5ade311dc7c6bb884d81b0f92b3abbcc0f4bc38",
+      "sha256": "6b8e6d55bf39c9c51af392379decf7b7c4151395bc6344e482cb0ff8182629b9",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4021,49 +4083,73 @@
     {
       "path": "src/server/requestRouter.ts",
       "role": "editable-source",
-      "sha256": "b45432adbab82bcb48dc8238a94dfd49746cfcdd1fc4b1a54ee2bd1a9edbaf24",
+      "sha256": "01ec3c9f6b1f41e263c0cfa8400cc5cfdfca78295b9513b41642c91f0857c68a",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/server/server.ts",
       "role": "editable-source",
-      "sha256": "b305a4f1602c7059fc8f2de60975d3b0a90f476f6cf49445c7fca4fe7a7c6bdf",
+      "sha256": "dfffb17ea60c54236b001a24d083654379b693fcf0a31b453f756b90bbcb3a80",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/server/sessionManager.ts",
       "role": "editable-source",
-      "sha256": "3bd384e6c9a480870c738f80eb99070604a99b55b206d562bd623ea3aee4f7ea",
+      "sha256": "2d2d9124d9687e7b39121c5d461407435284c4d81c63f19287e21c166a3983eb",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/shared/indexPages.ts",
+      "role": "editable-source",
+      "sha256": "38a16f62a05d78a282a6d6380ae7901e08122485eeba8f9eb5cf04bbcba5256b",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/shared/protocol.ts",
       "role": "editable-source",
-      "sha256": "0aefcb1162d5b09c3050440667f61b6965503680530cb7cea9b99d23a8231726",
+      "sha256": "9bef14350bb2c874faeec70f8db2f6b40648be07dfab813b184784e6d36088b0",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/worker/entityQueryWorker.ts",
       "role": "editable-source",
-      "sha256": "03b97bc943c35f8f5c48a283509858b571b7c93c4e92b568dd6934268fd354ec",
+      "sha256": "59e183b142a193c50dd769b70027471483001ea7b7139de9768c6dd844380096",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/worker/liveFileSource.ts",
+      "role": "editable-source",
+      "sha256": "3bd6b9f1df1e15a4981263360f9250d72de44d2e8ce69281d90ebdaf2ae3741e",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/worker/progressiveEntityQueries.ts",
+      "role": "editable-source",
+      "sha256": "afebdc16701b4e1ce87aba74358e5def9e45db2cbd7a1d9fc5b70e18d733b5db",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/worker/projectIndexLoader.ts",
       "role": "editable-source",
-      "sha256": "8dbd6f4cb67f58e4dc0e103ca436f14819a88a11e4660ed25d1762ca148b3559",
+      "sha256": "75311831d44c9a5952abc0e6753f3ae20b55cfff05708761ca4eb484bec1ff41",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/worker/projectSessions.ts",
+      "role": "editable-source",
+      "sha256": "8e566151ad1326d85cbe7db13128a1eec5786e5229f028750fc1ebc208af8de9",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/worker/scanWorker.ts",
       "role": "editable-source",
-      "sha256": "bd4b91dc7ebb192e35a867f7801b40dddbdcf450df8788b803285580f367e40c",
+      "sha256": "29931598ab20558c8ac5aaf154be328f24a524cce997a44e4da0d29144f73af9",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/worker/workerPool.ts",
       "role": "editable-source",
-      "sha256": "f9516df31bb46d183d681338de6eb0c8a7adece1b1a6f16c4d67d0031abdd28f",
+      "sha256": "af97528e5266ead8eb6b989d5a0c07d2f1d568f4e6a98b654d5b69b49de264eb",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4165,13 +4251,13 @@
     {
       "path": "test/client/entityReferenceCursorFollow.test.js",
       "role": "editable-source",
-      "sha256": "1260fe0fa948ddbbe402911b3b7675ed72061c6fae10cef9a4fcee82913a81fd",
+      "sha256": "370776a3af944f412824195105f3c3ed0dfb066d02d499fb2ff17ddd2842bb18",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/client/entityReferencesWebviewProvider.test.js",
       "role": "editable-source",
-      "sha256": "e035d3200ddea00dcfa22981e4b55c71fe7b6ffb8e076f13317df83b1b4541fb",
+      "sha256": "6dcd74ff2ecd506b69f571a94034c951f576f8181a3011251b20f99c6c960303",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4231,7 +4317,7 @@
     {
       "path": "test/client/hover/setListHover.test.js",
       "role": "editable-source",
-      "sha256": "e16955fbe5e7b2e33dcba7e38ee24c1c4c80e5d8f703b04d9002b41efa78a857",
+      "sha256": "9794b6451aab0ed740d9ce6fcfbba40d1863314a421b41de34f1c1c201b78c24",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4259,6 +4345,12 @@
       "reason": "product-behavior-safety-or-host-test"
     },
     {
+      "path": "test/client/keyword-manager/feedbackRegression.test.js",
+      "role": "editable-source",
+      "sha256": "0ffeb89de415f98c26249cfb29fccc9fe33aa1cff4e68f42da8694f517267f8a",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
       "path": "test/client/keyword-manager/keywordManagerCatalogWriteAuthority.test.js",
       "role": "editable-source",
       "sha256": "c6c70c98f878febd0276e36802efb812963b3a82f9c5a020fda4bb418df20f4e",
@@ -4280,6 +4372,12 @@
       "path": "test/client/keyword-manager/keywordManagerContactThermal.test.js",
       "role": "editable-source",
       "sha256": "d72a07ef3089b52e754197eb1884d190470d08e1bb236662b501a13e1893b898",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/keyword-manager/keywordManagerDisplayOnly.test.js",
+      "role": "editable-source",
+      "sha256": "46400cefa775b7488ccfb25a0fc0aaa336b10d5b4572d6e3e492200847af7320",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4375,7 +4473,13 @@
     {
       "path": "test/client/managerScanSource.test.js",
       "role": "editable-source",
-      "sha256": "aba4704b74b989c7c8168ac0ae70d445e503e062dfc3c1826bece2fa3fa24290",
+      "sha256": "a35fe092b852906a7ecd6b1a8958e155aa1005cae606fbadae87b75a9e206cca",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/projectSelection.test.js",
+      "role": "editable-source",
+      "sha256": "6eb8c75d07571eea4692666df008039f52c2ff969f123ef50cb73693b2a7995a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4387,7 +4491,7 @@
     {
       "path": "test/client/providers/entityReferenceProvider.test.js",
       "role": "editable-source",
-      "sha256": "c15b4a86f16e1788b7a13046f2d636e89ca10a97d28c1fac0e046432e5db107e",
+      "sha256": "d9a80d3de6c59e0c352039cae2dd1dcaa78b1a70d0c9f6ccbfb731aa9d2a96a9",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4399,7 +4503,13 @@
     {
       "path": "test/client/providers/keywordIndexModes.test.js",
       "role": "editable-source",
-      "sha256": "cf342db5cd00301c369cadcdd40d33e17eb38b5e0b4f6b0dbde36d6e40546baf",
+      "sha256": "c4ec3eb68eebfc3ee1398c8e8af073fab46a709d51bda61e759357906bac22d0",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/remoteParameterContext.test.js",
+      "role": "editable-source",
+      "sha256": "f3be73509e3012565fe7837d0567cf1bbad57ba3ae08f7861abb68aa8e0d7a6b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4411,7 +4521,7 @@
     {
       "path": "test/client/services/asyncRequestFailures.test.js",
       "role": "editable-source",
-      "sha256": "33f6f260fd3ba185b772776599597f155156c4f216989bcfa10f16c5a76c7b86",
+      "sha256": "c06718d1a794bc955c96c90812b75a0fbc61a3aaf0d77b1aff926d8b6507090e",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4477,7 +4587,7 @@
     {
       "path": "test/client/services/keywordManagerApplyGuard.test.js",
       "role": "editable-source",
-      "sha256": "075b042594fb143f5f8c6c0c3f135c2e461e51ec7394d8e1ac10a89578e1a350",
+      "sha256": "ed21e055bb79c372ce80fa56a8a75ef8b2d5aea54d85d8beb1738d295de16aca",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4591,13 +4701,13 @@
     {
       "path": "test/core/cache/entityIndexStore.test.js",
       "role": "editable-source",
-      "sha256": "86a196bddf9bf8cd100bfa111dddae6c6782c515473ea84dddd8e225658ef240",
+      "sha256": "5f52bc81970bf80fda2f5699798a3027d0a699a9790e812186fe94b8858abd74",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/cache/fileScanCacheStore.test.js",
       "role": "editable-source",
-      "sha256": "e9e0c6bcf87b5c104fb88d4196bb7ade0e814bf154e5497485655583716471bc",
+      "sha256": "4590edd4a5c32d2e02e44bcce252c52673511ec8beb3b874df2b45d2fbcb8bce",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4759,7 +4869,7 @@
     {
       "path": "test/core/keywordIndexPerformance.test.js",
       "role": "editable-source",
-      "sha256": "77b1ca985f410283019793123e136133decdd6c1b19ca39543bbbc5a0f7b2312",
+      "sha256": "aabbe0d408e6946000235c1f32d0470a4ed80012714af6907aff8890353af1ed",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4795,7 +4905,7 @@
     {
       "path": "test/core/manualIndexer.test.js",
       "role": "editable-source",
-      "sha256": "3a47cee19183bfa178cdd9520fefe173e2a94a1ab52e59a4434a6c702985376f",
+      "sha256": "77ed22e6a238f535515f061999d45c7588f6af5fa8aa455f38cd5c4533fdaf33",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4933,7 +5043,7 @@
     {
       "path": "test/core/references/curveTableDefinitionScanner.test.js",
       "role": "editable-source",
-      "sha256": "2805155541c127929ac99006e89ce7984f079d1b2b47427695400ee1f2ee985e",
+      "sha256": "37e7864624ff651c1dba229b488049d3dd5f568854f22ed9f0e6f550bae779ca",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4957,7 +5067,7 @@
     {
       "path": "test/core/references/entityTypeDefinitionIndex.test.js",
       "role": "editable-source",
-      "sha256": "7d33e9e5b6bdbe96aaa1a74ceae5704f336014da9dc342feacbe46f0c90fd6b4",
+      "sha256": "2a08bda83306480701267e84cebc294999cf3b6caca26dce8de1b11ed13852cf",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4987,7 +5097,7 @@
     {
       "path": "test/core/references/fieldReferenceClassifier.test.js",
       "role": "editable-source",
-      "sha256": "925dfe342bb02d238cc8fc05707ea82412ceae16e52a9ba09d99c419449e0931",
+      "sha256": "48e8724e33523200f65a443e5787ea623114e0017367fa4d5ff05a299fbe3966",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4999,7 +5109,7 @@
     {
       "path": "test/core/references/fieldReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "1bf21c2a252b477982066a6c255116b8f257f5fa4e6c4819e1aea6c7564ffd7c",
+      "sha256": "69db38ad20adefb78168eb77db90390255c90749b6d21e583d66cdd7ef174611",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5143,7 +5253,7 @@
     {
       "path": "test/core/references/onDemandDefinitionScanner.test.js",
       "role": "editable-source",
-      "sha256": "a63ac3a9ce522c62649718a5b789367d1e0b0f67405984c68e6037d48652429e",
+      "sha256": "5f059eb27fb5db49242b3d58bf2708c4a1414af9e2bd5910975b84ebe6ef53f3",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5165,6 +5275,12 @@
       "reason": "product-behavior-safety-or-host-test"
     },
     {
+      "path": "test/core/references/parameterExpression.test.js",
+      "role": "editable-source",
+      "sha256": "08a2c4fd53e00f2e1ee3ac6a4aa59414d1d0b13bcae3771ecc0202472837e8a8",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
       "path": "test/core/references/projectReferenceIndex.test.js",
       "role": "editable-source",
       "sha256": "7195f4143517f569de9fbf45662f6034f7bdab6ac9309c62a2fc2bc40d990164",
@@ -5173,8 +5289,8 @@
     {
       "path": "test/core/references/referenceDirectoryPreparation.test.js",
       "role": "editable-source",
-      "sha256": "333b52f42408622b057e54e49a05af4318cd4008c0b4233ad57415eb9de032f1",
-      "reason": "public-contribution"
+      "sha256": "a0dc4048621672048555c5edea7d811f10e9c7ea31c18e406705caeddf321968",
+      "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/references/referenceNavigation.test.js",
@@ -5203,13 +5319,13 @@
     {
       "path": "test/core/references/registryReferenceNetwork.test.js",
       "role": "editable-source",
-      "sha256": "37738e1737fa75a82fdd3c5460353d30ee08bd1cff4c45f7aac7c740633d7c7d",
+      "sha256": "9d587c193601c910ef5882ffc6cb18352028146b64bc74addab23944e8f040a4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/references/registryReferenceScanner.test.js",
       "role": "editable-source",
-      "sha256": "02fb469e9e7e2468a6a0cb154ce2ffaf89dca4422411d9e910626ebdf6b95e61",
+      "sha256": "42fc9686d7902a4758330f6f07ba55c61a4e8c96d68bf161948ff788950b1ffb",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5221,13 +5337,13 @@
     {
       "path": "test/core/references/sqliteDefinitionShard.test.js",
       "role": "editable-source",
-      "sha256": "6dd374ca333b825ceb9ab43e7c4a0c6c910051bffc933e6974f5ba3a2fb2885f",
+      "sha256": "006b88c0f68450ccf23a46f3901b1309d030c2fca9e6c5bcd4d61c88698c0c81",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/references/sqliteReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "4ca38a33326bc43490c6d4e8f5f3a5665c06d1da62cf21d55835a8013d257ccb",
+      "sha256": "b4d3b7b12a4312017abb3d17016a8189ca276fad08f0b70ed0e9e0bdcf1b3b48",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5257,7 +5373,7 @@
     {
       "path": "test/core/scanner/fileIndexBuilder.test.js",
       "role": "editable-source",
-      "sha256": "e5a84ec4785637b2893fa6d4800454e61995da6aa02879b6fd2e9d82c7209b40",
+      "sha256": "c508222750926740c8a3d1772fb110c8b9182196c6cb0eb6581160c807b2537c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5269,7 +5385,7 @@
     {
       "path": "test/core/scanner/largeFileWindowReader.test.js",
       "role": "editable-source",
-      "sha256": "e12e782d693c88d06c194d7bde44f86da3938051c20d8ef279e2de847851787b",
+      "sha256": "c1d6ffa895587f75d09365a392e652b5ad65dbdc1dcfb2c2a1d8cb1cb426ab8d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5581,7 +5697,7 @@
     {
       "path": "test/core/semantics/semanticRuntimeV2.test.js",
       "role": "editable-source",
-      "sha256": "b7e1ac3fcf496f03bc174f1eeb76350a3daaa689dd7acfb754623e4227bfdff7",
+      "sha256": "e56f419858fb1a635f1ca71155659d29d7556ba42a049c0ee753709775728734",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5761,7 +5877,7 @@
     {
       "path": "test/fixtures/public-behavior/fixed-comma-blank.json.gz",
       "role": "editable-source",
-      "sha256": "a29684ecff6af9ac1efaf9eba671b0fbcbe38a6b4ba993102bfd2f8d4e14581e",
+      "sha256": "d17e16b111fdd7397e2c7d31b6c1713b173b8558bd06db629383d805b45640d7",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6049,7 +6165,7 @@
     {
       "path": "test/fixtures/public-behavior/shared-byte-cases.json",
       "role": "editable-source",
-      "sha256": "c45f659e0615fba8ca1b2b25d3d54c9bb5507e2020e3bf381d5bc5f4372a296d",
+      "sha256": "5376b22e1ad16740b7f806c68a42de313f9fe58a998e106be2d510de565c14b6",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6115,13 +6231,13 @@
     {
       "path": "test/fixtures/public-behavior/trim-record-selection.json",
       "role": "editable-source",
-      "sha256": "5472671166fe8bd5a20442279babde136d71e8ddf99acc77a9637d6713977d1e",
+      "sha256": "3ba03943ee95143d3b10b53dc8d4a86659b4fcd84b1ce0928a8951e6c0b7e6a4",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "test/fixtures/public-behavior/volume-record-selection.json",
       "role": "editable-source",
-      "sha256": "ecb340c1075e4019dc1e2e1e11f200ad37ded7b03dabc9d6c0af3ec3f607f566",
+      "sha256": "e2e09c8097e954afdcbfe087777b7b591ad31390660fad0c5c9cce677eba6733",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6397,7 +6513,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "9302302190b67f5e54fe53ed6e8cb109de5a16618dd5d904e37a07073744a8e4",
+      "sha256": "baf631b3e5cf7b76d2282c21672a83892a04a9ad0772db0a351357726d546bfc",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6505,7 +6621,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "8fe02e05ea45e8c0ce69cf8d94f851510132fe5062b4f2e6ecb92b06e9a04134",
+      "sha256": "68082b9c5fe12b783fd3c34eb06dd1619e525f0dfe68b5e1ab4a83f7e669957c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6547,7 +6663,7 @@
     {
       "path": "test/integration/extension.test.js",
       "role": "editable-source",
-      "sha256": "4c99d582253c62415bc8baffd81ef1c5b9d06ac68efd53e4bb45774255ec3481",
+      "sha256": "a1ff82c538c10e9d17981795a1b12d7e5bab7bf7d6b58d08a5f06694f7a901d4",
       "reason": "public-product-entry-regression"
     },
     {
@@ -6631,7 +6747,7 @@
     {
       "path": "test/public-behavior/descriptorHoverReplay.test.js",
       "role": "editable-source",
-      "sha256": "6afd8197c192f323bac1dd9d8c9a582193d06a645abc84fdb45c66f6072d8dd5",
+      "sha256": "d884ad77b1f5ae07f7d6f12bd3ecd1da85455d0a18674302586fcf45f811a13d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6649,7 +6765,7 @@
     {
       "path": "test/scripts/build/generateFieldReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "00a8a038544b683fe96e0101fedbb7f72472c5568d0782cde1f79c4371befdd7",
+      "sha256": "6bc561d4f89863bb7746ee353f2f54e301d17247fe851e34a2f5cf9acae929f4",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6667,7 +6783,7 @@
     {
       "path": "test/scripts/build/keywords/dataConsumption.test.js",
       "role": "editable-source",
-      "sha256": "2753068b8074a2b0c6f8b296da2eb1f5d1203816e8757edb9584684d1c7e50d8",
+      "sha256": "ec40c7e67fd1770922e2c6d5af0fc779eb144de4198ae8a0caa3c5126140cc9f",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6703,7 +6819,7 @@
     {
       "path": "test/scripts/host/hostBenchmark.test.js",
       "role": "editable-source",
-      "sha256": "2ef0af0d26bdc35e28f5dd424ea98d968d4be7fda725cf6e8d3f7ad901e6e94c",
+      "sha256": "d8e561f189dd00198f2816d518080b4d86fc51d0dd9e3402be6757d3871b5abd",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6733,7 +6849,7 @@
     {
       "path": "test/scripts/maintenance/projectContracts.test.js",
       "role": "editable-source",
-      "sha256": "52dd8f7e5f540c02966873b0ccfc59ac73dd100d6ca6d57ccc696dc73afc40ec",
+      "sha256": "420fca6bb23258b6f7d11cdcbd4e5f75ef0e6d5958bee2ae2d9cbbccfdd26e97",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6763,7 +6879,7 @@
     {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
-      "sha256": "b5adc7d14eff1112d5ec448e9318be1fa2a4b248bc3bd629805862f89320f5a1",
+      "sha256": "b92051f8f7f63696251ddad56563506ca7b13f9238d3d3e07aa2202af215a79b",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -6842,12 +6958,12 @@
       "path": "test/support/editor-safety/native-menu.cjs",
       "role": "editable-source",
       "sha256": "5770fa66176e9bf71d4a5495055a1d835e951ed1676e23f92a2bbdc2e1bf6930",
-      "reason": "public-contribution"
+      "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/support/helpers.js",
       "role": "editable-source",
-      "sha256": "428850a26b60aa0cc2573bdcc2ffb5009ff5f98753bc1485ce7620bb97fd61fd",
+      "sha256": "3f0a2fdfafd7a0b3a912e65cf56f3cf68605f0717ca207af3f33a32a89c2d99c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6889,7 +7005,7 @@
     {
       "path": "test/support/native-reference-authority.js",
       "role": "editable-source",
-      "sha256": "fcf7f2c9eaf722a2ca2b6bc27f2cf66525df2ba080a3b87167f9537f41cca22a",
+      "sha256": "02eec92e7fa133fa99ba143ad8c5248b85545b7a13ffa1383aa673ea25dfa263",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6925,13 +7041,31 @@
     {
       "path": "test/support/vscode-mock.js",
       "role": "editable-source",
-      "sha256": "132fb06834048b9aaa4ed7012ef97eb18181c9b883489a8e39bf9932c2c90a74",
+      "sha256": "ecc9a8ecbe695fe021bddb436193a67a12a58ff638a5a91e82107da679232058",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/worker/entityQueryWorker.test.js",
       "role": "editable-source",
       "sha256": "17a0fcf7b71baeb787cb6d845a8ee223c542349e4b798e9c6f1e274826531477",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/worker/liveFileSource.test.js",
+      "role": "editable-source",
+      "sha256": "e5199f443fcb109b760febed284186210bdf9d9640de8b40badcc805f07a6870",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/worker/progressiveEntityQueries.test.js",
+      "role": "editable-source",
+      "sha256": "49231e284ed079198286af98778b2a076b48f986a8d124193eb8fd323167da8b",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/worker/projectSessions.test.js",
+      "role": "editable-source",
+      "sha256": "487701f2adfecabfbab06e86300e2683c64c6ee431f46de069f1a0fd34831bdf",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6961,7 +7095,7 @@
     {
       "path": "webview/entity-references/src/EntityReferencesApp.tsx",
       "role": "editable-source",
-      "sha256": "26ce064b59d0b2d4f8b6521f49c40e883a0d72116aa91f5b6ac0e1d6670134a2",
+      "sha256": "d42918818ba9dedc7e8129153c561826e966d909178bfa38e5397504d08f9870",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -6979,13 +7113,13 @@
     {
       "path": "webview/entity-references/src/mergeEntityReferencePage.ts",
       "role": "editable-source",
-      "sha256": "f8e5f75cbef4532a39fc21d0f8447e836d81a85491d403e94e5184e6eb8b171d",
+      "sha256": "43f4b42cd698586beb464648346dc6c78921c07aeb31199b438a9bcf052cbb02",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "webview/entity-references/src/styles.css",
       "role": "editable-source",
-      "sha256": "e834bf2e561e68fa147acfce1d65166c1785b3f6f98539c8e44b265fbb9336e2",
+      "sha256": "c94b016bc12c57dc03d4a8dcba179c805791e039430612cd5970422b9662def5",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7003,7 +7137,7 @@
     {
       "path": "webview/entity-references/test/EntityReferencesApp.test.tsx",
       "role": "editable-source",
-      "sha256": "54701be2d886a4d516e8e3f5704e25259d9501dc29de82fc283a9df5b33c480b",
+      "sha256": "29a701aaecb595126e185d49046d3e2a5fad922e44f10b1df5491e48e5f7bf88",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7015,7 +7149,7 @@
     {
       "path": "webview/entity-references/test/styles.test.ts",
       "role": "editable-source",
-      "sha256": "da14bef13bacf414f6565a24f8d5f30f5ded9182e0bd06fabc0f0e49b22f8259",
+      "sha256": "a8604359609c880c57ab7c9ac0a87f2d7fe5b2a418d2921f2b4d9e6e96643f48",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7051,7 +7185,7 @@
     {
       "path": "webview/keyword-options/src/KeywordOptionsApp.tsx",
       "role": "editable-source",
-      "sha256": "dd85b330549b733638a41963086fc1e5a78fa09210283d3923110e5d049206f3",
+      "sha256": "248d936af19f9e50a72917760679b57072c3a105f8efdae5547b7275d955a2e8",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7081,7 +7215,7 @@
     {
       "path": "webview/keyword-options/src/styles.css",
       "role": "editable-source",
-      "sha256": "85c497861452b28b8ffda1dc4462d20fb5b20b7ddbd28f8e0bc4b0b9f3cee0db",
+      "sha256": "960602f8218738e9ea8c04de23f7559f93835490e23813ca52d2b4023d859f88",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7105,7 +7239,7 @@
     {
       "path": "webview/keyword-options/test/KeywordOptionsApp.test.tsx",
       "role": "editable-source",
-      "sha256": "50c0402128868635adb6491248a6107e23ae4e11c16d5ccf84d48ac141463e3a",
+      "sha256": "3c4b871e92f07fc88ef7302fec7ed8ac1a7e69e1a6bfb5d3c2f3b8386a43dcf1",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7225,7 +7359,7 @@
     {
       "path": "webview/manual-reader/src/MarkdownDocument.tsx",
       "role": "editable-source",
-      "sha256": "16ec694740cf2e2b4951d18c1e3a8735dac32a174893ad0b59a86f6b494048fc",
+      "sha256": "57b25950fcb9dc739eec718179a11108b31b76fdb446b03a701de92b8ca8b307",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7283,6 +7417,12 @@
       "reason": "editable-product-source-or-resource"
     },
     {
+      "path": "webview/manual-reader/src/rehypeIdentifierColumns.ts",
+      "role": "editable-source",
+      "sha256": "61c7cb942790efcf0f39195025b1f4d5fd30db3e0e3073fec3abe0e25fc1dc00",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
       "path": "webview/manual-reader/src/remarkBilingual.ts",
       "role": "editable-source",
       "sha256": "87f9a75e3e81a7e2690fca33aa4a3e56e7a3614283a698115e8d8c1b8da7c91b",
@@ -7303,7 +7443,7 @@
     {
       "path": "webview/manual-reader/src/styles.css",
       "role": "editable-source",
-      "sha256": "afb7b90a19fbb0547ff5e63ecf11efe11ab4b31693184b755cdca429014dfd16",
+      "sha256": "10cef55f2df12299b00a414ad2acfc12a4543c8114e33721cf3ba832d775ff1a",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7376,6 +7516,12 @@
       "path": "webview/manual-reader/test/fixtures/pack-mandatory-card-2.zh.md",
       "role": "editable-source",
       "sha256": "6e063e41052236df6aa6e9d084f8781610ef40ecb826f6ceab1088ed23aced92",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "webview/manual-reader/test/identifierColumns.test.tsx",
+      "role": "editable-source",
+      "sha256": "615d9333315ef888932a31716c72e1e908152b78a00efcbd7112ccc3296756ac",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7457,5 +7603,5 @@
       "reason": "editable-product-source-or-resource"
     }
   ],
-  "excludedFileCount": 5732
+  "excludedFileCount": 5734
 }

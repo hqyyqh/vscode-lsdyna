@@ -50,6 +50,7 @@ const REQUIRED_FILES = [
     'out/core/theme/extensionTheme.js',
     'keywords/runtime/engineering/keywordSpellingAliases.json',
     'keywords/runtime/engineering/keywordLayoutCorrections.json',
+    'keywords/runtime/engineering/fileWriteLayouts.json',
     'keywords/runtime/engineering/contactThermal.json',
     'keywords/runtime/engineering/runtimeSemanticRelationCorrections.json',
     'keywords/runtime/engineering/runtimeTableLayoutCorrections.json',

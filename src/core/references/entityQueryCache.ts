@@ -11,6 +11,7 @@ export class EntityQueryCache {
     private pending = new Map<string, any>();
     private bytes = 0;
     private reservedBytes = 0;
+    private fallbackBytes = 0;
     private epoch = 0;
     constructor(readonly maxBytes = 512 * 1024 * 1024) {
         if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid entity cache budget');
@@ -21,6 +22,7 @@ export class EntityQueryCache {
         return this.identities.get(value);
     }
     fileRevision(index: any): string | number {
+        if (index?.semanticBlockRevision) return index.semanticBlockRevision;
         // Live documents need instance identity: close/reopen can restart version numbers.
         if (!index || Number.isInteger(index.documentVersion) || !Number.isFinite(index.size) ||
             !Number.isFinite(index.mtimeMs) || index.scannerVersion === undefined) return this.identity(index);
@@ -64,13 +66,28 @@ export class EntityQueryCache {
         }
         this.entries.set(key, { value, bytes }); this.bytes += bytes;
     }
-    reserveBuild() {
-        const bytes = Math.max(0, this.maxBytes - this.bytes - this.reservedBytes);
+    reserveBuild(maximum = this.maxBytes) {
+        const bytes = Math.max(0, Math.min(maximum, this.maxBytes - this.bytes - this.reservedBytes));
         this.reservedBytes += bytes;
         let released = false;
         return { bytes, release: () => {
             if (!released) { this.reservedBytes -= bytes; released = true; }
         } };
+    }
+    reserveResult() {
+        if (this.maxBytes) {
+            const wanted = Math.floor(this.maxBytes / 4);
+            while (this.maxBytes - this.bytes - this.reservedBytes < wanted && this.entries.size) {
+                const key = this.entries.keys().next().value;
+                this.bytes -= this.entries.get(key).bytes; this.entries.delete(key);
+            }
+            return this.reserveBuild(wanted);
+        }
+        // Disabling the cache still permits one bounded, uncached query workspace.
+        const bytes = Math.max(0, 1024 * 1024 - this.fallbackBytes);
+        this.fallbackBytes += bytes;
+        let released = false;
+        return { bytes, release: () => { if (!released) { this.fallbackBytes -= bytes; released = true; } } };
     }
     clear(): void {
         this.epoch++; this.entries.clear(); this.pending.clear(); this.bytes = 0;
@@ -82,7 +99,7 @@ export class EntityQueryCache {
             this.entries.delete(key); this.bytes -= entry.bytes;
         }
     }
-    stats() { return { bytes: this.bytes, reservedBytes: this.reservedBytes,
+    stats() { return { bytes: this.bytes, reservedBytes: this.reservedBytes, fallbackBytes: this.fallbackBytes,
         entries: this.entries.size, pending: this.pending.size }; }
     async run(key: string, token: any, build: (token: any) => Promise<any>, onPhase?: (event: any) => void) {
         if (token?.isCancellationRequested) throw createCancellationError();
@@ -116,5 +133,21 @@ export class EntityQueryCache {
                 entry.promise.then(resolve, reject).finally(() => clearInterval(timer));
             });
         } finally { entry.subscribers.delete(subscriber); }
+    }
+}
+
+/** Editor edits preserve unaffected BlockIndex objects; their facts need no new text read. */
+export function* entityFileScopes(entries: Iterable<[string, any]>): Generator<[string, any]> {
+    for (const [file, index] of entries) {
+        if (!Number.isInteger(index.documentVersion) || !index.keywordBlocks?.every(block => block.contentIdentity)) {
+            yield [file, index]; continue;
+        }
+        const headers = [];
+        for (const block of index.keywordBlocks) {
+            if (String(block.keyword).replace(/^\*/, '').toUpperCase() === 'KEYWORD') { headers.push(block); continue; }
+            yield [file, { ...index, keywordBlocks: [...headers, block], semanticBlockRevision: JSON.stringify([
+                block.contentIdentity, block.startLine, block.endLine, headers.map(header => [header.contentIdentity, header.rawKeyword]),
+            ]) }];
+        }
     }
 }

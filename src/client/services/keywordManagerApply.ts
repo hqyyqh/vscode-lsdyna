@@ -88,7 +88,9 @@ export function createKeywordManagerApply(host: {
         const unavailableMessage = () => i18n.get(
             result.plan?.reason === 'lspp-input-form-field-draft-invalid' ? 'keywordManagerDraftLayoutUnavailable'
                 : ['unmodeled-source-text', 'source-record-coverage-unproven'].includes(result.plan?.reason)
-                    ? 'keywordManagerRecordContentUnverified' : 'keywordOptionsTargetUnavailable');
+                    ? 'keywordManagerRecordContentUnverified'
+                    : ['native-file-write-unverified', 'native-read-window-write-unverified', 'conditional-comma-write-unverified'].includes(result.plan?.reason)
+                    ? 'keywordManagerWriteLayoutUnverified' : 'keywordOptionsTargetUnavailable');
         const session = model.session;
         const hasFieldDrafts = model.fieldDrafts && Object.keys(model.fieldDrafts).length > 0;
         const hasRecordDrafts = model.recordDrafts && Object.keys(model.recordDrafts).length > 0;

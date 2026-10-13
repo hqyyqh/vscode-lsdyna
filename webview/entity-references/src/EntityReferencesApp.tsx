@@ -55,10 +55,13 @@ export function EntityReferencesApp({ transport }: { transport: EntityReferences
 
     const resolvedScope = state.scope.selected;
     const navigable = !busy && (state.status === 'ready' || state.status === 'partial');
-    const statusMessage = state.status === 'loading' ? state.labels.loading : refreshPending ? pendingLabel :
+    const statusMessage = state.scanning ? (state.labels.finding || state.labels.loading)
+        .replace('{0}', String((state.activeSession?.definitionCount || 0) + (state.activeSession?.referenceCount || 0)))
+        : state.status === 'loading' ? state.labels.loading : refreshPending ? pendingLabel :
+        ['partial', 'stale', 'needs-refresh', 'incomplete', 'missing'].includes(state.status) ? state.labels[state.status] :
         !state.activeSession && state.status === 'empty' ? state.labels.empty : '';
     const target = state.activeSession;
-    const targetDefinition = !state.ambiguous && target?.entityKindLabel && target.definitionCount === 1 && state.definitions.length === 1
+    const targetDefinition = !state.scanning && !state.ambiguous && target?.entityKindLabel && target.definitionCount === 1 && state.definitions.length === 1
         ? state.definitions[0] : undefined;
 
     return <main ref={mainRef} tabIndex={-1} lang={state.locale} aria-label={state.labels.title}>
@@ -90,6 +93,10 @@ export function EntityReferencesApp({ transport }: { transport: EntityReferences
             {!error && statusMessage && <div className="status-row" role="status">
                 <span>{statusMessage}</span>
             </div>}
+            {!state.scanning && !!state.reasonDetails?.length && <details className="coverage-details">
+                <summary>{state.labels.details}</summary>
+                <ul>{state.reasonDetails.map((reason, index) => <li key={index}>{reason}</li>)}</ul>
+            </details>}
             {state.largeFileOffer && <section className="large-file-offer" role="status">
                 <strong>{state.largeFileOffer.fileName}</strong>
                 <button type="button" className="primary"

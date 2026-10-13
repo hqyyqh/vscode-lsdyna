@@ -36,6 +36,9 @@ async function handleRequest(method, params, connection = null, cancellationToke
     }
 
     try { switch (method) {
+        case protocol.PROJECT_SESSION_REQUEST:
+            return require('../shared/indexPages').assertIndexPayload(
+                await session.projectIndexLoader.projectSession(params, cancellationToken));
         case protocol.QUERY_ENTITY_REQUEST: {
             return await session.projectIndexLoader.queryEntity(params, null, cancellationToken);
         }
@@ -103,6 +106,8 @@ function handleNotification(method, params) {
         case protocol.INVALIDATE_NOTIFICATION: {
             const { rootFile } = params;
             session.indexClient.invalidate(rootFile);
+            void session.projectIndexLoader.invalidateProject?.(rootFile).catch(error =>
+                console.warn('[lsdyna] Project invalidation failed:', error));
             break;
         }
         default:

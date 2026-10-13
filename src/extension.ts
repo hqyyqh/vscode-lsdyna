@@ -211,7 +211,13 @@ async function startLanguageServer(context) {
         clientOptions
     );
 
-    return startLanguageClient(client, context);
+    await startLanguageClient(client, context);
+    if (client.initializeResult?.capabilities?.experimental?.projectIndexProtocol !==
+        require('./shared/indexPages').INDEX_PROTOCOL_VERSION) {
+        await client.stop();
+        throw new Error(i18n.get('projectProtocolMismatch'));
+    }
+    return client;
 }
 
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
@@ -221,6 +227,7 @@ const documentPresentationCache = new WeakMap();
 const activeFileIndexCache = new Map();
 const activeProjectReferenceIndexCache = new Map();
 let referenceSnapshotLoader = null;
+let referenceQueryClient = null;
 const {
     createEffectiveSearchPathCache,
 } = require('./core/project/effectiveSearchPathLookup');
@@ -274,6 +281,10 @@ function setFileIndexForTesting(filePath, fileIndex) {
 
 function setReferenceSnapshotLoaderForTesting(loader) {
     referenceSnapshotLoader = loader;
+}
+
+function setReferenceQueryClientForTesting(client) {
+    referenceQueryClient = client;
 }
 
 function cacheFileIndexesFromSnapshot(snapshot) {
@@ -584,6 +595,14 @@ async function getReferenceIndexForDocument(document, cancellationToken = null) 
     if (!isCurrent()) return null;
 
     const mainDeckContext = getMainDeckContextForDocumentPath(document.uri.fsPath);
+    if (referenceQueryClient) return {
+        remote: true, projectScoped: !!mainDeckContext.project,
+        rootFile: mainDeckContext.project ? mainDeckContext.rootFile : document.uri.fsPath,
+        mainDeckContextState: mainDeckContext.state,
+        projectContextSelected: mainDeckContext.state === 'selected',
+        projectContextAmbiguous: mainDeckContext.state === 'ambiguous',
+        candidateRootFiles: mainDeckContext.candidates.map(projectRootFile),
+    };
     if (mainDeckContext.project) {
         let snapshot = mainDeckContext.project.snapshot;
         let referenceIndex = mainDeckContext.project.referenceIndex;
@@ -1479,7 +1498,9 @@ class LsdynaReferenceProvider {
             context,
             token,
         );
-        if (!network || network.state !== 'complete' || token?.isCancellationRequested) return [];
+        if (!network || !['complete', 'partial'].includes(network.state) || token?.isCancellationRequested) return [];
+        if (network.state === 'partial') vscode.window.showWarningMessage(i18n.get('entityIdQueryPartial',
+            (network.reasons || []).map(uncertaintyReasonLabel).join(', ')));
         return network.locations.map(location => new vscode.Location(
             vscode.Uri.file(location.filePath),
             new vscode.Range(
@@ -3242,7 +3263,7 @@ class LsdynaFieldHoverProvider {
                         projectContextAmbiguous: true,
                     }
                     : null;
-            const effectiveAnalysis = nativeField ? nativeParameterContextForDocument(document).resolve(nativeField.rawValue, position.line) : referenceIndexState && referenceIndexState.projectScoped
+            let effectiveAnalysis = nativeField ? nativeParameterContextForDocument(document).resolve(nativeField.rawValue, position.line) : referenceIndexState && referenceIndexState.projectScoped
                 ? analyzeParameterReferenceAtLocation(
                     referenceIndexState.referenceIndex,
                     parameterName,
@@ -3254,6 +3275,14 @@ class LsdynaFieldHoverProvider {
                 : sourceDefinitions.length === 0
                     ? { resolved: false, reasons: ['project-scan-unavailable'] }
                     : null;
+            if (referenceQueryClient && mainDeckContext.state !== 'ambiguous') {
+                const parameterContext = nativeParameterContextForDocument(document);
+                const raw = nativeField?.rawValue || '&' + parameterName;
+                parameterContext.resolve(raw, position.line, true);
+                await parameterContext.flush?.();
+                if (!isCurrent()) return null;
+                effectiveAnalysis = parameterContext.resolve(raw, position.line, true);
+            }
             const mainDeckContextMarkdown = buildMainDeckContextHoverMarkdown(
                 referenceIndexState,
                 document.uri.fsPath
@@ -3292,14 +3321,21 @@ class LsdynaFieldHoverProvider {
                 if (!isCurrent()) return null;
                 const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
             if (!isCurrent() || referenceIndexState?.unavailable) return null;
-                const fileIndex = lookupNormalizedFileIndex(referenceIndexState?.snapshot?.fileIndexes, document.uri.fsPath) || getFileIndexForDocument(document);
+                const remotePreview = referenceIndexState?.remote ? await referenceQueryClient.sourceAnalysis({
+                    rootFile: referenceIndexState.rootFile, scope: referenceIndexState.projectScoped ? 'project' : 'single-file',
+                    filePath: document.uri.fsPath, line: position.line, mode: 'preview', documentVersion: document.version,
+                }, cancellationToken) : null;
+                if (!isCurrent()) return null;
+                const fileIndex = referenceIndexState?.remote
+                    ? { referenceDefinitions: { curves: remotePreview?.status === 'ready' && remotePreview.definition ? [remotePreview.definition] : [], tables: [] } }
+                    : lookupNormalizedFileIndex(referenceIndexState?.snapshot?.fileIndexes, document.uri.fsPath) || getFileIndexForDocument(document);
                 if (fileIndex && fileIndex.referenceDefinitions) {
                     const { curves, tables } = fileIndex.referenceDefinitions;
                     const match = (curves || []).find(c => c.startLine === position.line) ||
                                   (tables || []).find(t => t.startLine === position.line);
                     if (match) {
                         const themeKind = vscode.window?.activeColorTheme?.kind;
-                        const resolvedMatch = match.kind === 'table' && referenceIndexState
+                        const resolvedMatch = match.kind === 'table' && referenceIndexState && !referenceIndexState.remote
                             ? attachResolvedTableChildren(
                                 match,
                                 referenceIndexState.referenceIndex,
@@ -3598,7 +3634,15 @@ class LsdynaFieldHoverProvider {
 
             const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
             if (!isCurrent() || referenceIndexState?.unavailable) return null;
-            const analysis = resolveHoverAnalysis(
+            const remoteAnalysis = referenceIndexState?.remote ? await referenceQueryClient.sourceAnalysis({
+                rootFile: referenceIndexState.rootFile, scope: referenceIndexState.projectScoped ? 'project' : 'single-file',
+                filePath: document.uri.fsPath, line: position.line, mode: 'hover', documentVersion: document.version,
+                source: { referenceValue, referenceInfo },
+            }, cancellationToken) : null;
+            if (!isCurrent()) return null;
+            const analysis = referenceIndexState?.remote ? remoteAnalysis?.analysis || {
+                state: 'uncertain', definitions: [], reasons: remoteAnalysis?.reasons || ['project-scan-unavailable'],
+            } : resolveHoverAnalysis(
                 referenceIndexState,
                 referenceValue,
                 referenceInfo,
@@ -3621,7 +3665,7 @@ class LsdynaFieldHoverProvider {
                 });
                 const id = analysis.transformResolution?.resolved ? analysis.transformResolution.effectiveId
                     : analysis.parameterResolution?.resolved ? analysis.parameterResolution.value
-                    : referenceValue.kind === 'parameter' ? referenceValue.raw : referenceValue.id;
+                    : ['parameter', 'expression'].includes(referenceValue.kind) ? referenceValue.raw : referenceValue.id;
                 const title = `**${inlineSemanticLabel(field.n)}** ${inlineSemanticLabel(String(id ?? rawFieldValue))}` +
                     (preview.status ? ` · ${preview.status}` : '');
                 const body = preview.body || `${formattedHelp}${formattedHelp ? '\n\n' : ''}${gridTable}`;
@@ -4572,6 +4616,23 @@ function getCardFieldsForLine(document, lineNum) {
     // semantic consumers use the strict resolver and never interpret these bytes as fixed cells.
     const info = keywordSchema.resolveCardFromContext(context.context, schema, null, true).cardInfo;
     return info ? info.card : null;
+}
+
+/** Verified read ranges may support navigation without granting alignment/write authority. */
+function getReadOnlyNavigationFields(document, lineNum) {
+    const schema = getFieldData();
+    const context = fieldContextForLine(document, lineNum, schema);
+    if (context.status !== 'resolved') return null;
+    const write = keywordSchema.resolveCardFromContext(context.context, schema, null, true);
+    if (write.reason !== 'native-edit-binding-unverified') return null;
+    const read = keywordSchema.resolveCardFromContext(context.context, schema);
+    if (read.status !== 'resolved' || read.cardInfo?.isTextCard) return null;
+    const card = read.cardInfo?.card;
+    if (!card?.length || !card.every(field => field.nativeIdentity && field.nativeRange &&
+        Number.isSafeInteger(field.nativeRange.start) && Number.isSafeInteger(field.nativeRange.end))) return null;
+    // Read-only navigation cannot create absent trailing cells by padding source text.
+    const visible = card.filter(field => field.nativeRange.start < document.lineAt(lineNum).text.length);
+    return visible.length ? visible : null;
 }
 
 const globalLongFormatCache = new WeakMap();
@@ -5529,11 +5590,29 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
 
     const line = document.lineAt(lineNum);
     const text = line.text;
+    if (referenceQueryClient) {
+        await getCardInfoForDocumentLineWithSuggestAsync(document, lineNum, getFieldData());
+        if (!editIsCurrent()) return;
+    }
     if (getCardInfoForLine(document, lineNum)?.isTextCard) {
         return executeNativeTab(direction);
     }
 
     const card = getCardFieldsForLine(document, lineNum);
+    if (!card) {
+        const readable = getReadOnlyNavigationFields(document, lineNum);
+        if (readable) {
+            const found = readable.findIndex(field => col < field.nativeRange.end);
+            const current = found < 0 ? readable.length - 1 : found;
+            const index = (current + direction + readable.length) % readable.length;
+            const range = readable[index].nativeRange;
+            const end = Math.min(range.end, text.length);
+            ensureCardCellEditGuard().clearNav();
+            editor.selection = new vscode.Selection(lineNum, range.start, lineNum, end);
+            editor.revealRange?.(new vscode.Range(lineNum, range.start, lineNum, end));
+            return;
+        }
+    }
     if (!card || card.length === 0) {
         return executeNativeTab(direction);
     }
@@ -5806,7 +5885,7 @@ function handleSelectionChange(e) {
     const text = line.text;
     const trimmed = text.trimStart();
     const isCardLine = !isKeywordLineText(text) && !trimmed.startsWith('$');
-    const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) : null;
+    const cardFields = isCardLine ? getCardFieldsForLine(currentDoc, currentLineNum) || getReadOnlyNavigationFields(currentDoc, currentLineNum) : null;
     const isWideField = cardFields && cardFields.length === 1 && cardFields[0].w >= 40;
     // Route every recognized fixed-card data line through the command. The
     // handler itself distinguishes intact, repairable, ambiguous, and unsafe
@@ -5814,6 +5893,15 @@ function handleSelectionChange(e) {
     const hasCard = !!(cardFields && cardFields.length > 0) && !isWideField;
 
     vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab', hasCard);
+    if (!hasCard && isCardLine && referenceQueryClient) {
+        void getCardInfoForDocumentLineWithSuggestAsync(currentDoc, currentLineNum, getFieldData()).then(() => {
+            if (currentDoc.isClosed || currentDoc.version !== currentDocumentVersion ||
+                vscode.window.activeTextEditor !== editor || editor.selection.active.line !== currentLineNum) return;
+            const fields = getCardFieldsForLine(currentDoc, currentLineNum) || getReadOnlyNavigationFields(currentDoc, currentLineNum);
+            vscode.commands.executeCommand('setContext', 'lsdyna.shouldAlignTab',
+                !!fields?.length && !(fields.length === 1 && fields[0].w >= 40));
+        }).catch(error => logDebug(`Field navigation preparation failed: ${error?.message || error}`));
+    }
 
     try {
         vscode.commands.executeCommand(
@@ -7859,14 +7947,21 @@ let keywordOptionsModel = null;
         // Let UI work run between cold catalog decoding and synchronous model construction.
         await new Promise(resolve => setTimeout(resolve, 0));
         if (!isCurrent()) return null;
-        const model = buildKeywordOptionViewModel(editor, requestedLine, {
+        const modelOptions = {
             ...staged,
             blockIndex,
             deferInstances: true,
             draftControlState: staged.draftControlState !== undefined
                 ? staged.draftControlState : keywordOptionsModel?.draftControlState,
             provisional: staged.provisional !== false,
-        });
+        };
+        let model = buildKeywordOptionViewModel(editor, requestedLine, modelOptions);
+        const parameterContext = nativeParameterContextForDocument(document);
+        for (let attempt = 0; attempt < 64 && await parameterContext.flush?.(); attempt++) {
+            if (!isCurrent() || nativeParameterContextForDocument(document) !== parameterContext || attempt === 63) return null;
+            model = buildKeywordOptionViewModel(editor, requestedLine, modelOptions);
+        }
+        if (!isCurrent() || nativeParameterContextForDocument(document) !== parameterContext) return null;
         if (!model) return null;
         model.pinned = true;
         keywordOptionsModel = model;
@@ -7881,6 +7976,8 @@ let keywordOptionsModel = null;
         if (!model || !editor) return null;
         const line = keywordManagerRefreshLine(model, editor.document);
         if (line === null) return null;
+        const main = getMainDeckContextForDocumentPath(editor.document.uri.fsPath);
+        nativeParameterRootVersions.delete(normalizeSnapshotRootKey(main.rootFile || editor.document.uri.fsPath));
         return await refreshKeywordOptionsView(editor, line, {
             fieldDrafts: {}, recordDrafts: {}, draftControlState: {},
             selectedFieldId: null, selectedFormRuleId: null, provisional: true,
@@ -8293,9 +8390,11 @@ let keywordOptionsModel = null;
     const originalLoadProjectSnapshot = indexClient.loadProjectSnapshot;
     // Read through the existing loader without retaining an oversized project or
     // publishing unrelated UI updates on every Hover request.
-    referenceSnapshotLoader = originalLoadProjectSnapshot;
-    context.subscriptions.push({ dispose() { referenceSnapshotLoader = null; } });
+    referenceQueryClient = typeof indexClient.sourceAnalysis === 'function' ? indexClient : null;
+    referenceSnapshotLoader = referenceQueryClient ? null : originalLoadProjectSnapshot;
+    context.subscriptions.push({ dispose() { referenceSnapshotLoader = null; referenceQueryClient = null; } });
     indexClient.loadProjectSnapshot = async (rootFile, options: any = {}, onProgress = null, cancellationToken = null) => {
+        if (referenceQueryClient) throw new Error('Full project snapshot transport is disabled; use shared project queries');
         const requestEpoch = activeProjectCacheEpoch;
         const snapshot = await originalLoadProjectSnapshot(rootFile, options, onProgress, cancellationToken);
         if (snapshot?.scope === 'single-file' || options?.singleFileOnly === true) return snapshot;
@@ -8309,8 +8408,27 @@ let keywordOptionsModel = null;
         projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
         return snapshot;
     };
+    if (indexClient.loadProjectStructure) {
+        const loadStructure = indexClient.loadProjectStructure.bind(indexClient);
+        indexClient.loadProjectStructure = async (rootFile, options: any = {}, onProgress = null, cancellationToken = null) => {
+            const requestEpoch = activeProjectCacheEpoch;
+            const snapshot = await loadStructure(rootFile, options, onProgress, cancellationToken);
+            if (options.singleFileOnly || requestEpoch !== activeProjectCacheEpoch || cancellationToken?.isCancellationRequested) return snapshot;
+            await prepareReferenceDirectory(cancellationToken);
+            if (requestEpoch !== activeProjectCacheEpoch || cancellationToken?.isCancellationRequested) return snapshot;
+            activeProjectScopeCache.set(normalizeSnapshotRootKey(snapshot.rootFile), {
+                rootFile: snapshot.rootFile, files: snapshot.files, lastAccessedAt: ++activeProjectCacheAccessSequence,
+            });
+            refreshMainDeckContextUi(); refreshEntityReferenceScopeContext();
+            projectDiagnosticStore.publish(snapshot.rootFile, collectProjectDiagnostics(snapshot));
+            includeTreeProvider?.updateProjectStructure?.(snapshot);
+            await keywordIndexProvider?.updateProjectStructure?.(snapshot);
+            return snapshot;
+        };
+    }
     const originalInvalidate = indexClient.invalidate.bind(indexClient);
     indexClient.invalidate = async (rootFile) => {
+        nativeParameterRootVersions.delete(normalizeSnapshotRootKey(rootFile));
         clearEffectiveSearchPathsForRoot(rootFile);
         entityReferenceProvider.markStaleForRoot(rootFile);
         if (!fs.existsSync(rootFile)) {
@@ -8329,16 +8447,17 @@ let keywordOptionsModel = null;
             target,
             options,
     );
-    const refreshEntityReferenceScopeContext = () => {
+    let selectedProjectRoot = '';
+    const refreshEntityReferenceScopeContext = (selectProject = false) => {
         if (!entityReferencesWebviewProvider) return;
         const filePath = validEntityQueryFilePath(getActiveUri()?.fsPath);
         const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
         entityReferencesWebviewProvider.setScopeContext({
             filePath: filePath || undefined,
-            projectRoot: filePath && contextState?.state !== 'ambiguous'
+            projectRoot: selectedProjectRoot || (filePath && contextState?.state !== 'ambiguous'
                 ? contextState?.rootFile || filePath
-                : undefined,
-        });
+                : undefined),
+        }, selectProject);
     };
     const scopeIdentityForPreference = preference => {
         const filePath = validEntityQueryFilePath(getActiveUri()?.fsPath);
@@ -8346,6 +8465,7 @@ let keywordOptionsModel = null;
             return filePath ? { kind: 'single-file', filePath } : null;
         }
         if (preference === 'project') {
+            if (selectedProjectRoot) return { kind: 'project', rootFile: selectedProjectRoot };
             const contextState = filePath ? getMainDeckContextForDocumentPath(filePath) : null;
             return filePath && contextState?.state !== 'ambiguous'
                 ? { kind: 'project', rootFile: contextState?.rootFile || filePath }
@@ -8355,7 +8475,8 @@ let keywordOptionsModel = null;
     };
     let manualObjectReferenceQueries = 0;
     const runObjectReferenceQuery = async (target, scopePreference = 'auto', options: any = {}) => {
-        if (scopePreference === 'auto') scopePreference = entityReferencesWebviewProvider?.getScopePreference() === 'project' ? 'project' : 'file';
+        if (scopePreference === 'auto') scopePreference = entityReferencesWebviewProvider?.getScopePreference() || 'auto';
+        const effectiveScope = scopePreference === 'auto' ? (selectedProjectRoot ? 'project' : 'file') : scopePreference;
         if (!options.automatic) {
             stopObjectReferenceFollow();
             lastObjectFollowKey = '';
@@ -8369,17 +8490,18 @@ let keywordOptionsModel = null;
             entityReferencesWebviewProvider?.focusForm();
             return null;
         }
-        const scopeIdentity = scopeIdentityForPreference(scopePreference);
-        if ((scopePreference === 'file' || scopePreference === 'project') && !scopeIdentity) {
+        const scopeIdentity = scopeIdentityForPreference(effectiveScope);
+        if (!scopeIdentity) {
             entityReferencesWebviewProvider?.setMessage(i18n.get(
-                scopePreference === 'project' ? 'entityIdQuerySourceInactive' : 'entityIdQuerySourceMissing',
+                effectiveScope === 'project' ? 'entityIdQuerySourceInactive' : 'entityIdQuerySourceMissing',
             ));
             return null;
         }
+        if (scopeIdentity.kind === 'project' && !selectedProjectRoot) selectProject(scopeIdentity.rootFile);
         entityReferencesWebviewProvider?.setInput(
             normalized.targetKind,
             normalized.id,
-            scopePreference,
+            effectiveScope,
         );
         refreshEntityReferenceScopeContext();
         const request = beginEntityReferenceRefresh(entityReferenceRefreshState);
@@ -8475,7 +8597,7 @@ let keywordOptionsModel = null;
             const target = inferIndexedEntityQueryTarget(editor, { requireUnambiguous: true });
             if (!target) return; // Whitespace and unrelated fields keep the last useful result.
             const preference = entityReferencesWebviewProvider.getScopePreference();
-            const scope = preference === 'auto' ? 'file' : preference;
+            const scope = preference === 'auto' ? (selectedProjectRoot ? 'project' : 'file') : preference;
             const scopeIdentity = scopeIdentityForPreference(scope);
             if (!scopeIdentity) return;
             const key = JSON.stringify([target.targetKind, target.id, scopeIdentity, editor.document.version]);
@@ -8584,6 +8706,10 @@ let keywordOptionsModel = null;
         context.workspaceState,
         {
             loadFileIndex: async (filePath, cancellationToken) => {
+                if (indexClient.projectSession) {
+                    const handle = await indexClient.projectSession({ action: 'file-view-open', rootFile: filePath }, cancellationToken);
+                    return { ...handle, remote: true, largeFileLineMap: { lineCount: handle.lineCount } };
+                }
                 const snapshot = await indexClient.loadProjectSnapshot(
                     filePath,
                     { singleFileOnly: true, largeFileThresholdBytes: 0 },
@@ -8595,6 +8721,8 @@ let keywordOptionsModel = null;
                     filePath,
                 );
             },
+            readFileIndex: (index, request) => indexClient.projectSession({ ...request, action: 'file-view', lease: index.lease, generation: index.generation }),
+            releaseFileIndex: index => { if (index?.remote) void indexClient.projectSession({ action: 'release', lease: index.lease }).catch(() => {}); },
             queryObject: target => {
                 void vscode.commands.executeCommand('lsdynaEntityReferences.focus');
                 return runObjectReferenceQuery(
@@ -8784,7 +8912,7 @@ let keywordOptionsModel = null;
         )
     );
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
-        loadProjectSnapshot: indexClient.loadProjectSnapshot,
+        loadProjectSnapshot: indexClient.loadProjectStructure || indexClient.loadProjectSnapshot,
         onError(error, rootFile) {
             console.error(`[lsdyna] Failed to refresh project snapshot for ${rootFile}:`, error);
         },
@@ -8819,14 +8947,26 @@ let keywordOptionsModel = null;
         vscode.workspace.onDidChangeTextDocument(event => {
             if (event?.document?.uri?.fsPath && isLsdynaUri(event.document.uri)) {
                 markEntityReferenceQueriesStaleForFile(event.document.uri.fsPath);
+                invalidateChangedProjectRoots(event.document.uri);
             }
         })
     );
     await new Promise(resolve => setTimeout(resolve, 0));
     const resolveScanUri = () => keywordOptionsWebviewProvider?.getActiveSourceUri() || getActiveUri();
+    const selectProject = (rootFile: string, source?: 'includes' | 'keywords') => {
+        if (normalizeSnapshotRootKey(selectedProjectRoot) === normalizeSnapshotRootKey(rootFile)) return;
+        selectedProjectRoot = rootFile;
+        entityReferenceRefreshState.revision++;
+        refreshEntityReferenceScopeContext(true);
+        const reportError = error => logDebug(`Shared project selection failed: ${error?.message || error}`);
+        if (source !== 'includes') void includeTreeProvider?.scan(rootFile).catch(reportError);
+        if (source !== 'keywords') void keywordIndexProvider?.scan({ rootFile, quiet: true, replace: true }).catch(reportError);
+    };
     includeTreeProvider = new LsdynaIncludeTreeProvider({
         resolveActiveUri: resolveScanUri,
+        onSelectProject: rootFile => selectProject(rootFile, 'includes'),
         searchFileFromPaths,
+        loadProjectStructure: indexClient.loadProjectStructure?.bind(indexClient),
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         invalidateProjectSnapshot: indexClient.invalidate,
     });
@@ -8849,7 +8989,7 @@ let keywordOptionsModel = null;
             statusDashboardRef.scheduleRefresh();
         }
         refreshEntityReferenceScopeContext();
-        if (entityReferencesWebviewProvider.getScopePreference() === 'auto') {
+        if (entityReferencesWebviewProvider.getScopePreference() !== 'file') {
             await refreshCurrentEntityQueryAfterProjectScan(
                 scanResult,
                 entityReferenceProvider,
@@ -8926,13 +9066,18 @@ let keywordOptionsModel = null;
     );
 
     keywordIndexProvider = new LsdynaKeywordIndexProvider({
-        resolveActiveUri: resolveScanUri,
+        resolveActiveUri: () => selectedProjectRoot ? vscode.Uri.file(selectedProjectRoot) : resolveScanUri(),
+        onSelectProject: rootFile => selectProject(rootFile, 'keywords'),
+        projectSession: indexClient.projectSession?.bind(indexClient),
         shouldSkipAutomaticDocumentScan,
         searchFileFromPaths,
         loadProjectSnapshot: indexClient.loadProjectSnapshot,
         invalidateProjectSnapshot: indexClient.invalidate,
         workspaceState: context.workspaceState,
     });
+    context.subscriptions.push(keywordIndexProvider);
+    indexClient.setDocumentSource?.(require('./client/services/documentSource').createDocumentSource(
+        () => vscode.workspace.textDocuments, document => keywordIndexProvider.ensureDocumentBlockIndex(document)));
     cardEditKeywordIndexProviderRef = keywordIndexProvider;
     context.subscriptions.push({
         dispose: () => {
@@ -8970,13 +9115,14 @@ context.subscriptions.push(
     );
     void Promise.resolve(vscode.commands.executeCommand('setContext', 'lsdyna.keywordIndexMode', 'local')).catch(reportKeywordIndexError);
     context.subscriptions.push(
-        vscode.commands.registerCommand('extension.scanKeywordIndex', () => keywordIndexProvider.scan())
+        vscode.commands.registerCommand('extension.scanKeywordIndex', () => keywordIndexProvider.scan({ rootFile: resolveScanUri()?.fsPath, replace: true }))
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.keywordIndexSetLocal', () => keywordIndexProvider.setLocal()), vscode.commands.registerCommand('extension.keywordIndexSetRecursive', () => keywordIndexProvider.setRecursive())
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.searchKeywordIndex', async () => {
+            if (await keywordIndexProvider.searchProjectPages()) return;
             await showKeywordSearchPick({
                 getEntries: () => keywordIndexProvider.listSearchEntries(),
                 onRequestScan: () => keywordIndexProvider.scan(),
@@ -9673,7 +9819,13 @@ context.subscriptions.push(
     context.subscriptions.push(
         vscode.commands.registerCommand(
             'extension.selectMainDeckContext',
-            arg => handleSelectMainDeckContextCommand(arg)
+            async arg => {
+                const filePath = typeof arg === 'string' ? arg : arg?.documentPath || getActiveUri()?.fsPath;
+                const changed = await handleSelectMainDeckContextCommand(filePath ? { documentPath: filePath } : arg);
+                const rootFile = changed && getMainDeckContextForDocumentPath(filePath)?.rootFile;
+                if (rootFile) selectProject(rootFile);
+                return changed;
+            }
         )
     );
     context.subscriptions.push(
@@ -10233,9 +10385,9 @@ function createBatchedManifestInvalidator({
     let disposed = false;
     const pendingRoots = new Map();
 
-    function queueAffectedRoots(changedFilePath, manifestEntries) {
+    function queueAffectedRoots(changedFilePath, manifestEntries, directRoots = null) {
         if (disposed) return;
-        const affectedRoots = findAffectedRoots(changedFilePath, manifestEntries);
+        const affectedRoots = directRoots || findAffectedRoots(changedFilePath, manifestEntries);
         if (affectedRoots.length === 0) return;
         for (const rootFile of affectedRoots) {
             const resolvedRootFile = path.resolve(rootFile);
@@ -10268,6 +10420,12 @@ function createBatchedManifestInvalidator({
             ? fileUriOrPath
             : fileUriOrPath && fileUriOrPath.fsPath;
         if (!changedFilePath) return;
+
+        if (typeof indexClient.affectedProjectRoots === 'function') {
+            return indexClient.affectedProjectRoots(changedFilePath)
+                .then(roots => queueAffectedRoots(changedFilePath, [], roots))
+                .catch(error => reportManifestError(error, changedFilePath));
+        }
 
         let manifestEntries;
         try {
@@ -11074,6 +11232,7 @@ function cacheLimitMilliseconds(key, fallbackDays, minimumDays, maximumDays) {
 }
 
 function clearClientProjectSemanticCaches() {
+    nativeParameterRootVersions.clear();
     entityReferenceQueryService.clear();
     liveEntityIndexCache.clear();
     activeProjectCacheEpoch += 1;
@@ -11242,7 +11401,7 @@ function resolveWorkspaceReferenceSearch(document, position, options: any = {}) 
                     source.referenceInfo.targetDefinitions,
             }
         );
-    } else if (source.referenceValue.kind === 'parameter') {
+    } else if (['parameter', 'expression'].includes(source.referenceValue.kind)) {
         const fileIndex = getFileIndexForDocument(document);
         const liveIndexIsCurrent = !document.isDirty ||
             (fileIndex && Number.isInteger(fileIndex.documentVersion) &&
@@ -11658,17 +11817,20 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
         const documentVersions = new Map((vscode.workspace.textDocuments || []).map(document =>
             [liveEntityIndexCache.identity(document), document.version]));
+        const progressive = typeof indexClient.queryEntityProgressive === 'function';
         const documentsCurrent = () => {
+            // Shared queries validate their actual disk/live source revisions in the worker.
+            if (progressive) return true;
             const current = vscode.workspace.textDocuments || [];
             return current.length === documentVersions.size && current.every(document => !document.isClosed &&
                 documentVersions.has(liveEntityIndexCache.identity(document)) &&
                 documentVersions.get(liveEntityIndexCache.identity(document)) === document.version);
         };
-        // ponytail: dirty documents use host overlays; migrate when worker synchronization preserves document instances and versions.
         const background = typeof indexClient.queryEntity === 'function' && options.entityReferenceProvider &&
-            options.presentResult === false && !options.query && !options.prepareSnapshot && !options.scope &&
+            options.presentResult === false && !options.query && !options.prepareSnapshot && (!options.scope || options.scope.snapshot?.structureOnly) &&
             !options.loadSnapshot && !options.scanBlockLines &&
-            !(vscode.workspace.textDocuments || []).some(document => document.isDirty);
+            (typeof indexClient.queryEntityProgressive === 'function' ||
+                !(vscode.workspace.textDocuments || []).some(document => document.isDirty));
         const scope = await resolveIndexedEntityQueryScope(
             target, indexClient, cancellationToken, { ...options, identityOnly: background },
         );
@@ -11704,13 +11866,22 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         if (background) {
             const request = { rootFile: scope.rootFile || scope.filePath, scope: scope.kind,
                 id: entityId, targetKind, excludeMeshEntities: true };
-            const response = await indexClient.queryEntity(request, cancellationToken);
-            if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
+            const publishProgress = response => {
+                if (!isCurrentRequest() || cancellationToken?.isCancellationRequested || !documentsCurrent() || response?.status !== 'ready') return;
+                options.entityReferenceProvider.publish({ targetKind, id: entityId, scope: identityScope }, response.result);
+            };
+            const response = progressive ? await indexClient.queryEntityProgressive(request, publishProgress, cancellationToken, isCurrentRequest)
+                : await indexClient.queryEntity(request, cancellationToken);
+            if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) {
+                response?.result?.release?.(); return null;
+            }
+            if (!documentsCurrent()) response?.result?.release?.();
             const result = response?.status === 'ready' && documentsCurrent()
                 ? { ...response.result, revision: response.revision,
                     loadPage: async cursor => {
                         if (!documentsCurrent()) return { status: 'stale' };
-                        const page = await indexClient.queryEntity({ ...request, cursor });
+                        const page = progressive ? await response.result.loadPage(cursor)
+                            : await indexClient.queryEntity({ ...request, cursor });
                         return documentsCurrent() ? page : { status: 'stale' };
                     } }
                 : { state: 'incomplete', locations: [], reasons: ['entity-query-source-changed'] };
@@ -12253,6 +12424,20 @@ async function resolveFieldReferenceNavigation(
     const referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
     if (referenceIndexState?.unavailable) return null;
     if (!referenceIndexState || !isCurrent()) return null;
+    if (referenceIndexState.remote) {
+        const response = await referenceQueryClient.sourceAnalysis({ rootFile: referenceIndexState.rootFile,
+            scope: referenceIndexState.projectScoped ? 'project' : 'single-file', filePath: document.uri.fsPath,
+            line: position.line, character: position.character, documentVersion: document.version,
+            mode: 'navigation', source, allowFamilyCandidate: options.allowFamilyCandidate === true }, cancellationToken);
+        if (!isCurrent() || response.status === 'stale') return null;
+        const analysis = response.analysis || { state: 'uncertain', definitions: [],
+            reasons: response.reasons || ['project-scan-unavailable'] };
+        if (referenceIndexState.projectContextAmbiguous) {
+            analysis.state = 'uncertain'; analysis.reasons = [...new Set([...analysis.reasons, 'project-root-ambiguous'])];
+        }
+        return { ...buildReferenceNavigation(analysis), analysis, source, referenceIndexState,
+            authorityScope: source.authorityScope, unifiedQuery: response.queryState };
+    }
     let analysis = analyzeReference(
         referenceIndexState.referenceIndex,
         source.referenceValue,
@@ -12560,6 +12745,34 @@ async function resolveRegistryReferenceNetwork(
     let referenceIndexState = await getReferenceIndexForDocument(document, cancellationToken);
     if (!referenceIndexState || !isCurrent()) return null;
     if (referenceIndexState.unavailable) return { state: 'incomplete', locations: [], reasons: referenceIndexState.incompleteReasons };
+    if (referenceIndexState.remote) {
+        if (referenceIndexState.projectContextAmbiguous) return { state: 'incomplete', locations: [], reasons: ['project-root-ambiguous'] };
+        const source = fieldReferenceAtPosition(document, position, { semanticScope: 'registry-approved' });
+        const response = await referenceQueryClient.sourceAnalysis({ rootFile: referenceIndexState.rootFile,
+            scope: referenceIndexState.projectScoped ? 'project' : 'single-file', filePath: document.uri.fsPath,
+            line: position.line, character: position.character, documentVersion: document.version, mode: 'network', source }, cancellationToken);
+        if (!isCurrent() || response.status === 'stale') return null;
+        const query = response.queryState?.query;
+        if (response.queryState?.state !== 'ready' || !query) return { state: response.queryState?.state === 'none' ? 'none' : 'incomplete',
+            locations: [], reasons: response.queryState?.reasons || response.reasons || ['project-scan-unavailable'] };
+        const locations = [], reasons = new Set<string>();
+        for (const targetKind of query.targetKinds) {
+            const result = await referenceQueryClient.queryEntityProgressive({ rootFile: referenceIndexState.rootFile,
+                scope: referenceIndexState.projectScoped ? 'project' : 'single-file', id: query.id, targetKind,
+                targetDefinitions: query.targetDefinitions }, null, cancellationToken);
+            try {
+                if (!isCurrent() || result.status !== 'ready') return null;
+                for (const reason of result.result.reasons || []) reasons.add(reason);
+                if (result.state !== 'complete') reasons.add('on-demand-reference-scan-incomplete');
+                if (Object.keys(result.result.page.next || {}).length) reasons.add('source-result-page-limit');
+                locations.push(...result.result.locations.filter(row => context.includeDeclaration || row.role === 'reference'));
+            } finally { result.result?.release?.(); }
+        }
+        const unique = mergePhysicalReferenceLocations(locations);
+        const page = require('./shared/indexPages').boundedIndexPage(unique, { state: 'partial', reasons: [...reasons] });
+        if (page.length !== unique.length) reasons.add('source-result-page-limit');
+        return { state: reasons.size ? 'partial' : 'complete', locations: page, reasons: [...reasons], queryState: response.queryState };
+    }
     if (!referenceIndexState.projectScoped) {
         const local = await buildSingleDocumentRegistryReferenceIndexState(
             document,
@@ -12716,6 +12929,7 @@ const nativeParameterContexts = new WeakMap<object, { version: number; source: o
 const nativeParameterDiskChecks = new WeakMap<object, { version: number; index: object; matches: boolean }>();
 
 const nativeParameterSourceIdentities = new WeakMap<object, object>();
+const nativeParameterRootVersions = new Map<string, object>();
 
 function nativeParameterSourceIdentity(source) {
     if (!source) return null;
@@ -12727,6 +12941,28 @@ function nativeParameterSourceIdentity(source) {
 function nativeParameterContextForDocument(document) {
     const path = document?.uri?.fsPath;
     const main = getMainDeckContextForDocumentPath(path);
+    if (referenceQueryClient && path && Number.isInteger(document.version) && main.state !== 'ambiguous') {
+        const rootFile = main.project ? main.rootFile : path;
+        const key = normalizeSnapshotRootKey(rootFile), client = referenceQueryClient, version = document.version;
+        let source = nativeParameterRootVersions.get(key);
+        if (!source) {
+            nativeParameterRootVersions.set(key, source = {});
+            while (nativeParameterRootVersions.size > 32) nativeParameterRootVersions.delete(nativeParameterRootVersions.keys().next().value);
+        }
+        const previous = nativeParameterContexts.get(document);
+        if (previous?.version === version && previous.source === source && previous.reason === rootFile) return previous.context;
+        const current = () => {
+            const next = getMainDeckContextForDocumentPath(path);
+            return !document.isClosed && document.version === version && referenceQueryClient === client &&
+                nativeParameterRootVersions.get(key) === source && next.state !== 'ambiguous' &&
+                (next.project ? next.rootFile : path) === rootFile;
+        };
+        const context = require('./client/services/remoteParameterContext').createRemoteParameterContext(version,
+            (fields, token) => client.sourceAnalysis({ rootFile, scope: main.project ? 'project' : 'single-file',
+                filePath: path, line: 0, mode: 'parameters', fields }, token), current);
+        nativeParameterContexts.set(document, { version, source, reason: rootFile, context });
+        return context;
+    }
     const project = main.project;
     const local = project ? null : getFileIndexForDocument(document);
     const source = project?.referenceIndex || local;
@@ -12780,7 +13016,7 @@ function fieldContextForLine(document, lineNum, schema, options: any = {}) {
         includeCommentHeaders: options.includeCommentHeaders === true,
         cancellationToken: options.cancellationToken,
     });
-    if (result.status === 'resolved' && (result.context.currentText.includes('&') || result.context.observedDataLines.some(text => text.includes('&')))) {
+    if (result.status === 'resolved' && (/[&<]/.test(result.context.currentText) || result.context.observedDataLines.some(text => /[&<]/.test(text)))) {
         result.context.parameterContext = nativeParameterContextForDocument(document);
     }
     return result;
@@ -12788,12 +13024,24 @@ function fieldContextForLine(document, lineNum, schema, options: any = {}) {
 
 async function getCardInfoForDocumentLineWithSuggestAsync(document, lineNum, schema, options: any = {}) {
     const version = document.version;
+    let parameterRounds = 0;
     for (;;) {
         if (options.cancellationToken?.isCancellationRequested) return { cardInfo: null, reason: 'field-context-cancelled' };
         if (document.version !== version) return { cardInfo: null, reason: 'field-context-version-changed' };
         const result = getCardInfoForDocumentLineWithSuggest(document, lineNum, schema, options);
         if (document.version !== version) return { cardInfo: null, reason: 'field-context-version-changed' };
-        if (result.reason !== 'field-context-checkpoint-pending') return result;
+        if (result.reason !== 'field-context-checkpoint-pending') {
+            const parameters = nativeParameterContextForDocument(document);
+            const changed = parameterRounds < 64 && await parameters?.flush?.();
+            if (parameters !== nativeParameterContextForDocument(document)) return { cardInfo: null, reason: 'field-context-version-changed' };
+            if (changed) {
+                parameterRounds++;
+                continue;
+            }
+            if (document.version !== version || options.cancellationToken?.isCancellationRequested)
+                return { cardInfo: null, reason: 'field-context-version-changed' };
+            return result;
+        }
         await new Promise<void>(resolve => setImmediate(resolve));
     }
 }
@@ -14509,6 +14757,10 @@ async function prepareFieldInteraction(document, position, options: any = {}) {
             await getManualSemanticCatalog().prepareKeyword(keyword);
             if (!current()) return false;
         }
+        if (referenceQueryClient && position.line > keywordLine) {
+            await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { ...options, keywordLine });
+            if (!current()) return false;
+        }
         return true;
     } catch (error) {
         logDebug(`Field preparation failed: ${error?.message || error}`);
@@ -14935,11 +15187,18 @@ function isTabSelectionEligible(editor, selection) {
     if (anchor.line !== active.line) return false;
     if (anchor.character === active.character) return true;
 
+    const start = Math.min(anchor.character, active.character);
+    const end = Math.max(anchor.character, active.character);
+
     // Tab itself selects a complete guarded cell.  That exact A selection may
     // continue navigating; arbitrary partial/cross-field selections belong to
     // normal VS Code indentation and must never be collapsed into one cell.
     const nav = ensureCardCellEditGuard().getNav(editor.document);
-    if (!nav || nav.mode !== 'A') return false;
+    if (!nav || nav.mode !== 'A') {
+        const readable = getReadOnlyNavigationFields(editor.document, anchor.line);
+        return !!readable?.some(field => start === field.nativeRange.start &&
+            end === Math.min(field.nativeRange.end, editor.document.lineAt(anchor.line).text.length));
+    }
     const documentKey = editor.document?.uri?.toString?.();
     if (nav.uri && documentKey && nav.uri !== documentKey) return false;
     if (nav.line !== anchor.line) return false;
@@ -14948,8 +15207,6 @@ function isTabSelectionEligible(editor, selection) {
         Number.isInteger(editor.document?.version) &&
         nav.version !== editor.document.version
     ) return false;
-    const start = Math.min(anchor.character, active.character);
-    const end = Math.max(anchor.character, active.character);
     return start === nav.expectedStart && end === nav.expectedEnd;
 }
 
@@ -15778,6 +16035,7 @@ module.exports._internals = {
     resolveCustomValidKeywordArg,
     LsdynaFieldCompletionProvider,
     getCardFieldsForLine,
+    getReadOnlyNavigationFields,
     generateCommentLine,
     handleEnterIndentationRemoval,
     findNextDataLineInKeywordBlock,
@@ -15889,7 +16147,7 @@ Object.assign(module.exports._internals, {
 
 module.exports._internals.HOVER_TRUST = HOVER_TRUST;
 
-Object.assign(module.exports._internals, { prepareReferenceDirectory, setReferenceSnapshotLoaderForTesting, getReferenceIndexForDocument, parseKeywordBlocksFromDocumentAsync, buildLiveRegistryReferenceFileIndex });
+Object.assign(module.exports._internals, { prepareReferenceDirectory, setReferenceSnapshotLoaderForTesting, setReferenceQueryClientForTesting, getReferenceIndexForDocument, parseKeywordBlocksFromDocumentAsync, buildLiveRegistryReferenceFileIndex });
 
 Object.assign(module.exports._internals, { buildControlConditionMarkdown, buildFieldHelpMarkdown, getRelaxedModelEvidenceV1Catalog, buildProvisionalManualContext, resolveProvisionalFieldHelp, getKeywordSemanticAdviceForDocument, keywordSemanticAdviceCache, getKeywordSemanticAdvice, predicateFieldsForCardAdvice, buildSemanticDocumentContext, inlineSemanticLabel, semanticApplicabilityPresentation, semanticEvidencePageLinks, getManualSemanticCatalog, semanticEvidenceTargets, semanticEvidenceTargetLabel, semanticEvidenceLocationPresentation, buildKeywordSemanticAdviceMarkdown, semanticEvidenceFailureMessage, handleOpenSemanticEvidenceCommand, semanticEvidenceResolver, SemanticEvidenceResolver, keywordHoverMarkdown, supportedKeywordOptions, keywordOptionIsSupported, getStructuredManualContext, getManualChapterPresentation, appendManualLinks, cardCommentNoticeAppliesToField, buildCardCommentNoticeMarkdown, cardCommentRewriteRequest, analyzeKeywordStructureForDocument, DEFAULT_STRUCTURE_SOURCE_PROFILE_EN, KeywordStructureCatalog, analyzeKeywordStructureLines, keywordStructureCatalog, KEYWORD_STRUCTURE_HOVER_MAX_PHYSICAL_LINES, boundedCardCommentRewriteEnd, CARD_COMMENT_REWRITE_MAX_PHYSICAL_LINES, readyCardEditBlockIndex, cardEditKeywordIndexProviderRef, getCachedKeywordStructureAnalysis, keywordStructureAnalysisCache, CARD_COMMENT_REWRITE_MAX_DATA_LINES, cacheKeywordStructureAnalysis, estimateKeywordStructureAnalysisBytes, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_BYTES, KEYWORD_STRUCTURE_DOCUMENT_CACHE_MAX_ENTRIES, buildKeywordStructureIssueMarkdown, keywordStructureCheckLink, keywordStructureCheckRequest, keywordStructureDefiniteLabel, keywordStructureRepairRequest, keywordStructureDiagnosticIdentity, keywordStructureCheckMessage, handleCheckKeywordStructureCommand, buildPrefixLayoutIssueMarkdown, buildUnknownKeywordHoverMarkdown, LsdynaFieldHoverProvider, collectBoundedPrefixDataRecords, MAXIMUM_PREFIX_CARD_POSITION_LINES });
 

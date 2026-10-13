@@ -85,6 +85,7 @@ export class SqliteDefinitionIndex {
                         if (bytes > this.resultBytes) throw new Error('Entity definition result budget exhausted');
                         result.definitions.push(definition);
                     }
+                    await options.onDefinitions?.(page.records);
                     if (!page.next) break;
                     page = await this.store.page(key, index.sourceRevision, kind, options.effectiveId, 'definition', page.next, options.cancellationToken);
                 }
@@ -92,6 +93,6 @@ export class SqliteDefinitionIndex {
         }
         await verify();
         result.totalMatchCount = result.definitions.length;
-        return result;
+        return { ...result, definitionsStreamed: !!options.onDefinitions };
     }
 }

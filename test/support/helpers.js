@@ -5,11 +5,12 @@ const Module = require('module');
 const vscodeMock = require("./vscode-mock");
 const languageClientMock = {
     LanguageClient: class LanguageClient {
-        constructor() {}
+        constructor() { this.initializeResult = { capabilities: { experimental: { projectIndexProtocol: 1 } } }; }
         async start() {
         }
         async dispose() {
         }
+        async stop() {}
         sendRequest() {
             return Promise.resolve();
         }

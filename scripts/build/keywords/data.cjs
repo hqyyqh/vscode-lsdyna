@@ -190,6 +190,33 @@ function rebuild(root = ROOT, destination) {
         inputs[file] = sha(fs.readFileSync(path.join(root,file)));
         outputs.set(`keywords/runtime/engineering/${name}.json`,engineeringRuntimeBytes(fs.readFileSync(path.join(root,file))));
     }
+    const writeLayoutPath = 'keywords/authoring/engineering/fileWriteLayouts.json';
+    const writeLayoutBytes = fs.readFileSync(path.join(root, writeLayoutPath));
+    const writeLayouts = JSON.parse(writeLayoutBytes);
+    assert.equal(writeLayouts.schemaVersion, 1);
+    assert.equal(writeLayouts.kind, 'manual-backed-fixed-file-write-layouts');
+    const writeKeywords = new Set();
+    for (const layout of writeLayouts.layouts) {
+        assert.match(layout.sourceSha256, /^[a-f0-9]{64}$/);
+        assert.ok(require(path.join(root, 'out/core/semantics/descriptorIdentity')).isDescriptorIdentity(layout.cardSetId),
+            'Invalid write-layout record identity');
+        assert(layout.manualReference?.url?.startsWith('https://lsdyna.ansys.com/'));
+        assert(layout.manualReference.section && layout.verification);
+        assert.deepEqual(layout.formats, ['standard']);
+        assert(Number.isSafeInteger(layout.fieldWidth) && layout.fieldWidth > 0 && layout.fieldWidth <= 80);
+        for (const keyword of layout.keywords) {
+            assert.match(keyword, /^[A-Z][A-Z0-9_]+$/);
+            assert(!writeKeywords.has(keyword)); writeKeywords.add(keyword);
+        }
+        for (const card of layout.cards) {
+            assert(card.names.length > 0 && card.names.length * layout.fieldWidth <= 80);
+            assert.equal(card.names.length, card.types.length);
+            assert(card.names.every(name => /^[A-Z][A-Z0-9_]*$/.test(name)));
+            assert(card.types.every(type => [0, 1, 2].includes(type)));
+        }
+    }
+    inputs[writeLayoutPath] = sha(writeLayoutBytes);
+    outputs.set('keywords/runtime/engineering/fileWriteLayouts.json', writeLayoutBytes);
     for (const [file,bytes] of outputs) write(destination,file,bytes);
     const thermalPath = 'keywords/sources/contact-thermal/import-v2.json';
     const thermalSource = compilerInputs[thermalPath];

@@ -25,6 +25,7 @@ const {
 } = require('../core/cache/fileScanCacheStore');
 
 type ServerSessionOptions = {
+    readDocumentSource?: (request: any) => Promise<any>;
     globalStoragePath?: string;
     entityMemoryBytes?: number;
     entityDiskBytes?: number;
@@ -54,6 +55,7 @@ class LsdynaServerSession {
      */
     constructor({
         globalStoragePath,
+        readDocumentSource,
         entityMemoryBytes,
         entityDiskBytes,
         maxCacheBytes,
@@ -68,6 +70,7 @@ class LsdynaServerSession {
          * @type {import('../worker/projectIndexLoader').ProjectIndexLoader}
          */
         this.projectIndexLoader = createProjectIndexLoader({
+            readDocumentSource,
             entityStorageDirectory: globalStoragePath,
             entityMemoryBytes,
             entityDiskBytes,

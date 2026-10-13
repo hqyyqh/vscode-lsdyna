@@ -1,7 +1,6 @@
 'use strict';
 
-const fs = require('fs');
-const readline = require('readline');
+const { scanPhysicalLines } = require('../scanner/largeFileWindowReader');
 const path = require('path');
 const { parseNumericInput } = require('./referenceInputValue');
 const {
@@ -17,7 +16,6 @@ const { familyDefinitionKeywords } = require('./familyDefinitionScannerCatalog')
 const { nativeOccurrenceOffset } = require('./nativeIncludeOffsets');
 
 const DEFAULT_MAX_STORED_MATCHES = 256;
-const DISK_STREAM_HIGH_WATER_MARK = 256 * 1024;
 const runtimeDefinitionKeywordCache = new Map();
 
 function addResultReasons(result, ...reasons) {
@@ -48,12 +46,19 @@ function runtimeDefinitionKeywords({ allowCandidate = false } = {}) {
     const cacheKey = allowCandidate ? 'candidate' : 'approved';
     const cached = runtimeDefinitionKeywordCache.get(cacheKey);
     if (cached?.family === family.onDemand) return cached.value;
+    const authored = getReferenceRuleCatalog().metadata('definitionKeywords') || {};
+    const generic = Object.fromEntries(Object.entries(authored.generic || {})
+        .map(([keyword, descriptor]: [string, any]) => [keyword, descriptor.recordMode ? descriptor : {
+            ...descriptor, recordMode: 'exact-data-record-ordinal', dataRecordOrdinal: descriptor.cardIndex - 1,
+        }]).filter(([_keyword, descriptor]) => descriptorIsSupported(descriptor)));
     const value = {
-        generic: getReferenceRuleCatalog().metadata('definitionKeywords')?.generic || {},
+        generic: authored.generic || {},
         onDemand: {
+            // Preserve exact header selectors, but let richer original family contracts take priority.
+            ...generic,
             // Curve/table previews may end before their ID header. Reuse the
             // approved scanned-keyword set and its existing title/header layout.
-            ...Object.fromEntries((getReferenceRuleCatalog().metadata('definitionKeywords')?.scanned || [])
+            ...Object.fromEntries((authored.scanned || [])
                 .filter(keyword => /^DEFINE_(CURVE|TABLE)(_|$)/.test(keyword))
                 .map(keyword => [keyword, {
                     target: keyword,
@@ -63,10 +68,9 @@ function runtimeDefinitionKeywords({ allowCandidate = false } = {}) {
                     dataRecordOrdinal: keyword.includes('TITLE') ? 1 : 0,
                 }])),
             ...(family.onDemand || {}),
-            ...(getReferenceRuleCatalog().metadata('definitionKeywords')?.onDemand || {}),
-            // Exact original selectors also need disk recovery when their header
-            // was omitted by the definition preview limit.
-            ...Object.fromEntries(Object.entries(getReferenceRuleCatalog().metadata('definitionKeywords')?.generic || {})
+            ...(authored.onDemand || {}),
+            // Explicit selectors preserve the same namespace as the in-memory scanner.
+            ...Object.fromEntries(Object.entries(authored.generic || {})
                 .filter(([_keyword, descriptor]) => descriptorIsSupported(descriptor))),
         },
     };
@@ -117,8 +121,8 @@ function descriptorIsSupported(descriptor) {
         descriptor?.fieldType === 'identifier' ||
         (descriptor?.identityType === 'label' && descriptor?.fieldType === 'string');
     return !!descriptor &&
-        descriptor.fieldIndex === 0 &&
-        descriptor.position === 0 &&
+        Number.isInteger(descriptor.fieldIndex) && descriptor.fieldIndex >= 0 &&
+        Number.isInteger(descriptor.position) && descriptor.position >= 0 &&
         identityFieldSupported &&
         !!recordMode &&
         (recordMode !== 'exact-data-record-ordinal' ||
@@ -170,7 +174,7 @@ function candidateFromCell(text, startCharacter, endCharacter, descriptor, forma
 }
 
 /**
- * Extracts only officially allowed first-field representations. General
+ * Extracts only the declared identity field. General
  * whitespace tokenization is intentionally excluded: LS-DYNA free format is
  * comma-delimited, while fixed NODE/ELEMENT IDs use I8/I10/I20 forms.
  */
@@ -194,9 +198,11 @@ function parseOnDemandIdCandidates(line, descriptor, options: { formatMode?: str
             start = comma + 1;
         }
     } else {
+        const scale = options.formatMode === 'long' ? 2 : options.formatMode === 'i10' && descriptor.width === 8 ? 10 / 8 : 1;
+        const start = descriptor.position * scale;
         for (const width of fixedCandidateWidths(descriptor, options.formatMode)) {
             const candidate = candidateFromCell(
-                text, descriptor.position, descriptor.position + width, descriptor, options.formatMode
+                text, start, start + width, descriptor, options.formatMode
             );
             if (candidate) candidates.push(candidate);
         }
@@ -383,6 +389,7 @@ function queryOnDemandDefinitionAtPosition({
     projectScoped = false,
     lineAt,
     definitionKeywords = runtimeDefinitionKeywords(),
+    sourceDataRecordOrdinal = undefined,
 } = {} as any) {
     if (!fileIndex || !Array.isArray(fileIndex.keywordBlocks) || !filePath ||
         !position || !Number.isInteger(position.line) || !Number.isInteger(position.character) ||
@@ -439,7 +446,8 @@ function queryOnDemandDefinitionAtPosition({
     const recordMode = definitionRecordMode(descriptor);
     let dataRecordOrdinal = -1;
     if (recordMode === 'exact-data-record-ordinal' || recordMode === 'repeat-data-record-template') {
-        for (let lineIndex = block.startLine + 1; lineIndex <= position.line; lineIndex++) {
+        if (Number.isSafeInteger(sourceDataRecordOrdinal) && sourceDataRecordOrdinal >= 0) dataRecordOrdinal = sourceDataRecordOrdinal;
+        else for (let lineIndex = block.startLine + 1; lineIndex <= position.line; lineIndex++) {
             const text = lineAt(lineIndex);
             if (typeof text !== 'string') {
                 return emptyDefinitionOrigin('incomplete', ['definition-origin-line-unavailable']);
@@ -534,50 +542,34 @@ function queryOnDemandDefinitionAtPosition({
     };
 }
 
-async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null, options: { dataRecordLimit?: number } = {}) {
+async function scanBlockLinesFromDisk(block, visitLine, cancellationToken = null, options: { dataRecordLimit?: number; endLine?: number } = {}) {
     if (!Number.isInteger(block.startOffset) || block.startOffset < 0 ||
         !Number.isInteger(block.endOffset) || block.endOffset <= block.startOffset) {
         return { complete: false, reason: 'on-demand-block-range-unavailable', lineCount: 0 };
     }
-    const input = fs.createReadStream(block.filePath, {
-        start: block.startOffset,
-        end: block.endOffset - 1,
-        highWaterMark: options.dataRecordLimit ? 4096 : DISK_STREAM_HIGH_WATER_MARK,
-    });
-    const lines = readline.createInterface({ input, crlfDelay: Infinity });
-    let lineIndex = Number.isInteger(block.startLine) ? block.startLine : 0;
     let lineCount = 0;
-    let firstLine = true;
     let keywordLineText = '';
+    let reason;
     let dataRecords = 0;
     const limit = Number.isSafeInteger(options.dataRecordLimit) && options.dataRecordLimit > 0
         ? options.dataRecordLimit : Infinity;
     try {
-        for await (const line of lines) {
-            if (cancellationToken?.isCancellationRequested) {
-                return { complete: false, cancelled: true, lineCount };
-            }
-            if (!firstLine) {
-                const pending = visitLine(String(line), lineIndex, { keywordLineText });
-                if (pending && typeof pending.then === 'function') await pending;
-                lineCount += 1;
-                if (!String(line).trimStart().startsWith('$') && !String(line).trimStart().startsWith('*')) dataRecords++;
-                if (dataRecords >= limit) return { complete: true, lineCount, keywordLineText };
-            } else {
-                keywordLineText = String(line);
-            }
-            firstLine = false;
-            lineIndex += 1;
-        }
-        return { complete: true, lineCount, keywordLineText };
+        await scanPhysicalLines(block.filePath, block.startOffset, block.startLine,
+            async (buffer, lineIndex, truncated) => {
+                if (options.endLine !== undefined && lineIndex > options.endLine) return false;
+                if (truncated) { reason = 'on-demand-line-byte-limit'; return false; }
+                const line = buffer.toString('utf8');
+                if (lineIndex === block.startLine) { keywordLineText = line; return true; }
+                await visitLine(line, lineIndex, { keywordLineText }); lineCount++;
+                if (!line.trimStart().startsWith('$') && !line.trimStart().startsWith('*')) dataRecords++;
+                return dataRecords < limit;
+            }, { cancellationToken, maxLineBytes: 64 * 1024, endOffset: block.endOffset });
+        return { complete: !reason, reason, lineCount, keywordLineText };
     } catch (_error) {
         if (cancellationToken?.isCancellationRequested) {
             return { complete: false, cancelled: true, lineCount };
         }
         return { complete: false, reason: 'on-demand-file-read-failed', lineCount };
-    } finally {
-        lines.close();
-        input.destroy();
     }
 }
 
@@ -836,6 +828,17 @@ function mergeOnDemandDefinitions(analysis, lookup, referenceIndex = null) {
         ...(analysis.definitions || []),
         ...(lookup.definitions || []),
     ];
+    // A generic definition can be found by both the eager header reader and the
+    // on-demand registry reader. Distinct Include occurrences must stay distinct.
+    const seenDefinitions = new Set();
+    definitions = definitions.filter(definition => {
+        const key = JSON.stringify([normalizeFilePathKey(definition.filePath), definition.keyword,
+            definition.targetKind || definition.kind, definition.idLine, definition.idStartChar,
+            definition.idEndChar, definition.occurrenceId, definition.id, definition.effectiveId,
+            definition.idfoffOffset]);
+        if (seenDefinitions.has(key)) return false;
+        seenDefinitions.add(key); return true;
+    });
     const reasons = (analysis.reasons || []).filter(reason =>
         lookup.state !== 'complete' ||
         ![

@@ -2341,7 +2341,7 @@ describe('fieldReferenceClassifier', () => {
         assert.equal(parseFieldReferenceValue('HS Steel', info).kind, 'label');
         assert.equal(parseFieldReferenceValue('1.0', info).id, 1);
         assert.equal(parseFieldReferenceValue('&MID', info).kind, 'parameter');
-        assert.equal(parseFieldReferenceValue('<1+2>', info), null);
+        assert.equal(parseFieldReferenceValue('<1+2>', info).kind, 'expression');
     });
 
     it('classifies MAT_024 LCSS from an official-manual rule', () => {

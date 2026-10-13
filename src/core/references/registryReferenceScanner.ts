@@ -269,7 +269,7 @@ function resolveSiblingTargetBinding(info, line, formatMode, entries?, sourceCar
         binding.otherwiseRelation?.kind === 'non-reference')) {
         return { state: 'indeterminate', reason: 'sibling-value-unavailable' };
     }
-    if (value.includes('&') && Number.isInteger(controllerEntry?.lineIndex)) {
+    if ((value.includes('&') || value.startsWith('<')) && Number.isInteger(controllerEntry?.lineIndex)) {
         const resolved = parameters?.resolve(value, controllerEntry.lineIndex);
         if (resolved?.resolved) value = String(resolved.value);
     }
@@ -507,8 +507,10 @@ function semanticOccurrence({
             ? { state: 'reference-potential', role: 'reference' }
             : { state: 'indeterminate', reason: 'parameter-reference-role-indeterminate' };
     } else if (input.kind === 'expression') {
-        semantic = { state: 'indeterminate', reason: 'parameter-expression-unresolved' };
-        addReferenceCoverageGap(result, semantic.reason, block, effectiveInfo, lineIndex);
+        semantic = referenceValue
+            ? { state: 'reference-potential', role: 'reference' }
+            : { state: 'indeterminate', reason: 'parameter-expression-unresolved' };
+        if (!referenceValue) addReferenceCoverageGap(result, semantic.reason, block, effectiveInfo, lineIndex);
     } else if (referenceValue?.kind === 'label') {
         semantic = { state: 'reference', role: 'reference', idTransform: 'identity' };
     } else {

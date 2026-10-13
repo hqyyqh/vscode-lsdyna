@@ -36,7 +36,10 @@ export async function populateEntityPageDisplay(snapshot: any, locations: any[],
             if (!matches) continue;
             throwIfCancellationRequested(token);
             const key = JSON.stringify(['page-display', file, index.sourceRevision, block.startLine]);
-            let display = cache.get(key);
+            let display = block.displayIdentity || cache.get(key);
+            // Live blocks already carry display summaries from the editor's BlockIndex.
+            // A missing optional summary must never trigger a read of a different disk version.
+            if (!display && Number.isInteger(index.documentVersion)) continue;
             if (!display) {
                 const accumulator = create(block);
                 let truncated = false;

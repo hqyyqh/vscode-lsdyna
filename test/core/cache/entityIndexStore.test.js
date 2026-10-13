@@ -86,15 +86,25 @@ describe('SQLite entity index generations', function() {
         await b.publish(replacement, complete);
         assert.equal((await a.page('main', 'v1', 'NODE', 1, 'definition')).records.length, 1);
     });
-    it('clears published generations while preserving another connection active build', async () => {
+    it('preserves another connection builds and idle published cursors until its owner closes', async () => {
         const root = temporary(path.join(os.tmpdir(), 'entity-clear-'));
         const a = await open(root), b = await open(root);
-        const published = await a.begin('published', 'v1'); await a.append(published, [record(1)]); await a.publish(published, complete);
+        const published = await a.begin('published', 'v1');
+        await a.append(published, Array.from({ length: 250 }, (_, line) => record(1, line)));
+        await a.publish(published, complete);
+        const first = await b.page('published', 'v1', 'NODE', 1, 'definition');
+        assert.ok(first.next);
         const active = await b.begin('active', 'v1'); await b.append(active, [record(2)]);
-        assert.equal((await a.clear()).removed, 1);
-        assert.equal((await a.page('published', 'v1', 'NODE', 1, 'definition')).state, 'miss');
+        const result = await a.clear();
+        assert.equal(result.removed, 0);
+        assert.equal(result.retainedReason, 'active-index-owner');
+        assert.equal((await b.page('published', 'v1', 'NODE', 1, 'definition')).state, 'ready');
+        const next = await b.page('published', 'v1', 'NODE', 1, 'definition', first.next);
+        assert.equal(next.records.length, 50); assert.equal(next.records[0].line, 200);
         await b.publish(active, complete);
         assert.equal((await a.page('active', 'v1', 'NODE', 2, 'definition')).records.length, 1);
+        await b.close();
+        assert.equal((await a.clear()).removed, 2);
     });
 
     it('rolls back cancelled batches and never publishes cancellation as completion', async () => {
@@ -107,6 +117,154 @@ describe('SQLite entity index generations', function() {
         await store.publish(build, complete);
         assert.deepEqual((await store.page('main', 'v1', 'NODE', 1, 'definition')).records, []);
         await assert.rejects(store.page('main', 'v1', 'NODE', 1, 'definition', undefined, { isCancellationRequested: true }), { name: 'CancellationError' });
+    });
+
+    it('returns freed disk space on explicit clear and leaves source files untouched', async () => {
+        const fs = require('node:fs');
+        const root = temporary(path.join(os.tmpdir(), 'entity-reclaim-'));
+        const source = path.join(root, 'model.k'), manual = path.join(root, 'manual.pdf');
+        fs.writeFileSync(source, '*NODE\n1,0,0,0\n'); fs.writeFileSync(manual, '%PDF original');
+        const store = await open(root);
+        const build = await store.begin('main', 'one');
+        for (let start = 0; start < 500; start += 40) await store.append(build,
+            Array.from({ length: 40 }, (_, i) => ({ ...record(start + i + 1), payload: { value: 'x'.repeat(2000) } })));
+        await store.publish(build, complete);
+        const before = (await store.stats()).bytes;
+        const cleared = await store.clear();
+        assert.equal(cleared.removed, 1);
+        assert.ok(cleared.reclaimedBytes > 512 * 1024);
+        assert.equal(cleared.reclaimedBytes, before - (await store.stats()).bytes);
+        assert.equal(fs.readFileSync(source, 'utf8'), '*NODE\n1,0,0,0\n');
+        assert.equal(fs.readFileSync(manual, 'utf8'), '%PDF original');
+        const next = await store.begin('new', 'two'); await store.append(next, [record(2)]); await store.publish(next, complete);
+        assert.equal((await store.page('new', 'two', 'NODE', 2, 'definition')).state, 'ready');
+    });
+
+    it('protects idle published data from expiry while another connection owns the cache', async () => {
+        let now = 1000;
+        const root = temporary(path.join(os.tmpdir(), 'entity-owned-expiry-'));
+        const a = await open(root, { now: () => now }), b = await open(root, { now: () => now });
+        const build = await a.begin('main', 'one'); await a.append(build, [record(1)]); await a.publish(build, complete);
+        now += 40 * 24 * 60 * 60 * 1000;
+        assert.equal((await a.prune()).removed, 0);
+        await b.close();
+        assert.equal((await a.prune()).removed, 1);
+    });
+
+    it('keeps a live process index and reaps its ownership after abrupt process exit', async () => {
+        const { spawn } = require('node:child_process');
+        const { once } = require('node:events');
+        const root = temporary(path.join(os.tmpdir(), 'entity-process-owner-'));
+        const store = await open(root);
+        const child = spawn(process.execPath, ['-e', `
+            const { EntityIndexStore } = require('./out/core/cache/entityIndexStore');
+            (async () => {
+                const store = await EntityIndexStore.open(process.argv[1]);
+                const build = await store.begin('child', 'one');
+                await store.publish(build, { state: 'complete', reasons: [] });
+                process.on('message', () => process.exit(0));
+                process.send('ready');
+            })().catch(error => { process.send({ error: String(error) }); process.exit(1); });
+        `, root], { cwd: path.resolve(__dirname, '../../..'), stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+        let stderr = ''; child.stderr.on('data', value => { stderr += value; });
+        const exited = once(child, 'exit');
+        try {
+            const message = await Promise.race([once(child, 'message'), exited.then(() => { throw new Error(stderr || 'Child exited before ready'); })]);
+            assert.equal(message[0], 'ready');
+            assert.equal((await store.clear()).retainedReason, 'active-index-owner');
+            assert.equal((await store.page('child', 'one', 'NODE', 1, 'definition')).state, 'ready');
+            child.send('exit'); await exited;
+            assert.equal((await store.clear()).removed, 1);
+        } finally { if (child.exitCode === null) { child.kill(); await exited; } }
+    });
+
+    it('rejects hard-linked databases and preserves unowned SQLite data byte for byte', async () => {
+        const fs = require('node:fs');
+        const root = temporary(path.join(os.tmpdir(), 'entity-source-protection-'));
+        const databaseRoot = path.join(root, 'entity-index-v4'); fs.mkdirSync(databaseRoot);
+        const source = path.join(root, 'original.k'); fs.writeFileSync(source, '*NODE\n1,0,0,0\n');
+        const target = path.join(databaseRoot, 'index.sqlite'); fs.linkSync(source, target);
+        await assert.rejects(EntityIndexStore.open(root), /Unsafe entity index/);
+        assert.equal(fs.readFileSync(source, 'utf8'), '*NODE\n1,0,0,0\n');
+        fs.unlinkSync(target);
+        const sqlite = require('@vscode/sqlite3'), db = new sqlite.Database(target);
+        await new Promise((resolve, reject) => db.exec('CREATE TABLE user_data (value TEXT); INSERT INTO user_data VALUES (\'keep\')',
+            error => error ? reject(error) : resolve()));
+        await new Promise((resolve, reject) => db.close(error => error ? reject(error) : resolve()));
+        const before = fs.readFileSync(target);
+        await assert.rejects(EntityIndexStore.open(root), /Incompatible entity index/);
+        assert.deepEqual(fs.readFileSync(target), before);
+    });
+
+    it('makes bounded progress through more than 200 abandoned owner records', async () => {
+        let now = 1000;
+        const store = await open(temporary(path.join(os.tmpdir(), 'entity-owner-batch-')), { now: () => now });
+        const build = await store.begin('main', 'one'); await store.publish(build, complete);
+        const originalKill = process.kill;
+        process.kill = (pid, signal) => {
+            if (pid === 2147483647 && signal === 0) throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+            return originalKill(pid, signal);
+        };
+        try {
+            await new Promise((resolve, reject) => store.db.exec(`WITH RECURSIVE n(value) AS
+                (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<201)
+                INSERT INTO cache_owners SELECT 'abandoned-'||value,2147483647 FROM n`, error => error ? reject(error) : resolve()));
+            now++;
+            assert.equal((await store.prune(0)).removed, 0);
+            assert.equal((await store.prune(0)).removed, 1);
+        } finally { process.kill = originalKill; }
+    });
+
+    it('reclaims ownership-aware old caches and preserves unknown versions, files and active owners', async () => {
+        const fs = require('node:fs');
+        const root = temporary(path.join(os.tmpdir(), 'entity-old-reclaim-'));
+        const old = await open(root);
+        const build = await old.begin('old', 'one');
+        for (let start = 0; start < 200; start += 40) await old.append(build,
+            Array.from({ length: 40 }, (_, i) => ({ ...record(start + i + 1), payload: { value: 'x'.repeat(2000) } })));
+        await old.publish(build, complete); await old.close();
+        const previous = path.join(root, 'entity-index-v3');
+        fs.renameSync(old.directory, previous);
+        const store = await open(root);
+        const sqlite = require('@vscode/sqlite3');
+        const db = new sqlite.Database(path.join(previous, 'index.sqlite'));
+        const sql = text => new Promise((resolve, reject) => db.exec(text, error => error ? reject(error) : resolve()));
+        try {
+            await sql(`INSERT INTO cache_owners VALUES ('another-worker',${process.pid})`);
+            assert.equal((await store.cleanLegacy()).retained, 1);
+            await sql("DELETE FROM cache_owners");
+            const result = await store.cleanLegacy();
+            assert.equal(result.retained, 0); assert.ok(result.reclaimedBytes > 200 * 1024);
+        } finally { await new Promise((resolve, reject) => db.close(error => error ? reject(error) : resolve())); }
+        const unknown = path.join(root, 'entity-index-v1'); fs.mkdirSync(unknown);
+        const source = path.join(unknown, 'index.sqlite'); fs.writeFileSync(source, 'user input, not an index');
+        const before = fs.readFileSync(source);
+        assert.equal((await store.cleanLegacy()).retained, 1);
+        assert.deepEqual(fs.readFileSync(source), before);
+        fs.writeFileSync(path.join(previous, 'manual.pdf'), 'keep');
+        assert.equal((await store.cleanLegacy()).retained, 2);
+        assert.equal(fs.readFileSync(path.join(previous, 'manual.pdf'), 'utf8'), 'keep');
+    });
+
+    it('schedules at most one hourly maintenance pass and stops scheduling on close', async () => {
+        const store = await open(temporary(path.join(os.tmpdir(), 'entity-periodic-')));
+        const originalSet = global.setInterval, originalClear = global.clearInterval;
+        let callback, calls = 0, cancelled = false, release;
+        const gate = new Promise(resolve => { release = resolve; });
+        const timer = { unref() {} };
+        const originalPrune = store.prune.bind(store);
+        store.prune = async age => { assert.equal(age, 12345); calls++; await gate; return originalPrune(age); };
+        global.setInterval = (fn, delay) => { assert.equal(delay, 3600000); callback = fn; return timer; };
+        global.clearInterval = handle => { assert.equal(handle, timer); cancelled = true; };
+        try {
+            store.startMaintenance(12345, error => { throw error; });
+            callback(); callback(); assert.equal(calls, 1);
+            release();
+            for (let attempts = 0; store.maintenanceTask && attempts < 10000; attempts++) await new Promise(setImmediate);
+            assert.equal(store.maintenanceTask, undefined);
+            await store.close(); assert.equal(cancelled, true);
+            callback(); assert.equal(calls, 1);
+        } finally { release(); global.setInterval = originalSet; global.clearInterval = originalClear; }
     });
     it('interrupts a long SQLite write and leaves its transaction usable after cancellation', async () => {
         const store = await open(temporary(path.join(os.tmpdir(), 'entity-interrupt-')));
@@ -200,12 +358,18 @@ describe('SQLite entity index generations', function() {
         assert.equal((await store.page('next', 'v1', 'NODE', 1, 'definition')).records.length, 1);
         assert.equal((await store.page('pressure', 'v1', 'NODE', 1, 'definition')).state, 'miss');
         await store.abandon(pressure);
+        const peer = await open(path.dirname(store.directory), { diskBytes: 8 * 1024 * 1024, now: () => now });
+        now += 31000;
+        const sharedPressure = await store.begin('shared-pressure', 'v1');
+        await assert.rejects(fill(sharedPressure), error => error.code === 'SQLITE_FULL');
+        assert.equal((await peer.page('next', 'v1', 'NODE', 1, 'definition')).state, 'ready');
+        await store.abandon(sharedPressure); await peer.close();
     });
 
     it('fails closed on corruption without deleting data and retains recently queried generations', async () => {
         const fs = require('node:fs');
         const root = temporary(path.join(os.tmpdir(), 'entity-corrupt-'));
-        const directory = path.join(root, 'entity-index-v2');
+        const directory = path.join(root, 'entity-index-v4');
         fs.mkdirSync(directory);
         const database = path.join(directory, 'index.sqlite');
         fs.writeFileSync(database, 'not a database');

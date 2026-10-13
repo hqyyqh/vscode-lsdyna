@@ -14,6 +14,23 @@ async function buildFileIndex(filePath) {
 }
 
 describe('scanCurveTableDefinitionsFromFileIndex', () => {
+    it('does not read curve/table preview payloads for an unrelated object query', async () => {
+        const result = await scanCurveTableDefinitionsFromFileIndex({filePath:'/model/part.k',
+            keywordBlocks:['*DEFINE_CURVE','*DEFINE_TABLE_2D'].map(keyword=>({keyword,startLine:0,endLine:100}))},
+            async ()=>{throw Error('Unrelated preview read');},
+            {scanned:['DEFINE_CURVE','DEFINE_TABLE_2D'],generic:{}},{targetKinds:['part']});
+        assert.deepEqual(result.curves,[]); assert.deepEqual(result.tables,[]);
+    });
+    it('rejects retained preview overflow rather than returning a complete subset', async () => {
+        const fileIndex = { filePath: '/model/budget.k', keywordBlocks: [0, 3, 6].map(startLine => ({
+            keyword: '*DEFINE_CURVE', filePath: '/model/budget.k', startLine, endLine: startLine + 2,
+        })) };
+        let reads = 0;
+        await assert.rejects(scanCurveTableDefinitionsFromFileIndex(fileIndex, async block => {
+            reads++; return `*DEFINE_CURVE\n${block.startLine + 1}\n0,0\n`;
+        }, { scanned: ['DEFINE_CURVE'], generic: {} }, { maxRetainedBytes: 64 }), RangeError);
+        assert.equal(reads, 1);
+    });
     it('uses verified specialized parsers before generic lookup and keeps unverified-prefix fallback', async () => {
         const keywords = ['DEFINE_CURVE', 'DEFINE_TABLE_2D', 'DEFINE_CURVE_UNREVIEWED', 'SET_CUSTOM',
             'DEFINE_CUSTOM', 'KEYWORD+', 'END'];

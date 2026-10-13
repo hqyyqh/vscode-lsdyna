@@ -464,6 +464,7 @@ async function initialize(context) {
 
         if (uniqueDirs.length === 0) {
             log("No valid manuals directories found. Manual hovers will be disabled.");
+            await context?.workspaceState?.update?.('manuals_bookmark_cache', undefined);
             return;
         }
 
@@ -550,8 +551,9 @@ async function initialize(context) {
         }
 
         log(`Total unique PDF manuals to index: ${pdfFiles.length}`);
-        let cache = context && context.workspaceState ? (context.workspaceState.get('manuals_bookmark_cache') || {}) : {};
-        let cacheUpdated = false;
+        const previousCache = context?.workspaceState?.get('manuals_bookmark_cache') || {};
+        const cache = Object.create(null);
+        let cacheBytes = 2;
 
         for (const pdfPath of pdfFiles) {
             try {
@@ -562,22 +564,28 @@ async function initialize(context) {
 
                 let bookmarks;
                 // ponytail: metadata cache identity; use a content digest if a supported filesystem can preserve all three values after replacement.
-                if (cache[pdfPath] && cache[pdfPath].version === CACHE_VERSION
-                    && cache[pdfPath].mtimeMs === mtimeMs && cache[pdfPath].size === size && cache[pdfPath].ctimeMs === ctimeMs
-                    && Array.isArray(cache[pdfPath].bookmarks) && cache[pdfPath].bookmarks.length > 0) {
+                if (previousCache[pdfPath] && previousCache[pdfPath].version === CACHE_VERSION
+                    && previousCache[pdfPath].mtimeMs === mtimeMs && previousCache[pdfPath].size === size && previousCache[pdfPath].ctimeMs === ctimeMs
+                    && Array.isArray(previousCache[pdfPath].bookmarks) && previousCache[pdfPath].bookmarks.length > 0) {
                     log(`Loading bookmarks for "${fileName}" from cache...`);
-                    bookmarks = cache[pdfPath].bookmarks;
+                    bookmarks = previousCache[pdfPath].bookmarks;
                 } else {
                     log(`Parsing bookmarks for "${fileName}" from PDF...`);
                     bookmarks = parsePdfContent(fs.readFileSync(pdfPath, 'binary'));
-                    cache[pdfPath] = {
-                        version: CACHE_VERSION,
-                        mtimeMs,
-                        size,
-                        ctimeMs,
-                        bookmarks
-                    };
-                    cacheUpdated = true;
+                }
+                const entry = { version: CACHE_VERSION, mtimeMs, size, ctimeMs, bookmarks };
+                // Persist only current, successfully read manuals; uncached PDFs remain usable.
+                const budget = 8 * 1024 * 1024;
+                let bytes = Buffer.byteLength(JSON.stringify(pdfPath)) + 2
+                    + Buffer.byteLength(JSON.stringify({ ...entry, bookmarks: [] }));
+                for (const bookmark of bookmarks) {
+                    if (bookmark.title.length > budget) { bytes = budget + 1; break; }
+                    bytes += Buffer.byteLength(JSON.stringify(bookmark)) + 1;
+                    if (cacheBytes + bytes > budget) break;
+                }
+                if (cacheBytes + bytes <= budget) {
+                    cache[pdfPath] = entry;
+                    cacheBytes += bytes;
                 }
                 log(`Loaded ${bookmarks.length} bookmark(s) for "${fileName}".`);
 
@@ -626,8 +634,8 @@ async function initialize(context) {
 
         log(`Indexer initialization complete. Total unique keywords indexed: ${keywordMap.size}`);
 
-        if (cacheUpdated && context && context.workspaceState) {
-            await context.workspaceState.update('manuals_bookmark_cache', cache);
+        if (context?.workspaceState?.update) {
+            await context.workspaceState.update('manuals_bookmark_cache', Object.keys(cache).length ? cache : undefined);
             log("Saved updated bookmarks cache to workspaceState.");
         }
     } catch (e) {

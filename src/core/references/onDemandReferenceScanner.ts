@@ -18,6 +18,7 @@ const { nativeOccurrenceOffset } = require('./nativeIncludeOffsets');
 const MAX_ORDINARY_BLOCK_BYTES = 256 * 1024;
 
 const RECOVERABLE_REASONS = new Set([
+    'registry-reference-scan-deferred',
     'registry-reference-preview-byte-limit', 'registry-reference-capacity-exceeded',
     'registry-value-domain-capacity-exceeded',
     'registry-reference-native-layout-unavailable',
@@ -152,6 +153,11 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
                 startLine: sourceBlock.startLine, scope: 'namespaces',
                 targetKinds: query.targetKinds, targetDefinitions: query.targetDefinitions });
             const relations = lsppReferenceRecordsForKeyword(keyword);
+            if (blockGaps.every(item => item.reason === 'registry-reference-scan-deferred') &&
+                !relations.some(record => namespaceMatches(query, relationNamespaces(record)))) {
+                for (const item of blockGaps) result.resolvedGaps.add(item);
+                continue;
+            }
             if (keyword === 'EM_ISOPOTENTIAL_CONNECT' && relations.length &&
                 relations.every(record => record.nativeLayout?.kind === 'em-connection-records')) {
                 const { prefix, read } = await scanReferencePrefix(block, 3, scanBlockLines, result, cancellationToken);
@@ -240,7 +246,7 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
             if (nativeReadInputFailure(layout.rule, sourceBlock.rawKeyword || sourceBlock.keyword, globalFormat)) continue;
             const readMode = nativeReadInputFormat(layout.rule, sourceBlock.rawKeyword || sourceBlock.keyword, globalFormat);
             const reader = nativeRepeatedReferenceReader(layout, keyword, readMode, (raw, lineIndex) => {
-                if (!raw.includes('&')) return raw;
+                if (!raw.includes('&') && !raw.trim().startsWith('<')) return raw;
                 const value = analyzeIntegerParameterValueAtLocation(referenceIndex, raw, { documentPath: filePath, lineIndex });
                 return value.resolved ? String(value.value) : raw;
             });

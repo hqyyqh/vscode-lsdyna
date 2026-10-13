@@ -71,7 +71,6 @@ export async function buildSqliteDefinitionShard(store: EntityIndexStore, key: s
                     if (bytes >= 256 * 1024 || batch.length >= 512) await flush();
                     if (Date.now() - renewed > 5000) { await store.renew(build); renewed = Date.now(); }
                 }, token, readOptions);
-                await flush();
                 return result;
             } });
         if (writeFailure) throw writeFailure;

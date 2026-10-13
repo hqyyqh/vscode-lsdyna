@@ -268,6 +268,11 @@ function createIndexClient({
         }
         let requestSequence = 0;
         let lastSnapshot = null;
+        let documentSource = async (_request: any) => ({ state: 'disk' });
+        languageClient.onRequest?.(protocol.DOCUMENT_SOURCE_REQUEST, async request => {
+            const { assertIndexPayload } = require('../../shared/indexPages');
+            return assertIndexPayload(await documentSource(assertIndexPayload(request)));
+        });
         const requests = new Map();
         
         // The locked LanguageClient queues handlers registered before start.
@@ -305,6 +310,28 @@ function createIndexClient({
             }
         }
         return {
+            setDocumentSource(reader) { documentSource = reader; },
+            async sourceAnalysis(request, cancellationToken = null) {
+                return this.projectSession({ ...request, action: 'source-analysis' }, cancellationToken);
+            },
+            async affectedProjectRoots(filePath) {
+                return (await this.projectSession({ action: 'affected', rootFile: resolveRootFile(filePath) })).roots;
+            },
+            async queryEntityProgressive(query, onProgress = null, cancellationToken = null, isCurrent = () => true) {
+                return require('./progressiveEntityClient').followEntityQuery(
+                    (request, token) => this.projectSession(request, token), query, onProgress, cancellationToken, isCurrent);
+            },
+            async loadProjectStructure(rootFile, options = {}, onProgress = null, cancellationToken = null) {
+                const { followProjectStructure } = require('./projectSessionClient');
+                return followProjectStructure((request, token) => this.projectSession(request, token),
+                    resolveRootFile(rootFile), options, onProgress, cancellationToken);
+            },
+            async projectSession(request, cancellationToken = null) {
+                const { INDEX_PROTOCOL_VERSION, assertIndexPayload } = require('../../shared/indexPages');
+                throwIfCancellationRequested(cancellationToken);
+                return assertIndexPayload(await languageClient.sendRequest(protocol.PROJECT_SESSION_REQUEST,
+                    assertIndexPayload({ ...request, protocolVersion: INDEX_PROTOCOL_VERSION }), cancellationToken || undefined));
+            },
             async queryEntity(request, cancellationToken = null) {
                 throwIfCancellationRequested(cancellationToken);
                 try {

@@ -1,6 +1,6 @@
 import { userFacingReason } from '../../../src/core/userFacingReason';
 import { createPortal } from 'react-dom';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type {
     KeywordManagerFieldState,
     KeywordManagerHelpState,
@@ -13,7 +13,8 @@ import { ManagerDialog } from './ManagerDialog';
 import './styles.css';
 import { useFieldHelp } from './useFieldHelp';
 
-function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, retainedValue, onSelect, onCommit, onLocalChange }: {
+function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, retainedValue, onSelect, onCommit, onLocalChange, isZh }: {
+    isZh: boolean;
     field: KeywordManagerFieldState;
     busy: boolean;
     resetVersion: number;
@@ -42,6 +43,57 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
     const [typing, setTyping] = useState(false);
     const [tip, setTip] = useState<{ left: number; top: number } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const listId = useId();
+    const [choicesOpen, setChoicesOpen] = useState(false);
+    const [activeChoice, setActiveChoice] = useState(0);
+    const [choicePosition, setChoicePosition] = useState<{ left: number; top: number; width: number; maxHeight: number }>();
+    const choices = field.choices || [];
+    const canChoose = field.editable && !busy && choices.length > 0;
+    const choose = (index: number) => {
+        const selected = choices[index];
+        if (selected === undefined || !canChoose) return;
+        setValue(selected); setTyping(true); setChoicesOpen(false);
+        onLocalChange(field, selected);
+        inputRef.current?.focus();
+    };
+    const openChoices = () => {
+        if (!canChoose) return;
+        setTip(null); setActiveChoice(Math.max(0, choices.indexOf(value))); setChoicesOpen(true);
+    };
+    useLayoutEffect(() => {
+        if (!choicesOpen) return;
+        const list = document.getElementById(listId);
+        const option = document.getElementById(`${listId}-${activeChoice}`);
+        if (!list || !option) return;
+        if (option.offsetTop < list.scrollTop) list.scrollTop = option.offsetTop;
+        else if (option.offsetTop + option.offsetHeight > list.scrollTop + list.clientHeight)
+            list.scrollTop = option.offsetTop + option.offsetHeight - list.clientHeight;
+    }, [choicesOpen, activeChoice, choicePosition, listId]);
+    useLayoutEffect(() => {
+        if (!choicesOpen || !canChoose) { setChoicesOpen(false); return; }
+        const position = () => {
+            const rect = inputRef.current?.getBoundingClientRect();
+            if (!rect || rect.bottom <= 0 || rect.top >= innerHeight || rect.right <= 0 || rect.left >= innerWidth) {
+                setChoicesOpen(false); return;
+            }
+            const below = innerHeight - rect.bottom - 4;
+            const above = rect.top - 4;
+            const height = Math.min(240, Math.max(below, above), choices.length * 28 + 2);
+            const width = Math.min(Math.max(rect.width, 160), innerWidth - 8);
+            setChoicePosition({ left: Math.max(4, Math.min(rect.left, innerWidth - width - 4)),
+                top: below >= height ? rect.bottom : Math.max(4, rect.top - height), width, maxHeight: height });
+        };
+        position();
+        window.addEventListener('resize', position);
+        window.addEventListener('scroll', position, true);
+        const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(position);
+        if (inputRef.current) observer?.observe(inputRef.current);
+        return () => { window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true); observer?.disconnect(); };
+    }, [choicesOpen, canChoose, choices.length]);
+    useEffect(() => { setChoicesOpen(false); }, [field.fieldId, resetVersion]);
+    useEffect(() => {
+        if (choicesOpen) document.getElementById(`${listId}-${activeChoice}`)?.scrollIntoView?.({ block: 'nearest' });
+    }, [choicesOpen, activeChoice, listId]);
     const diagnosticId = `diagnostic-${field.fieldId}`;
     const diagnostic = !typing && value === hostValue ? field.diagnostic : undefined;
     const showTip = () => {
@@ -50,7 +102,10 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
     };
     return <div className={`fieldEditor${value !== field.value ? ' changed' : ''}${diagnostic ? ' hasHint' : ''}`}>
         <input ref={inputRef} value={value} readOnly={!field.editable || busy}
-            list={field.choices?.length ? `choices-${field.fieldId}` : undefined}
+            role={choices.length ? 'combobox' : undefined} aria-label={field.name}
+            aria-expanded={choices.length ? choicesOpen : undefined} aria-autocomplete={choices.length ? 'none' : undefined}
+            aria-controls={choicesOpen ? listId : undefined}
+            aria-activedescendant={choicesOpen ? `${listId}-${activeChoice}` : undefined}
             aria-invalid={diagnostic?.blocksApply || undefined}
             aria-describedby={diagnostic ? diagnosticId : undefined}
             onMouseEnter={showTip} onMouseLeave={() => setTip(null)}
@@ -61,6 +116,7 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
                 onLocalChange(field, event.target.value);
             }}
             onBlur={() => {
+                setChoicesOpen(false);
                 setTyping(false); setTip(null);
                 if (field.editable && value !== hostValue) {
                     clearTimeout(blurCommit.current);
@@ -68,12 +124,28 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
                 }
             }}
             onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return;
+                if (canChoose && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                    event.preventDefault();
+                    if (!choicesOpen) openChoices();
+                    else setActiveChoice(index => Math.max(0, Math.min(choices.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1))));
+                    return;
+                }
+                if (choicesOpen && event.key === 'Enter') { event.preventDefault(); choose(activeChoice); return; }
+                if (choicesOpen && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setChoicesOpen(false); return; }
                 if (event.key === 'Escape') setTip(null);
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur();
             }} />
-        {!!field.choices?.length && <datalist id={`choices-${field.fieldId}`}>
-            {field.choices.map(choice => <option key={choice} value={choice} />)}
-        </datalist>}
+        {choices.length > 0 && <button type="button" className="fieldChoicesToggle" tabIndex={-1} disabled={!canChoose}
+            aria-label={isZh ? `显示 ${field.name} 的全部选项` : `Show all choices for ${field.name}`}
+            aria-expanded={choicesOpen} onMouseDown={event => event.preventDefault()}
+            onClick={() => { inputRef.current?.focus(); if (choicesOpen) setChoicesOpen(false); else openChoices(); }}>⌄</button>}
+        {choicesOpen && choicePosition && createPortal(<div id={listId} className="fieldChoices" role="listbox"
+            aria-label={field.name} style={choicePosition} onMouseDown={event => event.preventDefault()}>
+            {choices.map((choice, index) => <div key={`${choice}-${index}`} id={`${listId}-${index}`} role="option"
+                aria-selected={activeChoice === index} onMouseEnter={() => setActiveChoice(index)}
+                onClick={() => choose(index)}>{choice}</div>)}
+        </div>, document.body)}
         {diagnostic && <span id={diagnosticId} className="srOnly">{diagnostic.message}</span>}
         {diagnostic && tip && createPortal(<div className="fieldHint" role="tooltip" style={{
             left: tip.left, top: tip.top, transform: 'translateY(calc(-100% - 6px))',
@@ -117,7 +189,7 @@ function FieldHelp({ help, field, locale, collapsed, showEnglish }: {
             aria-label={isZh ? '字段说明' : 'Field description'}>
             {!field.editable && <p className="fieldNotice">{field.reason === 'document-readonly'
                 ? (isZh ? '该文件只读，无法应用修改。' : 'This file is read-only. Changes cannot be applied.')
-                : <>{isZh ? '该字段只读，请在源文件中修改。' : 'This field is read-only.'}{field.reason ? ` (${userFacingReason(field.reason, locale)})` : ''}</>}</p>}
+                : <>{isZh ? '该字段只读，请在源文件中修改。' : 'This field is read-only. Edit it in the source file.'}{field.reason ? ` (${userFacingReason(field.reason, locale)})` : ''}</>}</p>}
             <div className="fieldHelpContent">
                 <span className="fieldHelpName">{field.name}{matches && help.schemaName && help.schemaName !== field.name ? `（${help.schemaName}）` : ''}</span>
                 {typeLabel && <span className="fieldHelpType"> ({typeLabel})</span>}:{' '}
@@ -539,7 +611,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                                         {!!field.linkedFields?.length && <small title={field.linkedFields.join(', ')}>
                                             {state.locale === 'zh' ? '联动：' : 'Linked: '}{field.linkedFields.join(', ')}
                                         </small>}
-                                        <KeywordFieldEditor field={field} busy={busy || state.status === 'stale'} resetVersion={localResetVersion} cancelBlurVersion={cancelBlurVersion} onSelect={selectField}
+                                        <KeywordFieldEditor field={field} isZh={isZh} busy={busy || state.status === 'stale'} resetVersion={localResetVersion} cancelBlurVersion={cancelBlurVersion} onSelect={selectField}
                                             retainedValue={localFieldDrafts.current.get(field.fieldId)?.value}
                                             onCommit={commitField} onLocalChange={recordLocalFieldDraft} />
                                     </label>)}

@@ -37,6 +37,8 @@ const ALLOWED_GITHUB_TRACKED_FILES = new Set([
     '.github/ISSUE_TEMPLATE/feature_request.yml',
     '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/workflows/public-ci.yml',
+    '.github/workflows/fast-ci.yml',
+    '.github/workflows/ci-node.yml',
     '.github/scripts/marketplace-release.cjs',
     '.github/workflows/ci.yml',
     '.github/workflows/release.yml',

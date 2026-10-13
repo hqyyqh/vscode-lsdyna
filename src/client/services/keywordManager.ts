@@ -547,25 +547,36 @@ export function createKeywordManagerServices(host: {
         const usableIndex = blockIndex?.lineCount === document.lineCount ? blockIndex : null;
         if (!usableIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD) return false;
         const version = document.version, parameterContext = nativeParameterContextForDocument(document);
-        const current = () => !document.isClosed && document.version === version && isCurrent();
+        const current = () => !document.isClosed && document.version === version && isCurrent() &&
+            nativeParameterContextForDocument(document) === parameterContext;
+        const resolvedValues = await parameterContext.flush?.();
+        if (!current() || nativeParameterContextForDocument(document) !== parameterContext) return false;
         const cached = keywordManagerInstanceDirectories.get(document);
-        if (cached && cached.version === version && cached.lineCount === document.lineCount &&
+        if (!resolvedValues && cached && cached.version === version && cached.lineCount === document.lineCount &&
             cached.blockIndex === usableIndex && (!cached.parameterContext || cached.parameterContext === parameterContext)) return true;
-        const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex);
         const catalog = getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() });
         let started = performance.now(), next;
-        do {
+        // Resolving a controller can expose another conditional card. Reuse the same
+        // bounded value cache and rebuild the projection until no new values are needed.
+        for (let attempt = 0; attempt < 64; attempt++) {
+            const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex);
+            do {
+                if (!current()) return false;
+                next = iterator.next();
+                if (!next.done) {
+                    try { await catalog.prepareKeyword(next.value); }
+                    catch { /* The normal model path reports catalog failures without authorizing writes. */ }
+                }
+                if (performance.now() - started >= 16) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                    started = performance.now();
+                }
+            } while (!next.done);
+            const changed = await parameterContext.flush?.();
             if (!current()) return false;
-            next = iterator.next();
-            if (!next.done) {
-                try { await catalog.prepareKeyword(next.value); }
-                catch { /* The normal model path reports catalog failures without authorizing writes. */ }
-            }
-            if (performance.now() - started >= 16) {
-                await new Promise(resolve => setTimeout(resolve, 0));
-                started = performance.now();
-            }
-        } while (!next.done);
+            if (!changed) break;
+            if (attempt === 63) return false;
+        }
         if (!current() || (next.value.parameterContext &&
             next.value.parameterContext !== parameterContext)) return false;
         keywordManagerInstanceDirectories.set(document, next.value);
@@ -1751,8 +1762,6 @@ export function createKeywordManagerServices(host: {
             targetLayout,
             inputFormat,
             plan,
-            ...(require('../../core/semantics/nativeFieldResolution').nativeFieldDisplayOnly(canonical)
-                ? { readonly: true } : {}),
             currentPostCount: 0,
             targetPostCount: 0,
             trailingCommentInsertIndex: targetLayout.records.length,
@@ -1799,7 +1808,8 @@ export function createKeywordManagerServices(host: {
         const nativeControlStates = new Map<string, any>((inputFormProjection?.targetSnapshot?.controls || [])
             .map(control => [String(control.controlId || ''), control]));
         const supportedFormats = ['standard', 'long', 'i10', 'comma', 'free'];
-        const isReadonly = result?.readonly === true || keywordManagerReadonlyUri(document?.uri) || readInput !== inputFormat;
+        const documentReadonly = result?.readonly === true || keywordManagerReadonlyUri(document?.uri);
+        const isReadonly = documentReadonly || readInput !== inputFormat;
         const editableLayout = !isReadonly && supportedFormats.includes(inputFormat) &&
             (result?.plan?.status !== 'blocked' || result?.plan?.reason === 'lspp-input-form-field-draft-invalid') &&
             result?.plan?.applicationMode === 'layout-migration' &&
@@ -1814,6 +1824,11 @@ export function createKeywordManagerServices(host: {
                         }))) ||
                     record.sharedByteEditing === 'native-shared-bytes-v1'
                 ));
+        const readonlyReason = documentReadonly
+            ? 'document-readonly'
+            : readInput !== inputFormat || !supportedFormats.includes(inputFormat)
+                ? `input-format-${inputFormat}`
+                : result?.plan?.status === 'blocked' ? result.plan.reason : 'field-geometry-unsupported';
         const physicalLines = [];
         let nextPhysicalLine = keywordLine + 1;
         for (const sourceRecord of sourceRecords) {
@@ -1844,8 +1859,7 @@ export function createKeywordManagerServices(host: {
                     ? { occurrenceIndex: Number(record.lsppOccurrenceIndex) } : {}),
                 line: physicalLine,
                 editable: cardEditable,
-                reason: cardEditable ? undefined : !supportedFormats.includes(inputFormat)
-                    ? `input-format-${inputFormat}` : 'field-geometry-unsupported',
+                reason: cardEditable ? undefined : readonlyReason,
                 fields: fields.map((field, fieldIndex) => {
                     const fieldId = String(field.fieldMigrationId || `${recordIndex}:${fieldIndex}`);
                     const syntaxField = fieldIndex === record.recordMarker?.fieldIndex;
@@ -1921,7 +1935,7 @@ export function createKeywordManagerServices(host: {
                         enabled: controlEnabled,
                         editable: cardEditable && controlEnabled,
                         reason: cardEditable && controlEnabled ? undefined : controlEnabled
-                            ? (!supportedFormats.includes(inputFormat) ? `input-format-${inputFormat}` : 'field-geometry-unsupported')
+                            ? readonlyReason
                             : 'lspp-control-disabled',
                     };
                 }),
@@ -3183,6 +3197,8 @@ export function createKeywordManagerServices(host: {
                     ? i18n.get('keywordManagerRecordContentUnverified')
                     : String(model.plan.reason || '').startsWith('lspp-input-form-source-layout-')
                     ? i18n.get('keywordOptionsLayoutUnresolved')
+                    : ['native-file-write-unverified', 'native-read-window-write-unverified', 'conditional-comma-write-unverified'].includes(model.plan.reason)
+                    ? i18n.get('keywordManagerWriteLayoutUnverified')
                     : i18n.get('keywordOptionsTargetUnavailable');
             console.warn(`[lsdyna] Keyword option target unavailable: ${String(model.plan.reason || 'unknown').replace(/^lspp-/, '')}`);
         } else if (model.plan?.status === 'ready' &&

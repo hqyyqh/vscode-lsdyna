@@ -17,7 +17,7 @@ describe('SET list shared file reader', function () {
             assert.equal(require("../../../out/core/completion/nativeKeywordTemplate").nativeKeywordTemplate(name).status, 'retained-unverified');
         }
     });
-    it('keeps manager writes closed while exposing the same observed record identities', () => {
+    it('allows verified manager field drafts while retaining observed record identities', () => {
         const vscode = require('vscode');
         const { buildKeywordOptionViewModel: model, buildKeywordOptionsViewState: view } = require("../../../out/extension")._internals;
         for (const archive of archives) for (const sample of archive.cases.filter(c => c.format === 'standard' && c.listRecords === 3)) {
@@ -27,7 +27,12 @@ describe('SET list shared file reader', function () {
             const result = model({ document: doc, selection: { active: new vscode.Position(0, 0) } }, 0, {});
             assert.equal(view(result).canApply, false);
             assert.ok(result.managerCards.length >= 4, sample.keyword);
-            assert.ok(result.managerCards.every(c => !c.editable));
+            assert.ok(result.managerCards.every(c => c.editable), sample.keyword);
+            const field = result.managerCards[1].fields[0];
+            const drafts = require("../../../out/extension")._internals.keywordManagerEditField(result, field.fieldId, '77');
+            const staged = model({ document: doc, selection: { active: new vscode.Position(0, 0) } }, 0, drafts);
+            assert.equal(view(staged).canApply, true, sample.keyword);
+            assert.equal(doc.getText(), text, 'Preparing a draft must not write to the document');
         }
     });
     it('replays all 288 independent spelling, format and repetition observations through hover', async () => {

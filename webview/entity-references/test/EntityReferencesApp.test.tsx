@@ -169,7 +169,7 @@ test('renders verified partial locations, paging, and safe open actions', async 
     const { api } = transport(partial);
     render(<EntityReferencesApp transport={api} />);
     expect(await screen.findByRole('heading', { name: /引用位置\s*1\+/ })).toBeInTheDocument();
-    expect(screen.queryByText('部分结果')).not.toBeInTheDocument();
+    expect(screen.getByText('部分结果')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: /\*LOAD_CURVE/ }));
     expect(api.open).toHaveBeenCalledWith(3, 'reference-token', false);
     await userEvent.click(screen.getAllByRole('button', { name: '在侧边打开' })[1]);
@@ -200,15 +200,15 @@ test('renders structured keyword and field labels without parsing legacy labels'
     expect(screen.getByText('*DEFINE_CURVE / ID')).toBeVisible();
 });
 
-test.each(['stale', 'needs-refresh', 'incomplete'] as const)('keeps %s quiet and disables old locations', async status => {
+test.each(['stale', 'needs-refresh', 'incomplete'] as const)('explains %s and disables old locations', async status => {
     const initial = resultState(status);
-    initial.reasons = ['internal-error-code'];
+    initial.reasonDetails = ['部分信息尚未确认，请核对相关文件内容。'];
     const { api } = transport(initial);
     render(<EntityReferencesApp transport={api} />);
     await screen.findByRole('main');
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(initial.labels[status]);
     expect(screen.queryByText('internal-error-code')).not.toBeInTheDocument();
-    expect(screen.queryByText('技术详情')).not.toBeInTheDocument();
+    expect(screen.getByText('技术详情')).toBeVisible();
     expect(screen.getByRole('button', { name: /\*LOAD_CURVE/ })).toBeDisabled();
     expect(screen.getAllByRole('button', { name: '在侧边打开' })[0]).toBeDisabled();
     expect(screen.queryByRole('button', { name: /刷新|重试/ })).not.toBeInTheDocument();
@@ -253,7 +253,7 @@ test('shows the source basename and keeps the full path in a tooltip', async () 
     expect(screen.queryByText('主文件及其引用文件 · D:/models/main.k')).not.toBeInTheDocument();
 });
 
-test.each(['ready', 'partial', 'stale', 'incomplete', 'missing'] as const)('leaves empty query results blank: %s', async status => {
+test.each(['ready', 'partial', 'stale', 'incomplete', 'missing'] as const)('distinguishes empty results from unfinished analysis: %s', async status => {
     const initial = resultState(status);
     initial.definitions = []; initial.references = [];
     initial.message = initial.labels.incomplete;
@@ -261,10 +261,9 @@ test.each(['ready', 'partial', 'stale', 'incomplete', 'missing'] as const)('leav
     render(<EntityReferencesApp transport={transport(initial).api} />);
     await screen.findByRole('main');
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    for (const label of ['incomplete', 'noReferences', 'zeroResults', 'definitionsNotConfirmed', 'referencesNotConfirmed']) {
-        expect(screen.queryByText(initial.labels[label])).not.toBeInTheDocument();
-    }
+    if (status === 'ready') expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    else expect(screen.getByRole('status')).toHaveTextContent(initial.labels[status]);
+    if (status !== 'missing') expect(screen.queryByText(initial.labels.missing)).not.toBeInTheDocument();
 });
 
 test('keeps the line number separate from a long file label in partial results', async () => {
@@ -277,13 +276,13 @@ test('keeps the line number separate from a long file label in partial results',
     for (const button of screen.getAllByRole('button', { name: '在侧边打开' })) expect(button).toBeEnabled();
 });
 
-test('omits query failure descriptions while retaining confirmed positions', async () => {
+test('explains partial coverage while retaining confirmed positions', async () => {
     const initial = resultState('partial');
     initial.message = '查询未完成，可重试。';
     render(<EntityReferencesApp transport={transport(initial).api} />);
     await screen.findByRole('main');
     expect(screen.queryByText(initial.message)).not.toBeInTheDocument();
-    expect(screen.queryByText(initial.labels.partial)).not.toBeInTheDocument();
+    expect(screen.getByText(initial.labels.partial)).toBeVisible();
     expect(screen.getByRole('heading', { name: /引用位置/ })).toBeVisible();
     expect(screen.queryByRole('heading', { name: /其他引用位置/ })).not.toBeInTheDocument();
 });

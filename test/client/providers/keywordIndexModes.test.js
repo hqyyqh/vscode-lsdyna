@@ -750,3 +750,35 @@ describe('keyword sidebar on-demand work', () => {
     });
 
 });
+
+
+describe('project selection during keyword session opening', () => {
+    it('ignores a late old-project refresh and unrelated local work while opening the selected project', async () => {
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        let finish;
+        const opening = new Promise(resolve => { finish = resolve; });
+        const provider = new LsdynaKeywordIndexProvider({ projectSession: async request => {
+            if (request.action === 'open') { await opening; return { lease: 'new', generation: 1 }; }
+            return { state: 'complete', sequence: 1 };
+        } });
+        vscodeMock.ProgressLocation = { Notification: 1 };
+        vscodeMock.window.withProgress = async (_options, task) => task({ report() {} }, { isCancellationRequested: false });
+        try {
+            provider.attachTreeView({ visible: true });
+            provider.refreshFromUriOrDocument = () => { throw Error('must not start unrelated local scan'); };
+            const pending = provider.scan({ rootFile: path.resolve('new-main.k') });
+            await provider.refreshAutomatically(modelDocument(path.resolve('other.k')));
+            provider._mode = 'recursive'; provider.projectRoot = path.resolve('old-main.k');
+            provider.projectPages = { dispose() {} };
+            const generation = provider.scanGeneration;
+            await provider.updateProjectStructure({ rootFile: provider.projectRoot });
+            assert.equal(provider.scanGeneration, generation);
+            finish();
+            assert.equal(await pending, true);
+            assert.equal(provider.projectRoot, path.resolve('new-main.k'));
+        } finally {
+            finish(); provider.dispose();
+            vscodeMock.window.withProgress = progress; vscodeMock.ProgressLocation = location;
+        }
+    });
+});

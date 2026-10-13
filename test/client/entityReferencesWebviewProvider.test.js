@@ -31,6 +31,51 @@ function actions(calls) {
 }
 
 describe('EntityReferencesWebviewProvider', () => {
+    it('keeps partial coverage in both languages without rendering repetitive reason warnings', () => {
+        const i18n = require('../../out/core/i18n'), original = i18n.getLanguage;
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['part'], actions([]));
+        const reasons = ['unknown (8010 occurrences)', 'deferred (12 occurrences)'];
+        try {
+            model.publish({ targetKind: 'part', id: 1, scope: { kind: 'single-file', filePath: path.resolve('main.k') } },
+                { state: 'partial', locations: [], reasons });
+            for (const [language, label] of [['zh-cn', '部分结果'], ['en', 'Partial results']]) {
+                i18n.getLanguage = () => language;
+                const state = provider.viewState();
+                assert.equal(state.status, 'partial');
+                assert.equal(state.labels.partial, label);
+                assert.deepEqual(state.reasonDetails, []);
+                assert.deepEqual(state.reasons, reasons, 'coverage evidence is preserved');
+            }
+        } finally { i18n.getLanguage = original; provider.dispose(); model.dispose(); }
+    });
+    it('opens the next search during indexing and ignores the superseded query failure', async () => {
+        const original = vscode.window.createQuickPick, pickers = [], queries = [];
+        vscode.window.createQuickPick = () => {
+            const picker = { value: '', items: [], selectedItems: [],
+                onDidChangeValue(fn) { this.change = fn; return { dispose() {} }; },
+                onDidChangeActive() { return { dispose() {} }; },
+                onDidAccept(fn) { this.accept = fn; return { dispose() {} }; },
+                onDidHide(fn) { this.hidden = fn; return { dispose() {} }; },
+                show() {}, hide() { this.hidden(); }, dispose() {} };
+            pickers.push(picker); return picker;
+        };
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], {
+            ...actions([]), query: () => new Promise((resolve, reject) => queries.push({ resolve, reject })),
+        });
+        const select = picker => { picker.value = '1001'; picker.change(); picker.selectedItems = [picker.items[0]]; picker.accept(); };
+        try {
+            const first = provider.search(); select(pickers[0]); await Promise.resolve();
+            assert.equal(queries.length, 1);
+            const second = provider.search(); assert.equal(pickers.length, 2);
+            queries[0].reject(new Error('old query failed')); await first;
+            assert.equal(provider.searchPending, true, 'old completion cannot unlock the new picker');
+            assert.equal(provider.message, '');
+            select(pickers[1]); await Promise.resolve(); queries[1].resolve(true);
+            assert.equal(await second, true);
+        } finally { provider.dispose(); model.dispose(); vscode.window.createQuickPick = original; }
+    });
     it('names reference-only query types in both languages and preserves keyword identifiers', () => {
         const i18n = require('../../out/core/i18n');
         const original = i18n.getLanguage;
@@ -475,8 +520,10 @@ describe('EntityReferencesWebviewProvider', () => {
         await webview.webview.receive({ id: 'more', method: 'entityReferences/loadMore',
             receiver: { type: 'extension' }, params: { revision: state.revision, role: 'reference' } });
         assert.equal(calls, 1);
-        const next = provider.viewState();
-        assert.equal(next.references.length, 400);
+        const next = provider.viewState({ baseRevision: state.revision, role: 'reference', start: 200 });
+        assert.equal(next.references.length, 200);
+        assert.equal(new Set([...state.references, ...next.references].map(row => row.line)).size, 400);
+        assert.equal(model.getActiveSession().locations.length, 400);
         assert.equal(next.hasMoreReferences, false);
         provider.dispose(); model.dispose();
     });

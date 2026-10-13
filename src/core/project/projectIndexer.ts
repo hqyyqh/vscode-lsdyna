@@ -304,6 +304,7 @@ function createProjectIndexer({
     collectIncludeDirectivesFromFile = includeScanner.collectIncludeDirectivesFromFile,
     collectKeywordsFromFile = keywordScanner.collectKeywordsFromFile,
     loadFileIndex = null,
+    loadFileStructure = buildFileStructure,
     getFileSignature = readFileSignature,
     concurrency = DEFAULT_CONCURRENCY,
     persistentFileScanCache = null,
@@ -331,6 +332,8 @@ function createProjectIndexer({
 
     /** @type {Map<string, { signature: import('../cache/diskSnapshotStore').FileSignature, scanResult: Object, byteSize: number, lastAccessedAt: number }>} */
     const fileScanCache = new Map();
+    const activeFileScans = new Set<Promise<any>>();
+    const sharedStructures = new Map<string, any>();
     let fileScanAccessSequence = 0;
     const usesLegacyCollectors = collectIncludeDirectivesFromFile !== includeScanner.collectIncludeDirectivesFromFile
         || collectKeywordsFromFile !== keywordScanner.collectKeywordsFromFile;
@@ -380,6 +383,52 @@ function createProjectIndexer({
      * @returns {Promise<Object>} The cached or newly scanned file result.
      */
     async function loadFileScan(filePath, options, stats): Promise<FileScanResult> {
+        if (!options.structureOnly) return loadFileScanUnshared(filePath, options, stats);
+        const signature = await getFileSignature(filePath);
+        const key = JSON.stringify([getProjectFileCacheKey(filePath), signature, fileStructureOptionsKey(options)]);
+        const subscriber = { options, error: null };
+        let job = sharedStructures.get(key);
+        const joined = !!job;
+        if (!job) {
+            const subscribers = new Set<any>([subscriber]);
+            const token = { get isCancellationRequested() {
+                return [...subscribers].every(subscriber => subscriber.error || subscriber.options.cancellationToken?.isCancellationRequested);
+            } };
+            const notify = (name, ...args) => {
+                for (const subscriber of subscribers) {
+                    if (subscriber.error || subscriber.options.cancellationToken?.isCancellationRequested) continue;
+                    try { subscriber.options[name]?.(...args); } catch (error) { subscriber.error = error; }
+                }
+                throwIfCancellationRequested(token);
+            };
+            const localStats = { scannedFileCount: 0, reusedFileCount: 0 };
+            job = { subscribers, stats: localStats };
+            sharedStructures.set(key, job);
+            job.promise = Promise.resolve().then(() => loadFileScanUnshared(filePath, { ...options,
+                cancellationToken: token,
+                onStructureBlock: (...args) => notify('onStructureBlock', ...args),
+                onStructureStart: (...args) => notify('onStructureStart', ...args),
+                onIncludePending: (...args) => notify('onIncludePending', ...args),
+                flushStructure: async () => {
+                    await Promise.all([...subscribers].map(async subscriber => {
+                        if (subscriber.error || subscriber.options.cancellationToken?.isCancellationRequested) return;
+                        try { await subscriber.options.flushStructure?.(); } catch (error) { subscriber.error = error; }
+                    }));
+                    throwIfCancellationRequested(token);
+                },
+            }, localStats)).finally(() => sharedStructures.delete(key));
+        } else job.subscribers.add(subscriber);
+        try {
+            const result = await job.promise.catch(error => { throw subscriber.error || error; });
+            if (subscriber.error) throw subscriber.error;
+            throwIfCancellationRequested(options.cancellationToken);
+            stats.scannedFileCount += joined ? 0 : job.stats.scannedFileCount;
+            stats.reusedFileCount += joined ? 1 : job.stats.reusedFileCount;
+            return result;
+        } finally { job.subscribers.delete(subscriber); }
+    }
+
+    async function loadFileScanUnshared(filePath, options, stats): Promise<FileScanResult> {
         throwIfCancellationRequested(options.cancellationToken);
         const resolvedFilePath = resolveProjectFile(filePath);
         const scanOptionsKey = JSON.stringify([options.maxDefinitionBlockBytes ?? null,
@@ -391,6 +440,15 @@ function createProjectIndexer({
         const fileCacheKey = getProjectFileCacheKey(resolvedFilePath) + scanOptionsKey + (options.structureOnly ? ':structure' : '');
         const signature = await getFileSignature(resolvedFilePath);
         throwIfCancellationRequested(options.cancellationToken);
+        const previous = options.structureOnly && options.previousFileIndexes?.get(resolvedFilePath);
+        options.previousFileIndexes?.delete(resolvedFilePath);
+        if (previous && previous.scannerVersion === SCANNER_VERSION &&
+            previous.structureOptionsKey === fileStructureOptionsKey(options) && areFileSignaturesEqual(previous, signature)) {
+            stats.reusedFileCount += 1;
+            return { scanOptionsKey, filePath: resolvedFilePath, fileIndex: previous,
+                keywords: keywordsFromFileIndex(previous), includeEntries: previous.includeEntries || [],
+                searchPaths: previous.searchPaths || [path.dirname(resolvedFilePath)] };
+        }
         const cachedEntry = fileScanCache.get(fileCacheKey);
 
         if (cachedEntry && areFileSignaturesEqual(cachedEntry.signature, signature)) {
@@ -400,7 +458,7 @@ function createProjectIndexer({
         }
 
         // Try L1.5 persistent per-file cache
-        if (persistentFileScanCache) {
+        if (persistentFileScanCache && !signature.sourceRevision?.startsWith('live:')) {
             try {
                 const persistedResult = await persistentFileScanCache.get(resolvedFilePath, signature, {
                     scanOptionsKey, structureOptionsKey: fileStructureOptionsKey(options),
@@ -425,8 +483,9 @@ function createProjectIndexer({
             }
         }
 
+        options.onStructureStart?.(resolvedFilePath);
         const fileIndex = options.structureOnly
-            ? await buildFileStructure(resolvedFilePath, options)
+            ? await loadFileStructure(resolvedFilePath, options)
             : options.structure
                 ? await completeFileIndex(options.structure, options)
                 : await effectiveLoadFileIndex(resolvedFilePath, options);
@@ -453,7 +512,7 @@ function createProjectIndexer({
         if (!options.structure) stats.scannedFileCount += 1;
 
         // Finish publication before a worker may be recycled; cancellation never publishes unfinished scans.
-        if (persistentFileScanCache) {
+        if (persistentFileScanCache && !signature.sourceRevision?.startsWith('live:')) {
             try { await persistentFileScanCache.set(resolvedFilePath, signature, scanResult, options); }
             catch (error) { throwIfCancellationRequested(options.cancellationToken); }
         }
@@ -502,9 +561,15 @@ function createProjectIndexer({
         const limit = createConcurrencyLimiter(concurrency);
         const resolutionCache = new Map();
         const scans = new Map<string, Promise<any>>();
+        const failedFiles = [];
         const startScan = (filePath) => {
             if (!scans.has(filePath)) {
-                const pending = limit(() => loadFileScan(filePath, { ...options, structureOnly: staged }, stats));
+                options.onStructureQueued?.(filePath, scans.size);
+                const pending = limit(() => loadFileScan(filePath, { ...options, structureOnly: staged,
+                    onStructureBlock: options.onStructureBlock }, stats));
+                options.onScanPromise?.(pending);
+                activeFileScans.add(pending);
+                pending.finally(() => activeFileScans.delete(pending)).catch(() => {});
                 pending.catch(() => {});
                 scans.set(filePath, pending);
             }
@@ -546,18 +611,29 @@ function createProjectIndexer({
             for (let i = 0; i < toScan.length; i++) {
                 throwIfCancellationRequested(options.cancellationToken);
                 const { filePath: resolvedFilePath, ancestry, inheritedPaths } = toScan[i];
-                const scanResult = await scanResults[i] as FileScanResult;
+                let scanResult: FileScanResult;
+                try { scanResult = await scanResults[i]; }
+                catch (error) {
+                    if (!options.onStructureFailure || ['CancellationError', 'ScanChangedError'].includes(error?.name)) throw error;
+                    throwIfCancellationRequested(options.cancellationToken);
+                    failedFiles.push(resolvedFilePath);
+                    await options.onStructureFailure(resolvedFilePath, error);
+                    continue;
+                }
                 progress({ phase: "structure", filePath: resolvedFilePath, processedFiles: fileIndexes.size + 1 });
 
                 if (scanResult.fileIndex) {
                     fileIndexes.set(resolvedFilePath, scanResult.fileIndex);
                 }
-                addKeywordUsages(keywordMap, scanResult.keywords);
+                if (options.structureOnly !== true) addKeywordUsages(keywordMap, scanResult.keywords);
 
                 // A disk-backed entity-ID query may need one very large file without claiming
                 // or traversing its Include closure. The file index still records Include cards,
                 // but they do not enter the project graph or BFS queue in this explicit scope.
-                if (options.singleFileOnly === true) continue;
+                if (options.singleFileOnly === true) {
+                    await options.onStructureFile?.({ filePath: resolvedFilePath, fileIndex: scanResult.fileIndex, graph });
+                    continue;
+                }
 
                 const fileDir = path.dirname(resolvedFilePath);
                 const pathEntries = scanResult.fileIndex && scanResult.fileIndex.pathEntries
@@ -670,6 +746,7 @@ function createProjectIndexer({
                         });
                     }
                 }
+                await options.onStructureFile?.({ filePath: resolvedFilePath, fileIndex: scanResult.fileIndex, graph });
             }
 
             currentLevel = nextLevel;
@@ -686,9 +763,10 @@ function createProjectIndexer({
             missingFiles: graph.missingFiles,
             cycles: graph.cycles,
             effectiveSearchPathsByFile,
+            failedFiles,
             stats,
         };
-        if (staged) {
+        if (staged && options.structureOnly !== true) {
             onProgress?.({ type: 'structureReady', rootFile: resolvedRootFile,
                 snapshot: { ...snapshot, phase: 'structure', fileIndexes: new Map(), keywordMap: new Map() } });
             progress({ phase: 'references', processedFiles: 0 });
@@ -698,6 +776,8 @@ function createProjectIndexer({
                     onProgress: progress }, stats);
                 fileIndexes.set(filePath, result.fileIndex);
             }
+        }
+        if (staged) {
             // Reject mixed versions even when a previously completed file changes later.
             for (const [filePath, index] of fileIndexes) {
                 const signature = await getFileSignature(filePath);
@@ -711,11 +791,21 @@ function createProjectIndexer({
         return snapshot;
     }
 
-    async function buildProjectIndex(rootFile, options = {}, onProgress = null) {
+    async function buildProjectIndex(rootFile, options: any = {}, onProgress = null) {
         for (let attempt = 0; ; attempt++) {
-            try { return await buildProjectIndexOnce(rootFile, options, onProgress); }
+            let stopped = false;
+            const pending = new Set<Promise<any>>();
+            const cancellationToken = { get isCancellationRequested() {
+                return stopped || options.cancellationToken?.isCancellationRequested;
+            } };
+            try { return await buildProjectIndexOnce(rootFile, { ...options, cancellationToken,
+                onScanPromise: promise => pending.add(promise) }, onProgress); }
             catch (error) {
+                stopped = true;
+                await Promise.allSettled([...pending]);
+                throwIfCancellationRequested(options.cancellationToken);
                 if (error?.name !== 'ScanChangedError' || attempt >= 1) throw error;
+                await options.onStructureRestart?.();
                 onProgress?.({ type: 'progress', rootFile: resolveProjectFile(rootFile), phase: 'restarting' });
             }
         }
@@ -723,6 +813,7 @@ function createProjectIndexer({
 
     return {
         buildProjectIndex,
+        async drainFileScans() { while (activeFileScans.size) await Promise.allSettled([...activeFileScans]); },
         clearMemoryCache() {
             const removed = getFileScanCacheStats();
             fileScanCache.clear();

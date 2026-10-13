@@ -183,7 +183,7 @@ module.exports = {
     ThemeIcon: class ThemeIcon {},
     TreeItem: class TreeItem { constructor(l, s) { this.label = l; this.collapsibleState = s; } },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-    EventEmitter: class EventEmitter { constructor() { this.event = null; } fire() {} },
+    EventEmitter: class EventEmitter { constructor() { this.event = null; } fire() {} dispose() {} },
     window: {
         activeTextEditor: null,
         showQuickPick: () => Promise.resolve(undefined),

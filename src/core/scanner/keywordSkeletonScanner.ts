@@ -13,6 +13,7 @@ const {
 
 type KeywordSkeletonScanOptions = {
     highWaterMark?: number;
+    maxStructureBytes?: number;
     yieldInterval?: number;
     createBlockSummaryAccumulator?: (block: any, keywordLine: Buffer) => {
         acceptLine?: (line: Buffer) => boolean;
@@ -21,6 +22,8 @@ type KeywordSkeletonScanOptions = {
     } | null;
     cancellationToken?: { isCancellationRequested?: boolean };
     onLineStart?: (line: number, byteOffset: number) => void;
+    onBlock?: (block: any, complete: boolean) => void;
+    onYield?: () => Promise<void>;
 };
 
 const DEFAULT_SCAN_YIELD_INTERVAL = 1000;
@@ -91,6 +94,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
         highWaterMark: options.highWaterMark || 1024 * 1024,
     });
     const blocks = [];
+    let structureBytes = 0;
     let remainder = Buffer.alloc(0);
     let absoluteOffset = 0;
     let lineStartOffset = 0;
@@ -123,6 +127,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             if (!isColumnZeroKeywordBoundary(lineBuffer)) return;
             finishCurrentSummary();
             closePreviousBlock(blocks, startOffset, currentLine);
+            options.onBlock?.(blocks[blocks.length - 1], true);
             currentBlockOpen = false;
             opaqueActive = false;
         }
@@ -145,6 +150,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
         if (currentBlockOpen) {
             finishCurrentSummary();
             closePreviousBlock(blocks, startOffset, currentLine);
+            options.onBlock?.(blocks[blocks.length - 1], true);
         }
         const opaqueDirective = classifyOpaqueCommentDirective(lineBuffer);
         const block = {
@@ -173,7 +179,11 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                 ? { displaySourceEndLine: currentLine }
                 : {}),
         };
+        structureBytes += 1024 + (filePath.length + parsed.keyword.length + parsed.rawKeyword.length) * 2;
+        if (structureBytes > (options.maxStructureBytes ?? 64 * 1024 * 1024))
+            throw new RangeError('File structure exceeds scan budget');
         blocks.push(block);
+        options.onBlock?.(block, false);
         currentBlockOpen = true;
         opaqueActive = !!opaqueDirective;
         if (typeof options.createBlockSummaryAccumulator === 'function' && !opaqueDirective) {
@@ -194,6 +204,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             let nextNewLine = -1;
 
             while ((nextNewLine = combined.indexOf(0x0a, offset)) !== -1) {
+                if (nextNewLine - offset > 1024 * 1024) throw new RangeError('Structural line exceeds scan budget');
                 const startOffset = combinedStartOffset + offset;
                 const block = blocks[blocks.length - 1];
                 let dataStart = offset;
@@ -218,7 +229,9 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             }
 
             remainder = combined.subarray(offset);
+            if (remainder.length > 1024 * 1024) throw new RangeError('Structural line exceeds scan budget');
             absoluteOffset += chunk.length;
+            await options.onYield?.();
         }
 
         if (remainder.length > 0) {
@@ -234,6 +247,8 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
         last.endLine = remainder.length > 0 ? lineIndex : Math.max(last.startLine, lineIndex - 1);
     }
     finishCurrentSummary();
+    if (currentBlockOpen && blocks.length) options.onBlock?.(blocks[blocks.length - 1], true);
+    await options.onYield?.();
     throwIfCancellationRequested(options.cancellationToken);
 
     return blocks;

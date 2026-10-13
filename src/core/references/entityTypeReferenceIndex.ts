@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { EntityQueryCache } from './entityQueryCache';
+import { EntityQueryCache, entityFileScopes } from './entityQueryCache';
 const { scanOnDemandReferences, queryRegistryReferences } = require('./onDemandReferenceScanner');
 const { parameterContextsForDocument } = require('./projectReferenceIndex');
 const { collectRegistryReferenceMatches, namespaceMatches, occurrenceBinding, DEFAULT_MAX_MATCHES } = require('./registryReferenceNetwork');
@@ -11,8 +11,13 @@ export async function queryIndexedTypeReferences(options: any, cache: EntityQuer
     const entries = options.fileIndexes instanceof Map ? [...options.fileIndexes] : Object.entries(options.fileIndexes || {});
     const recovered = { occurrences: [], gaps: [], resolvedGaps: new Set(), scannedBlocks: 0, scannedLines: 0 };
     const shardIdentities = [];
-    for (const [file, index] of entries as [string, any][]) {
-        const gaps = (referenceIndex.registryReferenceCoverageGaps || []).filter(gap => gap.filePath === file);
+    const aggregate = cache.reserveResult();
+    let aggregateBytes = 0;
+    try {
+    for (const [file, index] of entityFileScopes(entries)) {
+        const starts = index.semanticBlockRevision ? new Set(index.keywordBlocks.map(block => block.startLine)) : null;
+        const gaps = (referenceIndex.registryReferenceCoverageGaps || []).filter(gap => gap.filePath === file &&
+            (!starts || gap.startLine === undefined || starts.has(gap.startLine)));
         if (!gaps.length) continue;
         const contextRevision = createHash('sha256').update(JSON.stringify([
             parameterContextsForDocument(referenceIndex, file), gaps],
@@ -42,10 +47,20 @@ export async function queryIndexedTypeReferences(options: any, cache: EntityQuer
                     resolvedGaps: undefined, resolved: gaps.map(gap => lookup.resolvedGaps.has(gap)) };
             } finally { reservation.release(); }
         });
-        if (shard.state === 'budget-fallback') return queryRegistryReferences(options);
+        if (shard.state === 'budget-fallback') return queryRegistryReferences({ ...options,
+            maxMatches: Math.floor(aggregate.bytes / 4096),
+            acceptOccurrence: occurrence => {
+                aggregateBytes += estimateMemorySize(occurrence, aggregate.bytes) + 256;
+                return aggregateBytes <= aggregate.bytes;
+            } });
         if (shard.cancelled) return { state: 'cancelled', locations: [], reasons: ['cancelled'], referenceIndex };
         shardIdentities.push(cache.identity(shard));
-        for (const occurrence of shard.occurrences) recovered.occurrences.push(occurrence);
+        for (const occurrence of shard.occurrences) {
+            aggregateBytes += estimateMemorySize(occurrence, aggregate.bytes) + 256;
+            if (aggregateBytes > aggregate.bytes) return { state: 'incomplete', locations: [],
+                reasons: ['on-demand-reference-scan-incomplete'], referenceIndex, referenceLookup: recovered };
+            recovered.occurrences.push(occurrence);
+        }
         recovered.gaps.push(...shard.gaps);
         gaps.forEach((gap, index) => { if (shard.resolved[index]) recovered.resolvedGaps.add(gap); });
         if (built) { recovered.scannedBlocks += shard.scannedBlocks; recovered.scannedLines += shard.scannedLines; }
@@ -61,11 +76,12 @@ export async function queryIndexedTypeReferences(options: any, cache: EntityQuer
         const longestPath = entries.reduce((length, [file]) => Math.max(length, String(file).length), 0);
         const maxMatches = Math.floor(reservation.bytes / (2048 + longestPath * 4));
         return { ...collect(selected, query, { cancellationToken: options.cancellationToken,
-            ...(maxMatches > DEFAULT_MAX_MATCHES ? { maxMatches } : {}),
+            maxMatches,
             retainVerifiedMatchesOnIncomplete: options.retainVerifiedMatchesOnIncomplete,
             resolvedCoverageGaps: recovered.resolvedGaps }), referenceIndex: combined,
             metadataOccurrences: selected.registryReferenceOccurrences, referenceLookup: recovered };
     } finally { reservation.release(); }
+    } finally { aggregate.release(); }
 }
 
 async function referenceCandidates(referenceIndex: any, options: any, shards: number[], cache: EntityQueryCache) {

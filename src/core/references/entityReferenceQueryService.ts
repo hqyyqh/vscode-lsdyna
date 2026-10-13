@@ -129,14 +129,7 @@ export class EntityReferenceQueryService {
                 ...['scanBlockLines', 'scanDefinitions', 'queryReferences', 'collectReferences', 'definitionKeywords']
                     .map(name => this.cache.identity(context[name]))]);
             const indexed = await this.cache.run(key, context.cancellationToken, async cancellationToken => {
-                const indexKey = 'index:' + revision;
-                let referenceIndex = this.cache.get(indexKey);
-                if (!referenceIndex) {
-                    const started = performance.now();
-                    referenceIndex = buildProjectReferenceIndex(snapshot);
-                    context.onPhase?.({ phase: 'reference-index-build', durationMs: performance.now() - started });
-                    this.cache.set(indexKey, referenceIndex);
-                }
+                const referenceIndex = this.index(snapshot, context.onPhase);
                 return queryIndexedEntityId({ snapshot, id, targetKind, ...context, cancellationToken, referenceIndex,
                     scanDefinitions: context.scanDefinitions || (options => scanIndexedTypeDefinitions(options, this.cache)),
                     queryReferences: context.queryReferences || (options => queryIndexedTypeReferences({ ...options, revision }, this.cache)) });
@@ -193,7 +186,28 @@ export class EntityReferenceQueryService {
         });
     }
 
-    index(snapshot: any) { return buildProjectReferenceIndex(snapshot); }
+    index(snapshot: any, onPhase?: (phase: any) => void) {
+        const key = 'index:' + this.cache.revision(snapshot);
+        let referenceIndex = this.cache.get(key);
+        if (!referenceIndex) {
+            const started = performance.now();
+            referenceIndex = buildProjectReferenceIndex(snapshot);
+            onPhase?.({ phase: 'reference-index-build', durationMs: performance.now() - started });
+            this.cache.set(key, referenceIndex);
+        }
+        return referenceIndex;
+    }
+
+    async indexAsync(snapshot: any, token: any) {
+        const key = 'async-index:' + this.cache.revision(snapshot);
+        const completed: any = await this.cache.run(key, token, async cancellationToken => {
+            const reservation = this.cache.reserveResult();
+            try { return { state: 'complete', value: await require('./projectReferenceIndex')
+                .buildProjectReferenceIndexAsync(snapshot, cancellationToken, reservation.bytes) }; }
+            finally { reservation.release(); }
+        });
+        return completed.value;
+    }
 }
 
 module.exports = { EntityReferenceQueryService };

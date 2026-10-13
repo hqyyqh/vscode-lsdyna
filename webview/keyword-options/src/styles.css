@@ -69,6 +69,10 @@ select, input[type=search], .field input { width: 100%; min-height: 28px; border
 .field + .field > span { border-left: 1px solid var(--manager-border); }
 .fieldEditor { display: flex; min-width: 0; border-left: 2px solid transparent; }
 .fieldEditor.changed { border-left-color: var(--vscode-editorWarning-foreground); }
+.fieldChoicesToggle { flex: 0 0 24px; padding: 0; border-radius: 0; color: var(--vscode-input-foreground); background: var(--vscode-input-background); }
+.fieldChoices { position: fixed; z-index: 1000; overflow: auto; padding: 1px; box-sizing: border-box; border: 1px solid var(--vscode-dropdown-border, var(--vscode-focusBorder)); color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.fieldChoices [role=option] { min-height: 28px; padding: 4px 8px; cursor: pointer; overflow-wrap: anywhere; }
+.fieldChoices [role=option][aria-selected=true] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
 .fieldEditor > input, .fieldEditor > select { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 1.95em; padding: 1px 2px; border-radius: 0; border: 0; border-bottom: 1px solid var(--vscode-input-border, var(--manager-border)); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font-family: var(--vscode-editor-font-family); font-size: 1em; text-align: center; }
 .field + .field .fieldEditor > input, .field + .field .fieldEditor > select { border-left: 1px solid var(--manager-border); }
 .fieldHelp { min-width: 0; margin-top: 0; padding: 8px 12px; color: var(--vscode-editor-foreground); line-height: 1.5; font-size: .95em; overflow-wrap: anywhere; animation: fieldHelpFadeIn 150ms ease-out; }

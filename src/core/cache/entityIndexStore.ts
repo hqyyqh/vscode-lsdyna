@@ -2,10 +2,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@vscode/sqlite3';
+import { indexJsonBytes } from '../../shared/indexPages';
 const { entityIdentityKey } = require('../references/entityIdentity');
 const { throwIfCancellationRequested } = require('../scanner/scannerContracts');
 
-const SCHEMA = 2;
+const SCHEMA = 4;
+const APPLICATION_ID = 0x44594e41;
 const LEASE_MS = 30_000;
 const BATCH_BYTES = 256 * 1024;
 type Token = { isCancellationRequested: boolean };
@@ -30,6 +32,10 @@ export class EntityIndexStore {
     private tail: Promise<unknown> = Promise.resolve();
     private closed = false;
     private rollingBack = false;
+    private readonly owner = randomUUID();
+    private registered = false;
+    private maintenance?: ReturnType<typeof setInterval>;
+    private maintenanceTask?: Promise<void>;
     private readonly now: () => number;
     private constructor(private db: Database, readonly directory: string, private options: Options) {
         this.now = options.now || Date.now;
@@ -55,7 +61,7 @@ export class EntityIndexStore {
                 if (error.code !== 'ENOENT') throw error;
                 return undefined;
             });
-            if (stat && (!stat.isFile() || stat.isSymbolicLink())) throw new Error('Unsafe entity index cache file');
+            if (stat && (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1)) throw new Error('Unsafe entity index cache file');
         }
         // Lazy loading keeps the existing bounded query path usable if the native driver cannot load.
         const sqlite: typeof import('@vscode/sqlite3') = require('@vscode/sqlite3');
@@ -64,14 +70,20 @@ export class EntityIndexStore {
         });
         const store = new EntityIndexStore(db, directory, { ...options, memoryBytes, diskBytes });
         try {
+            await store.exec('PRAGMA busy_timeout=100;');
+            const version = await store.get('PRAGMA user_version');
+            const identity = await store.get('PRAGMA application_id');
+            const tables = await store.get("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table'");
+            if (tables.count && (version.user_version !== SCHEMA || identity.application_id !== APPLICATION_ID))
+                throw new Error('Incompatible entity index schema');
             await store.exec(`PRAGMA busy_timeout=100; PRAGMA foreign_keys=ON;
-                PRAGMA temp_store=MEMORY; PRAGMA cache_size=-${Math.floor(memoryBytes / 2 / 1024)};
+                PRAGMA temp_store=FILE; PRAGMA cache_size=-${Math.floor(memoryBytes / 2 / 1024)};
                 PRAGMA auto_vacuum=INCREMENTAL; PRAGMA journal_mode=DELETE;
                 PRAGMA journal_size_limit=1048576;
                 PRAGMA max_page_count=${Math.floor(diskBytes / 4 / 4096)};`);
-            const version = await store.get('PRAGMA user_version');
-            if (version.user_version !== 0 && version.user_version !== SCHEMA) throw new Error('Incompatible entity index schema');
-            await store.exec(`CREATE TABLE IF NOT EXISTS generations (
+            if (![0, SCHEMA].includes(version.user_version)) throw new Error('Incompatible entity index schema');
+            await store.transaction(async () => {
+                await store.exec(`CREATE TABLE IF NOT EXISTS generations (
                 generation TEXT PRIMARY KEY, shard TEXT NOT NULL, revision TEXT NOT NULL,
                 state TEXT NOT NULL, owner TEXT NOT NULL, lease INTEGER NOT NULL,
                 accessed INTEGER NOT NULL, coverage TEXT);
@@ -105,10 +117,23 @@ export class EntityIndexStore {
                     generation TEXT NOT NULL REFERENCES generations(generation) ON DELETE CASCADE,
                     section TEXT NOT NULL, ordinal INTEGER NOT NULL, payload TEXT NOT NULL,
                     PRIMARY KEY(generation,section,ordinal));
+                CREATE TABLE IF NOT EXISTS project_rows (
+                    generation TEXT NOT NULL REFERENCES generations(generation) ON DELETE CASCADE,
+                    record_key TEXT NOT NULL, sequence INTEGER NOT NULL, kind TEXT NOT NULL,
+                    file TEXT NOT NULL, file_order INTEGER NOT NULL, keyword TEXT, category TEXT,
+                    category_order INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
+                    payload TEXT NOT NULL, PRIMARY KEY(generation,record_key));
+                CREATE INDEX IF NOT EXISTS project_rows_changes ON project_rows(generation,sequence);
+                CREATE INDEX IF NOT EXISTS project_rows_keywords ON project_rows(generation,kind,keyword,file_order,start_line);
+                CREATE INDEX IF NOT EXISTS project_rows_files ON project_rows(generation,kind,file,file_order,start_line);
+                CREATE TABLE IF NOT EXISTS cache_owners (owner TEXT PRIMARY KEY, pid INTEGER NOT NULL);
+                PRAGMA application_id=${APPLICATION_ID};
                 PRAGMA user_version=${SCHEMA};`);
-            await store.assertCapacity();
+                await store.run('INSERT INTO cache_owners VALUES (?,?)', [store.owner, process.pid]);
+            });
+            store.registered = true;
             return store;
-        } catch (error) { await store.close(); throw error; }
+        } catch (error) { await store.close().catch(() => {}); throw error; }
     }
 
     private exec(sql: string): Promise<void> {
@@ -150,6 +175,7 @@ export class EntityIndexStore {
                 if (error.code !== 'SQLITE_FULL' || evictions >= 8) throw error;
                 // Limit each retry's work; never evict a building generation or a recent reader.
                 const removed = await this.transaction(async () => {
+                    if (await this.otherOwners()) return 0;
                     const oldest = await this.get(`SELECT generation FROM generations WHERE state='published'
                         AND accessed<? ORDER BY accessed,generation LIMIT 1`, [this.now() - LEASE_MS]);
                     throwIfCancellationRequested(token);
@@ -159,6 +185,20 @@ export class EntityIndexStore {
                 if (!removed) throw error;
             }
         }
+    }
+    // A live process may have an idle result cursor. Age alone cannot release its data.
+    private async otherOwners() {
+        const owners = await this.all('SELECT owner,pid FROM cache_owners WHERE owner<>? LIMIT 201', [this.owner]);
+        let active = owners.length > 200;
+        for (const owner of owners.slice(0, 200)) {
+            if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0) { active = true; continue; }
+            try { process.kill(owner.pid, 0); active = true; }
+            catch (error) {
+                if (error.code !== 'ESRCH') active = true;
+                else await this.run('DELETE FROM cache_owners WHERE owner=?', [owner.owner]);
+            }
+        }
+        return active;
     }
     private async cancellable<T>(operation: () => Promise<T>, token?: Token): Promise<T> {
         throwIfCancellationRequested(token);
@@ -177,7 +217,7 @@ export class EntityIndexStore {
         if (stats.bytes + BATCH_BYTES * 8 > this.options.diskBytes) throw new Error('Entity index disk budget exhausted');
     }
     private async diskStats() {
-        let bytes = 0;
+        let bytes = 0, legacyBytes = 0;
         const root = path.dirname(this.directory);
         for (const version of await fs.promises.readdir(root, { withFileTypes: true })) {
             if (!/^entity-index-v[0-9]+$/.test(version.name)) continue;
@@ -191,9 +231,11 @@ export class EntityIndexStore {
                 });
                 if (stat && (!stat.isFile() || stat.isSymbolicLink())) throw new Error('Unsafe entity index cache file');
                 bytes += stat?.size || 0;
+                if (directory !== this.directory) legacyBytes += stat?.size || 0;
             }
         }
-        return { bytes, maxBytes: this.options.diskBytes, pageCacheBytes: Math.floor(this.options.memoryBytes / 2),
+        return { bytes, legacyBytes, currentBytes: bytes - legacyBytes,
+            maxBytes: this.options.diskBytes, pageCacheBytes: Math.floor(this.options.memoryBytes / 2),
             memoryBytes: this.options.memoryBytes };
     }
 
@@ -217,6 +259,99 @@ export class EntityIndexStore {
         if (!changed) throw new Error('Entity index build lease expired');
     }
     renew(build: EntityIndexBuild) { return this.serial(() => this.own(build)); }
+
+    /** Private owner reads append-only provisional matches; unpublished generations stay invisible to cache readers. */
+    ownedResultPage(build: EntityIndexBuild, role: 'definition' | 'reference', after = 0, token?: Token, limit = 200) {
+        if (!['definition', 'reference'].includes(role) || !Number.isSafeInteger(after) || after < 0)
+            throw new Error('Invalid provisional result cursor');
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new Error('Invalid provisional result limit');
+        return this.serial(async () => {
+            throwIfCancellationRequested(token);
+            const generation = await this.get(`SELECT state,lease FROM generations
+                WHERE generation=? AND shard=? AND revision=? AND owner=?`,
+                [build.generation, build.key, build.revision, build.owner]);
+            if (!generation || generation.state === 'building' && generation.lease <= this.now()) return { state: 'expired' as const };
+            if (generation.state === 'building') await this.own(build);
+            const raw = await this.all(`SELECT ordinal,payload FROM records WHERE generation=? AND role=? AND ordinal>?
+                ORDER BY ordinal LIMIT ?`, [build.generation, role, after, limit + 1]);
+            const counts = await this.all('SELECT role,COUNT(*) AS count FROM records WHERE generation=? GROUP BY role', [build.generation]);
+            const groupRows = await this.all(`SELECT COALESCE(json_extract(payload,'$.entityKind'),'') AS kind,COUNT(*) AS count
+                FROM records WHERE generation=? AND role='reference' GROUP BY kind`, [build.generation]);
+            const header = { state: 'ready', counts: Object.fromEntries(counts.map(row => [row.role, row.count])),
+                groupCounts: Object.fromEntries(groupRows.map(row => [row.kind, row.count])), next: after };
+            const rows = require('../../shared/indexPages').boundedIndexPage(raw.slice(0, limit).map(row =>
+                ({ ordinal: row.ordinal, location: JSON.parse(row.payload) })), header);
+            return { ...header, records: rows, next: rows.length ? rows[rows.length - 1].ordinal : after,
+                more: raw.length > rows.length };
+        });
+    }
+
+    appendProjectRows(build: EntityIndexBuild, input: any[], token?: Token) {
+        const { normalizeKeyword } = require('../keywordDisplayIdentity');
+        const { resolveKeywordCategory, getCategory } = require('../keywordCategory');
+        const rows = input.map(({ key, sequence, value, fileOrder }) => {
+            const keyword = value.type === 'keyword' ? normalizeKeyword(value.keyword) : '';
+            const category = keyword ? resolveKeywordCategory(keyword).primaryCategory : '';
+            const payload = JSON.stringify(value);
+            return [build.generation, key, sequence, value.type, value.filePath || '', fileOrder, keyword, category,
+                getCategory(category)?.displayIndex ?? 9999, value.startLine ?? -1, value.endLine ?? -1, payload];
+        });
+        if (Buffer.byteLength(JSON.stringify(rows)) > BATCH_BYTES) throw new RangeError('Project write batch exceeds budget');
+        return this.serial(() => this.cancellable(() => this.appendWithEviction(async () => {
+            await this.assertCapacity(); await this.own(build);
+            for (let offset = 0; offset < rows.length; offset += 64) {
+                throwIfCancellationRequested(token);
+                const batch = rows.slice(offset, offset + 64);
+                await this.run(`INSERT INTO project_rows VALUES ${batch.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?)').join(',')}
+                    ON CONFLICT(generation,record_key) DO UPDATE SET sequence=excluded.sequence,
+                    kind=excluded.kind,file=excluded.file,file_order=excluded.file_order,keyword=excluded.keyword,
+                    category=excluded.category,category_order=excluded.category_order,start_line=excluded.start_line,
+                    end_line=excluded.end_line,payload=excluded.payload`, batch.flat());
+            }
+        }, token), token));
+    }
+
+    projectRows(build: EntityIndexBuild, request: any, token?: Token) {
+        return this.serial(async () => {
+            throwIfCancellationRequested(token);
+            await this.own(build);
+            const clauses = ['generation=?'], args: any[] = [build.generation];
+            if (request.action === 'read') {
+                clauses.push('sequence>?'); args.push(request.after ?? 0);
+                const kinds = request.kinds || (request.kind ? [request.kind] : []);
+                if (kinds.length) { clauses.push(`kind IN (${kinds.map(() => '?').join(',')})`); args.push(...kinds); }
+                const rows = await this.all(`SELECT sequence,payload FROM project_rows WHERE ${clauses.join(' AND ')} ORDER BY sequence LIMIT 201`, args);
+                return { values: rows.map(row => ({ sequence: row.sequence, ...JSON.parse(row.payload) })) };
+            }
+            clauses.push("kind='keyword'");
+            for (const [field, column] of [['filePath', 'file'], ['keyword', 'keyword'], ['category', 'category']]) {
+                if (request[field]) { clauses.push(`${column}=?`); args.push(request[field]); }
+            }
+            if (request.atLine !== undefined) {
+                clauses.push('start_line<=? AND end_line>=?'); args.push(request.atLine, request.atLine);
+            }
+            if (request.search) {
+                // Match the existing ordered-character search without materializing every occurrence.
+                const text = String(request.search).trim().replace(/^\*+/, '');
+                const characters = text.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                const value = '%' + (characters ? [...characters].join('%') : text.replace(/[\\%_]/g, '\\$&')) + '%';
+                clauses.push("(keyword||' '||COALESCE(json_extract(payload,'$.fileName'),'')||' '||category||' '||COALESCE(json_extract(payload,'$.displayIdentity.title'),'')||' '||COALESCE(json_extract(payload,'$.displayIdentity.identity.value'),'')) LIKE ? ESCAPE '\\'");
+                args.push(value);
+            }
+            const where = clauses.join(' AND ');
+            const groups = { filePath: 'file', keyword: 'keyword', category: 'category' };
+            const group = groups[request.groupBy];
+            if (request.groupBy && !group) throw new TypeError('Invalid project grouping');
+            const order = group === 'keyword' ? 'keyword' : group === 'category' ? 'category_order,category' : 'file_order,start_line';
+            const total = await this.get(`SELECT COUNT(${group ? `DISTINCT ${group}` : '*'}) AS count FROM project_rows WHERE ${where}`, args);
+            const rows = await this.all(`SELECT payload,keyword,category,file_order,${group ? `${group} AS group_key,COUNT(*) AS count` : '1 AS count'}
+                FROM project_rows WHERE ${where} ${group ? `GROUP BY ${group}` : ''} ORDER BY ${order} LIMIT 201 OFFSET ?`, [...args, request.offset || 0]);
+            return { total: total.count, values: rows.map(row => {
+                const value = { ...JSON.parse(row.payload), keyword: row.keyword, category: row.category, fileOrder: row.file_order };
+                return group ? { type: 'group', key: row.group_key, count: row.count, first: value } : value;
+            }) };
+        });
+    }
 
     metadata(build: EntityIndexBuild, metadata: EntityIndexMetadata, token?: Token) {
         if (Buffer.byteLength(JSON.stringify(metadata)) > BATCH_BYTES) throw new Error('Entity index metadata batch exceeds memory budget');
@@ -312,8 +447,8 @@ export class EntityIndexStore {
     publish(build: EntityIndexBuild, coverage: { state: string; reasons: string[] }, token?: Token) {
         if (!Array.isArray(coverage.reasons) || !coverage.reasons.every(reason => typeof reason === 'string'))
             throw new Error('Invalid entity index coverage');
+        if (indexJsonBytes(coverage) > BATCH_BYTES) throw new Error('Entity index coverage exceeds memory budget');
         const encoded = JSON.stringify(coverage);
-        if (Buffer.byteLength(encoded) > BATCH_BYTES) throw new Error('Entity index coverage exceeds memory budget');
         return this.serial(() => this.transaction(async () => {
             throwIfCancellationRequested(token); await this.assertCapacity(); await this.own(build);
             if (!['complete', 'partial', 'incomplete'].includes(coverage.state)) throw new Error('Unfinished entity index cannot publish');
@@ -374,7 +509,7 @@ export class EntityIndexStore {
 
     get maxFactBytes() { return Math.min(16 * 1024, this.options.memoryBytes / 2048); }
 
-    appendFacts(build: EntityIndexBuild, rows: { section: string; ordinal: number; payload: unknown }[], token?: Token) {
+    appendFacts(build: EntityIndexBuild, rows: { section: string; ordinal: number; payload: unknown }[], token?: Token, shared = false) {
         const values = rows.map(row => {
             const payload = JSON.stringify(row.payload);
             if (!row.section || !Number.isSafeInteger(row.ordinal) || row.ordinal < 0 || payload === undefined ||
@@ -388,7 +523,8 @@ export class EntityIndexStore {
             for (let offset = 0; offset < values.length; offset += 240) {
                 throwIfCancellationRequested(token);
                 const batch = values.slice(offset, offset + 240);
-                await this.run(`INSERT INTO facts VALUES ${batch.map(() => '(?,?,?,?)').join(',')}`, batch.flat());
+                await this.run(`INSERT INTO facts VALUES ${batch.map(() => '(?,?,?,?)').join(',')}
+                    ${shared ? 'ON CONFLICT(generation,section,ordinal) DO NOTHING' : ''}`, batch.flat());
             }
         }, token), token));
     }
@@ -426,21 +562,71 @@ export class EntityIndexStore {
 
     stats() { return this.serial(async () => ({ ...await this.diskStats(),
         ...await this.get("SELECT COUNT(*) AS generations,SUM(state='building') AS builds FROM generations") })); }
+    /** Never unlink a database: SQLite locks and owner records coordinate reclamation with other windows. */
+    async cleanLegacy() {
+        let reclaimedBytes = 0, removed = 0, retained = 0;
+        const root = path.dirname(this.directory);
+        for (const entry of await fs.promises.readdir(root, { withFileTypes: true })) {
+            const version = /^entity-index-v([0-9]+)$/.exec(entry.name);
+            if (!version || Number(version[1]) >= SCHEMA) continue;
+            const directory = path.join(root, entry.name);
+            if (!entry.isDirectory() || entry.isSymbolicLink() || await fs.promises.realpath(directory) !== directory) {
+                retained++; continue;
+            }
+            const names = await fs.promises.readdir(directory);
+            let safe = names.includes('index.sqlite');
+            for (const name of names) {
+                const stat = await fs.promises.lstat(path.join(directory, name));
+                if (!/^index\.sqlite(?:-journal|-wal|-shm)?$/.test(name) || !stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1)
+                    safe = false;
+            }
+            if (!safe) { retained++; continue; }
+            let legacy: EntityIndexStore | undefined;
+            try {
+                const sqlite: typeof import('@vscode/sqlite3') = require('@vscode/sqlite3');
+                const db = await new Promise<Database>((resolve, reject) => {
+                    const value = new sqlite.Database(path.join(directory, 'index.sqlite'), sqlite.OPEN_READWRITE,
+                        error => error ? reject(error) : resolve(value));
+                });
+                legacy = new EntityIndexStore(db, directory, this.options);
+                const identity = await legacy.get('PRAGMA application_id');
+                const schema = await legacy.get('PRAGMA user_version');
+                // ponytail: pre-ownership caches cannot prove idle consumers; reclaim after a supported ownership migration exists.
+                if (identity.application_id !== APPLICATION_ID || schema.user_version < 4 || schema.user_version > SCHEMA) { retained++; continue; }
+                await legacy.exec('PRAGMA busy_timeout=100; PRAGMA foreign_keys=ON;');
+                const result = await legacy.clear();
+                reclaimedBytes += result.reclaimedBytes;
+                removed += result.removed;
+                if (result.retainedReason) retained++;
+            } catch { retained++; }
+            finally { await legacy?.close().catch(() => {}); }
+        }
+        return { reclaimedBytes, removed, retained };
+    }
     clear() {
         return this.serial(async () => {
             const before = await this.diskStats();
-            const removed = await this.transaction(() => this.run(
-                "DELETE FROM generations WHERE state='published' OR lease<=?", [this.now()]));
-            // A different window may own a live build. Its lease and data remain valid.
-            await this.exec('PRAGMA incremental_vacuum(256);');
+            const result = await this.transaction(async () => {
+                if (await this.otherOwners()) return { removed: 0, retainedReason: 'active-index-owner' };
+                const removed = await this.run("DELETE FROM generations WHERE state='published' OR lease<=?", [this.now()]);
+                const active = await this.get("SELECT COUNT(*) AS count FROM generations WHERE state='building'");
+                return { removed, retainedReason: active.count ? 'active-index-build' : undefined };
+            });
+            try {
+                await this.exec(result.retainedReason ? 'PRAGMA incremental_vacuum(256);' : 'VACUUM;');
+            } catch (error) {
+                if (error.code !== 'SQLITE_BUSY' && error.code !== 'SQLITE_LOCKED') throw error;
+                result.retainedReason = 'active-index-owner';
+            }
             const after = await this.diskStats();
-            return { removed, reclaimedBytes: Math.max(0, before.bytes - after.bytes), ...after };
+            return { ...result, reclaimedBytes: Math.max(0, before.currentBytes - after.currentBytes), ...after };
         });
     }
     prune(maxAgeMs = 30 * 24 * 60 * 60 * 1000, token?: Token) {
         if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) throw new Error('Invalid entity index expiry');
         return this.serial(() => this.cancellable(async () => {
             const removed = await this.transaction(async () => {
+                if (await this.otherOwners()) return 0;
                 // SQLite readers hold a shared lock, so eviction waits or returns SQLITE_BUSY.
                 return this.run(`DELETE FROM generations WHERE (state='building' AND lease<=?) OR
                     (state='published' AND (accessed<? OR generation NOT IN (SELECT generation FROM published)))`,
@@ -450,10 +636,24 @@ export class EntityIndexStore {
             return { removed, ...await this.diskStats() };
         }, token));
     }
+    startMaintenance(maxAgeMs: number, report: (error: unknown) => void) {
+        if (this.maintenance || this.closed) return;
+        // One queued pass at most; a busy scan must not accumulate maintenance jobs.
+        this.maintenance = setInterval(() => {
+            if (this.maintenanceTask || this.closed) return;
+            this.maintenanceTask = this.prune(maxAgeMs).then(async () => { if (!this.closed) await this.cleanLegacy(); }).catch(error => {
+                if (error.code !== 'SQLITE_BUSY' && error.code !== 'SQLITE_LOCKED') report(error);
+            }).finally(() => { this.maintenanceTask = undefined; });
+        }, 60 * 60 * 1000);
+        this.maintenance.unref();
+    }
     async close() {
         if (this.closed) return;
         this.closed = true;
+        clearInterval(this.maintenance);
+        await this.maintenanceTask;
         await this.tail;
-        await new Promise<void>((resolve, reject) => this.db.close(error => error ? reject(error) : resolve()));
+        try { if (this.registered) await this.run('DELETE FROM cache_owners WHERE owner=?', [this.owner]); }
+        finally { await new Promise<void>((resolve, reject) => this.db.close(error => error ? reject(error) : resolve())); }
     }
 }

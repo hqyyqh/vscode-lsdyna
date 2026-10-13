@@ -1146,11 +1146,6 @@
                     "group": "lsdyna@2"
                 },
                 {
-                    "command": "extension.lsdynaChooseKeywordOptions",
-                    "when": "editorLangId == 'lsdyna'",
-                    "group": "lsdyna@3"
-                },
-                {
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
                     "group": "lsdyna@4"

@@ -7,6 +7,17 @@ const { buildFileIndex } = require('../../../out/core/scanner/fileIndexBuilder')
 const { SCANNER_VERSION } = require('../../../out/core/scanner/scannerContracts');
 
 describe('buildFileIndex', () => {
+    it('bounds accumulated parameter metadata even when the keyword skeleton is small', async () => {
+        const dir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-parameter-budget-'));
+        const file = path.join(dir, 'main.k');
+        fs.writeFileSync(file, '*PARAMETER_EXPRESSION\n' +
+            Array.from({ length: 200 }, (_, i) => `Rp${i},1.0+2.0\n`).join(''));
+        const { buildFileStructure } = require('../../../out/core/scanner/fileIndexBuilder');
+        await assert.rejects(buildFileStructure(file, { maxStructureBytes: 4096 }), RangeError);
+        const complete = await buildFileStructure(file);
+        assert.equal(complete.parameterEvents.length, 200);
+        assert(complete.structuralMetadataBytes > 4096);
+    });
     it('rebuilds after a physical block shrinks during its first reference read', async () => {
         const dir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-scan-shrinks-'));
         const filePath = path.join(dir, 'main.k');

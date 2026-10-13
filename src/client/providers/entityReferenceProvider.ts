@@ -11,6 +11,8 @@ const { normalizeIndexedEntityId } = require('../../core/references/indexedEntit
 
 const DEFAULT_MAX_PINNED = 10;
 const DEFAULT_RESULT_BUDGET_BYTES = 8 * 1024 * 1024;
+const locationKey = location => JSON.stringify([location.filePath, location.line,
+    location.startCharacter, location.endCharacter, location.role]);
 
 type EntityQueryScope =
     | { kind: 'project'; rootFile: string }
@@ -109,6 +111,7 @@ class LsdynaEntityReferenceProvider {
     }
 
     dispose() {
+        for (const session of this.sessions.values()) session.release?.();
         if (this._onDidChangeTreeData && typeof this._onDidChangeTreeData.dispose === 'function') {
             this._onDidChangeTreeData.dispose();
         }
@@ -151,6 +154,7 @@ class LsdynaEntityReferenceProvider {
         const key = this.currentKey;
         const session = key ? this.sessions.get(key) : null;
         if (!session || session.pinned) return false;
+        session.release?.();
         this.sessions.delete(key);
         this.currentKey = null;
         this.referenceCursorByKey.delete(key);
@@ -187,6 +191,7 @@ class LsdynaEntityReferenceProvider {
         let session = this.sessions.get(key);
         if (!session) {
             if (this.currentKey && this.currentKey !== key) {
+                this.sessions.get(this.currentKey)?.release?.(true);
                 this.sessions.delete(this.currentKey);
                 this.referenceCursorByKey.delete(this.currentKey);
             }
@@ -194,18 +199,44 @@ class LsdynaEntityReferenceProvider {
             this.sessions.set(key, session);
             this.currentKey = key;
         } else if (!session.pinned) {
-            if (this.currentKey && this.currentKey !== key) this.sessions.delete(this.currentKey);
+            if (this.currentKey && this.currentKey !== key) { this.sessions.get(this.currentKey)?.release?.(true); this.sessions.delete(this.currentKey); }
             this.currentKey = key;
         }
         session.identity = identity;
+        const continuing = result?.release && session.release === result.release &&
+            session.page?.revision === result.revision;
+        const previousPage = continuing ? session.page : undefined;
+        const previousLocations = continuing ? session.locations : [];
+        if (session.release && session.release !== result?.release) session.release(result?.state === 'loading');
+        session.release = result?.release;
+        session.scanning = result?.scanning === true;
         session.resolution = result?.state;
         const navigable = ['complete', 'exact', 'ambiguous', 'partial'].includes(result?.state);
         session.state = result?.state === 'loading' ? 'loading'
             : ['complete', 'exact', 'ambiguous', 'missing'].includes(result?.state)
                 ? 'ready'
             : result?.state === 'partial' ? 'partial' : 'incomplete';
-        session.locations = navigable ? [...(result.locations || [])] : [];
+        const previousByKey = new Map(previousLocations.map(location => [locationKey(location), location]));
+        session.locations = navigable ? (result.locations || []).map(location => {
+            const previous = previousByKey.get(locationKey(location));
+            return previous ? Object.assign(previous, location) : location;
+        }) : [];
         session.page = navigable && result?.page ? { ...result.page, revision: result.revision, load: result.loadPage } : undefined;
+        if (navigable && previousPage && session.page) {
+            // A progress update changes counts, not the ownership of explicitly loaded pages.
+            const keys = new Set(session.locations.map(locationKey));
+            for (const location of previousLocations) {
+                const key = locationKey(location);
+                if (!keys.has(key)) { keys.add(key); session.locations.push(location); }
+            }
+            const next = { ...session.page.next };
+            for (const [role, cursor] of Object.entries(previousPage.loadedAfter || {})) {
+                next[role] = session.locations.filter(location => location.role === role).length < session.page.counts[role]
+                    ? cursor : undefined;
+            }
+            Object.assign(previousPage, session.page, { next });
+            session.page = previousPage;
+        }
         session.reasons = [...new Set(result?.reasons || [])];
         session.estimatedBytes = navigable
             ? estimateLocationsBytes(session.locations)
@@ -235,7 +266,11 @@ class LsdynaEntityReferenceProvider {
                 this.markNeedsRefresh(session, ['entity-query-source-changed']);
                 return false;
             }
-            session.locations = [...session.locations, ...response.result.locations];
+            const known = new Set(session.locations.map(locationKey));
+            session.locations = [...session.locations, ...response.result.locations.filter(location => {
+                const key = locationKey(location); if (known.has(key)) return false; known.add(key); return true;
+            })];
+            page.loadedAfter = { ...page.loadedAfter, [role]: { ...cursor, after: response.after } };
             page.next = { ...page.next, [role]: response.result.page.next[role] };
             session.estimatedBytes = estimateLocationsBytes(session.locations);
             session.lastAccessedAt = this.clock();
@@ -252,6 +287,7 @@ class LsdynaEntityReferenceProvider {
     markLoading(target) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.release?.(); session.release = undefined;
         session.page = undefined;
         session.state = 'loading';
         session.locations = [];
@@ -266,6 +302,7 @@ class LsdynaEntityReferenceProvider {
     markIncomplete(target, reasons = []) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.release?.(); session.release = undefined;
         session.page = undefined;
         session.state = 'incomplete';
         session.locations = [];
@@ -279,6 +316,7 @@ class LsdynaEntityReferenceProvider {
     markNeedsRefresh(target, reasons = []) {
         const session = this.getSession(target);
         if (!session) return null;
+        session.release?.(); session.release = undefined;
         session.page = undefined;
         session.state = 'needs-refresh';
         session.locations = [];
@@ -311,6 +349,7 @@ class LsdynaEntityReferenceProvider {
         const session = this.getSession(target);
         if (!session || !session.pinned) return null;
         if (this.currentKey && this.currentKey !== session.key) {
+            this.sessions.get(this.currentKey)?.release?.();
             this.sessions.delete(this.currentKey);
             this.referenceCursorByKey.delete(this.currentKey);
         }
@@ -325,6 +364,7 @@ class LsdynaEntityReferenceProvider {
     async remove(target) {
         const session = this.getSession(target);
         if (!session) return false;
+        session.release?.();
         this.sessions.delete(session.key);
         this.pinnedKeys = this.pinnedKeys.filter(key => key !== session.key);
         if (this.currentKey === session.key) this.currentKey = null;
@@ -337,6 +377,7 @@ class LsdynaEntityReferenceProvider {
     }
 
     async clear() {
+        for (const session of this.sessions.values()) session.release?.();
         this.sessions.clear();
         this.pinnedKeys = [];
         this.currentKey = null;
@@ -353,6 +394,7 @@ class LsdynaEntityReferenceProvider {
             const resultContainsPath = session.locations.some(location => normalizePath(location.filePath) === key);
             const sameSingleFile = scope.kind === 'single-file' && normalizePath(scope.filePath) === key;
             if (!resultContainsPath && !sameSingleFile) continue;
+            session.release?.(); session.release = undefined;
             session.state = 'stale';
             this.referenceCursorByKey.delete(session.key);
             changed = true;
@@ -367,6 +409,7 @@ class LsdynaEntityReferenceProvider {
         for (const session of this.sessions.values()) {
             if (session.identity.scope.kind !== 'project' ||
                 normalizePath(session.identity.scope.rootFile) !== key) continue;
+            session.release?.(); session.release = undefined;
             session.state = 'stale';
             this.referenceCursorByKey.delete(session.key);
             changed = true;
@@ -384,6 +427,7 @@ class LsdynaEntityReferenceProvider {
         for (const session of candidates) {
             if (total <= this.resultBudgetBytes) break;
             total -= session.estimatedBytes;
+            session.release?.(); session.release = undefined;
             session.locations = [];
             session.estimatedBytes = 0;
             session.page = undefined;

@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { remarkBilingual, rehypeBilingualComparison, type SentencePair } from './remarkBilingual';
 import { protectLsdynaMathSource, remarkLsdynaMath } from './remarkLsdynaMath';
 import { remarkManualTables } from './remarkManualTables';
+import { rehypeIdentifierColumns } from './rehypeIdentifierColumns';
 import { scrollRegionClassName } from './tableLayout';
 import { tableKindFromProps } from './tableKindFromElement';
 import { TranslationOverlay } from './TranslationOverlay';
@@ -153,7 +154,7 @@ const MarkdownContent = React.memo(function MarkdownContent({
 
     return <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkManualTables, remarkLsdynaMath, [remarkBilingual, { sentencePairs, comparison }]]}
-        rehypePlugins={[rehypeRaw, [rehypeBilingualComparison, { sentencePairs, comparison }], [rehypeKatex, { strict: 'ignore', trust: false }]]}
+        rehypePlugins={[rehypeRaw, rehypeIdentifierColumns, [rehypeBilingualComparison, { sentencePairs, comparison }], [rehypeKatex, { strict: 'ignore', trust: false }]]}
         components={components}
     >{shielded}</ReactMarkdown>;
 });

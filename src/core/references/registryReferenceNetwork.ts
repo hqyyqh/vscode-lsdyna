@@ -138,7 +138,7 @@ function queryFromReferenceSource(
     );
     if (!isEntityIdentity(analysis.id) || blockingReasons.length > 0 ||
         analysis.transformResolution?.resolved === false ||
-        (source.referenceValue.kind === 'parameter' && analysis.parameterResolution?.resolved !== true)) {
+        (['parameter', 'expression'].includes(source.referenceValue.kind) && analysis.parameterResolution?.resolved !== true)) {
         return {
             state: 'incomplete',
             query: null,
@@ -184,7 +184,7 @@ function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false, qu
         ? [...new Set([
             ...(analysis.transformResolution?.reasons || []),
             ...(analysis.targetSelection?.ready === false ? analysis.targetSelection.reasons : []),
-            ...(occurrence.referenceValue.kind === 'parameter' &&
+            ...(['parameter', 'expression'].includes(occurrence.referenceValue.kind) &&
                 analysis.parameterResolution?.resolved !== true
                 ? analysis.parameterResolution?.reasons || ['parameter-unresolved']
                 : []),
@@ -194,7 +194,7 @@ function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false, qu
         );
     const ready = isEntityIdentity(analysis.id) &&
         blockingReasons.length === 0 && analysis.transformResolution?.resolved !== false &&
-        (occurrence.referenceValue.kind !== 'parameter' || analysis.parameterResolution?.resolved === true);
+        (!['parameter', 'expression'].includes(occurrence.referenceValue.kind) || analysis.parameterResolution?.resolved === true);
     return { ready, analysis, blockingReasons };
 }
 

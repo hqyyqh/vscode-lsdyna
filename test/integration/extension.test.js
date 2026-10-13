@@ -3209,6 +3209,7 @@ describe('getParameterAtCursor', () => {
 // ---------------------------------------------------------------------------
 
 describe('LsdynaFieldHoverProvider expanded details', () => {
+    beforeEach(() => require('../../out/extension')._internals.setReferenceQueryClientForTesting(null));
     it('discards a hover when its document changes during cold schema preparation', async () => {
         const provider = new LsdynaFieldHoverProvider();
         const doc = fakeDoc('*NODE\n       1             0.0\n');
@@ -8009,6 +8010,7 @@ describe('3D table preview viewpoints', () => {
 });
 
 describe('LsdynaDefinitionProvider field references', () => {
+    beforeEach(() => require('../../out/extension')._internals.setReferenceQueryClientForTesting(null));
     const touchedFileIndexes = new Set();
 
     function materialReferenceDocument(filePath, value = '1001') {

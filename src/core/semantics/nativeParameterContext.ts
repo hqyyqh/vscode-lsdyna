@@ -25,7 +25,7 @@ export function createNativeParameterContext(referenceIndex: any, documentPath: 
 export function nativeControlResolver(context: NativeParameterContext | undefined, recordLines: number[] = [], allowReal = false) {
     const reasons = new Set<string>();
     return { reasons, resolve(raw: string, row: number): string {
-        if (!raw.includes('&')) return raw;
+        if (!raw.includes('&') && !raw.trim().startsWith('<')) return raw;
         const result = context?.resolve(raw, recordLines[row], allowReal);
         if (result?.resolved) return String(result.value);
         for (const reason of result?.reasons || ['parameter-context-unavailable']) reasons.add(reason);

@@ -5,6 +5,8 @@ import { nativeCountedOccurrenceBinding, selectCountedOccurrenceLayout } from '.
 import { nativeReadInputFormat, nativeReadInputFailure } from './nativeInputFormat';
 import { nativeFordFeatureEnabled } from './nativeFeatureContext';
 import { nativeContactOptionalBinding, nativeContactOptionalRecordReader } from './nativeContactOptionalReferences';
+import { keywordDataPath } from '../keywordDataPath';
+const writeLayouts = require(keywordDataPath('engineering/fileWriteLayouts.json')).layouts;
 import { nativeSpellingBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
     selectNativeFileLayout, selectVerifiedSourceRecords, nativeReferenceTailBinding,
     nativeSoilPileRecordReader, nativeAleTrimRecordReader, nativeAleMotionRecordReader, nativeControlledReferenceRecordReader, selectNativeUserMaterialRecords } from "./catalogNativeFileLayout";
@@ -95,6 +97,19 @@ function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[
     return { kind, cards, fields, input, readInput, readInputFailure, controls, read,
         writeCompatible(records: { cardIndex: number }[]) {
             if (readInputFailure) return false;
+            // A full source-locked card match permits the existing fixed-field writer;
+            // read-only catalogs elsewhere do not acquire write authority by association.
+            const layout = writeLayouts.find(item => item.keywords.includes(keyword) &&
+                item.sourceSha256 === rule.catalogSource?.datasetSha256 && item.cardSetId === rule.cardSetId &&
+                item.cards.length === rule.cards.length && item.formats.includes(input));
+            if (layout && !rows.some(row => row.includes(',')) && layout.cards.every((expected, index) => {
+                const fields = cards.get(index + 1)?.fields;
+                return fields?.length === expected.names.length && fields.every((field, i) =>
+                    field.name === expected.names[i] && field.type === expected.types[i] &&
+                    field.position === i * layout.fieldWidth && field.width === layout.fieldWidth);
+            }) && records.every((record, index) => cards.has(record.cardIndex) && cards.get(record.cardIndex).fields.length > 0 && cards.get(record.cardIndex).fields.every((field, fieldIndex) =>
+                read(rows[index] || '', record.cardIndex, fieldIndex) === readNativeFileField(null, record.cardIndex,
+                    cards.get(record.cardIndex).fields, rows[index] || '', fieldIndex, input)))) return true;
             return records.every((record, index) => nativeFileControlCompatible(kind, record.cardIndex,
                 cards.get(record.cardIndex)?.fields || [], rows[index] || '', input));
         },

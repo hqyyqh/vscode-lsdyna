@@ -16,6 +16,7 @@ const { createFileScanCacheStore } = require('../core/cache/fileScanCacheStore')
 const { createWorkerPool } = require('./workerPool');
 
 type ProjectIndexLoader = {
+    projectSession?(request: any, cancellationToken?: any): Promise<any>;
     buildProjectIndex(rootFile: string, options?: object, onProgress?: ((snapshot: object) => void) | null, cancellationToken?: any): Promise<object>;
     queryEntity?(request: any, onProgress?: ((event: any) => void) | null, cancellationToken?: any): Promise<any>;
     controlEntityIndex?(action: 'stats' | 'clear'): Promise<any>;
@@ -25,8 +26,10 @@ type ProjectIndexLoader = {
 };
 
 type ProjectIndexLoaderOptions = {
+    readDocumentSource?: (request: any) => Promise<any>;
     createPool?: (options: { workerPath: string; fileScanCacheDirectory?: string | null; fileScanCacheOptions?: object; fileScanMemoryCacheBytes?: number;
-        entityStorageDirectory?: string; entityMemoryBytes?: number; entityDiskBytes?: number }) => ProjectIndexLoader;
+        entityStorageDirectory?: string; entityMemoryBytes?: number; entityDiskBytes?: number;
+        readDocumentSource?: (request: any) => Promise<any> }) => ProjectIndexLoader;
     createFileScanCache?: (options: object) => any;
     workerPath?: string;
     fileScanCacheDirectory?: string | null;
@@ -60,6 +63,7 @@ function createProjectIndexLoader({
     entityStorageDirectory,
     entityMemoryBytes,
     entityDiskBytes,
+    readDocumentSource,
 }: ProjectIndexLoaderOptions = {}) {
     /** @type {import('./workerPool').WorkerPool|null} */
     let workerPool = null;
@@ -100,6 +104,7 @@ function createProjectIndexLoader({
         }
         if (!workerPool) {
             workerPool = createPool({
+                readDocumentSource,
                 workerPath,
                 fileScanCacheDirectory,
                 fileScanCacheOptions,
@@ -113,6 +118,18 @@ function createProjectIndexLoader({
     }
 
     return {
+        async invalidateProject(rootFile) {
+            if (!workerPool || isPoolDisposed(workerPool)) return;
+            await workerPool.projectSession({ protocolVersion: require('../shared/indexPages').INDEX_PROTOCOL_VERSION,
+                action: 'invalidate', rootFile });
+        },
+        async projectSession(request, cancellationToken = null) {
+            if (disposed) throw new Error('project index loader has been disposed');
+            while (clearPromise || stopPromise || (workerPool && isPoolDisposed(workerPool))) {
+                await (clearPromise || stopPromise || stopWorkerPool());
+            }
+            return getWorkerPool().projectSession(request, cancellationToken);
+        },
         async getEntityIndexStats() {
             if (disposed) throw new Error('project index loader has been disposed');
             while (clearPromise || stopPromise || (workerPool && isPoolDisposed(workerPool))) {

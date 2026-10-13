@@ -30,6 +30,7 @@ type IndexWorkerData = {
 };
 
 type WorkerPoolOptions = {
+    readDocumentSource?: (request: any) => Promise<any>;
     workerPath?: string;
     workerFactory?: (nextWorkerPath: string, workerOpts: { workerData?: IndexWorkerData }) => WorkerLike;
     fileScanCacheDirectory?: string | null;
@@ -69,6 +70,7 @@ function createWorkerPool({
     entityStorageDirectory,
     entityMemoryBytes,
     entityDiskBytes,
+    readDocumentSource,
 }: WorkerPoolOptions = {}) {
     if (typeof workerPath !== 'string' || workerPath.trim() === '') {
         throw new TypeError('createWorkerPool requires a workerPath');
@@ -161,6 +163,19 @@ function createWorkerPool({
 
     // Listens for completed parsing jobs from the worker thread.
     worker.on('message', (message) => {
+        if (message.type === 'documentSource') {
+            const { assertIndexPayload } = require('../shared/indexPages');
+            Promise.resolve().then(() => readDocumentSource
+                ? readDocumentSource(assertIndexPayload(message.request)) : { state: 'disk' })
+                .then(result => {
+                    if (!disposed) worker.postMessage({ type: 'documentSourceResult', sourceRequestId: message.sourceRequestId,
+                        result: assertIndexPayload(result) });
+                }).catch(error => {
+                    if (!disposed) worker.postMessage({ type: 'documentSourceResult', sourceRequestId: message.sourceRequestId,
+                        error: { message: String(error.message).slice(0, 4096) } });
+                });
+            return;
+        }
         const pendingRequest = pendingRequests.get(message.requestId);
         if (!pendingRequest) return;
 
@@ -202,7 +217,9 @@ function createWorkerPool({
 
         const completedRequest = takePendingRequest(message.requestId);
         try {
-            if (completedRequest.resultType === 'queryEntity') {
+            if (completedRequest.resultType === 'projectSession') {
+                completedRequest.resolve(require('../shared/indexPages').assertIndexPayload(message.result));
+            } else if (completedRequest.resultType === 'queryEntity') {
                 if (!['ready', 'expired', 'stale'].includes(message.result?.status) ||
                     message.result.status === 'ready' && (!Array.isArray(message.result.result?.locations) || message.result.result.locations.length > 400))
                     throw new Error('Invalid entity result page');
@@ -284,6 +301,8 @@ function createWorkerPool({
     }
 
     return {
+        projectSession: (request, cancellationToken = null) =>
+            requestWorker('projectSession', request.rootFile, request, null, cancellationToken),
         buildProjectIndex: (rootFile, options = {}, onProgress = null, cancellationToken = null) =>
             requestWorker('buildProjectIndex', rootFile, options, onProgress, cancellationToken),
         queryEntity: (request, onProgress = null, cancellationToken = null) =>
@@ -296,6 +315,17 @@ function createWorkerPool({
          * @returns {Promise<void>}
          */
         async dispose() {
+            if (!disposed && worker instanceof Worker) {
+                let timer;
+                try {
+                    await Promise.race([
+                        requestWorker('projectSession', undefined, { protocolVersion: require('../shared/indexPages').INDEX_PROTOCOL_VERSION,
+                            action: 'shutdown' }),
+                        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Worker shutdown timed out')), 10000); }),
+                    ]);
+                } catch (_) { /* An unresponsive worker is terminated below. */ }
+                finally { clearTimeout(timer); }
+            }
             if (!disposed) {
                 disposed = true;
                 rejectPendingRequests(new Error('scan worker pool has been disposed'));

@@ -1,4 +1,4 @@
-import { EntityQueryCache } from './entityQueryCache';
+import { EntityQueryCache, entityFileScopes } from './entityQueryCache';
 import { createHash } from 'node:crypto';
 const { scanOnDemandDefinitions, selectOnDemandDefinitionDescriptors } = require('./onDemandDefinitionScanner');
 const { parameterContextsForDocument } = require('./projectReferenceIndex');
@@ -12,13 +12,16 @@ export async function scanIndexedTypeDefinitions(options: any, cache: EntityQuer
         scannedBlockCount: 0, scannedLineCount: 0, totalMatchCount: 0, cacheable: true };
     const entries = options.fileIndexes instanceof Map ? [...options.fileIndexes] : Object.entries(options.fileIndexes || {});
     if (!entries.length || !descriptors.length) return scanOnDemandDefinitions(options);
-    for (const [file, index] of entries) {
+    const aggregate = cache.reserveResult();
+    let aggregateBytes = 0;
+    try {
+    for (const [file, index] of entityFileScopes(entries)) {
         const contexts = options.projectScoped ? parameterContextsForDocument(options.referenceIndex, file) : [];
         const contextRevision = createHash('sha256').update(JSON.stringify(contexts,
             (_key, value) => value instanceof Map ? [...value] : value)).digest('hex');
         for (const kind of kinds.filter(kind => descriptors.some(descriptor => descriptor.targetKind === kind))) {
             const scoped = { ...options, fileIndexes: new Map([[file, index]]), targetKinds: [kind] };
-            const key = JSON.stringify(['definition-type', file, cache.fileRevision(index), index.documentVersion,
+            const key = JSON.stringify(['definition-type', file, cache.fileRevision(index), index.semanticBlockRevision ? undefined : index.documentVersion,
                 options.projectScoped, contextRevision, kind, options.targetDefinitions,
                 cache.identity(options.definitionKeywords), cache.identity(options.scanBlockLines)]);
             let built = false;
@@ -48,13 +51,26 @@ export async function scanIndexedTypeDefinitions(options: any, cache: EntityQuer
                     return { ...lookup, definitions: undefined, byId };
                 } finally { reservation.release(); }
             });
-            const lookup = stored.state === 'budget-fallback' ? await scanOnDemandDefinitions(scoped)
+            let fallbackBytes = aggregateBytes;
+            const lookup = stored.state === 'budget-fallback' ? await scanOnDemandDefinitions({ ...scoped,
+                maxStoredMatches: Math.floor(Math.max(0, aggregate.bytes - aggregateBytes) / 4096),
+                acceptDefinition: definition => {
+                    fallbackBytes += estimateMemorySize(definition, aggregate.bytes) + 256;
+                    return fallbackBytes <= aggregate.bytes;
+                } })
                 : { ...stored, definitions: stored.byId.get(options.effectiveId) || [],
                     scannedBlockCount: built ? stored.scannedBlockCount : 0,
                     scannedLineCount: built ? stored.scannedLineCount : 0 };
             if (lookup.state === 'cancelled') return lookup;
             if (lookup.state !== 'complete') result.state = 'partial';
-            for (const definition of lookup.definitions) result.definitions.push(definition);
+            for (const definition of lookup.definitions) {
+                aggregateBytes += estimateMemorySize(definition, aggregate.bytes) + 256;
+                if (aggregateBytes > aggregate.bytes) return { ...result, state: 'partial', cacheable: false,
+                    totalMatchCount: result.definitions.length,
+                    reasons: [...new Set([...result.reasons, 'on-demand-definition-match-limit'])] };
+                result.definitions.push(definition);
+            }
+            await options.onDefinitions?.(lookup.definitions);
             result.reasons.push(...lookup.reasons);
             result.scannedBlockCount += lookup.scannedBlockCount || 0;
             result.scannedLineCount += lookup.scannedLineCount || 0;
@@ -63,5 +79,6 @@ export async function scanIndexedTypeDefinitions(options: any, cache: EntityQuer
     }
     result.totalMatchCount = result.definitions.length;
     result.reasons = [...new Set(result.reasons)];
-    return result;
+    return { ...result, definitionsStreamed: !!options.onDefinitions };
+    } finally { aggregate.release(); }
 }
