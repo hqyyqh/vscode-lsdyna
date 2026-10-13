@@ -112,7 +112,9 @@ jobs:
         run: npm run check:contracts
       - name: Test the existing build; replay the full corpus once
         run: |
-          if [[ "$UNIT_RESUME_RUN" == "38373457591" ]]; then
+          if [[ "$UNIT_RESUME_RUN" == "38381427448" ]]; then
+            node scripts/release/resume-field-choice-tests.cjs
+          elif [[ "$UNIT_RESUME_RUN" == "38373457591" ]]; then
             node scripts/release/resume-viewer-tests.cjs
           elif [[ -n "$UNIT_RESUME_RUN" ]]; then
             node scripts/release/resume-manager-reader-tests.cjs

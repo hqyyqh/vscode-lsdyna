@@ -305,6 +305,7 @@
       "test/scripts/release/compactFieldHelp.test.js",
       "test/scripts/release/compactInputForm.test.js",
       "test/scripts/release/compactReleaseStage.test.js",
+      "test/scripts/release/fieldChoiceRecovery.test.js",
       "test/scripts/release/managerReaderRecovery.test.js",
       "test/scripts/release/publicReleaseReports.test.js",
       "test/scripts/release/publicSourceBoundary.test.js",
@@ -396,7 +397,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "ac74f433247ffdc80334c1ae1f36bb27700b7baa5b985aff9904efb2a9695132",
+      "sha256": "b2d3ef3af1157ef1e057cd945209f98ed9c432c1b5134faabe4ddec32aa0ceef",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2866,6 +2867,12 @@
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
+      "path": "scripts/release/resume-field-choice-tests.cjs",
+      "role": "editable-source",
+      "sha256": "64b65ccc681bbc3abc542ff436fba8933c7b32b7d955e70831359daa678469c3",
+      "reason": "public-contribution"
+    },
+    {
       "path": "scripts/release/resume-manager-reader-tests.cjs",
       "role": "editable-source",
       "sha256": "33a6a601c541af86a8085fde265e56d0127b7b90ce17630c86f059bed39a4b76",
@@ -4008,7 +4015,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "8ebfce495522daaf871fa9d5fedb8d52b8774f1faf994080551f8cf41f54a5d3",
+      "sha256": "37aa8a451503624fc99126624b192970e5c1ab64b738beedf1b029b2544fe546",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4626,7 +4633,7 @@
     {
       "path": "test/client/services/liveEditBlockIndex.test.js",
       "role": "editable-source",
-      "sha256": "90bd921aaa6d8e6db118452e66e4f73b169f7d837cb65cfb70ddf1c5036ffd77",
+      "sha256": "2a2e3eec59488ab77d4a768144499745347c57877d20acf45a7b55fb5e441116",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6528,7 +6535,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "ae2703c6a6e5927effa165d0010ebc9d30962d0d87705a7ea063af21a1e6cc05",
+      "sha256": "fef3cfb1beec10cf78cb1b5a26cea88473822e5f72ba9f2a957f95175e2c53b6",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6896,6 +6903,12 @@
       "role": "editable-source",
       "sha256": "3609c0c9252d38e750caf4ff62caebad6b52ab38657d27e38c658cdf263f6111",
       "reason": "public-build-or-package-regression"
+    },
+    {
+      "path": "test/scripts/release/fieldChoiceRecovery.test.js",
+      "role": "editable-source",
+      "sha256": "76984f819f2978eb3b6bee91c7bbed0e91795976ba7120a3daa6bc64482cb653",
+      "reason": "public-contribution"
     },
     {
       "path": "test/scripts/release/managerReaderRecovery.test.js",

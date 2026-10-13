@@ -105,6 +105,19 @@ describe('shared document presentation', () => {
 
 describe('field interaction preparation', () => {
     const { prepareFieldInteraction } = require('../../../src/extension')._internals;
+    it('prepares field choices with the keyword tree closed and no tree index', async () => {
+        const api = require('../../../src/extension')._internals;
+        const text = '*MAT_DAMAGE_1\n' + ' '.repeat(80) + '\n' + '7'.repeat(70) + '         0';
+        const document = { ...fakeDoc(text), version: 1, languageId: 'lsdyna' };
+        const position = { line: 2, character: 75 };
+        const result = await api.planPreparedOfficialFieldChoices(document, position,
+            { expectedDocumentVersion: 1, maximumKeywordLookback: 0 });
+        assert.equal(result?.status, 'ready');
+        assert.equal(result.keywordLine, 0);
+        assert.equal(result.fieldName, 'FLAG');
+        assert.deepEqual(result.choices.map(item => item.valueText), ['-1', '0', '1']);
+        assert.equal(document.getText(), text);
+    });
     it('rejects changed, closed and cancelled documents during asynchronous preparation', async () => {
         for (const mode of ['edit', 'close', 'cancel']) {
             const document = { ...fakeDoc('*MAT_DAMAGE_1\n1\n0'), version: 1, languageId: 'lsdyna' };
@@ -114,6 +127,19 @@ describe('field interaction preparation', () => {
             if (mode === 'close') document.isClosed = true;
             if (mode === 'cancel') token.isCancellationRequested = true;
             assert.equal(await pending, false);
+        }
+    });
+    it('does not publish choices after edits, close or cancellation during shared preparation', async () => {
+        const { planPreparedOfficialFieldChoices } = require('../../../src/extension')._internals;
+        for (const mode of ['edit', 'close', 'cancel']) {
+            const document = { ...fakeDoc('*MAT_DAMAGE_1\n1\n0'), version: 1, languageId: 'lsdyna' };
+            const token = { isCancellationRequested: false };
+            const pending = planPreparedOfficialFieldChoices(document, { line: 2, character: 0 },
+                { expectedDocumentVersion: 1, maximumKeywordLookback: 0, cancellationToken: token });
+            if (mode === 'edit') document.version++;
+            if (mode === 'close') document.isClosed = true;
+            if (mode === 'cancel') token.isCancellationRequested = true;
+            assert.equal(await pending, null);
         }
     });
 });

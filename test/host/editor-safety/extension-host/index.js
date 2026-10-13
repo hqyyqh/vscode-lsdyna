@@ -5671,24 +5671,6 @@ async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
         await waitForRendererEditorFocus(devTools);
         editor.selection = new vscode.Selection(position, position);
 
-        const extensionInternals = vscode.extensions
-            .getExtension('hqyyqh.dynasense')
-            ?.exports?._internals;
-        let latestPlan = null;
-        await waitForAssertion(() => {
-            latestPlan = extensionInternals?.planOfficialFieldChoicesForDocument?.(
-                document,
-                position,
-            );
-            assert.strictEqual(
-                latestPlan?.status,
-                'ready',
-                `official choice plan was not ready: ${JSON.stringify(latestPlan)}`,
-            );
-        }, 5000);
-        // Publish one post-index selection event as a real click/Tab would do.
-        editor.selection = new vscode.Selection(position, position);
-
         // Selection alone must never open Suggest or QuickPick. The engineer can
         // keep typing, use an IME, or continue Tab navigation without focus theft.
         await new Promise(resolve => setTimeout(resolve, 250));

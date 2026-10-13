@@ -14769,6 +14769,15 @@ async function prepareFieldInteraction(document, position, options: any = {}) {
 }
 
 async function planPreparedOfficialFieldChoices(document, position, options: any = {}) {
+    const current = createDocumentReadGuard(document, options.cancellationToken);
+    if (!current()) return null;
+    if (!Number.isInteger(options.keywordLine) && !readyCardEditBlockIndex(document)) {
+        // The keyword tree can be closed; share the editor's version-bound structure.
+        const presentation = await prepareDocumentPresentation(document);
+        if (!current()) return null;
+        const block = presentation?.ready ? presentationBlockAtLine(presentation.blocks, position.line) : null;
+        if (block) options = { ...options, keywordLine: block.startLine };
+    }
     if (!await prepareFieldInteraction(document, position, options)) return null;
     return planOfficialFieldChoicesForDocument(document, position, options);
 }
