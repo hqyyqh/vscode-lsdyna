@@ -304,6 +304,7 @@
       "test/scripts/release/compactFieldHelp.test.js",
       "test/scripts/release/compactInputForm.test.js",
       "test/scripts/release/compactReleaseStage.test.js",
+      "test/scripts/release/managerReaderRecovery.test.js",
       "test/scripts/release/publicReleaseReports.test.js",
       "test/scripts/release/publicSourceBoundary.test.js",
       "test/scripts/release/publicWorkflow.test.js",
@@ -393,7 +394,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "28e36c3b54f7326387f9f2266a216cb7945c1c5db429e748b9f66643ac4f11da",
+      "sha256": "adfb3d54652a0c0b662916523f402cac6678891069eefe62a0c68b494ee7dcaf",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2861,6 +2862,12 @@
       "role": "editable-source",
       "sha256": "9a39638a380bfd0f8be6b0a760f778e829369950e199c48bf0b33e0406b5300f",
       "reason": "independent-build-package-or-integrity-tool"
+    },
+    {
+      "path": "scripts/release/resume-manager-reader-tests.cjs",
+      "role": "editable-source",
+      "sha256": "33a6a601c541af86a8085fde265e56d0127b7b90ce17630c86f059bed39a4b76",
+      "reason": "public-contribution"
     },
     {
       "path": "scripts/release/reuse-release-evidence.cjs",
@@ -5505,7 +5512,7 @@
     {
       "path": "test/core/semantics/nativeFormatConsumptionSupplement.test.js",
       "role": "editable-source",
-      "sha256": "4ecb5cdfcefdb678bb76ff06f9e8299e69c1a5346facfa1a81bd97e32b72ca19",
+      "sha256": "3b5fbaff09aff36fb59da5c46620e6c36e6f37e1bd117b7dcca47b966c8c58b7",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5619,7 +5626,7 @@
     {
       "path": "test/core/semantics/nativeSuffixReaders.test.js",
       "role": "editable-source",
-      "sha256": "68c93312ba0d31a3c93d5cc3b367fe324d99ba8f1e7559ba77066efe0d1805cf",
+      "sha256": "89cf2a46771f79bdf1cd640c6bab404a04529b4d2141b64143e2945970860050",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5649,7 +5656,7 @@
     {
       "path": "test/core/semantics/publicOrdinalSuffixSafety.test.js",
       "role": "editable-source",
-      "sha256": "b7fe5c4c1966644f60ed3db9894ce9500837a5a0305b91299fcc803f2ed0447a",
+      "sha256": "65cb924bd5de5c22f713010a73f2f93d58173a1e9fdc6761fed48db0e6c1eb82",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5721,7 +5728,7 @@
     {
       "path": "test/core/semantics/staticRemainingBulkDisplaySafety.test.js",
       "role": "editable-source",
-      "sha256": "54b774be1d00ff19add8abd58b6bf026c4e9256da3a5e1cf1d10ef5f64bbc7ec",
+      "sha256": "de500558c051633786ac9ca7a671dcff787a245d6609d6031d14109033549005",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6747,7 +6754,7 @@
     {
       "path": "test/public-behavior/descriptorHoverReplay.test.js",
       "role": "editable-source",
-      "sha256": "d884ad77b1f5ae07f7d6f12bd3ecd1da85455d0a18674302586fcf45f811a13d",
+      "sha256": "33e7ab61c072a29443bacf784af41847e536d8fc64e1e6c1d0392bc59be3e8a0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6877,6 +6884,12 @@
       "reason": "public-build-or-package-regression"
     },
     {
+      "path": "test/scripts/release/managerReaderRecovery.test.js",
+      "role": "editable-source",
+      "sha256": "567d43a2a59bf19bc1f09eac6ca26dd7af2ec016be13bfc5ac6411495a685e93",
+      "reason": "public-contribution"
+    },
+    {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
       "sha256": "b92051f8f7f63696251ddad56563506ca7b13f9238d3d3e07aa2202af215a79b",
@@ -6995,6 +7008,12 @@
       "role": "editable-source",
       "sha256": "55c2096cd07744a73679becdfc57cb2d89a347601f8627e4666081e7d736ddb2",
       "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/support/keyword-manager/readonly-reader.cjs",
+      "role": "editable-source",
+      "sha256": "82a1cae49ac21dd17e0ae13d5bdb32e8823210b0c3cc096eb4625ae191b63a64",
+      "reason": "public-contribution"
     },
     {
       "path": "test/support/native-reader-values.js",

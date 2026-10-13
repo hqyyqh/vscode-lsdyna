@@ -2,6 +2,7 @@
 require("../../support/register-out");
 const assert=require('node:assert/strict'),fs=require('node:fs'),zlib=require('node:zlib');
 const {fakeDoc}=require("../../support/helpers");
+const assertReadonlyReader=require('../../support/keyword-manager/readonly-reader.cjs');
 const fixtures=JSON.parse(zlib.gunzipSync(fs.readFileSync(require.resolve("../../fixtures/public-behavior/mixed-reader-safety.json.gz"))));
 const schema=require("../../../out/core/keywordSchema");
 const {buildKeywordOptionViewModel,buildKeywordOptionsViewState,getCardFieldsForLine,LsdynaFieldCompletionProvider}=require("../../../out/extension")._internals;
@@ -21,7 +22,7 @@ it('uses actual source branches in manager and retains operation restrictions fo
             if (task.controls.length !== 1 || task.expectedRecords.length !== 2) continue;
             const view = buildKeywordOptionViewModel({ document, selection: { active: { line: 1, character: 0 } } }, 1, {});
             assert.deepEqual(view.managerCards.map(c => c.fields.map(f => f.name)), task.expectedRecords.map(r => r.fields.map(f => f.name)));
-            assert.ok(view.managerCards.every(c => !c.editable));
+            assertReadonlyReader(document, 1);
             assert.equal(buildKeywordOptionsViewState(view).canApply, false);
             assert.deepEqual(await new LsdynaFieldCompletionProvider().provideCompletionItems(document, { line: 1, character: 0 }, null, {}), []);
         }

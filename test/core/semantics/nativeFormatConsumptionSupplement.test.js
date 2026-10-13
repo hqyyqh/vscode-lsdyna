@@ -4,6 +4,7 @@ const assert=require('node:assert/strict'),vscode=require('vscode');
 const fs=require('node:fs'),zlib=require('node:zlib'),path=require('node:path');
 const {fakeDoc}=require("../../support/helpers");
 const api=require("../../../out/extension")._internals;
+const assertReadonlyReader=require('../../support/keyword-manager/readonly-reader.cjs');
 const {nativeFileReadContext}=require("../../../out/core/semantics/nativeFileReadContext");
 const {getCatalogInputFormCatalogV4}=require("../../../out/core/semantics/catalogInputFormCatalogV4");
 describe('Archived supplemental actual native field consumption',function(){
@@ -33,7 +34,7 @@ describe('Archived supplemental actual native field consumption',function(){
         assert.equal(checked,1380);
         assert.deepEqual([...new Set(failures.map(f=>f.task))],[],JSON.stringify({tasks:[...new Set(failures.map(f=>f.task))],fields:failures.length,first:failures[0]}));
     });
-    it('reads manager source values with native geometry while retaining requested input format and denying edits',()=>{
+    it('reads manager source values with native geometry while retaining input format and filesystem read-only protection',()=>{
         const failures=[];
         for(const task of archive.plan.tasks){
             const doc=document(task),form=catalog.formForKeyword(task.keyword),rule=form.rules[task.formRuleId];
@@ -51,11 +52,11 @@ describe('Archived supplemental actual native field consumption',function(){
             assert.deepEqual(model.block.records.map(r=>r.text),task.lines.slice(1),'manager changed source records');
             assert.equal(api.buildKeywordOptionsViewState(model).canApply,false);
             for(const field of model.managerCards.flatMap(c=>c.fields||[])){
-                assert.equal(field.editable,false);assert.equal(api.keywordManagerEditField(model,field.fieldId,'1'),null);
                 const slice=slices.find(c=>c.lineOffset===field.line&&c.fieldIndex===Number(field.fieldId.match(/field:(\d+)$/)?.[1]));
                 if(slice)try{assert.equal(field.value,task.lines[slice.lineOffset].slice(slice.offset,slice.offset+slice.width).trim());}
                 catch(error){failures.push({task:task.id,manager:field.fieldId,error:error.message});}
             }
+            assertReadonlyReader(doc);
         }
         assert.deepEqual([...new Set(failures.map(f=>f.task))],[],JSON.stringify({tasks:[...new Set(failures.map(f=>f.task))],first:failures[0]}));
     });

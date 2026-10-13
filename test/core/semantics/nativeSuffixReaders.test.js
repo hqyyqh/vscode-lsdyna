@@ -1,5 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
+const assertReadonlyReader = require('../../support/keyword-manager/readonly-reader.cjs');
 const fs = require('node:fs'), zlib = require('node:zlib');
 const cases = JSON.parse(zlib.gunzipSync(fs.readFileSync('test/fixtures/public-behavior/suffix-reader-cases.json.gz')));
 const samples = JSON.parse(zlib.gunzipSync(fs.readFileSync('test/fixtures/public-behavior/suffixSample-reader-cases.json.gz')));
@@ -36,7 +37,7 @@ describe('observed suffix display operation boundaries', function () {
             const source = model.managerCards.find(card => card.line === 1);
             assert.deepEqual(source.fields.map(f => f.name), expected.map(f => f.name));
             assert.deepEqual(source.fields.map(f => f.value), card.map(f => f.rawValue));
-            assert.ok(source.fields.every(f => !f.editable));
+            assertReadonlyReader(document, 1);
             assert.equal(buildKeywordOptionsViewState(model).canApply, false);
             assert.deepEqual(await new LsdynaFieldCompletionProvider().provideCompletionItems(document,
                 { line: 1, character: 0 }, null, {}), [], 'Display binding must not grant insertion or old-pool completion');
@@ -58,7 +59,7 @@ describe('observed suffix display operation boundaries', function () {
                 assert.equal(getCardFieldsForLine(document, line), null, keyword);
         }
     });
-    it('keeps both prefix mechanisms read-only in the manager', () => {
+    it('protects both prefix mechanisms when the filesystem is read-only', () => {
         const vscode = require('vscode');
         for (const keyword of ['ALE_FRAGMENTATION_TITLE', 'DUALCESE_CONTROL_MESH_MOV_TITLE']) {
             const task = sample(keyword), document = fakeDoc(task.lines.concat('*END').join('\n'));
@@ -66,7 +67,7 @@ describe('observed suffix display operation boundaries', function () {
             const model = buildKeywordOptionViewModel({ document, selection: { active: new vscode.Position(0, 0) } }, 0, {});
             assert.equal(buildKeywordOptionsViewState(model).canApply, false, keyword);
             assert.ok(model.managerCards.length, keyword);
-            assert.ok(model.managerCards.every(card => !card.editable), keyword);
+            assertReadonlyReader(document);
         }
     });
 });

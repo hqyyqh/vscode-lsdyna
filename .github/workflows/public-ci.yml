@@ -36,7 +36,7 @@ on:
         description: 'Reuse passed platform builds from this run (or leave empty for full CI)'
         type: string
       resume_run:
-        description: 'Resume installed cases from this run (defaults to build_run)'
+        description: 'With build_run: installed resume; without it: reviewed manager-reader unit recovery'
         type: string
       retry_exclude:
         description: 'Optional JSON matrix exclusions for installation-only retries'
@@ -90,6 +90,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
@@ -111,13 +112,19 @@ jobs:
         run: npm run check:contracts
       - name: Test the existing build; replay the full corpus once
         run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
+          if [[ -n "$UNIT_RESUME_RUN" ]]; then
+            node scripts/release/resume-manager-reader-tests.cjs
+            npx --no-install mocha --require test/support/register-out.js test/scripts/release/managerReaderRecovery.test.js --fail-zero
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
             npm run test:unit
           else
             npm run test:unit -- --grep '\[full-corpus\]' --invert
           fi
           npm run test:data
         env:
+          UNIT_RESUME_RUN: ${{ inputs.resume_run }}
+          EXPECTED_TARGET: ${{ matrix.target }}
+          GH_TOKEN: ${{ github.token }}
           # Full source-data replay shares one test process; installed hosts keep their default heap.
           NODE_OPTIONS: --max-old-space-size=4096
       - run: npm run test:webview
@@ -149,6 +156,14 @@ jobs:
             dist/candidate.vsix.baseline.vsix.data-equivalence.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save scoped unit recovery evidence
+        if: ${{ always() && inputs.resume_run }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: unit-recovery-${{ matrix.target }}
+          path: .artifacts/unit-recovery
+          if-no-files-found: error
 
   installed-host:
     name: Same VSIX / ${{ matrix.platform.os }} / VS Code ${{ matrix.vscode }}

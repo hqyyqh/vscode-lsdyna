@@ -1,6 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), zlib = require('node:zlib');
 const { fakeDoc } = require("../support/helpers");
+const assertReadonlyReader = require('../support/keyword-manager/readonly-reader.cjs');
 const schema = require('../../out/core/keywordSchema');
 const { LsdynaFieldHoverProvider, getCardFieldsForLine, buildKeywordOptionViewModel,
     buildKeywordOptionsViewState, LsdynaFieldCompletionProvider } = require('../../out/extension')._internals;
@@ -52,14 +53,14 @@ describe('descriptor reader provider replay and editing boundaries', function ()
             () => '1', false, false), null);
     });
 
-    it('keeps displayed conditional branches outside editing and completion authorization', async () => {
+    it('protects read-only conditional branches and retains completion restrictions', async () => {
         for (const [keyword, head, tail] of [['BOUNDARY_AMBIENT_ID', '1,2,4,0', '7,8'],
             ['DATABASE_FREQUENCY_BINARY_D3SPCM_ID', '3', '1,probe.dat']]) {
             const document = { ...fakeDoc(['*' + keyword, head, tail, '*END'].join('\n')), version: 1 };
             assert.equal(schema.resolveCardForDocumentLine(document, 2).status, 'resolved');
             assert.equal(getCardFieldsForLine(document, 2), null);
             const view = buildKeywordOptionViewModel({ document, selection: { active: { line: 1, character: 0 } } }, 1, {});
-            assert.ok(view.managerCards.every(card => !card.editable));
+            assertReadonlyReader(document, 1);
             assert.equal(buildKeywordOptionsViewState(view).canApply, false);
             assert.deepEqual(await new LsdynaFieldCompletionProvider().provideCompletionItems(document,
                 { line: 1, character: 0 }, null, {}), []);

@@ -1,6 +1,7 @@
 'use strict';
 require("../../support/register-out");
 const assert = require('node:assert/strict');
+const assertReadonlyReader = require('../../support/keyword-manager/readonly-reader.cjs');
 const vscode = require('vscode');
 const { fakeDoc } = require("../../support/helpers");
 const extension = require("../../../out/extension")._internals;
@@ -17,7 +18,7 @@ describe('static remaining bulk display-only operation boundaries', function () 
             new vscode.Position(3, 2), { includeDeclaration: true }, { isCancellationRequested: false });
         assert.deepEqual(locations.map(location => location.range.start.line), [1, 3]);
     });
-    it('checks all proven bindings in four formats against archived records and refuses edit authority', async () => {
+    it('checks all proven bindings in four formats against archived records and protects read-only files', async () => {
         const references = new extension.LsdynaReferenceProvider();
         const identities = fixture.identities;
         assert.equal(identities.length, fixture.baseKeywords.length + fixture.addedKeywords.length);
@@ -60,9 +61,7 @@ describe('static remaining bulk display-only operation boundaries', function () 
                 assert.equal(extension.buildKeywordOptionsViewState(model).canApply, false, task.id);
                 const managerFields = model.managerCards.flatMap(card => card.fields || []);
                 assert.ok(managerFields.length, task.id + ': no manager display fields');
-                assert.ok(managerFields.every(field => !field.editable), task.id + ': editable display-only field');
-                for (const field of managerFields) assert.equal(extension.keywordManagerEditField(model, field.fieldId, '1'), null,
-                    task.id + ': manager edit authorized');
+                assertReadonlyReader(doc);
             }
         }
         console.log(`    Bulk display-only: ${identities.length} identities, ${identities.length * 4} format cases, ${recordsChecked} records, ${fieldsChecked} fields`);
