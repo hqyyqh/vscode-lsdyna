@@ -1841,16 +1841,15 @@ async function assertRendererMouseDragSelectionsAreScopedAndUndoable() {
         await waitForRendererEditorFocus(devTools);
 
         const dragColumns = async (startColumn, endColumn) => {
-            const start = await getRendererEditorPositionPoint(
-                devTools,
-                3,
-                startColumn,
-            );
-            const end = await getRendererEditorPositionPoint(
-                devTools,
-                3,
-                endColumn,
-            );
+            let start, end;
+            // Document Undo can finish before Monaco paints its restored text and layout.
+            await waitForAssertion(async () => {
+                start = await getRendererEditorPositionPoint(devTools, 3, startColumn);
+                end = await getRendererEditorPositionPoint(devTools, 3, endColumn);
+                assert.strictEqual(start.lineText.replace(/\u00a0/g, ' '), originalLine);
+                assert.strictEqual(end.lineText.replace(/\u00a0/g, ' '), originalLine);
+                assert.deepStrictEqual(await getRendererEditorPositionPoint(devTools, 3, startColumn), start);
+            });
             await dispatchRendererMouseDrag(devTools, start, end);
             await waitForAssertion(() => {
                 assert.deepStrictEqual(
@@ -1861,6 +1860,7 @@ async function assertRendererMouseDragSelectionsAreScopedAndUndoable() {
                         2,
                         endColumn,
                     )),
+                    JSON.stringify({ start, end, startColumn, endColumn }),
                 );
             });
             await new Promise(resolve => setTimeout(resolve, 50));

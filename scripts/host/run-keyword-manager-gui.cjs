@@ -300,6 +300,8 @@ async function main() {
             const preview = document.querySelector('.changePreview').innerText;
             if (!preview.includes('ICURV: 0 → 12') || !preview.includes('BESIMF: 0 → 12')) throw new Error('Linked preview missing: ' + preview);
             if (!acceptanceLayouts) {
+                // Preview notifications can arrive before the pending update reply re-enables Apply.
+                await until(() => document.querySelector('main').getAttribute('aria-busy') !== 'true' && document.querySelector('.detailsActions button.primaryText:not(:disabled)'));
                 document.querySelector('.detailsActions button.primaryText').click();
                 await until(() => !document.querySelector('.changePreview') && !document.querySelector('.fieldEditor.changed'));
             }
