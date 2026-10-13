@@ -752,7 +752,7 @@ async function executeDetailedHover(document, position, expectedFragment) {
     );
     assert.ok(
         hover,
-        `No hover contained ${JSON.stringify(expectedFragment)} at ${position.line}:${position.character}`,
+        `No hover contained ${JSON.stringify(expectedFragment)} at ${position.line}:${position.character}: ${hovers.map(hoverMarkdown).join('\n')}`,
     );
     return hover;
 }
@@ -1191,9 +1191,10 @@ async function assertFunctionalHoverMatrix() {
     const unresolved = await executeDetailedHover(
         document,
         new vscode.Position(7, 5),
-        'complete project scan is unavailable',
+        'The effective value in the current main-deck context cannot be determined reliably.',
     );
     assert.strictEqual(document.getText(unresolved.range), '&UNKNOWN');
+    assert.ok(hoverMarkdown(unresolved).includes('parameter-controlled and parameters have not been evaluated'));
 
     const parameterKeyword = await executeDetailedHover(
         document,
