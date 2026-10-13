@@ -569,6 +569,7 @@ async function main() {
                 `--extensions-dir=${extensionsDir}`,
             ],
             extensionTestsEnv: {
+                ...(process.argv.includes('--functional') ? { LSDYNA_EDITOR_SAFETY_ONLY: 'functional' } : {}),
                 LSDYNA_EDITOR_SAFETY_CDP_PORT: String(devToolsPort),
                 LSDYNA_EDITOR_SAFETY_WORKSPACE: workspaceDir,
             },

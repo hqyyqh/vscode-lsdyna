@@ -6474,6 +6474,63 @@ async function runScenarios() {
     const focusedScenario = process.env.LSDYNA_EDITOR_SAFETY_ONLY;
     if (focusedScenario) {
         const scenarios = {
+            functional: async () => {
+                const results = [];
+                try {
+                    for (const scenario of [
+                        assertPassiveOperationsDoNotWrite,
+                        assertCellNavigationBelongsToTheOpenDocument,
+                        assertPasteIntoSelectedCellKeepsColumns,
+                        assertCellTypeIsLocalAndUndoable,
+                        assertCellDeleteAndBackspaceAreLocalAndUndoable,
+                        assertEnterIsAtomicAndUndoable,
+                        assertOverWidthTypeIsRejectedAtomically,
+                        assertEmptyFieldTypingAlignsWithoutTab,
+                        assertEmptyCellBackspaceMovesWithoutWriting,
+                        assertSecondDeleteRemovesNowEmptyCardRow,
+                        assertCommaDeleteUsesNativeUndoableEditing,
+                        assertCommaTabRequiresExplicitConversionAndUndo,
+                        assertMultiCursorNavigationCommandsFailClosed,
+                        assertMultiCursorDeleteCommandsFailClosed,
+                        assertRendererMultiCursorKeysStayNativeAndUndoable,
+                        assertCellDeleteCannotModifyReadonlyDeck,
+                        assertCellDeleteAndEnterUseCurrentExternalVersion,
+                        assertTypeAfterExternalReloadCannotCollapseColumns,
+                        assertLargeNodeBlockKeepsSchemaAfterEdit,
+                        assertOverlappingSchemaTabAndFormatAreByteStable,
+                        assertFormatOnSaveScopeAndUndo,
+                        assertSaveAllDoesNotFormatInactiveDocuments,
+                        assertExplicitFormattingIsScopedAndUndoable,
+                        assertOnBlurFormattingCannotModifyReadonlyDeck,
+                        assertOnBlurFormattingCannotModifyOsReadonlyDeck,
+                        assertOnBlurFormattingUsesCurrentExternalVersion,
+                        assertRapidCloseDuringOnBlurCheckIsNonMutating,
+                        assertAutoSaveFormatIsLocalAndUndoable,
+                        assertCommittedImeTextIsEditorLocalAndUndoable,
+                        assertLineCommentMultiLineSelectionIsAtomicAndSingleUndo,
+                        assertLineCommentFailsClosedWithoutMovingCursorOnReadonlyDeck,
+                        assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged,
+                    ]) {
+                        if (scenario === assertOnBlurFormattingCannotModifyOsReadonlyDeck && process.platform !== 'win32') {
+                            results.push({ name: scenario.name, status: 'unverified', reason: 'Windows read-only attribute check; not applicable on this platform' });
+                            continue;
+                        }
+                        try {
+                            await scenario();
+                            results.push({ name: scenario.name, status: 'passed' });
+                        } catch (error) {
+                            results.push({ name: scenario.name, status: 'failed', reason: error.message });
+                            throw error;
+                        }
+                        console.log(JSON.stringify(results[results.length - 1]));
+                    }
+                } finally {
+                    fs.writeFileSync(path.join(workspaceRoot, 'host-results.json'), JSON.stringify({
+                        scope: 'editing-functional-only', performance: 'unverified', nativeMenu: 'unverified',
+                        cases: results,
+                    }, null, 2));
+                }
+            },
             'parameter-rename': async () => {
                 await assertParameterRenameIsDocumentLocalAndUndoable();
                 await assertParameterRenameRendererCancelAndAcceptAreScoped();

@@ -47,6 +47,41 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('keeps functional scenario evidence separate and records a real failure before stopping', async () => {
+        const source = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
+        const body = source.split('            functional: async () => {')[1].split("            'parameter-rename':")[0];
+        const names = [...body.matchAll(/^                        (assert\w+),$/gm)].map(match => match[1]);
+        assert.equal(names.length, 32);
+        for (const required of ['assertPasteIntoSelectedCellKeepsColumns', 'assertCellTypeIsLocalAndUndoable',
+            'assertCellDeleteCannotModifyReadonlyDeck', 'assertOnBlurFormattingCannotModifyOsReadonlyDeck',
+            'assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged']) assert.ok(names.includes(required));
+        assert.ok(!names.some(name => /Latency|ContextMenu/.test(name)));
+        for (const [platform, fail] of [['win32', null], ['linux', null], ['win32', names[2]]]) {
+            let report; const called = [];
+            const context = { process: { platform }, console: { log() {} }, workspaceRoot: 'fixture', path,
+                fs: { writeFileSync(_file, value) { report = JSON.parse(value); } } };
+            for (const name of names) context[name] = Object.defineProperty(async () => {
+                called.push(name); if (name === fail) throw Error('safety assertion failed');
+            }, 'name', { value: name });
+            const run = vm.runInNewContext('({ functional: async () => {' + body + '}).functional', context);
+            if (fail) await assert.rejects(run(), /safety assertion failed/); else await run();
+            assert.equal(report.performance, 'unverified');
+            assert.equal(report.nativeMenu, 'unverified');
+            assert.equal(report.scope, 'editing-functional-only');
+            assert.deepEqual(called, fail ? names.slice(0, 3) : names.filter(name => platform === 'win32' || name !== 'assertOnBlurFormattingCannotModifyOsReadonlyDeck'));
+            if (platform !== 'win32') assert.equal(report.cases.find(item => item.name === 'assertOnBlurFormattingCannotModifyOsReadonlyDeck').status, 'unverified');
+            assert.equal(report.cases.at(-1).status, fail ? 'failed' : 'passed');
+        }
+    });
+    it('runs functional editing separately without passing the complete editor or performance gate', async () => {
+        const result = await scenario({ selected: 'run-editor-safety-extension-host.cjs-functional' });
+        assert.equal(result.exitCode, undefined);
+        assert.equal(result.commands.length, 2);
+        assert.ok(result.commands.includes('--functional'));
+        assert.equal(result.report.complete, false);
+        assert.ok(result.report.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs-functional' && item.passed));
+        assert.ok(!result.report.cases.some(item => item.name === 'run-editor-safety-extension-host.cjs'));
+    });
     it('runs a selected batch once without claiming unselected cases passed', async () => {
         const result = await scenario({ selected: 'run-release-host.cjs-catalog, reload,run-release-host.cjs-catalog' });
         assert.equal(result.exitCode, undefined);
@@ -120,9 +155,9 @@ describe('installed acceptance executable and measured version', () => {
         for (const file of ['src/extension.ts', 'package-lock.json', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
         assert.deepEqual([...validateChanges(['test/host/release/host.cjs', 'test/scripts/host/hostInstrumentation.test.js'])], ['*']);
-        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs']);
+        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional']);
         assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
-            ['run-editor-safety-extension-host.cjs']);
+            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional']);
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);
