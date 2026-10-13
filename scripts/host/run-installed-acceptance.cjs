@@ -38,6 +38,8 @@ async function main() {
     // Focused safety evidence never substitutes for the complete editor acceptance case.
     if (process.env.LSDYNA_ACCEPTANCE_CASE?.split(',').some(name => name.trim() === 'run-editor-safety-extension-host.cjs-functional'))
         cases.push(['run-editor-safety-extension-host.cjs', '--functional']);
+    if (process.env.LSDYNA_ACCEPTANCE_CASE?.split(',').some(name => name.trim() === 'run-editor-safety-extension-host.cjs-autosave-committed-ime'))
+        cases.push(['run-editor-safety-extension-host.cjs', '--autosave-committed-ime']);
     const caseName = ([script, ...args]) => script === 'run-release-lifecycle.cjs' ? args[0]
         : [path.basename(script), ...args.map(arg => path.basename(arg).replace(/^--/, ''))].join('-');
     const selected = process.env.LSDYNA_ACCEPTANCE_CASE;

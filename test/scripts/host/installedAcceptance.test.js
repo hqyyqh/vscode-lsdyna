@@ -47,6 +47,14 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('runs only the autosave/IME pair without certifying complete acceptance', async () => {
+        const result = await scenario({ selected: 'run-editor-safety-extension-host.cjs-autosave-committed-ime' });
+        assert.equal(result.exitCode, undefined);
+        assert.equal(result.report.complete, false);
+        assert.deepEqual(result.commands.slice(1), ['--autosave-committed-ime']);
+        assert.equal(result.report.cases.length, 2);
+        assert.ok(result.report.cases.every(item => item.passed));
+    });
     it('keeps functional scenario evidence separate and records a real failure before stopping', async () => {
         const source = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
         const body = source.split('            functional: async () => {')[1].split("            'parameter-rename':")[0];
@@ -174,9 +182,9 @@ describe('installed acceptance executable and measured version', () => {
         for (const file of ['src/extension.ts', 'package-lock.json', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
         assert.deepEqual([...validateChanges(['test/host/release/host.cjs', 'test/scripts/host/hostInstrumentation.test.js'])], ['*']);
-        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional']);
+        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime']);
         assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
-            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional']);
+            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime']);
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);

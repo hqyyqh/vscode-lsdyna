@@ -4497,6 +4497,8 @@ async function assertAutoSaveFormatIsLocalAndUndoable() {
             assert.deepStrictEqual(workspaceAfter[name], fingerprint, name);
         }
 
+        // Undo must not schedule a delayed save that outlives this scenario.
+        await filesConfiguration.update('autoSave', 'off', vscode.ConfigurationTarget.Global);
         await vscode.window.showTextDocument(document, {
             viewColumn: vscode.ViewColumn.One,
             preview: false,
@@ -4507,6 +4509,9 @@ async function assertAutoSaveFormatIsLocalAndUndoable() {
         assert.strictEqual(document.isDirty, true);
         assert.strictEqual(document.eol, originalEol);
         await vscode.commands.executeCommand('workbench.action.files.revert');
+        assert.strictEqual(document.isDirty, false);
+        assert.strictEqual(document.getText(), beforeFormatText);
+        assert.strictEqual(fs.readFileSync(document.uri.fsPath, 'utf8'), beforeFormatText);
     } finally {
         await editorConfiguration.update(
             'formatOnSave',
@@ -6639,6 +6644,10 @@ async function runScenarios() {
             'entity-references-webview': assertEntityReferencesWebviewActivatesAndQueries,
             'large-file-viewer': assertLargeFileCustomEditorOpensReadonly,
             'committed-ime': assertCommittedImeTextIsEditorLocalAndUndoable,
+            'autosave-committed-ime': async () => {
+                await assertAutoSaveFormatIsLocalAndUndoable();
+                await assertCommittedImeTextIsEditorLocalAndUndoable();
+            },
             composition: assertRendererImeCompositionIsLocalAndUndoable,
             'composition-cancel': assertRendererImeCompositionCancelRestoresCell,
             'composition-overwidth': assertRendererImeCompositionOverWidthIsRejected,

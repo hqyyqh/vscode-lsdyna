@@ -15,9 +15,9 @@ const affectedCases = {
     'scripts/benchmark/benchmark-release-hosts.cjs': ['performance'],
     'test/support/release/rendered.cjs': ['performance', 'offline', 'missing-external-manual'],
     'scripts/host/vsix-host.cjs': ['*'],
-    'scripts/host/run-editor-safety-extension-host.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
-    'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
-    'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
+    'scripts/host/run-editor-safety-extension-host.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime'],
+    'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime'],
+    'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional', 'run-editor-safety-extension-host.cjs-autosave-committed-ime'],
     'scripts/host/run-keyword-manager-gui.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
     'test/host/keyword-manager/extension-host.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
 };
