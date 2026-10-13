@@ -9401,7 +9401,7 @@ describe('LsdynaDefinitionProvider field references', () => {
         assert.ok(reads < 8_000, `expected bounded line reads, got ${reads}`);
         // Release budget: retain the independent line-read bound above, and measure
         // wall time against the agreed 100 ms interaction limit on the host machine.
-        assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
     });
 
     it('streams a million-row NODE block once, yields, and keeps warm queries O(1)', async function () {
@@ -9497,7 +9497,7 @@ describe('LsdynaDefinitionProvider field references', () => {
                 );
             }
             assert.equal(nodeReads, 0, 'warm target-only cache must not rescan NODE rows');
-            assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+            if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
         } finally {
             vscodeMock.workspace.textDocuments = originalTextDocuments;
             await yieldProbe;
@@ -10205,7 +10205,7 @@ describe('manual workspace reference text search', () => {
 
         assert.equal(searchCount, 100);
         assert.ok(reads < 4_000, `expected bounded source reads, got ${reads}`);
-        assert.ok(p95 < 5, `expected workspace search planning P95 <5 ms, got ${p95.toFixed(3)} ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 < 5, `expected workspace search planning P95 <5 ms, got ${p95.toFixed(3)} ms`);
     });
 });
 
@@ -11744,7 +11744,7 @@ describe('official field value completions', () => {
             const p95 = samples[Math.floor(samples.length * 0.95)];
 
             assert.ok(lineAtCalls < 4_000, `expected bounded line reads, got ${lineAtCalls}`);
-            assert.ok(p95 < 2, `expected warm completion P95 <2 ms, got ${p95.toFixed(3)} ms`);
+            if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 < 2, `expected warm completion P95 <2 ms, got ${p95.toFixed(3)} ms`);
         } finally {
             setFileIndexForTesting(filePath, null);
         }

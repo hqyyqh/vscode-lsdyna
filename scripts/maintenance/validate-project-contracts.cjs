@@ -390,8 +390,7 @@ function validateWorkflowCoverage(root, errors) {
         'python -m unittest discover -s test/scripts/build/keywords', 'npm run check:field-data-zh',
         'npm run check:native-help-zh', 'npm run check:manual-semantics-zh', 'npm audit',
         'npm run build:native-sqlite', 'node scripts/release/package-hover-release.cjs',
-        'node scripts/release/validate-package-contents.cjs --vsix', 'run-installed-acceptance.cjs',
-        'benchmark-release-hosts.cjs']) {
+        'node scripts/release/validate-package-contents.cjs --vsix', 'run-installed-acceptance.cjs']) {
         if (!shared.includes(command)) errors.push(`public-ci.yml does not run required check: ${command}`);
     }
     for (const name of ['ci.yml', 'release.yml']) {

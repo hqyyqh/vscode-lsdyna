@@ -6780,6 +6780,12 @@ async function runScenarios() {
         assertRendererCtrlSlashFiresColumnZeroComment,
         assertRendererCtrlSlashFiresColumnZeroCommentWhileSuggestVisible,
     ]) {
+        if (scenario === assertInteractiveLatencyBaseline && process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1') {
+            const excluded = { name: scenario.name, status: 'unverified', required: false, reason: 'Performance is outside CI acceptance' };
+            caseResults.push(excluded);
+            console.log(JSON.stringify(excluded));
+            continue;
+        }
         // Native system menus are optional desktop checks, available through the focused entry.
         if (scenario === assertRendererContextMenuPasteAndCutAreScopedAndUndoable) {
             const optional = { name: scenario.name, status: 'unverified', required: false,

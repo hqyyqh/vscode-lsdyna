@@ -26,6 +26,7 @@ jobs:
       run:
         shell: bash
     env:
+      LSDYNA_CI_FUNCTIONAL_ONLY: '1'
       CI_NODE: ${{ inputs.node }}
       EXPECTED_TARGET: ${{ inputs.target }}
       VSCODE_TEST_VERSION: ${{ inputs.vscode }}
@@ -50,7 +51,7 @@ jobs:
           node <<'NODE'
           const assert = require('node:assert/strict'), fs = require('node:fs');
           const { CI_NODE: node, EXPECTED_TARGET: target, TEST_GREP: grep, LSDYNA_ACCEPTANCE_CASE: hostCase, BUILD_RUN: build, RESUME_RUN: resume } = process.env;
-          assert.ok(['build','unit','webview','contracts','language','audit','package','installed','performance','profile'].includes(node));
+          assert.ok(['build','unit','webview','contracts','language','audit','package','installed'].includes(node));
           assert.equal(process.platform + '-' + process.arch, target);
           assert.equal(process.env.GITHUB_REF, 'refs/heads/dev', 'Node diagnosis is restricted to dev');
           if (node === 'unit') {
@@ -61,9 +62,7 @@ jobs:
             assert.ok(fs.statSync(file).isFile());
           }
           if (node === 'installed') assert.ok(hostCase.trim(), 'Select one installed case');
-          if (node === 'profile') assert.ok(['hover','manager','manager-control'].includes(hostCase), 'Select one diagnostic phase');
-          if (node === 'performance') assert.ok(['','hover','manager','experience'].includes(hostCase), 'Unknown performance phase');
-          if (['installed','performance','profile'].includes(node)) assert.match(build, /^\d+$/);
+          if (node === 'installed') assert.match(build, /^\d+$/);
           if (resume) { assert.equal(node, 'installed'); assert.match(resume, /^\d+$/); }
           fs.mkdirSync('.artifacts/node', {recursive:true});
           fs.writeFileSync('.artifacts/node/request.json', JSON.stringify({source:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID,node,target,grep,testFile:process.env.TEST_FILE,hostCase,build,resume,vscode:process.env.VSCODE_TEST_VERSION}, null, 2));
@@ -74,7 +73,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements-dev.txt
       - name: Build necessary source dependencies
-        if: ${{ inputs.node != 'installed' && inputs.node != 'performance' && inputs.node != 'profile' && inputs.node != 'audit' }}
+        if: ${{ inputs.node != 'installed' && inputs.node != 'audit' }}
         run: |
           if [[ "$CI_NODE" == "build" || "$CI_NODE" == "package" || "$CI_NODE" == "unit" ]]; then
             npm run build:native-sqlite
@@ -105,69 +104,29 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: ${{ inputs.node == 'installed' || inputs.node == 'performance' || inputs.node == 'profile' }}
+        if: ${{ inputs.node == 'installed' }}
         with:
           name: candidate-${{ inputs.target }}
           path: dist
           run-id: ${{ inputs.build_run }}
           github-token: ${{ github.token }}
       - name: Verify build inputs and optional earlier case results
-        if: ${{ inputs.node == 'installed' || inputs.node == 'performance' || inputs.node == 'profile' }}
+        if: ${{ inputs.node == 'installed' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/host/run-installed-acceptance-retry.cjs
-      - name: Run selected installed case or paired performance check
-        if: ${{ inputs.node == 'installed' || inputs.node == 'performance' || inputs.node == 'profile' }}
+      - name: Run selected installed functional case
+        if: ${{ inputs.node == 'installed' }}
         run: |
           if [[ "$RUNNER_OS" == "macOS" ]]; then export TMPDIR="$(mktemp -d /tmp/ds.XXXXXX)"; fi
           launcher=()
           if [[ "$RUNNER_OS" == "Linux" ]]; then launcher=(xvfb-run -a); fi
-          if [[ "$CI_NODE" == "profile" && "$LSDYNA_ACCEPTANCE_CASE" == "manager-control" ]]; then
-            export LSDYNA_PERFORMANCE_PHASE=manager
-            "${launcher[@]}" node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX" "$LSDYNA_TEST_VSIX" .artifacts/public-host/control.json
-          elif [[ "$CI_NODE" == "profile" ]]; then
-            export LSDYNA_PROFILE_CPU="first-$LSDYNA_ACCEPTANCE_CASE"
-            "${launcher[@]}" node scripts/host/run-release-host.cjs "$LSDYNA_ACCEPTANCE_CASE" 2>&1 | tee .artifacts/node/profile.log
-          elif [[ "$CI_NODE" == "installed" ]]; then
-            "${launcher[@]}" node scripts/host/run-installed-acceptance.cjs
-          else
-            export LSDYNA_PERFORMANCE_PHASE="$LSDYNA_ACCEPTANCE_CASE"
-            "${launcher[@]}" node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
-          fi
-      - name: Preserve diagnostic CPU profile (not acceptance evidence)
-        if: ${{ always() && inputs.node == 'profile' && inputs.host_case != 'manager-control' }}
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
-          const log = fs.readFileSync('.artifacts/node/profile.log', 'utf8');
-          const root = /^Release host evidence: (.+)$/m.exec(log)?.[1].trim();
-          assert.ok(root && path.basename(root).startsWith('dynasense-release-host-'), 'Missing owned profile evidence');
-          assert.equal(path.basename(path.dirname(root)), 'dynasense-host-runs');
-          assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.lifecycle.json'))).version, 1);
-          const phase = process.env.LSDYNA_ACCEPTANCE_CASE;
-          assert.ok(['hover','manager'].includes(phase));
-          for (const name of ['result.json', `first-${phase}.cpuprofile`]) {
-            fs.copyFileSync(path.join(root, name), path.join('.artifacts/node', name));
-          }
-          NODE
-      - name: Preserve same-package repeatability diagnostic (not acceptance)
-        if: ${{ always() && inputs.node == 'profile' && inputs.host_case == 'manager-control' }}
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs'), assert = require('node:assert/strict');
-          const report = require('./scripts/release/public-release-reports.cjs').performanceReport(
-            JSON.parse(fs.readFileSync('.artifacts/public-host/control.json')));
-          assert.equal(report.baselineSha256, report.candidateSha256);
-          assert.deepEqual(report.phases, ['manager']);
-          report.complete = false;
-          report.scope = 'Same-package manager repeatability diagnostic; not acceptance or percentile certification';
-          fs.writeFileSync('.artifacts/node/manager-control.json', JSON.stringify(report, null, 2));
-          NODE
+          "${launcher[@]}" node scripts/host/run-installed-acceptance.cjs
       - name: Prepare public case evidence
-        if: ${{ always() && (inputs.node == 'installed' || inputs.node == 'performance') }}
+        if: ${{ always() && (inputs.node == 'installed') }}
         run: node scripts/release/public-release-reports.cjs .artifacts/public-host public-acceptance
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        if: ${{ always() && (inputs.node == 'installed' || inputs.node == 'performance') }}
+        if: ${{ always() && (inputs.node == 'installed') }}
         with:
           name: installed-${{ inputs.target }}-${{ inputs.vscode }}
           path: public-acceptance

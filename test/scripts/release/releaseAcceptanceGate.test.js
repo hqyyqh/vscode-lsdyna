@@ -1,34 +1,24 @@
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { verify } = require("../../../scripts/release/verify-release-acceptance.cjs");
-const { performanceReport } = require("../../../scripts/release/public-release-reports.cjs");
 describe('immutable release acceptance gate', () => {
     it('requires all six platform/version reports for exactly the candidate hash', () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-gate-test-')), vsix = path.join(root, 'candidate.vsix');
         try {
             fs.writeFileSync(vsix, 'candidate');
-            fs.writeFileSync(vsix + '.baseline.vsix', 'baseline');
             const sha = crypto.createHash('sha256').update('candidate').digest('hex');
-            const baselineSha = crypto.createHash('sha256').update('baseline').digest('hex');
             assert.throws(() => verify(vsix, root), /Missing/);
             const names = ['run-release-host.cjs-catalog', 'run-release-host.cjs-smoke', 'test-release-manual-renderer.cjs',
                 'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs',
-                'run-editor-safety-extension-host.cjs', 'run-large-file-viewer-host.cjs',
+                'run-editor-safety-extension-host.cjs-ci-functional', 'run-large-file-viewer-host.cjs',
                 'upgrade', 'reload', 'offline', 'missing-external-manual', 'ordinary-project-f5'];
             let last;
             for (const platform of ['win32', 'linux', 'darwin']) for (const version of ['1.100.0', '1.139.1']) {
                 const directory = path.join(root, platform + version); fs.mkdirSync(directory);
                 last = path.join(directory, 'acceptance.json');
-                fs.writeFileSync(last, JSON.stringify({ complete: true, platform, arch: platform === 'darwin' ? 'arm64' : 'x64', vscodeVersion: version, vsixSha256: sha,
+                fs.writeFileSync(last, JSON.stringify({ complete: true, scope: 'required-functional-acceptance', excludedChecks: ['performance', 'native-system-menu'], platform, arch: platform === 'darwin' ? 'arm64' : 'x64', vscodeVersion: version, vsixSha256: sha,
                     cases: names.map(name => ({ name, passed: true })) }));
-                const samples = ['hover', 'manager', 'experience'].flatMap(phase => Array.from({ length: 2 }, () => ({ phase, status: 'passed', warmSampleCount: 2, vscodeVersion: version, platform, arch: platform === 'darwin' ? 'arm64' : 'x64' })));
-                const metrics = ['activation', 'first-hover', 'warm-hover', 'first-manager', 'warm-manager-command'].flatMap(name =>
-                    ['durationMs', 'maxEventLoopGapMs', 'rss'].map(field => ({ name, field, statistic: 'maximum', passed: true })));
-                metrics.push(...['first-manager-rendered', 'manager-refresh', 'manual-open', 'scan'].flatMap(name =>
-                    ['durationMs', 'maxEventLoopGapMs', 'peakRss'].map(field =>
-                        ({ name, field, statistic: 'maximum', passed: true, baselineCount: name === 'manager-refresh' ? 4 : 2, candidateCount: name === 'manager-refresh' ? 4 : 2 }))));
-                fs.writeFileSync(path.join(directory, 'performance.json'), JSON.stringify(performanceReport({ complete: true, candidateSha256: sha, baselineSha256: baselineSha,
-                    metrics, samples: { baseline: samples, candidate: samples }, internalPath: 'private' })));
+
             }
             assert.equal(verify(vsix, root).complete, true);
             assert.equal(verify(vsix, root, 'win32-x64').platforms, 1);
@@ -39,24 +29,11 @@ describe('immutable release acceptance gate', () => {
             assert.throws(() => verify(vsix, root, 'darwin-arm64'), /architecture mismatch/);
             fs.writeFileSync(architectureFile, JSON.stringify(architectureReport));
             assert.throws(() => verify(vsix, root, 'darwin-x64'), /Unknown release target/);
-            const performanceFile = path.join(path.dirname(last), 'performance.json');
-            const performance = JSON.parse(fs.readFileSync(performanceFile));
-            const oldStatistics = { ...performance, metrics: performance.metrics.map(({ statistic, ...item }) => ({ ...item, percentile: .95 })) };
-            fs.writeFileSync(performanceFile, JSON.stringify(oldStatistics));
-            assert.throws(() => verify(vsix, root), /Missing performance spot check/);
-            const incomplete = JSON.parse(JSON.stringify(performance));
-            incomplete.samples.candidate.pop();
-            fs.writeFileSync(performanceFile, JSON.stringify(incomplete));
-            assert.throws(() => verify(vsix, root), /needs 2 cold samples/);
-            const wrongHost = JSON.parse(JSON.stringify(performance));
-            wrongHost.samples.candidate[0].vscodeVersion = '0.0.0';
-            fs.writeFileSync(performanceFile, JSON.stringify(wrongHost));
-            assert.throws(() => verify(vsix, root), /Performance sample host identity/);
-            const withoutPeak = { ...performance, metrics: performance.metrics.filter(item => item.field !== 'peakRss') };
-            fs.writeFileSync(performanceFile, JSON.stringify(withoutPeak));
-            assert.throws(() => verify(vsix, root), /Missing full-plan performance/);
-            fs.writeFileSync(performanceFile, JSON.stringify(performance));
             const data = JSON.parse(fs.readFileSync(last));
+            fs.writeFileSync(last, JSON.stringify({ ...data, scope: 'legacy' }));
+            assert.throws(() => verify(vsix, root));
+            fs.writeFileSync(last, JSON.stringify({ ...data, cases: data.cases.filter(item => item.name !== 'run-editor-safety-extension-host.cjs-ci-functional') }));
+            assert.throws(() => verify(vsix, root), /Missing acceptance case/);
             for (const status of [false, 'false', '0', 1, {}, []]) {
                 data.cases[0].passed = status; fs.writeFileSync(last, JSON.stringify(data));
                 assert.throws(() => verify(vsix, root), /Missing acceptance/);

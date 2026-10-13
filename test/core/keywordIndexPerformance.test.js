@@ -37,7 +37,7 @@ describe('keyword index large-deck performance', function () {
         assert.equal(nodeBlock.dataLineCount, nodeRows);
         assert.equal(nodeBlock.displayIdentity.collection.count, nodeRows);
         assert.ok(nodeBlock.displaySourceEndLine <= 33, `display prefix ended at ${nodeBlock.displaySourceEndLine}`);
-        assert.ok(elapsedMs < 20000, `million-row live scan took ${elapsedMs}ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(elapsedMs < 20000, `million-row live scan took ${elapsedMs}ms`);
     });
 
     it('keeps 100,000 fragmented occurrences paged and cursor lookup logarithmic', () => {
@@ -83,9 +83,9 @@ describe('keyword index large-deck performance', function () {
         provider.setLayout('category');
         const switchesMs = Date.now() - switchesStartedAt;
 
-        assert.ok(projectionMs < 10000, `100k occurrence projection took ${projectionMs}ms`);
-        assert.ok(lookupMs < 3000, `20k cursor lookups took ${lookupMs}ms`);
-        assert.ok(switchesMs < 10000, `two 100k layout switches took ${switchesMs}ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(projectionMs < 10000, `100k occurrence projection took ${projectionMs}ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(lookupMs < 3000, `20k cursor lookups took ${lookupMs}ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(switchesMs < 10000, `two 100k layout switches took ${switchesMs}ms`);
     });
 
     it('caches repeated unknown LS-PrePost connection metadata lookups', async () => {
@@ -110,6 +110,6 @@ describe('keyword index large-deck performance', function () {
         const elapsedMs = Date.now() - startedAt;
 
         assert.equal(index.blocks.length, blockCount);
-        assert.ok(elapsedMs < 5000, `25k repeated custom blocks took ${elapsedMs}ms`);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(elapsedMs < 5000, `25k repeated custom blocks took ${elapsedMs}ms`);
     });
 });

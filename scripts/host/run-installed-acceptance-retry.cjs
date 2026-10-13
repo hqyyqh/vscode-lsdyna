@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const crypto = require('node:crypto'), { execFileSync } = require('node:child_process');
 
 // Reuse product builds only for these host-side changes; invalidate every affected host case.
-const retryFiles = new Set(['.github/workflows/public-ci.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
+const retryFiles = new Set(['scripts/maintenance/validate-project-contracts.cjs', 'scripts/release/verify-release-acceptance.cjs', 'test/scripts/release/releaseAcceptanceGate.test.js', 'test/integration/extension.test.js', 'test/core/keywordIndexPerformance.test.js', 'test/core/scanner/scannerBenchmark.test.js', '.github/workflows/public-ci.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
     'scripts/host/run-installed-acceptance.cjs', 'scripts/host/run-installed-acceptance-retry.cjs',
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
     'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js',
@@ -15,9 +15,9 @@ const affectedCases = {
     'scripts/benchmark/benchmark-release-hosts.cjs': ['performance'],
     'test/support/release/rendered.cjs': ['performance', 'offline', 'missing-external-manual'],
     'scripts/host/vsix-host.cjs': ['*'],
-    'scripts/host/run-editor-safety-extension-host.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional'],
-    'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional'],
-    'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional'],
+    'scripts/host/run-editor-safety-extension-host.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
+    'test/host/editor-safety/extension-host/index.js': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
+    'test/support/editor-safety/native-menu.cjs': ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional'],
     'scripts/host/run-keyword-manager-gui.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
     'test/host/keyword-manager/extension-host.cjs': ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete'],
 };
@@ -83,17 +83,6 @@ function main() {
     const resume = path.join(directory, 'resume.json');
     fs.writeFileSync(resume, JSON.stringify(report));
     fs.appendFileSync(githubEnv, `LSDYNA_ACCEPTANCE_RESUME=${resume}\n`);
-    const performanceFile = path.join(directory, 'performance.json');
-    if (!invalidated.has('*') && !invalidated.has('performance') && fs.existsSync(performanceFile)) {
-        const performance = JSON.parse(fs.readFileSync(performanceFile));
-        if (performance.complete === true && performance.candidateSha256 === digest
-            && performance.baselineSha256 === hash('dist/candidate.vsix.baseline.vsix')
-            && performance.metrics?.length && performance.metrics.every(item => item.passed === true)) {
-            fs.mkdirSync('.artifacts/public-host', { recursive: true });
-            fs.copyFileSync(performanceFile, '.artifacts/public-host/performance.json');
-            fs.appendFileSync(githubEnv, 'LSDYNA_REUSE_PERFORMANCE=1\n');
-        }
-    }
     console.log(`Reuse build ${buildRun}, completed host cases from ${resumeRun}, exact package ${digest}`);
 }
 if (require.main === module) main();

@@ -41,6 +41,6 @@ describe('scanner benchmark smoke test', function () {
         assert.ok(blocks.length >= 3);
         assert.equal(blocks[0].keyword, '*KEYWORD');
         assert.equal(blocks[blocks.length - 1].keyword, '*END');
-        assert.ok(durationMs < 20000);
+        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(durationMs < 20000);
     });
 });

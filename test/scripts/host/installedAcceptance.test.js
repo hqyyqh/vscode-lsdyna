@@ -73,6 +73,23 @@ describe('installed acceptance executable and measured version', () => {
             assert.equal(report.cases.at(-1).status, fail ? 'failed' : 'passed');
         }
     });
+    it('executes the full editor functional list without latency or native-menu certification in CI', async () => {
+        const source = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
+        const body = source.slice(source.indexOf('    const caseInsensitiveIncludes ='), source.indexOf('\nasync function run()')).trim().replace(/}$/, '');
+        for (const mode of ['1', '']) {
+            let saved; const called = [];
+            const context = { assert, path, workspaceRoot: 'fixture', process: { env: { LSDYNA_CI_FUNCTIONAL_ONLY: mode } },
+                console: { log() {} }, vscode: { commands: { async executeCommand() {} } },
+                fs: { existsSync: () => true, writeFileSync(_file, value) { saved = JSON.parse(value); } } };
+            for (const name of new Set(body.match(/\bassert[A-Z]\w+/g))) context[name] = Object.defineProperty(async () => called.push(name), 'name', { value: name });
+            await require('node:vm').runInNewContext('(async () => {' + body + '})()', context);
+            assert.equal(called.includes('assertInteractiveLatencyBaseline'), mode !== '1');
+            assert.ok(!called.includes('assertRendererContextMenuPasteAndCutAreScopedAndUndoable'));
+            for (const name of ['assertPasteIntoSelectedCellKeepsColumns', 'assertCellDeleteCannotModifyReadonlyDeck',
+                'assertCloseUnsavedRevertKeepsDiskAndOtherFilesUnchanged']) assert.ok(called.includes(name));
+            if (mode === '1') assert.equal(saved.find(item => item.name === 'assertInteractiveLatencyBaseline').status, 'unverified');
+        }
+    });
     it('runs functional editing separately without passing the complete editor or performance gate', async () => {
         const result = await scenario({ selected: 'run-editor-safety-extension-host.cjs-functional' });
         assert.equal(result.exitCode, undefined);
@@ -136,6 +153,8 @@ describe('installed acceptance executable and measured version', () => {
         assert.ok(!result.commands.includes('catalog'));
         assert.ok(result.commands.includes('smoke'));
         assert.equal(result.report.complete, true);
+        assert.deepEqual(result.report.excludedChecks, ['performance', 'native-system-menu']);
+        assert.ok(result.commands.includes('--ci-functional'));
         assert.equal(result.report.reusedFromRun, '123');
         assert.ok(result.report.cases.find(item => item.name.endsWith('-catalog')).reused);
         const failed = await scenario({ resume, failScript: 'run-release-host.cjs' });
@@ -155,9 +174,9 @@ describe('installed acceptance executable and measured version', () => {
         for (const file of ['src/extension.ts', 'package-lock.json', 'test/support/devtools.cjs'])
             assert.throws(() => validateChanges([file]), /Cannot reuse/);
         assert.deepEqual([...validateChanges(['test/host/release/host.cjs', 'test/scripts/host/hostInstrumentation.test.js'])], ['*']);
-        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional']);
+        assert.deepEqual([...validateChanges(['test/host/editor-safety/extension-host/index.js'])], ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional']);
         assert.deepEqual([...validateChanges(['test/support/editor-safety/native-menu.cjs', 'test/scripts/host/nativeMenu.test.js'])],
-            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional']);
+            ['run-editor-safety-extension-host.cjs', 'run-editor-safety-extension-host.cjs-functional', 'run-editor-safety-extension-host.cjs-ci-functional']);
         assert.deepEqual([...validateChanges(['scripts/host/run-keyword-manager-gui.cjs', 'test/host/keyword-manager/extension-host.cjs'])],
             ['run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete']);
         assert.deepEqual([...validateChanges(['scripts/host/vsix-host.cjs'])], ['*']);

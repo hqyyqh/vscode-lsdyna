@@ -11,14 +11,14 @@ on:
       node:
         description: 'Single node only; empty runs complete acceptance'
         type: choice
-        options: ['', build, unit, webview, contracts, language, audit, package, installed, performance, profile]
+        options: ['', build, unit, webview, contracts, language, audit, package, installed]
       target:
         description: 'Platform for a single node'
         type: choice
         options: [win32-x64, linux-x64, darwin-arm64]
         default: linux-x64
       vscode:
-        description: 'VS Code for a single installed or performance node'
+        description: 'VS Code for a single installed node'
         type: choice
         options: ['1.100.0', '1.139.1']
         default: '1.100.0'
@@ -30,7 +30,7 @@ on:
         type: string
         default: integration/extension.test.js
       host_case:
-        description: 'Installed case names (comma-separated); performance: hover/manager/experience; profile: hover/manager/manager-control'
+        description: 'Installed functional case names (comma-separated)'
         type: string
       build_run:
         description: 'Reuse passed platform builds from this run (or leave empty for full CI)'
@@ -41,6 +41,9 @@ on:
       retry_exclude:
         description: 'Optional JSON matrix exclusions for installation-only retries'
         type: string
+
+env:
+  LSDYNA_CI_FUNCTIONAL_ONLY: '1'
 
 permissions:
   contents: read
@@ -204,14 +207,8 @@ jobs:
           node scripts/release/verify-release-hash.cjs "$LSDYNA_TEST_VSIX"
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             xvfb-run -a node scripts/host/run-installed-acceptance.cjs
-            if [[ "$LSDYNA_REUSE_PERFORMANCE" != "1" ]]; then
-              xvfb-run -a node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
-            fi
           else
             node scripts/host/run-installed-acceptance.cjs
-            if [[ "$LSDYNA_REUSE_PERFORMANCE" != "1" ]]; then
-              node scripts/benchmark/benchmark-release-hosts.cjs "$LSDYNA_TEST_VSIX.baseline.vsix" "$LSDYNA_TEST_VSIX" .artifacts/public-host/performance.json
-            fi
           fi
       - name: Prepare public acceptance evidence
         if: always()

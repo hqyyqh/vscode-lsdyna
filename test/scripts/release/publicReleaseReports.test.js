@@ -8,8 +8,10 @@ describe('public release report boundary', () => {
         const identity = identityReport({ complete: true, vsixSha256: 'a'.repeat(64), runtimeFilesChecked: 3, packageBytes: 4, ...privateData });
         assert.deepEqual(identity, { complete: true, vsixSha256: 'a'.repeat(64), runtimeFilesChecked: 3, packageBytes: 4 });
         assert.throws(() => identityReport({ complete: false }), /did not pass/);
-        const acceptance = acceptanceReport({ complete: false, vsixSha256: 'a'.repeat(64), platform: 'win32', vscodeVersion: '1.100.0',
+        const acceptance = acceptanceReport({ complete: false, scope: 'required-functional-acceptance', excludedChecks: ['performance', 'native-system-menu'], vsixSha256: 'a'.repeat(64), platform: 'win32', vscodeVersion: '1.100.0',
             ...privateData, cases: [{ name: 'catalog', passed: false, ...privateData }] });
+        assert.deepEqual(acceptance.excludedChecks, ['performance', 'native-system-menu']);
+        assert.equal(acceptance.scope, 'required-functional-acceptance');
         assert.deepEqual(acceptance.cases, [{ name: 'catalog', passed: false }]);
         const performance = performanceReport({ complete: true, ...privateData, baselineSha256: 'b'.repeat(64), candidateSha256: 'a'.repeat(64),
             metrics: [{ name: 'scan', field: 'peakRss', statistic: 'maximum', before: 1, after: 1, allowance: 1,

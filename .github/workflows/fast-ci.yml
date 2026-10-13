@@ -7,6 +7,9 @@ on:
     branches: [dev]
   workflow_dispatch:
 
+env:
+  LSDYNA_CI_FUNCTIONAL_ONLY: '1'
+
 permissions:
   contents: read
 
@@ -48,7 +51,7 @@ jobs:
           test/core/keywordCardMaintenance.test.js
           "test/core/completion/*.test.js"
           test/scripts/release/publicWorkflow.test.js
-      - name: Check official field choices, including the unchanged performance gate
+      - name: Check official field choice functionality
         run: >-
           npx --no-install mocha --bail --require test/support/register-out.js
           test/integration/extension.test.js --grep "official field value completions"

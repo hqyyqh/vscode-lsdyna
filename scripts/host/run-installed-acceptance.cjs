@@ -15,7 +15,8 @@ async function main() {
     fs.writeFileSync(expected, JSON.stringify({ keywords: parity.keywords, fingerprint: parity.formsFingerprint }));
     const env = { ...process.env, NODE_PATH: '', LSDYNA_TEST_VSIX: vsix, VSCODE_EXECUTABLE_PATH: executable,
         LSDYNA_TEST_VSIX_EVIDENCE: directory, LSDYNA_EXPECTED_CATALOG: expected };
-    const report = { complete: false, vsixSha256: crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex'),
+    const report = { complete: false, scope: 'required-functional-acceptance',
+        excludedChecks: ['performance', 'native-system-menu'], vsixSha256: crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex'),
         platform: process.platform, arch: process.arch, requestedVscodeVersion: process.env.VSCODE_TEST_VERSION || null, vscodeVersion: null, cases: [] };
     const file = path.join(directory, 'acceptance.json');
     const previous = process.env.LSDYNA_ACCEPTANCE_RESUME
@@ -30,7 +31,7 @@ async function main() {
     const cases = [
         ['../release/verify-release-hash.cjs', vsix], ['run-release-host.cjs', 'catalog'], ['run-release-host.cjs', 'smoke'],
         ['test-release-manual-renderer.cjs'], ['run-keyword-manager-gui.cjs'], ['run-keyword-manager-gui.cjs', '--incomplete'],
-        ['../benchmark/benchmark-keyword-manager-webview.cjs'], ['run-editor-safety-extension-host.cjs'], ['run-large-file-viewer-host.cjs'],
+        ['../benchmark/benchmark-keyword-manager-webview.cjs'], ['run-editor-safety-extension-host.cjs', '--ci-functional'], ['run-large-file-viewer-host.cjs'],
         ...['upgrade', 'reload', 'offline', 'missing-external-manual', ...(process.platform === 'win32' ? ['ordinary-project-f5'] : [])]
             .map(name => ['run-release-lifecycle.cjs', name]),
     ];

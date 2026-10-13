@@ -43,7 +43,8 @@ describe('platform release workflow dependency closure', () => {
         assert.equal(download.with.name, 'candidate-${{ matrix.platform.target }}');
         assert.ok(upload.with.path.includes('candidate.vsix.baseline.vsix'));
         const acceptance = host.steps.find(step => step.run?.includes('run-installed-acceptance.cjs'));
-        assert.ok(acceptance.run.includes('benchmark-release-hosts.cjs'));
+        assert.ok(!acceptance.run.includes('benchmark-release-hosts.cjs'));
+        assert.equal(workflow.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
     });
     it('reuses the build and same-run Linux corpus check without skipping platform tests', () => {
         const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'];
@@ -89,7 +90,7 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(prepare >= 0 && prepare < run);
         assert.equal(host.steps.find(step => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 0);
         assert.equal(host.steps.find(step => step.uses?.startsWith('actions/download-artifact@')).with['run-id'], '${{ inputs.build_run || github.run_id }}');
-        assert.ok(host.steps[run].run.includes('LSDYNA_REUSE_PERFORMANCE'));
+        assert.ok(!host.steps[run].run.includes('LSDYNA_REUSE_PERFORMANCE'));
     });
     it('routes a selected node away from the full build and installed matrices', () => {
         const full = read('public-ci.yml'), node = read('ci-node.yml');
@@ -117,43 +118,25 @@ describe('platform release workflow dependency closure', () => {
             require: name => name === 'node:fs' ? { ...fs, mkdirSync() {}, writeFileSync() {} } : require(name),
         });
         execute({});
-        execute({CI_NODE:'profile', LSDYNA_ACCEPTANCE_CASE:'manager', BUILD_RUN:'123'});
-        execute({CI_NODE:'profile', LSDYNA_ACCEPTANCE_CASE:'manager-control', BUILD_RUN:'123'});
+        for (const node of ['profile', 'performance']) assert.throws(() => execute({ CI_NODE: node, BUILD_RUN: '123' }));
         for (const values of [{TEST_GREP:''}, {TEST_GREP:'['}, {TEST_FILE:'../package.json'},
             {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'../manager',BUILD_RUN:'123'},
             {CI_NODE:'profile',LSDYNA_ACCEPTANCE_CASE:'manager',BUILD_RUN:''},
             {GITHUB_REF:'refs/heads/master'}, {CI_NODE:'unknown'}, {CI_NODE:'installed',LSDYNA_ACCEPTANCE_CASE:''}])
             assert.throws(() => execute(values));
     });
-    it('keeps one-phase profiling separate from acceptance and preserves profiles on failure', () => {
-        const steps = read('ci-node.yml').jobs.node.steps;
-        const run = steps.find(step => step.name === 'Run selected installed case or paired performance check');
-        assert.ok(run.if.includes("inputs.node == 'profile'"));
-        assert.match(run.run, /LSDYNA_PROFILE_CPU="first-\$LSDYNA_ACCEPTANCE_CASE"/);
-        const profile = run.run.split('elif')[1];
-        assert.ok(profile.includes('run-release-host.cjs') && !profile.includes('benchmark-release-hosts.cjs'));
-        const capture = steps.find(step => step.name === 'Preserve diagnostic CPU profile (not acceptance evidence)');
-        assert.ok(capture.if.includes('always()') && capture.run.includes('.cpuprofile'));
-        const acceptance = steps.find(step => step.name === 'Prepare public case evidence');
-        assert.ok(!acceptance.if.includes("inputs.node == 'profile'"));
-        assert.ok(steps.find(step => step.name === 'Build necessary source dependencies').if.includes("inputs.node != 'profile'"));
-    });
-    it('keeps same-package control results diagnostic even when every metric passes', () => {
-        const steps = read('ci-node.yml').jobs.node.steps;
-        const run = steps.find(step => step.name === 'Run selected installed case or paired performance check').run;
-        assert.ok(run.includes('"$LSDYNA_TEST_VSIX" "$LSDYNA_TEST_VSIX" .artifacts/public-host/control.json'));
-        const capture = steps.find(step => step.name === 'Preserve same-package repeatability diagnostic (not acceptance)');
-        const source = capture.run.split("node <<'NODE'\n")[1].split('\nNODE')[0];
-        let saved;
-        const input = { complete: true, baselineSha256: 'a', candidateSha256: 'a', phases: ['manager'], metrics: [] };
-        const execute = () => require('node:vm').runInNewContext(source, { require: name => name === 'node:fs'
-            ? { readFileSync: () => JSON.stringify(input), writeFileSync: (file, text) => { saved = {file, report:JSON.parse(text)}; } }
-            : name.startsWith('./scripts/') ? require('../../../scripts/release/public-release-reports.cjs') : require(name) });
-        execute();
-        assert.equal(saved.file, '.artifacts/node/manager-control.json');
-        assert.equal(saved.report.complete, false);
-        assert.match(saved.report.scope, /not acceptance/);
-        input.candidateSha256 = 'b';
-        assert.throws(execute);
+    it('excludes performance and native menus while preserving functional CI and local diagnostic tools', () => {
+        const full = read('public-ci.yml'), quick = read('fast-ci.yml'), node = read('ci-node.yml');
+        assert.ok(!full.on.workflow_dispatch.inputs.node.options.includes('performance'));
+        assert.ok(!full.on.workflow_dispatch.inputs.node.options.includes('profile'));
+        for (const workflow of [full, quick]) assert.equal(workflow.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
+        assert.equal(node.jobs.node.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
+        for (const workflow of [full, quick, node]) {
+            const commands = Object.values(workflow.jobs).flatMap(job => (job.steps || []).map(step => step.run || '')).join('\n');
+            assert.ok(!commands.includes('benchmark-release-hosts.cjs'));
+            assert.ok(!commands.includes('mouse-context-menu'));
+        }
+        assert.ok(fs.existsSync(path.join(root, 'scripts/benchmark/benchmark-release-hosts.cjs')));
+        assert.ok(fs.existsSync(path.join(root, 'test/support/editor-safety/native-menu.cjs')));
     });
 });

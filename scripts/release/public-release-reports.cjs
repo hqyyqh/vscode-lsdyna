@@ -8,7 +8,7 @@ function identityReport(report) {
     return pick(report, ['complete', 'vsixSha256', 'runtimeFilesChecked', 'packageBytes']);
 }
 function acceptanceReport(report) {
-    return { ...pick(report, ['complete', 'vsixSha256', 'platform', 'arch', 'vscodeVersion', 'requestedVscodeVersion', 'reusedFromRun']),
+    return { ...pick(report, ['complete', 'scope', 'excludedChecks', 'vsixSha256', 'platform', 'arch', 'vscodeVersion', 'requestedVscodeVersion', 'reusedFromRun']),
         cases: report.cases.map(item => pick(item, ['name', 'passed', 'reused'])) };
 }
 function performanceReport(report) {
