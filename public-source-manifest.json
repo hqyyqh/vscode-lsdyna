@@ -403,7 +403,7 @@
     {
       "path": ".github/workflows/release.yml",
       "role": "editable-source",
-      "sha256": "fe97e02cc2528a18b380a2c93dd5af6da03c84a2bf8f336bbd22a86ee16f94e9",
+      "sha256": "5f5ace1a179ca89cdba23a27b5dce1d49e1789cfb96cee8864776257a11556ff",
       "reason": "public-contribution-workflow"
     },
     {
@@ -6931,7 +6931,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "e13cde668e36868b45000431fa93acca30d33e133c2a62dcbacb4430f0bbcaf8",
+      "sha256": "38cb8a943430b017c1ed0db73778a80a9c6c241d5e9b5b06bb22b26d769634f4",
       "reason": "public-build-or-package-regression"
     },
     {

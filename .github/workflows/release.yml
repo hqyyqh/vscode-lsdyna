@@ -15,6 +15,10 @@ on:
         required: true
         type: boolean
         default: false
+      github_only:
+        description: 'Publish GitHub Release only / 仅补发 GitHub Release（需 reuse_plan）'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -72,12 +76,19 @@ jobs:
         id: metadata
         env:
           MANUAL_PUBLISH: ${{ inputs.publish }}
+          GITHUB_ONLY: ${{ inputs.github_only }}
+          REUSE_PLAN: ${{ inputs.reuse_plan }}
         shell: bash
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           publish=false
           tag_name=""
+
+          if [[ "${GITHUB_ONLY}" == "true" && ( "${MANUAL_PUBLISH}" == "true" || -z "${REUSE_PLAN}" ) ]]; then
+            echo "GitHub-only publishing requires reuse_plan and publish=false." >&2
+            exit 1
+          fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
@@ -94,7 +105,7 @@ jobs:
               publish=true
               tag_name="${GITHUB_REF_NAME}"
             fi
-          elif [[ "${MANUAL_PUBLISH}" == "true" ]]; then
+          elif [[ "${MANUAL_PUBLISH}" == "true" || "${GITHUB_ONLY}" == "true" ]]; then
             if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
               echo "Manual publishing is allowed only from master." >&2
               exit 1
@@ -148,6 +159,7 @@ jobs:
           done
 
       - name: Verify Open VSX credentials
+        if: ${{ !inputs.github_only }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         shell: bash
@@ -156,6 +168,7 @@ jobs:
           [[ -n "${OVSX_PAT}" ]] || { echo "Missing repository secret: OVSX_PAT" >&2; exit 1; }
 
       - name: Sign in to Azure with GitHub OIDC
+        if: ${{ !inputs.github_only }}
         uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -163,12 +176,14 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Publish to Visual Studio Marketplace
+        if: ${{ !inputs.github_only }}
         run: |
           for package in packages/candidate-*/candidate.vsix; do
             npx --no-install vsce publish --azure-credential --packagePath "$package" --skip-duplicate
           done
 
       - name: Publish to Open VSX
+        if: ${{ !inputs.github_only }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
@@ -183,17 +198,42 @@ jobs:
             cp "packages/candidate-$target/candidate.vsix" "release-assets/dynasense-${{ needs.metadata.outputs.version }}-$target.vsix"
           done
       - name: Create GitHub Release
-        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           name: DynaSense ${{ needs.metadata.outputs.version }}
           files: release-assets/*.vsix
+          fail_on_unmatched_files: true
+          draft: true
           generate_release_notes: true
           append_body: true
           body_path: .github/release-appendix.md
+      - name: Publish completed GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag_name }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs'), crypto = require('node:crypto'), assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const releases = JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=100`], { encoding: 'utf8' }));
+          const release = releases.find(item => item.tag_name === process.env.RELEASE_TAG);
+          assert.ok(release?.draft, 'Expected draft release');
+          const files = fs.readdirSync('release-assets').filter(name => name.endsWith('.vsix')).sort();
+          assert.equal(files.length, 3);
+          assert.deepEqual(release.assets.map(asset => asset.name).sort(), files);
+          for (const name of files) {
+            const bytes = fs.readFileSync(`release-assets/${name}`), asset = release.assets.find(item => item.name === name);
+            assert.equal(asset.state, 'uploaded');
+            assert.equal(asset.size, bytes.length);
+            assert.equal(asset.digest, `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`);
+          }
+          NODE
+          gh release edit "$RELEASE_TAG" --tag "$RELEASE_TAG" --draft=false --latest
 
       - name: Create marketplace release verification issue
+        if: ${{ !inputs.github_only }}
         uses: actions/github-script@v9
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}

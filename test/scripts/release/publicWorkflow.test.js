@@ -83,6 +83,24 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(fs.existsSync(path.join(root, '.github/release-appendix.md')));
         assert.ok(read('verify-marketplace.yml').jobs);
     });
+    it('supports GitHub-only artifact publication without rebuilding or invoking marketplace credentials', () => {
+        const release = read('release.yml'), steps = release.jobs.publish.steps;
+        assert.equal(release.on.workflow_dispatch.inputs.github_only.default, false);
+        const metadata = release.jobs.metadata.steps.find(step => step.id === 'metadata');
+        assert.match(metadata.run, /GitHub-only publishing requires reuse_plan and publish=false/);
+        assert.match(metadata.run, /MANUAL_PUBLISH.*true.*\|\|.*GITHUB_ONLY.*true/);
+        assert.match(metadata.run, /GITHUB_REF_NAME.*!=.*master/);
+        for (const name of ['Verify Open VSX credentials', 'Sign in to Azure with GitHub OIDC',
+            'Publish to Visual Studio Marketplace', 'Publish to Open VSX', 'Create marketplace release verification issue']) {
+            assert.equal(steps.find(step => step.name === name).if, '${{ !inputs.github_only }}');
+        }
+        const upload = steps.findIndex(step => step.name === 'Create GitHub Release');
+        assert.equal(steps[upload].if, undefined, 'Manual publishing must also upload GitHub assets');
+        assert.equal(steps[upload].with.draft, true, 'Keep release a draft until asset upload succeeds');
+        assert.equal(steps[upload].with.fail_on_unmatched_files, true);
+        assert.equal(steps[upload].with.files, 'release-assets/*.vsix');
+        assert.ok(steps.findIndex(step => step.name === 'Publish completed GitHub Release') > upload);
+    });
     it('allows installation-only retries only with verified source builds and case reports', () => {
         const workflow = read('public-ci.yml'), host = workflow.jobs['installed-host'];
         assert.ok(workflow.on.workflow_dispatch.inputs.build_run);
