@@ -112,7 +112,9 @@ jobs:
         run: npm run check:contracts
       - name: Test the existing build; replay the full corpus once
         run: |
-          if [[ -n "$UNIT_RESUME_RUN" ]]; then
+          if [[ "$UNIT_RESUME_RUN" == "38373457591" ]]; then
+            node scripts/release/resume-viewer-tests.cjs
+          elif [[ -n "$UNIT_RESUME_RUN" ]]; then
             node scripts/release/resume-manager-reader-tests.cjs
             npx --no-install mocha --require test/support/register-out.js test/scripts/release/managerReaderRecovery.test.js --fail-zero
           elif [[ "$RUNNER_OS" == "Linux" ]]; then

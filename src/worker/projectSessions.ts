@@ -422,8 +422,16 @@ export class ProjectSessions {
             { singleFileOnly: true, largeFileThresholdBytes: 0 }, token);
         try {
             if (request.action === 'file-view-open') {
-                const entry = this.leases.get(handle.lease);
+                let entry = this.leases.get(handle.lease);
                 await entry?.ready;
+                // A delayed watcher may invalidate a reload before its first cursor is published.
+                if (entry?.state === 'stale') {
+                    this.release(handle.lease);
+                    handle = await this.open(request.rootFile,
+                        { singleFileOnly: true, largeFileThresholdBytes: 0 }, token);
+                    entry = this.leases.get(handle.lease);
+                    await entry?.ready;
+                }
                 if (entry && this.leases.get(handle.lease) === entry) handle.generation = entry.generation;
             }
             const snapshot = await this.snapshot(handle.lease, handle.generation);

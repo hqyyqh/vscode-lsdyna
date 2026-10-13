@@ -30,6 +30,31 @@ describe('bounded project sessions', () => {
         }
     });
     const request = (sessions, value) => sessions.request({ protocolVersion: INDEX_PROTOCOL_VERSION, ...value });
+    it('reopens an unpublished viewer invalidated during scanning, but rejects repeated invalidation', async () => {
+        const root = path.resolve('viewer-refresh.k');
+        for (const continuouslyChanging of [false, true]) {
+            let scans = 0;
+            const sessions = new ProjectSessions(async () => {
+                if (++scans === 1 || continuouslyChanging) sessions.invalidate(root);
+                return { rootFile: root, fileIndexes: new Map([[root, {
+                    size: 12, mtimeMs: scans, scannerVersion: 1,
+                    largeFileLineMap: { lineCount: 2 },
+                }]]) };
+            }, undefined, async () => true);
+            try {
+                const opening = request(sessions, { action: 'file-view-open', rootFile: root });
+                if (continuouslyChanging) await assert.rejects(opening, /Project structure is not current/);
+                else {
+                    const handle = await opening;
+                    assert.equal(handle.state, 'complete');
+                    assert.equal(handle.mtimeMs, 2);
+                    await request(sessions, { action: 'release', lease: handle.lease });
+                }
+                assert.equal(scans, 2);
+                assert.equal(sessions.leases.size, 0);
+            } finally { await sessions.clear(); }
+        }
+    });
     const tick = () => new Promise(resolve => setImmediate(resolve));
     async function drain(sessions, handle) {
         let after = 0, page, rows = new Map();

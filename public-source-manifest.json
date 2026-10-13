@@ -312,6 +312,7 @@
       "test/scripts/release/releaseMetadata.test.js",
       "test/scripts/release/sourceManifest.test.js",
       "test/scripts/release/validatePackageContents.test.js",
+      "test/scripts/release/viewerRecovery.test.js",
       "test/server/lspBridge.test.js",
       "test/server/snapshotTransfer.test.js",
       "test/support/tempDirectories.test.js",
@@ -394,7 +395,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "adfb3d54652a0c0b662916523f402cac6678891069eefe62a0c68b494ee7dcaf",
+      "sha256": "ac74f433247ffdc80334c1ae1f36bb27700b7baa5b985aff9904efb2a9695132",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2870,6 +2871,12 @@
       "reason": "public-contribution"
     },
     {
+      "path": "scripts/release/resume-viewer-tests.cjs",
+      "role": "editable-source",
+      "sha256": "b07c0b542351c9564ed9abc8d1ae3cac3fd4f4ded2e29f2fbacfedbb029c3366",
+      "reason": "public-contribution"
+    },
+    {
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
       "sha256": "9390850a150a1aa2bace8e67eebf0bb51b226cabce4c85c3d06afa23cd17ce6b",
@@ -4144,7 +4151,7 @@
     {
       "path": "src/worker/projectSessions.ts",
       "role": "editable-source",
-      "sha256": "8e566151ad1326d85cbe7db13128a1eec5786e5229f028750fc1ebc208af8de9",
+      "sha256": "77d7a58fa2132e38e4c0566e530c5bd07e2e709b3db49aeda01333f3292eb66b",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -6932,6 +6939,12 @@
       "reason": "public-build-or-package-regression"
     },
     {
+      "path": "test/scripts/release/viewerRecovery.test.js",
+      "role": "editable-source",
+      "sha256": "744770613664216f59b17cfd90d4559700e541db299589b1a7491bae9eb8bda0",
+      "reason": "public-contribution"
+    },
+    {
       "path": "test/server/lspBridge.test.js",
       "role": "editable-source",
       "sha256": "100346b25103a5997b2d65bdd40f2be871516e10df12bace79bb491145520fb2",
@@ -7084,7 +7097,7 @@
     {
       "path": "test/worker/projectSessions.test.js",
       "role": "editable-source",
-      "sha256": "487701f2adfecabfbab06e86300e2683c64c6ee431f46de069f1a0fd34831bdf",
+      "sha256": "bfbbfabeaa236105c2d211ed6ce4f4e3aebd7f8727071c3f8be3bd5f3c8f50b9",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
