@@ -11,7 +11,7 @@ describe('registered include search open failures', () => {
         const root = makeTemp(path.join(os.tmpdir(), 'dynasense-include-open-'));
         const file = path.join(root, 'child.k'), entry = { filePath: file, label: 'child.k', missing: false };
         const originals = {
-            register: vscode.commands.registerCommand, picker: vscode.window.createQuickPick,
+            execute: vscode.commands.executeCommand, register: vscode.commands.registerCommand, picker: vscode.window.createQuickPick,
             open: vscode.workspace.openTextDocument, show: vscode.window.showTextDocument,
             warning: vscode.window.showWarningMessage, configuration: vscode.workspace.getConfiguration,
             entries: LsdynaIncludeTreeProvider.prototype.listSearchEntries,
@@ -36,6 +36,10 @@ describe('registered include search open failures', () => {
             return fakeDoc(await fs.promises.readFile(uri.fsPath, 'utf8'), uri.fsPath);
         };
         vscode.window.showTextDocument = async () => { opened++; };
+        vscode.commands.executeCommand = async (id, uri) => {
+            if (id === 'vscode.open') return vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+            return originals.execute(id, uri);
+        };
         try {
             await extension.activate(context);
             for (const language of ['en', 'zh-cn']) {
@@ -59,6 +63,7 @@ describe('registered include search open failures', () => {
             }
         } finally {
             for (const disposable of context.subscriptions) disposable?.dispose?.();
+            vscode.commands.executeCommand = originals.execute;
             vscode.commands.registerCommand = originals.register;
             if (originals.picker) vscode.window.createQuickPick = originals.picker; else delete vscode.window.createQuickPick;
             vscode.workspace.openTextDocument = originals.open; vscode.window.showTextDocument = originals.show;

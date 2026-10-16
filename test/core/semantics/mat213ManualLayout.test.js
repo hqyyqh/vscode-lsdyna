@@ -21,10 +21,10 @@ describe('MAT213 pinned native LONG dispatch and write compatibility', () => {
                 }
         }
     });
-    it('reads every failure branch and spelling while preserving native writer restrictions', async () => {
-        const evidence = {scope: ['MAT_213','MAT_213_TITLE','MAT_COMPOSITE_TABULATED_PLASTICITY_DAMAGE','MAT_COMPOSITE_TABULATED_PLASTICITY_DAMAGE_TITLE']};
-        const provider = new LsdynaFieldHoverProvider();
-        for (const keyword of evidence.scope) for (const ftype of [0,1,2,3,4]) {
+    for (const keyword of ['MAT_213','MAT_213_TITLE','MAT_COMPOSITE_TABULATED_PLASTICITY_DAMAGE','MAT_COMPOSITE_TABULATED_PLASTICITY_DAMAGE_TITLE'])
+        for (const ftype of [0,1,2,3,4])
+        it(`reads ${keyword} FTYPE=${ftype} while preserving native writer restrictions`, async () => {
+            const provider = new LsdynaFieldHoverProvider();
             const branch = 8; // Native dispatch reads the blank first ten columns as zero.
             const expected = [1,2,3,4,5,6,7,branch,branch + 1,10,11];
             const rows = expected.map((_,index) => Array.from({length:8}, (__,column) =>
@@ -48,6 +48,5 @@ describe('MAT213 pinned native LONG dispatch and write compatibility', () => {
             const compatible = nativeFileReadContext(rule, '*' + keyword + ' +', [...(title ? ['native format identity'] : []), ...rows], 'standard');
             assert.equal(compatible.writeCompatible(compatible.select(false).current), true);
             assert.equal(compatible.select(false).current[7 + Number(title)].cardIndex, [8,12,14,16,18][ftype]);
-        }
-    });
+        });
 });

@@ -21,6 +21,7 @@ describe('large-file viewer scanner contract', () => {
     it('marks the keyword destination so it supersedes buffered scroll positions', async () => {
         const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {});
         const session = searchSession(provider, path.join(os.tmpdir(), 'viewer-keyword-target.k'));
+        session.state.indexing = 'ready';
         session.state.anchorLine = 100;
         session.index = { keywordBlocks: [{ startLine: 110, keyword: '*MAT_ELASTIC' }] };
         let loaded;
@@ -82,6 +83,111 @@ describe('large-file viewer scanner contract', () => {
         assert.equal(session.state.anchorLine, 101);
     });
 
+    it('browses and pages before an index exists, then keeps the user position when indexing finishes', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'viewer-progress-'));
+        try {
+            const file = path.join(root, 'deck.k');
+            fs.writeFileSync(file, '*KEYWORD\n' + '$ comment\n'.repeat(1500) + '*END');
+            const index = await buildFileIndex(file, { largeFileThresholdBytes: 0 });
+            let complete;
+            const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {
+                loadFileIndex: () => new Promise(resolve => { complete = resolve; }),
+            });
+            const session = searchSession(provider, file);
+            Object.assign(session, { signature: { size: index.size, mtimeMs: index.mtimeMs }, windowCache: new Map(), windowCacheBytes: 0, requestGeneration: 0, fields: new Map() });
+            session.state = { ...session.state, indexing: 'loading', lines: [], anchorLine: 0 };
+            const opening = provider.initialize(session, 1000);
+            while (!complete) await new Promise(resolve => setImmediate(resolve));
+            for (const line of [200, 400, 600, 800, 400]) {
+                assert.equal(await provider.navigate(session, line), true);
+                assert.equal(session.state.anchorLine, line);
+                assert(session.state.lines.some(row => row.lineNumber === line));
+                assert.equal(session.state.indexing, 'loading');
+            }
+            assert(session.readCursors.size > 1);
+            await provider.navigate(session, 1600);
+            await provider.navigate(session, 1600);
+            assert.equal(session.state.anchorLine, 1501);
+            assert.equal(session.state.lines.at(-1).text, '*END');
+            await provider.navigate(session, 400);
+            complete(index); await opening;
+            assert.equal(session.state.indexing, 'ready');
+            assert.equal(session.state.anchorLine, 400);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+
+    it('does not label unconfirmed rows as the previous completed keyword block', () => {
+        const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {});
+        const blocks=[{keyword:'*MAT_ELASTIC',startLine:1,endLine:2}];
+        assert.equal(provider.keywordAt(blocks,2),'*MAT_ELASTIC');
+        assert.equal(provider.keywordAt(blocks,500),'');
+    });
+
+    it('opens early field help without resolving an object name from a partial index', async () => {
+        const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {});
+        const session = searchSession(provider, path.join(os.tmpdir(), 'early-field.k'));
+        session.state.indexing='loading';
+        session.fields=new Map([['field',{generation:1,field:{n:'MID',t:'integer'},keyword:'MAT_ELASTIC',cardIndex:1,
+            rawValue:'7',target:{targetKind:'material',id:'7'}}]]);
+        provider.objectName=()=>{throw Error('Partial file cannot prove an unambiguous object name');};
+        assert.equal(await provider.selectField(session,'field'),true);
+        assert.equal(session.state.selectedField.value,'7');
+        assert.equal(session.state.selectedField.object.name,undefined);
+        assert.equal(session.state.selectedField.queryable,false);
+        assert.equal(await provider.queryField(session,'field'),false);
+    });
+
+    it('keeps current row actions valid during pure progress updates', () => {
+        const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {});
+        const session = searchSession(provider,path.join(os.tmpdir(),'progress-revision.k'));
+        provider.messenger.sendNotification=()=>{};
+        provider.publish=LargeFileViewerProvider.prototype.publish.bind(provider);
+        session.state.scannedBytes=1024;
+        provider.publish(session,false);
+        assert.equal(provider.accepts(session,0),true);
+        provider.publish(session);
+        assert.equal(provider.accepts(session,0),false);
+    });
+
+    it('removes the old window immediately when reloading a changed file', async () => {
+        const root=fs.mkdtempSync(path.join(os.tmpdir(),'viewer-reload-'));
+        try {
+            const file=path.join(root,'deck.k');fs.writeFileSync(file,'*KEYWORD\n*END');
+            const provider=new LargeFileViewerProvider('',{get(){},update(){}},{});
+            const session=searchSession(provider,file);
+            session.fields=new Map([['old',{}]]);session.windowCache=new Map();
+            session.state={...session.state,anchorLine:500,lines:[{lineNumber:500,text:'old value'}],currentKeyword:'*PART',stale:true};
+            let target;
+            provider.initialize=async (_session,line)=>{target=line;};
+            assert.equal(await provider.reload(session),true);
+            assert.deepEqual(session.state.lines,[]);assert.equal(session.fields.size,0);
+            assert.equal(session.state.currentKeyword,'');assert.equal(target,500);
+        } finally {fs.rmSync(root,{recursive:true,force:true});}
+    });
+
+    it('keeps an in-flight navigation target when indexing completes', async () => {
+        let finishIndex, finishNavigation;
+        const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {
+            loadFileIndex: () => new Promise(resolve => { finishIndex = resolve; }),
+        });
+        const session = searchSession(provider, path.join(os.tmpdir(), 'inflight.k'));
+        session.state = { ...session.state, indexing:'loading',anchorLine:0,lines:[] };
+        const loaded=[];
+        provider.loadWindow = async (_session,line) => {
+            loaded.push(line);
+            if(loaded.length === 2) await new Promise(resolve => { finishNavigation=resolve; });
+            session.state.anchorLine=line;
+        };
+        const opening=provider.initialize(session,1000);
+        while(!finishIndex)await new Promise(resolve=>setImmediate(resolve));
+        const navigation=provider.navigate(session,400);
+        finishIndex({ ...session.signature,scannerVersion:require('../../src/core/scanner/scannerContracts').SCANNER_VERSION,
+            largeFileLineMap:{lineCount:2000} });
+        await opening;
+        assert.equal(loaded.at(-1),400);
+        finishNavigation();await navigation;
+    });
+
     it('still reveals the requested line when long context exhausts the window byte budget', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-viewer-long-context-'));
         const file = path.join(root, 'long.k');
@@ -127,7 +233,7 @@ describe('large-file viewer scanner contract', () => {
     function searchSession(provider, file) {
         const session = { document: { uri: vscode.Uri.file(file) }, generation: 1, searchGeneration: 0,
             searchMatches: [], signature: { size: 4, mtimeMs: 1 },
-            state: { revision: 0, stale: false, search: { query: '', loading: false } } };
+            state: { revision: 0, stale: false, indexing: 'ready', search: { query: '', loading: false } } };
         provider.sessions.set(process.platform === 'win32' ? file.toLocaleLowerCase() : file, session);
         provider.publish = () => { session.state = { ...session.state, revision: session.state.revision + 1 }; };
         return session;

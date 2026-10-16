@@ -103,6 +103,7 @@ const GENERATION_TOOL_PATHS = [
 ];
 
 const INTERNAL_COMMANDS = new Set([
+    'extension.openLsdynaLocation',
     // Existing include-tree display controls have no Command Palette contributions.
     'extension.includeTree.sortByName',
     'extension.includeTree.sortBySize',
@@ -124,6 +125,7 @@ const INTERNAL_COMMANDS = new Set([
     'extension.setLsdynaTablePreviewView',
     'extension.hoverMore',
     'extension.toggleHoverDetails',
+    'extension.toggleFieldHelp',
     'extension.openIncludeFolder',
     'extension.openIncludeNewTab',
     'extension.openIncludeSplit',

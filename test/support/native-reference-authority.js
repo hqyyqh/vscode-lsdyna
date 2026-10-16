@@ -56,7 +56,7 @@ module.exports = function assertNativeReferenceAuthority(extension, document, po
     const reference = relation?.kind === 'entity-reference' ? relation : branch?.role === 'reference' ? branch : null;
     if (!reference || !Number.isSafeInteger(value) || !value) { assert.equal(actual, null, message); return; }
     assert.ok(actual, message + ': independently sourced reference missing');
-    assert.equal(actual.authorityScope, 'definition-registry', message); assert.equal(actual.referenceInfo.source, "keyword-catalog", message);
+    assert.equal(actual.authorityScope, "keyword-catalog", message); assert.equal(actual.referenceInfo.source, "keyword-catalog", message);
     assert.deepEqual(actual.field.nativeIdentity, field.nativeIdentity, message); assert.equal(actual.rawValue, raw, message);
     assert.deepEqual(actual.sourceRange, { line: position.line, startCharacter: field.p, endCharacter: field.p + field.w }, message);
     assert.deepEqual(actual.referenceInfo.relation, relation, message);

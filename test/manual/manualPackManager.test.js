@@ -149,11 +149,15 @@ describe('ManualPackManager', () => {
             const location = manager.firstLocation(repo);
             manager.saveState(root, { manifestIdentity: repo.getManifestIdentity(), location, language: 'en', scrollY: 128, scrollRatio: 0.42 });
             assert.deepStrictEqual(manager.restoreState(root, repo), {
-                manifestIdentity: repo.getManifestIdentity(), location, language: 'en', readingMode: 'en', scrollY: 128, scrollRatio: 0.42,
+                manifestIdentity: repo.getManifestIdentity(), location, language: 'en', readingMode: 'en', languagePreference: 'en', scrollY: 128, scrollRatio: 0.42,
             });
 
             manager.saveState(root, { manifestIdentity: repo.getManifestIdentity(), location, language: 'en', scrollY: 64 });
             assert.strictEqual(manager.restoreState(root, repo).scrollRatio, 0, 'old reader state defaults to ratio zero');
+            for (const languagePreference of ['auto', 'en', 'zh', 'bilingual']) {
+                manager.saveState(root, { manifestIdentity: repo.getManifestIdentity(), location, language: 'en', languagePreference, scrollY: 64 });
+                assert.equal(manager.restoreState(root, repo).languagePreference, languagePreference);
+            }
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }

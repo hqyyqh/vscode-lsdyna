@@ -11,6 +11,16 @@ function field(name, position = 0) { return { name, position, width: 10 }; }
 function schemaField(n, p = 0, h = n) { return { n, p, w: 10, h }; }
 function lookup(cards, keyword = 'TEST') { return { inputName: keyword, canonicalName: keyword, activeOptions: [], entry: { c: cards } }; }
 describe('manager field help identity', () => {
+    it('retains native prefix help without borrowing it across field geometry', () => {
+        const result = ks.lookupKeywordSchema('CONTACT_AUTOMATIC_SINGLE_SURFACE_ID', schema);
+        const card = { cardIndex: 0, fields: [field('CID'), { name: 'TITLE', position: 10, width: 70 }] };
+        const title = resolve(result, card.fields[1], card);
+        assert.equal(ks.getEnglishFieldHelp(title),
+            'Interface descriptor. It is suggested that unique descriptions be used.');
+        assert.match(ks.getLocalizedFieldHelp(title), /接口描述符/);
+        assert.equal(resolve(result, { ...card.fields[1], position: 20 }, card), null);
+        assert.equal(resolve(result, { ...card.fields[1], name: 'UNRELATED' }, card), null);
+    });
     for (const keyword of ['CONTACT_AUTOMATIC_SINGLE_SURFACE', 'CONTACT_AUTOMATIC_SINGLE_SURFACE_ID',
         'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', 'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_MPP_ID']) {
         it(`associates native CONTACT fields in ${keyword}`, () => {

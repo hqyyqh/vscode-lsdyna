@@ -1,4 +1,5 @@
 {
+    "commands.openLargeFileInTextEditor.title": "在文本编辑器中打开",
     "commands.keywordIndexChooseScope.title": "选择索引范围",
     "commands.keywordIndexRefresh.title": "刷新关键字索引",
     "extension.description": "LS-DYNA (.k) 关键字文件辅助编辑，官方手册与参数说明快捷查询。",
@@ -142,5 +143,13 @@
     "commands.entityReferences.setScopeProject.title": "查询范围设为主文件及其引用文件",
     "commands.entityReferences.search.title": "查找对象",
     "commands.keywordIndexSetRecursive.title": "索引范围设为整个项目",
-    "config.cache.legacyDiskBudget.markdownDeprecationMessage": "请使用[统一磁盘预算](#lsdyna.cache.entityIndexDiskMaxMiB)。"
+    "config.cache.legacyDiskBudget.markdownDeprecationMessage": "请使用[统一磁盘预算](#lsdyna.cache.entityIndexDiskMaxMiB)。",
+    "commands.includeTree.cycleTree.title": "当前排列：结构顺序；切换为按文件大小排列",
+    "commands.includeTree.cycleSize.title": "当前排列：文件大小；切换为按文件名排列",
+    "commands.includeTree.cycleName.title": "当前排列：文件名；切换为结构顺序",
+    "commands.keywordIndexCycleCategory.title": "当前排列：关键字分类；切换为源文件顺序",
+    "commands.keywordIndexCycleOrder.title": "当前排列：源文件顺序；切换为关键字 A–Z",
+    "commands.keywordIndexCycleAlphabetical.title": "当前排列：关键字 A–Z；切换为关键字分类",
+    "colors.columnGuide.description": "LS-DYNA 列参考线颜色。",
+    "colors.columnGuide80.description": "LS-DYNA 第 80 列参考线颜色。"
 }

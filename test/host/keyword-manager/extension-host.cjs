@@ -53,6 +53,7 @@ async function run() {
         } else
         if (process.env.KEYWORD_MANAGER_GUI === '1') {
             const comments = process.env.KEYWORD_MANAGER_GUI_COMMENTS;
+            const prefixHelp = process.env.KEYWORD_MANAGER_PREFIX_HELP === '1';
             const incomplete = process.env.KEYWORD_MANAGER_GUI_INCOMPLETE === '1';
             const repeated = !!process.env.KEYWORD_MANAGER_GUI_REPEAT;
             const unverified = process.env.KEYWORD_MANAGER_GUI_REPEAT === 'unverified';
@@ -75,10 +76,13 @@ async function run() {
             const repeatedText = standardRepeat ? ['*LOAD_POINT_UVW', ...[1,2,3].flatMap(id => ['$# WRONG, TITLE', [id,1,1].map(value => String(value).padStart(10)).join('')]), '*END'].join('\n') : unverified ? ['*MAT_DAMAGE_1', '         1', '', '', '', '', '', 'unassigned record', '*END'].join('\n') : ['*SET_PART_ADD', '   8000002         0         0         0         0      MECH',
                 '$ first', '   2000106', '$# deliberately wrong SID', '   2000105', '$ last', '   2000104', '*END'].join('\n');
             if (repeated) fs.writeFileSync(uri.fsPath, repeatedText);
+            const prefixText = ['*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID', '         1Contact help verification'.padEnd(80),
+                ...Array.from({ length: 3 }, () => '         0'.repeat(8)), '*END'].join('\n');
+            if (prefixHelp) fs.writeFileSync(uri.fsPath, prefixText);
             const document = await vscode.workspace.openTextDocument(uri);
             const editor = await vscode.window.showTextDocument(document);
             const line = document.getText().split(/\r?\n/).findIndex(text =>
-                text === (standardRepeat ? '*LOAD_POINT_UVW' : unverified ? '*MAT_DAMAGE_1' : repeated ? '*SET_PART_ADD' : comments ? '*MAT_BARLAT_YLD2000' : incomplete ? '*MAT_DAMAGE_1_TITLE' : shared ? `*${shared.keyword}` : '*DEFINE_CURVE_TITLE'));
+                text === (prefixHelp ? '*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID' : standardRepeat ? '*LOAD_POINT_UVW' : unverified ? '*MAT_DAMAGE_1' : repeated ? '*SET_PART_ADD' : comments ? '*MAT_BARLAT_YLD2000' : incomplete ? '*MAT_DAMAGE_1_TITLE' : shared ? `*${shared.keyword}` : '*DEFINE_CURVE_TITLE'));
             editor.selection = new vscode.Selection(line, 0, line, 0);
             await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions');
             console.log('Manager GUI host: manager opened');
@@ -208,6 +212,7 @@ async function run() {
             const expected = JSON.parse(fs.readFileSync(path.join(root, 'gui-finish.json'), 'utf8'));
             console.log('Manager GUI host: renderer completion received');
             if (expected.error) throw Error(expected.error);
+            if (prefixHelp) assert.equal(document.getText(), prefixText);
             assert.ok(await document.save());
             console.log('Manager GUI host: document saved');
             assert.equal(fs.readFileSync(uri.fsPath, 'utf8'), document.getText());

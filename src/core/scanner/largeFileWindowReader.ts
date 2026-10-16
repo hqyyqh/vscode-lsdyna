@@ -8,6 +8,7 @@ export type LargeFileLineMap = {
     offsets: number[];
     lineCount: number;
     baseLine?: number;
+    complete?: boolean;
 };
 
 export type LargeFileSignature = { size: number; mtimeMs: number };
@@ -37,7 +38,7 @@ export async function scanPhysicalLines(
     filePath: string,
     startOffset: number,
     startLine: number,
-    accept: (line: Buffer, lineNumber: number, truncated: boolean) => boolean | Promise<boolean>,
+    accept: (line: Buffer, lineNumber: number, truncated: boolean, nextOffset: number) => boolean | Promise<boolean>,
     options: { cancellationToken?: CancellationToken; maxLineBytes: number; isCurrent?: () => boolean; endOffset?: number },
 ): Promise<void> {
     const stream = fs.createReadStream(filePath, {
@@ -50,6 +51,7 @@ export async function scanPhysicalLines(
     let lineTruncated = false;
     let lineNumber = startLine;
     let stopped = false;
+    let chunkOffset = startOffset;
 
     const append = (value: Buffer) => {
         if (value.length === 0) return;
@@ -61,14 +63,14 @@ export async function scanPhysicalLines(
         }
         if (value.length > remaining) lineTruncated = true;
     };
-    const finishLine = async () => {
+    const finishLine = async (nextOffset: number) => {
         let line = partBytes === 0 ? Buffer.alloc(0) : Buffer.concat(parts, partBytes);
         if (line.length > 0 && line[line.length - 1] === 0x0d) line = line.subarray(0, line.length - 1);
         if (lineNumber === 0 && line.length >= 3 &&
             line[0] === 0xef && line[1] === 0xbb && line[2] === 0xbf) {
             line = line.subarray(3);
         }
-        const keepGoing = await accept(line, lineNumber, lineTruncated);
+        const keepGoing = await accept(line, lineNumber, lineTruncated, nextOffset);
         lineNumber++;
         parts = [];
         partBytes = 0;
@@ -95,12 +97,13 @@ export async function scanPhysicalLines(
                     break;
                 }
                 append(chunk.subarray(cursor, newline));
-                await finishLine();
+                await finishLine(chunkOffset + newline + 1);
                 cursor = newline + 1;
             }
+            chunkOffset += chunk.length;
             if (stopped) break;
         }
-        if (!stopped && (partBytes > 0 || lineTruncated)) await finishLine();
+        if (!stopped && (partBytes > 0 || lineTruncated)) await finishLine(chunkOffset);
     } finally {
         stream.destroy();
     }
@@ -115,6 +118,8 @@ export async function readLargeFileWindow(
         cancellationToken?: CancellationToken;
         maxLines?: number;
         maxBytes?: number;
+        cursor?: { line: number; offset: number };
+        isCurrent?: () => boolean;
     } = {},
 ): Promise<{
     anchorLine: number;
@@ -122,39 +127,46 @@ export async function readLargeFileWindow(
     lineCount?: number;
     signature: LargeFileSignature;
     stale: boolean;
+    cursor?: { line: number; offset: number };
 }> {
     throwIfCancellationRequested(options.cancellationToken);
     const before = await signature(filePath);
     if (options.expectedSignature && !sameSignature(before, options.expectedSignature)) {
         return { anchorLine, lines: [], lineCount: lineMap?.lineCount, signature: before, stale: true };
     }
-    const knownCount = Number.isSafeInteger(lineMap?.lineCount) ? Number(lineMap!.lineCount) : undefined;
+    const knownCount = lineMap?.complete !== false && Number.isSafeInteger(lineMap?.lineCount) ? Number(lineMap!.lineCount) : undefined;
     const requested = Math.max(0, Math.floor(Number(anchorLine) || 0));
     const targetLine = knownCount === undefined
-        ? 0
+        ? requested
         : Math.min(requested, Math.max(0, knownCount - 1));
     const checkpoint = lineMap
         ? Math.min(Math.max(0, Math.floor((targetLine - (lineMap.baseLine || 0)) / lineMap.stride)), Math.max(0, lineMap.offsets.length - 1))
         : 0;
-    const startOffset = lineMap?.offsets[checkpoint] || 0;
-    const startLine = lineMap ? (lineMap.baseLine || 0) + checkpoint * lineMap.stride : 0;
+    let startOffset = lineMap?.offsets[checkpoint] || 0;
+    let startLine = lineMap ? (lineMap.baseLine || 0) + checkpoint * lineMap.stride : 0;
+    if (options.cursor && options.cursor.line > startLine && options.cursor.line <= targetLine) {
+        startLine = options.cursor.line; startOffset = options.cursor.offset;
+    }
+    let cursor = { line: startLine, offset: startOffset };
     const lines: LargeFileWindowLine[] = [];
     const maxLines = Math.max(1, Math.min(300, options.maxLines || LARGE_FILE_WINDOW_LINES));
     const maxBytes = Math.max(1, Math.min(LARGE_FILE_WINDOW_MAX_BYTES,
         options.maxBytes || LARGE_FILE_WINDOW_MAX_BYTES));
     let decodedBytes = 0;
 
-    await scanPhysicalLines(filePath, startOffset, startLine, (buffer, lineNumber, truncated) => {
-        if (lineNumber < targetLine) return true;
+    await scanPhysicalLines(filePath, startOffset, startLine, (buffer, lineNumber, truncated, nextOffset) => {
+        if (lineNumber < targetLine) { cursor = { line: lineNumber + 1, offset: nextOffset }; return true; }
         if (lines.length >= maxLines) return false;
         const nextBytes = buffer.length;
         if (lines.length > 0 && decodedBytes + nextBytes > maxBytes) return false;
         lines.push({ lineNumber, text: buffer.toString('utf8'), truncated });
+        cursor = { line: lineNumber + 1, offset: nextOffset };
         decodedBytes += nextBytes;
         return lines.length < maxLines && decodedBytes < maxBytes;
     }, {
         cancellationToken: options.cancellationToken,
         maxLineBytes: LARGE_FILE_LINE_MAX_BYTES,
+        isCurrent: options.isCurrent,
     });
 
     throwIfCancellationRequested(options.cancellationToken);
@@ -162,7 +174,8 @@ export async function readLargeFileWindow(
     return {
         anchorLine: targetLine,
         lines,
-        lineCount: knownCount,
+        lineCount: knownCount ?? (cursor.offset === before.size ? cursor.line : undefined),
+        cursor,
         signature: after,
         stale: !sameSignature(before, after),
     };

@@ -19,6 +19,8 @@ export interface PersistedReaderState {
     location: ManualLocation;
     language: ManualLanguage;
     readingMode?: ManualReadingMode;
+    /** Separate intent from the displayed language (which may fall back for English-only packs). */
+    languagePreference?: ManualReadingMode | 'auto';
     scrollY: number;
     scrollRatio?: number;
 }
@@ -127,6 +129,8 @@ export class ManualPackManager {
                 anchorId: saved.location.anchorId && section.anchors.includes(saved.location.anchorId) ? saved.location.anchorId : section.anchors[0] || null,
             },
             language,
+            languagePreference: saved.languagePreference === 'auto' || saved.languagePreference === 'en' || saved.languagePreference === 'zh' || saved.languagePreference === 'bilingual'
+                ? saved.languagePreference : saved.readingMode === 'bilingual' ? 'bilingual' : saved.language,
             readingMode: caps.canToggleLanguage && caps.features.sentenceMap && saved.readingMode === 'bilingual' ? 'bilingual' : language,
             scrollY: Number.isFinite(saved.scrollY) ? Math.max(0, saved.scrollY) : 0,
             scrollRatio: Number.isFinite(saved.scrollRatio) ? Math.min(1, Math.max(0, Number(saved.scrollRatio))) : 0,

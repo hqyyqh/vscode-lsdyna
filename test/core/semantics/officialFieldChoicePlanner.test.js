@@ -3,6 +3,7 @@
 const assert = require('assert');
 
 const fieldData = require("../../../keywords/runtime/schema/field_data.json");
+const { NATIVE_FILE_SOURCE } = require("../../../out/core/semantics/catalogNativeFileLayout");
 const {
     planOfficialFieldChoices,
 } = require('../../../out/core/semantics/officialFieldChoicePlanner');
@@ -30,7 +31,46 @@ function plan(lines, position, options = {}, documentOptions = {}) {
 }
 
 describe('official field choice planner', () => {
-    it('limits manual MAT_DAMAGE_1 FLAG choices to the matching native definition', () => {
+    it('uses native base and selector enums across unrelated keyword families', () => {
+        for (const [keyword, line, character, field, values, fieldIdentity] of [
+            ['CONTACT_AUTOMATIC_SINGLE_SURFACE', 1, 21, 'SURFATYP', ['0','1','2','3','4','5','6','7'], "record:3c11134d2da44eeb1b070a21:8d697c51d4b44532f820f122"],
+            ['CONTACT_AUTOMATIC_SINGLE_SURFACE', 4, 1, 'SOFT', ['0','1','2','4','6'], "record:3c11134d2da44eeb1b070a21:8d7413b3e1feea59854cb661"],
+            ['CONTROL_TERMINATION', 1, 51, 'NOSOL', ['0','1'], "record:918a1b8665d14093fb26fd77:f5e8dd32ea940162e4cfaf14"],
+        ]) {
+            const { result } = plan(['*' + keyword, ...Array(5).fill('         0'.repeat(8))],
+                { line, character }, { keywordLine: 0,
+                    rulesForField: () => { throw Error('manual rules must not be read'); } });
+            assert.equal(result.status, 'ready', keyword + ':' + field);
+            assert.equal(result.fieldName, field);
+            assert.deepEqual(result.choices.map(c => c.valueText), values);
+            assert.deepEqual(result.evidence, []);
+            assert.equal(result.ruleId, `${NATIVE_FILE_SOURCE}:${fieldIdentity}`, 'source descriptor identity');
+        }
+    });
+
+    it('binds selector choices by the complete card and owning keyword, never a field name alone', () => {
+        const { resolveCardForDocumentLine } = require('../../../out/core/keywordSchema');
+        const { nativeFieldDefinitions } = require('../../../out/core/semantics/nativeFieldDefinitions');
+        const doc = fakeDoc(['*CONTACT_AUTOMATIC_SINGLE_SURFACE', ...Array(4).fill(' '.repeat(80))]);
+        const card = resolveCardForDocumentLine(doc, 4, fieldData, { keywordLine: 0 }).cardInfo.card;
+        const bound = nativeFieldDefinitions('CONTACT_AUTOMATIC_SINGLE_SURFACE', fieldData, card, 4);
+        assert.equal(bound[0].definitionSource.fieldRecordId, "record:3c11134d2da44eeb1b070a21:8d7413b3e1feea59854cb661");
+        assert.deepEqual(bound[0].e, ['0','1','2','4','6']);
+        const wrongOwner = nativeFieldDefinitions('CONTROL_TERMINATION', fieldData, card, 4);
+        assert.equal(wrongOwner[0].definitionSource, undefined);
+        const wrongGeometry = card.map((f, i) => i === 7 ? { ...f, w: 9 } : f);
+        assert.equal(nativeFieldDefinitions('CONTACT_AUTOMATIC_SINGLE_SURFACE', fieldData, wrongGeometry, 4)[0].definitionSource, undefined);
+    });
+
+    it('does not promote imported enums without a native descriptor binding', () => {
+        const schema = { UNVERIFIED_ENUM: { c: [[{ n: 'FLAG', p: 0, w: 10, t: 'integer', e: ['0','1'] }]] } };
+        const result = planOfficialFieldChoices(fakeDoc(['*UNVERIFIED_ENUM', '         0']),
+            { line: 1, character: 1 }, schema, { keywordLine: 0 });
+        assert.equal(result.status, 'no-choice');
+        assert.equal(result.reason, 'no-native-field-choice');
+    });
+
+    it('uses only the native MAT_DAMAGE_1 FLAG choices in source order', () => {
         const { document, result } = plan([
             '*MAT_DAMAGE_1',
             ' '.repeat(80),
@@ -39,7 +79,7 @@ describe('official field choice planner', () => {
 
         assert.equal(result.status, 'ready');
         assert.equal(result.keyword, '*MAT_DAMAGE_1');
-        assert.equal(result.catalogKeyword, '*MAT_DAMAGE_1');
+        assert.equal(result.catalogKeyword, result.keyword);
         assert.equal(result.physicalCardIndex, 2);
         assert.equal(result.fieldIndex, 7);
         assert.equal(result.fieldName, 'FLAG');
@@ -52,9 +92,9 @@ describe('official field choice planner', () => {
             startCharacter: 70,
             endCharacter: 80,
         });
-        assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
+        assert.deepEqual(result.choices.map(choice => choice.valueText), ['0', '-1', '1']);
         assert.equal(result.choices.find(choice => choice.valueText === '1').replacementText, '         1');
-        assert.ok(result.evidence.some(item => item.page === 832));
+        assert.deepEqual(result.evidence, []);
         assert.equal(result.lineReads, document.reads);
     });
 
@@ -68,13 +108,13 @@ describe('official field choice planner', () => {
 
         assert.equal(result.status, 'ready');
         assert.equal(result.keyword, '*MAT_DAMAGE_1_TITLE');
-        assert.equal(result.catalogKeyword, '*MAT_DAMAGE_1');
+        assert.equal(result.catalogKeyword, result.keyword);
         assert.equal(result.physicalCardIndex, 3);
         assert.equal(result.fieldName, 'FLAG');
-        assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
+        assert.deepEqual(result.choices.map(choice => choice.valueText), ['0', '-1', '1']);
     });
 
-    it('disables writes for manual-denied DEFINE_FUNCTION TITLE variants', () => {
+    it('uses native TITLE prefixes without inventing field value choices', () => {
         for (const keyword of ['*DEFINE_FUNCTION_TITLE', '*DEFINE_FUNCTION_TABULATED_TITLE']) {
             const { result } = plan([
                 keyword,
@@ -83,8 +123,8 @@ describe('official field choice planner', () => {
                 'x+y',
             ], { line: 2, character: 5 }, { keywordLine: 0 });
 
-            assert.equal(result.status, 'schema-mismatch');
-            assert.equal(result.reason, 'unsupported-keyword-option');
+            assert.equal(result.status, 'no-choice');
+            assert.equal(result.reason, 'no-native-field-choice');
             assert.deepEqual(result.choices, []);
         }
     });
@@ -119,7 +159,7 @@ describe('official field choice planner', () => {
         assert.equal(result.status, 'ready');
         assert.equal(result.physicalCardIndex, 3);
         assert.equal(result.fieldName, 'FLAG');
-        assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
+        assert.deepEqual(result.choices.map(choice => choice.valueText), ['0', '-1', '1']);
         assert.ok(result.lineReads <= 6);
     });
 
@@ -134,7 +174,7 @@ describe('official field choice planner', () => {
         assert.equal(result.status, 'ready');
         assert.notEqual(result.reason, 'comment-field-version-unconfirmed');
         assert.equal(result.fieldName, 'FLAG');
-        assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
+        assert.deepEqual(result.choices.map(choice => choice.valueText), ['0', '-1', '1']);
         assert.ok(result.lineReads <= 5);
     });
 
@@ -152,18 +192,14 @@ describe('official field choice planner', () => {
         assert.deepEqual(result.choices, []);
     });
 
-    it('labels a finite projection of an open reference domain as mixed and incomplete', () => {
-        const { result } = plan([
-            '*DAMPING_GLOBAL',
-            ' '.repeat(80),
-        ], { line: 1, character: 5 }, { keywordLine: 0 });
-
+    it('restores manual special cases when native field geometry has no enumeration', () => {
+        const { result } = plan(['*DAMPING_GLOBAL', ' '.repeat(80)],
+            { line: 1, character: 5 }, { keywordLine: 0 });
         assert.equal(result.status, 'ready');
-        assert.equal(result.fieldName, 'LCID');
         assert.equal(result.domainKind, 'mixed');
         assert.equal(result.domainComplete, false);
-        assert.deepEqual(result.choices.map(choice => choice.valueText), ['0']);
-        assert.ok(result.summary.toLowerCase().includes('curve'));
+        assert.equal(result.ruleId, 'rule:288afcb133bc8d74c310fde6');
+        assert.deepEqual(result.choices.map(choice => [choice.valueText, choice.role]), [['0', 'sentinel']]);
     });
 
     it('rejects official value editing for display-only CONTROL_THERMAL_TIMESTEP', () => {
@@ -231,7 +267,7 @@ describe('official field choice planner', () => {
         assert.equal(localStandard.status, 'ready');
     });
 
-    it('requires a complete safe fixed-width cell and a unique official selector', () => {
+    it('requires a complete fixed-width cell', () => {
         const short = plan([
             '*MAT_DAMAGE_1',
             ' '.repeat(80),
@@ -240,26 +276,6 @@ describe('official field choice planner', () => {
         assert.equal(short.status, 'schema-mismatch');
         assert.equal(short.reason, 'complete-fixed-cell-unavailable');
 
-        const duplicateRule = {
-            keyword: '*MAT_DAMAGE_1',
-            field: 'FLAG',
-            kind: 'field-choice',
-            ruleId: 'rule:duplicate',
-            relation: {
-                kind: 'field-choice',
-                branches: [{ when: { op: 'eq', value: 0 }, role: 'sentinel' }],
-            },
-        };
-        const ambiguous = plan([
-            '*MAT_DAMAGE_1',
-            ' '.repeat(80),
-            ' '.repeat(80),
-        ], { line: 2, character: 75 }, {
-            keywordLine: 0,
-            rulesForField: () => [duplicateRule, { ...duplicateRule, ruleId: 'rule:other' }],
-        }).result;
-        assert.equal(ambiguous.status, 'selector-ambiguous');
-        assert.deepEqual(ambiguous.choices, []);
     });
 
     it('fails closed before projecting choices when the resolved card geometry overlaps', () => {
@@ -271,7 +287,6 @@ describe('official field choice planner', () => {
                 ]],
             },
         };
-        let rulesCalls = 0;
         const result = planOfficialFieldChoices(
             fakeDoc([
                 '*MAT_UNSAFE',
@@ -279,19 +294,12 @@ describe('official field choice planner', () => {
             ]),
             { line: 1, character: 6 },
             unsafeSchema,
-            {
-                keywordLine: 0,
-                rulesForField: () => {
-                    rulesCalls++;
-                    return [];
-                },
-            },
+            { keywordLine: 0 },
         );
 
         assert.equal(result.status, 'schema-mismatch');
         assert.equal(result.reason, 'safe-fixed-card-unavailable');
         assert.deepEqual(result.choices, []);
-        assert.equal(rulesCalls, 0);
     });
 
     it('does not scan backward by default and bounds an explicit compatibility lookback', () => {

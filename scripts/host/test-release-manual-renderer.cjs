@@ -52,6 +52,40 @@ async function main() {
             if (!context) await delay(100);
         }
         assert.ok(context, 'Manual content or equations did not render');
+        const expectedLanguage = (process.env.LSDYNA_RELEASE_PLUGIN_LANGUAGE && process.env.LSDYNA_RELEASE_PLUGIN_LANGUAGE !== 'auto'
+            ? process.env.LSDYNA_RELEASE_PLUGIN_LANGUAGE : process.env.LSDYNA_RELEASE_LOCALE || 'en').startsWith('zh') ? 'zh' : 'en';
+        for (const [setting, locale] of [[expectedLanguage === 'en' ? 'zh-cn' : 'en', expectedLanguage === 'en' ? 'zh' : 'en'],
+            [process.env.LSDYNA_RELEASE_PLUGIN_LANGUAGE || 'auto', expectedLanguage]]) {
+            const file = path.join(root, 'manual-language-request.json');
+            fs.writeFileSync(file + '.tmp', JSON.stringify(setting)); fs.renameSync(file + '.tmp', file);
+            await evaluate(context, `(async()=>{
+                const before=document.querySelector('.reader-content').textContent,end=Date.now()+10000;
+                while(document.documentElement.lang!==${JSON.stringify(locale)}) {
+                    if(Date.now()>end)throw Error('UI language did not refresh');await new Promise(r=>setTimeout(r,50));
+                }
+                if(document.querySelector('.reader-language select').value!==${JSON.stringify(expectedLanguage)} || document.querySelector('.reader-content').textContent!==before)
+                    throw Error('UI locale update changed the open document');
+            })()`);
+        }
+        const languageEvidence = await evaluate(context, `(async()=>{
+            const select=document.querySelector('.reader-language select');
+            if(!select || select.value!==${JSON.stringify(expectedLanguage)}) throw Error('Wrong default reading language: '+select?.value);
+            const initial=select.value, other=initial==='en'?'zh':'en';
+            const hasText=language=>document.querySelector('.reader-content').textContent.includes(language==='zh'?'离线图片与公式。':'Offline image and equation.');
+            if(!hasText(initial)) throw Error('Wrong initial document text');
+            const image=document.querySelector('.reader-content img');
+            if(!image?.src.includes('/documents/'+initial+'/')) throw Error('Wrong document language path');
+            const change=async language=>{
+                Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,language);
+                select.dispatchEvent(new Event('change',{bubbles:true}));
+                const end=Date.now()+10000;
+                while(select.disabled || select.value!==language || !hasText(language) || !document.querySelector('.reader-content img')?.src.includes('/documents/'+language+'/')) {
+                    if(Date.now()>end)throw Error('Reading language did not change');await new Promise(r=>setTimeout(r,50));
+                }
+            };
+            await change(other);await change(initial);
+            return {initial,toggle:true,documentPaths:true,liveLocalePreservesDocument:true};
+        })()`);
         await evaluate(context, '(async () => { await document.fonts.ready; return true; })()');
         const { targetInfos: pages } = await call('Target.getTargets');
         const page = pages.find(target => target.type === 'page' && /workbench/.test(target.url));
@@ -74,6 +108,7 @@ async function main() {
             while(!document.body.textContent.includes('release-next')){if(performance.now()>until)throw Error('Section navigation failed');await new Promise(r=>setTimeout(r,20))}
             return {status:'passed',fontFaces:faces.length,images:images.length,equations:true,navigation:true};
         })()`);
+        evidence.language = languageEvidence;
         assert.ok(root); fs.writeFileSync(path.join(root, 'manual-renderer.json'), JSON.stringify(evidence));
         assert.equal(await completed, 0, 'Installed manual host failed');
         assert.ok(!/Could not register service worker|document is in an invalid state/i.test(log));

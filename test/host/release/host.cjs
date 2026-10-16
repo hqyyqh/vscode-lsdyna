@@ -61,6 +61,14 @@ exports.run = async () => {
         try { await measure('activation', () => extension.activate()); }
         finally { Module._load = originalLoad; }
         assert.ok(extension.isActive);
+        if (phase === 'header-actions') {
+            await require('./header-actions.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'column-guides') {
+            await require('./column-guides.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
         if (phase === 'sqlite') {
             await require('./sqlite.cjs').check(extension, root, checks);
             result.status = 'passed'; return;
@@ -82,16 +90,15 @@ exports.run = async () => {
             result.status = 'passed'; return;
         }
         if (phase === 'catalog') {
-            const { digest } = require("../../../scripts/release/compare-release-data.cjs");
+            const { digest, snapshotForms } = require("../../../scripts/release/compare-release-data.cjs");
             const catalog = require(path.join(extension.extensionPath, 'out/extension'))._internals.getCatalogInputFormCatalogV4();
+            const released = fs.existsSync(path.join(extension.extensionPath, 'out/runtime/catalog-input-form/manifest.json'));
             const manifest = JSON.parse(fs.readFileSync(path.join(extension.extensionPath, 'out/runtime',
-                fs.existsSync(path.join(extension.extensionPath, 'out/runtime/catalog-input-form/manifest.json')) ? 'catalog-input-form' : 'lspp-input-form', 'manifest.json')));
-            const forms = {};
-            for (const keyword of Object.keys(manifest.keywords).sort()) {
-                const form = catalog.formForKeyword(keyword);
-                assert.ok(form, keyword); forms[keyword] = digest(form);
-            }
-            result.catalog = { keywords: Object.keys(forms).length, fingerprint: digest(forms) };
+                released ? 'catalog-input-form' : 'lspp-input-form', 'manifest.json')));
+            const { releasePath } = require('../../../scripts/release/release-resource-paths.cjs');
+            const { nativeSpellingGap } = require(path.join(extension.extensionPath, released ? releasePath("out/core/semantics/catalogNativeFileLayout.js") : "out/core/semantics/catalogNativeFileLayout.js"));
+            const { forms, operationalForms } = snapshotForms(catalog, Object.keys(manifest.keywords), nativeSpellingGap);
+            result.catalog = { keywords: Object.keys(forms).length, fingerprint: digest(forms), operationalFingerprint: digest(operationalForms) };
             if (process.env.LSDYNA_EXPECTED_CATALOG) assert.deepEqual(result.catalog,
                 JSON.parse(fs.readFileSync(process.env.LSDYNA_EXPECTED_CATALOG)));
             if (process.env.LSDYNA_CATALOG_OUTPUT) fs.writeFileSync(process.env.LSDYNA_CATALOG_OUTPUT, JSON.stringify(result.catalog));
@@ -149,7 +156,7 @@ exports.run = async () => {
             const query = async () => {
                 const result = await plan(document, new vscode.Position(3, 75), { keywordLine: 1 });
                 assert.equal(result?.status, 'ready');
-                assert.deepEqual(result.choices.map(choice => choice.valueText), ['-1', '0', '1']);
+                assert.deepEqual(result.choices.map(choice => choice.valueText), ['0', '-1', '1']);
             };
             await measure('first-choices', query);
             for (let i = 0; i < 2; i++) await measure('warm-choices', query);
@@ -220,12 +227,16 @@ exports.run = async () => {
             assert.equal(editor.selection.start.line, 2);
             assert.ok(editor.selection.end.character > editor.selection.start.character);
             await vscode.commands.executeCommand('type', { text: '2' });
+            await require(path.join(extension.extensionPath, 'out/extension'))._internals.waitForPendingCardCellPostEdit(document);
             const changed = document.getText();
             assert.notEqual(changed, original.toString());
-            await vscode.commands.executeCommand('undo');
-            assert.equal(document.getText(), original.toString());
-            await vscode.commands.executeCommand('redo');
-            assert.equal(document.getText(), changed);
+            for (const [command, expected] of [['undo', original.toString()], ['redo', changed]]) {
+                await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                await vscode.commands.executeCommand(command);
+                const deadline = Date.now() + 5000;
+                while (document.getText() !== expected && Date.now() < deadline) await delay(10);
+                assert.equal(document.getText(), expected, `${command} must restore exact bytes`);
+            }
             assert.ok(await document.save());
             await vscode.commands.executeCommand('workbench.action.closeAllEditors');
             const reopened = await vscode.workspace.openTextDocument(file);
@@ -249,6 +260,13 @@ exports.run = async () => {
                 if (process.env.LSDYNA_RELEASE_CDP_PORT) {
                     const rendered = path.join(root, 'manual-renderer.json'), deadline = Date.now() + 90000;
                     while (!fs.existsSync(rendered)) {
+                        const languageRequest = path.join(root, 'manual-language-request.json');
+                        if (fs.existsSync(languageRequest)) {
+                            const language = JSON.parse(fs.readFileSync(languageRequest, 'utf8'));
+                            assert.ok(['auto', 'en', 'zh-cn'].includes(language));
+                            fs.unlinkSync(languageRequest);
+                            await vscode.workspace.getConfiguration('lsdyna').update('language', language, vscode.ConfigurationTarget.Global);
+                        }
                         if (Date.now() > deadline) throw Error('Manual renderer verification timed out');
                         await delay(50);
                     }

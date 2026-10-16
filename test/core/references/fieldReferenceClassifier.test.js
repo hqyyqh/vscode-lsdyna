@@ -26,7 +26,8 @@ const runtimeSemanticRelationCorrections = require(
 const {
     applyRuntimeSemanticRelationCorrection,
     buildRuntimeTableLayoutIndex,
-    getActionableFieldReferenceInfo,
+    // Audit the retained manual supplement independently of native precedence.
+    getRegistryApprovedFieldReferenceInfo: getActionableFieldReferenceInfo,
     getFieldReferenceInfo,
     getRegistryApprovedFieldReferenceInfo,
     isCoherentReferenceTargetNamespace,
@@ -1061,9 +1062,8 @@ describe('fieldReferenceClassifier', () => {
         }
         assert.deepEqual(Object.fromEntries(categories), {
             "no-active-option": 2604,
-            "mismatch-independent-of-option": 27,
+            "mismatch-independent-of-option": 59,
             "active-option-caused": 28,
-            "verified-prefix-layout-with-option": 32
         });
         assert.deepEqual(Object.fromEntries(optionSignatures), {
             "[]": 2604,
@@ -1073,8 +1073,7 @@ describe('fieldReferenceClassifier', () => {
         assert.deepEqual(Object.fromEntries(mappedCategories), {
             "no-active-option": 1111,
             "active-option-caused": 26,
-            "verified-prefix-layout-with-option": 7,
-            "mismatch-independent-of-option": 6
+            "mismatch-independent-of-option": 13
         });
         assert.deepEqual(unmappedOptionCaused.sort(), [
             '*DATABASE_CROSS_SECTION_PLANE_ID|1|0|PSID|integer|0|10',

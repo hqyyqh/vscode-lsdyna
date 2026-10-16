@@ -124,6 +124,7 @@ async function main() {
         writeReport(output + '.data-equivalence.json', JSON.stringify({ complete: true,
             scope: 'pre-bundle isolated runtime catalogs', ...baseline.counts,
             formsFingerprint: require('./compare-release-data.cjs').digest(baseline.forms),
+            operationalFormsFingerprint: require('./compare-release-data.cjs').digest(baseline.operationalForms),
             fingerprint: require('./compare-release-data.cjs').digest(baseline) }, null, 2));
         writeReport(baselineOutput + '.data-equivalence.json', fs.readFileSync(output + '.data-equivalence.json'));
         if (process.env.DYNASENSE_RELEASE_BUNDLE === '1') {

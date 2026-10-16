@@ -29,17 +29,14 @@ export function withContactThermalForm(form: any, keyword: string): any {
         source.applicability?.[String(keyword).replace(/^\*/, '').toUpperCase()];
     if (!capability) return form;
     const profile = source.profiles?.[binding?.baseKeyword];
-    if (profile && (form.source.datasetSha256 !== source.source.nativeExecutableSha256 ||
-        profile.forms.some(f=>form.rules[f.ruleId]?.cardSetId !== f.cardSetId))) return null;
+    if (profile && form.source.datasetSha256 !== source.source.nativeExecutableSha256) return null;
+    if (profile?.forms.some(f=>form.rules[f.ruleId]?.cardSetId !== f.cardSetId)) return form;
     const rules = {...form.rules};
     for (const id of form.reference.selectorRuleIds || []) {
         const rule = rules[id];
         rules[id] = {...rule, selectors: (rule.selectors || []).flatMap(selector => {
-            if (selector.controlId === source.controlId) return capability.thermal ? [{...selector,
-                values:selector.values.map(value=>({...value,keywordSuffix:'_'+source.values[value.value].suffix}))}] : [];
-            if (selector.keywordSuffix === '_MPP') return capability.mpp ? [selector] : [];
-            if (selector.values.some(v=>v.value==='ID'||v.value==='TITLE')) return capability.identity ? [selector] : [];
-            if (selector.values.some(v=>v.value==='ABCDEFG')) return capability.optional ? [selector] : [];
+            if (selector.controlId === source.controlId) return [{...selector,
+                values:selector.values.map(value=>({...value,keywordSuffix:value.keywordSuffix ?? '_'+source.values[value.value].suffix}))}];
             return [selector];
         })};
     }

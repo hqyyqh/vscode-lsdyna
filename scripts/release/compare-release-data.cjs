@@ -9,6 +9,24 @@ function canonical(value) {
     return value;
 }
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+// Keep retained source forms separate from the runtime's approved/rejected view.
+function snapshotForms(catalog, keywords, spellingGap, normalize = value => value) {
+    const forms = {}, operationalForms = {};
+    for (const keyword of [...keywords].sort()) {
+        const raw = catalog.formForKeyword(keyword, false);
+        assert.ok(raw, `Missing raw form ${keyword}`);
+        forms[keyword] = digest(normalize(raw));
+        const form = catalog.formForKeyword(keyword);
+        const gap = spellingGap(keyword) || null;
+        assert.ok(form || (gap?.nativeRejected === true && typeof gap.reason === 'string' && gap.reason),
+            `Missing operational form without explicit rejection: ${keyword}`);
+        assert.ok(!form || !gap?.nativeRejected, `Rejected spelling returned an operational form: ${keyword}`);
+        operationalForms[keyword] = { form: form ? digest(normalize(form)) : null, gap: canonical(normalize(gap, keyword)) };
+    }
+    assert.equal(catalog.formForKeyword('NOT_A_REAL_KEYWORD', false), null);
+    assert.equal(catalog.formForKeyword('NOT_A_REAL_KEYWORD'), null);
+    return { forms, operationalForms };
+}
 function snapshot(root, { functionalOnly = false } = {}) {
     root = fs.realpathSync(root);
     const released = fs.existsSync(path.join(root, 'out/runtime/catalog-input-form/manifest.json'));
@@ -26,13 +44,8 @@ function snapshot(root, { functionalOnly = false } = {}) {
     const { CatalogInputFormCatalogV4 } = require(resource("out/core/semantics/catalogInputFormCatalogV4.js"));
     const manifest = JSON.parse(fs.readFileSync(resource('out/runtime/lspp-input-form/manifest.json')));
     const catalog = new CatalogInputFormCatalogV4({ maximumCacheBytes: 512 * 1024 * 1024 });
-    const forms = {};
-    for (const keyword of Object.keys(manifest.keywords).sort()) {
-        const form = catalog.formForKeyword(keyword);
-        assert.ok(form, `Missing form ${keyword}`);
-        forms[keyword] = digest(normalize(form));
-    }
-    assert.equal(catalog.formForKeyword('NOT_A_REAL_KEYWORD'), null);
+    const { nativeSpellingGap } = require(resource("out/core/semantics/catalogNativeFileLayout.js"));
+    const { forms, operationalForms } = snapshotForms(catalog, Object.keys(manifest.keywords), nativeSpellingGap, normalize);
     const { SemanticRuntimeCatalogV2 } = require(path.join(root, 'out/core/semantics/semanticRuntimeV2.js'));
     const semantics = new SemanticRuntimeCatalogV2(path.join(root, "keywords/runtime/semantic-v2"));
     const references = semantics.allReferenceRecords(), definitions = semantics.allDefinitionScanners(), options = semantics.allOptionGrammars();
@@ -94,7 +107,7 @@ function snapshot(root, { functionalOnly = false } = {}) {
         }
     };
     if (!functionalOnly) { visit('keywords'); visit('out/runtime'); }
-    return { forms, payloads, summary: normalize(catalog.summary()), references: digest(normalize(references)), definitions: digest(normalize(definitions)),
+    return { forms, operationalForms, payloads, summary: normalize(catalog.summary()), references: digest(normalize(references)), definitions: digest(normalize(definitions)),
         options: digest(normalize(options)), counts: { keywords: Object.keys(forms).length, references: references.length,
             definitions: definitions.length, options: options.length,
             optionTargets: options.reduce((sum, item) => sum + (item.targets || []).length, 0) } };
@@ -118,4 +131,4 @@ if (require.main === module) {
         functionalOnly: true })));
     else compare(...process.argv.slice(2));
 }
-module.exports = { canonical, compare, snapshot, digest };
+module.exports = { canonical, compare, snapshot, snapshotForms, digest };

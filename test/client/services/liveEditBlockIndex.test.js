@@ -115,7 +115,7 @@ describe('field interaction preparation', () => {
         assert.equal(result?.status, 'ready');
         assert.equal(result.keywordLine, 0);
         assert.equal(result.fieldName, 'FLAG');
-        assert.deepEqual(result.choices.map(item => item.valueText), ['-1', '0', '1']);
+        assert.deepEqual(result.choices.map(item => item.valueText), ['0', '-1', '1']);
         assert.equal(document.getText(), text);
     });
     it('rejects changed, closed and cancelled documents during asynchronous preparation', async () => {

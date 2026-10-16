@@ -24,8 +24,6 @@ const registry = require("../../../keywords/runtime/definitions/definition_regis
 const { getDefinitionRegistryCatalog } = require('../../../out/core/references/definitionRegistry');
 const keywordSchema = require('../../../out/core/keywordSchema');
 const { getSemanticRuntimeCatalogV2 } = require('../../../out/core/semantics/semanticRuntimeV2');
-const { getActionableFieldReferenceInfo } =
-    require('../../../out/core/references/fieldReferenceClassifier');
 
 const legacyRegistryCatalog = getDefinitionRegistryCatalog();
 const LEGACY_REFERENCE_CATALOG = {
@@ -699,7 +697,7 @@ describe('registryReferenceScanner', () => {
         assert.ok(blocked > 0, 'fixture must cover fail-closed namespace mismatches');
     });
 
-    it('scans every actionable rendered product field from a generated physical block', async function () {
+    it('scans every approved manual supplemental field from a generated physical block', async function () {
         this.timeout(120_000); // Generates and checks all 2,732 blocks; not an interactive latency budget.
         const schema = keywordSchema.loadKeywordSchema(() => 'en');
         const runtime = getSemanticRuntimeCatalogV2();
@@ -736,7 +734,7 @@ describe('registryReferenceScanner', () => {
                         field.n, field.t, field.p, field.w].join('|');
                     if (physical.has(coordinate)) continue;
                     physical.add(coordinate);
-                    const info = getActionableFieldReferenceInfo({
+                    const info = getRegistryApprovedFieldReferenceInfo({
                         keyword, cardIndex: cardOffset + 1, field,
                     });
                     if (!info) continue;
@@ -747,7 +745,7 @@ describe('registryReferenceScanner', () => {
                             const line = ''.padEnd(200).split('');
                             const first = card[0];
                             if (first) {
-                                const firstInfo = getActionableFieldReferenceInfo({ keyword,
+                                const firstInfo = getRegistryApprovedFieldReferenceInfo({ keyword,
                                     cardIndex: index + 1, field: first });
                                 line.splice(first.p, first.w, ...String(firstInfo ? safeReferenceValue(firstInfo) : 0).padStart(first.w));
                             }

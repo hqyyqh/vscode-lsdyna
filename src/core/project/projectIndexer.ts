@@ -407,6 +407,7 @@ function createProjectIndexer({
             job.promise = Promise.resolve().then(() => loadFileScanUnshared(filePath, { ...options,
                 cancellationToken: token,
                 onStructureBlock: (...args) => notify('onStructureBlock', ...args),
+                onLargeFileProgress: (...args) => notify('onLargeFileProgress', ...args),
                 onStructureStart: (...args) => notify('onStructureStart', ...args),
                 onIncludePending: (...args) => notify('onIncludePending', ...args),
                 flushStructure: async () => {

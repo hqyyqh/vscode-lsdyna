@@ -70,15 +70,20 @@ describe('static descriptor production format boundary', () => {
         }
     });
 
-    it('also fails closed for TITLE, repeat, and nonuniform layouts', async () => {
+    it('keeps static formats closed while using an independently verified native reader', async () => {
         const cases = [
             ['CONSTRAINED_BEAM_IN_SOLID_TITLE', 'title,bytes'],
-            ['AIRBAG_SHELL_REFERENCE_GEOMETRY', '1,2'],
+            ['AIRBAG_SHELL_REFERENCE_GEOMETRY', '1,2', 'native-file-reader'],
             ['AIRBAG_REFERENCE_GEOMETRY_BIRTH', '1,2'],
         ];
-        for (const [keyword, line] of cases) {
+        for (const [keyword, line, nativeReader] of cases) {
             const document = documentFor(keyword, line);
             const result = resolve(document);
+            if (nativeReader) {
+                assert.equal(result.cardInfo.resolutionSource, nativeReader);
+                assert.notEqual(resolve(document, true).status, 'resolved', 'read evidence does not grant comma edits');
+                continue;
+            }
             assert.notEqual(result.status, 'resolved', keyword);
             const hover = await hoverProvider.provideHover(document,
                 { line: 1, character: 0 }, { isCancellationRequested: false });

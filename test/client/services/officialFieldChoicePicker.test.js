@@ -211,7 +211,7 @@ describe('official field choice picker', () => {
         assert.equal(matched[0].buttons[0].tooltip, 'Open P832');
     });
 
-    it('supports bilingual presentation with localized summary, fallback notice, and original button', () => {
+    it('uses the active language for complete native-hover detail and keeps only evidence buttons', () => {
         const planWithZh = fakePlan({
             summary: 'Axis for PTYPE = 1 or 2.',
             localizedSummary: 'PTYPE = 1 或 2 时的坐标轴。',
@@ -223,8 +223,8 @@ describe('official field choice picker', () => {
         });
         assert.ok(zhItems[0].detail.includes('PTYPE = 1 或 2 时的坐标轴。'));
         assert.ok(!zhItems[0].detail.includes('fieldHelpUntranslatedInline'));
-        assert.equal(zhItems[0].buttons[0].englishOriginal, 'Axis for PTYPE = 1 or 2.');
-        assert.equal(zhItems[0].buttons[0].tooltip, '原文');
+        assert.ok(!zhItems[0].detail.includes('Axis for PTYPE'));
+        assert.ok(zhItems[0].buttons.every(button => button.evidence && !button.englishOriginal));
 
         const planWithoutZh = fakePlan({
             summary: 'Untranslated summary.',
@@ -244,6 +244,19 @@ describe('official field choice picker', () => {
         });
         assert.ok(enItems[0].detail.includes('Axis for PTYPE = 1 or 2.'));
         assert.ok(!enItems[0].detail.includes('坐标轴'));
+    });
+
+    for (const language of ['en', 'zh-cn']) it(`preserves the full ${language} explanation for native hover`, () => {
+        const summary = 'Complete English explanation. '.repeat(100) + 'EN-END';
+        const localizedSummary = '完整中文说明。'.repeat(100) + '中文末尾';
+        const items = buildOfficialFieldChoiceQuickPickItems(fakePlan({ summary, localizedSummary }), {
+            vscode: vscodeMock, translate: key => key, getLanguage: () => language,
+        });
+        for (const item of items) {
+            assert.ok(item.detail.startsWith(language === 'en' ? summary : localizedSummary));
+            assert.ok(!item.detail.includes(language === 'en' ? localizedSummary : summary));
+            assert.ok(item.buttons.every(button => button.evidence && !button.englishOriginal));
+        }
     });
 
     for (const stage of ['title', 'hide-listener', 'show']) it(`releases the QuickPick and acquired listeners when ${stage} fails`, async () => {
@@ -385,7 +398,7 @@ describe('official field choice picker', () => {
         assert.deepEqual(harness.statuses, []);
     });
 
-    for (const original of [false, true]) it(`opens ${original ? 'complete English help' : 'source-locked evidence'} from a native item button without changing its edit`, async () => {
+    for (const isZh of [false, true]) it(`opens source-locked evidence in ${isZh ? 'Chinese' : 'English'} without changing its edit`, async () => {
         const opened = [];
         let capturedQuickPick = null;
         const vscode = {
@@ -415,12 +428,11 @@ describe('official field choice picker', () => {
             },
         };
         const harness = createHarness({
-            ...(original ? { plans: [fakePlan({ localizedSummary: '已核对说明。' }), fakePlan({ localizedSummary: '已核对说明。' })] } : {}),
+            ...(isZh ? { plans: [fakePlan({ localizedSummary: '已核对说明。' }), fakePlan({ localizedSummary: '已核对说明。' })] } : {}),
             deps: {
                 vscode,
                 pickChoice: undefined,
-                isZh: original,
-                openEnglish: text => opened.push(text),
+                isZh,
                 openEvidence: request => opened.push(request),
             },
         });
@@ -433,7 +445,7 @@ describe('official field choice picker', () => {
 
         assert.ok(result);
         assert.ok(capturedQuickPick.title.includes('officialFieldChoiceClosedTitle'));
-        assert.deepEqual(opened, original ? [fakePlan().summary] : [{
+        assert.deepEqual(opened, [{
             keyword: '*MAT_DAMAGE_1',
             ruleId: 'rule:flag',
             evidenceId: 'evidence:flag',

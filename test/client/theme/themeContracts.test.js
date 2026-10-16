@@ -100,11 +100,17 @@ describe('theme contracts', () => {
         assert.deepEqual(block.patterns, undefined, 'opaque bodies must not retokenize nested syntax');
     });
 
-    it('lets editor rulers inherit editorRuler.foreground instead of forcing colors', () => {
+    it('contributes the native header action default outside language overrides', () => {
+        const defaults = readJson('package.json').contributes.configurationDefaults;
+        assert.equal(defaults['workbench.view.alwaysShowHeaderActions'], true);
+        assert.equal(defaults['[lsdyna]']['workbench.view.alwaysShowHeaderActions'], undefined);
+    });
+
+    it('keeps faint native rulers scoped to LS-DYNA defaults', () => {
         const manifest = readJson('package.json');
         assert.deepEqual(
             manifest.contributes.configurationDefaults['[lsdyna]']['editor.rulers'],
-            [10, 20, 30, 40, 50, 60, 70, 80]
+            [10, 20, 30, 40, 50, 60, 70, 80].map(column => ({ column, color: '#80808030' }))
         );
     });
 

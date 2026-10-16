@@ -21,12 +21,6 @@ export type ActiveFieldChoiceControllerDeps = {
     translate: (key: string, ...args: any[]) => string;
     presentEvidence?: (evidence: any, plan: OfficialFieldChoicePlan) => string | null;
     setContext: (key: string, value: boolean) => Promise<unknown> | unknown;
-    globalState?: {
-        get?: (key: string, defaultValue?: any) => any;
-        update?: (key: string, value: any) => Promise<unknown> | unknown;
-    };
-    showInformationMessage?: (...args: any[]) => Promise<string | undefined> | undefined;
-    executeCommand?: (command: string, ...args: any[]) => Promise<unknown> | unknown;
     debounceMs?: number;
     schedule?: (callback: () => void, delayMs: number) => any;
     cancel?: (timer: any) => void;
@@ -36,7 +30,6 @@ export type ActiveFieldChoiceControllerDeps = {
 
 const CONTEXT_KEY = 'lsdyna.hasOfficialFieldChoices';
 const COMMAND_ID = 'extension.pickOfficialFieldValue';
-const DISCOVERY_STATE_KEY = 'officialFieldChoiceDiscovery.v1';
 
 function normalizeLevel(value: unknown): StatusBarLevel {
     return value === 'off' || value === 'detail' || value === 'simple' ? value : 'simple';
@@ -88,8 +81,6 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
     let disposed = false;
     let contextValue: boolean | null = null;
     let activePlan: OfficialFieldChoicePlan | null = null;
-    let discoveryConsumed = Boolean(deps.globalState?.get?.(DISCOVERY_STATE_KEY, false));
-    let discoveryPending = false;
 
     function updateContext(value: boolean) {
         if (contextValue === value) return;
@@ -155,56 +146,6 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
         return [base, summaryText, ...new Set(evidence)].filter(Boolean).join('\n');
     }
 
-    function consumeDiscovery() {
-        if (discoveryConsumed) return;
-        discoveryConsumed = true;
-        try {
-            void Promise.resolve(deps.globalState?.update?.(DISCOVERY_STATE_KEY, true)).catch(() => undefined);
-        } catch (_error) {
-            // Session state still prevents repeated prompts if persistence is unavailable.
-        }
-    }
-
-    function maybeShowDiscovery(
-        plan: OfficialFieldChoicePlan,
-        request: OfficialFieldChoiceCommandRequest,
-    ) {
-        if (discoveryConsumed || discoveryPending || !deps.showInformationMessage) return;
-        discoveryPending = true;
-        consumeDiscovery();
-        const view = deps.translate('officialFieldChoiceDiscoveryView');
-        const dismiss = deps.translate('officialFieldChoiceDiscoveryDismiss');
-        const message = plan.domainKind === 'closed'
-            ? deps.translate(
-                'officialFieldChoiceDiscoveryClosed',
-                plan.fieldName,
-                plan.choices.length,
-                summaryLabel(plan),
-            )
-            : deps.translate(
-                'officialFieldChoiceDiscoveryMixed',
-                plan.fieldName,
-                plan.choices.length,
-                summaryLabel(plan),
-            );
-        let shown;
-        try {
-            shown = deps.showInformationMessage(message, view, dismiss);
-        } catch (_error) {
-            discoveryPending = false;
-            return;
-        }
-        void Promise.resolve(shown).then(choice => {
-            discoveryPending = false;
-            if (choice === view && deps.executeCommand) {
-                return deps.executeCommand(COMMAND_ID, request);
-            }
-            return undefined;
-        }).catch(() => {
-            discoveryPending = false;
-        });
-    }
-
     function refreshGeneration(expectedGeneration: number): OfficialFieldChoicePlan | null {
         if (disposed || expectedGeneration !== generation) return null;
         const editor = deps.getActiveEditor();
@@ -251,7 +192,6 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
                     arguments: [request],
                 };
                 try { deps.statusBarItem.show(); } catch (_error) { /* best effort */ }
-                maybeShowDiscovery(plan, request);
             } else {
                 try { deps.statusBarItem.hide(); } catch (_error) { /* best effort */ }
             }
@@ -311,4 +251,3 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
 }
 
 export const ACTIVE_FIELD_CHOICE_CONTEXT_KEY = CONTEXT_KEY;
-export const ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY = DISCOVERY_STATE_KEY;

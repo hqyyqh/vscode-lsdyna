@@ -13,7 +13,8 @@ function createManualFixture(root) {
     write('indexes/sentence-map.json', { schemaVersion: 1, sentences: [] });
     for (const language of ['en', 'zh']) {
         write(`indexes/search-${language}.json`, { schemaVersion: 1, docs: sections.map(section => ({ ...section, keywords: ['*NODE'], preview: 'release-formula' })) });
-        write(`documents/${language}/vol/chunks/formula.md`, '<a id="formula"></a>\n# release-formula\n\nOffline image and equation.\n\n$$\n\\mathbb{R}+\\mathcal{F}+\\mathfrak{g}+\\mathbf{ABC}+\\mathsf{xyz}+\\mathtt{012}+\\boldsymbol{\\alpha}+\\left(\\frac{\\sqrt{1+x^2}}{\\sum_{i=1}^{n}x_i}\\right)\n$$\n\n![sample](../assets/sample.png)\n');
+        const introduction = language === 'zh' ? '离线图片与公式。' : 'Offline image and equation.';
+        write(`documents/${language}/vol/chunks/formula.md`, '<a id="formula"></a>\n# release-formula\n\n' + introduction + '\n\n$$\n\\mathbb{R}+\\mathcal{F}+\\mathfrak{g}+\\mathbf{ABC}+\\mathsf{xyz}+\\mathtt{012}+\\boldsymbol{\\alpha}+\\left(\\frac{\\sqrt{1+x^2}}{\\sum_{i=1}^{n}x_i}\\right)\n$$\n\n![sample](../assets/sample.png)\n');
         write(`documents/${language}/vol/chunks/next.md`, '<a id="next"></a>\n# release-next\n\nSecond section.\n');
         write(`documents/${language}/vol/assets/sample.png`, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPioAAAAASUVORK5CYII=', 'base64'));
     }

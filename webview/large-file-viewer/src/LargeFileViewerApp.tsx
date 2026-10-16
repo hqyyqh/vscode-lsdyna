@@ -22,6 +22,7 @@ type ViewerAction = (current: LargeFileViewerState) => Promise<boolean>;
 const MAX_SCROLL_HEIGHT = 4_000_000;
 
 export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTransport }) {
+    const [cursor, setCursor] = useState<{ line: number; token?: string } | null>(null);
     const [state, setState] = useState<LargeFileViewerState | null>(null);
     const [displayLine, setDisplayLine] = useState(0);
     const [lineTarget, setLineTarget] = useState<number | null>(null);
@@ -55,13 +56,24 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             if (!live) return;
             setInitialError(false);
             const previous = currentState.current;
-            if (previous && next.revision <= previous.revision) return;
+            if (previous && next.revision < previous.revision) return;
+            if (previous && next.revision === previous.revision) {
+                if (next.indexing !== 'loading' || previous.indexing !== 'loading' ||
+                    (next.scannedBytes || 0) <= (previous.scannedBytes || 0)) return;
+                const progress = { ...previous, scannedBytes: next.scannedBytes,
+                    availableLineCount: Math.max(previous.availableLineCount || 0, next.availableLineCount || 0) };
+                currentState.current = progress;
+                if (next.anchorLine === desiredLine.current) desiredLine.current = null;
+                setState(progress);
+                return;
+            }
             currentState.current = next;
             const targetChanged = previous !== null &&
                 JSON.stringify(previous.navigationTarget) !== JSON.stringify(next.navigationTarget);
             if (targetChanged || next.search.currentLine !== previous?.search.currentLine || next.search.query !== previous?.search.query || next.stale) {
                 desiredLine.current = null;
                 setLineTarget(null);
+                setCursor(null);
                 wheelPixels.current = 0;
                 setPixelOffset(0);
                 if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
@@ -113,7 +125,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         return () => observer.disconnect();
     }, [!!state, state?.lines[0]?.lineNumber]);
 
-    const lastLine = Math.max(0, (state?.lineCount ?? state?.lines.length ?? 1) - 1);
+    const lastLine = Math.max(0, (state?.lineCount ?? Math.max(state?.availableLineCount || 0, (state?.lines.at(-1)?.lineNumber ?? -1) + 1) + 240) - 1);
     const scrollHeight = Math.min(MAX_SCROLL_HEIGHT, lastLine * viewportSize.lineHeight);
     const visibleRows = Math.max(1, Math.floor(viewportSize.height / viewportSize.lineHeight));
     const scrollPosition = (line: number) => lastLine ? line / lastLine * scrollHeight : 0;
@@ -138,7 +150,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             if (event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
             event.preventDefault();
             const current = currentState.current;
-            if (!current || current.stale || current.indexing !== 'ready') return;
+            if (!current || current.stale) return;
             wheelPixels.current += event.deltaY * (event.deltaMode === 1 ? viewportSize.lineHeight
                 : event.deltaMode === 2 ? viewportSize.height : 1);
             const rows = Math.trunc(wheelPixels.current / viewportSize.lineHeight);
@@ -175,7 +187,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
 
     const navigate = (line: number, delayed = false) => {
         const current = currentState.current;
-        if (!current || current.stale || current.indexing !== 'ready' && line > 0) return;
+        if (!current || current.stale) return;
         const target = Math.max(0, Math.min(lastLine, Math.floor(line)));
         if (!delayed) { wheelPixels.current = 0; setPixelOffset(0); }
         desiredLine.current = target;
@@ -196,7 +208,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             navigateTimer.current = undefined;
             if (navigationInFlight.current) return;
             const current = currentState.current;
-            if (!current || current.stale || current.indexing !== 'ready' && line > 0) return;
+            if (!current || current.stale) return;
             const requestedLine = desiredLine.current ?? target;
             navigationInFlight.current = true;
             void run(async next => {
@@ -219,6 +231,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         else request();
     };
     const jump = (action: ViewerAction, reportFalse = true) => {
+        setCursor(null);
         setLineTarget(null);
         if (navigateTimer.current !== undefined) window.clearTimeout(navigateTimer.current);
         navigateTimer.current = undefined;
@@ -230,14 +243,15 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
     const submitGoto = (event: FormEvent) => {
         event.preventDefault();
         const parsed = Number(gotoLine);
-        if (Number.isSafeInteger(parsed) && parsed > 0 && !state.stale) {
+        if (Number.isSafeInteger(parsed) && parsed > 0 && !state.stale && state.indexing === 'ready') {
+            setCursor(null);
             setLineTarget(Math.min(lastLine, parsed - 1));
             navigate(parsed - 1);
         }
     };
     const submitSearch = async (event: FormEvent, direction: -1 | 1 = 1) => {
         event.preventDefault();
-        if (state.stale) return;
+        if (state.stale || state.indexing !== 'ready') return;
         if (modeReset.current) {
             const sequence = ++actionSequence.current;
             await modeReset.current;
@@ -261,6 +275,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         const steps: Record<string, number> = { PageDown: visibleRows - 1 || 1, PageUp: -(visibleRows - 1 || 1), ArrowDown: 1, ArrowUp: -1 };
         if (event.key in steps || event.key === 'Home' || event.key === 'End') {
             event.preventDefault();
+            if (event.key === 'End' && state.lineCount === undefined) return;
             navigate(event.key === 'Home' ? 0 : event.key === 'End' ? lastLine
                 : (desiredLine.current ?? displayLineRef.current) + steps[event.key]);
         } else if (event.key === 'Enter' && !state.stale && state.selectedField?.queryable) {
@@ -284,21 +299,32 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         }
     }}>
         <div className={`status ${state.stale || state.indexing === 'error' || retryAction ? 'warning' : ''}`} role="status">
+            {state.editError && <span role="alert">{state.editError}</span>}
             {retryAction && <div className="action-error" role="alert">{state.labels.failed || failed} <button type="button"
                 onClick={() => void run(retryAction)}>{state.labels.retry}</button></div>}
             {precedingKeyword && <span className="sticky-header" title={precedingKeyword}>{precedingKeyword}</span>}
             {state.stale || state.indexing === 'error' ? <>{state.stale ? state.labels.stale : state.indexingMessage} <button type="button"
                 onClick={() => jump(next => transport.reload(next.revision))}>{state.labels.reload}</button></>
-                : state.indexing === 'loading' ? state.labels.indexing
+                : state.indexing === 'loading' ? <span className="index-progress" title={`${state.labels.indexingHint} · ${formatBytes(state.scannedBytes || 0)} / ${formatBytes(state.fileSize)}`}>
+                    <span className="codicon codicon-loading codicon-modifier-spin" aria-hidden="true" />{' '}
+                    {state.scannedBytes === state.fileSize ? state.labels.indexingFinishing
+                        : `${state.labels.indexing} ${(state.scannedBytes || 0) > 0 && (state.scannedBytes || 0) < state.fileSize / 100 ? '<1' : Math.floor((state.scannedBytes || 0) / Math.max(1, state.fileSize) * 100)}%`}
+                </span>
                     : <><span className="position" title={`${state.labels.line} ${displayLine + 1} / ${state.lineCount || '\u2014'}`} aria-label={`${state.labels.line} ${displayLine + 1} / ${state.lineCount || '\u2014'}`}>{state.labels.line} {displayLine + 1}<span className="line-total"> / {state.lineCount || '\u2014'}</span></span>
                             {state.search.loading && <span>{state.labels.search}{'\u2026'}</span>}
                             {state.search.message && <span>{state.search.message}</span>}</>}
             {lineTarget === null && state.navigationTarget && !state.stale && targetText && !targetText.startsWith('*') && <span className="navigation-position" title={`${state.labels.navigationTarget} · ${state.labels.line} ${state.navigationTarget.line + 1}${targetText ? ` · ID ${targetText}` : ''}`}>
                 {targetText ? `ID ${targetText}` : `${state.labels.line} ${state.navigationTarget.line + 1}`}
             </span>}
-            <span className="read-only" title={`${state.labels.readOnly} ${formatBytes(state.fileSize)}`} aria-label={state.labels.readOnly}>{state.labels.readOnlyShort}</span>
+            <span title={formatBytes(state.fileSize)}>{state.dirty ? state.labels.recovery : formatBytes(state.fileSize)}</span>
         </div>
         <header className="titlebar">
+            <button type="button" className="open-native" title={state.labels.openNative} aria-label={state.labels.openNative}
+                disabled={state.stale || !shownLines.length} onClick={() => void run(next => {
+                    const target = cursor && shownLines.some(row => row.lineNumber === cursor.line && (!cursor.token || row.fields.some(field => field.token === cursor.token))) ? cursor
+                        : { line: (shownLines.some(row => row.lineNumber === lineTarget) ? lineTarget! : undefined) ?? (shownLines.some(row => row.lineNumber === next.navigationTarget?.line) ? next.navigationTarget!.line : displayLineRef.current) };
+                    return transport.openNative(next.revision, next.lines.some(row => row.lineNumber === target.line) ? target.line : displayLineRef.current, target.token);
+                }, false)}><span className="codicon codicon-edit" aria-hidden="true" /></button>
             <form className="goto" onSubmit={submitGoto}>
                 <label htmlFor="goto-line">{state.labels.line}</label>
                 <input id="goto-line" title={state.labels.gotoHint} value={gotoLine} inputMode="numeric" onFocus={() => { gotoFocused.current = true; }}
@@ -349,7 +375,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
         <div className="viewport" ref={viewport} tabIndex={0} title={state.labels.noField} onKeyDown={onViewportKey} onScroll={event => {
             if (event.currentTarget.scrollTop === assignedScrollTop.current) { assignedScrollTop.current = null; return; }
             assignedScrollTop.current = null;
-            if (state.stale || state.indexing !== 'ready') {
+            if (state.stale) {
                 setScrollLine(state.anchorLine); return;
             }
             const line = scrollHeight ? Math.round(event.currentTarget.scrollTop / scrollHeight * lastLine) : 0;
@@ -358,7 +384,8 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             <div className="scroll-space" style={{ height: scrollHeight + viewportSize.height }}>
             <div className="deck" style={{ '--line-digits': digits, transform: `translateY(${-translation}px)` } as CSSProperties}>
                 {shownLines.map(line => <LineRow key={line.lineNumber} line={line} state={lineTarget === null ? state : { ...state, search: { ...state.search, currentLine: undefined }, navigationTarget: { line: lineTarget, startColumn: 0, endColumn: 0 } }}
-                    select={token => { if (!state.stale) void run(next => transport.selectField(next.revision, token)); }}
+                    point={target => { setCursor(target); setLineTarget(target.line); }}
+                    select={token => { setCursor({ line: line.lineNumber, token }); if (!state.stale) void run(next => transport.selectField(next.revision, token)); }}
                     query={token => { if (!state.stale) void run(next => transport.queryField(next.revision, token)); }} />)}
             </div>
             </div>
@@ -368,7 +395,8 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
     </main>;
 }
 
-function LineRow({ line, state, select, query }: {
+function LineRow({ line, state, select, query, point }: {
+    point: (target: { line: number; token?: string }) => void;
     line: LargeFileViewerLine;
     state: LargeFileViewerState;
     select: (token: string) => void;
@@ -387,6 +415,7 @@ function LineRow({ line, state, select, query }: {
     fields.forEach((field, index) => {
         if (field.startColumn > cursor) content.push(renderText(line.text.slice(cursor, field.startColumn), cursor));
         content.push(<FieldSpan key={field.token} field={field} text={renderText(line.text.slice(field.startColumn, field.endColumn), field.startColumn)}
+            context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, token: field.token, preventDefaultContextMenuItems: true })}
             selected={state.selectedField?.token === field.token}
             target={!state.stale && state.navigationTarget?.line === line.lineNumber && field.endColumn > state.navigationTarget.startColumn && field.startColumn < state.navigationTarget.endColumn}
             select={select} query={query} />);
@@ -401,13 +430,15 @@ function LineRow({ line, state, select, query }: {
             syntaxText(line.text.slice(target.endColumn)));
         else content.push(renderText(line.text, 0));
     }
-    return <div className={`line ${line.keyword ? 'keyword-line' : line.text.trimStart().startsWith('$') ? 'comment-line' : ''} ${!state.stale && state.navigationTarget?.line === line.lineNumber || matchStart >= 0 ? 'navigation-line' : ''}`}>
+    return <div data-vscode-context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, preventDefaultContextMenuItems: true })}
+        onClick={event => { if (!(event.target as HTMLElement).closest('.field')) point({ line: line.lineNumber }); }} className={`line ${line.keyword ? 'keyword-line' : line.text.trimStart().startsWith('$') ? 'comment-line' : ''} ${!state.stale && state.navigationTarget?.line === line.lineNumber || matchStart >= 0 ? 'navigation-line' : ''}`}>
         <span className="line-number">{line.lineNumber + 1}</span>
         <span className="line-text">{content}{line.truncated && <span className="truncated" title={state.labels.truncatedLine}>{'\u2026'}</span>}</span>
     </div>;
 }
 
-function FieldSpan({ field, text, selected, target, select, query }: {
+function FieldSpan({ field, text, selected, target, select, query, context }: {
+    context: string;
     field: LargeFileFieldSpan;
     text: ReactNode;
     selected: boolean;
@@ -415,7 +446,7 @@ function FieldSpan({ field, text, selected, target, select, query }: {
     select: (token: string) => void;
     query: (token: string) => void;
 }) {
-    return <button type="button" className={`field ${selected ? 'selected' : ''} ${field.queryable ? 'queryable' : ''} ${target ? 'navigation-field' : ''}`}
+    return <button data-vscode-context={context} type="button" className={`field ${selected ? 'selected' : ''} ${field.queryable ? 'queryable' : ''} ${target ? 'navigation-field' : ''}`}
         title={field.label} onClick={() => select(field.token)} onDoubleClick={() => field.queryable && query(field.token)}
         onKeyDown={event => {
             if (event.key !== 'Enter') return;

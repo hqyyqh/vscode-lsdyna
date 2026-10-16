@@ -11,6 +11,7 @@ type Entry = {
     subscribers: Set<string>; token: { isCancellationRequested: boolean };
     rows: Map<string, { sequence: number; value: any; bytes: number }>;
     sequence: number; bytes: number; snapshot?: any; error?: string; ready: Promise<void>;
+    viewerProgress?: any;
     ownedSizes: Map<string, number>; ownedBytes: number;
     unpublishedOwnership?: Set<string>;
     lastAccess: number;
@@ -140,6 +141,7 @@ export class ProjectSessions {
         const retain = retainStructure && !!entry.snapshot;
         entry.token.isCancellationRequested = true;
         entry.state = 'stale';
+        entry.viewerProgress = undefined;
         entry.rows.clear(); entry.bytes = 0;
         if (!retain) {
             entry.snapshot = undefined;
@@ -203,6 +205,9 @@ export class ProjectSessions {
                     largeFileThresholdBytes: options.largeFileThresholdBytes, structureOnly: true,
                     cancellationToken: current.token,
                     onStructureQueued: (filePath, order) => current.fileOrder.set(filePath, order),
+                    onLargeFileProgress: progress => {
+                        if (options.singleFileOnly) current.viewerProgress = progress;
+                    },
                     onStructureBlock: (block, complete) => this.block(current, block, complete),
                     onStructureStart: filePath => this.publish(current, `file:${filePath}`,
                         { type: 'file', filePath, state: 'scanning' }),
@@ -223,6 +228,7 @@ export class ProjectSessions {
                         if (current.flushing) await current.flushing;
                         const previous = current.build; current.build = undefined;
                         current.generation = ++this.generation;
+                        current.viewerProgress = undefined;
                         current.rows.clear(); current.bytes = 0; current.sequence = 0; current.committed = 0;
                         current.ownedSizes.clear(); current.ownedBytes = 0;
                         current.unpublishedOwnership = undefined; previousFileIndexes?.clear();
@@ -243,12 +249,14 @@ export class ProjectSessions {
                 current.unpublishedOwnership = undefined;
                 previousFileIndexes?.clear();
                 current.snapshot = snapshot;
+                current.viewerProgress = undefined;
                 current.state = snapshot.failedFiles?.length ? 'incomplete' : 'complete';
                 if (snapshot.failedFiles?.length) current.error = 'structure-scan-failed';
             }).catch(error => {
                 if (current.state === 'stale') return;
                 console.warn('[lsdyna] Shared project structure incomplete:', error);
                 current.state = error?.name === 'CancellationError' ? 'cancelled' : 'incomplete';
+                current.viewerProgress = undefined;
                 current.error = error?.name === 'RangeError' ? 'index-budget-exceeded' : 'structure-scan-failed';
                 current.token.isCancellationRequested = true;
             }).finally(() => { previousFileIndexes?.clear(); });
@@ -421,6 +429,7 @@ export class ProjectSessions {
         if (request.action === 'file-view-open') handle = await this.open(request.rootFile,
             { singleFileOnly: true, largeFileThresholdBytes: 0 }, token);
         try {
+            if (request.action === 'file-view-open' && request.progressive) return handle;
             if (request.action === 'file-view-open') {
                 let entry = this.leases.get(handle.lease);
                 await entry?.ready;
@@ -434,17 +443,27 @@ export class ProjectSessions {
                 }
                 if (entry && this.leases.get(handle.lease) === entry) handle.generation = entry.generation;
             }
-            const snapshot = await this.snapshot(handle.lease, handle.generation);
+            const entry = this.leases.get(handle.lease);
+            if (!entry || entry.generation !== handle.generation || entry.state === 'stale') {
+                if (request.action === 'file-view-open') throw new Error('Project structure is not current');
+                return { state: 'stale' };
+            }
+            const partial = entry.state === 'scanning';
+            if (partial && !entry.viewerProgress) return { state: 'scanning', scannedBytes: 0 };
+            const snapshot = partial ? undefined : await this.snapshot(handle.lease, handle.generation);
             throwIfCancellationRequested(token);
-            const index = snapshot.fileIndexes.get(snapshot.rootFile);
+            const index = partial ? entry.viewerProgress : snapshot.fileIndexes.get(snapshot.rootFile);
             if (!index?.largeFileLineMap) {
                 if (request.action === 'file-view-open') this.release(handle.lease);
                 return { state: 'incomplete', reason: 'large-file-line-map-unavailable' };
             }
-            const header = { state: 'complete', lease: handle.lease, generation: handle.generation,
+            const header = { state: partial ? 'scanning' : 'complete', lease: handle.lease, generation: handle.generation,
+                scannedBytes: partial ? index.scannedBytes : index.size,
+                confirmedThroughLine: index.keywordBlocks?.at(-1)?.endLine ?? -1,
                 size: index.size, mtimeMs: index.mtimeMs, scannerVersion: index.scannerVersion,
                 lineCount: index.largeFileLineMap.lineCount };
-            if (request.action === 'file-view-open') return header;
+            if (request.action === 'file-view-open' || request.mode === 'progress') return header;
+            if (partial && request.mode !== 'window') return { state: 'scanning' };
             const anchor = Math.max(0, Math.min(index.largeFileLineMap.lineCount - 1, Number(request.line) || 0));
             if (request.mode === 'keyword') {
                 const filter = String(request.filter || '').replace(/^\*/, '').toUpperCase();
@@ -476,17 +495,17 @@ export class ProjectSessions {
                 return { ...header, name: count === 1 ? found : undefined };
             }
             const start = Math.max(0, anchor - 60), end = Math.min(index.largeFileLineMap.lineCount - 1, anchor + 299);
-            const checkpoint = Math.floor(start / index.largeFileLineMap.stride);
+            const checkpoint = Math.max(0, Math.min(index.largeFileLineMap.offsets.length - 1, Math.floor(start / index.largeFileLineMap.stride)));
             const blocks = index.keywordBlocks.filter(block => block.endLine >= start && block.startLine <= end);
             const offset = request.blockOffset || 0;
             if (!Number.isSafeInteger(offset) || offset < 0) throw new TypeError('Invalid file window cursor');
             const rows = boundedIndexPage(blocks.slice(offset), header);
             const keywordHeader = index.keywordBlocks.find(block => /^\*KEYWORD$/i.test(block.keyword));
-            return assertIndexPayload({ ...header, keywordBlocks: rows,
+            return assertIndexPayload({ ...header, windowLine: anchor, keywordBlocks: rows,
                 next: offset + rows.length < blocks.length ? offset + rows.length : undefined,
                 inputFormat: keywordHeader ? require('../core/parser/inputFormat').globalInputFormatFromKeywordLine(keywordHeader.rawKeyword) : 'standard',
                 largeFileLineMap: { stride: index.largeFileLineMap.stride, offsets: [index.largeFileLineMap.offsets[checkpoint]],
-                    baseLine: checkpoint * index.largeFileLineMap.stride, lineCount: index.largeFileLineMap.lineCount } });
+                    baseLine: checkpoint * index.largeFileLineMap.stride, lineCount: index.largeFileLineMap.lineCount, complete: !partial } });
         } catch (error) {
             if (request.action === 'file-view-open') this.release(handle.lease);
             throw error;

@@ -297,7 +297,7 @@ export function createKeywordManagerServices(host: {
     }
 
     const { nativeSpellingBinding, nativeFileCatalogKeyword, nativeFileLayoutKind: nativeReaderLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding } = require("../../core/semantics/catalogNativeFileLayout");
-    const { contactThermalBinding, contactThermalSource, contactThermalAllowed, contactThermalRecordDefinition, equivalentContactThermalSpelling, expandContactThermalRecords } = require('../../core/semantics/contactThermal');
+    const { contactThermalBinding, contactThermalSource, contactThermalRecordDefinition, equivalentContactThermalSpelling, expandContactThermalRecords } = require('../../core/semantics/contactThermal');
 
     // Verified descriptor grammars use the existing record-selection and instance paths.
     function nativeFileLayoutKind(rule, keyword) {
@@ -2798,7 +2798,7 @@ export function createKeywordManagerServices(host: {
                     ...(selector.values || []).map(value => ({ ...state, [selector.controlId]: String(value.value) })),
                 ]), [{}]).some(selections => keywordManagerCatalogSelectorSpelling(selectorRule, selections) === requestedSpelling)
             );
-            if (!isEquivalentSpelling && !isValidSelectorSpelling) {
+            if ((!isEquivalentSpelling && !isValidSelectorSpelling) || !keywordManagerCatalogCatalogForm(requestedSpelling)) {
                 baseResult.plan.status = 'blocked';
                 baseResult.plan.reason = 'lspp-input-form-target-spelling-unavailable';
                 baseResult.plan.blockers = [baseResult.plan.reason];
@@ -2815,14 +2815,6 @@ export function createKeywordManagerServices(host: {
         if (Object.entries(draftControlState).some(([id,value])=>value!=='' && !selectorRule?.selectors.some(s=>s.controlId===id&&s.values.some(v=>v.value===value)))) {
             baseResult.plan=blockedKeywordOptionSwitchPlan(currentKeyword,targetKeyword,'lspp-selector-spelling-unverified',baseResult.plan);
         }
-        const thermalAllowed=contactThermalAllowed(currentKeyword,(name,fallback)=> {
-            const field=fieldProjection.cards.flatMap(c=>c.fields).find(f=>f.name===name);
-            if(!field) return null;
-            const raw=fieldDrafts[field.fieldId]??field.value??'';
-            const value=require('../../core/semantics/nativeParameterContext').nativeControlResolver(
-                nativeParameterContextForDocument(document),[field.line]).resolve(raw||String(fallback),0);
-            return value.trim()&&Number.isFinite(Number(value))?Number(value):null;
-        });
         for (const field of fieldProjection.cards.flatMap(card => card.fields)) {
             if (field.draft !== undefined && String(field.draft).trim() === String(field.value || '').trim()) {
                 delete fieldDrafts[field.fieldId];
@@ -2889,7 +2881,7 @@ export function createKeywordManagerServices(host: {
             currentControlState,
             draftControlState,
             resolvedTargetState,
-            controls: (selectorRule?.selectors || []).filter(selector=>selector.controlId!==contactThermalSource().controlId||thermalAllowed).map(selector => {
+            controls: (selectorRule?.selectors || []).map(selector => {
                 const controlId = String(selector.controlId || '');
                 const currentValue = resolvedTargetState[controlId] ?? '';
                 const identity = keywordManagerContactIdentitySelector(selectorRule, selector);

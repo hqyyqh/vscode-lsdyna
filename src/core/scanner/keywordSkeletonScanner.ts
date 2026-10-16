@@ -21,6 +21,7 @@ type KeywordSkeletonScanOptions = {
         isCaptureComplete?: () => boolean;
     } | null;
     cancellationToken?: { isCancellationRequested?: boolean };
+    onScanProgress?: (bytes: number, lines: number) => void;
     onLineStart?: (line: number, byteOffset: number) => void;
     onBlock?: (block: any, complete: boolean) => void;
     onYield?: () => Promise<void>;
@@ -231,6 +232,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             remainder = combined.subarray(offset);
             if (remainder.length > 1024 * 1024) throw new RangeError('Structural line exceeds scan budget');
             absoluteOffset += chunk.length;
+            options.onScanProgress?.(lineStartOffset, lineIndex);
             await options.onYield?.();
         }
 
@@ -248,6 +250,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
     }
     finishCurrentSummary();
     if (currentBlockOpen && blocks.length) options.onBlock?.(blocks[blocks.length - 1], true);
+    options.onScanProgress?.(stat.size, lineIndex + (remainder.length > 0 ? 1 : 0));
     await options.onYield?.();
     throwIfCancellationRequested(options.cancellationToken);
 

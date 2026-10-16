@@ -35,7 +35,7 @@ describe('ManualReaderPanel React host', () => {
         vscode.workspace.getConfiguration = () => ({
             get: (key, defaultValue) => key === 'language' ? 'auto' : defaultValue,
         });
-        // Chinese VS Code UI enables language toggle + Alt sentence pairs.
+        // Default reading language follows the effective plugin locale.
         vscode.env.language = 'zh-cn';
         i18n.updateLanguage();
         root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lsdyna-manual-reader-')));
@@ -130,7 +130,8 @@ describe('ManualReaderPanel React host', () => {
         const repository = new ManualIndexRepository(root);
         repository.loadNavigation();
         const manager = { saveState(_packRoot, state) { savedStates.push(state); } };
-        return ManualReaderPanel.show(root, repository, manager, { manualId: 'vol', sectionId: 'formula', anchorId: 'formula' }, restored);
+        const location = { manualId: 'vol', sectionId: 'formula', anchorId: 'formula' };
+        return ManualReaderPanel.show(root, repository, manager, location, restored && { location, ...restored });
     }
 
     async function request(method, params) {
@@ -156,6 +157,76 @@ describe('ManualReaderPanel React host', () => {
         fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), ...patch }));
         fs.utimesSync(file, new Date(modified), new Date(modified));
     }
+
+    for (const host of ['en', 'zh-cn']) for (const setting of ['auto', 'en', 'zh-cn']) {
+        it(`defaults bilingual content to effective locale (${host}/${setting})`, async () => {
+            vscode.env.language = host;
+            vscode.workspace.getConfiguration = () => ({ get: (key, fallback) => key === 'language' ? setting : fallback });
+            i18n.updateLanguage();
+            const expected = (setting === 'auto' ? host : setting) === 'en' ? 'en' : 'zh';
+            replaceManifest({ defaultLanguage: expected === 'en' ? 'zh' : 'en' });
+            show();
+            const state = (await request('reader/ready', { revision: -1 })).result;
+            assert.equal(state.language, expected);
+            assert.equal(state.search.scope, expected);
+            assert.ok(state.content.chunkBaseUri.includes(`/documents/${expected}/`));
+            panel.dispose();
+            assert.equal(savedStates.at(-1).languagePreference, 'auto');
+        });
+    }
+
+    it('keeps an open automatic document stable and follows locale after reopening', async () => {
+        show();
+        const initial = (await request('reader/ready', { revision: -1 })).result;
+        vscode.env.language = 'en';
+        i18n.updateLanguage();
+        ManualReaderPanel.refreshUiLanguage();
+        assert.equal(latestState().uiLocale, 'en');
+        assert.equal(latestState().language, 'zh');
+        assert.equal(latestState().content.markdown, initial.content.markdown);
+        panel.dispose();
+        show(savedStates.at(-1));
+        const reopened = (await request('reader/ready', { revision: -1 })).result;
+        assert.equal(reopened.language, 'en');
+        assert.equal(reopened.location.title, 'Formula');
+    });
+
+    it('persists a deliberate same-language choice instead of treating it as automatic', async () => {
+        show();
+        const initial = (await request('reader/ready', { revision: -1 })).result;
+        await request('reader/toggleLanguage', { revision: initial.revision, mode: 'zh' });
+        panel.dispose();
+        const saved = savedStates.at(-1);
+        assert.equal(saved.languagePreference, 'zh');
+        vscode.env.language = 'en';
+        i18n.updateLanguage();
+        show(saved);
+        assert.equal((await request('reader/ready', { revision: -1 })).result.language, 'zh');
+    });
+
+    it('falls back to English without erasing the chosen Chinese preference', async () => {
+        replaceManifest({ flavor: 'en', languages: ['en'], defaultLanguage: 'en' });
+        show({ language: 'zh', languagePreference: 'zh', scrollY: 0 });
+        const current = (await request('reader/ready', { revision: -1 })).result;
+        assert.equal(current.language, 'en');
+        assert.equal(current.canToggleLanguage, false);
+        assert.equal((await request('reader/toggleLanguage', { revision: current.revision, mode: 'zh' })).result, false);
+        panel.dispose();
+        const saved = savedStates.at(-1);
+        assert.equal(saved.languagePreference, 'zh');
+        replaceManifest({ flavor: 'bilingual', languages: ['en', 'zh'], defaultLanguage: 'en' });
+        show(saved);
+        assert.equal((await request('reader/ready', { revision: -1 })).result.language, 'zh');
+    });
+
+    it('keeps a pack language choice across sections without restoring another section scroll', async () => {
+        show({ language: 'en', languagePreference: 'en', location: { manualId: 'vol', sectionId: 'next' }, scrollY: 999, scrollRatio: 0.8 });
+        const state = (await request('reader/ready', { revision: -1 })).result;
+        assert.equal(state.language, 'en');
+        assert.equal(state.location.sectionId, 'formula');
+        assert.equal(state.restore.scrollY, 0);
+        assert.equal(state.restore.scrollRatio, 0);
+    });
 
     it('selects, persists and restores bilingual reading without changing source-language paths', async () => {
         show();

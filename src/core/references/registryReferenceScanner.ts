@@ -62,7 +62,8 @@ function activeDataEntries(block, text) {
 
 function lsppReferenceRecordsForKeyword(keyword) {
     const normalized = normalizeKeyword(keyword);
-    const original = nativeFileLayout.nativeSpellingBinding(normalized)?.referenceKeyword;
+    const binding = nativeFileLayout.nativeSpellingBinding(normalized);
+    const original = binding?.referenceKeyword || binding?.baseKeyword;
     return getReferenceRuleCatalog().records(normalized) || getReferenceRuleCatalog().records(original) || [];
 }
 
@@ -98,13 +99,18 @@ function getCatalogFieldReferenceInfo({ keyword, cardIndex, field }) {
     const selected = getReferenceRuleCatalog().matchRecord(records, field?.referenceRecord);
     if (selected) record = selected;
     else if (field?.nativeIdentity) {
-        const form = require("../semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4().formForKeyword(keyword);
+        // Native field addresses belong to the file reader's pool, not a manual composition.
+        const form = require("../semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4()
+            .formForKeyword(nativeFileLayout.nativeFileCatalogKeyword(normalizeKeyword(keyword)), false);
         if (field.nativeIdentity.source !== form?.source.datasetSha256) return null;
+        const card = require('../semantics/nativeFileReadContext')
+            .nativeKeywordReadContext('*' + normalizeKeyword(keyword), [], 'standard')?.cards.get(field.nativeIdentity.cardIndex);
+        if (!card?.fields.some(candidate => candidate.fieldRecordId === field.nativeIdentity.fieldRecordId)) return null;
         const candidates = records.filter(candidate => normalizeKeyword(candidate.fieldName) === normalizeKeyword(field.n) &&
             candidate.nativeSources?.some(source => source.cardSetId === form.rules[
                 form.reference.formRuleIds?.[0] as string]?.cardSetId &&
                 source.fieldRecordId === field.nativeIdentity.fieldRecordId &&
-                source.cardIndex + 1 === field.nativeIdentity.cardIndex));
+                source.cardAddress === card.cardRecordId));
         const unique = [...new Map(candidates.map(candidate => [JSON.stringify({ relation: candidate.relation,
             sibling: candidate.siblingTargetBinding }), candidate])).values()];
         if (unique.length !== 1) return null;
@@ -159,7 +165,7 @@ function semanticReferenceRecordsForKeyword(keyword) {
 function nativeReferenceCoversField({ keyword, cardIndex, field }) {
     // Native file layouts select the physical descriptor, including variant cards.
     // An older name-based projection can flatten that field onto a different row.
-    return lsppReferenceRecordsForKeyword(keyword).some(record => (record.cardIndex === cardIndex || record.nativeLayout) &&
+    return [...lsppReferenceRecordsForKeyword(keyword), ...lsppBlockedRecordsForKeyword(keyword)].some(record => (record.cardIndex === cardIndex || record.nativeLayout) &&
         normalizeKeyword(record.fieldName) === normalizeKeyword(field?.n) &&
         record.position === field?.p && record.width === field?.w &&
         (record.fieldType === field?.t || record.nativeFieldType === -1 && field?.t === 'real'));
@@ -1185,6 +1191,7 @@ module.exports = {
     scanOperationalBlock,
     relationNamespaces,
     getCatalogFieldReferenceInfo,
+    nativeReferenceCoversField,
     lsppReferenceRecordsForKeyword,
     lsppBlockedRecordsForKeyword,
     resolveSiblingTargetBinding,

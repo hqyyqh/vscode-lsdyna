@@ -86,11 +86,18 @@
         "onCommand:extension.keywordIndexToggleFollow",
         "onCommand:extension.keywordIndexToggleFollowActive",
         "onCommand:extension.openLsdynaLargeFileViewer",
+        "onCommand:extension.openLargeFileInTextEditor",
         "onCustomEditor:lsdyna.largeFileViewer",
         "onCommand:extension.keywordOptions.apply",
         "onCommand:extension.keywordOptions.reset",
         "onCommand:extension.keywordOptions.refresh",
-        "onCommand:extension.keywordOptions.openEvidence"
+        "onCommand:extension.keywordOptions.openEvidence",
+        "onCommand:extension.includeTree.cycleTree",
+        "onCommand:extension.includeTree.cycleSize",
+        "onCommand:extension.includeTree.cycleName",
+        "onCommand:extension.keywordIndexCycleCategory",
+        "onCommand:extension.keywordIndexCycleOrder",
+        "onCommand:extension.keywordIndexCycleAlphabetical"
     ],
     "main": "./out/client/bootstrap.js",
     "categories": [
@@ -187,6 +194,26 @@
                     "highContrast": "#3ddc84",
                     "highContrastLight": "#0b6a0b"
                 }
+            },
+            {
+                "id": "lsdyna.columnGuide",
+                "description": "%colors.columnGuide.description%",
+                "defaults": {
+                    "light": "#69758055",
+                    "dark": "#B6C2CE55",
+                    "highContrast": "#FFFFFF99",
+                    "highContrastLight": "#00000099"
+                }
+            },
+            {
+                "id": "lsdyna.columnGuide80",
+                "description": "%colors.columnGuide80.description%",
+                "defaults": {
+                    "light": "#56657366",
+                    "dark": "#C3CFDB66",
+                    "highContrast": "#FFFFFF",
+                    "highContrastLight": "#000000"
+                }
             }
         ],
         "viewsContainers": {
@@ -231,6 +258,7 @@
             }
         ],
         "configurationDefaults": {
+            "workbench.view.alwaysShowHeaderActions": true,
             "[lsdyna]": {
                 "editor.quickSuggestions": {
                     "other": false,
@@ -247,14 +275,38 @@
                 "editor.insertSpaces": true,
                 "editor.detectIndentation": false,
                 "editor.rulers": [
-                    10,
-                    20,
-                    30,
-                    40,
-                    50,
-                    60,
-                    70,
-                    80
+                    {
+                        "column": 10,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 20,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 30,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 40,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 50,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 60,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 70,
+                        "color": "#80808030"
+                    },
+                    {
+                        "column": 80,
+                        "color": "#80808030"
+                    }
                 ]
             }
         },
@@ -301,6 +353,11 @@
             }
         ],
         "commands": [
+            {
+                "command": "extension.openLargeFileInTextEditor",
+                "title": "%commands.openLargeFileInTextEditor.title%",
+                "icon": "$(edit)"
+            },
             {
                 "command": "extension.openIncludeFile",
                 "title": "%commands.openIncludeFile.title%"
@@ -655,6 +712,36 @@
                 "command": "extension.keywordOptions.openEvidence",
                 "title": "%commands.keywordOptions.openEvidence.title%",
                 "icon": "$(book)"
+            },
+            {
+                "command": "extension.includeTree.cycleTree",
+                "title": "%commands.includeTree.cycleTree.title%",
+                "icon": "$(list-tree)"
+            },
+            {
+                "command": "extension.includeTree.cycleSize",
+                "title": "%commands.includeTree.cycleSize.title%",
+                "icon": "$(list-ordered)"
+            },
+            {
+                "command": "extension.includeTree.cycleName",
+                "title": "%commands.includeTree.cycleName.title%",
+                "icon": "$(sort-precedence)"
+            },
+            {
+                "command": "extension.keywordIndexCycleCategory",
+                "title": "%commands.keywordIndexCycleCategory.title%",
+                "icon": "$(symbol-namespace)"
+            },
+            {
+                "command": "extension.keywordIndexCycleOrder",
+                "title": "%commands.keywordIndexCycleOrder.title%",
+                "icon": "$(list-ordered)"
+            },
+            {
+                "command": "extension.keywordIndexCycleAlphabetical",
+                "title": "%commands.keywordIndexCycleAlphabetical.title%",
+                "icon": "$(symbol-keyword)"
             }
         ],
         "keybindings": [
@@ -1044,6 +1131,10 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "extension.openLargeFileInTextEditor",
+                    "when": "false"
+                },
+                {
                     "command": "extension.keywordIndexToggleFollowActive",
                     "when": "false"
                 },
@@ -1124,11 +1215,6 @@
                     "group": "navigation@5"
                 },
                 {
-                    "command": "extension.keywordIndexChooseLayout",
-                    "when": "view == lsdynaKeywordIndex",
-                    "group": "1_layout@1"
-                },
-                {
                     "command": "extension.keywordIndexToggleFollow",
                     "when": "view == lsdynaKeywordIndex && !lsdyna.keywordIndexFollowCursor",
                     "group": "navigation@4"
@@ -1137,6 +1223,43 @@
                     "command": "extension.keywordIndexToggleFollowActive",
                     "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexFollowCursor",
                     "group": "navigation@4"
+                },
+                {
+                    "command": "extension.includeTree.cycleTree",
+                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'tree'",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.includeTree.cycleSize",
+                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'flat-size'",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.includeTree.cycleName",
+                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'flat-name'",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.keywordIndexCycleCategory",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'category'",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.keywordIndexCycleOrder",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'order'",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "extension.keywordIndexCycleAlphabetical",
+                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'alphabetical'",
+                    "group": "navigation@5"
+                }
+            ],
+            "webview/context": [
+                {
+                    "command": "extension.openLargeFileInTextEditor",
+                    "when": "webviewId == lsdyna.largeFileViewer && webviewSection == largeFileRecord",
+                    "group": "navigation"
                 }
             ],
             "editor/context": [
@@ -1149,16 +1272,6 @@
                     "command": "extension.openIncludeFile",
                     "when": "editorLangId == 'lsdyna' && lsdyna.onIncludeLine",
                     "group": "lsdyna@4"
-                },
-                {
-                    "command": "extension.queryLsdynaEntityId",
-                    "when": "editorLangId == 'lsdyna' || resourceExtname == '.k' || resourceExtname == '.key' || resourceExtname == '.dyna'",
-                    "group": "lsdyna@0.75"
-                },
-                {
-                    "command": "extension.entityReferences.refresh",
-                    "when": "editorLangId == 'lsdyna'",
-                    "group": "lsdyna@0.8"
                 },
                 {
                     "command": "extension.lsdynaLineComment",
@@ -1174,6 +1287,11 @@
                     "command": "extension.lsdynaFormatSelection",
                     "when": "editorLangId == 'lsdyna'",
                     "group": "lsdyna@1"
+                },
+                {
+                    "command": "extension.openLsdynaLargeFileViewer",
+                    "when": "resourceScheme == file && (editorLangId == lsdyna || resourceExtname == .k || resourceExtname == .key || resourceExtname == .dyna)",
+                    "group": "lsdyna@3"
                 }
             ],
             "editor/title": [
@@ -1203,6 +1321,13 @@
                     "command": "extension.copyIncludeTreeItem",
                     "when": "view == lsdynaIncludeTree && (viewItem == file || viewItem == file-missing)",
                     "group": "1_copy@1"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "extension.openLsdynaLargeFileViewer",
+                    "when": "resourceScheme == file && !explorerResourceIsFolder && (resourceExtname == .k || resourceExtname == .key || resourceExtname == .dyna)",
+                    "group": "lsdyna@3"
                 }
             ]
         },

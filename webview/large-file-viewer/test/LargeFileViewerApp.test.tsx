@@ -26,6 +26,7 @@ function viewState(overrides: Partial<LargeFileViewerState> = {}): LargeFileView
         }],
         search: { query: '', loading: false, count: 0, currentIndex: -1, truncated: false, message: '' },
         labels: {
+            openNative: '在文本编辑器中打开',
             goto: '跳转', line: '行', keyword: '关键字', previous: '上一个', next: '下一个',
             textMode: '全文查找模式；切换关键字', keywordMode: '关键字模式；切换全文查找', searchHint: '全文查找提示', clearSearch: '清除查找', searchText: '全文查找', searching: '查找中…', matchLines: '匹配行', keywordHint: '关键字跳转提示', gotoHint: '行号跳转提示', search: '搜索', reload: '重新加载', indexing: '索引中', stale: '已失效',
             truncatedLine: '截断', english: '原文', queryObject: '对象引用', noField: '选择字段',
@@ -40,6 +41,7 @@ function viewState(overrides: Partial<LargeFileViewerState> = {}): LargeFileView
 
 function transport(initial: LargeFileViewerState): LargeFileViewerTransport {
     return {
+        openNative: vi.fn(async () => true),
         updatePosition: vi.fn(),
         ready: async () => initial,
         navigate: vi.fn(async () => true),
@@ -317,7 +319,7 @@ test('blocks stale field selection, double-click and Enter and names controls by
     expect(screen.getByRole('textbox', { name: '行' })).toBeInTheDocument();
     expect(screen.getByRole('button', {name:'关键字模式；切换全文查找'})).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '上一个匹配的关键字' })).toBeDisabled();
-    expect(screen.getByLabelText('只读查看；不能在此修改文件。')).toBeInTheDocument();
+    expect(screen.queryByLabelText('只读查看；不能在此修改文件。')).not.toBeInTheDocument();
     expect(document.querySelector('main')).toHaveAttribute('lang', 'zh');
     expect(screen.getByText(/卡片 1/)).toBeInTheDocument();
     expect(screen.getByText('默认值: 0')).toBeInTheDocument();
@@ -470,8 +472,8 @@ test('keeps keyword context inside the status strip and hides the unused help pa
     await screen.findByDisplayValue('101');
     expect(container.querySelector('.field-help')).toBeNull();
     expect(container.querySelector('.status .sticky-header')).toHaveTextContent('*PART');
-    expect(container.querySelector('.read-only')).toHaveTextContent('只读');
-    expect(container.querySelector('.read-only')).toHaveAttribute('aria-label', '只读查看；不能在此修改文件。');
+    expect(container.querySelector('.read-only')).toBeNull();
+    expect(container.querySelector('.record-edit')).toBeNull();
 });
 
 
@@ -539,4 +541,91 @@ test('treats no matches as neutral feedback while retaining the stale-file recov
     render(<LargeFileViewerApp transport={transport({ ...initial, stale: true })} />);
     expect(await screen.findByRole('button', { name: '重新加载' })).toBeEnabled();
     expect(document.querySelector('.status')).toHaveClass('warning');
+});
+
+
+test('opens the current field through a single icon and supplies native context targets', async () => {
+    const api = transport(viewState({ viewer: 'session' }));
+    render(<LargeFileViewerApp transport={api} />);
+    const button = await screen.findByRole('button', { name: '在文本编辑器中打开' });
+    expect(button.textContent).toBe('');
+    expect(document.querySelector('.record-edit,textarea')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /2000101/ }));
+    await userEvent.click(button);
+    expect(api.openNative).toHaveBeenLastCalledWith(4, 100, 'mid-token');
+    const field = document.querySelector('.field')!;
+    expect(JSON.parse(field.getAttribute('data-vscode-context')!)).toMatchObject({ viewer: 'session', revision: 4, line: 100, token: 'mid-token', webviewSection: 'largeFileRecord' });
+    fireEvent.click(document.querySelector('.line-number')!);
+    await userEvent.click(button);
+    expect(api.openNative).toHaveBeenLastCalledWith(4, 100, undefined);
+});
+
+test('disables native navigation for stale content', async () => {
+    render(<LargeFileViewerApp transport={transport(viewState({ stale: true }))} />);
+    expect(await screen.findByRole('button', { name: '在文本编辑器中打开' })).toBeDisabled();
+});
+
+test('a new line jump supersedes a previously clicked field', async () => {
+    const api = transport(viewState({ lines: [viewState().lines[0], { lineNumber: 101, text: '*END', fields: [], keyword: true, truncated: false }] }));
+    render(<LargeFileViewerApp transport={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: /2000101/ }));
+    fireEvent.change(document.querySelector('.goto input')!, { target: { value: '102' } });
+    fireEvent.submit(document.querySelector('.goto')!);
+    await userEvent.click(screen.getByRole('button', { name: '在文本编辑器中打开' }));
+    expect(api.openNative).toHaveBeenLastCalledWith(4, 101, undefined);
+});
+
+
+test('scrolls and pages during indexing, reports byte progress and keeps full search unavailable', async () => {
+    const initial = viewState({ indexing: 'loading', lineCount: undefined, availableLineCount: 500,
+        fileSize: 10000, scannedBytes: 3700 });
+    const api = transport(initial);
+    let notify!: (state: LargeFileViewerState) => void;
+    api.onStateChanged = handler => { notify = handler; return () => undefined; };
+    render(<LargeFileViewerApp transport={api} />);
+    await screen.findByDisplayValue('101');
+    expect(screen.getByRole('status')).toHaveTextContent('37%');
+    expect(screen.getByRole('button', { name: '跳转' })).toBeDisabled();
+    const viewport = document.querySelector('.viewport') as HTMLElement;
+    vi.useFakeTimers();
+    try {
+        fireEvent.wheel(viewport, { deltaY: 40, cancelable: true });
+        await act(async () => { await vi.advanceTimersByTimeAsync(70); });
+        expect(api.navigate).toHaveBeenLastCalledWith(4, 102);
+        await act(async () => { fireEvent.keyDown(viewport, { key: 'PageDown' }); await vi.advanceTimersByTimeAsync(16); });
+        expect(api.navigate).toHaveBeenLastCalledWith(4, 116);
+        await act(async () => notify({ ...initial, revision: 5, scannedBytes: 4800, availableLineCount: 900 }));
+        expect(screen.getByRole('status')).toHaveTextContent('48%');
+        fireEvent.submit(document.querySelector('.goto')!);
+        fireEvent.submit(document.querySelector('.search-float')!);
+        expect(api.search).not.toHaveBeenCalled();
+        expect(api.navigateKeyword).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+});
+
+
+test.each([[0, '索引中 0%'], [1, '索引中 <1%'], [10000, '正在完成索引…']])('shows honest progress for %i scanned bytes', async (scannedBytes, text) => {
+    const state = viewState({ indexing:'loading',fileSize:10000,scannedBytes });
+    state.labels.indexingFinishing='正在完成索引…';
+    render(<LargeFileViewerApp transport={transport(state)} />);
+    await screen.findByDisplayValue('101');
+    expect(screen.getByRole('status')).toHaveTextContent(text);
+});
+
+
+test('merges same-window progress without replacing row actions, focus or position', async () => {
+    const initial=viewState({indexing:'loading',scannedBytes:3700,fileSize:10000});
+    const api=transport(initial);
+    let notify!: (state:LargeFileViewerState)=>void;
+    api.onStateChanged=handler=>{notify=handler;return()=>undefined;};
+    render(<LargeFileViewerApp transport={api} />);
+    const input=await screen.findByDisplayValue('101');
+    input.focus();
+    await act(async()=>notify({...initial,scannedBytes:4800,anchorLine:0,lines:[]}));
+    expect(screen.getByRole('status')).toHaveTextContent('48%');
+    expect(input).toHaveValue('101');
+    expect(input).toHaveFocus();
+    expect(document.querySelector('.field')).toBeInTheDocument();
+    await act(async()=>notify({...initial,scannedBytes:4000}));
+    expect(screen.getByRole('status')).toHaveTextContent('48%');
 });

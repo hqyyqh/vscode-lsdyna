@@ -1,5 +1,5 @@
 import type { FieldContext } from '../parser/fieldContext';
-import { nativeSpellingGap, type NativeFileRecord } from "./catalogNativeFileLayout";
+import { nativeSpellingGap, nativeReferenceFileBinding, type NativeFileRecord } from "./catalogNativeFileLayout";
 import { isKeywordCommentLine } from '../parser/keywordLine';
 import { keywordInputFormat, keywordInputFormatOverride } from '../parser/inputFormat';
 import { formattedReadFields, readRecordField } from '../edit/keywordRecordSerializer';
@@ -32,6 +32,7 @@ const ordinalDecisions = new WeakMap<object, Map<string, boolean>>();
 let managerHelpModule: typeof import('../hover/managerFieldHelpResolution') | undefined;
 let schemaHelpModule: typeof import('../keywordSchema') | undefined;
 export function hasNativeFileReader(keyword: string): boolean {
+    if (nativeReferenceFileBinding(keyword)) return true;
     if (nativeSpellingBinding(keyword) || nativeSpellingGap(keyword)) return true;
     if (nativeConditionalBinding(keyword)) return true;
     if (nativeCountedOccurrenceBinding(keyword)) return true;
@@ -112,13 +113,13 @@ function resolveUncached(context: FieldContext, keyword: string, schema: Keyword
     }
     catch { return fail('native-file-catalog-unavailable', 'implementation-gap'); }
     const rules = (form?.reference?.formRuleIds || []).map(id => form.rules[id]);
-    const candidates = rules.filter(rule => !(nativeSpellingBinding(keyword) || nativeConditionalBinding(keyword) || nativeCountedOccurrenceBinding(keyword) || knownReaders.test(keyword) || hasNativeSectionFixedReader(keyword) || hasNativeGenericReader(keyword) || nativeBatchFixedBinding(keyword) || nativeNodeBinding(keyword) || nativePartCompositeBinding(keyword) || nativePartStandaloneBinding(keyword) || nativePartModularBinding(keyword)) ||
+    const candidates = rules.filter(rule => !(nativeReferenceFileBinding(keyword) || nativeSpellingBinding(keyword) || nativeConditionalBinding(keyword) || nativeCountedOccurrenceBinding(keyword) || knownReaders.test(keyword) || hasNativeSectionFixedReader(keyword) || hasNativeGenericReader(keyword) || nativeBatchFixedBinding(keyword) || nativeNodeBinding(keyword) || nativePartCompositeBinding(keyword) || nativePartStandaloneBinding(keyword) || nativePartModularBinding(keyword)) ||
         nativeFileLayoutKind({ ...rule, catalogSource: form.source }, keyword) !== 'unsupported-source');
     if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic || candidates.length !== 1) {
         return fail('native-file-source-unverified', 'implementation-gap');
     }
     const rawRule = candidates[0];
-    const rule = { ...rawRule, catalogSource: form.source,
+    const sourceRule = { ...rawRule, catalogSource: form.source,
         cards: rawRule.recordSelection?.cards || rawRule.cards };
     const rows = context.observedDataLines;
     const countedOccurrence = nativeCountedOccurrenceBinding(keyword);
@@ -126,11 +127,11 @@ function resolveUncached(context: FieldContext, keyword: string, schema: Keyword
         rows.some(row => row.includes(',')))) return { status: 'unsupported', reason: 'non-standard-input-format' };
     const localFormat = keywordInputFormatOverride(context.keywordText);
     const selectedHeader = '*' + keyword + (localFormat ? ' ' + { standard: '-', long: '+', i10: '%' }[localFormat] : '');
-    const reading = nativeFileReadContext(rule, selectedHeader, context.recordOrdinalOnly ? [context.currentText] : rows,
+    const reading = nativeFileReadContext(sourceRule, selectedHeader, context.recordOrdinalOnly ? [context.currentText] : rows,
         context.globalInputFormat, context.recordLines, context.parameterContext);
     if (reading.readInputFailure) return fail(reading.readInputFailure, 'implementation-gap');
     const { kind, input, readInput, cards, controls: parameters } = reading;
-    rule.cards = reading.fields;
+    const rule = { ...sourceRule, cards: reading.fields };
     const binding = nativeSpellingBinding(keyword);
     const positioned = binding && (binding.layout || binding.prefixCard && binding.prefixScope !== 'instance') ? null :
         nativeFixedFileRecord(binding?.prefixScope === 'instance' ? 'generic-fixed' : kind, ordinal,

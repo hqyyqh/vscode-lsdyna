@@ -2,6 +2,7 @@ import { HOST_EXTENSION } from 'vscode-messenger-common';
 import { Messenger } from 'vscode-messenger-webview';
 import type { VsCodeApi } from 'vscode-messenger-webview/lib/vscode-api';
 import {
+    LargeFileOpenNative,
     LargeFilePositionChanged,
     LargeFileKeywordNavigateRequestType,
     LargeFileNavigateRequestType,
@@ -16,6 +17,7 @@ import {
 } from '../../../src/client/largeFileViewerProtocol';
 
 export type LargeFileViewerTransport = {
+    openNative(revision: number, line: number, token?: string): Promise<boolean>;
     updatePosition(revision: number, line: number): void;
     ready(): Promise<LargeFileViewerState>;
     navigate(revision: number, line: number): Promise<boolean>;
@@ -40,6 +42,7 @@ export function createLargeFileViewerTransport(api: VsCodeApi = acquireApi()): L
     const request = <P, R>(type: any, payload: P) =>
         messenger.sendRequest(type, HOST_EXTENSION, payload) as Promise<R>;
     return {
+        openNative: (revision, line, token) => request(LargeFileOpenNative, { revision, line, token }),
         updatePosition: (revision, line) => { messenger.sendNotification(LargeFilePositionChanged, HOST_EXTENSION, { revision, line }); },
         ready: () => request(LargeFileReadyRequest, { revision: 0 }),
         navigate: (revision, line) => request(LargeFileNavigateRequestType, { revision, line }),

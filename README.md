@@ -30,6 +30,18 @@
 
 ![Field help in the editor](./images/field-help-en.png)
 
+### Large files and sidebar modes
+
+Opening a file of 50 MiB or more from the Include Tree, Keyword Index, or Entity References uses the large-file view. You can also choose **Open in DynaSense Large File Viewer** from the editor or Explorer context menu. Select a supported field to read its help.
+
+You can scroll and use Page Up/Page Down while indexing continues. The compact progress indicator uses scanned bytes; its tooltip shows the scanned and total sizes. Field help becomes available for completed keyword blocks whose context is confirmed. Until the total line count is known, the scroll range grows as more content becomes available; finishing the index keeps your current position. Exact line jumps, full-file search and entity queries become available after indexing.
+
+Use the pencil icon in the toolbar, or right-click a record or field and choose **Open in Text Editor**, to edit at that position in the native editor. The large-file view retains browsing and field help and no longer edits records. Existing unsaved native text is retained; inserted or deleted lines can shift the target. Native editor size and memory limits still apply. Legacy recovery backups remain supported: recovered changes must be saved as a separate copy before opening the native editor; auto-save cannot overwrite the original. Cancelling leaves the recovery content and original file intact.
+
+The Include Tree mode button cycles through include order, file size (largest first), and file name. The Keyword Index defaults to categories for new workspaces and cycles through categories, source order, and keyword A–Z. Both retain your choice. The manual search button switches between keywords and titles and full text; its tooltip identifies the current mode and the next action. Column 80 is a visual reference, not a general record-length limit.
+
+While DynaSense is enabled, expanded view headers show their action buttons by default in every workspace. This uses VS Code's **Workbench › View: Always Show Header Actions** setting and also affects other views. Explicit user or workspace settings take precedence. DynaSense does not write to your settings files; disabling or uninstalling it removes this contributed default.
+
 ### Key Shortcuts
 
 | Shortcut | Action | Description |

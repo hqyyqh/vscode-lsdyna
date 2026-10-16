@@ -86,11 +86,10 @@ export function nativeBatchFixedBinding(keyword: string): any {
 }
 /** File dispatch can select a different pool from the GUI alias directory. */
 export function nativeFileCatalogKeyword(keyword: string): string {
-    const composition=contactThermalCatalogKeyword(keyword);
-    if (composition) return composition;
     const binding = nativeSpellingBinding(keyword)?.baseKeyword || nativeBatchFixedBinding(keyword)?.catalogKeyword || nativeNodeBinding(keyword)?.aliasOf;
     if (binding) return binding;
-
+    if (nativeReferenceFileBinding(keyword)) return keyword;
+    if (require("./catalogInputFormCatalogV4").getCatalogInputFormCatalogV4().hasKeyword(keyword)) return keyword;
     return contactThermalCatalogKeyword(keyword) || keyword;
 }
 export function nativeFieldlessBinding(keyword: string): any {

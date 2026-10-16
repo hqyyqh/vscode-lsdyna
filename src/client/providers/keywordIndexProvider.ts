@@ -625,8 +625,8 @@ class LsdynaKeywordIndexProvider {
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
         this.roots = [];
         this._mode = 'local';
-        const storedLayout = initialLayout || this.workspaceState?.get?.(LAYOUT_STATE_KEY, 'alphabetical');
-        this._layout = VALID_LAYOUTS.has(storedLayout) ? storedLayout : 'alphabetical';
+        const storedLayout = initialLayout || this.workspaceState?.get?.(LAYOUT_STATE_KEY, 'category');
+        this._layout = VALID_LAYOUTS.has(storedLayout) ? storedLayout : 'category';
         this._followCursor = followCursor === true;
         this.documentIndices = new Map();
         this._documentIndexVersions = new Map();

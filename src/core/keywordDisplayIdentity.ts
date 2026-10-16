@@ -17,7 +17,9 @@ const {
 } = require('./keywordSchema');
 const { getReferenceRuleCatalog } = require('./references/referenceRuleCatalog');
 const { StringDecoder } = require('node:string_decoder');
-const { formattedFields } = require('./edit/keywordRecordSerializer');
+const { formattedFields, readRecordField, detectRecordFormat } = require('./edit/keywordRecordSerializer');
+const { hasNativeFileReader } = require('./semantics/nativeFieldResolution');
+const { nativeKeywordReadContext } = require('./semantics/nativeFileReadContext');
 
 const {
     globalInputFormatFromKeywordLine,
@@ -150,6 +152,26 @@ function collectFieldValues(
     const lookup = Object.prototype.hasOwnProperty.call(options, 'lookup')
         ? options.lookup
         : lookupKeywordSchema(keyword, schema);
+    if (hasNativeFileReader(keyword)) {
+        const values: DisplayFieldValue[] = [];
+        try {
+            const reading = nativeKeywordReadContext('*' + keyword, dataLines,
+                options.percentFormat ? 'i10' : options.longFormat ? 'long' : 'standard');
+            const records = reading?.select(true)?.current || [];
+            const prefixFormat = require("./semantics/catalogNativeFileLayout").nativeSpellingBinding(keyword)?.prefixFormat;
+            for (let index = 0; index < records.length; index++) {
+                const card = records[index]?.cardIndex;
+                const fields = reading.cards.get(card)?.fields || (card === 0 ? [{ name: 'TITLE' }] : []);
+                for (const [fieldIndex, field] of fields.entries()) {
+                    const value = compactText(card !== 0 ? reading.read(dataLines[index], card, fieldIndex)
+                        : !reading.cards.has(0) ? dataLines[index] : readRecordField(dataLines[index], fields, fieldIndex,
+                            prefixFormat && prefixFormat !== 'input' ? prefixFormat : detectRecordFormat(dataLines[index], reading.readInput, fields)));
+                    if (value) values.push({ name: normalizeFieldName(field.name), value, cardIndex: index + 1, fieldIndex });
+                }
+            }
+        } catch { /* Missing native source leaves identity unresolved. */ }
+        return { lookup, values };
+    }
     if (!lookup || dataLines.length === 0) {
         return { lookup, values: [] };
     }
@@ -201,6 +223,7 @@ function requestsExplicitTitle(keyword: string, lookup: any): boolean {
  * mismatch and offset the remaining cards instead of treating the title text as SID/PID/MID.
  */
 function splitSyntheticTitleCard(keyword: string, dataLines: string[], lookup: any) {
+    if (hasNativeFileReader(keyword)) return { title: '', schemaDataLines: dataLines };
     if (!lookup || !requestsExplicitTitle(keyword, lookup) || dataLines.length === 0) {
         return { title: '', schemaDataLines: dataLines };
     }
@@ -357,7 +380,7 @@ function summarizeKeywordIdentity(
         lookup,
         values,
         syntheticTitle.schemaDataLines,
-        !!options.sourceValues,
+        !!options.sourceValues || hasNativeFileReader(keyword),
     );
     const title = syntheticTitle.title || titleValue?.value || '';
     if (title) {

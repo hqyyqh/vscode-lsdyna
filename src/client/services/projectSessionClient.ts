@@ -79,3 +79,33 @@ export async function followProjectStructure(request: (params: any, token?: any)
         await request({ action: 'release', lease: handle.lease }).catch(() => {});
     }
 }
+
+
+/** Poll the existing worker scan; only bounded progress and requested windows cross the boundary. */
+export async function followLargeFileIndex(request: (params: any, token?: any) => Promise<any>,
+    rootFile: string, onProgress: ((index: any) => Promise<void>) | undefined, cancellationToken: any) {
+    let handle = await request({ action: 'file-view-open', rootFile, progressive: true }, cancellationToken);
+    let restarted = false, published = false;
+    try {
+        while (!cancellationToken.isCancellationRequested) {
+            const progress = await request({ action: 'file-view', mode: 'progress',
+                lease: handle.lease, generation: handle.generation }, cancellationToken);
+            const index = { ...handle, ...progress, remote: true,
+                largeFileLineMap: { lineCount: progress.lineCount, complete: progress.state === 'complete' } };
+            if (progress.state === 'complete') return index;
+            if (progress.state === 'stale' && !restarted && !published) {
+                restarted = true;
+                await request({ action: 'release', lease: handle.lease }).catch(() => {});
+                handle = await request({ action: 'file-view-open', rootFile, progressive: true }, cancellationToken);
+                continue;
+            }
+            if (progress.state !== 'scanning') throw new Error('large-file-index-incomplete');
+            if (progress.lineCount !== undefined) { published = true; await onProgress?.(index); }
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        throw Object.assign(new Error('Cancelled'), { name: 'CancellationError' });
+    } catch (error) {
+        await request({ action: 'release', lease: handle.lease }).catch(() => {});
+        throw error;
+    }
+}

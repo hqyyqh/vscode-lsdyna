@@ -3,12 +3,15 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
+import { LargeFileEditDocument } from '../core/edit/largeFileEditDocument';
 import * as vscode from 'vscode';
 import { globalInputFormatFromKeywordLine, type KeywordInputFormatMode } from '../core/parser/inputFormat';
 import { shortEntityKindLabel } from './entityKindLabels';
 import { Messenger } from 'vscode-messenger';
 import type { WebviewIdMessageParticipant } from 'vscode-messenger-common';
 import {
+    LargeFileOpenNative,
     LargeFilePositionChanged,
     LargeFileKeywordNavigateRequestType,
     LargeFileNavigateRequestType,
@@ -47,7 +50,7 @@ const FIELD_BLOCK_MAX_BYTES = 2 * 1024 * 1024;
 const ANCHOR_STORAGE_KEY = 'lsdyna.largeFileViewer.anchors.v1';
 
 type LargeFileViewerActions = {
-    loadFileIndex: (filePath: string, cancellationToken: vscode.CancellationToken) => Promise<any>;
+    loadFileIndex: (filePath: string, cancellationToken: vscode.CancellationToken, onProgress?: (index: any) => Promise<void>) => Promise<any>;
     readFileIndex?: (index: any, request: any) => Promise<any>;
     releaseFileIndex?: (index: any) => void;
     queryObject: (target: { targetKind: string; id: string | number; filePath: string; line: number }) => Promise<boolean>;
@@ -83,18 +86,31 @@ type ViewerSession = {
     fields: Map<string, FieldBinding>;
     windowCache: Map<number, CachedWindow>;
     windowCacheBytes: number;
+    readCursors?: Map<number, number>;
+    navigationEpoch?: number;
+    pendingLine?: number;
+    windowLoading?: boolean;
+    helpThroughLine?: number;
     fieldInputFormat?: KeywordInputFormatMode | null;
     indexCancellation: vscode.CancellationTokenSource | null;
 };
 
 class LargeFileDocument implements vscode.CustomDocument {
-    constructor(readonly uri: vscode.Uri) {}
-    dispose(): void {}
+    readonly edits: LargeFileEditDocument;
+    constructor(readonly uri: vscode.Uri, storage: string) { this.edits = new LargeFileEditDocument(uri.fsPath, storage); }
+    dispose(): void { void this.edits.dispose().catch(console.error); }
 }
 
 function keyForUri(uri: vscode.Uri): string {
     const value = path.resolve(uri.fsPath);
     return process.platform === 'win32' ? value.toLocaleLowerCase() : value;
+}
+
+function hasDirtyText(uri: vscode.Uri): boolean {
+    return vscode.workspace.textDocuments.some(doc => doc.isDirty && keyForUri(doc.uri) === keyForUri(uri)) ||
+        !!vscode.window.tabGroups?.all?.some(group => group.tabs.some(tab => tab.isDirty &&
+            typeof vscode.TabInputText === 'function' && tab.input instanceof vscode.TabInputText &&
+            keyForUri(tab.input.uri) === keyForUri(uri)));
 }
 
 function signatureFromStat(stat: fs.Stats): LargeFileSignature {
@@ -136,6 +152,8 @@ function labels(): Record<string, string> {
         searchText: i18n.get('largeFileSearchText'),
         reload: i18n.get('largeFileReload'),
         indexing: i18n.get('largeFileIndexing'),
+        indexingHint: i18n.get('largeFileIndexingHint'),
+        indexingFinishing: i18n.get('largeFileIndexingFinishing'),
         indexFailed: i18n.get('largeFileIndexFailed'),
         stale: i18n.get('largeFileStale'),
         truncatedLine: i18n.get('largeFileTruncatedLine'),
@@ -150,6 +168,8 @@ function labels(): Record<string, string> {
         retry: i18n.get('entityReferencesRetry'),
         card: i18n.get('keywordHoverCard'),
         defaultValue: i18n.get('largeFileDefaultValue'),
+        openNative: i18n.get('largeFileOpenNative'),
+        recovery: i18n.get('largeFileRecovery'),
         readOnly: i18n.get('largeFileReadOnly'),
         readOnlyShort: i18n.get('largeFileReadOnlyShort'),
         previousKeyword: i18n.get('largeFilePreviousKeyword'),
@@ -163,7 +183,9 @@ function labels(): Record<string, string> {
 }
 
 export class LargeFileViewerProvider implements
-vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
+vscode.CustomEditorProvider<LargeFileDocument>, vscode.Disposable {
+    private readonly changed = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<LargeFileDocument>>();
+    readonly onDidChangeCustomDocument = this.changed.event;
     private readonly messenger = new Messenger();
     private readonly sessions = new Map<string, ViewerSession>();
     private readonly pendingTargets = new Map<string, NonNullable<LargeFileViewerState['navigationTarget']>>();
@@ -173,17 +195,103 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         private readonly extensionRoot: string,
         private readonly workspaceState: vscode.Memento,
         private readonly actions: LargeFileViewerActions,
+        private readonly editStorage = path.join(os.tmpdir(), 'dynasense-record-edits'),
     ) {}
 
-    async openCustomDocument(uri: vscode.Uri): Promise<LargeFileDocument> {
-        return new LargeFileDocument(uri);
+    async openCustomDocument(uri: vscode.Uri, context?: vscode.CustomDocumentOpenContext): Promise<LargeFileDocument> {
+        const document = new LargeFileDocument(uri, this.editStorage);
+        try {
+            if (context?.backupId) {
+                const pending = await document.edits.restore(context.backupId);
+                if (pending !== undefined) {
+                    if (!pending || !Number.isSafeInteger(pending.firstLine) || !Number.isSafeInteger(pending.lastLine) || typeof pending.text !== 'string')
+                        throw new Error(i18n.get('largeFileEditConflict'));
+                    const record = await document.edits.prepare(pending.firstLine, pending.lastLine);
+                    await document.edits.apply(record, pending.text);
+                }
+            }
+            return document;
+        } catch (error) { await document.edits.dispose(); throw error; }
     }
+
+    private assertWritableDocument(document: LargeFileDocument) {
+        if (hasDirtyText(document.uri))
+            throw new Error(i18n.get('largeFileUnsavedText'));
+    }
+    async saveCustomDocument(document: LargeFileDocument): Promise<void> {
+        // Restored unapplied drafts must not overwrite the source through auto-save.
+        if (document.edits.dirty) throw new Error(i18n.get('largeFileRecoverySaveAs'));
+    }
+    async saveCustomDocumentAs(document: LargeFileDocument, destination: vscode.Uri, token: vscode.CancellationToken): Promise<void> {
+        try {
+            if (keyForUri(destination) === keyForUri(document.uri)) {
+                if (document.edits.dirty) throw new Error('largeFileRecoverySaveAs');
+                this.assertWritableDocument(document);
+            }
+            if (destination.scheme !== 'file' || hasDirtyText(destination)) throw new Error('largeFileEditConflict');
+            await document.edits.save(destination.fsPath, () => token.isCancellationRequested);
+        } catch (error) { throw this.editError(error); }
+    }
+    async revertCustomDocument(document: LargeFileDocument): Promise<void> {
+        try { await document.edits.revert(); await this.refreshEdited(document); }
+        catch (error) { throw this.editError(error); }
+    }
+    async backupCustomDocument(document: LargeFileDocument, context: vscode.CustomDocumentBackupContext): Promise<vscode.CustomDocumentBackup> {
+        return document.edits.backup(context.destination.fsPath);
+    }
+
+    private editError(error: unknown): Error {
+        const key = error instanceof Error ? error.message : '';
+        if (!/^largeFile(?:Edit[A-Za-z]+|RecoverySaveAs)$/.test(key)) console.error('[lsdyna] Large-file edit operation failed:', error);
+        return new Error(/^largeFile(?:Edit[A-Za-z]+|RecoverySaveAs)$/.test(key) ? i18n.get(key) : i18n.get('largeFileEditFailed'));
+    }
+    async openNative(request: { viewer?: string; revision?: number; line?: number; token?: string }): Promise<boolean> {
+        const session = [...this.sessions.values()].find(value => value.state.viewer === request?.viewer);
+        if (!session || !this.accepts(session, request.revision!)) return false;
+        const row = session.state.lines.find(value => value.lineNumber === request.line);
+        if (!row) return false;
+        const field = request.token ? row.fields.find(value => value.token === request.token) : undefined;
+        if (request.token && !field) return false;
+        let uri = session.document.uri;
+        try {
+            if (session.document.edits.dirty) {
+                const save = i18n.get('largeFileRecoverAs');
+                if (await vscode.window.showWarningMessage(i18n.get('largeFileRecoveryPrompt'), { modal: true }, save) !== save) return true;
+                const parsed = path.parse(uri.fsPath);
+                const destination = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(parsed.dir, `${parsed.name}.recovered${parsed.ext}`)) });
+                if (!destination) return true;
+                // Keep the recovery document and its backup until the user explicitly saves or discards it.
+                if (keyForUri(destination) === keyForUri(uri)) throw new Error('largeFileEditConflict');
+                await this.saveCustomDocumentAs(session.document, destination, { isCancellationRequested: false } as vscode.CancellationToken);
+                uri = destination;
+            }
+            if (hasDirtyText(uri))
+                void vscode.window.showWarningMessage(i18n.get('largeFileNativeDirty'));
+            const selection = new vscode.Range(row.lineNumber, field?.startColumn || 0, row.lineNumber, field?.endColumn || 0);
+            const nativeGroup = vscode.window.tabGroups?.all?.find(group => group.tabs.some(tab =>
+                typeof vscode.TabInputText === 'function' && tab.input instanceof vscode.TabInputText && keyForUri(tab.input.uri) === keyForUri(uri)));
+            await vscode.commands.executeCommand('vscode.openWith', uri, 'default', {
+                viewColumn: nativeGroup?.viewColumn ?? session.panel.viewColumn, preview: false, selection,
+            });
+            return true;
+        } catch (error) {
+            console.error('[lsdyna] Open native editor failed:', error);
+            await vscode.window.showErrorMessage(i18n.get('largeFileNativeFailed'));
+            return false;
+        }
+    }
+
+    private async refreshEdited(document: LargeFileDocument): Promise<void> {
+        const session = this.sessions.get(keyForUri(document.uri));
+        if (session) await this.reload(session, true);
+    }
+
 
     async resolveCustomEditor(
         document: LargeFileDocument,
         panel: vscode.WebviewPanel,
     ): Promise<void> {
-        const stat = await fs.promises.stat(document.uri.fsPath);
+        const stat = await fs.promises.stat(document.edits.contentPath);
         const dist = path.join(this.extensionRoot, 'out', 'webview', 'large-file-viewer');
         panel.webview.options = {
             enableScripts: true,
@@ -193,6 +301,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         const initialLine = this.consumeInitialLine(document.uri);
         const state: LargeFileViewerState = {
             revision: 0,
+            viewer: crypto.randomUUID(),
             locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en',
             fileName: path.basename(document.uri.fsPath),
             fileSize: stat.size,
@@ -234,7 +343,12 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         };
         this.sessions.set(keyForUri(document.uri), session);
         session.handlers = this.registerHandlers(session);
-        const stale = () => this.markStale(session);
+        const stale = () => {
+            void fs.promises.stat(document.uri.fsPath).then(stat => {
+                if (!document.edits.matchesSource(stat)) this.markStale(session);
+                else if (!document.edits.checkpoint && !sameSignature(signatureFromStat(stat), session.signature)) this.markStale(session);
+            }, () => this.markStale(session));
+        };
         watcher.onDidChange(stale, undefined, session.handlers);
         watcher.onDidDelete(stale, undefined, session.handlers);
         panel.onDidDispose(() => this.disposeSession(session));
@@ -243,6 +357,10 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     async openAt(uri: vscode.Uri, line = 0, column: vscode.ViewColumn = vscode.ViewColumn.Active, startColumn = 0, endColumn = startColumn): Promise<boolean> {
+        if (hasDirtyText(uri)) {
+            await vscode.window.showWarningMessage(i18n.get('largeFileUnsavedText'));
+            return false;
+        }
         const key = keyForUri(uri);
         const coordinate = (value: number) => Number.isSafeInteger(value) ? Math.max(0, value) : 0;
         const target = { requestId: crypto.randomUUID(), line: coordinate(line), startColumn: coordinate(startColumn),
@@ -289,7 +407,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         const session = this.sessions.get(keyForUri(uri));
         const token = session?.state.selectedField?.token;
         const binding = token ? session?.fields.get(token) : null;
-        return binding && binding.generation === session?.generation && !session?.state.stale
+        return binding && binding.generation === session?.generation && !session?.state.stale && !session?.document.edits?.dirty
             ? binding.target
             : null;
     }
@@ -314,6 +432,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
 
     private async initialize(session: ViewerSession, initialLine: number): Promise<void> {
         const generation = session.generation;
+        const navigationEpoch = session.navigationEpoch || 0;
         session.indexCancellation?.cancel();
         session.indexCancellation?.dispose();
         const indexCancellation = new vscode.CancellationTokenSource();
@@ -322,8 +441,24 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             await this.loadWindow(session, session.index ? initialLine : 0);
             if (!this.isLive(session, generation)) return;
             const index = await this.actions.loadFileIndex(
-                session.document.uri.fsPath,
+                session.document.edits?.contentPath || session.document.uri.fsPath,
                 indexCancellation.token,
+                async progress => {
+                    if (!this.isLive(session, generation) || session.state.stale) return;
+                    if (progress.size !== session.signature.size || progress.mtimeMs !== session.signature.mtimeMs ||
+                        progress.scannerVersion !== SCANNER_VERSION) { this.markStale(session); return; }
+                    session.index = progress;
+                    session.state = { ...session.state, scannedBytes: progress.scannedBytes,
+                        availableLineCount: Math.max(session.state.availableLineCount || 0, progress.largeFileLineMap.lineCount || 0) };
+                    this.publish(session, false);
+                    // Closed blocks can supply help before the remaining file is scanned.
+                    const confirmed = progress.confirmedThroughLine ?? progress.keywordBlocks?.at(-1)?.endLine ?? -1;
+                    if (!session.windowLoading && !session.state.selectedField && confirmed > (session.helpThroughLine ?? -1) &&
+                        confirmed >= (session.state.lines[0]?.lineNumber ?? 0) && !session.state.lines.some(row => row.fields.length)) {
+                        await this.loadWindow(session, session.state.anchorLine);
+                        session.helpThroughLine = confirmed;
+                    }
+                },
             );
             if (!this.isLive(session, generation)) { this.actions.releaseFileIndex?.(index); return; }
             if (!index?.largeFileLineMap || index.scannerVersion !== SCANNER_VERSION ||
@@ -331,7 +466,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                 this.actions.releaseFileIndex?.(index);
                 throw new Error('large-file-line-map-unavailable');
             }
-            this.actions.releaseFileIndex?.(session.index);
+            if (session.index?.lease !== index.lease) this.actions.releaseFileIndex?.(session.index);
             session.index = index;
             session.state = {
                 ...session.state,
@@ -339,9 +474,17 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                 indexingMessage: '',
                 lineCount: index.largeFileLineMap.lineCount,
             };
-            await this.loadWindow(session, initialLine);
+            const selected = session.state.selectedField;
+            const selectedRow = session.state.lines?.find(row => row.fields.some(field => field.token === selected?.token));
+            const selectedColumn = selectedRow?.fields.find(field => field.token === selected?.token)?.startColumn;
+            await this.loadWindow(session, (session.navigationEpoch || 0) === navigationEpoch ? initialLine : (session.pendingLine ?? session.state.anchorLine));
+            const restored = session.state.lines?.find(row => row.lineNumber === selectedRow?.lineNumber)?.fields
+                .find(field => field.startColumn === selectedColumn);
+            if (restored && this.isLive(session, generation)) await this.selectField(session, restored.token);
         } catch (error) {
             if (!this.isLive(session, generation)) return;
+            this.actions.releaseFileIndex?.(session.index);
+            session.index = null;
             console.error('[lsdyna] Large-file indexing failed:', error);
             session.state = {
                 ...session.state,
@@ -360,9 +503,11 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private registerHandlers(session: ViewerSession): vscode.Disposable[] {
         const sender = { sender: session.participant };
         return [
+            this.messenger.onRequest(LargeFileOpenNative, request => this.openNative({ ...request, viewer: session.state.viewer }), sender),
             this.messenger.onNotification(LargeFilePositionChanged, request => {
                 if (this.accepts(session, request.revision) && Number.isSafeInteger(request.line) &&
                     session.state.lines.some(line => line.lineNumber === request.line)) {
+                    session.navigationEpoch = (session.navigationEpoch || 0) + 1;
                     session.state = { ...session.state, anchorLine: request.line };
                 }
             }, sender),
@@ -397,12 +542,13 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         return this.sessions.get(keyForUri(session.document.uri)) === session && session.generation === generation;
     }
 
-    private publish(session: ViewerSession): void {
+    private publish(session: ViewerSession, advanceRevision = true): void {
+        session.state.dirty = session.document.edits?.dirty || false;
         const object = session.state.selectedField?.object;
         if (object) session.state = { ...session.state, selectedField: {
             ...session.state.selectedField!, object: { ...object, kindLabel: shortEntityKindLabel(object.kind) },
         } };
-        session.state = { ...session.state, revision: session.state.revision + 1,
+        session.state = { ...session.state, revision: session.state.revision + (advanceRevision ? 1 : 0),
             locale: i18n.getLanguage() === 'zh-cn' ? 'zh' : 'en', labels: labels() };
         this.messenger.sendNotification(LargeFileStateChangedNotification, session.participant, session.state);
     }
@@ -416,9 +562,15 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         this.publish(session);
     }
 
-    private async reload(session: ViewerSession): Promise<boolean> {
+    private async reload(session: ViewerSession, edited = false): Promise<boolean> {
+        if (!edited && session.document.edits?.dirty) {
+            session.state.editError = i18n.get('largeFileEditReloadBlocked'); this.publish(session); return false;
+        }
+        if (!edited && session.document.edits?.checkpoint) {
+            await session.document.edits.revert();
+        }
         const generation = session.generation;
-        const stat = await fs.promises.stat(session.document.uri.fsPath);
+        const stat = await fs.promises.stat(session.document.edits?.contentPath || session.document.uri.fsPath);
         if (!this.isLive(session, generation)) return false;
         session.generation++;
         session.searchGeneration++;
@@ -426,9 +578,11 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         session.signature = signatureFromStat(stat);
         this.actions.releaseFileIndex?.(session.index);
         session.index = null;
+        session.readCursors?.clear();
         session.fields.clear();
         session.windowCache.clear();
         session.fieldInputFormat = undefined;
+        session.helpThroughLine = undefined;
         session.windowCacheBytes = 0;
         session.searchMatches = [];
         session.state = {
@@ -438,100 +592,126 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             indexing: 'loading',
             indexingMessage: i18n.get('largeFileIndexing'),
             navigationTarget: undefined,
+            lines: [],
+            currentKeyword: '',
             lineCount: undefined,
+            availableLineCount: undefined,
+            scannedBytes: undefined,
             selectedField: null,
             keywordSearch: undefined,
             search: { query: '', loading: false, count: 0, currentIndex: -1, truncated: false, message: '' },
         };
         this.publish(session);
-        void this.initialize(session, 0);
+        void this.initialize(session, session.state.anchorLine);
         return true;
     }
 
     private async navigate(session: ViewerSession, line: number): Promise<boolean> {
         if (session.state.stale) return false;
-        if (!session.index && line > 0) return false;
-        await this.loadWindow(session, line);
-        return true;
+        session.navigationEpoch = (session.navigationEpoch || 0) + 1;
+        session.pendingLine = line;
+        try { await this.loadWindow(session, line); return true; }
+        finally { if (session.pendingLine === line) session.pendingLine = undefined; }
     }
 
     private async loadWindow(session: ViewerSession, line: number): Promise<void> {
         const request = ++session.requestGeneration;
-        const generation = session.generation;
-        const isCurrent = () => this.isLive(session, generation) && request === session.requestGeneration && !session.state.stale;
-        if (session.index?.remote) {
-            const metadata = await this.actions.readFileIndex(session.index, { mode: 'window', line });
-            if (!isCurrent()) return;
-            if (metadata.state !== 'complete') { this.markStale(session); return; }
-            let next = metadata.next;
-            while (next !== undefined) {
-                const page = await this.actions.readFileIndex(session.index, { mode: 'window', line, blockOffset: next });
+        session.windowLoading = true;
+        try {
+            const generation = session.generation;
+            const isCurrent = () => this.isLive(session, generation) && request === session.requestGeneration && !session.state.stale;
+            if (session.index?.remote) {
+                const metadata = await this.actions.readFileIndex(session.index, { mode: 'window', line });
                 if (!isCurrent()) return;
-                if (page.state !== 'complete' || page.next !== undefined && page.next <= next) { this.markStale(session); return; }
-                metadata.keywordBlocks.push(...page.keywordBlocks); next = page.next;
+                if (metadata.state !== 'complete' && metadata.state !== 'scanning') { this.markStale(session); return; }
+                let next = metadata.next;
+                while (next !== undefined) {
+                    const page = await this.actions.readFileIndex(session.index, { mode: 'window', line: metadata.windowLine ?? line, blockOffset: next });
+                    if (!isCurrent()) return;
+                    if (!['complete', 'scanning'].includes(page.state) || page.next !== undefined && page.next <= next) { this.markStale(session); return; }
+                    metadata.keywordBlocks.push(...page.keywordBlocks); next = page.next;
+                }
+                session.index = { ...session.index, ...metadata };
+                session.fieldInputFormat = metadata.inputFormat;
             }
-            session.index = { ...session.index, ...metadata };
-            session.fieldInputFormat = metadata.inputFormat;
-        }
-        const map = session.index?.largeFileLineMap as LargeFileLineMap | undefined;
-        const knownCount = map?.lineCount;
-        const anchor = knownCount === undefined ? 0 : Math.min(
-            Math.max(0, Math.floor(Number(line) || 0)),
-            Math.max(0, knownCount - 1),
-        );
-        let raw: CachedWindow['value'];
-        const windowStart = Math.max(0, anchor - 60);
-        const cached = session.windowCache.get(windowStart);
-        if (cached) {
-            const stat = signatureFromStat(await fs.promises.stat(session.document.uri.fsPath));
-            if (!isCurrent()) return;
-            if (!sameSignature(stat, session.signature)) {
-                this.markStale(session);
-                return;
-            }
-            session.windowCache.delete(windowStart);
-            session.windowCache.set(windowStart, cached);
-            raw = cached.value;
-        } else {
-            raw = await readLargeFileWindow(
-                session.document.uri.fsPath,
-                map || null,
-                windowStart,
-                { expectedSignature: session.signature, maxLines: 300 },
+            const map = session.index?.largeFileLineMap as LargeFileLineMap | undefined;
+            const knownCount = map?.complete === false ? undefined : map?.lineCount;
+            const requested = Math.max(0, Math.floor(Number(line) || 0));
+            const anchor = knownCount === undefined ? Math.min(requested, (session.state.availableLineCount || 0) + 240) : Math.min(
+                Math.max(0, Math.floor(Number(line) || 0)),
+                Math.max(0, knownCount - 1),
             );
+            let raw: CachedWindow['value'];
+            const windowStart = Math.max(0, anchor - 60);
+            let cursor: { line: number; offset: number } | undefined;
+            for (const [cursorLine, offset] of session.readCursors || []) {
+                if (cursorLine <= windowStart && (!cursor || cursorLine > cursor.line)) cursor = { line: cursorLine, offset };
+            }
+            const cached = session.windowCache.get(windowStart);
+            if (cached) {
+                const stat = signatureFromStat(await fs.promises.stat(session.document.edits?.contentPath || session.document.uri.fsPath));
+                if (!isCurrent()) return;
+                if (!sameSignature(stat, session.signature)) {
+                    this.markStale(session);
+                    return;
+                }
+                session.windowCache.delete(windowStart);
+                session.windowCache.set(windowStart, cached);
+                raw = cached.value;
+            } else {
+                raw = await readLargeFileWindow(
+                    session.document.edits?.contentPath || session.document.uri.fsPath,
+                    map || null,
+                    windowStart,
+                    { expectedSignature: session.signature, maxLines: 300, cursor, isCurrent },
+                );
+                if (!isCurrent()) return;
+                if (raw.stale) {
+                    this.markStale(session);
+                    return;
+                }
+                this.cacheWindow(session, windowStart, raw);
+            }
             if (!isCurrent()) return;
-            if (raw.stale) {
+            // A byte-bounded window can end before the requested line when context lines are very long.
+            if (!raw.lines.some(row => row.lineNumber === anchor)) {
+                raw = await readLargeFileWindow(session.document.edits?.contentPath || session.document.uri.fsPath, map || null, anchor,
+                    { expectedSignature: session.signature, maxLines: 300, cursor, isCurrent });
+                if (!isCurrent()) return;
+                if (raw.stale) { this.markStale(session); return; }
+            }
+            if (!raw.lines.length && raw.lineCount) {
+                raw = await readLargeFileWindow(session.document.edits?.contentPath || session.document.uri.fsPath,
+                    map || null, raw.lineCount - 1, { expectedSignature: session.signature, maxLines: 300, cursor, isCurrent });
+                if (!isCurrent()) return;
+                if (raw.stale) { this.markStale(session); return; }
+            }
+            if (raw.cursor) {
+                session.readCursors ||= new Map();
+                session.readCursors.set(raw.cursor.line, raw.cursor.offset);
+                // ponytail: cap browsing checkpoints at 4096; raise only if measured backward navigation needs more history.
+                if (session.readCursors.size > 4096) session.readCursors.delete(session.readCursors.keys().next().value);
+            }
+            const lines = await this.annotateLines(session, raw.lines, request);
+            if (!isCurrent()) return;
+            const after = signatureFromStat(await fs.promises.stat(session.document.edits?.contentPath || session.document.uri.fsPath));
+            if (!isCurrent()) return;
+            if (!sameSignature(after, session.signature)) {
                 this.markStale(session);
                 return;
             }
-            this.cacheWindow(session, windowStart, raw);
-        }
-        if (!isCurrent()) return;
-        // A byte-bounded window can end before the requested line when context lines are very long.
-        if (!raw.lines.some(row => row.lineNumber === anchor)) {
-            raw = await readLargeFileWindow(session.document.uri.fsPath, map || null, anchor,
-                { expectedSignature: session.signature, maxLines: 300 });
-            if (!isCurrent()) return;
-            if (raw.stale) { this.markStale(session); return; }
-        }
-        const lines = await this.annotateLines(session, raw.lines, request);
-        if (!isCurrent()) return;
-        const after = signatureFromStat(await fs.promises.stat(session.document.uri.fsPath));
-        if (!isCurrent()) return;
-        if (!sameSignature(after, session.signature)) {
-            this.markStale(session);
-            return;
-        }
-        session.state = {
-            ...session.state,
-            anchorLine: anchor,
-            lineCount: raw.lineCount ?? session.state.lineCount,
-            lines,
-            currentKeyword: this.keywordAt(session.index?.keywordBlocks || [], raw.anchorLine),
-            selectedField: null,
-        };
-        this.rememberAnchor(session);
-        this.publish(session);
+            session.state = {
+                ...session.state,
+                anchorLine: Math.min(anchor, raw.lineCount === undefined ? anchor : Math.max(0, raw.lineCount - 1)),
+                availableLineCount: Math.max(session.state.availableLineCount || 0, (raw.lines.at(-1)?.lineNumber ?? -1) + 1),
+                lineCount: raw.lineCount ?? session.state.lineCount,
+                lines,
+                currentKeyword: this.keywordAt(session.index?.keywordBlocks || [], raw.anchorLine),
+                selectedField: null,
+            };
+            this.rememberAnchor(session);
+            this.publish(session);
+        } finally { if (request === session.requestGeneration) session.windowLoading = false; }
     }
 
     private cacheWindow(session: ViewerSession, anchor: number, value: CachedWindow['value']): void {
@@ -554,7 +734,8 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         while (low <= high) {
             const middle = (low + high) >> 1;
             if (blocks[middle].startLine <= line) {
-                found = blocks[middle].keyword || '';
+                found = blocks[middle].endLine === undefined || line <= blocks[middle].endLine
+                    ? blocks[middle].keyword || '' : '';
                 low = middle + 1;
             } else {
                 high = middle - 1;
@@ -572,7 +753,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             keyword: line.text.trimStart().startsWith('*'),
             fields: [],
         }));
-        if (!session.index || lines.length === 0) { if (isCurrent()) session.fields = fields; return lines; }
+        if (!session.index?.keywordBlocks || lines.length === 0) { if (isCurrent()) session.fields = fields; return lines; }
         const byNumber = new Map(lines.map(line => [line.lineNumber, line]));
         const first = lines[0].lineNumber;
         const last = lines[lines.length - 1].lineNumber;
@@ -662,6 +843,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                         fieldIndex,
                         rawValue,
                         globalLine,
+                        lineText,
                     );
                     const token = crypto.randomUUID();
                     fields.set(token, {
@@ -677,7 +859,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
                         startColumn: field.p,
                         endColumn: Math.min(lineText.length, field.p + field.w),
                         label: String(field.n || ''),
-                        queryable: !!queryTarget,
+                        queryable: !!queryTarget && session.state.indexing === 'ready' && !session.document.edits?.dirty,
                     }];
                 });
             }
@@ -693,13 +875,21 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         fieldIndex: number,
         rawValue: string,
         line: number,
+        lineText: string,
     ): FieldBinding['target'] {
         try {
-            const info = getActionableFieldReferenceInfo({
+            let info = getActionableFieldReferenceInfo({
                 keyword: cardInfo.keywordName,
                 cardIndex: cardInfo.cardIndex,
                 field,
             });
+            if (info?.source === "keyword-catalog") {
+                const sibling = require('../core/references/registryReferenceScanner')
+                    .resolveSiblingTargetBinding(info, lineText, session.fieldInputFormat || 'standard', undefined,
+                        field.nativeIdentity?.cardIndex ?? cardInfo.cardIndex, undefined, line);
+                if (sibling.state === 'indeterminate') return null;
+                info = sibling.info;
+            }
             const value = info ? parseFieldReferenceValue(rawValue, info) : null;
             const targetKind = value?.targetKinds?.[0] || info?.targetKinds?.[0];
             if (targetKind && value?.id !== undefined) {
@@ -735,12 +925,13 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     private async selectField(session: ViewerSession, token: string): Promise<boolean> {
         const binding = session.fields.get(token);
         if (!binding || binding.generation !== session.generation) return false;
+        session.navigationEpoch = (session.navigationEpoch || 0) + 1;
         const field = binding.field;
         const choices = Array.isArray(field.e)
             ? field.e.slice(0, 20).map(value => typeof value === 'string' ? value : JSON.stringify(value))
             : [];
-        let name = binding.target ? this.objectName(session, binding.target) : undefined;
-        if (binding.target && session.index?.remote) {
+        let name = binding.target && session.state.indexing === 'ready' ? this.objectName(session, binding.target) : undefined;
+        if (binding.target && session.index?.remote && session.state.indexing === 'ready') {
             const result = await this.actions.readFileIndex(session.index, { mode: 'name',
                 targetKind: binding.target.targetKind, id: binding.target.id });
             if (!this.isLive(session, binding.generation) || session.fields.get(token) !== binding || session.state.stale) return false;
@@ -757,7 +948,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
             type: String(field.t || ''),
             defaultValue: field.d === undefined ? '' : String(field.d),
             choices,
-            queryable: !!binding.target,
+            queryable: !!binding.target && session.state.indexing === 'ready' && !session.document.edits?.dirty,
             ...(binding.target ? { object: { kind: binding.target.targetKind,
                 kindLabel: shortEntityKindLabel(binding.target.targetKind), id: String(binding.target.id),
                 name } } : {}),
@@ -768,6 +959,8 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private async queryField(session: ViewerSession, token: string): Promise<boolean> {
+        if (session.state.indexing !== 'ready') return false;
+        if (session.document.edits?.dirty) return false;
         const binding = session.fields.get(token);
         if (!this.isLive(session, session.generation) || !binding || binding.generation !== session.generation || !binding.target || session.state.stale) {
             return false;
@@ -776,6 +969,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
     }
 
     private async navigateKeyword(session: ViewerSession, direction: -1 | 1, filter: string): Promise<boolean> {
+        if (session.state.indexing !== 'ready') return false;
         const query = String(filter || '').trim();
         if (session.index?.remote) {
             const generation = session.generation;
@@ -812,6 +1006,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
 
     private async search(session: ViewerSession, query: string): Promise<boolean> {
         const normalized = String(query || '').trim();
+        if (normalized && session.state.indexing !== 'ready') return false;
         const generation = ++session.searchGeneration;
         const sessionGeneration = session.generation;
         const isCurrent = () => this.isLive(session, sessionGeneration) &&
@@ -827,7 +1022,7 @@ vscode.CustomReadonlyEditorProvider<LargeFileDocument>, vscode.Disposable {
         if (!normalized) return true;
         let result: Awaited<ReturnType<typeof searchLargeFileLiteral>>;
         try {
-            result = await searchLargeFileLiteral(session.document.uri.fsPath, normalized, {
+            result = await searchLargeFileLiteral(session.document.edits?.contentPath || session.document.uri.fsPath, normalized, {
                 expectedSignature: session.signature,
                 isCurrent,
             });

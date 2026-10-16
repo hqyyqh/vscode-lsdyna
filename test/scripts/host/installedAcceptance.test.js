@@ -2,11 +2,11 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), vm = require('node:vm'), crypto = require('node:crypto');
 const script = path.resolve(__dirname, '../../../scripts/host/run-installed-acceptance.cjs');
-async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true, resume, failScript, selected }) {
+async function scenario({ executable, actualVersion = '1.100.0', explicitEvidence = true, resume, failScript, selected, operationalFingerprint = true }) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installed-acceptance-test-'));
     const vsix = path.join(root, 'candidate.vsix'), evidence = path.join(root, 'evidence');
     fs.writeFileSync(vsix, 'synthetic package identity');
-    fs.writeFileSync(vsix + '.data-equivalence.json', JSON.stringify({ keywords: 1, formsFingerprint: 'synthetic' }));
+    fs.writeFileSync(vsix + '.data-equivalence.json', JSON.stringify({ keywords: 1, formsFingerprint: 'synthetic', operationalFormsFingerprint: operationalFingerprint ? 'synthetic-operational' : undefined }));
     const digest = crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex');
     let downloads = 0; const executables = [], commands = [], errors = [];
     const processMock = { argv: [], platform: process.platform, arch: process.arch, execPath: process.execPath, env: {
@@ -27,6 +27,7 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
             assert.equal(env.LSDYNA_TEST_VSIX_EVIDENCE, evidence);
             assert.equal(path.dirname(env.LSDYNA_EXPECTED_CATALOG), evidence);
             assert.equal(JSON.parse(fs.readFileSync(env.LSDYNA_EXPECTED_CATALOG)).fingerprint, 'synthetic');
+            assert.equal(JSON.parse(fs.readFileSync(env.LSDYNA_EXPECTED_CATALOG)).operationalFingerprint, 'synthetic-operational');
             executables.push(env.VSCODE_EXECUTABLE_PATH);
             commands.push(_args.slice(1).join(' ') || path.basename(_args[0]));
             if (path.basename(_args[0]) === failScript) return { status: 1, stdout: 'failed assertion detail', stderr: 'host stderr' };
@@ -47,6 +48,12 @@ async function scenario({ executable, actualVersion = '1.100.0', explicitEvidenc
     }
 }
 describe('installed acceptance executable and measured version', () => {
+    it('refuses installed acceptance without the operational fingerprint', async () => {
+        const result = await scenario({ executable: 'fixture-vscode', operationalFingerprint: false });
+        assert.equal(result.exitCode, 1);
+        assert.ok(result.errors.some(error => error.includes('Missing operational catalog fingerprint')));
+        assert.deepEqual(result.commands, []);
+    });
     it('reuses only passed editor scenarios with unchanged transitive helpers and initialization', () => {
         const { reusableEditorScenarios } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         const before = 'const setting=1; function helper(){return 1} function middle(){return helper()} function assertOne(){middle()} function assertTwo(){return 2} function assertThree(){return 3}';

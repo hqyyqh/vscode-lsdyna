@@ -4,9 +4,9 @@ const { runTests } = require('./vsix-host.cjs');
 const { resolveVSCodeExecutable } = require('./run-editor-safety-extension-host.cjs');
 async function main() {
     const phase = process.argv[2] || 'smoke';
-    if (!['smoke', 'activation', 'hover', 'manager', 'experience', 'choices', 'catalog', 'completion', 'reference-hover', 'entity-pages', 'sqlite', 'cache-settings'].includes(phase)) throw Error('Unknown release host phase');
-    if (phase === 'experience') {
-        process.env.LSDYNA_RELEASE_MANUAL_FIXTURE = '1';
+    if (!['smoke', 'activation', 'hover', 'manager', 'experience', 'choices', 'catalog', 'completion', 'reference-hover', 'entity-pages', 'sqlite', 'cache-settings', 'column-guides', 'header-actions'].includes(phase)) throw Error('Unknown release host phase');
+    if (['experience', 'column-guides', 'header-actions'].includes(phase)) {
+        if (phase === 'experience') process.env.LSDYNA_RELEASE_MANUAL_FIXTURE = '1';
         process.env.LSDYNA_RELEASE_CDP_PORT = String(await new Promise(resolve => {
             const server = require('node:net').createServer();
             server.listen(0, '127.0.0.1', () => { const port = server.address().port; server.close(() => resolve(port)); });
@@ -20,7 +20,9 @@ async function main() {
     if (process.env.LSDYNA_RELEASE_LOCALE === 'zh-cn' && process.env.LSDYNA_LANGUAGE_EXTENSIONS)
         require('./language-pack.cjs').copyChineseLanguagePack(root, process.env.LSDYNA_LANGUAGE_EXTENSIONS,
             process.env.LSDYNA_LANGUAGE_PACK_CACHE);
-    fs.writeFileSync(path.join(profile, 'User/settings.json'), JSON.stringify({ 'workbench.startupEditor': 'none' }));
+    const language = process.env.LSDYNA_RELEASE_PLUGIN_LANGUAGE || 'auto';
+    if (!['auto', 'en', 'zh-cn'].includes(language)) throw Error('Unknown plugin language');
+    fs.writeFileSync(path.join(profile, 'User/settings.json'), JSON.stringify({ 'workbench.startupEditor': 'none', 'lsdyna.language': language }));
     const node = '       1' + ['0.0', '1.0', '-2.5E-3'].map(value => value.padStart(16)).join('') + '       0       0';
     fs.writeFileSync(path.join(workspace, 'core.k'), `*KEYWORD\n*NODE\n${node}\n*END\n`);
     if (phase === 'choices') fs.writeFileSync(path.join(workspace, 'core.k'), '*KEYWORD\n*MAT_DAMAGE_1\n' +
@@ -36,6 +38,17 @@ async function main() {
     } else if (process.env.LSDYNA_RELEASE_MANUAL_FIXTURE === '1') {
         require("../../test/support/release/manual-fixture.cjs").createManualFixture(path.join(workspace, 'lsdyna_manual_pack'));
     }
+    let workspaceArgs = [workspace];
+    if (phase === 'header-actions') {
+        if (process.env.LSDYNA_HEADER_WORKSPACE === 'empty') workspaceArgs = [];
+        else if (process.env.LSDYNA_HEADER_WORKSPACE === 'multi') {
+            const second = path.join(root, 'second');
+            fs.mkdirSync(second);
+            const file = path.join(root, 'test.code-workspace');
+            fs.writeFileSync(file, JSON.stringify({ folders: [{ path: workspace }, { path: second }] }));
+            workspaceArgs = [file];
+        }
+    }
     console.log(`Release host evidence: ${root}`);
     const executable = process.env.VSCODE_TEST_VERSION && !process.env.VSCODE_EXECUTABLE_PATH
         ? await require('@vscode/test-electron').downloadAndUnzipVSCode(process.env.VSCODE_TEST_VERSION)
@@ -44,7 +57,7 @@ async function main() {
         extensionDevelopmentPath: path.resolve(__dirname, "../.."),
         extensionTestsPath: path.resolve(__dirname, "../../test/host/release/host.cjs"),
         extensionTestsEnv: { LSDYNA_RELEASE_HOST_ROOT: root, LSDYNA_RELEASE_HOST_PHASE: phase },
-        launchArgs: [workspace, '--new-window', '--disable-extensions', '--disable-gpu', '--disable-workspace-trust',
+        launchArgs: [...workspaceArgs, '--new-window', '--disable-extensions', '--disable-gpu', '--disable-workspace-trust',
             '--skip-welcome', '--skip-release-notes', `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
             ...(process.env.LSDYNA_RELEASE_LOCALE ? [`--locale=${process.env.LSDYNA_RELEASE_LOCALE}`] : []),
             ...(process.env.LSDYNA_RELEASE_CDP_PORT ? ['--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${process.env.LSDYNA_RELEASE_CDP_PORT}`] : [])],

@@ -5,6 +5,9 @@ import { planUniqueBlankRecordRepairs } from './repairPlanner';
 import type { ObserveBlockResult } from './recordObservation';
 import { observeKeywordBlock, type SourceLine } from './recordObservation';
 import { KeywordStructureCatalog } from './structureCatalog';
+import { analyzeNativeStructure } from './nativeStructure';
+import type { KeywordInputFormatMode } from '../parser/inputFormat';
+import type { NativeParameterContext } from '../semantics/nativeParameterContext';
 import type {
     GrammarPath,
     ObservedKeywordBlock,
@@ -37,6 +40,8 @@ export type AnalyzeGrammarOptions = {
 };
 
 export type AnalyzeCatalogOptions = AnalyzeGrammarOptions & {
+    globalInputFormat?: KeywordInputFormatMode;
+    parameterContext?: NativeParameterContext;
     catalog?: KeywordStructureCatalog;
     sourceProfileId?: string | null;
 };
@@ -337,9 +342,14 @@ export function analyzeObservedStructure(
     block: ObservedKeywordBlock,
     options: AnalyzeCatalogOptions = {},
 ): StructureAnalysis {
+    const native = analyzeNativeStructure(block, options.globalInputFormat, options.parameterContext);
+    if (native && native.status !== 'context-dependent') return native;
     const catalog = options.catalog || new KeywordStructureCatalog();
-    const lookup = catalog.grammarForKeyword(options.sourceProfileId, block.keyword);
+    let lookup;
+    try { lookup = catalog.grammarForKeyword(options.sourceProfileId, block.keyword); }
+    catch (error) { if (native) return native; throw error; }
     if (lookup.status !== 'verified' || !lookup.grammar) {
+        if (native) return native;
         return emptyResult(
             block,
             lookup.status === 'unsupported-input' ? 'unsupported-input' : 'profile-unverified',
@@ -351,7 +361,7 @@ export function analyzeObservedStructure(
             },
         );
     }
-    return analyzeGrammarStructure(lookup.grammar, block, {
+    const manual = analyzeGrammarStructure(lookup.grammar, block, {
         ...options,
         // Catalog lookup is by the exact canonical keyword identity. If the
         // caller did not supply option context, the base identity therefore has
@@ -361,6 +371,17 @@ export function analyzeObservedStructure(
             ? { ...(options.context || {}), keywordOptions: [] }
             : options.context,
     });
+    if (!native) return manual;
+    // Existing verified manual repair authority can supply an append-only plan.
+    // The native reader must accept the resulting layout, including its controls.
+    if (manual.repairCandidates.length && manual.repairCandidates.every((repair, index) =>
+        repair.insertionRecordIndex === block.records.length + index)) {
+        if (require('../semantics/nativeFileReadContext').nativeAppendLayoutMatches(block.rawKeyword,
+            block.records.map(record => record.text), manual.repairCandidates.map(repair => repair.text),
+            options.globalInputFormat || 'standard', block.records.map(record => record.line), options.parameterContext))
+            return { ...manual, details: { ...manual.details, nativeRepairLayoutVerified: true } };
+    }
+    return native;
 }
 
 export function analyzeKeywordStructureLines(

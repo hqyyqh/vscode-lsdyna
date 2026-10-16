@@ -328,6 +328,7 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
             ['failed', 'manualSidebarSearchFailed'], ['truncated', 'manualSidebarSearchTruncated'],
             ['open', 'manualSidebarOpenResult'], ['copy', 'manualSidebarCopyKeyword'],
             ['copied', 'manualSidebarCopied'], ['copyFailed', 'manualSidebarCopyFailed'],
+            ['keywordToggle', 'manualSidebarSearchToggleKeyword'], ['fulltextToggle', 'manualSidebarSearchToggleFulltext'],
             ['keywordHint', 'manualSidebarSearchModeKeywordTitle'], ['fulltextHint', 'manualSidebarSearchModeFulltextTitle'],
         ].map(([key, localeKey]) => [key, i18n.get(localeKey)]));
         const searchChrome = enableSearch ? `
@@ -337,9 +338,8 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
     <input id="sidebar-search" type="text" placeholder="${escapeHtml(i18n.get('manualReaderSearchPlaceholder'))}" aria-label="${escapeHtml(i18n.get('manualReaderSearch'))}" autocomplete="off" spellcheck="false" />
     <button id="search-clear" type="button" title="${escapeHtml(i18n.get('manualSidebarSearchClear'))}" aria-label="${escapeHtml(i18n.get('manualSidebarSearchClear'))}" hidden><span class="sidebar-icon close-icon" aria-hidden="true"></span></button>
   </div>
-  <div id="sidebar-search-mode" class="search-modes" role="group" aria-label="${escapeHtml(i18n.get('manualReaderSearchScope'))}">
-    <button type="button" data-mode="keyword" aria-pressed="true">${escapeHtml(i18n.get('manualSidebarSearchModeKeyword'))}</button>
-    <button type="button" data-mode="fulltext" aria-pressed="false">${escapeHtml(i18n.get('manualSidebarSearchModeFulltext'))}</button>
+  <div class="search-modes">
+    <button id="sidebar-search-mode" type="button" data-mode="keyword" title="${escapeHtml(i18n.get('manualSidebarSearchToggleKeyword'))}" aria-label="${escapeHtml(i18n.get('manualSidebarSearchToggleKeyword'))}"><span class="sidebar-icon mode-icon" aria-hidden="true"></span></button>
   </div>
   <p id="search-mode-hint" class="search-mode-hint"></p>
   <div id="copy-status" class="search-mode-hint" role="status" hidden></div>
@@ -418,10 +418,13 @@ body.has-focus .section.active, body.has-focus .result-row.active { background: 
 .search-bar input::placeholder { color: var(--vscode-input-placeholderForeground); }
 #search-clear { display: flex; align-items: center; background: transparent; border: 0; border-radius: 4px; padding: 4px; }
 #search-clear:hover { background: var(--vscode-toolbar-hoverBackground); }
-.search-modes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.search-modes button { background: transparent; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-descriptionForeground))); border-radius: 18px; padding: 4px 9px; font-size: .9em; line-height: 1.4; }
-.search-modes button:hover { background: var(--vscode-list-hoverBackground); }
-.search-modes button[aria-pressed="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); border-color: var(--vscode-focusBorder); }
+.search-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; }
+.search-mode-hint, #copy-status { grid-column: 1 / -1; }
+.search-modes { display: flex; flex-wrap: wrap; align-items: center; }
+.search-modes button { display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 3px; width: 28px; height: 28px; padding: 4px; }
+.search-modes button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.mode-icon { mask-image: url('${iconUri('symbol-keyword')}'); }
+[data-mode="fulltext"] .mode-icon { mask-image: url('${iconUri('whole-word')}'); }
 .search-mode-hint { color: var(--vscode-descriptionForeground); font-size: .85em; line-height: 1.5; margin: 7px 2px 0; overflow-wrap: anywhere; }
 .search-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
 .search-panel[hidden] { display: none !important; }
@@ -469,7 +472,7 @@ const labels = ${JSON.stringify(labels)};
 const DEBOUNCE_MS = 250;
 const toc = document.getElementById('toc');
 const searchInput = document.getElementById('sidebar-search');
-const modeButtons = Array.from(document.querySelectorAll('.search-modes button'));
+const modeButton = document.getElementById('sidebar-search-mode');
 const clearButton = document.getElementById('search-clear');
 const modeHint = document.getElementById('search-mode-hint');
 const copyStatus = document.getElementById('copy-status');
@@ -485,7 +488,11 @@ function post(message) { vscode.postMessage(Object.assign({ revision }, message)
 function openLocation(manualId, sectionId) { post({ type: 'openLocation', manualId, sectionId }); }
 function countText(count) { return count === 1 ? labels.singular : labels.plural.replace('{0}', String(count)); }
 function syncSearchModeButton() {
-  for (const button of modeButtons) button.setAttribute('aria-pressed', String(button.dataset.mode === searchMode));
+  if (modeButton) {
+    modeButton.dataset.mode = searchMode;
+    modeButton.title = searchMode === 'keyword' ? labels.keywordToggle : labels.fulltextToggle;
+    modeButton.setAttribute('aria-label', modeButton.title);
+  }
   if (modeHint) modeHint.textContent = searchMode === 'keyword' ? labels.keywordHint : labels.fulltextHint;
 }
 function clearSearch() { searchInput.value = ''; scheduleSearch(false); searchInput.focus(); }
@@ -591,7 +598,7 @@ if (searchInput) {
   searchInput.addEventListener('compositionstart', () => { composing = true; window.clearTimeout(timer); requestId++; searchResults.replaceChildren(); });
   searchInput.addEventListener('compositionend', () => { composing = false; scheduleSearch(false); });
   clearButton.addEventListener('click', clearSearch);
-  for (const button of modeButtons) button.addEventListener('click', () => { searchMode = button.dataset.mode; syncSearchModeButton(); scheduleSearch(true); });
+  modeButton.addEventListener('click', () => { searchMode = searchMode === 'keyword' ? 'fulltext' : 'keyword'; syncSearchModeButton(); scheduleSearch(true); });
 }
 document.addEventListener('keydown', event => {
   if (composing || event.isComposing || !searchInput) return;

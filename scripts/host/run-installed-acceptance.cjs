@@ -12,7 +12,9 @@ async function main() {
     const executable = require('./vsix-host.cjs').resolveExecutable(downloaded);
     const parity = JSON.parse(fs.readFileSync(vsix + '.data-equivalence.json'));
     const expected = path.join(directory, 'catalog.json');
-    fs.writeFileSync(expected, JSON.stringify({ keywords: parity.keywords, fingerprint: parity.formsFingerprint }));
+    if (!parity.operationalFormsFingerprint) throw Error('Missing operational catalog fingerprint');
+    fs.writeFileSync(expected, JSON.stringify({ keywords: parity.keywords, fingerprint: parity.formsFingerprint,
+        operationalFingerprint: parity.operationalFormsFingerprint }));
     const env = { ...process.env, NODE_PATH: '', LSDYNA_TEST_VSIX: vsix, VSCODE_EXECUTABLE_PATH: executable,
         LSDYNA_TEST_VSIX_EVIDENCE: directory, LSDYNA_EXPECTED_CATALOG: expected };
     const report = { complete: false, scope: 'required-functional-acceptance',

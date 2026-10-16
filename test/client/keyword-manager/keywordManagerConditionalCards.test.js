@@ -63,10 +63,7 @@ describe('published conditional manager cards', function () {
                     const state = view(model);
                     assert.equal(state.canApply, true, `${model.plan.reason}: ${controller.name}=${value}, ${JSON.stringify(model.fieldChanges)}`);
                     assert.deepEqual(state.branchSummary.draft.filter(index => index !== 0), targetIndexes);
-                    if (keyword === 'MAT_BARLAT_YLD2000') {
-                        assert.ok(state.manualConditions.some(group => group.condition === 'FIT = 1'));
-                        assert.ok(state.manualConditions.some(group => group.condition === 'HARD = 3'));
-                    }
+                    assert.deepEqual(state.manualConditions, [], 'native branches must not also be judged by manual conditions');
                     let workspaceEdit;
                     vscode.window.activeTextEditor = editor;
                     vscode.workspace.applyEdit = async edit => { workspaceEdit = edit; return true; };

@@ -55,6 +55,7 @@ async function main() {
     const acceptanceLayouts = process.argv.includes('--acceptance-layouts');
     const editorAcceptance = process.argv.includes('--editor-acceptance');
     const semanticHelp = process.argv.includes('--semantic-help');
+    const prefixHelp = process.argv.includes('--prefix-help');
     const standardRepeat = process.argv.includes('--standard-repeat');
     const unverified = process.argv.includes('--repeat-unverified');
     const repeated = process.argv.includes('--repeated') || unverified || standardRepeat;
@@ -94,7 +95,7 @@ async function main() {
     const host = (instanceSelector ? options => runSelectorGuiHost(options, root) : runTests)({ vscodeExecutablePath: resolveVSCodeExecutable(),
         extensionDevelopmentPath: path.resolve(__dirname, "../.."),
         extensionTestsPath: path.resolve(__dirname, "../../test/host/keyword-manager/extension-host.cjs"),
-        extensionTestsEnv: { KEYWORD_MANAGER_INSTANCE_SELECTOR: instanceSelector ? '1' : '', KEYWORD_MANAGER_SELECTOR_GUI: instanceSelector ? '1' : '', KEYWORD_MANAGER_HOST_EVIDENCE: root, KEYWORD_MANAGER_GUI: '1', KEYWORD_MANAGER_GUI_REPEAT: standardRepeat ? 'standard' : unverified ? 'unverified' : repeated ? '1' : '', KEYWORD_MANAGER_GUI_COMMENTS: comments || '', KEYWORD_MANAGER_GUI_SHARED: incomplete || comments || repeated ? '' : '1', KEYWORD_MANAGER_GUI_INCOMPLETE: incomplete ? '1' : '' },
+        extensionTestsEnv: { KEYWORD_MANAGER_PREFIX_HELP: prefixHelp ? '1' : '', KEYWORD_MANAGER_INSTANCE_SELECTOR: instanceSelector ? '1' : '', KEYWORD_MANAGER_SELECTOR_GUI: instanceSelector ? '1' : '', KEYWORD_MANAGER_HOST_EVIDENCE: root, KEYWORD_MANAGER_GUI: '1', KEYWORD_MANAGER_GUI_REPEAT: standardRepeat ? 'standard' : unverified ? 'unverified' : repeated ? '1' : '', KEYWORD_MANAGER_GUI_COMMENTS: comments || '', KEYWORD_MANAGER_GUI_SHARED: prefixHelp || incomplete || comments || repeated ? '' : '1', KEYWORD_MANAGER_GUI_INCOMPLETE: incomplete ? '1' : '' },
         launchArgs: [root, '--new-window', `--locale=${locale}`, '--disable-extensions', '--disable-gpu', '--disable-workspace-trust',
             '--skip-welcome', '--skip-release-notes', `--user-data-dir=${path.join(root, 'profile')}`,
             `--extensions-dir=${path.join(root, 'extensions')}`, '--remote-debugging-address=127.0.0.1',
@@ -154,7 +155,7 @@ async function main() {
             }
             for (const candidate of contexts.values()) {
                 try {
-                    const selector = instanceSelector ? '.instanceTrigger' : unverified ? '.unresolvedRecords' : `.field span[title=${standardRepeat ? 'PID' : repeated ? 'PSID1' : incomplete || comments ? 'RO' : 'ICURV'}]`;
+                    const selector = instanceSelector ? '.instanceTrigger' : unverified ? '.unresolvedRecords' : `.field span[title=${prefixHelp ? 'TITLE' : standardRepeat ? 'PID' : repeated ? 'PSID1' : incomplete || comments ? 'RO' : 'ICURV'}]`;
                     if (await evaluate(candidate, `typeof document !== 'undefined' && !!document.querySelector(${JSON.stringify(selector)})`)) { context = candidate; break; }
                 } catch {}
             }
@@ -189,6 +190,45 @@ async function main() {
                 throw Error('Database provenance is exposed in the rendered manager');
             return true;
         })()`);
+        if (prefixHelp) {
+            const evidence = require('./temp-runs.cjs').createEvidenceDirectory('prefix-help');
+            console.log(`Prefix help evidence: ${evidence}`);
+            const layouts = [];
+            for (const theme of ['Default Light Modern', 'Default Dark Modern', 'Default High Contrast', 'Default High Contrast Light']) {
+                await writeRequest(root, 'theme-request.json', theme);
+                const deadline = Date.now() + 15000;
+                while (true) {
+                    try { if (JSON.parse(fs.readFileSync(path.join(root, 'theme-applied.json'))) === theme) break; } catch {}
+                    if (Date.now() > deadline) throw Error('Theme update timed out');
+                    await delay(50);
+                }
+                for (const width of [360, 480]) for (const font of [14, 20]) {
+                    await evaluate(context, `document.querySelector('main').style.width='${width}px';document.body.style.setProperty('--vscode-font-size','${font}px');document.querySelector('.field span[title="TITLE"]').closest('.field').querySelector('input').focus()`);
+                    const result = await evaluate(context, `(async()=>{
+                        const end=Date.now()+15000;
+                        while(!/Interface descriptor|接口描述符/.test(document.querySelector('.fieldHelp')?.textContent||'')) {
+                            const input=document.querySelector('.field span[title="TITLE"]').closest('.field').querySelector('input');
+                            if(document.activeElement!==input)input.focus();
+                            if(Date.now()>end)throw Error('Prefix help missing: '+document.body.innerText);
+                            await new Promise(resolve=>setTimeout(resolve,50));
+                        }
+                        const help=document.querySelector('.fieldHelp');help.scrollIntoView();
+                        const chinese=${(language === 'auto' ? locale : language) === 'zh-cn'};
+                        if(help.getAttribute('aria-label')!==(chinese?'字段帮助':'Field help'))throw Error('Wrong accessible help language');
+                        if(!help.textContent.includes(chinese?'接口描述符':'Interface descriptor'))throw Error('Wrong help language');
+                        return {text:help.innerText,locale:chinese?'zh-cn':'en',overflow:help.scrollWidth>help.clientWidth+1};
+                    })()`);
+                    if(result.overflow)throw Error('Prefix help overflow');
+                    layouts.push({theme,width,font,...result});
+                    const shot=await call('Page.captureScreenshot',{format:'png'},pageSession);
+                    writeEvidence(path.join(evidence,`prefix-${theme.replaceAll(' ','-')}-${width}-${font}.png`),Buffer.from(shot.data,'base64'));
+                }
+            }
+            writeEvidence(path.join(evidence,'prefix-help-result.json'),JSON.stringify({hostLocale:locale,pluginLanguage:language,layouts,hostState},null,2));
+            writeEvidence(path.join(root,'gui-finish.json'),JSON.stringify({fields:{}}));
+            cdp.close(); await host; if(hostError)throw hostError;
+            return;
+        }
         const result = unverified ? await evaluate(context, `(() => {
             const text = document.body.innerText;
             if (!/cannot determine how these records repeat|尚不能确定这些记录的重复方式/.test(text)) throw Error('Unsupported-rule diagnostic missing');

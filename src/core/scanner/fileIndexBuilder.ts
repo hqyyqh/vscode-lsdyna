@@ -13,6 +13,7 @@ type FileIndexBuildOptions = {
     liveSource?: { signature: any; keywordBlocks: any[]; readBlockText: (block: any, options?: any) => Promise<string> };
     readBlockText?: (block: any, options?: any) => Promise<string>;
     onProgress?: (progress: any) => void;
+    onLargeFileProgress?: (progress: any) => void;
     onStructureBlock?: (block: any, complete: boolean) => void;
     onIncludePending?: (filePath: string, entries: any[]) => void;
     flushStructure?: () => Promise<void>;
@@ -62,6 +63,7 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
     const largeFileThresholdBytes = options.largeFileThresholdBytes ?? LARGE_FILE_THRESHOLD_BYTES;
     const collectLargeFileLineMap = !options.liveSource && stat.size >= largeFileThresholdBytes;
     const lineOffsets: number[] = [];
+    const closedBlocks: any[] = [];
     const metadataBudget = options.maxStructureBytes ?? 64 * 1024 * 1024;
     let metadataBytes = 0;
     let scannedLineCount = 0;
@@ -75,6 +77,7 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
         ...options,
         onBlock: (block, complete) => {
             options.onStructureBlock?.(block, complete);
+            if (collectLargeFileLineMap && complete) closedBlocks.push(block);
             if (complete && options.onIncludePending && block.keyword.startsWith('*INCLUDE')) pendingIncludeBlocks.push(block);
         },
         onYield: async () => {
@@ -88,6 +91,11 @@ async function buildFileStructure(filePath, options: FileIndexBuildOptions = {})
         },
         createBlockSummaryAccumulator: options.deferDisplayIdentity ? undefined : createKeywordIdentityAccumulatorFactory(),
         ...(collectLargeFileLineMap ? {
+            onScanProgress: (scannedBytes, lineCount) => options.onLargeFileProgress?.({
+                filePath, size: stat.size, mtimeMs: stat.mtimeMs, scannerVersion: SCANNER_VERSION,
+                scannedBytes, keywordBlocks: closedBlocks,
+                largeFileLineMap: { stride: LARGE_FILE_LINE_MAP_STRIDE, offsets: lineOffsets, lineCount, complete: false },
+            }),
             onLineStart: (line, byteOffset) => {
                 scannedLineCount = line + 1;
                 if (line % LARGE_FILE_LINE_MAP_STRIDE === 0) {

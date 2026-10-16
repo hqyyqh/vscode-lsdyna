@@ -30,6 +30,59 @@ describe('bounded project sessions', () => {
         }
     });
     const request = (sessions, value) => sessions.request({ protocolVersion: INDEX_PROTOCOL_VERSION, ...value });
+    it('retries only unpublished viewer scans and releases cancelled or failed subscriptions', async () => {
+        const { followLargeFileIndex } = require('../../out/client/services/projectSessionClient');
+        for (const mode of ['retry', 'cancel', 'published-stale', 'repeated-stale']) {
+            let opens = 0, reads = 0;
+            const releases = [], progress = [], token = { isCancellationRequested:false };
+            const request = async input => {
+                if(input.action === 'file-view-open') return { lease:String(++opens),generation:opens };
+                if(input.action === 'release') { releases.push(input.lease); return {}; }
+                reads++;
+                if(mode === 'retry') return {state: reads === 1 ? 'stale' : 'complete',lineCount:50};
+                if(mode === 'repeated-stale' || reads > 1) return {state:'stale'};
+                return {state:'scanning',lineCount:20,scannedBytes:100};
+            };
+            const task = followLargeFileIndex(request, 'main.k', async value => {
+                progress.push(value); if(mode === 'cancel') token.isCancellationRequested=true;
+            }, token);
+            if(mode === 'retry') { assert.equal((await task).lease,'2'); assert.deepEqual(releases,['1']); }
+            else {
+                await assert.rejects(task);
+                assert.deepEqual(releases,mode === 'repeated-stale' ? ['1','2'] : ['1']);
+                assert.equal(opens,mode === 'repeated-stale' ? 2 : 1);
+            }
+        }
+    });
+
+    it('opens a progressive viewer immediately and serves confirmed context while the scan is paused', async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'viewer-partial-'));
+        const file = path.join(root, 'deck.k');
+        fs.writeFileSync(file, '*KEYWORD I10=Y\n*MAT_ELASTIC\n         7\n*NODE\n' + '       1       0\n'.repeat(9000) + '*END');
+        const indexer = createProjectIndexer({ getFileSignature: entityFileSignature });
+        let resume, paused;
+        const waiting = new Promise(resolve => { paused = resolve; });
+        const gate = new Promise(resolve => { resume = resolve; });
+        const sessions = new ProjectSessions((root, options) => indexer.buildProjectIndex(root, { ...options,
+            flushStructure: async () => { paused(); await gate; await options.flushStructure(); } }));
+        try {
+            const handle = await request(sessions, { action: 'file-view-open', rootFile: file, progressive: true });
+            assert.equal(handle.state, 'scanning');
+            await waiting;
+            const progress = await request(sessions, { ...handle, action: 'file-view', mode: 'progress' });
+            assert.equal(progress.state, 'scanning');
+            assert(progress.scannedBytes > 0 && progress.scannedBytes < fs.statSync(file).size);
+            const page = await request(sessions, { ...handle, action: 'file-view', mode: 'window', line: 2 });
+            assert.equal(page.largeFileLineMap.complete, false);
+            assert.equal(page.inputFormat, 'i10');
+            assert(page.keywordBlocks.some(block => block.keyword === '*MAT_ELASTIC'));
+            assert(!page.keywordBlocks.some(block => block.keyword === '*NODE'));
+            assert.equal((await request(sessions, { ...handle, action: 'file-view', mode: 'name', id: 7 })).state, 'scanning');
+            resume(); await sessions.leases.get(handle.lease).ready;
+            assert.equal((await request(sessions, { ...handle, action: 'file-view', mode: 'progress' })).state, 'complete');
+        } finally { resume(); await sessions.clear(); }
+    });
+
     it('reopens an unpublished viewer invalidated during scanning, but rejects repeated invalidation', async () => {
         const root = path.resolve('viewer-refresh.k');
         for (const continuouslyChanging of [false, true]) {

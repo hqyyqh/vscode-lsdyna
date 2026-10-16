@@ -99,7 +99,7 @@ describe('manual semantic advisor', () => {
                 repeat: { mode: 'repeatable', terminator: 'next-keyword' },
             }),
         ]);
-        const cards = getKeywordSemanticAdvice('define_transformation', {}, catalog).cards;
+        const cards = getKeywordSemanticAdvice('manual_only_transformation', {}, catalog).cards;
 
         assert.deepEqual(cards.map(item => item.applicability), [
             'required', 'optional', 'informational',
@@ -118,12 +118,12 @@ describe('manual semantic advisor', () => {
     it('requests only the exact normalized catalog keyword and does not guess a family', () => {
         const catalog = fakeCatalog([]);
         const advice = getKeywordSemanticAdvice(
-            '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
+            '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
             {},
             catalog,
         );
 
-        assert.deepEqual(catalog.requested, ['*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE']);
+        assert.deepEqual(catalog.requested, ['*CONTACT_AUTOMATIC_SINGLE_SURFACE']);
         assert.deepEqual(advice.optionSlots, []);
         assert.deepEqual(advice.cards, []);
     });

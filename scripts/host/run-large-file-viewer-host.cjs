@@ -23,6 +23,8 @@ async function main() {
             process.env.LSDYNA_LANGUAGE_PACK_CACHE);
     fs.writeFileSync(path.join(root, 'profile', 'User', 'settings.json'), JSON.stringify({
         'workbench.startupEditor': 'none',
+        'window.dialogStyle': 'custom',
+        'workbench.view.alwaysShowHeaderActions': true,
         'lsdyna.language': process.env.LARGE_VIEWER_LANGUAGE || 'en',
         'workbench.colorTheme': process.env.LARGE_VIEWER_THEME || 'Default Dark Modern',
     }));
@@ -30,7 +32,7 @@ async function main() {
     const crypto = require('node:crypto');
     const file = path.join(root, 'large-model.k');
     let expectedId = '7';
-    let rows = Math.ceil(200 * 1024 * 1024 / 81);
+    let rows = Math.ceil(Number(process.env.LARGE_VIEWER_MIB || 200) * 1024 * 1024 / 81);
     if (!process.env.LARGE_VIEWER_MODEL) {
         const fd = fs.openSync(file, 'w');
         fs.writeSync(fd, '*KEYWORD\n*NODE\n');
@@ -64,7 +66,7 @@ async function main() {
     fs.writeFileSync(path.join(evidenceRoot, 'model.json'), JSON.stringify(model));
     let hostError;
     let finalized = false;
-    const host = runTests({ vscodeExecutablePath: resolveVSCodeExecutable(),
+    const host = runTests({ reloadLifecycle: true, vscodeExecutablePath: resolveVSCodeExecutable(),
         extensionDevelopmentPath: path.resolve(__dirname, "../.."),
         extensionTestsPath: path.resolve(__dirname, "../../test/host/editor-safety/large-file-viewer-host.cjs"),
         extensionTestsEnv: { LARGE_VIEWER_EVIDENCE: root },
@@ -105,17 +107,21 @@ async function main() {
         return response.result.value;
     };
 
-    try {
-        let context;
-        const until = Date.now() + 120000;
-        while (!context && Date.now() < until) {
-            if (hostError) throw hostError;
+    const attachTargets = async () => {
             const { targetInfos } = await call('Target.getTargets');
             for (const target of targetInfos.filter(t => ['page','iframe'].includes(t.type))) {
                 if (attached.has(target.targetId)) continue;
                 attached.add(target.targetId);
                 try { const { sessionId } = await call('Target.attachToTarget', {targetId:target.targetId,flatten:true});await call('Runtime.enable',{},sessionId); } catch { attached.delete(target.targetId); }
             }
+    };
+
+    try {
+        let context;
+        const until = Date.now() + 120000;
+        while (!context && Date.now() < until) {
+            if (hostError) throw hostError;
+            await attachTargets();
             for (const candidate of contexts.values()) {
                 try { if(await evaluate(candidate, "typeof document !== 'undefined' && !!document.querySelector('.goto button:not(:disabled)') && !!document.querySelector('.viewport')")){ context=candidate;break; } } catch {}
             }
@@ -173,7 +179,7 @@ async function main() {
                 document.body.style.setProperty('--vscode-editor-line-height','${Math.round(font*1.5)}px');
                 return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
                     const bounds=main.getBoundingClientRect();
-                    const overflow=[...main.querySelectorAll('.status,.field-help')]
+                    const overflow=[...main.querySelectorAll('.status,.field-help,.open-native')]
                         .filter(node=>node.getBoundingClientRect().right > bounds.right + 1).map(node=>node.textContent);
                     resolve({width:${width},font:${font},locale:main.lang,theme:document.body.className,overflow,help:document.querySelector('.field-help')?.innerText || document.querySelector('.viewport').title,
                         keywordColor:getComputedStyle(document.querySelector('.keyword-line .line-text')).color,
@@ -207,15 +213,224 @@ async function main() {
             if(!document.querySelector('.goto button').disabled)throw Error('Stale viewer permits navigation');
             document.querySelector('.status.warning button').click();
             await until(()=>!document.querySelector('.status.warning'));
-            // Reload scans the same 200 MiB fixture as initial opening: use its execution budget.
-            await until(()=>{
-                if(document.querySelector('.status.warning'))throw Error('Reload became stale or failed: '+JSON.stringify(window.reloadTrace));
-                return !document.querySelector('.goto button').disabled;
-            },120000);
-            return { staleDetected:true, staleNavigationBlocked:true, reloaded:true, reloadTrace:window.reloadTrace };
+            return { staleDetected:true, staleNavigationBlocked:true, reloaded:false };
         }).toString() + ')()');
+        // Poll outside Runtime.evaluate so the 30-second CDP call timeout cannot truncate the scan budget.
+        const reloadDeadline=Date.now()+120000;
+        while (!reload.reloaded && Date.now()<reloadDeadline) {
+            const state=await evaluate(context, `({ready:!document.querySelector('.goto button').disabled,warning:document.querySelector('.status.warning')?.textContent,trace:window.reloadTrace})`);
+            if(state.warning)throw Error('Reload failed: '+JSON.stringify(state));
+            if(state.ready) {reload.reloaded=true;reload.reloadTrace=state.trace;}
+            else await delay(100);
+        }
+        if(!reload.reloaded)throw Error('Reload scan timed out');
         if(await hash()!==changed)throw Error('Reload changed source bytes');
-        const evidence={...result,...reload,sourceUnchanged:true,initialSha256:before,externalEditSha256:changed};
+        let nativeNavigation;
+        {
+            let commandId = 0;
+            const command = async (name, args) => {
+                const id = ++commandId;
+                const requestFile = path.join(root, `editor-command-${id}.json`);
+                fs.writeFileSync(requestFile + '.tmp', JSON.stringify({ id, command: name, args }));
+                fs.renameSync(requestFile + '.tmp', requestFile);
+                const deadline = Date.now() + 60000;
+                while (Date.now() < deadline) {
+                    const responseFile = path.join(root, `editor-command-result-${id}.json`);
+                    if (fs.existsSync(responseFile)) {
+                        const response = JSON.parse(fs.readFileSync(responseFile, 'utf8'));
+                        if (response.id === id) { if (response.error) throw Error(response.error); return; }
+                    }
+                    await delay(50);
+                }
+                throw Error('Editor command timeout: ' + name);
+            };
+            const target = await evaluate(context, `(() => {
+                if(document.querySelector('.record-edit,textarea')) throw Error('Record editor is still exposed');
+                const field = document.querySelector('.field');
+                const row = field.closest('.line');
+                const target = JSON.parse(field.getAttribute('data-vscode-context'));
+                field.click();
+                return { line:target.line, token:target.token, text:field.textContent, label:document.querySelector('.open-native').title };
+            })()`);
+            await delay(250);
+            await evaluate(context, "document.querySelector('.open-native').click()");
+            await command('test.nativeSelection', target);
+            let selectionStatus;
+            const selectionDeadline = Date.now() + 20000;
+            while (Date.now() < selectionDeadline) {
+                selectionStatus = await evaluate({ sessionId: pageSession }, `document.querySelector('.statusbar')?.innerText`);
+                if (selectionStatus?.includes(String(target.line + 1))) break;
+                await delay(100);
+            }
+            if (!selectionStatus?.includes(String(target.line + 1))) throw Error('Native renderer selection mismatch: '+selectionStatus);
+            const nativeShot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
+            fs.writeFileSync(path.join(evidenceRoot,'native-editor.png'),Buffer.from(nativeShot.data,'base64'));
+
+            await command('test.reopenViewer', target);
+            context = null;
+            const readyDeadline = Date.now() + 30000;
+            while (!context && Date.now() < readyDeadline) {
+                await attachTargets();
+                for (const candidate of contexts.values()) {
+                    try { if (await evaluate(candidate, "typeof document !== 'undefined' && !!document.querySelector('.goto button:not(:disabled)') && !!document.querySelector('.open-native:not(:disabled)')")) { context = candidate; break; } } catch {}
+                }
+                if (!context) await delay(100);
+            }
+            if (!context) throw Error('Viewer did not reopen');
+            const dirtyTest = model.bytes < 50 * 1024 * 1024;
+            if (dirtyTest) await command('test.dirtyText');
+            const contextTarget = await evaluate(context, `(() => {
+                const field = document.querySelector('.field');
+                const target = JSON.parse(field.getAttribute('data-vscode-context'));
+                const bounds = field.getBoundingClientRect();
+                field.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:bounds.x+4, clientY:bounds.y+4 }));
+                return { ...target, text:field.textContent };
+            })()`);
+            let menuContext;
+            const menuDeadline = Date.now() + 10000;
+            while (!menuContext && Date.now() < menuDeadline) {
+                await attachTargets();
+                for (const candidate of contexts.values()) {
+                    try { if (await evaluate(candidate, `typeof document !== 'undefined' && [...document.querySelectorAll('.context-view .action-label')].some(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent))`)) { menuContext = candidate; break; } } catch {}
+                }
+                if (!menuContext) await delay(100);
+            }
+            if (!menuContext) throw Error('Native context menu did not appear');
+            await delay(300); // Wait for the native menu's opening animation before measuring its hit target.
+            const menuShot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
+            fs.writeFileSync(path.join(evidenceRoot,'native-context-menu.png'),Buffer.from(menuShot.data,'base64'));
+            const menuPoint = await evaluate(menuContext, `(() => { const r=[...document.querySelectorAll('.context-view .action-label')].find(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent)).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+            await call('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',clickCount:1,...menuPoint}, pageSession);
+            await call('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',clickCount:1,...menuPoint}, pageSession);
+            await command('test.nativeSelection', { ...contextTarget, dirty: dirtyTest });
+            await command('test.nativeEdit');
+            nativeNavigation = { nativeEditUndo:true, toolbar:true, nativeContextMenu:true, dirtyNativeTextRetained:dirtyTest ? true : null, target, contextTarget };
+            if (await hash() !== changed) throw Error('Native navigation changed source bytes');
+            await command('test.recovery');
+            let recoveryContext;
+            const recoveryDeadline = Date.now() + 20000;
+            while (!recoveryContext && Date.now() < recoveryDeadline) {
+                await attachTargets();
+                for (const candidate of contexts.values()) {
+                    try { if (await evaluate(candidate, "typeof document !== 'undefined' && !!document.querySelector('.goto button:not(:disabled)') && !!document.querySelector('.viewport')?.textContent.includes('230000') && /Recovered unsaved changes|已恢复未保存的修改/.test(document.querySelector('.status').textContent)")) { recoveryContext=candidate;break; } } catch {}
+                }
+                if (!recoveryContext) await delay(100);
+            }
+            if (!recoveryContext) throw Error('Recovery content did not render');
+            // VS Code rejects modal dialogs in extension test mode. The installed lifecycle driver
+            // runs outside that mode and verifies the real confirmation; development runs verify the preview.
+            if (process.env.LSDYNA_TEST_VSIX) {
+                await evaluate(recoveryContext, "document.querySelector('.open-native').click()");
+                let recoveryDialog;
+                const dialogDeadline = Date.now() + 10000;
+                while (!recoveryDialog && Date.now() < dialogDeadline) {
+                    recoveryDialog = await evaluate({sessionId:pageSession}, `document.querySelector('.monaco-dialog-box')?.innerText`);
+                    if (!recoveryDialog) await delay(100);
+                }
+                if (!/Save Recovered Copy|另存恢复副本/.test(recoveryDialog || '')) throw Error('Missing recovery confirmation: '+recoveryDialog);
+                fs.writeFileSync(path.join(evidenceRoot, 'recovery-dialog.json'), JSON.stringify({text:recoveryDialog}));
+                const recoveryShot=await call('Page.captureScreenshot',{format:'png'},pageSession);
+                fs.writeFileSync(path.join(evidenceRoot,'recovery-dialog.png'),Buffer.from(recoveryShot.data,'base64'));
+                await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},pageSession);
+                await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},pageSession);
+                await delay(100);
+            }
+            await command('test.recoveryRetained');
+            await command('test.progressiveViewer');
+            let progressiveContext;
+            const progressiveDeadline = Date.now() + 20000;
+            while (!progressiveContext && Date.now() < progressiveDeadline) {
+                await attachTargets();
+                for (const candidate of contexts.values()) {
+                    try { if (await evaluate(candidate, "typeof document !== 'undefined' && !!document.querySelector('.index-progress') && !!document.querySelector('.field')")) { progressiveContext=candidate;break; } } catch {}
+                }
+                if (!progressiveContext) await delay(100);
+            }
+            if (!progressiveContext) throw Error('Confirmed early field help did not render');
+            const progress = JSON.parse(fs.readFileSync(path.join(root, 'index-paused.json')));
+            if (!(progress.scannedBytes > 0 && progress.scannedBytes < progress.size)) throw Error('Invalid actual byte progress');
+            const early = await evaluate(progressiveContext, `(() => {
+                document.querySelector('.field').click();
+                return {status:document.querySelector('.index-progress').textContent, hint:document.querySelector('.index-progress').title,
+                    queryable:!!document.querySelector('.field.queryable')};
+            })()`);
+            if (early.queryable) throw Error('Object queries available before completion');
+            await delay(100);
+            early.help = await evaluate(progressiveContext, "document.querySelector('.field-help')?.textContent");
+            if (!early.help) throw Error('Early help did not open');
+            early.layouts = [];
+            for (const width of [360,480]) for (const font of [14,20]) {
+                await evaluate(progressiveContext, `document.querySelector('main').style.width='${width}px';document.body.style.setProperty('--vscode-font-size','${font}px');document.body.style.setProperty('--vscode-editor-font-size','${font}px')`);
+                await delay(75);
+                const layout = await evaluate(progressiveContext, `(() => {const bounds=document.querySelector('main').getBoundingClientRect();const progress=document.querySelector('.index-progress');return {locale:document.querySelector('main').lang,width:${width},font:${font},status:progress.textContent,title:progress.title,overflow:progress.getBoundingClientRect().right>bounds.right+1};})()`);
+                if(layout.overflow)throw Error('Index progress overflow: '+JSON.stringify(layout));
+                early.layouts.push(layout);
+                const shot=await call('Page.captureScreenshot',{format:'png'},pageSession);
+                fs.writeFileSync(path.join(evidenceRoot,`indexing-${width}-${font}.png`),Buffer.from(shot.data,'base64'));
+            }
+            early.navigation = await evaluate(progressiveContext, '(' + (async () => {
+                const viewport=document.querySelector('.viewport');
+                const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+                document.querySelector('.field-heading button')?.click();
+                const first=Number(document.querySelector('.line-number').textContent);
+                for(let i=0;i<80;i++) {
+                    viewport.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true,cancelable:true}));
+                    await wait(25);
+                }
+                await wait(150);
+                const paged=Number(document.querySelector('.line-number').textContent);
+                viewport.dispatchEvent(new WheelEvent('wheel',{deltaY:200,bubbles:true,cancelable:true}));
+                await wait(100);
+                const wheeled=Number(document.querySelector('.line-number').textContent);
+                for(let i=0;i<3;i++) {viewport.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true,cancelable:true}));await wait(50);}
+                const back=Number(document.querySelector('.line-number').textContent);
+                if(!(paged>first && wheeled>paged && back<wheeled) || !document.querySelector('.index-progress')) throw Error('Navigation blocked during indexing');
+                return {first,paged,wheeled,back};
+            }).toString() + ')()');
+            if (early.navigation.paged <= progress.lines) throw Error('Paging did not cross the indexed frontier');
+            fs.writeFileSync(path.join(root,'continue-index'),'continue');
+            const completionDeadline=Date.now()+30000;
+            while(await evaluate(progressiveContext,"!!document.querySelector('.index-progress')")) {
+                if(Date.now()>completionDeadline)throw Error('Progressive index failed to finish');
+                await delay(100);
+            }
+            early.finalLine=await evaluate(progressiveContext,"Number(document.querySelector('.line-number').textContent)");
+            if(early.finalLine!==early.navigation.back)throw Error('Index completion moved the viewport');
+            fs.writeFileSync(path.join(evidenceRoot,'progressive.json'),JSON.stringify({...progress,...early,controlledPause:true},null,2));
+            nativeNavigation.recoveryPreview=true;
+            nativeNavigation.recoveryCancel=process.env.LSDYNA_TEST_VSIX ? true : null;
+            if (process.env.LARGE_VIEWER_MANUAL === '1') {
+                await command('test.manualSidebar');
+                let manualContext;
+                const end = Date.now() + 15000;
+                while (!manualContext && Date.now() < end) {
+                    await attachTargets();
+                    for (const candidate of contexts.values()) {
+                        try { if (await evaluate(candidate, "typeof document !== 'undefined' && !!document.querySelector('#sidebar-search-mode')")) { manualContext = candidate; break; } } catch {}
+                    }
+                    if (!manualContext) await delay(100);
+                }
+                if (!manualContext) throw Error('Manual sidebar did not render');
+                const manual = [];
+                for (const width of [240, 320]) for (const font of [14, 20]) for (const mode of ['keyword', 'fulltext']) {
+                    const state = await evaluate(manualContext, `(() => {
+                        document.body.style.width='${width}px';document.body.style.fontSize='${font}px';
+                        const button=document.querySelector('#sidebar-search-mode');
+                        if(button.dataset.mode !== '${mode}') button.click();
+                        return {width:${width},font:${font},mode:button.dataset.mode,title:button.title,aria:button.getAttribute('aria-label'),
+                            icon:getComputedStyle(button.querySelector('span')).maskImage,
+                            hint:document.querySelector('#search-mode-hint').textContent};
+                    })()`);
+                    if (state.mode !== mode || !state.title || state.title !== state.aria || state.icon === 'none') throw Error('Manual mode state mismatch: '+JSON.stringify(state));
+                    manual.push(state);
+                    await delay(100);
+                    const shot = await call('Page.captureScreenshot', { format: 'png' }, pageSession);
+                    fs.writeFileSync(path.join(evidenceRoot, `manual-${width}-${font}-${mode}.png`), Buffer.from(shot.data, 'base64'));
+                }
+                fs.writeFileSync(path.join(evidenceRoot, 'manual.json'), JSON.stringify(manual, null, 2));
+            }
+        }
+        const evidence={...result,...reload,nativeNavigation,sourceUnchangedByNavigation:true,initialSha256:before,externalEditSha256:changed};
         fs.writeFileSync(path.join(root,'renderer-finished.json'),JSON.stringify(evidence,null,2));
         await host;if(hostError)throw hostError;
         fs.writeFileSync(path.join(evidenceRoot,'result.json'),JSON.stringify(evidence,null,2));
@@ -223,7 +438,11 @@ async function main() {
         finishTempRun(root);
         console.log(JSON.stringify(evidence));
     } catch (error) {
-        fs.writeFileSync(path.join(evidenceRoot, 'failure.json'), JSON.stringify({ error: String(error) }));
+        const surfaces = [];
+        for (const candidate of contexts.values()) {
+            try { surfaces.push(await evaluate(candidate, "typeof document !== 'undefined' ? document.body?.innerText : ''")); } catch {}
+        }
+        fs.writeFileSync(path.join(evidenceRoot, 'failure.json'), JSON.stringify({ error: String(error), surfaces }, null, 2));
         fs.writeFileSync(path.join(root, 'renderer-finished.json'), JSON.stringify({ failed: true }));
         await host;
         if (!hostError && !finalized) { finalized = true; finishTempRun(root); }

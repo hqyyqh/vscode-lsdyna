@@ -172,14 +172,15 @@ describe('keywordSchema resolver', () => {
         const geometric = lookupKeywordSchema('RIGIDWALL_GEOMETRIC_CYLINDER_ID');
         assert.deepEqual(
             getVerifiedPrefixLayout(geometric).cards[0].map(field => field.n),
-            ['RWID', 'HEADING'],
+            ['ID', 'TITLE'],
         );
         const planar = lookupKeywordSchema('RIGIDWALL_PLANAR_ID');
-        assert.deepEqual(getVerifiedPrefixLayout(planar).cards[0].map(field => field.n), ['RWID']);
+        assert.deepEqual(getVerifiedPrefixLayout(planar).cards[0].map(field => [field.n, field.p, field.w]),
+            [['ID', 0, 10], ['TITLE', 10, 70]]);
         const rivet = lookupKeywordSchema('CONSTRAINED_RIVET_ID');
         assert.deepEqual(getVerifiedPrefixLayout(rivet).cards[0].map(field => field.n), ['RID']);
         const icfd = lookupKeywordSchema('ICFD_PART_TITLE');
-        assert.deepEqual(getVerifiedPrefixLayout(icfd).cards[0].map(field => field.n), ['HEADING']);
+        assert.deepEqual(getVerifiedPrefixLayout(icfd).cards[0].map(field => [field.n, field.p, field.w]), [['TITLE', 0, 80]]);
 
         const combined = lookupKeywordSchema('CONSTRAINED_BEAM_IN_SOLID_ID_TITLE');
         assert.deepEqual(
@@ -211,13 +212,15 @@ describe('keywordSchema resolver', () => {
         assert.equal(getVerifiedPrefixLayoutSteps('MAT_001', ['ID', 'MPP']), null);
     });
 
-    it('fails closed for the two manual-denied DEFINE_FUNCTION TITLE spellings', () => {
+    it('uses verified native TITLE selectors before conflicting manual restrictions', () => {
         const { getVerifiedPrefixLayout, lookupKeywordSchema } = require('../../src/core/keywordSchema');
         for (const keyword of ['DEFINE_FUNCTION_TITLE', 'DEFINE_FUNCTION_TABULATED_TITLE']) {
             const layout = getVerifiedPrefixLayout(lookupKeywordSchema(keyword));
-            assert.equal(layout.status, 'unsupported-option');
-            assert.deepEqual(layout.unsupportedOptions, ['TITLE']);
-            assert.deepEqual(layout.cards, []);
+            assert.equal(layout.status, 'verified');
+            assert.deepEqual(layout.unsupportedOptions, []);
+            assert.deepEqual(layout.cards.map(card => card.map(field => [field.n, field.p, field.w, field.t])),
+                [[['TITLE', 0, 80, 'string']]]);
+            assert.ok(layout.policyIds.length && layout.policyIds.every(id => id.startsWith('lspp:')));
         }
     });
 

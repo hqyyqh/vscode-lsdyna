@@ -61,6 +61,16 @@ function plan(lines, options = {}, documentOptions = {}) {
 }
 
 describe('verified conditional-card planner', () => {
+    it('retains the reviewed edit when an unrelated native read capability is present', () => {
+        const native = require('../../../out/core/semantics/nativeFieldResolution');
+        const original = native.hasNativeFileReader;
+        native.hasNativeFileReader = name => name.replace(/^\*/, '') === 'MAT_WINFRITH_CONCRETE' || original(name);
+        try {
+            const { result } = plan([keyword, ...coreCards(2), '*END']);
+            assert.equal(result.status, 'ready');
+            assert.equal(result.cardsToAppend.length, 5);
+        } finally { native.hasNativeFileReader = original; }
+    });
     it('plans only blank Cards 3-7 for RATE=8 with Cards 1-2 present', () => {
         const { result } = plan([keyword, ...coreCards(2), '*END']);
 

@@ -230,30 +230,32 @@ describe('CONTACT thermal composition across consumers', function () {
             }
         }
     });
-    it('omits unsupported controls and rejects injected selections without granting spelling support',()=> {
+    it('retains native controls instead of filtering them with manual applicability',()=> {
         const source=require('../../../keywords/runtime/engineering/contactThermal.json');
         for(const [keyword,capability] of Object.entries(source.applicability)) {
             const form=getCatalogInputFormCatalogV4().formForKeyword(keyword);
             if(!form)continue;
             const selectors=(form.reference.selectorRuleIds||[]).flatMap(id=>form.rules[id].selectors);
-            assert.equal(selectors.some(s=>s.controlId===source.controlId),capability.thermal,keyword);
-            if(!capability.mpp)assert.equal(selectors.some(s=>s.keywordSuffix==='_MPP'),false,keyword);
-            if(!capability.identity)assert.equal(selectors.some(s=>s.values.some(v=>v.value==='ID')),false,keyword);
+            const raw=getCatalogInputFormCatalogV4().formForKeyword(keyword,false);
+            const native=(raw?.reference.selectorRuleIds||[]).flatMap(id=>raw.rules[id].selectors);
+            for(const selector of native) assert.ok(selectors.some(s=>s.controlId===selector.controlId),keyword);
             if(!capability.thermal)assert.equal(source.spellings[keyword+'_THERMAL_FRICTION'],undefined,keyword);
         }
         for(const family of ['CONTACT_NODES_TO_SURFACE','CONTACT_AIRBAG_SINGLE_SURFACE','CONTACT_AUTOMATIC_GENERAL','CONTACT_SPOTWELD']) {
             const e=editor('*'+family+'\n11,22\n0,0\n1,1\n*END');
             const m=api.buildKeywordOptionViewModel(e,0,{});
-            assert.equal(m.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),false,family);
+            const raw=getCatalogInputFormCatalogV4().formForKeyword(family,false);
+            assert.equal(m.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),
+                (raw.reference.selectorRuleIds||[]).some(id=>raw.rules[id].selectors.some(s=>s.controlId===source.controlId)),family);
             const staged=api.buildKeywordOptionViewModel(e,0,{draftControlState:{[source.controlId]:'Thermal'}});
             assert.equal(api.buildKeywordOptionsViewState(staged).canApply,false,family);
         }
     });
-    it('requires a resolved non-node SURFA for tied thermal contacts, including drafts',()=> {
+    it('keeps native selectors visible while supplementing missing write conditions',()=> {
         for(const family of ['CONTACT_TIED_NODES_TO_SURFACE','CONTACT_TIED_SHELL_EDGE_TO_SURFACE']) for(const raw of ['0','4','8','1.5','&missing']) {
             const e=editor('*'+family+'\n11,22,'+raw+'\n0,0\n1,1\n*END');
             const m=api.buildKeywordOptionViewModel(e,0,{});
-            assert.equal(m.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),raw==='0',family+'/'+raw);
+            assert.equal(m.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),true,family+'/'+raw);
             const surf=m.managerCards.flatMap(c=>c.fields).find(f=>f.name==='SURFATYP');
             const staged=api.buildKeywordOptionViewModel(e,0,api.keywordManagerEditField(m,surf.fieldId,'0'));
             assert.equal(staged.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),true,family);
@@ -304,7 +306,9 @@ describe('CONTACT thermal composition across consumers', function () {
             if(profile.mechanicalCondition==='weld')cards=cards.filter(c=>c[0].n!=='TPRM1');
             const e=editor('*'+family+'\n'+cards.map(()=>''.padEnd(80)).join('\n')+'\n*END');
             const m=api.buildKeywordOptionViewModel(e,0,{});
-            const selections=Object.fromEntries(m.controls.map(c=>[c.controlId,c.choices.some(v=>v.value==='ID')?'ID':c.choices.some(v=>v.value==='MPP2')?'MPP2':c.choices.some(v=>v.value==='ABCDEFG')?'A':'T_Friction']));
+            // Keep each family's previously supported combination. Native-only
+            // controls are now visible too; this replay must not select new combinations.
+            const selections=Object.fromEntries(m.controls.map(c=>[c.controlId,c.choices.some(v=>v.value==='ID')?'ID':c.choices.some(v=>v.value==='MPP2')?(source.applicability[family].mpp?'MPP2':''):c.choices.some(v=>v.value==='ABCDEFG')?'A':'T_Friction']));
             const staged=api.buildKeywordOptionViewModel(e,0,{draftControlState:selections});
             assert.equal(staged.plan.status,'ready',family+': '+staged.plan.reason);
             const {e:next,m:opened}=reopen(staged,e);

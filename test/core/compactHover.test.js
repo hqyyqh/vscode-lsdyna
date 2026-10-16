@@ -3,7 +3,7 @@ const { fakeDoc: makeDoc, vscodeMock } = require('../support/helpers');
 let sequence = 0;
 const fakeDoc = text => makeDoc(text, `/compact-hover/${++sequence}.k`);
 const i18n = require('../../out/core/i18n');
-const { LsdynaFieldHoverProvider, beginHoverRequest, handleHoverAction, clearReferenceIndexCacheForTesting } = require('../../out/extension')._internals;
+const { LsdynaFieldHoverProvider, buildFieldHelpMarkdown, beginHoverRequest, handleHoverAction, clearReferenceIndexCacheForTesting } = require('../../out/extension')._internals;
 const { buildCompactReferenceHover } = require('../../out/core/references/fieldReferenceHover');
 const MarkdownIt = require('markdown-it');
 const { parseDocument, DomUtils } = require('htmlparser2');
@@ -18,6 +18,36 @@ describe('compact native hover', () => {
     afterEach(() => { vscodeMock.workspace.getConfiguration=config; vscodeMock.window.activeTextEditor=editor;
         vscodeMock.commands.executeCommand=execute; vscodeMock.window.showQuickPick=picker; i18n.updateLanguage(); clearReferenceIndexCacheForTesting(); });
     for (const language of ['zh-cn','en']) {
+        it(`expands only field help with icon-only controls and preserves the full text (${language})`, async () => {
+            vscodeMock.workspace.getConfiguration=()=>({get:key=>key==='language'?language:undefined}); i18n.updateLanguage();
+            const doc=fakeDoc(curve), position=new vscodeMock.Position(1,5);
+            const active={document:doc, selection:new vscodeMock.Selection(position,position)};
+            vscodeMock.window.activeTextEditor=active;
+            vscodeMock.commands.executeCommand=async()=>{};
+            const request=beginHoverRequest(doc,position);
+            const field={n:'TEST',nativeIdentity:true};
+            for (const text of ['Line 1\nLine 2\nLine 3\nKeep FLAG = -1.', 'First paragraph.\n\nKeep FLAG = -1.']) {
+                const context={compact:true,hoverRequest:request,schemaText:text};
+                const compact=buildFieldHelpMarkdown(field,context);
+                const link=DomUtils.getElementsByTagName('a',parseDocument(parser.render(compact)).children)[0];
+                assert.ok(link.attribs.href.startsWith('command:extension.toggleFieldHelp?'));
+                assert.equal(link.attribs.title,i18n.get('fieldHelpExpand'));
+                assert.equal(DomUtils.textContent(link),'$(chevron-down)');
+                assert.doesNotMatch(compact,/Keep FLAG| …/);
+                assert.equal(await handleHoverAction(request.id,false,true),true);
+                assert.equal(request.expanded,false);
+                const full=buildFieldHelpMarkdown(field,context);
+                assert.match(full,/Keep FLAG = -1\./);
+                assert.match(full,/\$\(chevron-up\)/);
+                assert.ok(full.includes(`"${i18n.get('fieldHelpCollapse')}"`));
+                assert.equal(await handleHoverAction(request.id,false,true),true);
+                assert.equal(buildFieldHelpMarkdown(field,context),compact);
+            }
+            assert.doesNotMatch(buildFieldHelpMarkdown(field,{compact:true,hoverRequest:request,schemaText:'Short help.'}),/chevron|toggleFieldHelp/);
+            doc.version++;
+            assert.equal(await handleHoverAction(request.id,false,true),false);
+            assert.equal(request.fieldHelpExpanded,false);
+        });
         it(`keeps one curve identity, no raw tables or warning blocks (${language})`, async () => {
             vscodeMock.workspace.getConfiguration=()=>({get:key=>key==='language'?language:undefined}); i18n.updateLanguage();
             const markdown=value(await new LsdynaFieldHoverProvider().provideHover(fakeDoc(curve), {line:0,character:5}));

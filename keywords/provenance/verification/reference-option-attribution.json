@@ -27,9 +27,8 @@
       },
       "fieldNameMismatch": {
         "active-option-caused": 28,
-        "mismatch-independent-of-option": 27,
-        "no-active-option": 2604,
-        "verified-prefix-layout-with-option": 32
+        "mismatch-independent-of-option": 59,
+        "no-active-option": 2604
       },
       "fieldTypeMismatch": {
         "no-active-option": 385
@@ -66,13 +65,13 @@
   },
   "change": {
     "classification": "audit-implementation-drift",
-    "reason": "Unify schema-backed keyword recognition and CONTACT option ordering; audit results and source semantics remain unchanged."
+    "reason": "Reviewed native prefix ID/TITLE projection moves exactly 32 RIGIDWALL coordinates from verified-prefix-layout-with-option to mismatch-independent-of-option; current input identities refreshed without changing semantic rules or permissions."
   },
   "inputs": {
     "currentDataLineage": {
       "path": "keywords/provenance/current-data.json",
-      "sha256": "175b202afb5fec9448c70f0bafb142b3f4a1c25a0351f54598c47a98d8d8a83c",
-      "size": 972075
+      "sha256": "f86de355bd2e63b034c5466a66e152ce4d063bda716e1f8ee90b4d9ee765f93c",
+      "size": 972423
     },
     "fieldData": {
       "path": "keywords/runtime/schema/field_data.json",
@@ -87,8 +86,8 @@
       },
       {
         "path": "src/core/keywordSchema.ts",
-        "sha256": "0e0e3e3ce520e871b87223763e165cd7d720c03f947487fec4982a6245223b40",
-        "size": 78851
+        "sha256": "1ec5cc808862e9ca7b91b76fbc5a91b8d6995d5d3bcf5f0556badfee9b086fd0",
+        "size": 83790
       },
       {
         "path": "src/core/keywordDataPath.ts",
@@ -97,20 +96,20 @@
       },
       {
         "path": "src/core/semantics/semanticRuntimeV2.ts",
-        "sha256": "6b7b7c10d6544a00c51737dd68dc77b764d966cb287a58ce966705be5e102f14",
-        "size": 27652
+        "sha256": "5771ee6f2d461f42c3f0e333b8d65db62417f76ee8e9ff8de2d469018f5954a6",
+        "size": 28647
       },
       {
         "path": "src/core/references/fieldReferenceClassifier.ts",
-        "sha256": "801c8f457f27ab1979f5a0d50225bd0bd62e316ce1727620c12d75a996566fde",
-        "size": 87906
+        "sha256": "e1b27b69b9ff1adb91e423edee813611a5c5fdee0469ff96c3eab45d7b195817",
+        "size": 89377
       }
     ],
     "semanticRuntimeManifest": {
-      "contentSha256": "df3df6734ce6ff5e930bfe2b73c972def8fe5f4c043d8cda01527cbed6e20ad3",
-      "datasetReleaseId": "semantic-dataset:b6a1188d520aeec2aca52838",
+      "contentSha256": "838657998b8205ce39c2f5842ffca745782916ce7e7a9760cfacad4eef19949a",
+      "datasetReleaseId": "semantic-dataset:4e9457aab6be5ebbeebf75b9",
       "path": "keywords/runtime/semantic-v2/manifest.json",
-      "sha256": "1230f73a3fd13bcea5aeb3789ffa139697abb44cb39a1e85b075c31996a278d2",
+      "sha256": "985d58be1d090611a62693c5919454d160a3cea713feff3d912480a57486a794",
       "size": 290907
     }
   },

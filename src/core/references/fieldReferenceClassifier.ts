@@ -1501,7 +1501,7 @@ function isScannerDefinitionField(options) {
         });
 }
 
-function hasPotentialFieldReference(options) {
+function hasPotentialManualFieldReference(options) {
     if (chooseReferenceRule(manualRulesForField(options.keyword, options.cardIndex, options.field))) return true;
     const catalog = getSemanticRuntimeCatalogV2();
     const records = catalog.referenceRecordsForKeyword(options.keyword);
@@ -1509,8 +1509,23 @@ function hasPotentialFieldReference(options) {
     return !catalog.status().ready || Boolean(chooseReferenceRule(records.map(record => applyRuntimeSemanticRelationCorrection(record))));
 }
 
+function hasPotentialFieldReference(options) {
+    const native = require('./registryReferenceScanner');
+    if (native.getCatalogFieldReferenceInfo(options)) return true;
+    return !native.nativeReferenceCoversField(options) && hasPotentialManualFieldReference(options);
+}
+
 function getActionableFieldReferenceInfo(options) {
-    if (options.field?.di === 'self' || isScannerDefinitionField(options) || !hasPotentialFieldReference(options)) return null;
+    // Native links include their own definition/reference and value-branch semantics.
+    const native = require('./registryReferenceScanner');
+    const nativeInfo = native.getCatalogFieldReferenceInfo(options);
+    if (nativeInfo || native.nativeReferenceCoversField(options)) return nativeInfo;
+    return getRegistryApprovedFieldReferenceInfo(options);
+}
+
+/** Manual supplement; operational callers must use the native-first resolver above. */
+function getRegistryApprovedFieldReferenceInfo(options) {
+    if (options.field?.di === 'self' || isScannerDefinitionField(options) || !hasPotentialManualFieldReference(options)) return null;
     const info = getFieldReferenceInfo(options);
     const registryCatalog = getDefinitionRegistryCatalog();
     const exactDefinition = registryRelationsForField(registryCatalog,
@@ -1553,10 +1568,6 @@ function hasRealizableNumericReferenceWitness(info, field) {
             parseFieldReferenceValue(String(candidate), info)) return true;
     }
     return false;
-}
-
-function getRegistryApprovedFieldReferenceInfo(options) {
-    return getActionableFieldReferenceInfo(options);
 }
 
 function resolveReferenceValueSemantics(infoOrRelation, rawValue) {

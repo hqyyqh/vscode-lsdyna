@@ -54,7 +54,7 @@ async function main() {
         assert.equal(provider.setLayout('order'), true);
         assert.equal(provider._layout, 'order');
         await tick(); await tick(); provider.stopAutomaticWork();
-    } else if (name.startsWith('discovery-') || name.startsWith('plan-')) {
+    } else if (name.startsWith('plan-')) {
         const { createActiveFieldChoiceController } = require(path.join(root, 'out/client/services/activeFieldChoiceController'));
         const document = { version: 3, lineCount: 1, lineAt: () => ({ text: '1' }) };
         const editor = { document, selection: { active: { line: 0, character: 0 } } };
@@ -66,11 +66,9 @@ async function main() {
             isLsdynaDocument: () => true, documentIdentity: () => 'file:///model.k',
             getStatusBarLevel: () => 'simple', setContext() {}, translate: key => key,
             plan: () => name === 'plan-reject' ? Promise.reject(failure) : name === 'plan-throw' ? Promise.resolve(plan) : plan,
-            showInformationMessage: async () => 'officialFieldChoiceDiscoveryView', executeCommand: fail,
         });
         const initial = controller.refreshNow();
-        if (name.startsWith('discovery-')) assert.ok(initial);
-        else assert.equal(initial, null);
+        assert.equal(initial, null);
         await tick(); await tick(); controller.dispose();
     } else if (['english-', 'fallback-', 'evidence-'].some(prefix => name.startsWith(prefix))) {
         const { createOfficialFieldChoicePicker } = require(path.join(root, 'out/client/services/officialFieldChoicePicker'));
@@ -100,7 +98,7 @@ else describe('best-effort UI request failures', function () {
         assert.equal(result.status, 0, result.stderr);
         assert.ok(result.stdout.includes(`${name}: handled`));
     });
-    for (const surface of ['suggest', 'layout', 'context', 'discovery', 'english', 'fallback', 'evidence', 'plan']) for (const failure of ['reject', 'throw']) {
+    for (const surface of ['suggest', 'layout', 'context', 'english', 'fallback', 'evidence', 'plan']) for (const failure of ['reject', 'throw']) {
         it(`observes ${failure} from ${surface} without an unhandled process rejection`, () => {
             const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', __filename, `${surface}-${failure}`], { encoding: 'utf8', timeout: 8_000, windowsHide: true });
             assert.equal(result.status, 0, result.stderr);

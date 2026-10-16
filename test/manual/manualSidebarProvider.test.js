@@ -245,10 +245,10 @@ describe('ManualSidebarProvider', () => {
             provider.refresh(repository);
 
             assert.ok(view.webview.html.includes('<html lang="en">'));
-            assert.ok(view.webview.html.includes('>Keywords &amp; titles</button>'));
-            assert.ok(view.webview.html.includes('Full text'));
+            assert.ok(view.webview.html.includes('Current search: keywords and titles. Switch to full text.'));
+            assert.ok(view.webview.html.includes('Current search: full text.'));
             assert.ok(view.webview.html.includes('Search keywords and section titles.'));
-            assert.ok(view.webview.html.includes('aria-label="Search scope"'));
+            assert.ok(view.webview.html.includes('aria-label="Current search: keywords and titles. Switch to full text."'));
             assert.equal(view.description, '↑↓ Navigate · Enter Open manual · Esc Clear search');
             assert.ok(!view.webview.html.includes('search-footer'), 'shortcuts should not consume a separate webview row');
             assert.ok(!view.webview.html.includes('>KW</button>'));
@@ -259,7 +259,7 @@ describe('ManualSidebarProvider', () => {
             i18n.updateLanguage();
             provider.refreshUiLanguage();
             assert.ok(view.webview.html.includes('<html lang="zh-CN">'));
-            assert.ok(view.webview.html.includes('>关键字与标题</button>'));
+            assert.ok(view.webview.html.includes('当前搜索：关键字与标题；切换为全文搜索'));
             assert.ok(view.webview.html.includes('已索引摘要'));
             assert.equal(view.description, '↑↓ 导航 · Enter 打开手册 · Esc 清空搜索');
             for (const unavailable of [undefined, { listDocuments: () => [] }, { listDocuments() { throw Error('broken index'); } }]) {
@@ -343,7 +343,11 @@ describe('ManualSidebarProvider', () => {
             const input = document.getElementById('sidebar-search');
             const search = (query, mode = 'keyword') => {
                 input.value = query;
-                document.querySelector(`.search-modes button[data-mode="${mode}"]`).click();
+                const button = document.getElementById('sidebar-search-mode');
+                if (button.dataset.mode !== mode) button.click();
+                else { button.click(); button.click(); }
+                assert.equal(button.dataset.mode, mode);
+                assert.ok(button.getAttribute('aria-label'));
                 return outgoing.at(-1);
             };
             const reply = (request, extra = {}) => dom.window.dispatchEvent(new MessageEvent('message', { data: {

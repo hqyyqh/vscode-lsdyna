@@ -439,6 +439,8 @@ export function planVerifiedConditionalCards(
         return fail(hasCommandExpectation ? 'stale' : 'unavailable', 'keyword-line-changed', resultValues());
     }
     const keyword = String(classification.rawKeyword || classification.normalizedKeyword || '').toUpperCase();
+    if (require("./catalogNativeFileLayout").nativeSpellingGap(classification.normalizedKeyword.replace(/^\*/, ''))?.nativeRejected)
+        return fail('unavailable', 'native-keyword-rejected', resultValues({ keyword }));
     const lookup = lookupKeywordSchema(keyword, schema);
     if (!lookup) {
         return fail(hasCommandExpectation ? 'stale' : 'unavailable', 'keyword-schema-unavailable', resultValues({ keyword }));
@@ -612,6 +614,15 @@ export function planVerifiedConditionalCards(
         cardsToAppend,
         eolForDocument(document, options.eol),
     );
+    if (require('./nativeRuleCoverage').nativeRecordGrammar(keyword)?.steps) {
+        const records = [...lineCache.entries()].filter(([line, text]) => line > keywordLine &&
+            !classifyKeywordLine(text).isKeyword && !isKeywordCommentLine(text) &&
+            !(line === document.lineCount - 1 && text === '')).sort((a, b) => a[0] - b[0]).map(([, text]) => text);
+        if (!require('./nativeFileReadContext').nativeAppendLayoutMatches(keywordText,
+            records, cardsToAppend.map(card => card.blankText), effectiveFormat)) {
+            return fail('unavailable', 'native-card-condition-conflict', withScan());
+        }
+    }
     if (documentVersion !== null && document.version !== documentVersion) {
         return fail('stale', 'document-version-changed-during-planning', withScan());
     }

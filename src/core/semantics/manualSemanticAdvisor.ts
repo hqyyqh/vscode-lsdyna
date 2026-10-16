@@ -246,7 +246,7 @@ function cardAdvice(rule: any, context: PredicateContext): CardPresenceAdvice | 
 }
 
 /**
- * Converts only already-published official-manual runtime rules into UI-neutral advice.
+ * Supplements missing native decisions with published manual advice.
  *
  * The caller must supply the exact catalog keyword. This layer deliberately does not
  * infer families from prefixes (for example CONTACT_*) or turn LS-PrePost option lists
@@ -261,13 +261,18 @@ export function getKeywordSemanticAdvice(
     if (!normalizedKeyword) {
         return { keyword: '', optionSlots: [], cards: [] };
     }
-
+    const name = normalizedKeyword.replace(/^\*/, '');
+    const native = require("./catalogNativeFileLayout");
+    const form = require("./catalogInputFormCatalogV4").getCatalogInputFormCatalogV4()
+        .formForKeyword(native.nativeFileCatalogKeyword(name), false);
+    const verifiedForm = form?.source?.datasetSha256 === native.NATIVE_FILE_SOURCE && !form.source.isUnauditedDiagnostic ? form : null;
+    const { nativeCoversCondition, nativeCoversOptionSlot } = require('./nativeRuleCoverage');
     const rules = catalog.rulesForKeyword(normalizedKeyword);
-    const optionSlots = rules
+    const optionSlots = rules.filter(rule => !nativeCoversOptionSlot(verifiedForm, rule.relation?.optionSlot))
         .map(optionAdvice)
         .filter((item): item is KeywordOptionSlotAdvice => item !== null)
         .sort(compareOptionSlots);
-    const cards = rules
+    const cards = rules.filter(rule => !nativeCoversCondition(name, rule.relation?.when))
         .map(rule => cardAdvice(rule, context))
         .filter((item): item is CardPresenceAdvice => item !== null);
 

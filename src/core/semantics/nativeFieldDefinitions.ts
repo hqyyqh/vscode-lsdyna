@@ -1,6 +1,7 @@
 import type { KeywordCard, KeywordSchema } from '../keywordSchema';
 import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
 import { NATIVE_FILE_SOURCE } from "./catalogNativeFileLayout";
+import { nativeAuxiliaryReferenceSource } from './nativeContactOptionalReferences';
 
 const normalize = (value: unknown) => String(value || '').trim().toUpperCase();
 const isPlaceholder = (value: unknown) => {
@@ -83,6 +84,32 @@ export function nativeFieldDefinitions(keyword: string, schema: KeywordSchema, c
              native.fields.every((field: any) => isPlaceholder(field.name)))
         );
         if (matches.length === 1) candidate = matches[0];
+    }
+    if (!candidate) {
+        // Selector cards carry exact descriptor addresses; shared definitions may supply their values.
+        const matches = new Map<string, any>();
+        for (const id of form.reference.selectorRuleIds || []) {
+            for (const selector of form.rules[id]?.selectors || []) {
+                for (const value of selector.values || []) {
+                    for (const selected of value.cards || []) {
+                        if (selected.fields?.length !== card.length || !selected.fields.every((f: any, i: number) =>
+                            normalize(f.name) === normalize(card[i].n) && f.position === card[i].p && f.width === card[i].w)) continue;
+                        const fields = selected.fields.map((f: any, i: number) => ({ ...f,
+                            fieldRecordId: f.fieldRecordId || selected.fieldAddresses?.[i] }));
+                        if (fields.some((f: any) => !f.fieldRecordId)) continue;
+                        const shared = nativeAuxiliaryReferenceSource()?.contactOptionalBindings
+                            .flatMap((binding: any) => binding.optionalCards || [])
+                            .find((c: any) => c.fields.length === fields.length && c.fields.every((f: any, i: number) =>
+                                f.fieldRecordId === fields[i].fieldRecordId && f.name === fields[i].name &&
+                                f.type === fields[i].type && f.position === fields[i].position && f.width === fields[i].width));
+                        if (shared || fields.every((f: any) => Array.isArray(f.choices))) {
+                            matches.set(fields.map((f: any) => f.fieldRecordId).join(','), { fields: shared?.fields || fields });
+                        }
+                    }
+                }
+            }
+        }
+        if (matches.size === 1) candidate = [...matches.values()][0];
     }
     if (!candidate) return card;
 

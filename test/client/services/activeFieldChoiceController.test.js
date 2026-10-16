@@ -4,7 +4,6 @@ const assert = require('assert');
 
 const {
     ACTIVE_FIELD_CHOICE_CONTEXT_KEY,
-    ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY,
     createActiveFieldChoiceController,
     officialFieldChoiceCommandRequest,
 } = require('../../../out/client/services/activeFieldChoiceController');
@@ -94,7 +93,6 @@ function harness(overrides = {}) {
     const prompts = [];
     const commands = [];
     const plannedPositions = [];
-    const state = new Map(Object.entries(overrides.state || {}));
     const scheduled = [];
     const deps = {
         statusBarItem: item,
@@ -108,13 +106,8 @@ function harness(overrides = {}) {
         },
         translate: (key, ...args) => `${key}${args.length ? `:${args.join('|')}` : ''}`,
         setContext: (key, value) => contexts.push([key, value]),
-        globalState: {
-            get: (key, defaultValue) => state.has(key) ? state.get(key) : defaultValue,
-            update: (key, value) => { state.set(key, value); },
-        },
         showInformationMessage: async (...args) => {
             prompts.push(args);
-            return overrides.promptChoice;
         },
         executeCommand: (command, ...args) => commands.push([command, ...args]),
         schedule: callback => {
@@ -135,7 +128,6 @@ function harness(overrides = {}) {
         prompts,
         commands,
         plannedPositions,
-        state,
         scheduled,
         setEditor(value) { editor = value; },
         setLevel(value) { level = value; },
@@ -169,7 +161,7 @@ describe('active field choice controller', () => {
         }
     });
     it('shows a closed-domain status with an exact identity-only command payload', () => {
-        const h = harness({ state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true } });
+        const h = harness();
         const plan = h.controller.refreshNow();
 
         assert.equal(plan.status, 'ready');
@@ -200,7 +192,6 @@ describe('active field choice controller', () => {
         });
         const simple = harness({
             planResult: mixed,
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
         });
         simple.controller.refreshNow();
         assert.equal(simple.item.text, '$(info) officialFieldChoiceStatusMixedLabel:TMAX|1');
@@ -209,7 +200,6 @@ describe('active field choice controller', () => {
         const detail = harness({
             planResult: mixed,
             level: 'detail',
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
         });
         detail.controller.refreshNow();
         assert.ok(detail.item.tooltip.includes('Mixed curve branch.'));
@@ -218,7 +208,6 @@ describe('active field choice controller', () => {
         const uncovered = harness({
             planResult: mixed,
             level: 'detail',
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
             deps: { presentEvidence: () => null },
         });
         uncovered.controller.refreshNow();
@@ -234,7 +223,6 @@ describe('active field choice controller', () => {
         const zh = harness({
             planResult: planWithZh,
             level: 'detail',
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
             deps: {
                 isZh: true,
                 translate: (key, ...args) => key === 'fieldHelpEnglishOriginal' ? '原文' : `${key}${args.length ? `:${args.join('|')}` : ''}`,
@@ -251,7 +239,6 @@ describe('active field choice controller', () => {
         const fallback = harness({
             planResult: planWithoutZh,
             level: 'detail',
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
             deps: {
                 isZh: true,
                 translate: (key, ...args) => key === 'fieldHelpUntranslatedInline' ? '暂无已核对中文说明' : `${key}${args.length ? `:${args.join('|')}` : ''}`,
@@ -271,7 +258,6 @@ describe('active field choice controller', () => {
         const h = harness({
             planResult: () => activePlan,
             level: 'detail',
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
             deps: {
                 getLanguage: () => currentLang,
                 translate: (key, ...args) => {
@@ -335,7 +321,7 @@ describe('active field choice controller', () => {
         assert.ok(!h.item.tooltip.includes('no verified Chinese translation'));
     });
 
-    it('keeps right-click eligibility but does not show or onboard while statusBar.level is off', async () => {
+    it('keeps right-click eligibility but does not show status while statusBar.level is off', async () => {
         const h = harness({ level: 'off' });
         assert.equal(h.controller.refreshNow().status, 'ready');
         await Promise.resolve();
@@ -376,14 +362,13 @@ describe('active field choice controller', () => {
         const h = harness({
             document,
             editor,
-            state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true },
         });
         h.controller.refreshNow();
         assert.deepEqual(h.plannedPositions[0].position, { line: 2, character: 70 });
     });
 
     it('hides stale status immediately and ignores cancelled debounce generations', () => {
-        const h = harness({ state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true } });
+        const h = harness();
         h.controller.refreshNow();
         assert.equal(h.item.visible, true);
         const initialPlanCalls = h.plannedPositions.length;
@@ -401,24 +386,18 @@ describe('active field choice controller', () => {
         assert.equal(h.item.visible, true);
     });
 
-    it('shows onboarding once, persists it, and opens only the identity command on request', async () => {
-        const h = harness({ promptChoice: 'officialFieldChoiceDiscoveryView' });
-        h.controller.refreshNow();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        assert.equal(h.prompts.length, 1);
-        assert.equal(h.state.get(ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY), true);
-        assert.equal(h.commands.length, 1);
-        assert.equal(h.commands[0][0], 'extension.pickOfficialFieldValue');
-        assert.deepEqual(Object.keys(h.commands[0][1]).sort(), [
-            'character', 'documentVersion', 'line', 'uri',
-        ]);
-        assert.ok(!h.commands.some(([command]) => command === 'editor.action.triggerSuggest'));
-
-        h.controller.refreshNow();
-        await Promise.resolve();
-        assert.equal(h.prompts.length, 1);
+    it('refreshes manual entry points without automatically notifying or opening a picker', async () => {
+        for (const domainKind of ['closed', 'mixed']) {
+            const h = harness({ planResult: readyPlan({ domainKind }) });
+            h.controller.refreshNow();
+            h.controller.scheduleRefresh();
+            h.scheduled.at(-1).callback();
+            await Promise.resolve();
+            assert.equal(h.item.visible, true);
+            assert.equal(h.item.command.command, 'extension.pickOfficialFieldValue');
+            assert.deepEqual(h.prompts, []);
+            assert.deepEqual(h.commands, []);
+        }
     });
 
     it('builds a request only from document identity and position', () => {
@@ -435,7 +414,7 @@ describe('active field choice controller', () => {
     });
 
     it('disposes the timer, status item, active plan, and context state', () => {
-        const h = harness({ state: { [ACTIVE_FIELD_CHOICE_DISCOVERY_STATE_KEY]: true } });
+        const h = harness();
         h.controller.refreshNow();
         h.controller.scheduleRefresh();
         h.controller.dispose();

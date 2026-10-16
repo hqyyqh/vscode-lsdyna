@@ -5,12 +5,20 @@ import { contactThermalBinding, contactThermalParameterCount, selectContactMecha
 import { nativeControlResolver } from './nativeParameterContext';
 import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
 import type { CardResolution, KeywordLookup } from '../keywordSchema';
+import { nativeCoversCondition } from './nativeRuleCoverage';
 
 /** The imported manual composition owns both manager and Hover parameter rows. */
 export function renderContactThermalCards(lookup: KeywordLookup | null, observedDataLines: string[],
     options: Partial<Pick<FieldContext, 'keywordText' | 'globalInputFormat' | 'parameterContext' | 'recordLines'>> = {}) {
     const binding = lookup && contactThermalBinding(lookup.inputName);
     if (!binding) return null;
+    const profile = require('./contactThermal').contactThermalSource().profiles[binding.baseKeyword];
+    const conditions = [binding.value === 'T_Friction' && 'FORMULA',
+        profile?.mechanicalCondition === 'tiebreak' && 'OPTION',
+        profile?.mechanicalCondition === 'weld' && 'TEMP', profile?.thermalCondition?.field].filter(Boolean);
+    // A native branch for this actual controller takes precedence; unrelated
+    // native descriptors and fixed record readers do not cover these conditions.
+    if (conditions.some(field => nativeCoversCondition(lookup.inputName, { field }))) return null;
     const fail = (reason: string) => ({cards:[], prefixCardCount:0, reason, requiresManualLayout:true});
     const form = getCatalogInputFormCatalogV4().formForKeyword(lookup.inputName);
     if (!form || form.source.isUnauditedDiagnostic || !form.source.conservationSatisfied) return fail('contact-thermal-source-unverified');

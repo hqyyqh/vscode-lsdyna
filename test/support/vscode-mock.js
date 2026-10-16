@@ -134,6 +134,7 @@ const CodeActionKind = {
 };
 
 module.exports = {
+    TabInputText: class { constructor(uri) { this.uri = uri; } },
     CancellationTokenSource: class CancellationTokenSource {
         constructor() {
             this.listeners = new Set();

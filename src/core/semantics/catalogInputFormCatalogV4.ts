@@ -296,12 +296,14 @@ export class CatalogInputFormCatalogV4 {
         }
         const manifest = this.loadManifest();
         let normalized = normalizeKeyword(keyword);
-        if (this.rootDir === path.resolve(defaultRuntimeRoot())) normalized = contactThermalCatalogKeyword(normalized) || normalized;
         if (!manifest.keywords[normalized]) {
             const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf ||
-                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword;
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword ||
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.baseKeyword;
             if (alias && manifest.keywords[alias]) normalized = alias;
         }
+        if (!manifest.keywords[normalized] && this.rootDir === path.resolve(defaultRuntimeRoot()))
+            normalized = contactThermalCatalogKeyword(normalized) || normalized;
         const index = manifest.keywords[normalized];
         if (!index) return;
         if (manifest.storageVersion === 1 && index) {
@@ -370,21 +372,33 @@ export class CatalogInputFormCatalogV4 {
         try { await preparation; } finally { this.preparing.delete(hash); }
     }
 
+    hasKeyword(keyword: string): boolean {
+        return Boolean(this.loadManifest().keywords[normalizeKeyword(keyword)]);
+    }
+
     formForKeyword(keyword: string, composeContactThermal = true): CatalogInputForm | null {
         let normalized = normalizeKeyword(keyword);
         if (!normalized) return null;
         const manifest = this.loadManifest();
         const requested = normalized;
         const composition = composeContactThermal && this.rootDir === path.resolve(defaultRuntimeRoot());
-        if (composition) normalized = contactThermalCatalogKeyword(normalized) || normalized;
+        if (composition && require("./catalogNativeFileLayout").nativeSpellingGap(requested)?.nativeRejected) return null;
+        // The approved composition has its own source-bound base pool. Raw native
+        // reads still request composeContactThermal=false and retain exact identity.
+        if (composition) normalized = contactThermalCatalogKeyword(requested) || normalized;
         let index = manifest.keywords[normalized];
         if (!index) {
             const alias = require(keywordDataPath("native-readers/lspp-node-readers.json"))?.bindings?.[normalized]?.aliasOf ||
-                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword;
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.referenceKeyword ||
+                require("./catalogNativeFileLayout").nativeSpellingBinding(normalized)?.baseKeyword;
             if (alias && manifest.keywords[alias]) {
                 normalized = alias;
                 index = manifest.keywords[alias];
             }
+        }
+        if (!index && composition) {
+            normalized = contactThermalCatalogKeyword(requested) || requested;
+            index = manifest.keywords[normalized];
         }
         if (!index || (manifest.storageVersion !== 1 && typeof index.shard !== 'string')) return null;
         const shard = manifest.storageVersion === 1 ? this.compactShard(normalized, index, manifest)

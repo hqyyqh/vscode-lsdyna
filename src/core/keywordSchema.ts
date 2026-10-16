@@ -1134,7 +1134,34 @@ export function keywordPrefixOptionDecision(
     canonicalName: string,
     optionName: string,
 ): 'allow' | 'deny' | 'unverified' {
+    const native = require("./semantics/catalogNativeFileLayout");
+    const spelling = `${normalizeKeywordName(canonicalName)}_${normalizeKeywordName(optionName)}`;
+    if (native.nativeSpellingGap(spelling)?.nativeRejected) return 'deny';
+    if (native.nativeSpellingBinding(spelling) || nativePrefixSteps(canonicalName, [optionName])) return 'allow';
     return prefixPolicyForOption(canonicalName, optionName)?.decision || 'unverified';
+}
+
+function nativePrefixSteps(canonicalName: string, options: string[]): Array<PrefixLayoutStep & {
+    policyId: string; evidenceIds: string[]; card: KeywordCard;
+}> | undefined {
+    // Multiple selectors need a file-order proof; a GUI list alone does not supply it.
+    if (options.length !== 1) return undefined;
+    const native = require("./semantics/catalogNativeFileLayout");
+    const form = require("./semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4()
+        .formForKeyword(normalizeKeywordName(canonicalName), false);
+    if (form?.source?.datasetSha256 !== native.NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic) return undefined;
+    const suffix = '_' + normalizeKeywordName(options[0]);
+    const matches = (form.reference.selectorRuleIds || []).flatMap(id => form.rules[id].selectors || [])
+        .filter(selector => selector.placement === 'before-base')
+        .flatMap(selector => selector.values.filter(value => (value.keywordSuffix || selector.keywordSuffix) === suffix)
+            .map(value => ({ selector, value })));
+    if (matches.length !== 1 || !matches[0].value.cards?.length) return undefined;
+    const { selector, value } = matches[0];
+    return value.cards.map((card, index) => ({ template: `${selector.controlId}:${index}`, whenOption: options[0],
+        policyId: `lspp:${native.NATIVE_FILE_SOURCE}:${selector.controlId}`, evidenceIds: [],
+        card: card.fields.map(field => ({ n: field.name, p: field.position, w: field.width,
+            h: require('./semantics/nativeDescriptorHelp').nativeDescriptorHelp(field),
+            t: [0, -2].includes(field.type) ? 'string' : field.type === 1 ? 'integer' : 'real' })) }));
 }
 
 function activePreOptionNames(lookup: KeywordLookup): string[] {
@@ -1156,6 +1183,8 @@ function clonePrefixCard(card: KeywordCard): KeywordCard {
 
 /** Source-locked steps, including optional markers, for an explicitly planned layout. */
 export function getVerifiedPrefixLayoutSteps(canonicalName: string, options: string[]) {
+    const native = nativePrefixSteps(canonicalName, options);
+    if (native) return native;
     const runtime = loadPrefixLayoutRuntime();
     const active = new Set(options.map(normalizeKeywordName));
     const policies = [...new Set(options.map(option => prefixPolicyForOption(canonicalName, option)))];
@@ -1229,6 +1258,11 @@ export function getVerifiedPrefixLayout(
             conditionalMarkerPresent: false,
         };
     }
+    const nativeSteps = nativePrefixSteps(lookup.canonicalName, activePreOptions);
+    if (nativeSteps) return {
+        status: 'verified', cards: nativeSteps.map(step => step.card), requiredCardCount: nativeSteps.length,
+        activePreOptions, unsupportedOptions: [], policyIds: nativeSteps.map(step => step.policyId), conditionalMarkerPresent: false,
+    };
     const runtime = loadPrefixLayoutRuntime();
     if (!runtime) {
         return {
@@ -1758,14 +1792,16 @@ export function resolveCardFromContext(
     const fail = (status: CardResolution['status'], reason: string): CardResolution => ({ status, reason });
     const keyword = keywordOverride || keywordLineName(context.keywordText);
     const lookup = lookupKeywordSchema(keyword, schema);
-    const thermal = require('./semantics/contactThermalFieldResolution').resolveContactThermalFieldCard(context, lookup);
-    // Verified file spellings retain native identity; manual-only dynamic rows
-    // and explicitly approved edit geometry keep the imported composition.
-    if (thermal && (geometryOnly || thermal.status !== 'resolved' && thermal.reason !== 'contact-thermal-format-unverified' ||
-        thermal.reason === 'contact-thermal-manual-extension' || !hasNativeFileReader(keyword))) return geometryOnly && thermal.cardInfo?.inputFormat !== 'standard'
-        ? fail('unsupported', 'non-standard-input-format') : thermal;
     // File identity is independent of whether the help schema contains this spelling.
     const native = resolveNativeFieldCard(context, keyword, schema, lookup?.activeOptions);
+    const thermal = require('./semantics/contactThermalFieldResolution').resolveContactThermalFieldCard(context, lookup);
+    const rejected = require("./semantics/catalogNativeFileLayout").nativeSpellingGap(keyword)?.nativeRejected;
+    const sameGeometry = thermal?.cardInfo && native?.cardInfo && thermal.cardInfo.card.length === native.cardInfo.card.length &&
+        thermal.cardInfo.card.every((field, index) => ['p', 'w', 't'].every(key => field[key] === native.cardInfo.card[index][key]));
+    if (!rejected && thermal && (thermal.reason === 'contact-thermal-manual-extension' ||
+        thermal.status !== 'resolved' && /condition-unresolved|parameter-count-unresolved/.test(thermal.reason) ||
+        geometryOnly && sameGeometry)) return geometryOnly && thermal.cardInfo?.inputFormat !== 'standard'
+        ? fail('unsupported', 'non-standard-input-format') : thermal;
     if (native) {
         if (geometryOnly && nativeFieldDisplayOnly(keyword)) {
             return fail('unsupported', 'native-edit-binding-unverified');
@@ -1782,6 +1818,8 @@ export function resolveCardFromContext(
         }
         return native;
     }
+    if (thermal) return geometryOnly && thermal.cardInfo?.inputFormat !== 'standard'
+        ? fail('unsupported', 'non-standard-input-format') : thermal;
     if (!lookup) return fail('unsupported', 'keyword-schema-unavailable');
     // Restoring a display lookup must not also authorize fixed-column edits
     // for a spelling that previously had no operational schema binding.

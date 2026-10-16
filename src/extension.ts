@@ -53,7 +53,8 @@ const HOVER_TRUST = { enabledCommands: [
     "extension.setLsdynaTablePreviewView",
     "extension.showFieldHelpEnglish",
     "extension.hoverMore",
-    "extension.toggleHoverDetails"
+    "extension.toggleHoverDetails",
+    "extension.toggleFieldHelp"
 ] };
 
 const { ManualIndexRepository } = require('./manual/ManualIndexRepository');
@@ -1695,8 +1696,14 @@ function buildFieldHelpMarkdown(field, context: any = {}) {
         const paragraph = parts.primary.split(/\r?\n\s*\r?\n/)[0];
         const lines = paragraph.split(/\r?\n/);
         const shortened = lines.length > 3 || paragraph !== parts.primary;
-        parts.primary = lines.slice(0, 3).join('\n') + (shortened ? ' …' : '');
-        return prefix + formatFieldHelpMarkdown({ primary: parts.primary, secondary: null });
+        const expanded = context.hoverRequest?.fieldHelpExpanded === true;
+        if (!expanded) parts.primary = lines.slice(0, 3).join('\n');
+        const help = formatFieldHelpMarkdown({ primary: parts.primary, secondary: null });
+        if (!shortened) return prefix + help;
+        if (!context.hoverRequest) return prefix + help + ' …';
+        const args = encodeURIComponent(JSON.stringify([context.hoverRequest.id]));
+        const label = i18n.get(expanded ? 'fieldHelpCollapse' : 'fieldHelpExpand');
+        return prefix + help + ` &nbsp; [$(chevron-${expanded ? 'up' : 'down'})](command:extension.toggleFieldHelp?${args} "${label}")`;
     }
     const summaryLabel = i18n.get('fieldHelpEnglishOriginal');
     if (parts.secondary) {
@@ -3080,7 +3087,7 @@ function beginHoverRequest(document, position) {
     if (previous?.document === document && previous.version === document.version &&
         previous.position.line === position.line && previous.position.character === position.character) return previous;
     return activeHoverRequest = { id: ++hoverRequestSequence, document, version: document.version,
-        position, expanded: false };
+        position, expanded: false, fieldHelpExpanded: false };
 }
 
 function hoverRequestIsCurrent(request) {
@@ -3088,7 +3095,7 @@ function hoverRequestIsCurrent(request) {
         request.version === request.document.version && vscode.window.activeTextEditor?.document === request.document;
 }
 
-async function handleHoverAction(id, more = false) {
+async function handleHoverAction(id, more = false, fieldHelpOnly = false) {
     const request = activeHoverRequest;
     if (!request || request.id !== id || !hoverRequestIsCurrent(request)) return false;
     let action = 'details';
@@ -3105,7 +3112,8 @@ async function handleHoverAction(id, more = false) {
     if (action !== 'details') return vscode.commands.executeCommand(action);
     await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
     if (!hoverRequestIsCurrent(request)) return false;
-    request.expanded = !request.expanded;
+    if (fieldHelpOnly) request.fieldHelpExpanded = !request.fieldHelpExpanded;
+    else request.expanded = !request.expanded;
     const editor = vscode.window.activeTextEditor;
     const position = new vscode.Position(request.position.line, request.position.character);
     // Explicit detail navigation anchors the native hover at the requested field.
@@ -3578,6 +3586,7 @@ class LsdynaFieldHoverProvider {
         const helpKeywordName = cardInfo.keywordName || resolvedCard.suggestedName || kwName;
         const formattedHelp = buildFieldHelpMarkdown(field, {
             compact: !detailed,
+            hoverRequest: request,
             keyword: helpKeywordName,
             cardIndex: cardInfo.cardIndex,
             fieldIndex: card.indexOf(field),
@@ -3594,8 +3603,10 @@ class LsdynaFieldHoverProvider {
         const gridTable = compactFieldGrid([card], field.n);
         const rawFieldValue = field.rawValue ?? text.slice(field.p, field.p + field.w);
         const referenceOptions = { keyword: helpKeywordName, cardIndex: cardInfo.cardIndex, field };
-        let referenceInfo = null;
-        if (!(field.nativeIdentity && !field.nativeStaticBinding) && field.di !== 'self') {
+        let referenceInfo = field.nativeIdentity && !field.nativeStaticBinding ? null
+            : fieldReferenceAtPosition(document, position, { semanticScope: "keyword-catalog" })?.referenceInfo || null;
+        if (!referenceInfo && !require('./core/references/registryReferenceScanner').nativeReferenceCoversField(referenceOptions) &&
+            !(field.nativeIdentity && !field.nativeStaticBinding) && field.di !== 'self') {
             await getSemanticRuntimeCatalogV2().prepareDefinitionScannersForKeyword(helpKeywordName);
             if (!isCurrent()) return null;
             // An object's own ID cannot be a reference; its scanner needs only one shard.
@@ -7400,6 +7411,9 @@ let largeFileViewerProvider = null;
     let refreshActiveIncludeDecorations = () => {};
 
     jumpPulseController = createJumpPulseController(vscode);
+    if (vscode.window.onDidChangeTextEditorVisibleRanges) {
+        context.subscriptions.push(require('./client/services/columnGuides').createColumnGuideController());
+    }
     context.subscriptions.push({ dispose: () => {
         if (jumpPulseController) {
             jumpPulseController.dispose();
@@ -7515,9 +7529,7 @@ let largeFileViewerProvider = null;
             void vscode.commands.executeCommand('extension.configureManualsDir', true);
             return;
         }
-        const restore = restored && location.manualId === restored.location.manualId
-            && location.sectionId === restored.location.sectionId ? restored : undefined;
-        ManualReaderPanel.show(packRoot, repository, manualPackManager, location, restore, current => {
+        ManualReaderPanel.show(packRoot, repository, manualPackManager, location, restored, current => {
             refreshManualSidebar(current);
         });
         refreshManualSidebar(location);
@@ -7719,6 +7731,7 @@ let largeFileViewerProvider = null;
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.hoverMore', id => handleHoverAction(id, true)),
         vscode.commands.registerCommand('extension.toggleHoverDetails', id => handleHoverAction(id)),
+        vscode.commands.registerCommand('extension.toggleFieldHelp', id => handleHoverAction(id, false, true)),
         vscode.commands.registerCommand('extension.showFieldHelpEnglish', async (arg) => {
             let id = arg;
             if (Array.isArray(arg)) {
@@ -8631,28 +8644,34 @@ let keywordOptionsModel = null;
         endCharacter = startCharacter,
     ) => {
         const uri = vscode.Uri.file(filePath);
-        try {
-            const stat = await fs.promises.stat(filePath);
-            if (stat.size >= LARGE_FILE_THRESHOLD_BYTES) {
-                return largeFileViewerProvider.openAt(
-                    uri,
-                    Math.max(0, Number(line) || 0),
-                    side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
-                    startCharacter, endCharacter,
-                );
-            }
-        } catch {
-            return false;
-        }
         const lineNumber = Math.max(0, Number(line) || 0);
         const start = new vscode.Position(lineNumber, Math.max(0, Number(startCharacter) || 0));
         const end = new vscode.Position(lineNumber, Math.max(start.character, Number(endCharacter) || 0));
-        await vscode.commands.executeCommand('vscode.open', uri, {
-            selection: new vscode.Range(start, end),
-            ...(side ? { viewColumn: vscode.ViewColumn.Beside } : {}),
-        });
-        return true;
+        try {
+            const stat = await fs.promises.stat(filePath);
+            if (!stat.isFile()) throw new Error('not-a-file');
+            if (stat.size >= LARGE_FILE_THRESHOLD_BYTES) {
+                return await largeFileViewerProvider.openAt(uri, lineNumber,
+                    side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
+                    start.character, end.character);
+            }
+            await vscode.commands.executeCommand('vscode.open', uri, {
+                selection: new vscode.Range(start, end),
+                ...(side ? { viewColumn: vscode.ViewColumn.Beside } : {}),
+            });
+            return true;
+        } catch (error) {
+            logDebug(`Open LS-DYNA location failed: ${error}`);
+            vscode.window.showWarningMessage(i18n.get('treeSearchOpenFileWarning', filePath));
+            return false;
+        }
     };
+    context.subscriptions.push(vscode.commands.registerCommand('extension.openLsdynaLocation',
+        (target, line = 0, side = false, start = 0, end = start) => {
+            const filePath = typeof target === 'string' ? target : target?.fsPath;
+            if (typeof filePath !== 'string') return false;
+            return openLsdynaLocation(filePath, line, side, start, end);
+        }));
     const openEntityReferenceNode = async (node, side) => {
         let activeNode = node;
         if (['stale', 'needs-refresh'].includes(node?.session?.state)) {
@@ -8705,10 +8724,10 @@ let keywordOptionsModel = null;
         context.extensionPath,
         context.workspaceState,
         {
-            loadFileIndex: async (filePath, cancellationToken) => {
+            loadFileIndex: async (filePath, cancellationToken, onProgress) => {
                 if (indexClient.projectSession) {
-                    const handle = await indexClient.projectSession({ action: 'file-view-open', rootFile: filePath }, cancellationToken);
-                    return { ...handle, remote: true, largeFileLineMap: { lineCount: handle.lineCount } };
+                    return require('./client/services/projectSessionClient').followLargeFileIndex(
+                        (request, token) => indexClient.projectSession(request, token), filePath, onProgress, cancellationToken);
                 }
                 const snapshot = await indexClient.loadProjectSnapshot(
                     filePath,
@@ -8731,6 +8750,7 @@ let keywordOptionsModel = null;
                 ).then(Boolean);
             },
         },
+        context.storageUri?.fsPath || context.globalStorageUri?.fsPath,
     );
     context.subscriptions.push(
         largeFileViewerProvider,
@@ -8741,6 +8761,7 @@ let keywordOptionsModel = null;
                 { supportsMultipleEditorsPerDocument: false },
             )
             : { dispose() {} },
+        vscode.commands.registerCommand('extension.openLargeFileInTextEditor', target => largeFileViewerProvider.openNative(target)),
         vscode.commands.registerCommand('extension.openLsdynaLargeFileViewer', async target => {
             const uri = target instanceof vscode.Uri ? target
                 : target?.uri instanceof vscode.Uri ? target.uri
@@ -8748,9 +8769,13 @@ let keywordOptionsModel = null;
             if (!uri || uri.scheme !== 'file' || !isLsdynaUri(uri)) return false;
             return largeFileViewerProvider.openAt(
                 uri,
-                Math.max(0, Number(target?.line) || 0),
+                Math.max(0, Number(target?.line ?? (
+                    vscode.window.activeTextEditor?.document.uri.toString() === uri.toString()
+                    ? vscode.window.activeTextEditor.selection.active.line : 0)) || 0),
                 target?.side ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active,
-                target?.startCharacter, target?.endCharacter,
+                target?.startCharacter ?? (vscode.window.activeTextEditor?.document.uri.toString() === uri.toString()
+                    ? vscode.window.activeTextEditor.selection.active.character : 0),
+                target?.endCharacter,
             );
         }),
     );
@@ -8963,6 +8988,7 @@ let keywordOptionsModel = null;
         if (source !== 'keywords') void keywordIndexProvider?.scan({ rootFile, quiet: true, replace: true }).catch(reportError);
     };
     includeTreeProvider = new LsdynaIncludeTreeProvider({
+        workspaceState: context.workspaceState,
         resolveActiveUri: resolveScanUri,
         onSelectProject: rootFile => selectProject(rootFile, 'includes'),
         searchFileFromPaths,
@@ -9020,6 +9046,9 @@ let keywordOptionsModel = null;
         )
     );
     context.subscriptions.push(
+        vscode.commands.registerCommand('extension.includeTree.cycleTree', () => includeTreeProvider.setSortMode('flat-size')),
+        vscode.commands.registerCommand('extension.includeTree.cycleSize', () => includeTreeProvider.setSortMode('flat-name')),
+        vscode.commands.registerCommand('extension.includeTree.cycleName', () => includeTreeProvider.setSortMode('tree')),
         vscode.commands.registerCommand('extension.includeTree.toggleSize', () => includeTreeProvider.toggleShowSize()),
         vscode.commands.registerCommand('extension.includeTree.sortByName', () => includeTreeProvider.setSortMode('flat-name')),
         vscode.commands.registerCommand('extension.includeTree.sortBySize', () => includeTreeProvider.setSortMode('flat-size')),
@@ -9041,8 +9070,7 @@ let keywordOptionsModel = null;
                         );
                     } else {
                         try {
-                            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(entry.filePath));
-                            await vscode.window.showTextDocument(doc, { preview: true });
+                            await openLsdynaLocation(entry.filePath);
                         } catch (e) {
                             vscode.window.showWarningMessage(
                                 i18n.get('treeSearchOpenFileWarning', entry.filePath)
@@ -9107,6 +9135,9 @@ keywordIndexProvider.attachTreeView(keywordTreeView);
         vscode.commands.registerCommand('extension.keywordIndexRefresh', () => keywordIndexProvider.refreshScope())
     );
 context.subscriptions.push(
+        vscode.commands.registerCommand('extension.keywordIndexCycleCategory', () => keywordIndexProvider.setLayout('order')),
+        vscode.commands.registerCommand('extension.keywordIndexCycleOrder', () => keywordIndexProvider.setLayout('alphabetical')),
+        vscode.commands.registerCommand('extension.keywordIndexCycleAlphabetical', () => keywordIndexProvider.setLayout('category')),
         vscode.commands.registerCommand('extension.keywordIndexChooseLayout', () => keywordIndexProvider.chooseLayout())
     );
 context.subscriptions.push(
@@ -9206,19 +9237,7 @@ context.subscriptions.push(
         vscode.commands.registerCommand('extension.goToKeywordUsage', async (filePath, lineIndex) => {
             const uri = vscode.Uri.file(filePath);
             const line = Math.max(0, Number(lineIndex) || 0);
-            const pos = new vscode.Position(line, 0);
-            const range = new vscode.Range(pos, pos);
-            try {
-                await vscode.commands.executeCommand('vscode.open', uri, { selection: range });
-            } catch {
-                try {
-                    const doc = await vscode.workspace.openTextDocument(uri);
-                    await vscode.window.showTextDocument(doc, { selection: range });
-                } catch (err) {
-                    logDebug(`goToKeywordUsage open failed: ${err && err.message ? err.message : err}`);
-                    return;
-                }
-            }
+            if (!await openLsdynaLocation(filePath, line)) return;
 
             if (getLsdynaConfigurationValue('navigation.pulseOnJump', true, uri) === false) {
                 return;
@@ -9252,17 +9271,14 @@ context.subscriptions.push(
             if (!target || typeof target.filePath !== 'string') return;
             const lineIndex = Number.isFinite(target.lineIndex) ? target.lineIndex : 0;
             const character = Number.isFinite(target.character) ? target.character : 0;
-            const uri = vscode.Uri.file(target.filePath);
-            const pos = new vscode.Position(lineIndex, character);
-            const range = new vscode.Range(pos, pos);
-            await vscode.commands.executeCommand('vscode.open', uri, { selection: range, preview: false });
+            await openLsdynaLocation(target.filePath, lineIndex, false, character);
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.openToSide', (node) => {
             const uri = node.resourceUri || (node.filePath ? vscode.Uri.file(node.filePath) : null);
             if (uri) {
-                return vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.Beside });
+                return openLsdynaLocation(uri.fsPath, node.lineIndex || 0, true);
             }
         })
     );
@@ -9794,9 +9810,6 @@ context.subscriptions.push(
             return target ? semanticEvidenceTargetLabel(target) : null;
         },
         setContext: (key, value) => vscode.commands.executeCommand('setContext', key, value),
-        globalState: context.globalState,
-        showInformationMessage: (...args) => vscode.window.showInformationMessage(...args),
-        executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
     });
     context.subscriptions.push(activeFieldChoiceController);
     context.subscriptions.push(
@@ -12109,6 +12122,7 @@ function shouldResolveParameterDefinitionAtPosition(document, position) {
 }
 
 function fieldReferenceAuthorityScope(referenceInfo, semanticScope = 'prefer-registry') {
+    if (referenceInfo?.source === "keyword-catalog") return "keyword-catalog";
     if (semanticScope === "keyword-catalog") {
         return referenceInfo?.source === "keyword-catalog" ? "keyword-catalog" : null;
     }
@@ -12171,7 +12185,8 @@ function fieldReferenceAtPosition(document, position, options: any = {}) {
                             standard: { mode: 'fixed', position: controller.p, width: controller.w } } } } } };
             }
             const siblingState = require('./core/references/registryReferenceScanner')
-                .resolveSiblingTargetBinding(referenceInfo, text, 'standard');
+                .resolveSiblingTargetBinding(referenceInfo, text, 'standard', undefined,
+                    field.nativeIdentity?.cardIndex ?? cardInfo.cardIndex, nativeParameterContextForDocument(document), position.line);
             if (siblingState.state === 'indeterminate') continue;
             referenceInfo = siblingState.info;
         }
@@ -12450,27 +12465,19 @@ async function resolveFieldReferenceNavigation(
                 source.referenceInfo.targetDefinitions,
         }
     );
-    const candidateDefinitionKeywords = runtimeDefinitionKeywords({
+    const needsOnDemandLookup = analysis.reasons?.some(reason => [
+        'target-kind-on-demand', 'target-definition-on-demand',
+        'target-kind-unindexed', 'target-definition-unindexed',
+    ].includes(reason));
+    const targetKinds = source.referenceValue.targetKinds || source.referenceInfo.targetKinds || [];
+    const targetDefinitions = new Set((source.referenceValue.targetDefinitions ||
+        source.referenceInfo.targetDefinitions || []).map(normalizeReferenceTargetKeyword));
+    const hasOnDemandDescriptor = needsOnDemandLookup && Object.values(runtimeDefinitionKeywords({
         allowCandidate: options.allowFamilyCandidate === true,
-    });
-    const hasOnDemandDescriptor = Object.values(candidateDefinitionKeywords.onDemand || {})
-        .some((descriptor: any) => {
-            const targetKinds = source.referenceValue.targetKinds || source.referenceInfo.targetKinds || [];
-            const targetDefinitions = (source.referenceValue.targetDefinitions ||
-                source.referenceInfo.targetDefinitions || []).map(normalizeReferenceTargetKeyword);
-            return targetKinds.includes(descriptor.targetKind) ||
-                targetDefinitions.includes(normalizeReferenceTargetKeyword(
-                    descriptor.target || descriptor.targetToken || descriptor.keyword
-                ));
-        });
-    if (hasOnDemandDescriptor && analysis.reasons && analysis.reasons.some(reason =>
-        [
-            'target-kind-on-demand',
-            'target-definition-on-demand',
-            'target-kind-unindexed',
-            'target-definition-unindexed',
-        ].includes(reason)
-    )) {
+    }).onDemand || {}).some((descriptor: any) =>
+        targetKinds.includes(descriptor.targetKind) || targetDefinitions.has(normalizeReferenceTargetKeyword(
+            descriptor.target || descriptor.targetToken || descriptor.keyword)));
+    if (hasOnDemandDescriptor) {
         const lookup = await resolveOnDemandFieldDefinitions(
             document,
             source,
@@ -13608,7 +13615,9 @@ function analyzeKeywordStructureForDocument(document, keywordLine, options: any 
     }
     const catalog = options.catalog || keywordStructureCatalog;
     let verifiedBinding = null;
-    if (typeof catalog?.lookupBinding === 'function') {
+    const nativeStructure = require('./core/semantics/nativeFieldResolution').hasNativeFileReader(
+        classification.normalizedKeyword.replace(/^\*/, ''));
+    if (!nativeStructure && typeof catalog?.lookupBinding === 'function') {
         const binding = catalog.lookupBinding(sourceProfileId, classification.normalizedKeyword);
         if (binding?.status !== 'verified') {
             return {
@@ -13639,7 +13648,7 @@ function analyzeKeywordStructureForDocument(document, keywordLine, options: any 
         verifiedBinding?.binding?.grammarId || null,
         maximumPhysicalLines,
     ]);
-    const cacheEligible = !options.bypassCache && !options.catalog && !options.context &&
+    const cacheEligible = !nativeStructure && !options.bypassCache && !options.catalog && !options.context &&
         !options.schema && !options.budgets && options.globalInputFormat === undefined &&
         Number.isInteger(document.version);
     if (cacheEligible) {
@@ -13661,6 +13670,8 @@ function analyzeKeywordStructureForDocument(document, keywordLine, options: any 
     const analysis = analyzeKeywordStructureLines(keywordText, bodyLines, {
         catalog,
         sourceProfileId,
+        globalInputFormat: options.globalInputFormat || documentGlobalInputFormat(document),
+        parameterContext: nativeParameterContextForDocument(document),
         context,
         keywordLine,
         maximumPhysicalLines,
@@ -13673,7 +13684,7 @@ function analyzeKeywordStructureForDocument(document, keywordLine, options: any 
         ...analysis,
         lookup,
         endLine,
-        sourceProfileOrigin: profileSelection.origin,
+        sourceProfileOrigin: analysis.sourceProfileId?.startsWith('lspp:') ? "keyword-catalog" : profileSelection.origin,
         records: analysis.block?.records || analysis.records,
         observedDataLines: analysis.block?.records?.map(record => record.text) || [],
     };
@@ -13776,7 +13787,14 @@ function buildKeywordStructureIssueMarkdown(analysis, document, keywordLine, lin
 
 function keywordStructureCheckMessage(analysis) {
     let message;
-    if (analysis.status === 'valid') {
+    const native = analysis.sourceProfileOrigin === "keyword-catalog" || analysis.sourceProfileId?.startsWith('lspp:');
+    if (native && analysis.status === 'valid') {
+        message = i18n.get('keywordStructureCheckNativeValid', analysis.observedDataRecords);
+    } else if (native && analysis.status === 'profile-unverified') {
+        message = i18n.get('keywordStructureCheckNativeUnverified', analysis.reason);
+    } else if (native && analysis.status === 'context-dependent') {
+        message = i18n.get('keywordStructureCheckNativeUnresolved');
+    } else if (analysis.status === 'valid') {
         message = i18n.get('keywordStructureCheckValid', analysis.observedDataRecords);
     } else if (analysis.status === 'definite-error') {
         message = keywordStructureDefiniteLabel(analysis);
@@ -14128,8 +14146,6 @@ async function handlePickOfficialFieldValueCommand(context, request, options: an
         plan: options.plan || ((document, position, planOptions) =>
             planPreparedOfficialFieldChoices(document, position, planOptions)),
         translate: options.translate || ((key, ...args) => i18n.get(key, ...args)),
-        openEnglish: options.openEnglish || (text => vscode.commands.executeCommand(
-            'extension.showFieldHelpEnglish', stashFieldHelpEnglish(text))),
         getLanguage: options.getLanguage || (() => i18n.getLanguage()),
         presentEvidence: options.presentEvidence || ((evidence, plan) => {
             const target = semanticEvidenceLocationPresentation(evidence, plan?.ruleId);
@@ -14754,8 +14770,6 @@ async function prepareFieldInteraction(document, position, options: any = {}) {
             await getCatalogInputFormCatalogV4().prepareKeyword(
                 require("./core/semantics/catalogNativeFileLayout").nativeFileCatalogKeyword(keyword));
             if (!current()) return false;
-            await getManualSemanticCatalog().prepareKeyword(keyword);
-            if (!current()) return false;
         }
         if (referenceQueryClient && position.line > keywordLine) {
             await getCardInfoForDocumentLineWithSuggestAsync(document, position.line, getFieldData(), { ...options, keywordLine });
@@ -14798,7 +14812,6 @@ function planOfficialFieldChoicesForDocument(document, position, options: any = 
                 maximumKeywordLookback: options.maximumKeywordLookback,
                 maximumHeaderLookback: options.maximumHeaderLookback,
                 maximumChoices: options.maximumChoices,
-                rulesForField: options.rulesForField,
             },
         );
     } catch (_error) {

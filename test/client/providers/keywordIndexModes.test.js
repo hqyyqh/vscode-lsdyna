@@ -63,6 +63,15 @@ describe('keyword index layouts and cursor following', () => {
     let savedEditor;
     beforeEach(() => { savedEditor = vscodeMock.window.activeTextEditor; });
     afterEach(() => { vscodeMock.window.activeTextEditor = savedEditor; });
+    it('defaults to categories and preserves an existing layout preference', () => {
+        assert.equal(new LsdynaKeywordIndexProvider({}).layout, 'category');
+        assert.equal(new LsdynaKeywordIndexProvider({ workspaceState: { get: (_key, fallback) => fallback } }).layout, 'category');
+        const provider = new LsdynaKeywordIndexProvider({ workspaceState: {
+            get: (key) => key === 'lsdyna.keywordIndex.layout' ? 'order' : undefined,
+            update() {},
+        } });
+        assert.equal(provider.layout, 'order');
+    });
     it('settles a server-cancelled project scan without rejecting the command', async () => {
         const { createIndexClient } = require('../../../src/client/services/indexClient');
         const { ResponseError, LSPErrorCodes } = require('vscode-languageserver-protocol');
@@ -290,6 +299,7 @@ describe('keyword index layouts and cursor following', () => {
 
     it('projects the same occurrences as A-Z, source order, and LSPP categories', async () => {
         const provider = new LsdynaKeywordIndexProvider({ shouldSkipAutomaticDocumentScan: () => false });
+        provider.setLayout('alphabetical');
         await provider.refreshFromDocument(modelDocument());
 
         const partRoot = provider.roots.find(item => item.label === 'PART');
@@ -319,6 +329,7 @@ describe('keyword index layouts and cursor following', () => {
     it('does not repeat a filename in a bare occurrence description', async () => {
         const root = path.join('project');
         const provider = new LsdynaKeywordIndexProvider({ shouldSkipAutomaticDocumentScan: () => false });
+        provider.setLayout('alphabetical');
         const document = fakeDoc('*KEYWORD\n*DATABASE_RCFORC\n*END', path.join(root, 'combine_save.key'));
         document.languageId = 'lsdyna';
         await provider.refreshFromDocument(document);
@@ -544,6 +555,7 @@ describe('keyword index layouts and cursor following', () => {
             '*END',
         ]);
         const provider = new LsdynaKeywordIndexProvider({ asyncDocumentIndexThreshold: 1000 });
+        provider.setLayout('alphabetical');
         await provider.refreshFromDocument(document);
         assert.ok(provider.roots.some(item => item.label === 'MAT_ELASTIC_TITLE'));
 
@@ -577,6 +589,7 @@ describe('keyword index layouts and cursor following', () => {
             asyncDocumentIndexThreshold: 5,
             documentIndexYieldInterval: 2,
         });
+        provider.setLayout('alphabetical');
 
         const obsoleteRefresh = provider.refreshFromDocument(slowDocument);
         await provider.refreshFromDocument(currentDocument);
@@ -780,5 +793,17 @@ describe('project selection during keyword session opening', () => {
             finish(); provider.dispose();
             vscodeMock.window.withProgress = progress; vscodeMock.ProgressLocation = location;
         }
+    });
+});
+
+describe('keyword index title menu', () => {
+    it('keeps direct layout selection in the command palette without a duplicate title menu', () => {
+        const manifest = require('../../../package.json');
+        const actions = manifest.contributes.menus['view/title'].filter(item => item.when.includes('view == lsdynaKeywordIndex'));
+        assert.ok(actions.length > 0);
+        assert.ok(actions.every(item => item.group.startsWith('navigation@')));
+        assert.ok(manifest.contributes.commands.some(item => item.command === 'extension.keywordIndexChooseLayout'));
+        for (const mode of ['Category', 'Order', 'Alphabetical'])
+            assert.ok(actions.some(item => item.command === 'extension.keywordIndexCycle' + mode));
     });
 });

@@ -1,4 +1,5 @@
 {
+    "commands.openLargeFileInTextEditor.title": "Open in Text Editor",
     "commands.keywordIndexChooseScope.title": "Choose Index Scope",
     "commands.keywordIndexRefresh.title": "Refresh Keyword Index",
     "extension.description": "LS-DYNA (.k) deck editing assistant, with quick keyword and manual lookup.",
@@ -142,5 +143,13 @@
     "commands.entityReferences.setScopeProject.title": "Set Query Scope to Main Deck and Include Files",
     "commands.entityReferences.search.title": "Find Entity",
     "commands.keywordIndexSetRecursive.title": "Set Index Scope to Entire Project",
-    "config.cache.legacyDiskBudget.markdownDeprecationMessage": "Use the [shared disk budget](#lsdyna.cache.entityIndexDiskMaxMiB)."
+    "config.cache.legacyDiskBudget.markdownDeprecationMessage": "Use the [shared disk budget](#lsdyna.cache.entityIndexDiskMaxMiB).",
+    "commands.includeTree.cycleTree.title": "Current order: include order. Switch to file size.",
+    "commands.includeTree.cycleSize.title": "Current order: file size. Switch to file name.",
+    "commands.includeTree.cycleName.title": "Current order: file name. Switch to include order.",
+    "commands.keywordIndexCycleCategory.title": "Current layout: keyword category. Switch to source order.",
+    "commands.keywordIndexCycleOrder.title": "Current layout: source order. Switch to keyword A–Z.",
+    "commands.keywordIndexCycleAlphabetical.title": "Current layout: keyword A–Z. Switch to keyword category.",
+    "colors.columnGuide.description": "LS-DYNA column guide color.",
+    "colors.columnGuide80.description": "LS-DYNA column 80 reference guide color."
 }

@@ -6,10 +6,39 @@ import { nativeReadInputFormat, nativeReadInputFailure } from './nativeInputForm
 import { nativeFordFeatureEnabled } from './nativeFeatureContext';
 import { nativeContactOptionalBinding, nativeContactOptionalRecordReader } from './nativeContactOptionalReferences';
 import { keywordDataPath } from '../keywordDataPath';
+import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
+import { nativeFileCatalogKeyword, NATIVE_FILE_SOURCE } from "./catalogNativeFileLayout";
 const writeLayouts = require(keywordDataPath('engineering/fileWriteLayouts.json')).layouts;
 import { nativeSpellingBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
     selectNativeFileLayout, selectVerifiedSourceRecords, nativeReferenceTailBinding,
     nativeSoilPileRecordReader, nativeAleTrimRecordReader, nativeAleMotionRecordReader, nativeControlledReferenceRecordReader, selectNativeUserMaterialRecords } from "./catalogNativeFileLayout";
+
+/** Resolve a source-bound file layout without loading schema help or manual composition. */
+export function nativeKeywordReadContext(keywordText: string, rows: string[], globalFormat: KeywordInputFormatMode,
+    recordLines?: number[], parameters?: NativeParameterContext) {
+    const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
+    const form = getCatalogInputFormCatalogV4().formForKeyword(nativeFileCatalogKeyword(keyword), false);
+    if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic) return null;
+    const rules = (Array.isArray(form.reference.formRuleIds) ? form.reference.formRuleIds : [])
+        .map(id => ({ ...form.rules[id], catalogSource: form.source }))
+        .filter(rule => nativeFileLayoutKind(rule, keyword) !== 'unsupported-source');
+    return rules.length === 1 ? nativeFileReadContext(rules[0], keywordText, rows, globalFormat, recordLines, parameters) : null;
+}
+
+/** Check a manual append against native records without creating another instance. */
+export function nativeAppendLayoutMatches(keywordText: string, rows: string[], appended: string[],
+    format: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext): boolean {
+    try {
+        const reading = nativeKeywordReadContext(keywordText, [...rows, ...appended], format, recordLines, parameters);
+        const selected = reading?.select(false);
+        return !!selected?.current && !reading.controls.reasons.size &&
+            !('uncertainty' in selected && selected.uncertainty) &&
+            !('reasons' in selected && Array.isArray(selected.reasons) && selected.reasons.length) &&
+            selected.current.length === rows.length + appended.length &&
+            selected.current.slice(rows.length).every(record => record &&
+                reading.cards.has(record.cardIndex) && record.instanceStart < rows.length);
+    } catch { return false; }
+}
 
 /** Shared interpretation of actual records. Draft callbacks affect only target selection. */
 export function nativeFileReadContext(rule: any, keywordText: string, rows: string[],

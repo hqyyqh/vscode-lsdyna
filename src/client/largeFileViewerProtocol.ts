@@ -35,12 +35,17 @@ export type LargeFileSelectedField = {
 
 export type LargeFileViewerState = {
     revision: number;
+    dirty?: boolean;
+    viewer?: string;
+    editError?: string;
     locale?: 'en' | 'zh';
     fileName: string;
     fileSize: number;
     anchorLine: number;
     navigationTarget?: { requestId?: string; line: number; startColumn: number; endColumn: number };
     lineCount?: number;
+    availableLineCount?: number;
+    scannedBytes?: number;
     lines: LargeFileViewerLine[];
     currentKeyword: string;
     indexing: 'loading' | 'ready' | 'error';
@@ -100,3 +105,5 @@ export const LargeFileStateChangedNotification: NotificationType<LargeFileViewer
 
 export const LargeFilePositionChanged: NotificationType<LargeFileNavigateRequest> =
     { method: 'largeFile/positionChanged' };
+
+export const LargeFileOpenNative: RequestType<LargeFileRevisionRequest & { line: number; token?: string }, boolean> = { method: 'largeFile/openNative' };

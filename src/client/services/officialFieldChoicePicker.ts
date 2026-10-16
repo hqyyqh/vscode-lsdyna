@@ -22,7 +22,6 @@ export type OfficialFieldChoicePickerDeps = {
         options: { expectedDocumentVersion: number; maximumKeywordLookback: number },
     ) => OfficialFieldChoicePlan | null | Promise<OfficialFieldChoicePlan | null>;
     translate: (key: string, ...args: any[]) => string;
-    openEnglish?: (text: string) => Promise<unknown> | unknown;
     presentEvidence?: (
         evidence: { evidenceId: string; manualId: string; page: number; sourceProfileId?: string },
         plan: OfficialFieldChoicePlan,
@@ -120,13 +119,6 @@ export function buildOfficialFieldChoiceQuickPickItems(
                 deps.translate('officialFieldChoiceOpenEvidence', item.manualId, item.page),
             evidence: item,
         }));
-        if (isZh && plan.localizedSummary && plan.summary) {
-            buttons.unshift({
-                iconPath: deps.vscode?.ThemeIcon ? new deps.vscode.ThemeIcon('info') : undefined,
-                tooltip: deps.translate('fieldHelpEnglishOriginal'),
-                englishOriginal: plan.summary,
-            });
-        }
         return {
             label: choice.valueText,
             description: [
@@ -215,16 +207,6 @@ async function showNativeOfficialFieldChoiceQuickPick(
             if (typeof quickPick.onDidTriggerItemButton === 'function') {
                 disposables.push(quickPick.onDidTriggerItemButton(async (event: any) => {
                     try {
-                        if (event?.button?.englishOriginal) {
-                            if (deps.openEnglish) {
-                                await deps.openEnglish(event.button.englishOriginal);
-                                return;
-                            }
-                            await deps.vscode?.window?.showInformationMessage(
-                                `${plan.fieldName} ${deps.translate('fieldHelpEnglishOriginal')}: ${event.button.englishOriginal}`
-                            );
-                            return;
-                        }
                         const evidence = event?.button?.evidence;
                         if (!evidence?.evidenceId || !deps.openEvidence) return;
                         await deps.openEvidence({

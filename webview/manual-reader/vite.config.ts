@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
     root: __dirname,
     base: './',
-    plugins: [react(), codiconAssets(['search', 'close', 'chevron-right'])],
+    plugins: [react(), codiconAssets(['search', 'close', 'chevron-right', 'symbol-keyword', 'whole-word'])],
     build: {
         outDir: path.resolve(__dirname, '../../out/webview/manual-reader'),
         emptyOutDir: true,

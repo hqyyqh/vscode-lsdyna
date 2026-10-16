@@ -24,6 +24,7 @@ const {
 } = require('../../core/project/includeSearchPathResolve');
 
 type IncludeTreeProviderOptions = {
+    workspaceState?: any;
     loadProjectStructure?: (rootFile: string, options?: any, onProgress?: any, token?: any) => Promise<any>;
     resolveActiveUri?: () => any;
     onSelectProject?: (rootFile: string) => void;
@@ -128,6 +129,8 @@ function applyVividDescription(item, relDir, showSize = true) {
         statusText = i18n.get('scanFailed');
     } else if (item.fileSizeVal !== undefined && showSize) {
         statusText = '• ' + formatVividBytes(item.fileSizeVal);
+    } else if (showSize) {
+        statusText = i18n.get('includeSizeUnknown');
     }
 
     item.relDir = relDir || '';
@@ -210,7 +213,7 @@ class IncludeItem extends vscode.TreeItem {
         }
 
         if (exists) {
-            this.command = { command: 'vscode.open', title: i18n.get('openFile'), arguments: [vscode.Uri.file(filePath)] };
+            this.command = { command: 'extension.openLsdynaLocation', title: i18n.get('openFile'), arguments: [vscode.Uri.file(filePath)] };
         }
         applyVividDescription(this, '', true);
     }
@@ -302,6 +305,7 @@ class LsdynaIncludeTreeProvider {
     onSelectProject?: (rootFile: string) => void;
     showSize = true;
     sortMode = 'tree';
+    private workspaceState: any;
     loadProjectStructure?: (rootFile: string, options?: any, onProgress?: any, token?: any) => Promise<any>;
     searchFileFromPaths?: (fileName: string, searchPaths: string[]) => string;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
@@ -320,7 +324,11 @@ class LsdynaIncludeTreeProvider {
      * @param {function(string): Promise<import('../../core/project/projectIndexer').ProjectIndexResult>} [options.loadProjectSnapshot] - Snapshot loader.
      * @param {function(string): Promise<void>} [options.invalidateProjectSnapshot] - Invalidate cache.
      */
-    constructor({ searchFileFromPaths, loadProjectSnapshot, loadProjectStructure, invalidateProjectSnapshot, resolveActiveUri = getActiveUri, onSelectProject }: IncludeTreeProviderOptions = {}) {
+    constructor({ workspaceState, searchFileFromPaths, loadProjectSnapshot, loadProjectStructure, invalidateProjectSnapshot, resolveActiveUri = getActiveUri, onSelectProject }: IncludeTreeProviderOptions = {}) {
+        this.workspaceState = workspaceState;
+        const stored = workspaceState?.get('lsdyna.includeTree.sortMode');
+        this.sortMode = ['tree', 'flat-size', 'flat-name'].includes(stored) ? stored : 'tree';
+        void vscode.commands.executeCommand('setContext', 'lsdyna.includeSortMode', this.sortMode);
         this.resolveActiveUri = resolveActiveUri;
         this.onSelectProject = onSelectProject;
         this.searchFileFromPaths = searchFileFromPaths;
@@ -373,7 +381,9 @@ class LsdynaIncludeTreeProvider {
     }
 
     setSortMode(mode) {
+        if (!['tree', 'flat-size', 'flat-name'].includes(mode)) return;
         this.sortMode = mode;
+        void this.workspaceState?.update('lsdyna.includeTree.sortMode', mode);
         if (mode === 'flat-size') this.showSize = true;
         this.updateAllDescriptions();
         this.refresh();
@@ -825,7 +835,7 @@ class LsdynaIncludeTreeProvider {
             }
             
             tooltip.appendMarkdown(`\n---\n`);
-            tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:vscode.open?${encodeURIComponent(JSON.stringify(vscode.Uri.file(item.filePath)))}) | `);
+            tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:extension.openLsdynaLocation?${encodeURIComponent(JSON.stringify(item.filePath))}) | `);
             tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))}) | `);
             tooltip.appendMarkdown(`[${i18n.get('revealInExplorer')}](command:extension.revealInExplorer?${encodeURIComponent(JSON.stringify({ resourceUri: vscode.Uri.file(item.filePath) }))})`);
             tooltip.isTrusted = true;
@@ -893,10 +903,13 @@ class LsdynaIncludeTreeProvider {
         walk(this.root);
 
         const arr = Array.from(flatMap.values());
+        const collator = new Intl.Collator('zh-Hans-u-co-pinyin', { numeric: true, sensitivity: 'base' });
+        const byPath = (a, b) => collator.compare(a.filePath, b.filePath) ||
+            (a.filePath < b.filePath ? -1 : a.filePath > b.filePath ? 1 : 0);
         if (this.sortMode === 'flat-name') {
-            return arr.sort((a, b) => require('path').basename(a.filePath).localeCompare(require('path').basename(b.filePath)));
+            return arr.sort((a, b) => collator.compare(path.basename(a.filePath), path.basename(b.filePath)) || byPath(a, b));
         } else if (this.sortMode === 'flat-size') {
-            return arr.sort((a, b) => (b.fileSizeVal || 0) - (a.fileSizeVal || 0));
+            return arr.sort((a, b) => (b.fileSizeVal ?? -1) - (a.fileSizeVal ?? -1) || byPath(a, b));
         }
         return arr;
     }

@@ -5611,29 +5611,17 @@ it('refuses repeated and over-budget blocks instead of synthesizing bulk comment
         assert.ok(lineReads <= 2, `expected bounded planning, got ${lineReads} reads`);
     });
 
-it('warns quietly and disables editing for manual-denied TITLE variants', async () => {
+it('shows native TITLE and base-field help without treating read support as a value-edit permission', async () => {
         const provider = new LsdynaFieldHoverProvider();
-        const doc = fakeDoc([
-            '*DEFINE_FUNCTION_TITLE',
-            'Not an official title record'.padEnd(80),
-            '         1',
-            'x+y',
-        ].join('\n'));
-
+        const doc = fakeDoc(['*DEFINE_FUNCTION_TITLE', 'Function description'.padEnd(80), '         1', 'x+y'].join('\n'));
         const keywordHover = await provider.provideDetailedHover(doc, { line: 0, character: 5 });
         assert.ok(keywordHover);
-        const keywordValue = keywordHover.contents[0].value;
-        assert.ok(keywordValue.includes(i18n.get(
-            'keywordPrefixOptionUnsupported',
-            'TITLE',
-        )));
-        assert.ok(!keywordValue.includes('command:extension.lsdynaChooseKeywordOptions'));
-
-        const fieldHover = await provider.provideDetailedHover(doc, { line: 2, character: 5 });
-        assert.ok(fieldHover);
-        assert.ok(fieldHover.contents[0].value.includes('TITLE'));
-        assert.ok(fieldHover.contents[0].value.includes('left unchanged'));
-        assert.ok(!fieldHover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
+        assert.ok(!keywordHover.contents[0].value.includes(i18n.get('keywordPrefixOptionUnsupported', 'TITLE')));
+        for (const [line, name] of [[1, 'TITLE'], [2, 'FID']]) {
+            const hover = await provider.provideDetailedHover(doc, { line, character: 5 });
+            assert.ok(hover?.contents[0].value.includes('**' + name + '**'));
+            assert.ok(!hover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
+        }
     });
 
 it('adds an identity-only official-value action to a ready fixed-width field hover', async () => {
@@ -5663,24 +5651,15 @@ it('adds an identity-only official-value action to a ready fixed-width field hov
         const value = hover.contents[0].value;
         assert.ok(value.includes('command:extension.pickOfficialFieldValue'));
         assert.ok(value.includes(i18n.get('officialFieldChoiceHoverClosedAction')));
-        assert.ok(value.includes('command:extension.openSemanticEvidence'));
-        assert.ok(value.includes('P832'));
-        assert.ok(value.includes('Vol II · P832'));
         const actionLine = value.split('\n')
             .find(line => line.includes('command:extension.pickOfficialFieldValue'));
         assert.ok(actionLine);
-        assert.ok(actionLine.includes('command:extension.openSemanticEvidence'));
+        assert.ok(!actionLine.includes('command:extension.openSemanticEvidence'));
         assert.ok(!actionLine.includes(`${i18n.get('semanticEvidencePages')}:`));
         assert.ok(!actionLine.includes('---'));
         const actionLabel = /\[\$\(list-selection\) ([^\]]+)\]\(command:extension\.pickOfficialFieldValue/.exec(actionLine);
         assert.ok(actionLabel);
         assert.equal(actionLabel[1], i18n.get('officialFieldChoiceHoverClosedAction'));
-        assert.equal(
-            (value.match(/command:extension\.openSemanticEvidence/g) || []).length,
-            1,
-            'two evidence IDs on the same physical page must render one target',
-        );
-
         const match = /command:extension\.pickOfficialFieldValue\?([^\s"\)]+)/.exec(value);
         assert.ok(match);
         const payload = JSON.parse(decodeURIComponent(match[1]))[0];
@@ -5693,38 +5672,19 @@ it('adds an identity-only official-value action to a ready fixed-width field hov
         assert.equal(payload.keyword, undefined);
         assert.equal(payload.choices, undefined);
 
-        const evidenceMatch = /command:extension\.openSemanticEvidence\?([^\s"\)]+)/.exec(value);
-        assert.ok(evidenceMatch);
-        const evidencePayload = JSON.parse(decodeURIComponent(evidenceMatch[1]))[0];
-        assert.deepEqual(Object.keys(evidencePayload).sort(), [
-            'evidenceId', 'keyword', 'ruleId',
-        ]);
-
         } finally { ManualPackManager.prototype.peekCurrentAuthority = priorAuthority; }
 });
 
-it('labels a mixed hover projection as incomplete instead of a complete value list', async () => {
-        const doc = fakeDoc([
-            '*DAMPING_GLOBAL',
-            ' '.repeat(80),
-        ].join('\n'), path.resolve('official-choice-hover', 'damping.k'));
-        doc.languageId = 'lsdyna';
-        doc.version = 1;
-
-        const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(
-            doc,
-            { line: 1, character: 5 },
-        );
-        const value = hover.contents[0].value;
-        assert.ok(value.includes('command:extension.pickOfficialFieldValue'));
-        assert.ok(value.includes(i18n.get('officialFieldChoiceHoverMixedAction')));
-        assert.ok(value.includes(i18n.get('officialFieldChoiceHoverMixedIncomplete')));
-        const actionLine = value.split('\n')
-            .find(line => line.includes('command:extension.pickOfficialFieldValue'));
-        assert.ok(actionLine);
-        assert.ok(actionLine.includes(i18n.get('officialFieldChoiceHoverMixedIncomplete')));
-        assert.ok(!actionLine.includes('---'));
-    });
+it('offers a reviewed special value where native enum coverage is absent', async () => {
+    const doc = fakeDoc('*DAMPING_GLOBAL\n' + ' '.repeat(80));
+    doc.languageId = 'lsdyna'; doc.version = 1;
+    const hover = await new LsdynaFieldHoverProvider().provideDetailedHover(doc, { line: 1, character: 5 });
+    assert.ok(hover.contents[0].value.includes('command:extension.pickOfficialFieldValue'));
+    const plan = extensionModule._internals.planOfficialFieldChoicesForDocument(doc, { line: 1, character: 5 }, { keywordLine: 0 });
+    assert.equal(plan.status, 'ready');
+    assert.deepEqual(plan.choices.map(choice => [choice.valueText, choice.role]), [['0', 'sentinel']]);
+    assert.notEqual(plan.domainKind, 'closed');
+});
 
 it('keeps display-only CONTROL_THERMAL_TIMESTEP hover free of writable value actions', async () => {
         const doc = fakeDoc(['*CONTROL_THERMAL_TIMESTEP', ' '.repeat(80)].join('\n'));
@@ -7180,7 +7140,8 @@ describe('file reveal commands', () => {
                 await commands.get(command)('/project/main.k');
                 assert.equal(errors.at(-1), require('../../src/core/i18n').get(key, failure.message));
             }
-            for (const command of ['extension.openToSide', 'extension.revealInExplorer']) {
+            assert.equal(await commands.get('extension.openToSide')({ filePath: '/project/main.k' }), false);
+            for (const command of ['extension.revealInExplorer']) {
                 await assert.rejects(commands.get(command)({ filePath: '/project/main.k' }), error => error === failure);
             }
         } finally {
@@ -8196,7 +8157,7 @@ describe('LsdynaDefinitionProvider field references', () => {
         assert.equal(definition.range.start.line, 2);
     });
 
-    it('does not navigate a schema-matching ambiguous operational projection', async () => {
+    it('uses a verified native node target despite an ambiguous manual projection without inventing a definition', async () => {
         const filePath = path.resolve('definition-navigation', 'ambiguous-change-boundary.k');
         const doc = fakeDoc([
             '*CHANGE_BOUNDARY_CONDITION',
@@ -8204,17 +8165,23 @@ describe('LsdynaDefinitionProvider field references', () => {
         ].join('\n'), filePath);
         doc.languageId = 'lsdyna';
 
-        assert.equal(fieldReferenceAtPosition(
+        const source = fieldReferenceAtPosition(
             doc,
             new vscodeMock.Position(1, 5),
             { semanticScope: 'registry-approved' },
-        ), null);
-        assert.equal(await resolveFieldReferenceNavigation(
+        );
+        assert.equal(source.authorityScope, "keyword-catalog");
+        assert.equal(source.referenceValue.id, 42);
+        assert.deepEqual(source.referenceValue.targetKinds, ['node']);
+        assert.deepEqual(source.referenceValue.targetDefinitions, ['NODE']);
+        const navigation = await resolveFieldReferenceNavigation(
             doc,
             new vscodeMock.Position(1, 5),
             null,
             { semanticScope: 'registry-approved' },
-        ), null);
+        );
+        assert.equal(navigation.state, 'unindexed');
+        assert.deepEqual(navigation.candidates, []);
         assert.equal(await new LsdynaDefinitionProvider().provideDefinition(
             doc,
             new vscodeMock.Position(1, 5),
@@ -8281,11 +8248,12 @@ describe('LsdynaDefinitionProvider field references', () => {
             { includeDeclaration: true },
         );
 
-        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.authorityScope, "keyword-catalog");
         assert.equal(navigation.source.referenceValue.id, 1000001);
-        assert.equal(navigation.source.referenceInfo.definitionRegistry.familyKeyword, '*LOAD_BODY');
-        assert.equal(navigation.source.referenceInfo.definitionRegistry.familyOption, 'Z');
-        assert.deepEqual(navigation.source.referenceValue.targetDefinitions, ['DEFINE_CURVE']);
+        assert.equal(navigation.source.referenceInfo.source, "keyword-catalog");
+        assert.deepEqual(navigation.source.referenceValue.targetKinds, ['curve']);
+        assert.ok(navigation.source.referenceValue.targetDefinitions.includes('DEFINE_CURVE'));
+        assert.ok(navigation.source.referenceValue.targetDefinitions.every(name => /^DEFINE_CURVE(?:_|$)/.test(name)));
         assert.equal(definition.range.start.line, 3);
         assert.deepEqual(references.map(location => location.range.start.line).sort((a, b) => a - b), [1, 3]);
     });
@@ -8488,16 +8456,18 @@ describe('LsdynaDefinitionProvider field references', () => {
             { includeDeclaration: true },
         );
 
-        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.authorityScope, "keyword-catalog");
         assert.equal(navigation.source.referenceValue.id, 1000001);
         assert.deepEqual(navigation.source.referenceValue.targetKinds, ['part-set']);
-        assert.deepEqual(navigation.source.referenceValue.targetDefinitions, ['SET_PART']);
+        assert.ok(navigation.source.referenceValue.targetDefinitions.includes('SET_PART'));
+        assert.ok(navigation.source.referenceValue.targetDefinitions.includes('SET_PART_LIST'));
+        assert.ok(navigation.source.referenceValue.targetDefinitions.every(name => /^SET_PART(?:_|$)/.test(name)));
         assert.equal(definition.range.start.line, 3);
         assert.deepEqual(references.map(location => location.range.start.line).sort((a, b) => a - b),
             [1, 3]);
     });
 
-    it('routes every operational official-manual relation through the Registry authority path', async () => {
+    it('uses the native target for a covered field while preserving incomplete-index state', async () => {
         const filePath = path.resolve('definition-navigation', 'manual-runtime-scope.k');
         const doc = materialReferenceDocument(filePath);
         rememberFileIndex(filePath, {
@@ -8513,18 +8483,18 @@ describe('LsdynaDefinitionProvider field references', () => {
             new vscodeMock.Position(2, 24),
             { semanticScope: 'registry-approved' },
         );
-        assert.equal(source.authorityScope, 'definition-registry');
+        assert.equal(source.authorityScope, "keyword-catalog");
         assert.equal(source.referenceValue.id, 1001);
         const navigation = await resolveFieldReferenceNavigation(
             doc,
             new vscodeMock.Position(2, 24),
         );
-        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.authorityScope, "keyword-catalog");
         assert.equal(navigation.state, 'unindexed');
         assert.equal(navigation.candidates.length, 1);
     });
 
-    it('uses the Registry signed predicate and abs transform for native F12', async () => {
+    it('preserves the native signed predicate and abs transform for F12', async () => {
         const filePath = path.resolve('definition-navigation', 'registry-signed-part.k');
         const doc = partAdpoptReferenceDocument(filePath);
         rememberFileIndex(filePath, {
@@ -8541,7 +8511,7 @@ describe('LsdynaDefinitionProvider field references', () => {
             null,
             { semanticScope: 'registry-approved' },
         );
-        assert.equal(navigation.authorityScope, 'definition-registry');
+        assert.equal(navigation.authorityScope, "keyword-catalog");
         assert.equal(navigation.source.referenceValue.id, 17);
         assert.equal(navigation.source.referenceValue.idTransform, 'abs');
         assert.equal(navigation.source.referenceValue.isSignedSwitch, true);
@@ -9660,7 +9630,8 @@ describe('LsdynaDefinitionProvider field references', () => {
             new vscodeMock.Position(2, 25),
             { semanticScope: 'registry-approved' },
         );
-        assert.ok(source?.referenceInfo?.definitionRegistry?.approved);
+        assert.equal(source?.referenceInfo?.source, "keyword-catalog");
+        assert.deepEqual(source.referenceValue.targetKinds, ['material', 'ispg']);
         const referenceOccurrence = {
             filePath: rootFile,
             keyword: '*PART',
@@ -9687,7 +9658,15 @@ describe('LsdynaDefinitionProvider field references', () => {
                     { filePath: rootFile, keyword: '*MAT_024', rawKeyword: '*MAT_024', startLine: 3, endLine: 4 },
                 ],
                 parameterEvents: [],
-                referenceDefinitions: emptyDefinitions(),
+                referenceDefinitions: {
+                    ...emptyDefinitions(),
+                    genericDefinitions: [{
+                        kind: 'generic', id: 1000001, idRaw: '1000001',
+                        keyword: '*MAT_024', targetKeyword: 'MAT_024', targetKind: 'material',
+                        filePath: rootFile, startLine: 3, endLine: 4,
+                        idLine: 4, idStartChar: 3, idEndChar: 10,
+                    }],
+                },
                 registryReferences: {
                     complete: true,
                     reasons: [],
@@ -10212,17 +10191,15 @@ describe('manual workspace reference text search', () => {
 });
 
 describe('indexed entity ID query command', () => {
-    it('contributes the query to LS-DYNA editor context menus including unsynchronized large resources', () => {
-        const manifest = require("../../package.json");
-        const item = manifest.contributes.menus['editor/context'].find(candidate =>
-            candidate.command === 'extension.queryLsdynaEntityId'
-        );
-
-        assert.ok(item);
-        assert.ok(item.when.includes("editorLangId == 'lsdyna'"));
-        assert.ok(item.when.includes("resourceExtname == '.k'"));
-        assert.ok(item.when.includes("resourceExtname == '.key'"));
-        assert.ok(item.when.includes("resourceExtname == '.dyna'"));
+    it('keeps the query command and replaces its menu with the large-file entry', () => {
+        const manifest = require('../../package.json');
+        assert.ok(manifest.contributes.commands.some(item => item.command === 'extension.queryLsdynaEntityId'));
+        assert.ok(!manifest.contributes.menus['editor/context'].some(item => item.command === 'extension.queryLsdynaEntityId'));
+        for (const menu of ['editor/context', 'explorer/context']) {
+            const item = manifest.contributes.menus[menu].find(item => item.command === 'extension.openLsdynaLargeFileViewer');
+            assert.ok(item);
+            for (const ext of ['.k', '.key', '.dyna']) assert.ok(item.when.includes('resourceExtname == ' + ext));
+        }
     });
 
     it('contributes the object-reference webview and preserves its command IDs', () => {
@@ -10242,10 +10219,7 @@ describe('indexed entity ID query command', () => {
         const keybindings = manifest.contributes.keybindings || [];
         assert.equal(keybindings.some(binding => binding.command.startsWith('extension.entityReferences.')), false);
         const editorContext = manifest.contributes.menus['editor/context'] || [];
-        assert.ok(editorContext.some(item =>
-            item.command === 'extension.entityReferences.refresh' &&
-            item.when === "editorLangId == 'lsdyna'",
-        ));
+        assert.ok(!editorContext.some(item => item.command === 'extension.entityReferences.refresh'));
         const viewTitle = manifest.contributes.menus['view/title'] || [];
         assert.ok(viewTitle.some(item =>
             item.command === 'extension.entityReferences.refresh' &&
@@ -11512,7 +11486,7 @@ describe('official field value completions', () => {
             undefined,
             { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
         ));
-        assert.deepEqual(choices.map(item => item.label), ['-1', '0', '1']);
+        assert.deepEqual(choices.map(item => item.label), ['0', '-1', '1']);
 
         const lsPrePostValues = require("../../keywords/runtime/schema/field_data.json")
             .MAT_DAMAGE_1.c[1].find(field => field.n === 'FLAG').e;
@@ -11524,8 +11498,9 @@ describe('official field value completions', () => {
         assert.equal(ten.insertText.length, 10);
         assert.equal(ten.range.start.character, 70);
         assert.equal(ten.range.end.character, 80);
-        assert.ok(ten.documentation.value.includes('command:extension.openSemanticEvidence'));
-        assert.ok(ten.documentation.value.includes('P832'));
+        assert.ok(!ten.documentation.value.includes('command:extension.openSemanticEvidence'));
+        assert.ok(ten.documentation.value.includes(i18n.get('officialDocumentedValue')));
+        assert.ok(ten.documentation.value.includes('Anisotropic damage'));
 
         } finally { ManualPackManager.prototype.peekCurrentAuthority = priorAuthority; }
 });
@@ -11545,7 +11520,7 @@ describe('official field value completions', () => {
             undefined,
             { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
         ));
-        assert.deepEqual(choices.map(item => item.label), ['-1', '0', '1']);
+        assert.deepEqual(choices.map(item => item.label), ['0', '-1', '1']);
     });
 
     it('does not offer official choices when TITLE order conflicts with stale field headers', async () => {
@@ -11605,7 +11580,7 @@ describe('official field value completions', () => {
         )).length, 0);
     });
 
-    it('keeps finite values from a mixed literal/reference domain behind explicit Ctrl+Space', async () => {
+    it('offers reviewed special values only on explicit invocation when native enums are absent', async () => {
         const provider = new LsdynaFieldCompletionProvider();
         const doc = fakeDoc([
             '*DAMPING_GLOBAL',
@@ -11627,7 +11602,9 @@ describe('official field value completions', () => {
 
         assert.deepEqual(automatic, []);
         assert.deepEqual(explicit.map(item => item.label), ['0']);
-        assert.ok(explicit[0].documentation.value.includes('curve'));
+        assert.equal(explicit[0].insertText, '         0');
+        assert.equal(explicit[0].range.start.character, 0);
+        assert.equal(explicit[0].range.end.character, 10);
     });
 
     it('rejects explicit official value completion for display-only CONTROL_THERMAL_TIMESTEP', async () => {
@@ -11669,7 +11646,7 @@ describe('official field value completions', () => {
                 { line: 2, character: 75 },
                 undefined,
                 { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
-            )).map(item => item.label), ['-1', '0', '1']);
+            )).map(item => item.label), ['0', '-1', '1']);
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
         }
@@ -11677,14 +11654,14 @@ describe('official field value completions', () => {
 
     it('replaces only the selected fixed-width cell and preserves adjacent fields', async () => {
         const provider = new LsdynaFieldCompletionProvider();
-        const original = `${'1'.repeat(40)}         9${'Z'.repeat(30)}`;
+        const original = `${'1'.repeat(20)}         9${'Z'.repeat(50)}`;
         const doc = fakeDoc([
-            '*BOUNDARY_TEMPERATURE_PERIODIC_SET',
+            '*CONTACT_AUTOMATIC_SINGLE_SURFACE',
             original,
         ].join('\n'));
         const choices = officialChoices(await provider.provideCompletionItems(
             doc,
-            { line: 1, character: 45 },
+            { line: 1, character: 25 },
             undefined,
             { triggerKind: vscodeMock.CompletionTriggerKind.Invoke },
         ));
@@ -11693,9 +11670,9 @@ describe('official field value completions', () => {
             axisTwo.insertText + original.slice(axisTwo.range.end.character);
 
         assert.equal(applied.length, original.length);
-        assert.equal(applied.slice(0, 40), original.slice(0, 40));
-        assert.equal(applied.slice(50), original.slice(50));
-        assert.equal(applied.slice(40, 50), '         2');
+        assert.equal(applied.slice(0, 20), original.slice(0, 20));
+        assert.equal(applied.slice(30), original.slice(30));
+        assert.equal(applied.slice(20, 30), '         2');
     });
 
     it('keeps warm official value completion bounded near the end of a million-line indexed deck', async () => {

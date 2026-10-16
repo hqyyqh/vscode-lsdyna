@@ -47,6 +47,7 @@ export function nativeKeywordTemplate(keyword: string) {
     const selection = nativeFileReadContext(rule, '*' + keyword, rows, 'standard').select(true);
     const records = selection?.current?.filter(record => record.instanceStart === 0);
     if (!records?.length || !records.some(record => record.cardIndex !== 0)) return pending('initial-branch-unconfirmed');
+    if (records.some(record => !cards.has(record.cardIndex))) return pending('selected-record-geometry-unconfirmed');
     // Require the selected prefix to form a complete instance on its own.
     const selectedRows = records.map(record => templateFor(cards.get(record.cardIndex))?.text);
     const complete = nativeFileReadContext(rule, '*' + keyword, selectedRows, 'standard').select(false);

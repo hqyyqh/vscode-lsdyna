@@ -69,6 +69,7 @@ export class ManualReaderPanel {
     private historyIndex = -1;
     private revision = 0;
     private language: ManualLanguage = 'zh';
+    private languagePreference: PersistedReaderState['languagePreference'] = 'auto';
     private comparison = false;
     private location: ManualLocation | undefined;
     private scrollY = 0;
@@ -166,27 +167,17 @@ export class ManualReaderPanel {
         if (!ManualReaderPanel.current) {
             ManualReaderPanel.current = new ManualReaderPanel(packRoot, repository, manager, onLocationChanged);
             const caps = repository.getCapabilities();
-            // Document language follows pack capability + user restore, NOT VS Code UI locale.
-            // English-only packs stay EN; bilingual packs default to manifest defaultLanguage.
-            if (!caps.canToggleLanguage) {
-                ManualReaderPanel.current.language = 'en';
-                ManualReaderPanel.current.searchScope = 'en';
-            } else if (restored && (restored.language === 'en' || restored.language === 'zh')) {
-                ManualReaderPanel.current.language = restored.language;
-                ManualReaderPanel.current.searchScope = restored.language;
-            } else if (caps.defaultLanguage === 'zh') {
-                ManualReaderPanel.current.language = 'zh';
-                ManualReaderPanel.current.searchScope = 'zh';
-            } else {
-                ManualReaderPanel.current.language = 'en';
-                ManualReaderPanel.current.searchScope = 'en';
-            }
-            if (restored) {
-                ManualReaderPanel.current.comparison = caps.canToggleLanguage && caps.features.sentenceMap && restored.readingMode === 'bilingual';
-                if (ManualReaderPanel.current.comparison) {
-                    ManualReaderPanel.current.language = 'zh';
-                    ManualReaderPanel.current.searchScope = 'both';
-                }
+            // Legacy saves cannot distinguish defaults from choices; preserve their reading language.
+            const preference = restored?.languagePreference ?? (restored?.readingMode === 'bilingual'
+                ? 'bilingual' : restored?.language) ?? 'auto';
+            const current = ManualReaderPanel.current;
+            current.languagePreference = preference;
+            current.comparison = caps.canToggleLanguage && caps.features.sentenceMap && preference === 'bilingual';
+            current.language = !caps.canToggleLanguage ? 'en'
+                : preference === 'auto' ? readerUiLocale() : preference === 'en' ? 'en' : 'zh';
+            current.searchScope = current.comparison ? 'both' : current.language;
+            if (restored?.location && location.manualId === restored.location.manualId
+                && location.sectionId === restored.location.sectionId) {
                 ManualReaderPanel.current.scrollY = restored.scrollY;
                 ManualReaderPanel.current.scrollRatio = Number.isFinite(restored.scrollRatio) ? Math.min(1, Math.max(0, Number(restored.scrollRatio))) : 0;
                 preserveRestoredScroll = true;
@@ -230,6 +221,7 @@ export class ManualReaderPanel {
             this.comparison = request.mode === 'bilingual';
             this.language = this.comparison ? 'zh' : request.mode === 'en' || request.mode === 'zh'
                 ? request.mode : this.language === 'zh' ? 'en' : 'zh';
+            this.languagePreference = this.comparison ? 'bilingual' : this.language;
             this.searchScope = this.comparison ? 'both' : this.language;
             if (this.location && typeof request.anchorId === 'string' && request.anchorId.length < 1024) {
                 this.location = { ...this.location, anchorId: request.anchorId };
@@ -295,7 +287,7 @@ export class ManualReaderPanel {
         if (!section) return false;
         this.location = {
             ...location,
-            title: location.title || (this.language === 'zh' && section.titleZh ? section.titleZh : section.titleEn),
+            title: (this.language === 'zh' && section.titleZh ? section.titleZh : section.titleEn) || location.title,
             pdfPage: location.pdfPage ?? section.pdfPage ?? null,
         };
         if (pushHistory && (this.historyIndex < 0 || locationKey(this.history[this.historyIndex]) !== locationKey(this.location))) {
@@ -557,6 +549,7 @@ export class ManualReaderPanel {
         if (!this.location) return;
         this.manager.saveState(this.packRoot, {
             manifestIdentity: this.repository.getManifestIdentity(),
+            languagePreference: this.languagePreference,
             location: this.location,
             language: this.language,
             readingMode: this.comparison ? 'bilingual' : this.language,

@@ -22,7 +22,8 @@ import {
     type SemanticEvidenceLocation,
 } from './manualSemanticAdvisor';
 
-const { manualRulesForField: defaultManualRulesForField } = require('../references/fieldReferenceClassifier');
+import { nativeFieldDefinitions } from './nativeFieldDefinitions';
+import { NATIVE_FILE_SOURCE } from "./catalogNativeFileLayout";
 
 const DEFAULT_MAXIMUM_KEYWORD_LOOKBACK = 0;
 const DEFAULT_MAXIMUM_HEADER_LOOKBACK = 32;
@@ -107,6 +108,7 @@ export type OfficialFieldChoicePlan = {
 };
 
 export type OfficialFieldChoicePlannerOptions = {
+    rulesForField?: (keyword: string, cardIndex: number, field: KeywordField) => any[];
     blockIndex?: BlockBoundaryIndex | null;
     keywordLine?: number;
     globalInputFormat?: KeywordInputFormatMode;
@@ -114,7 +116,6 @@ export type OfficialFieldChoicePlannerOptions = {
     maximumKeywordLookback?: number;
     maximumHeaderLookback?: number;
     maximumChoices?: number;
-    rulesForField?: (keyword: string, cardIndex: number, field: KeywordField) => any[];
 };
 
 function finiteNonNegativeInteger(value: unknown): number | null {
@@ -331,7 +332,12 @@ export function planOfficialFieldChoices(
         if (fieldIndex < 0) {
             return finish('no-choice', 'position-outside-field');
         }
-        const field = cardInfo.card[fieldIndex];
+        const nativeCard = cardInfo.card[fieldIndex].nativeIdentity ? cardInfo.card
+            : nativeFieldDefinitions(cardInfo.keywordName, schema, cardInfo.card, cardInfo.cardIndex);
+        const field = nativeCard?.[fieldIndex] || cardInfo.card[fieldIndex];
+        if (field.p !== cardInfo.card[fieldIndex].p || field.w !== cardInfo.card[fieldIndex].w) {
+            return finish('schema-mismatch', 'native-field-geometry-mismatch');
+        }
         const fieldStart = Number(field.p);
         const fieldWidth = Number(field.w);
         const fieldEnd = fieldStart + fieldWidth;
@@ -365,34 +371,41 @@ export function planOfficialFieldChoices(
             return finish(controlledStatus, controlledStatus, valuePatch);
         }
 
-        const rulesForField = options.rulesForField || defaultManualRulesForField;
-        const rules = rulesForField(cardInfo.keywordName, cardInfo.cardIndex, field) || [];
-        const candidates = rules.filter((rule: any) =>
-            rule?.kind === 'field-choice' && rule?.relation?.kind === 'field-choice'
-        );
-        if (candidates.length === 0) {
-            return finish('no-choice', 'no-official-field-choice', valuePatch);
-        }
-        if (candidates.length !== 1) {
-            return finish('selector-ambiguous', 'multiple-official-field-choice-rules', valuePatch);
-        }
-
-        const advice = fieldChoiceAdviceFromRules(candidates);
-        if (!advice || !advice.ruleId || advice.field !== fieldName) {
-            return finish('selector-ambiguous', 'official-field-choice-not-projectable', valuePatch);
-        }
-        // Manual help may supplement a native enum, but cannot extend its values.
-        if (field.definitionSource && Array.isArray(field.e) && field.e.length) {
-            const allowed = new Set(field.e.map(value => String(value).trim()));
-            advice.choices = advice.choices.filter(choice => allowed.has(choice.valueText));
-            if (!advice.choices.length) return finish('no-choice', 'native-enum-has-no-matching-manual-choice', valuePatch);
-        }
-        if (advice.choices.every(choice => choice.role === 'reference')) {
-            return finish('no-choice', 'reference-only-domain', {
-                ...valuePatch,
-                catalogKeyword: advice.keyword,
-                ruleId: advice.ruleId,
-            });
+        const source = field.definitionSource?.datasetSha256 || field.nativeIdentity?.source;
+        const address = field.definitionSource?.fieldRecordId || field.nativeIdentity?.fieldRecordId;
+        if ((source || address) && (source !== NATIVE_FILE_SOURCE || !address))
+            return finish('schema-mismatch', 'native-field-source-unverified', valuePatch);
+        if (source === NATIVE_FILE_SOURCE && field.e !== undefined && !Array.isArray(field.e))
+            return finish('schema-mismatch', 'invalid-native-field-choices', valuePatch);
+        let advice: ReturnType<typeof fieldChoiceAdviceFromRules>;
+        if (source === NATIVE_FILE_SOURCE && address && Array.isArray(field.e) && field.e.length) {
+            const values = field.e.map(value => typeof value === 'string' || typeof value === 'number'
+                && Number.isFinite(value) ? String(value).trim() : '');
+            if (values.some(value => !value || /[\r\n\t]/.test(value)) ||
+                new Set(values.map(value => value.toUpperCase())).size !== values.length) {
+                return finish('schema-mismatch', 'invalid-native-field-choices', valuePatch);
+            }
+            advice = {
+                keyword: `*${cardInfo.keywordName.replace(/^\*/, '')}`,
+                field: fieldName,
+                automatic: values.length <= 12,
+                ruleId: `${source}:${address}`,
+                summary: field.h || '',
+                choices: values.map(value => ({ value, valueText: value, role: 'enum' })),
+                domainKind: 'closed',
+                domainComplete: true,
+                evidence: [],
+            };
+        } else {
+            const rulesForField = options.rulesForField || require('../references/fieldReferenceClassifier').manualRulesForField;
+            const rules = (rulesForField(cardInfo.keywordName, cardInfo.cardIndex, field) || [])
+                .filter(rule => rule.kind === 'field-choice' && rule.relation?.kind === 'field-choice');
+            if (!rules.length) return finish('no-choice', 'no-native-field-choice', valuePatch);
+            advice = fieldChoiceAdviceFromRules(rules);
+            if (!advice?.ruleId || advice.field !== fieldName)
+                return finish('selector-ambiguous', 'official-field-choice-not-projectable', valuePatch);
+            if (advice.choices.every(choice => choice.role === 'reference'))
+                return finish('no-choice', 'reference-only-domain', valuePatch);
         }
         const localizedSummary = advice.summary ? getLocalizedHelpForText(advice.summary) : null;
         const maximumChoices = Number.isFinite(options.maximumChoices)

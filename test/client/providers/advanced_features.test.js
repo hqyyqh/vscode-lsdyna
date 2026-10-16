@@ -178,6 +178,7 @@ describe('Phase 7 Features', () => {
 
         it('uses blockIndex for local incremental updates on edits', () => {
             const provider = new LsdynaKeywordIndexProvider({
+                initialLayout: 'alphabetical',
                 shouldSkipAutomaticDocumentScan: () => false,
             });
 
