@@ -4,11 +4,25 @@ const yaml = require('js-yaml');
 const root = path.resolve(__dirname, '../../..');
 const read = file => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8'));
 describe('platform release workflow dependency closure', () => {
+    it('uses Node 24 throughout CI and pins approved dependency install scripts', () => {
+        for (const file of fs.readdirSync(path.join(root, '.github/workflows'))) {
+            for (const job of Object.values(read(file).jobs || {})) {
+                for (const step of job.steps || []) if (step.uses?.startsWith('actions/setup-node@'))
+                    assert.equal(step.with['node-version'], 24, `${file}: Node 24 required`);
+            }
+        }
+        const pkg = require('../../../package.json');
+        const lock = require('../../../package-lock.json');
+        const names = ['esbuild', '@tybys/wasm-util', '@vscode/sqlite3', '@vscode/vsce-sign'];
+        assert.deepEqual(Object.keys(pkg.allowScripts).sort(), names.map(name => `${name}@${lock.packages[`node_modules/${name}`].version}`).sort());
+        assert.ok(Object.values(pkg.allowScripts).every(value => value === true));
+    });
     it('bounds dev feedback without replacing complete release acceptance', () => {
         const quick = read('fast-ci.yml'), full = read('public-ci.yml');
         assert.deepEqual(quick.on.push.branches, ['dev']);
         assert.deepEqual(quick.on.pull_request.branches, ['dev']);
-        assert.deepEqual(full.on.push.branches, ['master']);
+        assert.equal(full.on.push, undefined, 'master push must build only once through release');
+        assert.deepEqual(read('release.yml').on.push.branches, ['master']);
         assert.deepEqual(full.on.pull_request.branches, ['master']);
         assert.ok('workflow_dispatch' in full.on && 'workflow_call' in full.on);
         assert.equal(quick.jobs.build.needs, undefined);
@@ -72,10 +86,17 @@ describe('platform release workflow dependency closure', () => {
         assert.match(release.jobs.publish.if, /needs.reuse.result == 'success'/);
         assert.equal(release.jobs.build.uses, './.github/workflows/public-ci.yml');
         assert.ok(release.jobs.publish.needs.includes('build'));
+        assert.deepEqual(release.concurrency, { group: 'release-publishing', 'cancel-in-progress': false, queue: 'max' });
         const steps = release.jobs.publish.steps;
         const index = text => steps.findIndex(step => (step.run || '').includes(text));
         assert.ok(index('verify-release-acceptance.cjs') >= 0);
         assert.ok(index('verify-release-acceptance.cjs') < index('vsce publish'));
+        assert.ok(index('release-plan.cjs --notes') < index('vsce publish'));
+        assert.ok(index('verify-release-destination.cjs') < index('vsce publish'));
+        assert.ok(!steps.some(step => /npm run build|package-hover-release/.test(step.run || '')), 'Publish the verified artifact without rebuilding');
+        const downloads = steps.filter(step => step.uses?.startsWith('actions/download-artifact@') && step.with.pattern);
+        assert.deepEqual(downloads.map(step => step.with.pattern), ['candidate-*', 'installed-*']);
+        assert.ok(downloads.every(step => !step.with['run-id']), 'Automatic publication uses the same run');
         assert.ok(index('Missing repository secret: OVSX_PAT') < index('vsce publish'));
         assert.ok(steps[index('verify-release-acceptance.cjs')].run.includes('"$target"'));
         assert.ok(!JSON.stringify(release).includes('requirements-codegen'));
@@ -87,15 +108,17 @@ describe('platform release workflow dependency closure', () => {
         const release = read('release.yml'), steps = release.jobs.publish.steps;
         assert.equal(release.on.workflow_dispatch.inputs.github_only.default, false);
         const metadata = release.jobs.metadata.steps.find(step => step.id === 'metadata');
-        assert.match(metadata.run, /GitHub-only publishing requires reuse_plan and publish=false/);
-        assert.match(metadata.run, /MANUAL_PUBLISH.*true.*\|\|.*GITHUB_ONLY.*true/);
-        assert.match(metadata.run, /GITHUB_REF_NAME.*!=.*master/);
+        assert.equal(metadata.run, 'node scripts/release/release-plan.cjs');
+        assert.equal(metadata.env.GITHUB_ONLY, '${{ inputs.github_only }}');
         for (const name of ['Verify Open VSX credentials', 'Sign in to Azure with GitHub OIDC',
             'Publish to Visual Studio Marketplace', 'Publish to Open VSX', 'Create marketplace release verification issue']) {
             assert.equal(steps.find(step => step.name === name).if, '${{ !inputs.github_only }}');
         }
         const upload = steps.findIndex(step => step.name === 'Create GitHub Release');
-        assert.equal(steps[upload].if, undefined, 'Manual publishing must also upload GitHub assets');
+        assert.equal(steps[upload].if, "${{ steps.destination.outputs.published != 'true' }}");
+        assert.equal(steps[upload].with.body_path, 'release-notes.md');
+        assert.equal(steps[upload].with.generate_release_notes, false);
+        assert.equal(steps[upload].with.append_body, false);
         assert.equal(steps[upload].with.draft, true, 'Keep release a draft until asset upload succeeds');
         assert.equal(steps[upload].with.fail_on_unmatched_files, true);
         assert.equal(steps[upload].with.files, 'release-assets/*.vsix');

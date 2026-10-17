@@ -3,7 +3,7 @@
   "kind": "dynasense-public-source",
   "dataPolicy": "publicly-regenerable-with-source-snapshots",
   "generatorVersion": 2,
-  "generatorSha256": "d8066d095a7d5a03b090c47aa44feb7aefe783eb553815d6ab8e2a8d98615d2b",
+  "generatorSha256": "784a0c9d3021e89bf944ca24f0eab302ddfc750fd351a758c1da51cc0a03a4eb",
   "acceptance": {
     "status": "requires-independent-validation",
     "unresolvedInternalEvidenceCount": 0,
@@ -319,6 +319,7 @@
       "test/scripts/release/publicWorkflow.test.js",
       "test/scripts/release/releaseAcceptanceGate.test.js",
       "test/scripts/release/releaseMetadata.test.js",
+      "test/scripts/release/releasePlan.test.js",
       "test/scripts/release/sourceManifest.test.js",
       "test/scripts/release/validatePackageContents.test.js",
       "test/server/lspBridge.test.js",
@@ -385,7 +386,7 @@
     {
       "path": ".github/workflows/ci-node.yml",
       "role": "editable-source",
-      "sha256": "c3889b93bbee7f046dab8f163bf3f5c51324bef7599b8d9c737e0a27d30e6d36",
+      "sha256": "55fc54531ad63ee6aec9e4f4a96248bc8511e528d9f40893883d16ebaa19ffbf",
       "reason": "public-contribution-workflow"
     },
     {
@@ -397,19 +398,19 @@
     {
       "path": ".github/workflows/fast-ci.yml",
       "role": "editable-source",
-      "sha256": "cb04c8a3f48e52353953186edc0a34c0d8fde2973e61821014904f4505754a1b",
+      "sha256": "30033814c40a72a05d6bbebbe41f6616ea9c968145bb0bb3332ae3d95feb67b3",
       "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "572fcac8c3535c926b9f2d305d44036496f17c50909caa9690f8878e5cc15387",
+      "sha256": "3fae09e1269d094100c7d7ed00515c8b78e58079d9b2e2d5b56e550a9f419272",
       "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/release.yml",
       "role": "editable-source",
-      "sha256": "5f5ace1a179ca89cdba23a27b5dce1d49e1789cfb96cee8864776257a11556ff",
+      "sha256": "a6cb5d43f43dfa4d18154550b58c32242b64954524dc88d03fecb90cdffb9aaf",
       "reason": "public-contribution-workflow"
     },
     {
@@ -451,7 +452,7 @@
     {
       "path": "CONTRIBUTING.md",
       "role": "editable-source",
-      "sha256": "a9399f65a7b5f365b2f8c5a4d9a7562fd9f1ffd1b7b9d592f0c57e4e6ec26d38",
+      "sha256": "41d15bb5f40b8850f756cf46e7b32d987c7af15eee51642b04889b124d64a4a8",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -463,13 +464,13 @@
     {
       "path": "README.md",
       "role": "editable-source",
-      "sha256": "c1ec92def10c500ad12ac17b4930abc00d7edd795ea4a1101eda9a141dff576f",
+      "sha256": "7e81a05168dce3f78509b16d56b6e96fb5a7deeb9fd0d4808baee757b4dd5029",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "README_zh.md",
       "role": "editable-source",
-      "sha256": "be91c5d64617c1add473773f8e903af599da39f5115f552f1a2b08660729dfe5",
+      "sha256": "f51587292cbc548f9fea93d12199e903b1bada2d6d6abc2eee9635f7a778f7fc",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2485,7 +2486,7 @@
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "291634ff738a8014f27f84029f11f8be0fff0a6225db4cea09bc1502aed886ad",
+      "sha256": "afde1ab2e405f1e8ba649c663d5f2528047bbb40214d086e6d8632c434ffc0bb",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2779,7 +2780,7 @@
     {
       "path": "scripts/maintenance/validate-project-contracts.cjs",
       "role": "editable-source",
-      "sha256": "35bc34af153d4cd86cc6c539b65102510b96578cc97c1cb749dfc4dc06d41258",
+      "sha256": "4179593e438091a642fb45b42426d903d1999bf540d914a408e9fc58c82a8aae",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2861,6 +2862,12 @@
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
+      "path": "scripts/release/release-plan.cjs",
+      "role": "editable-source",
+      "sha256": "f1f65b293c3be14c979e40c06efaf2db41918360c4859a777aec19ddb47a876b",
+      "reason": "independent-build-package-or-integrity-tool"
+    },
+    {
       "path": "scripts/release/release-resource-paths.cjs",
       "role": "editable-source",
       "sha256": "b1d70ab25494a6ce4c97c22cb086f44e861ab4a11d15ae22d0ab91f5d2aa8817",
@@ -2930,6 +2937,12 @@
       "path": "scripts/release/verify-release-acceptance.cjs",
       "role": "editable-source",
       "sha256": "d4069e6eb753d5bcd9670c522dc2ab905c97284da1dbef10f4532be617a526a2",
+      "reason": "independent-build-package-or-integrity-tool"
+    },
+    {
+      "path": "scripts/release/verify-release-destination.cjs",
+      "role": "editable-source",
+      "sha256": "03a8bc5bbbac689de0bd7c811c7722e74a4dd4fecd590e23a6e3f8f4922d86ec",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -7051,7 +7064,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "38cb8a943430b017c1ed0db73778a80a9c6c241d5e9b5b06bb22b26d769634f4",
+      "sha256": "000b34f69dcf751c99a448df8d61c5d8ab06696e1e7dbe77c11fa4985f99a030",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7064,6 +7077,12 @@
       "path": "test/scripts/release/releaseMetadata.test.js",
       "role": "editable-source",
       "sha256": "827256b1c8f97a1cc272fc011e3bb3637ccba17b7d52245f91a4f704cbb480f3",
+      "reason": "public-build-or-package-regression"
+    },
+    {
+      "path": "test/scripts/release/releasePlan.test.js",
+      "role": "editable-source",
+      "sha256": "ebe596c32ed21cf18492ac7449b46c7c0ac2decacfa46d7105a88994dc5040c4",
       "reason": "public-build-or-package-regression"
     },
     {

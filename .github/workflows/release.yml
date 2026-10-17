@@ -2,6 +2,7 @@ name: Release extension
 
 on:
   push:
+    branches: [master]
     tags:
       - "v*.*.*"
   workflow_dispatch:
@@ -25,8 +26,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-publishing
   cancel-in-progress: false
+  queue: max
 
 jobs:
   build:
@@ -44,7 +46,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Verify existing artifacts and acceptance provenance without rerunning tests
@@ -72,51 +74,16 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
       - name: Validate release metadata
         id: metadata
         env:
           MANUAL_PUBLISH: ${{ inputs.publish }}
           GITHUB_ONLY: ${{ inputs.github_only }}
           REUSE_PLAN: ${{ inputs.reuse_plan }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          publish=false
-          tag_name=""
-
-          if [[ "${GITHUB_ONLY}" == "true" && ( "${MANUAL_PUBLISH}" == "true" || -z "${REUSE_PLAN}" ) ]]; then
-            echo "GitHub-only publishing requires reuse_plan and publish=false." >&2
-            exit 1
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-              tag_version="${GITHUB_REF_NAME#v}"
-              if [[ "${tag_version}" != "${version}" ]]; then
-                echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${version}." >&2
-                exit 1
-              fi
-              git fetch --no-tags origin master
-              if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/master; then
-                echo "Tagged commit must be contained in origin/master." >&2
-                exit 1
-              fi
-              publish=true
-              tag_name="${GITHUB_REF_NAME}"
-            fi
-          elif [[ "${MANUAL_PUBLISH}" == "true" || "${GITHUB_ONLY}" == "true" ]]; then
-            if [[ "${GITHUB_REF_NAME}" != "master" ]]; then
-              echo "Manual publishing is allowed only from master." >&2
-              exit 1
-            fi
-            publish=true
-            tag_name="v${version}"
-          fi
-
-          echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
-          echo "tag_name=${tag_name}" >> "${GITHUB_OUTPUT}"
+        run: node scripts/release/release-plan.cjs
 
 
   publish:
@@ -132,7 +99,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - uses: actions/download-artifact@v4
@@ -157,6 +124,16 @@ jobs:
             node scripts/release/verify-release-hash.cjs "$package"
             node scripts/release/verify-release-acceptance.cjs "$package" acceptance-evidence "$target"
           done
+
+      - name: Extract versioned release notes
+        run: node scripts/release/release-plan.cjs --notes
+
+      - name: Verify release destination
+        id: destination
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag_name }}
+        run: node scripts/release/verify-release-destination.cjs
 
       - name: Verify Open VSX credentials
         if: ${{ !inputs.github_only }}
@@ -198,6 +175,7 @@ jobs:
             cp "packages/candidate-$target/candidate.vsix" "release-assets/dynasense-${{ needs.metadata.outputs.version }}-$target.vsix"
           done
       - name: Create GitHub Release
+        if: ${{ steps.destination.outputs.published != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.metadata.outputs.tag_name }}
@@ -206,9 +184,9 @@ jobs:
           files: release-assets/*.vsix
           fail_on_unmatched_files: true
           draft: true
-          generate_release_notes: true
-          append_body: true
-          body_path: .github/release-appendix.md
+          generate_release_notes: false
+          append_body: false
+          body_path: release-notes.md
       - name: Publish completed GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -219,7 +197,7 @@ jobs:
           const { execFileSync } = require('node:child_process');
           const releases = JSON.parse(execFileSync('gh', ['api', `repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=100`], { encoding: 'utf8' }));
           const release = releases.find(item => item.tag_name === process.env.RELEASE_TAG);
-          assert.ok(release?.draft, 'Expected draft release');
+          assert.ok(release, 'Expected release');
           const files = fs.readdirSync('release-assets').filter(name => name.endsWith('.vsix')).sort();
           assert.equal(files.length, 3);
           assert.deepEqual(release.assets.map(asset => asset.name).sort(), files);
@@ -230,7 +208,9 @@ jobs:
             assert.equal(asset.digest, `sha256:${crypto.createHash('sha256').update(bytes).digest('hex')}`);
           }
           NODE
-          gh release edit "$RELEASE_TAG" --tag "$RELEASE_TAG" --draft=false --latest
+          if [[ "${{ steps.destination.outputs.published }}" != "true" ]]; then
+            gh release edit "$RELEASE_TAG" --tag "$RELEASE_TAG" --draft=false --latest
+          fi
 
       - name: Create marketplace release verification issue
         if: ${{ !inputs.github_only }}

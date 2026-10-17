@@ -30,34 +30,18 @@
 
 ![Field help in the editor](./images/field-help-en.png)
 
-### Large files and sidebar modes
-
-Opening a file of 50 MiB or more from the Include Tree, Keyword Index, or Entity References uses the large-file view. You can also choose **Open in DynaSense Large File Viewer** from the editor or Explorer context menu. Select a supported field to read its help.
-
-You can scroll and use Page Up/Page Down while indexing continues. The compact progress indicator uses scanned bytes; its tooltip shows the scanned and total sizes. Field help becomes available for completed keyword blocks whose context is confirmed. Until the total line count is known, the scroll range grows as more content becomes available; finishing the index keeps your current position. Exact line jumps, full-file search and entity queries become available after indexing.
-
-Use the pencil icon in the toolbar, or right-click a record or field and choose **Open in Text Editor**, to edit at that position in the native editor. The large-file view retains browsing and field help and no longer edits records. Existing unsaved native text is retained; inserted or deleted lines can shift the target. Native editor size and memory limits still apply. Legacy recovery backups remain supported: recovered changes must be saved as a separate copy before opening the native editor; auto-save cannot overwrite the original. Cancelling leaves the recovery content and original file intact.
-
-The Include Tree mode button cycles through include order, file size (largest first), and file name. The Keyword Index defaults to categories for new workspaces and cycles through categories, source order, and keyword A–Z. Both retain your choice. The manual search button switches between keywords and titles and full text; its tooltip identifies the current mode and the next action. Column 80 is a visual reference, not a general record-length limit.
-
-While DynaSense is enabled, expanded view headers show their action buttons by default in every workspace. This uses VS Code's **Workbench › View: Always Show Header Actions** setting and also affects other views. Explicit user or workspace settings take precedence. DynaSense does not write to your settings files; disabling or uninstalling it removes this contributed default.
-
 ### Key Shortcuts
 
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| Tab / Shift+Tab | Select and navigate fields | Select the current editable field first; press again to move forward or backward |
+| Tab / Shift+Tab | Jump fields | Navigate through card fields like Excel cells |
 | Delete / Backspace | Clean without shifting | Clears a selected supported field with spaces, preserving subsequent columns |
 | `$` or `$#` | Insert header | Instantly generate aligned comment headers for field names |
 | Ctrl + / | Toggle comment | Quick toggle for LS-DYNA `$` comment lines |
 | Ctrl + Alt + Up/Down | Jump keyword | Move directly to the previous / next keyword |
 | F2 | Rename parameter | Rename &param across the current document |
 
-### Parameter completion and navigation
-
-After scanning the main deck in the Include Tree, type `&` in a supported numeric field to complete parameters visible at that position. Numeric parameter expressions also support name completion. Suggestions show the type, defining file and a value only when it is confirmed; definitions later in the input are excluded. Fixed-width completion preserves adjacent fields.
-
-Use **Go to Definition** or **Peek Definition** to resolve a parameter by definition order, LOCAL scope and MUTABLE redefinitions. These actions require confirmed context; repeated include occurrences can have different bindings. **Find references** searches same-name uses in the scanned Include tree, reading each physical file once and excluding declaration locations. Without a matching scanned tree, it searches the current file. Results and incomplete-query notices appear briefly in the status bar. Reference lookup runs on demand and is bounded to 64 MiB of text, 1,000 locations and a work budget per request. Large native text documents retain the existing automatic-scan guard. Character-based include-path expansion and project-wide rename are not supported; F2 retains its current-document behavior.
+After scanning the main deck in the Include Tree, type `&` in a supported numeric field to complete parameters. Use **Go to Definition**, **Peek Definition** and **Find References** to navigate parameter usage across included files.
 
 ---
 
@@ -68,7 +52,7 @@ Use **Go to Definition** or **Peek Definition** to resolve a parameter by defini
 When editing .k files in ordinary text editors, an accidental keystroke or deletion often shifts subsequent numbers, causing syntax errors during solver submission.
 
 DynaSense provides built-in column width protection:
-- **Smart Navigation**: In ordinary editable fixed-width fields, the first Tab or Shift+Tab selects the field under the caret so you can type to replace it. Press again to select the next or previous field, including after typing. Moving the caret to another field starts with selecting that field. Parameter definition and expression records keep their navigation-only behavior; typing `*` or `$` retains normal editing behavior.
+- **Smart Navigation**: Press Tab to navigate through fixed-width fields. Typing replaces fields selected through Tab; typing `*` or `$` retains normal editing behavior.
 - **Misalignment Protection**: Pressing Delete or Backspace clears the selected field and pads with spaces so subsequent columns stay perfectly in place.
 - **Keyword Manager**: Open the card manager from keyword hover actions to preview and inspect field modifications before saving them back to the deck.
 
@@ -158,8 +142,6 @@ Most features work out of the box. Useful settings in VS Code Preferences (`Ctrl
 | `lsdyna.cache.entityIndexMemoryMaxMiB` | `512` | Managed memory budget for model indexing in MiB, shared by query caches, unsaved document indexes, result pages, index build and restore batches and SQLite. This is not a limit on total VS Code process memory. Takes effect after the extension restarts. |
 | `lsdyna.cache.entityIndexDiskMaxMiB` | `4096` | Shared disk budget for model indexes in MiB, including databases, journals and temporary build files. If the budget is exhausted, queries fall back to scanning. Takes effect after the extension restarts. |
 | `lsdyna.cache.memoryMaxMiB` | `48` | Maximum memory cache for background project snapshots in MiB, up to 64 MiB. The UI keeps a separate project-summary cache of up to 32 MiB. Lower this value on memory-constrained workstations. Takes effect after the extension restarts. |
-| `lsdyna.cache.projectSnapshotDiskMaxMiB` | `256` | Legacy setting. |
-| `lsdyna.cache.fileScanDiskMaxMiB` | `256` | Legacy setting. |
 | `lsdyna.cache.fileScanMemoryMaxMiB` | `16` | Maximum memory cache for background file-scan results in MiB, up to 16 MiB. Takes effect after the extension restarts. |
 | `lsdyna.cache.maxAgeDays` | `30` | Maximum idle age of persistent model indexes, up to 30 days. Expired entries are cleaned up when indexing is first used after the extension starts. Takes effect after the extension restarts. |
 | `lsdyna.clearAutoIndentOnEnter` | `false` | Remove indentation copied by the editor after Enter in LS-DYNA files. Disabled by default to preserve intentional indentation and pasted text. |

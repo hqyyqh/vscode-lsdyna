@@ -1366,5 +1366,11 @@
         "ovsx": {
             "@vscode/vsce": "$@vscode/vsce"
         }
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true,
+        "@tybys/wasm-util@0.10.3": true,
+        "@vscode/sqlite3@5.1.14-vscode": true,
+        "@vscode/vsce-sign@2.1.0": true
     }
 }

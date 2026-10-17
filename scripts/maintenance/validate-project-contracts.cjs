@@ -357,7 +357,13 @@ function extractReadmeSettings(text) {
 }
 
 function validateReadmeSettings(filePath, properties, errors) {
+    const guide = path.join(path.dirname(filePath), 'CONTRIBUTING.md');
     const settings = extractReadmeSettings(decodeUtf8Strict(filePath));
+    if (fs.existsSync(guide)) for (const [name, value] of extractReadmeSettings(decodeUtf8Strict(guide))) {
+        if (settings.has(name) && settings.get(name) !== value)
+            errors.push(`${path.basename(filePath)} and CONTRIBUTING.md disagree on default for ${name}`);
+        else settings.set(name, value);
+    }
     const expectedNames = new Set(Object.keys(properties));
     const actualNames = new Set(settings.keys());
     for (const missing of setDifference(expectedNames, actualNames)) {
@@ -406,9 +412,10 @@ function validateWorkflowCoverage(root, errors) {
 
     const releaseWorkflow = decodeUtf8Strict(path.join(root, '.github', 'workflows', 'release.yml'));
     for (const releaseSetting of [
-        'generate_release_notes: true',
-        'append_body: true',
-        'body_path: .github/release-appendix.md',
+        'node scripts/release/release-plan.cjs --notes',
+        'generate_release_notes: false',
+        'append_body: false',
+        'body_path: release-notes.md',
     ]) {
         if (!releaseWorkflow.includes(releaseSetting)) {
             errors.push(`release.yml does not publish stable usage guidance: ${releaseSetting}`);
@@ -768,6 +775,7 @@ function validateProjectContracts(projectRoot = process.cwd(), { publicSource = 
 }
 
 module.exports = {
+    validateReadmeSettings,
     debugStorageErrors,
     INTERNAL_COMMANDS,
     decodeUtf8Strict,

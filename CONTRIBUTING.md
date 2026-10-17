@@ -10,7 +10,7 @@ Thank you for your interest in contributing to DynaSense! We welcome bug fixes, 
 
 ### Quick Start
 1. Fork this repository and create a branch for your feature or fix.
-2. Use Node.js 22 or newer. Install dependencies:
+2. Use Node.js 24 or newer. Install dependencies:
    ```bash
    npm ci
    python -m pip install -r requirements-dev.txt
@@ -31,7 +31,7 @@ Thank you for your interest in contributing to DynaSense! We welcome bug fixes, 
 
 ### 参与步骤
 1. Fork 本仓库并基于最新分支创建您的功能分支。
-2. 使用 Node.js 22 或更新版本，安装依赖并完成初次编译：
+2. 使用 Node.js 24 或更新版本，安装依赖并完成初次编译：
    ```bash
    npm ci
    python -m pip install -r requirements-dev.txt
@@ -62,3 +62,16 @@ the matching VSIX; no compiler or SQLite installation is needed.
 Windows x64 构建需要 MSVC 及对应的 Spectre 库；Linux 和 macOS 需要本机 C++ 构建工具。
 打包流程校验驱动的平台、二进制摘要及 npm 锁文件完整性。用户只需安装对应平台的
 VSIX，无需安装编译器或 SQLite。
+
+## Legacy cache settings / 旧版缓存兼容设置
+
+These settings remain registered for compatibility. Use `lsdyna.cache.entityIndexDiskMaxMiB`
+for the shared disk budget instead. They are omitted from the concise README settings list.
+
+以下设置为兼容旧版配置而保留；统一磁盘预算请使用 `lsdyna.cache.entityIndexDiskMaxMiB`。
+精简后的 README 设置列表不再列出这两项。
+
+| Setting / 设置 | Default / 默认值 | Status / 状态 |
+| --- | --- | --- |
+| `lsdyna.cache.fileScanDiskMaxMiB` | `256` | Deprecated / 已弃用 |
+| `lsdyna.cache.projectSnapshotDiskMaxMiB` | `256` | Deprecated / 已弃用 |
