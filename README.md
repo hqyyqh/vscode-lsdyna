@@ -46,12 +46,18 @@ While DynaSense is enabled, expanded view headers show their action buttons by d
 
 | Shortcut | Action | Description |
 | :--- | :--- | :--- |
-| Tab / Shift+Tab | Jump fields | Navigate through card fields like Excel cells |
+| Tab / Shift+Tab | Select and navigate fields | Select the current editable field first; press again to move forward or backward |
 | Delete / Backspace | Clean without shifting | Clears a selected supported field with spaces, preserving subsequent columns |
 | `$` or `$#` | Insert header | Instantly generate aligned comment headers for field names |
 | Ctrl + / | Toggle comment | Quick toggle for LS-DYNA `$` comment lines |
 | Ctrl + Alt + Up/Down | Jump keyword | Move directly to the previous / next keyword |
 | F2 | Rename parameter | Rename &param across the current document |
+
+### Parameter completion and navigation
+
+After scanning the main deck in the Include Tree, type `&` in a supported numeric field to complete parameters visible at that position. Numeric parameter expressions also support name completion. Suggestions show the type, defining file and a value only when it is confirmed; definitions later in the input are excluded. Fixed-width completion preserves adjacent fields.
+
+Use **Go to Definition** or **Peek Definition** to resolve a parameter by definition order, LOCAL scope and MUTABLE redefinitions. These actions require confirmed context; repeated include occurrences can have different bindings. **Find references** searches same-name uses in the scanned Include tree, reading each physical file once and excluding declaration locations. Without a matching scanned tree, it searches the current file. Results and incomplete-query notices appear briefly in the status bar. Reference lookup runs on demand and is bounded to 64 MiB of text, 1,000 locations and a work budget per request. Large native text documents retain the existing automatic-scan guard. Character-based include-path expansion and project-wide rename are not supported; F2 retains its current-document behavior.
 
 ---
 
@@ -62,7 +68,7 @@ While DynaSense is enabled, expanded view headers show their action buttons by d
 When editing .k files in ordinary text editors, an accidental keystroke or deletion often shifts subsequent numbers, causing syntax errors during solver submission.
 
 DynaSense provides built-in column width protection:
-- **Smart Navigation**: Press Tab to navigate through fixed-width fields. Typing replaces fields selected through Tab; typing `*` or `$` retains normal editing behavior.
+- **Smart Navigation**: In ordinary editable fixed-width fields, the first Tab or Shift+Tab selects the field under the caret so you can type to replace it. Press again to select the next or previous field, including after typing. Moving the caret to another field starts with selecting that field. Parameter definition and expression records keep their navigation-only behavior; typing `*` or `$` retains normal editing behavior.
 - **Misalignment Protection**: Pressing Delete or Backspace clears the selected field and pads with spaces so subsequent columns stay perfectly in place.
 - **Keyword Manager**: Open the card manager from keyword hover actions to preview and inspect field modifications before saving them back to the deck.
 

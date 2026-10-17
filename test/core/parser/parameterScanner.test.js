@@ -23,6 +23,25 @@ function permutations(values) {
 }
 
 describe('parameterScanner', () => {
+    it('keeps function commas inside fixed and comma-format expressions, including continuations', () => {
+        for (const width of [10, 20]) {
+            const index = scan(['*KEYWORD' + (width === 20 ? ' LONG=Y' : ''),
+                '*PARAMETER_EXPRESSION', 'Rresult'.padEnd(width) + 'min(1,max(2,3))',
+                ' '.repeat(width) + '+sign(4,-1)', 'Rother,min(5,6)',
+                'Rpadded'.padEnd(width) + ',min(7,8)'].join('\n'));
+            assert.equal(firstDefinition(index, 'RESULT').value, 'min(1,max(2,3))\n+sign(4,-1)');
+            assert.equal(firstDefinition(index, 'OTHER').value, 'min(5,6)');
+            assert.equal(firstDefinition(index, 'PADDED').value, 'min(7,8)');
+        }
+    });
+
+    it('does not treat character expression text as bare or inline numeric references', () => {
+        const index = scan(['*PARAMETER', 'Rbase,2', '*PARAMETER_EXPRESSION',
+            'Clabel,base', '          base', 'Cmarkup,<base>,', 'Rnumber,base+1'].join('\n'));
+        assert.equal(firstDefinition(index, 'LABEL').value, 'base\nbase');
+        assert.deepEqual(index.references.map(ref => [ref.name, ref.lineIndex]), [['BASE', 6]]);
+    });
+
     it('suppresses definitions and references inside COMMENT ranges', () => {
         const index = scan([
             '*PARAMETER',

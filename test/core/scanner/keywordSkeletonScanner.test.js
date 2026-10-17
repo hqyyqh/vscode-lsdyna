@@ -13,6 +13,14 @@ function writeFixture(name, text) {
 }
 
 describe('scanKeywordSkeletonFromFile', () => {
+    it('records conservative parameter candidates in mesh fast paths and final lines', async () => {
+        const text = '*NODE\n1,0,0,0\n2,&base,0,0\n*ELEMENT_MASS\n1,2,<base+1>\n*NODE\n3,0,0,0\n*NODE\n4,&last,0,0';
+        for (const highWaterMark of [7, 1024]) {
+            const blocks = await scanKeywordSkeletonFromFile(writeFixture('parameter-markers.k', text), { highWaterMark });
+            assert.deepEqual(blocks.map(block => block.parameterCandidates), [true, true, false, true]);
+        }
+    });
+
     it('counts mesh rows after prefix capture without changing physical positions', async () => {
         const text = '*NODE\r\n1,0,0,0\r\n  2,1,0,0\r\n$ comment\r\n\r\n  3,2,0,0\r\n*END\r\n';
         const file = writeFixture('mesh-prefix.k', text);

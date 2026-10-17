@@ -12,9 +12,15 @@ describe('remaining TITLE prefix display-only operation boundaries', function ()
     this.timeout(120000);
     it('preserves explicit parameter references inside display-only native fields', async () => {
         const doc = fakeDoc('*PARAMETER\nIPID     42\n*DEFINE_CONTROL_VOLUME_TITLE\nVolume\n&PID,0,0\n*END');
-        const locations = await new extension.LsdynaReferenceProvider().provideReferences(doc,
-            new vscode.Position(4, 2), { includeDeclaration: true }, { isCancellationRequested: false });
-        assert.deepEqual(locations.map(location => location.range.start.line), [1, 4]);
+        extension.setReferenceQueryClientForTesting(require('../../support/parameter-project.cjs').parameterDocumentQueryClient(doc));
+        try {
+            const locations = await new extension.LsdynaReferenceProvider().provideReferences(doc,
+                new vscode.Position(4, 2), { includeDeclaration: true }, { isCancellationRequested: false });
+            assert.deepEqual(locations.map(location => location.range.start.line), [4]);
+            const definition = await new extension.LsdynaDefinitionProvider().provideDefinition(doc,
+                new vscode.Position(4, 2), { isCancellationRequested: false });
+            assert.equal(definition.range.start.line, 1);
+        } finally { extension.setReferenceQueryClientForTesting(null); }
     });
     it('accounts for all 21 identities and verifies displayed native identities without edit authorization', async () => {
         const report = fixture;

@@ -4,8 +4,8 @@ const { runTests } = require('./vsix-host.cjs');
 const { resolveVSCodeExecutable } = require('./run-editor-safety-extension-host.cjs');
 async function main() {
     const phase = process.argv[2] || 'smoke';
-    if (!['smoke', 'activation', 'hover', 'manager', 'experience', 'choices', 'catalog', 'completion', 'reference-hover', 'entity-pages', 'sqlite', 'cache-settings', 'column-guides', 'header-actions'].includes(phase)) throw Error('Unknown release host phase');
-    if (['experience', 'column-guides', 'header-actions'].includes(phase)) {
+    if (!['smoke', 'activation', 'hover', 'manager', 'experience', 'choices', 'catalog', 'completion', 'reference-hover', 'entity-pages', 'sqlite', 'cache-settings', 'column-guides', 'header-actions', 'parameters', 'field-navigation', 'parameter-symbols', 'parameter-navigation'].includes(phase)) throw Error('Unknown release host phase');
+    if (['experience', 'column-guides', 'header-actions', 'parameters', 'field-navigation', 'parameter-symbols', 'parameter-navigation'].includes(phase)) {
         if (phase === 'experience') process.env.LSDYNA_RELEASE_MANUAL_FIXTURE = '1';
         process.env.LSDYNA_RELEASE_CDP_PORT = String(await new Promise(resolve => {
             const server = require('node:net').createServer();

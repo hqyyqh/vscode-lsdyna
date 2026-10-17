@@ -75,6 +75,13 @@ function createBinding(event, existing = null, state = null) {
         noecho: event.noecho === true,
         parameterUsageType: event.parameterUsageType || null,
         definitionLine: event.lineIndex,
+        ...(Number.isInteger(event.startChar) && Number.isInteger(event.length) && event.length > 0 ? {
+            definitionStart: event.startChar,
+            definitionLength: event.length,
+            filePath: state?.localFrames[state.localFrames.length - 1]?.filePath,
+            occurrenceId: state?.localFrames[state.localFrames.length - 1]?.occurrenceId,
+            sequence: event.sequence,
+        } : {}),
         keyword: event.keyword,
         ...evaluated,
     };

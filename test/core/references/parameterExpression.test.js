@@ -3,9 +3,17 @@ const { evaluateParameterExpression: evaluate } = require('../../../out/core/ref
 const environment = require('../../../out/core/references/parameterEnvironment');
 
 describe('bounded parameter expressions', () => {
+    it('uses the declaration name rules when reading a parameter-valued field', () => {
+        const { parseNumericInput } = require('../../../out/core/references/referenceInputValue');
+        for (const name of ['foo-bar', 'TIME', 'ABCDEFGHIJ', '2start']) {
+            assert.equal(parseNumericInput('&' + name).kind, 'invalid', name);
+        }
+        assert.equal(parseNumericInput('-&alpha_123').kind, 'parameter');
+    });
     const calc = source => evaluate(source, () => null);
     it('honors numeric types, power precedence and Fortran rounding', () => {
-        for (const [source, value] of [['2/5', 0], ['2.0/5', .4], ['-2**2', -4], ['2**3**2', 512],
+        for (const [source, value] of [['2/5', 0], ['2.0/5', .4], ['-2**2', 4], ['-3**2', 9],
+            ['-(3**2)', -9], ['2**-2', 0], ['2.0**-2', .25], ['2**3**2', 512],
             ['nint(-2.5)', -3], ['aint(-2.9)', -2], ['mod(-7,3)', -1], ['sqrt(9)+abs(-2)', 5]]) {
             const result = calc(source);
             assert.equal(result.resolved, true, source);

@@ -7,6 +7,16 @@ const { LargeFileViewerProvider } = require('../../src/client/LargeFileViewerPro
 const { buildFileIndex } = require('../../src/core/scanner/fileIndexBuilder');
 
 describe('large-file viewer scanner contract', () => {
+    it('shows the same current parameter rules in large-file field help without mutating source metadata', async () => {
+        const provider = new LargeFileViewerProvider('', { get() {}, update() {} }, {});
+        const session = searchSession(provider, path.join(os.tmpdir(), 'parameter-help.k'));
+        const field = { n: 'PRMR1', t: 'string', h: 'Old 7 characters description' };
+        session.fields = new Map([['field', { generation: 1, field, keyword: 'PARAMETER_LOCAL', cardIndex: 1, rawValue: 'Rfoo' }]]);
+        assert.equal(await provider.selectField(session, 'field'), true);
+        assert.ok(session.state.selectedField.englishHelp.includes('1-9'));
+        assert.ok(session.state.selectedField.localizedHelp.includes('字符'));
+        assert.equal(field.h, 'Old 7 characters description');
+    });
     it('packages Codicon with a relative CSS URL that resolves inside the webview bundle', () => {
         const root = path.resolve(__dirname, '../../out/webview/large-file-viewer');
         const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));

@@ -61,7 +61,8 @@ describe('official reference-semantics fixtures', () => {
         assert.equal(plain.isSignedSwitch, false);
         assert.equal(signed.kind, 'parameter');
         assert.equal(signed.isSignedSwitch, true);
-        assert.equal(parseFieldReferenceValue('&A-B', { allowSignedSwitch: true }).parameterName, 'A-B');
+        // R17 PARAMETER names allow letters, digits and underscores, not hyphens.
+        assert.equal(parseFieldReferenceValue('&A-B', { allowSignedSwitch: true }), null);
     });
 
     it('applies one numeric IDFOFF while parameterized IDFOFF remains uncertain', async () => {

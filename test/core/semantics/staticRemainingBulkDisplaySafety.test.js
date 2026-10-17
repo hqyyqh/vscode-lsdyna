@@ -14,9 +14,15 @@ describe('static remaining bulk display-only operation boundaries', function () 
     this.timeout(120000);
     it('retains explicit parameter references in a newly bound native field', async () => {
         const doc = fakeDoc('*PARAMETER\nIPID     42\n*MAT_007\n&PID,0,0,0,0,0,0,0\n*END');
-        const locations = await new extension.LsdynaReferenceProvider().provideReferences(doc,
-            new vscode.Position(3, 2), { includeDeclaration: true }, { isCancellationRequested: false });
-        assert.deepEqual(locations.map(location => location.range.start.line), [1, 3]);
+        extension.setReferenceQueryClientForTesting(require('../../support/parameter-project.cjs').parameterDocumentQueryClient(doc));
+        try {
+            const locations = await new extension.LsdynaReferenceProvider().provideReferences(doc,
+                new vscode.Position(3, 2), { includeDeclaration: true }, { isCancellationRequested: false });
+            assert.deepEqual(locations.map(location => location.range.start.line), [3]);
+            const definition = await new extension.LsdynaDefinitionProvider().provideDefinition(doc,
+                new vscode.Position(3, 2), { isCancellationRequested: false });
+            assert.equal(definition.range.start.line, 1);
+        } finally { extension.setReferenceQueryClientForTesting(null); }
     });
     it('checks all proven bindings in four formats against archived records and protects read-only files', async () => {
         const references = new extension.LsdynaReferenceProvider();

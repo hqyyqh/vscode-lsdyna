@@ -316,11 +316,11 @@ describe("keyword catalog reference scanner", () => {
     });
 
     it('keeps packed negative values and signed PART/SET_PART IDs separate on the product scanner', async () => {
-        for (const value of [-73, 73, 0, '-&CURVE']) {
+        for (const value of [-73, 73, 0, '-&CURVEID', '-&CURVE']) {
             const row = [1, 0, 0, 0, 0, 0, value, 0].map(x => String(x).padStart(10)).join('');
             const result = await scan('PART', '*PART\nPart\n' + row);
             const references = result.referenceOccurrences.filter(item => item.fieldName === 'ADPOPT');
-            assert.equal(references.length, value === -73 || value === '-&CURVE' ? 1 : 0);
+            assert.equal(references.length, value === -73 || value === '-&CURVEID' ? 1 : 0);
             if (references.length) {
                 assert.deepEqual(references[0].targetKinds, ['curve']);
                 assert.ok(references[0].sourceRuleId.startsWith('lspp:-4864:'));

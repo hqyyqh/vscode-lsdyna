@@ -133,6 +133,8 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
             opaqueActive = false;
         }
 
+        const activeBlock = currentBlockOpen ? blocks[blocks.length - 1] : null;
+        if (activeBlock && (lineBuffer.includes(0x26) || lineBuffer.includes(0x3c))) activeBlock.parameterCandidates = true;
         const parsed = extractKeywordFromLine(lineBuffer);
         if (!parsed) {
             const block = currentBlockOpen ? blocks[blocks.length - 1] : null;
@@ -169,6 +171,7 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                 isElementBlock: isElementKeyword(parsed.keyword),
             },
             dataLineCount: 0,
+            parameterCandidates: false,
             ...(opaqueDirective
                 ? {
                     opaqueKind: opaqueDirective.kind,
@@ -216,6 +219,8 @@ async function scanKeywordSkeletonFromFile(filePath, options: KeywordSkeletonSca
                     dataStart < nextNewLine && combined[dataStart] >= 0x30 && combined[dataStart] <= 0x39) {
                     options.onLineStart?.(lineIndex, startOffset);
                     block.dataLineCount++;
+                    const row = combined.subarray(offset, nextNewLine);
+                    if (row.includes(0x26) || row.includes(0x3c)) block.parameterCandidates = true;
                 } else {
                     processLine(combined.subarray(offset, nextNewLine), startOffset, lineIndex);
                 }

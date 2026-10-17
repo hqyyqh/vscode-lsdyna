@@ -1617,7 +1617,7 @@ async function assertRendererMultiCursorKeysStayNativeAndUndoable() {
             'renderer-multi.key',
             new vscode.Selection(2, 0, 2, 0),
         );
-        deleteEditor.selection = new vscode.Selection(2, 0, 2, 0);
+        deleteEditor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await addCursorBelow(deleteEditor);
         await dispatchRendererKey(devTools, 'Delete', 'Delete', 46);
@@ -1636,7 +1636,7 @@ async function assertRendererMultiCursorKeysStayNativeAndUndoable() {
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
         await undoWithRenderer(tabDocument, tabOriginal);
 
-        deleteEditor.selection = new vscode.Selection(2, 0, 2, 0);
+        deleteEditor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         deleteEditor.selection = new vscode.Selection(2, 24, 2, 24);
         await addCursorBelow(deleteEditor);
@@ -1656,7 +1656,7 @@ async function assertRendererMultiCursorKeysStayNativeAndUndoable() {
         assert.deepStrictEqual(workspaceSnapshot(), workspaceBefore);
         await undoWithRenderer(tabDocument, tabOriginal);
 
-        deleteEditor.selection = new vscode.Selection(2, 0, 2, 0);
+        deleteEditor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         const primaryTypeSelection = deleteEditor.selection;
         const secondaryTypeSelection = new vscode.Selection(
@@ -1924,7 +1924,7 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
         });
         const original = document.getText();
         const originalLine = document.lineAt(2).text;
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await waitForRendererEditorFocus(devTools);
@@ -1989,7 +1989,7 @@ async function assertRendererContextMenuPasteAndCutAreScopedAndUndoable() {
 
         // Cut through the visible context menu must preserve the later fields,
         // and one renderer undo must restore the exact pre-Cut buffer.
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('type', { text: '1234' });
         await waitForAssertion(() => {
@@ -2086,7 +2086,7 @@ async function assertCellDeleteCannotModifyReadonlyDeck() {
             'extension.lsdynaCellDeleteRight',
             'extension.lsdynaCellDeleteLeft',
         ]) {
-            editor.selection = new vscode.Selection(2, 0, 2, 0);
+            editor.selection = new vscode.Selection(2, 8, 2, 8);
             await vscode.commands.executeCommand('extension.lsdynaTab');
             await vscode.commands.executeCommand(command);
             await new Promise(resolve => setTimeout(resolve, 50));
@@ -2094,7 +2094,7 @@ async function assertCellDeleteCannotModifyReadonlyDeck() {
             assert.strictEqual(document.isDirty, false, command);
         }
 
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('type', { text: '9' });
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -2135,7 +2135,7 @@ async function assertCellDeleteAndEnterUseCurrentExternalVersion() {
         });
         const workspaceAfterExternal = workspaceSnapshot();
 
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('extension.lsdynaCellDeleteRight');
         const deletedLine = document.lineAt(2).text;
@@ -2178,7 +2178,7 @@ async function assertTypeAfterExternalReloadCannotCollapseColumns() {
     const externalText = original.replace(originalLine, externalLine);
 
     try {
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         fs.writeFileSync(fixturePath, externalText, 'utf8');
         await waitForAssertion(() => {
@@ -2221,7 +2221,7 @@ async function assertCellDeleteAndBackspaceAreLocalAndUndoable() {
     const original = document.getText();
     const originalLine = document.lineAt(2).text;
 
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await vscode.commands.executeCommand('extension.lsdynaCellDeleteRight');
 
@@ -2234,7 +2234,7 @@ async function assertCellDeleteAndBackspaceAreLocalAndUndoable() {
     assert.strictEqual(document.getText(), original);
     assert.strictEqual(document.isDirty, false);
 
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await vscode.commands.executeCommand('type', { text: '1234' });
     const beforeBackspace = document.getText();
@@ -2328,7 +2328,7 @@ async function assertRendererCompletionBackspaceKeepsFixedColumns() {
     const { document, editor } = await openFixture('fixed.key');
     const original = document.getText();
     const originalLine = document.lineAt(2).text;
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     const devTools = await connectWorkbenchDevTools();
     try {
@@ -2453,7 +2453,7 @@ async function assertLargeNodeBlockKeepsSchemaAfterEdit() {
 
         const targetLine = 90_000;
         const targetText = document.lineAt(targetLine).text;
-        editor.selection = new vscode.Selection(targetLine, 0, targetLine, 0);
+        editor.selection = new vscode.Selection(targetLine, 8, targetLine, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
 
         assert.strictEqual(document.lineAt(targetLine).text, targetText);
@@ -2565,7 +2565,7 @@ async function assertEmptyCellBackspaceMovesWithoutWriting() {
     const { document, editor } = await openFixture('fixed-empty-field.key');
     const original = document.getText();
 
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     assert.strictEqual(editor.selection.start.character, 9);
     assert.strictEqual(editor.selection.end.character, 24);
@@ -3608,6 +3608,8 @@ async function assertIncludeCaseActionRevalidatesAfterCaseOnlyRename() {
         const { document, editor } = await openFixture('include-case-only.key');
         const original = document.getText();
         editor.selection = new vscode.Selection(2, 2, 2, 2);
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await waitForRendererEditorFocus(devTools);
         await waitForAssertion(() => {
             const diagnostics = vscode.languages.getDiagnostics(document.uri);
             assert.ok(diagnostics.some(
@@ -3766,7 +3768,7 @@ async function assertCellTypeIsLocalAndUndoable() {
     const { document, editor } = await openFixture('fixed.key');
     const original = document.getText();
     const originalLine = document.lineAt(2).text;
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
 
     await vscode.commands.executeCommand('extension.lsdynaTab');
     assert.strictEqual(editor.selection.start.character, 9);
@@ -3821,7 +3823,7 @@ async function assertCommaTabRequiresExplicitConversionAndUndo() {
 async function assertOverWidthTypeIsRejectedAtomically() {
     const { document, editor } = await openFixture('fixed.key');
     const original = document.getText();
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
 
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await vscode.commands.executeCommand('type', { text: '12345678901234567' });
@@ -4563,7 +4565,7 @@ async function assertCommittedImeTextIsEditorLocalAndUndoable() {
     const { document: fixedDocument, editor: fixedEditor } = await openFixture('fixed.key');
     const fixedOriginal = fixedDocument.getText();
     const fixedOriginalLine = fixedDocument.lineAt(2).text;
-    fixedEditor.selection = new vscode.Selection(2, 0, 2, 0);
+    fixedEditor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await vscode.commands.executeCommand('type', { text: '中文' });
     const fixedChangedLine = fixedDocument.lineAt(2).text;
@@ -4573,7 +4575,7 @@ async function assertCommittedImeTextIsEditorLocalAndUndoable() {
     await vscode.commands.executeCommand('undo');
     assert.strictEqual(fixedDocument.getText(), fixedOriginal);
     assert.strictEqual(fixedDocument.isDirty, false);
-    fixedEditor.selection = new vscode.Selection(2, 0, 2, 0);
+    fixedEditor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
 
     await vscode.window.showTextDocument(plainDocument, {
@@ -4671,7 +4673,7 @@ async function assertRendererImeCompositionIsLocalAndUndoable() {
         const fixedOriginal = fixedDocument.getText();
         const fixedLine = fixedDocument.lineAt(2).text;
         const selectFixedCell = async () => {
-            fixedEditor.selection = new vscode.Selection(2, 0, 2, 0);
+            fixedEditor.selection = new vscode.Selection(2, 8, 2, 8);
             await vscode.commands.executeCommand('extension.lsdynaTab');
             assert.strictEqual(fixedEditor.selection.start.character, 9);
             assert.strictEqual(fixedEditor.selection.end.character, 24);
@@ -4725,7 +4727,7 @@ async function assertRendererImeCompositionCancelRestoresCell() {
     try {
         const { document, editor } = await openFixture('fixed-stale-nav.key');
         const original = document.getText();
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await waitForRendererEditorFocus(devTools);
@@ -4758,7 +4760,7 @@ async function assertRendererImeCompositionOverWidthIsRejected() {
         const { document, editor } = await openFixture('fixed-empty-field.key');
         const original = document.getText();
         const tooWideComposition = '超'.repeat(17);
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         await waitForRendererEditorFocus(devTools);
@@ -4956,7 +4958,7 @@ async function runPasteIntoSelectedCellAssertions() {
                     nav: guard?.getNav?.() || null,
                 });
             });
-            editor.selection = new vscode.Selection(2, 0, 2, 0);
+            editor.selection = new vscode.Selection(2, 8, 2, 8);
             await vscode.commands.executeCommand('extension.lsdynaTab');
             const versionAfterTab = document.version;
             const navAfterTab = guard?.getNav?.() || null;
@@ -5012,7 +5014,7 @@ async function runPasteIntoSelectedCellAssertions() {
     }
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('9.5');
     await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
@@ -5034,7 +5036,7 @@ async function runPasteIntoSelectedCellAssertions() {
     assert.strictEqual(document.isDirty, false);
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('9.5');
     await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
@@ -5050,7 +5052,7 @@ async function runPasteIntoSelectedCellAssertions() {
     assert.strictEqual(document.isDirty, false);
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('9.5');
     await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
@@ -5071,7 +5073,7 @@ async function runPasteIntoSelectedCellAssertions() {
     assert.strictEqual(document.isDirty, false);
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('12345678901234567');
     const beforeOverflowPasteVersion = document.version;
@@ -5085,7 +5087,7 @@ async function runPasteIntoSelectedCellAssertions() {
     });
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await vscode.commands.executeCommand('type', { text: '9' });
     const beforeApPaste = document.getText();
@@ -5104,7 +5106,7 @@ async function runPasteIntoSelectedCellAssertions() {
     assert.strictEqual(document.isDirty, false);
 
     await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
-    editor.selection = new vscode.Selection(2, 0, 2, 0);
+    editor.selection = new vscode.Selection(2, 8, 2, 8);
     await vscode.commands.executeCommand('extension.lsdynaTab');
     await writeClipboardText('9\n5');
     const beforeMultilinePasteVersion = document.version;
@@ -5119,7 +5121,7 @@ async function runPasteIntoSelectedCellAssertions() {
     for (let iteration = 0; iteration < 40; iteration++) {
         await prepareOwnEditorFocus(nativeInputDevTools, document, editor);
         const selectionSettleMs = [0, 1, 5, 10, 19, 20, 21, 50, 100][iteration % 9];
-        editor.selection = new vscode.Selection(2, 0, 2, 0);
+        editor.selection = new vscode.Selection(2, 8, 2, 8);
         await vscode.commands.executeCommand('extension.lsdynaTab');
         const guard = vscode.extensions
             .getExtension('hqyyqh.dynasense')

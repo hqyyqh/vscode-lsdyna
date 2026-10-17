@@ -61,6 +61,22 @@ exports.run = async () => {
         try { await measure('activation', () => extension.activate()); }
         finally { Module._load = originalLoad; }
         assert.ok(extension.isActive);
+        if (phase === 'parameter-navigation') {
+            await require('./parameter-navigation.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'parameter-symbols') {
+            await require('./parameter-symbols.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'field-navigation') {
+            await require('./field-navigation.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
+        if (phase === 'parameters') {
+            await require('./parameters.cjs').check(root, checks);
+            result.status = 'passed'; return;
+        }
         if (phase === 'header-actions') {
             await require('./header-actions.cjs').check(root, checks);
             result.status = 'passed'; return;

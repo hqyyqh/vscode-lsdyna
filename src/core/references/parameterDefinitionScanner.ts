@@ -59,6 +59,10 @@ function definitionEvent(definition) {
         keyword: definition.keyword,
         lineIndex: definition.lineIndex,
         sequence: definition.sequence,
+        startChar: definition.startChar,
+        length: definition.length,
+        availableLine: definition.lineIndex,
+        availableCharacter: definition.valueStartChar + definition.valueLength,
         name: definition.normalizedName,
         rawName: definition.name,
         parameterType: definition.parameterType,
@@ -95,6 +99,8 @@ function scanParameterDefinitionBlock(block, text, options: { globalLongFormat?:
         if (parsed.isContinuation) {
             if (currentExpressionEvent && parsed.expressionSegments[0]) {
                 currentExpressionEvent.rawValue += `\n${parsed.expressionSegments[0].text}`;
+                currentExpressionEvent.availableLine = entry.lineIndex;
+                currentExpressionEvent.availableCharacter = entry.text.length;
             }
             continue;
         }

@@ -98,8 +98,9 @@ export function evaluateParameterExpression(source: string, lookup: (name: strin
     function expression(minimum: number, depth: number): ParameterNumber {
         step(depth); space();
         let left: ParameterNumber;
-        if (take('+')) left = expression(3, depth + 1);
-        else if (take('-')) { const arg = expression(3, depth + 1); left = numeric(-arg.value, arg.valueState === 'integer'); }
+        // LS-DYNA R17, PARAMETER 36-9: unary signs bind before exponentiation.
+        if (take('+')) left = expression(4, depth + 1);
+        else if (take('-')) { const arg = expression(4, depth + 1); left = numeric(-arg.value, arg.valueState === 'integer'); }
         else left = atom(depth);
         for (;;) {
             space();

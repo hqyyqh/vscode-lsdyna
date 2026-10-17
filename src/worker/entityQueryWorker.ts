@@ -80,6 +80,31 @@ export class EntityQueryWorker {
             (request.mode === 'preview' ? ['curve', 'table'] : []);
         try {
         let snapshot = await this.loadStructure(request.rootFile, { singleFileOnly: request.scope === 'single-file' }, token);
+        if (['parameter-completion', 'parameter-navigation'].includes(request.mode)) {
+            const completion = request.mode === 'parameter-completion';
+            if (!Number.isSafeInteger(request.character) || request.character < 0 ||
+                (completion ? typeof request.prefix !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,8}$|^$/.test(request.prefix)
+                    : typeof request.name !== 'string' || !/^[A-Z_][A-Z0-9_]{0,8}$/.test(request.name) ||
+                        typeof request.declaration !== 'boolean' || typeof request.references !== 'boolean' ||
+                        typeof request.includeDeclaration !== 'boolean')) throw new TypeError('Invalid parameter query');
+            if ((completion || !request.references) && request.scope === 'single-file' && [...snapshot.fileIndexes.values()].some((file: any) =>
+                file.keywordBlocks?.some(block => /^\*INCLUDE(?:_|$)/.test(block.keyword))))
+                return { status: 'ready', items: [], reasons: ['parameter-project-context-unavailable'], incomplete: true };
+            const index = await this.service.indexAsync(snapshot, token);
+            const key = JSON.stringify([request.mode, this.fallback.identity(index), request.filePath,
+                request.line, request.character, request.prefix, request.name, request.declaration, request.references, request.includeDeclaration]);
+            const result = this.fallback.get(key) || (completion
+                ? await require('../core/references/visibleParameters').parameterCompletionPage(
+                    index, request.filePath, request.line, request.character, request.prefix, token)
+                : await require('../core/references/parameterNavigation').parameterNavigation(index, snapshot.fileIndexes,
+                    request, token, this.liveSource?.scanBlockLines));
+            this.fallback.set(key, result);
+            if (!await (this.liveSource?.unchanged || entityFilesUnchanged)([...snapshot.fileIndexes].map(([file,index]:any)=>
+                ({file,revision:index.sourceRevision})),token)) return {status:'stale'};
+            const items = boundedIndexPage(result.items, { status: 'ready', ...result, items: [] });
+            return assertIndexPayload({ status: 'ready', ...result, items,
+                incomplete: result.incomplete || items.length !== result.items.length });
+        }
         if (request.mode === 'parameters') {
             if (!Array.isArray(request.fields) || request.fields.length > 200) throw new TypeError('Invalid parameter page');
             const parameterIndex = await this.service.indexAsync(snapshot, token);

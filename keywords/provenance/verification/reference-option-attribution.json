@@ -65,12 +65,12 @@
   },
   "change": {
     "classification": "audit-implementation-drift",
-    "reason": "Reviewed native prefix ID/TITLE projection moves exactly 32 RIGIDWALL coordinates from verified-prefix-layout-with-option to mismatch-independent-of-option; current input identities refreshed without changing semantic rules or permissions."
+    "reason": "PARAMETER P1/P2 adds shared current-manual field help and regenerates tool lineage; reviewed audit inventory and attribution results are unchanged."
   },
   "inputs": {
     "currentDataLineage": {
       "path": "keywords/provenance/current-data.json",
-      "sha256": "f86de355bd2e63b034c5466a66e152ce4d063bda716e1f8ee90b4d9ee765f93c",
+      "sha256": "f1106e4fede69b733d3a6738e1992a9629e2acf5a8bf1edacc378be24a1e604c",
       "size": 972423
     },
     "fieldData": {
@@ -86,8 +86,8 @@
       },
       {
         "path": "src/core/keywordSchema.ts",
-        "sha256": "1ec5cc808862e9ca7b91b76fbc5a91b8d6995d5d3bcf5f0556badfee9b086fd0",
-        "size": 83790
+        "sha256": "9569e1b4c0f5b39db5c05b39404962a683390041d4be5fbd622f0d44546584cb",
+        "size": 84097
       },
       {
         "path": "src/core/keywordDataPath.ts",

@@ -1,5 +1,7 @@
 'use strict';
 
+import { isValidParameterName } from '../parser/parameterSyntax';
+
 type NumericInput =
     | { kind: 'numeric'; raw: string; value: number }
     | { kind: 'parameter'; raw: string; name: string; negated: boolean }
@@ -13,7 +15,7 @@ type ParseNumericInputOptions = {
     absoluteNumeric?: boolean;
 };
 
-const PARAMETER_PATTERN = /^(-?)&([A-Za-z_][A-Za-z0-9_-]{0,8})$/;
+const PARAMETER_PATTERN = /^(-?)&([A-Za-z_][A-Za-z0-9_]{0,8})$/;
 const INTEGER_PATTERN = /^[+-]?\d+(?:\.0*)?$/;
 const NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?$/;
 
@@ -24,7 +26,7 @@ function parseNumericInput(rawValue, options: ParseNumericInputOptions = {}): Nu
     }
 
     const parameterMatch = PARAMETER_PATTERN.exec(raw);
-    if (parameterMatch) {
+    if (parameterMatch && isValidParameterName(parameterMatch[2])) {
         return {
             kind: 'parameter',
             raw,

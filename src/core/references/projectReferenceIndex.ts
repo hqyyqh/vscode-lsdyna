@@ -409,7 +409,7 @@ function* buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             initialUncertaintyReasons: [],
             nativeEmReadLayouts: new Map(),
         };
-        enterParameterFile(parameterState, context.occurrenceId, filePath);
+        enterParameterFile(parameterState, runtimeParameterContext.occurrenceId, filePath);
         recordParameterPoint(index, filePath, runtimeParameterContext, -1, parameterState);
         yield runtimeParameterContext;
 
@@ -465,7 +465,7 @@ function* buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
             }
             if (action.type === 'parameter') {
                 applyParameterEvent(parameterState, action.event);
-                yield recordParameterPoint(
+                const point = recordParameterPoint(
                     index,
                     filePath,
                     runtimeParameterContext,
@@ -473,6 +473,16 @@ function* buildOccurrenceAwareIndex(index, snapshot, fileIndexes) {
                     parameterState,
                     action.event.type === 'definition' ? [action.event.name] : []
                 );
+                if (Number.isInteger(action.event.availableLine)) Object.assign(point, { availableLine: action.event.availableLine,
+                    availableCharacter: action.event.availableCharacter ?? 0 });
+                // A global redefinition can be accepted while a LOCAL binding masks it.
+                const declared = action.event.local
+                    ? parameterState.localFrames[parameterState.localFrames.length - 1]?.bindings.get(action.event.name)
+                    : parameterState.globals.get(action.event.name);
+                if (action.event.type === 'definition' && declared?.filePath && declared.definitionLine === action.lineIndex &&
+                    declared.sequence === action.event.sequence && declared.occurrenceId === runtimeParameterContext.occurrenceId)
+                    Object.assign(point, { definitionBinding: declared });
+                yield point;
                 continue;
             }
             if (action.type === 'definition') {

@@ -95,7 +95,7 @@ const keywordScanner = require('./core/parser/keywordScanner');
 const keywordValidator = require('./core/parser/keywordValidator');
 const { classifyKeywordLine, isKeywordCommentLine } = require('./core/parser/keywordLine');
 const { scanParameterSymbols } = require('./core/parser/parameterScanner');
-const { isValidParameterName, classifyParameterKeyword } = require('./core/parser/parameterSyntax');
+const { isValidParameterName, classifyParameterKeyword, parseParameterDataLine } = require('./core/parser/parameterSyntax');
 const pathCaseFidelity = require('./core/fs/pathCaseFidelity');
 const includePathCompletion = require('./core/completion/includePathCompletion');
 const { createWorkerPool } = require('./worker/workerPool');
@@ -1391,6 +1391,95 @@ function getParameterAtCursor(document, position) {
 
 // --- Parameter providers ---
 
+/** Read only the current record/expression, including names declared in another file. */
+function getScopedParameterAtCursor(document, position) {
+    if (shouldSkipAutomaticDocumentScan(document) || !isActiveLsdynaSemanticLocation(document, position)) return null;
+    const text = document.lineAt(position.line).text;
+    if (text.length > 64 * 1024) return null;
+    if (/^\s*[$*]/.test(text)) return null;
+    const word = /[A-Za-z_][A-Za-z0-9_]{0,8}/g;
+    let candidate;
+    for (const match of text.matchAll(word)) if (position.character >= match.index &&
+        position.character < match.index + match[0].length) candidate = match[0].toUpperCase();
+    const { createParameterLineScanner } = require('./core/parser/parameterScanner');
+    const { scanBareParameterReferences } = require('./core/parser/parameterSyntax');
+    const scan = createParameterLineScanner(false);
+    scan(documentUsesGlobalLongFormat(document) ? '*KEYWORD LONG=Y' : '*KEYWORD', -1);
+    const keywordLine = findEnclosingKeywordLine(document, position.line);
+    if (keywordLine === null) return null;
+    const keyword = document.lineAt(keywordLine).text;
+    scan(keyword, keywordLine);
+    if (classifyParameterKeyword(keyword)?.expression) {
+        if (position.line - keywordLine > 240) return null;
+        let characters = 0;
+        for (let line = keywordLine + 1; line < position.line; line++) {
+            const preceding = document.lineAt(line).text;
+            if ((characters += preceding.length) > 256 * 1024) return null;
+            scan(preceding, line);
+        }
+    }
+    const symbols = scan(text, position.line);
+    const definition = symbols.definitions.find(def => position.character >= def.startChar &&
+        position.character < def.startChar + def.length);
+    if (definition) return { name: definition.normalizedName, declaration: true };
+    const references = [...symbols.references, ...symbols.expressionSegments.flatMap(segment =>
+        scanBareParameterReferences(segment, new Set(candidate ? [candidate] : [])))];
+    const reference = references.find(ref => position.character >= ref.startChar && position.character < ref.startChar + ref.length);
+    return reference ? { name: reference.name, declaration: false } : null;
+}
+
+let parameterReferenceStatus;
+let parameterReferenceQuery = 0;
+let parameterReferenceDocument;
+function clearParameterReferenceStatus() {
+    parameterReferenceStatus?.dispose();
+    parameterReferenceStatus = undefined;
+}
+function showParameterReferenceStatus(key, ...args) {
+    clearParameterReferenceStatus();
+    parameterReferenceStatus = vscode.window.setStatusBarMessage(i18n.get(key, ...args));
+}
+
+async function resolveScopedParameterLocations(document, position, param, references, includeDeclaration, token) {
+    const queryId = references ? ++parameterReferenceQuery : 0;
+    if (references) {
+        parameterReferenceDocument = document;
+        clearParameterReferenceStatus();
+    }
+    const current = createDocumentReadGuard(document);
+    const result = await queryScopedParameters(document, position, {
+        mode: 'parameter-navigation', ...param, references, includeDeclaration,
+    }, token);
+    if (!current() || token?.isCancellationRequested || result?.status === 'cancelled' ||
+        references && queryId !== parameterReferenceQuery) return [];
+    // Definition providers also run for Ctrl-hover; keep those notices unobtrusive.
+    const notify = message => vscode.window.setStatusBarMessage(message, 6000);
+    const notices = [];
+    if (references) {
+        const count = result?.status === 'ready' ? result.items.length : 0;
+        const usage = i18n.get(count === 1 ? 'parameterUsageOne' : 'parameterUsageMany', count);
+        if (result?.status !== 'ready' || result.incomplete) {
+            showParameterReferenceStatus(result?.status === 'limited' || result?.reasons?.some(reason =>
+                ['source-analysis-budget', 'parameter-reference-limit'].includes(reason))
+                ? 'parameterReferencesLimitStatus' : 'parameterReferencesIncompleteStatus', usage);
+        } else if (count === 0) {
+            showParameterReferenceStatus(result.referenceScopeLocal ? 'parameterReferencesLocalEmpty' : 'parameterReferencesEmpty');
+        } else showParameterReferenceStatus(result.referenceScopeLocal
+            ? 'parameterReferencesLocalStatus' : 'parameterReferencesCountStatus', usage);
+    } else if (result?.status !== 'ready' || result.incomplete) {
+        notices.push(i18n.get(result?.status === 'limited' || result?.reasons?.some(reason =>
+            ['source-analysis-budget', 'parameter-reference-limit'].includes(reason)) ? 'parameterQueryLimited'
+            : result?.items?.length ? 'parameterReferencesPartial'
+            : result?.reasons?.includes('parameter-file-required') ? 'parameterFileRequired'
+                : result?.reasons?.includes('parameter-definition-unavailable') ? 'parameterDefinitionUnavailable' : 'parameterScopeUnavailable'));
+    }
+    if (!references && result?.ambiguous) notices.push(i18n.get('parameterNavigationAmbiguous'));
+    if (notices.length) notify(notices.join(' '));
+    if (result?.status !== 'ready') return [];
+    return result.items.map(row => new vscode.Location(vscode.Uri.file(row.filePath),
+        new vscode.Range(row.line, row.startCharacter, row.line, row.endCharacter)));
+}
+
 /**
  * Provider to support 'Go to Definition' command for parameter names.
  * @implements {vscode.DefinitionProvider}
@@ -1404,26 +1493,13 @@ class LsdynaDefinitionProvider {
      * @param {import('vscode').CancellationToken} [token] - Cancellation token.
      * @returns {import('vscode').Definition|Promise<import('vscode').Definition|null>|null} definition destination.
      */
-    provideDefinition(document, position, token) {
-        if (token?.isCancellationRequested) return null;
-        const param = shouldResolveParameterDefinitionAtPosition(document, position)
-            ? getParameterAtCursor(document, position)
-            : null;
+    async provideDefinition(document, position, token) {
+        const current = createDocumentReadGuard(document);
+        if (token?.isCancellationRequested || !await prepareDocumentPresentation(document) || !current()) return null;
+        const param = getScopedParameterAtCursor(document, position);
         if (param) {
-            const definitions = findParameterDefinitions(document).get(param.name.toUpperCase()) || [];
-            const locations = definitions.map(definition =>
-                new vscode.Location(
-                    document.uri,
-                    new vscode.Range(
-                        definition.lineIndex,
-                        definition.startChar,
-                        definition.lineIndex,
-                        definition.startChar + definition.length,
-                    ),
-                )
-            );
-            if (locations.length === 0) return null;
-            return locations.length === 1 ? locations[0] : locations;
+            const locations = await resolveScopedParameterLocations(document, position, param, false, true, token);
+            return locations.length === 1 ? locations[0] : locations.length ? locations : null;
         }
         return this.provideFieldDefinition(document, position, token);
     }
@@ -1467,29 +1543,14 @@ class LsdynaReferenceProvider {
      * @param {import('vscode').ReferenceContext} context - Reference options.
      * @returns {import('vscode').Location[]} References.
      */
-    provideReferences(document, position, context, token = null) {
-        if (token?.isCancellationRequested ||
+    async provideReferences(document, position, context, token = null) {
+        const current = createDocumentReadGuard(document);
+        if (token?.isCancellationRequested || !await prepareDocumentPresentation(document) || !current() ||
             !isActiveLsdynaSemanticLocation(document, position)) return [];
-        const param = getParameterAtCursor(document, position);
+        const param = getScopedParameterAtCursor(document, position);
         if (!param) return this.provideFieldReferences(document, position, context, token);
-        const nameUpper = param.name.toUpperCase();
-        const locations = [];
-
-        if (context.includeDeclaration) {
-            const definitions = findParameterDefinitions(document).get(nameUpper) || [];
-            for (const def of definitions) {
-                locations.push(new vscode.Location(document.uri,
-                    new vscode.Range(def.lineIndex, def.startChar, def.lineIndex, def.startChar + def.length)));
-            }
-        }
-
-        for (const ref of findParameterReferences(document)) {
-            if (ref.name === nameUpper) {
-                locations.push(new vscode.Location(document.uri,
-                    new vscode.Range(ref.lineIndex, ref.startChar, ref.lineIndex, ref.startChar + ref.length)));
-            }
-        }
-        return locations;
+        // Show uses first; definitions remain available through Go to Definition.
+        return resolveScopedParameterLocations(document, position, param, true, false, token);
     }
 
     async provideFieldReferences(document, position, context, token = null) {
@@ -1641,6 +1702,8 @@ function getFieldData() {
  */
 function buildFieldHelpMarkdown(field, context: any = {}) {
     if (!field) return '';
+    const parameterHelp = keywordSchema.parameterFieldHelp(context.keyword || '', field.n || '');
+    if (parameterHelp) field = { ...field, h: parameterHelp };
     const language = i18n.getLanguage();
     const englishHelp = keywordSchema.getEnglishFieldHelp(field);
     let relaxedRecord = null;
@@ -3741,10 +3804,140 @@ class LsdynaFieldHoverProvider {
     }
 }
 
-/**
- * CodeLens provider putting parameter usage reference counts above definition cards.
- * @implements {vscode.CodeLensProvider}
- */
+/** Position-aware numeric parameter suggestions in the native completion widget. */
+class LsdynaParameterCompletionProvider {
+    async provideCompletionItems(document, position, token, context) {
+        if (inlineEditChoiceSession || activeDocumentHasMultipleSelections(document)) return null;
+        if (token?.isCancellationRequested || shouldSkipAutomaticDocumentScan(document)) return null;
+        const current = createDocumentReadGuard(document);
+        if (!await prepareDocumentPresentation(document) || !current() || token?.isCancellationRequested ||
+            !isActiveLsdynaSemanticLocation(document, position)) return null;
+        const text = document.lineAt(position.line).text;
+        if (text.length > 64 * 1024) return null;
+        if (/^\s*[$*]/.test(text)) return null;
+        const match = /(&)([A-Za-z_][A-Za-z0-9_]{0,8})?$|()([A-Za-z_][A-Za-z0-9_]{0,8})$/.exec(text.slice(0, position.character));
+        if (!match) return null;
+        const ampersand = match[1] === '&';
+        const start = match.index + (ampersand ? 1 : 0);
+        if (!ampersand && /[A-Za-z0-9_]/.test(text[start - 1] || '')) return null;
+        const end = position.character + (/^[A-Za-z0-9_]*/.exec(text.slice(position.character))?.[0].length || 0);
+        const keywordLine = findEnclosingKeywordLine(document, position.line);
+        const parameter = keywordLine === null ? null : classifyParameterKeyword(document.lineAt(keywordLine).text);
+        // Only verified numeric cells or numeric parameter value/expression ranges.
+        let fieldEnd = Infinity;
+        let fieldStart = start;
+        if (parameter && parameter.kind === 'definition') {
+            if (position.line - keywordLine > 240) return null;
+            let definition;
+            let inside = false;
+            let characters = 0;
+            for (let line = keywordLine + 1; line <= position.line; line++) {
+                const record = document.lineAt(line).text;
+                if ((characters += record.length) > 256 * 1024) return null;
+                const parsed = parseParameterDataLine(record, line, parameter, documentUsesGlobalLongFormat(document));
+                if (parsed.definitions.length) definition = parsed.definitions.find(def => line !== position.line ||
+                    start >= def.valueStartChar && end <= def.valueStartChar + def.valueLength);
+                if (line === position.line) inside = !!definition && definition.parameterType !== 'C' &&
+                    (parsed.isContinuation || start >= definition.valueStartChar);
+            }
+            if (!inside || !ampersand && !definition.expression) return null;
+            if (!definition.expression && ['fixed', 'long-fixed'].includes(definition.format)) {
+                const width = definition.format === 'long-fixed' ? 20 : 10;
+                fieldStart = (definition.sequence * 2 + 1) * width;
+                fieldEnd = fieldStart + width;
+            }
+        } else {
+            // Conversion templates are not source ranges for comma-delimited records.
+            if (!ampersand || text.includes(',')) return null;
+            const fields = getCardFieldsForLine(document, position.line);
+            const field = fields?.find(field => start > field.p && end <= field.p + field.w);
+            if (!field || !['integer', 'real'].includes(field.t) || fields.length === 1 && field.w >= 40) return null;
+            fieldStart = field.p;
+            fieldEnd = field.p + field.w;
+        }
+        const result = await queryVisibleParameterCompletions(document, position, match[2] || match[4] || '', token);
+        if (!current() || token?.isCancellationRequested || inlineEditChoiceSession || activeDocumentHasMultipleSelections(document)) return null;
+        if (result?.status !== 'ready' || result.reasons?.length) {
+            if (context?.triggerKind === vscode.CompletionTriggerKind.Invoke)
+                vscode.window.setStatusBarMessage(i18n.get(result?.reasons?.includes('parameter-file-required')
+                    ? 'parameterFileRequired' : 'parameterScopeUnavailable'), 4000);
+            return new vscode.CompletionList([], true);
+        }
+        const fixedValue = Number.isFinite(fieldEnd) ? text.slice(fieldStart, fieldEnd).trim() : '';
+        const replaceCell = /^-?&[A-Za-z0-9_]*$/.test(fixedValue);
+        const items = result.items.filter(item => ['I', 'R'].includes(item.parameterType)).map(row => {
+            const item = new vscode.CompletionItem(row.name, vscode.CompletionItemKind.Variable);
+            if (replaceCell) {
+                const value = (fixedValue.startsWith('-') ? '-&' : '&') + row.name;
+                if (value.length > fieldEnd - fieldStart) return null;
+                item.range = new vscode.Range(position.line, fieldStart, position.line, fieldEnd);
+                item.insertText = value.padStart(fieldEnd - fieldStart);
+                item.filterText = text.slice(fieldStart, start) + row.name;
+            } else {
+                if (start + row.name.length > fieldEnd) return null;
+                // Keep fixed-width neighbours in place when a longer name uses existing padding.
+                const replacementEnd = Number.isFinite(fieldEnd) ? Math.max(end, start + row.name.length) : end;
+                if (replacementEnd > end && text.slice(end, replacementEnd).trim()) return null;
+                item.range = new vscode.Range(position.line, start, position.line, replacementEnd);
+                item.insertText = row.name.padEnd(replacementEnd - start);
+            }
+            item.detail = `${row.parameterType}${row.value !== null ? ` = ${row.value}` : ''}`;
+            const md = new vscode.MarkdownString();
+            if (row.ambiguous) md.appendText(i18n.get('parameterScopeAmbiguous'));
+            else {
+                md.appendText(`${row.filePath ? vscode.workspace.asRelativePath(row.filePath) : ''}:${(row.line ?? 0) + 1}`);
+                md.appendMarkdown('\n\n'); md.appendText(i18n.get('rawValue', row.rawValue));
+                md.appendMarkdown('\n\n'); md.appendText(row.value !== null
+                    ? i18n.get('parameterCompletionValue', row.value) : i18n.get('hoverUnresolved'));
+            }
+            item.documentation = md;
+            return item;
+        }).filter(Boolean);
+        return new vscode.CompletionList(items, result.incomplete);
+    }
+}
+
+async function withParameterReferenceProgress(operation, token) {
+    const cancellation = new vscode.CancellationTokenSource();
+    const subscription = token?.onCancellationRequested?.(() => cancellation.cancel());
+    if (token?.isCancellationRequested) cancellation.cancel();
+    let finish;
+    const settled = new Promise<void>(resolve => { finish = resolve; });
+    const timer = setTimeout(() => {
+        void vscode.window.withProgress({ location: vscode.ProgressLocation.Window,
+            title: i18n.get('parameterQueryProgress') }, async (_progress, progressToken) => {
+            const listener = progressToken.onCancellationRequested(() => cancellation.cancel());
+            try { await settled; } finally { listener.dispose(); }
+        }).catch(error => logDebug(`Parameter query progress: ${error?.message || error}`));
+    }, 500);
+    try {
+        const result = await operation(cancellation.token);
+        return cancellation.token.isCancellationRequested ? { status: 'cancelled' } : result;
+    }
+    finally { clearTimeout(timer); finish(); subscription?.dispose(); cancellation.dispose(); }
+}
+
+async function queryVisibleParameterCompletions(document, position, prefix, token) {
+    return queryScopedParameters(document, position, { mode: 'parameter-completion', prefix }, token);
+}
+
+async function queryScopedParameters(document, position, query, token) {
+    if (!path.isAbsolute(document.uri.fsPath) || document.uri.scheme && document.uri.scheme !== 'file')
+        return { status: 'unavailable', reasons: ['parameter-file-required'] };
+    const main = getMainDeckContextForDocumentPath(document.uri.fsPath);
+    if (main.state === 'ambiguous' || !referenceQueryClient) return null;
+    const client = referenceQueryClient;
+    const rootFile = main.project ? main.rootFile : document.uri.fsPath;
+    const operation = queryToken => client.sourceAnalysis({ rootFile, scope: main.project ? 'project' : 'single-file',
+        filePath: document.uri.fsPath, line: position.line, character: position.character, ...query }, queryToken);
+    const result = query.references && vscode.window.withProgress && vscode.CancellationTokenSource
+        ? await withParameterReferenceProgress(operation, token) : await operation(token);
+    const next = getMainDeckContextForDocumentPath(document.uri.fsPath);
+    return referenceQueryClient === client && next.state !== 'ambiguous' &&
+        (next.project ? next.rootFile : document.uri.fsPath) === rootFile
+        ? result && { ...result, referenceScopeLocal: !main.project } : null;
+}
+
 class LsdynaParameterCodeLensProvider {
     /**
      * Spawns CodeLenses for parameter definitions.
@@ -3754,15 +3947,13 @@ class LsdynaParameterCodeLensProvider {
      */
     provideCodeLenses(document) {
         const defs = findParameterDefinitions(document);
-        const refs = findParameterReferences(document);
         const lenses = [];
-        for (const [key, definitions] of defs) {
-            const count = refs.filter(r => r.name === key).length;
+        for (const definitions of defs.values()) {
             for (const def of definitions) {
                 const pos = new vscode.Position(def.lineIndex, def.startChar);
                 const range = new vscode.Range(pos, pos);
                 lenses.push(new vscode.CodeLens(range, {
-                    title: count === 1 ? i18n.get('parameterReferenceSingular') : i18n.get('parameterReferencesPlural', count),
+                    title: i18n.get('parameterFindReferences'),
                     command: 'editor.action.findReferences',
                     arguments: [document.uri, pos],
                 }));
@@ -5008,6 +5199,8 @@ function planAlignedLine(
     });
 
     if (!card || card.length === 0) return unchanged();
+    // Inline expressions require comma input; conversion to fixed columns changes their syntax.
+    if (!isFieldHeaderLine && /<[^<>]*>/.test(originalText)) return unsafe('inline-expression-format');
     // Conditional/alternative LS-DYNA schemas can describe fields that share
     // the same physical columns.  Reconstructing such a line by value order
     // would silently choose one schema interpretation and can duplicate or
@@ -5554,7 +5747,7 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
     clearCardCellTypingSession(editor.document);
     const wasActiveEditor = vscode.window.activeTextEditor === editor;
     let requestedDocumentVersion = editor.document?.version;
-    const requestedSelection = editor.selection;
+    let requestedSelection = editor.selection;
     if (editor.selections && editor.selections.length > 1) {
         return;
     }
@@ -5568,6 +5761,16 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
         // The trusted post-edit repair may advance the document version before
         // this queued Tab gets its turn.
         requestedDocumentVersion = editor.document.version;
+        const repairedNav = ensureCardCellEditGuard().getNav(editor.document);
+        if (repairedNav?.mode === 'Ap' && repairedNav.version === requestedDocumentVersion &&
+            repairedNav.line === requestedSelection.start.line &&
+            repairedNav.expectedStart === editor.selection.start.character &&
+            repairedNav.expectedEnd === editor.selection.end.character &&
+            editor.selection.start.line === repairedNav.line && editor.selection.end.line === repairedNav.line) {
+            // Native paste repair moves the caret after preserving the cell width.
+            // Continue from that verified caret instead of restoring its old offset.
+            requestedSelection = editor.selection;
+        }
     }
     // A just-completed undo/edit can restore its older caret after this command
     // starts. Wait for a quiet selection window, then reinstate the selection
@@ -5601,6 +5804,32 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
 
     const line = document.lineAt(lineNum);
     const text = line.text;
+    const parameterKeywordLine = findEnclosingKeywordLine(document, lineNum);
+    const parameterKeyword = parameterKeywordLine !== null && parameterKeywordLine !== lineNum
+        ? classifyParameterKeyword(document.lineAt(parameterKeywordLine).text) : null;
+    if (parameterKeyword && ['definition', 'parameter-type'].includes(parameterKeyword.kind) &&
+        !text.trimStart().startsWith('$') && isActiveLsdynaSemanticLocation(document, selection.start)) {
+        // Navigation only: preserve comma input, expression bodies and continuation prefixes.
+        const parsed = parseParameterDataLine(text, lineNum, parameterKeyword, documentUsesGlobalLongFormat(document));
+        const stops = parsed.isContinuation ? parsed.expressionSegments.map(segment => segment.startChar)
+            : parsed.definitions.flatMap(definition => {
+                const width = definition.format === 'long-fixed' ? 20 : 10;
+                const start = ['fixed', 'long-fixed'].includes(definition.format) ? definition.sequence * width * 2
+                    : definition.format === 'comma' ? text.lastIndexOf(',', definition.startChar - 1) + 1
+                    : text.slice(0, definition.startChar).search(/[RICric]\s*$/);
+                const usage = definition.parameterUsageType
+                    ? text.indexOf(definition.parameterUsageType, definition.valueStartChar + definition.valueLength) : -1;
+                return [Math.max(0, start), definition.valueStartChar, ...(usage >= 0 ? [usage] : [])];
+            });
+        const target = direction < 0 ? [...stops].reverse().find(stop => stop < col) ?? stops[stops.length - 1]
+            : stops.find(stop => stop > col) ?? stops[0];
+        ensureCardCellEditGuard().clearNav();
+        if (target !== undefined && direction !== 0) {
+            editor.selection = new vscode.Selection(new vscode.Position(lineNum, target), new vscode.Position(lineNum, target));
+            editor.revealRange?.(new vscode.Range(lineNum, target, lineNum, target));
+        }
+        return;
+    }
     if (referenceQueryClient) {
         await getCardInfoForDocumentLineWithSuggestAsync(document, lineNum, getFieldData());
         if (!editIsCurrent()) return;
@@ -5690,20 +5919,21 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
         if (!chosenCandidate) return executeNativeTab(direction);
     }
 
-    // 1. Current field: repaired value-order rows follow the token under the
-    // invoking caret; intact grids keep physical exclusive-end ownership.
-    let currentFieldIndex = chosenCandidate
+    const nav = ensureCardCellEditGuard().getNav(document);
+    const continuingNav = nav && nav.line === lineNum && nav.version === document.version &&
+        nav.expectedStart === selection.start.character && nav.expectedEnd === selection.end.character;
+    // A new caret selects its own cell first; an established selection or edit
+    // continues in the requested direction, including a caret at the cell end.
+    let currentFieldIndex = continuingNav ? nav.fieldIndex : chosenCandidate
         ? valueOrderFieldIndexAtCaret(text, col, chosenCandidate.delimiter)
-        : (direction === -1
-            ? cardCellModel.fieldIndexAt(text, card, col)
-            : cardCellModel.fieldIndexForTabNav(text, card, col));
+        : cardCellModel.fieldIndexAt(text, card, col);
     if (currentFieldIndex < 0) currentFieldIndex = 0;
     currentFieldIndex = Math.min(currentFieldIndex, card.length - 1);
 
     let targetIndex;
-    if (direction === 1) {
+    if (continuingNav && direction === 1) {
         targetIndex = currentFieldIndex + 1;
-    } else if (direction === -1) {
+    } else if (continuingNav && direction === -1) {
         targetIndex = currentFieldIndex - 1;
     } else {
         targetIndex = currentFieldIndex;
@@ -7829,6 +8059,8 @@ let largeFileViewerProvider = null;
             '$', '#'
         )
     );
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
+        { language: 'lsdyna' }, new LsdynaParameterCompletionProvider(), '&'));
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
             { language: 'lsdyna' },
@@ -8836,6 +9068,8 @@ let keywordOptionsModel = null;
             entityReferencesWebviewProvider,
         ),
         vscode.window.onDidChangeActiveTextEditor(editor => {
+            ++parameterReferenceQuery;
+            clearParameterReferenceStatus();
             if (editor && isLsdynaFile(editor.document)) lastEntityReferenceCursorEditor = editor;
             entityReferencesWebviewProvider.setLargeFileOffer();
             refreshEntityReferenceScopeContext();
@@ -8849,6 +9083,11 @@ let keywordOptionsModel = null;
             }
         }),
         vscode.workspace.onDidCloseTextDocument(document => {
+            if (document === parameterReferenceDocument) {
+                ++parameterReferenceQuery;
+                clearParameterReferenceStatus();
+                parameterReferenceDocument = undefined;
+            }
             keywordIndexProvider?.disposeDocument(document);
             keywordManagerInstanceDirectories.delete(document);
             if (lastEntityReferenceCursorEditor?.document === document) {
@@ -16056,6 +16295,7 @@ module.exports._internals = {
     collectUnknownKeywordsFromDocument,
     resolveCustomValidKeywordArg,
     LsdynaFieldCompletionProvider,
+    LsdynaParameterCompletionProvider,
     getCardFieldsForLine,
     getReadOnlyNavigationFields,
     generateCommentLine,

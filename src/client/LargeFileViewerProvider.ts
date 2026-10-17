@@ -926,7 +926,8 @@ vscode.CustomEditorProvider<LargeFileDocument>, vscode.Disposable {
         const binding = session.fields.get(token);
         if (!binding || binding.generation !== session.generation) return false;
         session.navigationEpoch = (session.navigationEpoch || 0) + 1;
-        const field = binding.field;
+        const parameterHelp = keywordSchema.parameterFieldHelp(binding.keyword || '', binding.field.n || '');
+        const field = parameterHelp ? { ...binding.field, h: parameterHelp } : binding.field;
         const choices = Array.isArray(field.e)
             ? field.e.slice(0, 20).map(value => typeof value === 'string' ? value : JSON.stringify(value))
             : [];

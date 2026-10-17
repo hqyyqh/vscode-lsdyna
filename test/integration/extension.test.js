@@ -694,7 +694,146 @@ describe('findParameterReferences', () => {
     });
 });
 
+function useScopedParameterDocument(document) {
+    extensionModule._internals.setReferenceQueryClientForTesting(
+        require('../support/parameter-project.cjs').parameterDocumentQueryClient(document));
+}
+
+describe('parameter completion edit boundaries', () => {
+    const Provider = extensionModule._internals.LsdynaParameterCompletionProvider;
+    let previousEditor, previousRelativePath;
+    beforeEach(() => {
+        previousEditor = vscodeMock.window.activeTextEditor;
+        previousRelativePath = vscodeMock.workspace.asRelativePath;
+        vscodeMock.workspace.asRelativePath = file => file;
+    });
+    afterEach(() => {
+        extensionModule._internals.setReferenceQueryClientForTesting(null);
+        vscodeMock.window.activeTextEditor = previousEditor;
+        vscodeMock.workspace.asRelativePath = previousRelativePath;
+    });
+    it('fits a full-width name, rejects negated overflow and preserves neighbouring fields', async () => {
+        for (const [width, negative] of [[10, false], [10, true], [20, true]]) {
+            const record = 'Ruse'.padStart(width) + `${negative ? '-' : ''}&lo`.padStart(width) +
+                'Rother'.padStart(width) + '3'.padStart(width);
+            const doc = fakeDoc(['*PARAMETER', 'Rlong,2,Rlongname9,4',
+                width === 20 ? '*PARAMETER+' : '*PARAMETER', record].join('\n'));
+            useScopedParameterDocument(doc);
+            const result = await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, width * 2));
+            assert.ok(result.items.some(item => item.label === 'LONG'));
+            const item = result.items.find(item => item.label === 'LONGNAME9');
+            if (width === 10 && negative) { assert.equal(item, undefined); continue; }
+            assert.ok(item);
+            assert.equal(item.range.start.character, width);
+            assert.equal(item.range.end.character, width * 2);
+            const edited = record.slice(0, item.range.start.character) + item.insertText + record.slice(item.range.end.character);
+            assert.equal(edited, record.slice(0, width) + `${negative ? '-' : ''}&LONGNAME9`.padStart(width) + record.slice(width * 2));
+            assert.equal(doc.lineAt(3).text, record);
+        }
+    });
+    it('does not use conversion-template columns to edit an ordinary comma record', async () => {
+        const doc = fakeDoc('*PARAMETER\nRbase,2\n*NODE\n1,0,0,0,' + '&ba'.padStart(16) + ',0');
+        extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: () => assert.fail('Unverified write range') });
+        assert.equal(await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, 24)), null);
+    });
+    it('keeps comma parameter expression completion token-based', async () => {
+        const doc = fakeDoc('*PARAMETER\nRlongname9,4\n*PARAMETER_EXPRESSION\nRuse,lo+1');
+        useScopedParameterDocument(doc);
+        const result = await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, 7));
+        const item = result.items.find(item => item.label === 'LONGNAME9');
+        assert.ok(item);
+        assert.equal(item.range.start.character, 5);
+        assert.equal(item.range.end.character, 7);
+        assert.equal(item.insertText, 'LONGNAME9');
+    });
+    it('rejects multiple cursors before and during a completion query', async () => {
+        const doc = fakeDoc('*PARAMETER\nRbase,2\n*PARAMETER\nRuse,&ba');
+        const editor = { document: doc, selections: [{}] };
+        vscodeMock.window.activeTextEditor = editor;
+        useScopedParameterDocument(doc);
+        const provider = new Provider(), position = new vscodeMock.Position(3, 8);
+        assert.ok((await provider.provideCompletionItems(doc, position)).items.some(item => item.label === 'BASE'));
+        const client = require('../support/parameter-project.cjs').parameterDocumentQueryClient(doc);
+        extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: async request => {
+            editor.selections = [{}, {}];
+            return client.sourceAnalysis(request);
+        } });
+        assert.equal(await provider.provideCompletionItems(doc, position), null);
+        extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: () => assert.fail('Multiple cursors') });
+        assert.equal(await provider.provideCompletionItems(doc, position), null);
+    });
+});
+
 describe('parameter navigation and rename providers', () => {
+    afterEach(() => extensionModule._internals.setReferenceQueryClientForTesting(null));
+    it('discards parameter locations after the source version changes during a query', async () => {
+        const doc = fakeDoc('*PARAMETER\nRbase,2\n*NODE\n1,&base,0,0');
+        const before = doc.getText();
+        extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: async request => {
+            assert.equal(request.mode, 'parameter-navigation'); assert.equal(request.name, 'BASE');
+            doc.version++;
+            return { status: 'ready', items: [{ filePath: doc.uri.fsPath, line: 1, startCharacter: 1, endCharacter: 5 }] };
+        } });
+        assert.equal(await new LsdynaDefinitionProvider().provideDefinition(doc, new vscodeMock.Position(3, 4)), null);
+        assert.equal(doc.getText(), before);
+    });
+    it('keeps untitled parameter queries out of the disk worker and leaves text intact', async () => {
+        const doc = fakeDoc('*PARAMETER\nRbase,2\n*NODE\n1,&base,0,0', 'Untitled-1');
+        doc.uri.scheme = 'untitled';
+        const original = doc.getText();
+        extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: () => assert.fail('No local source') });
+        assert.equal(await new LsdynaDefinitionProvider().provideDefinition(doc, new vscodeMock.Position(3, 4)), null);
+        assert.equal(doc.getText(), original);
+    });
+    it('navigates parameter records without changing source bytes or offering format conversion', async () => {
+        const originalExecute = vscodeMock.commands.executeCommand;
+        const calls = [];
+        vscodeMock.commands.executeCommand = async (...args) => calls.push(args);
+        try {
+            for (const rows of [
+                ['*PARAMETER', 'Rfoo,1'],
+                ['*PARAMETER', 'Rfoo      1.0'],
+                ['*PARAMETER_TYPE', 'Ipartid,1,PID'],
+                ['*PARAMETER_EXPRESSION', 'Rfoo      min(1,2)'],
+                ['*PARAMETER_EXPRESSION', 'Rfoo      1+', '          2'],
+                ['*KEYWORD LONG=Y', '*PARAMETER_EXPRESSION', 'Rfoo'.padEnd(20) + 'min(1,2)'],
+            ]) {
+                const editor = makeEditableEditor(rows, rows.length - 1);
+                const original = rows.join('\n');
+                await extensionModule._internals.handleTabAlignment(editor, 1);
+                assert.ok(editor.selection.active.character > 0);
+                for (const direction of [1, 1, -1, -1]) {
+                    await extensionModule._internals.handleTabAlignment(editor, direction);
+                    assert.equal(editor.lines.join('\n'), original);
+                    assert.deepEqual(editor.selection.anchor, editor.selection.active);
+                }
+            }
+            assert.ok(!calls.some(args => ['tab', 'outdent', 'editor.action.triggerSuggest'].includes(args[0])));
+        } finally { vscodeMock.commands.executeCommand = originalExecute; }
+    });
+
+    it('never converts inline parameter expressions into fixed columns', () => {
+        const card = [{ n: 'A', p: 0, w: 10 }, { n: 'B', p: 10, w: 10 }];
+        for (const source of ['<base+1>,2', '<min(1,2)>,3']) {
+            const result = extensionModule._internals.planAlignedLine(source, card, false,
+                { allowAmbiguousTrailing: true, forceValueOrder: true });
+            assert.equal(result.status, 'unsafe');
+            assert.equal(result.text, source);
+        }
+    });
+    it('uses current manual parameter help in the actual field hover provider', async () => {
+        const doc = fakeDoc('*PARAMETER\nRfoo      1.0');
+        const hover = await new LsdynaFieldHoverProvider().provideHover(doc, { line: 1, character: 0 });
+        const text = hover.contents.map(item => item.value || item).join('\n');
+        assert.ok(text.includes('1-9'));
+        assert.ok(text.includes('C (character)'));
+        assert.ok(!text.includes('7 characters'));
+    });
+    it('renames numeric references without changing literal character expressions or continuations', () => {
+        const doc = fakeDoc('*PARAMETER\nRbase,2\n*PARAMETER_EXPRESSION\nClabel,base\n          base\nRresult,base+1');
+        const edit = new LsdynaRenameProvider().provideRenameEdits(doc, { line: 1, character: 2 }, 'other');
+        assert.deepEqual(edit.edits.map(change => change.range.start.line), [1, 5]);
+    });
     function applyWorkspaceEdits(document, workspaceEdit) {
         const lines = document.getText().split('\n');
         const edits = workspaceEdit.edits.slice().sort((a, b) => {
@@ -872,7 +1011,7 @@ describe('parameter navigation and rename providers', () => {
         assert.equal(applyWorkspaceEdits(doc, edit).includes('tfinish'), false);
     });
 
-    it('navigates to every definition on a multi-parameter line', () => {
+    it('navigates to every definition on a multi-parameter line', async () => {
         const dataLine = 'R p1 1.0 I p2 2 R p3 3.0 C p4 text';
         const doc = fakeDoc(
             '*PARAMETER\n' +
@@ -880,13 +1019,14 @@ describe('parameter navigation and rename providers', () => {
             '*KEYWORD\n' +
             '&p1 &p2 &p3 &p4\n'
         );
+        useScopedParameterDocument(doc);
         const definitionProvider = new LsdynaDefinitionProvider();
         const codeLensProvider = new LsdynaParameterCodeLensProvider();
         const renameProvider = new LsdynaRenameProvider();
 
         for (const name of ['p1', 'p2', 'p3', 'p4']) {
             const referenceColumn = doc.lineAt(3).text.indexOf(`&${name}`) + 1;
-            const location = definitionProvider.provideDefinition(
+            const location = await definitionProvider.provideDefinition(
                 doc,
                 new vscodeMock.Position(3, referenceColumn)
             );
@@ -922,7 +1062,7 @@ describe('parameter navigation and rename providers', () => {
         );
     });
 
-    it('supports prepare rename, references, and definition lookup for compact syntax', () => {
+    it('supports prepare rename, references, and definition lookup for compact syntax', async () => {
         const doc = fakeDoc(
             '*PARAMETER\n' +
             'Rrho     7850.\n' +
@@ -930,6 +1070,7 @@ describe('parameter navigation and rename providers', () => {
             '&rho\n'
         );
         const renameProvider = new LsdynaRenameProvider();
+        useScopedParameterDocument(doc);
         const definitionProvider = new LsdynaDefinitionProvider();
         const referenceProvider = new LsdynaReferenceProvider();
         const definitionPosition = new vscodeMock.Position(1, 2);
@@ -937,24 +1078,23 @@ describe('parameter navigation and rename providers', () => {
         const renameRange = renameProvider.prepareRename(doc, definitionPosition);
         assert.equal(doc.getText(renameRange), 'rho');
 
-        const definition = definitionProvider.provideDefinition(
+        const definition = await definitionProvider.provideDefinition(
             doc,
             new vscodeMock.Position(3, 2)
         );
         assert.equal(definition.range.start.line, 1);
         assert.equal(definition.range.start.character, 1);
 
-        const references = referenceProvider.provideReferences(
+        const references = await referenceProvider.provideReferences(
             doc,
             definitionPosition,
             { includeDeclaration: true }
         );
-        assert.equal(references.length, 2);
-        assert.equal(references[0].range.start.line, 1);
-        assert.equal(references[1].range.start.line, 3);
+        assert.equal(references.length, 1);
+        assert.equal(references[0].range.start.line, 3);
     });
 
-    it('preserves duplicate declarations across definition, references, and rename', () => {
+    it('finds same-name references while preserving mutable definition and rename behavior', async () => {
         const doc = fakeDoc([
             '*PARAMETER_MUTABLE',
             'IPARAM,1',
@@ -965,23 +1105,23 @@ describe('parameter navigation and rename providers', () => {
             '*CONTROL_TERMINATION',
             '&PARAM',
         ].join('\n'));
+        useScopedParameterDocument(doc);
         const definitionProvider = new LsdynaDefinitionProvider();
         const referenceProvider = new LsdynaReferenceProvider();
         const renameProvider = new LsdynaRenameProvider();
 
-        const definitions = definitionProvider.provideDefinition(
+        const definitions = await definitionProvider.provideDefinition(
             doc,
             new vscodeMock.Position(7, 2),
         );
-        assert.ok(Array.isArray(definitions));
-        assert.deepEqual(definitions.map(location => location.range.start.line), [1, 3]);
+        assert.equal(definitions.range.start.line, 3);
 
-        const references = referenceProvider.provideReferences(
+        const references = await referenceProvider.provideReferences(
             doc,
             new vscodeMock.Position(1, 2),
             { includeDeclaration: true },
         );
-        assert.deepEqual(references.map(location => location.range.start.line), [1, 3, 5, 7]);
+        assert.deepEqual(references.map(location => location.range.start.line), [5, 7]);
 
         const rename = renameProvider.provideRenameEdits(
             doc,
@@ -994,7 +1134,7 @@ describe('parameter navigation and rename providers', () => {
 });
 
 describe('LsdynaParameterCodeLensProvider', () => {
-    it('localizes parameter reference counts in Chinese', () => {
+    it('localizes the on-demand parameter reference action in Chinese', () => {
         const originalGetConfiguration = vscodeMock.workspace.getConfiguration;
         vscodeMock.workspace.getConfiguration = () => ({
             get: (key, defaultValue) => key === 'language' ? 'zh-cn' : defaultValue
@@ -1006,7 +1146,7 @@ describe('LsdynaParameterCodeLensProvider', () => {
             const lenses = provider.provideCodeLenses(fakeDoc('*PARAMETER\nR  t  1.0\n*KEYWORD\n&t  &t\n'));
 
             assert.equal(lenses.length, 1);
-            assert.equal(lenses[0].command.title, '2 处引用');
+            assert.equal(lenses[0].command.title, '查找引用');
         } finally {
             vscodeMock.workspace.getConfiguration = originalGetConfiguration;
             i18n.updateLanguage();
@@ -6628,7 +6768,7 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('moreDefinitionsOmitted', 2), '悬停提示中已省略 2 个定义。');
             assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
             assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
-            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 处引用');
+            assert.equal(i18n.get('parameterCompletionValue', 2), '有效值：2');
             assert.equal(i18n.get('manualSidebarSearchModeKeyword'), '关键字与标题');
             assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) 环境与手册状态');
             assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), '待配置：2');
@@ -6658,8 +6798,8 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('noFileToJumpTo'), 'No include file is available at the current cursor.');
             assert.equal(i18n.get('noMoreKeywordsFound'), 'No next keyword found.');
             assert.equal(i18n.get('noPreviousKeywordsFound'), 'No previous keyword found.');
-            assert.equal(i18n.get('parameterReferenceSingular'), '1 reference');
-            assert.equal(i18n.get('parameterReferencesPlural', 2), '2 references');
+            assert.equal(i18n.get('parameterFindReferences'), 'Find references');
+            assert.equal(i18n.get('parameterCompletionValue', 2), 'Effective value: 2');
             assert.equal(i18n.get('manualSidebarSearchModeFulltext'), 'Full text');
             assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) Environment and manuals');
             assert.equal(i18n.get('statusDashboardHealthIssuesDescription', 2), 'Setup required: 2');

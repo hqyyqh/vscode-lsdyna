@@ -468,7 +468,11 @@ export function parseParameterDataLine(
     }
 
     let definitions: ParsedParameterDefinition[];
-    if (line.includes(',')) {
+    // Function argument commas do not delimit a fixed-format expression's name.
+    const fixedExpression = keyword.expression ? parseFixedDefinitions(line, lineIndex, keyword, longFormat) : [];
+    if (fixedExpression.length && !fixedExpression[0].value.startsWith(',')) {
+        definitions = fixedExpression;
+    } else if (line.includes(',')) {
         definitions = parseCommaDefinitions(line, lineIndex, keyword);
     } else {
         definitions = parseFixedDefinitions(line, lineIndex, keyword, longFormat);

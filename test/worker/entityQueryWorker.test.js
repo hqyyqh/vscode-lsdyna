@@ -13,6 +13,47 @@ describe('Background entity query pages', function() {
             entityStorageDirectory: path.join(root, 'storage') }); pools.push(pool);
         return { pool, file, request: { rootFile: file, scope: 'single-file', id: 1, targetKind: 'node' } };
     }
+    it('routes parameter queries through scoped pages and expires values after disk changes', async () => {
+        const { pool, file } = input(1);
+        const original = '*KEYWORD\n*PARAMETER_MUTABLE\nRbase,2\n*PARAMETER_EXPRESSION\nRbase,base+1\n*NODE\n1,&base,0,0\n*END';
+        fs.writeFileSync(file, original);
+        const request = { protocolVersion: require('../../out/shared/indexPages').INDEX_PROTOCOL_VERSION,
+            action: 'source-analysis', rootFile: file, scope: 'single-file', filePath: file, line: 6, character: 4 };
+        const complete = () => pool.projectSession({ ...request, mode: 'parameter-completion', prefix: 'ba' });
+        assert.equal((await complete()).items[0].value, 3);
+        const navigate = await pool.projectSession({ ...request, mode: 'parameter-navigation', name: 'BASE',
+            declaration: false, references: false, includeDeclaration: true });
+        assert.equal(navigate.status, 'ready'); assert.equal(navigate.items.length, 1);
+        assert.equal(navigate.items[0].line, 4);
+        const refs = await pool.projectSession({ ...request, line: 2, character: 2, mode: 'parameter-navigation',
+            name: 'BASE', declaration: true, references: true, includeDeclaration: true });
+        assert.deepEqual(refs.items.map(row => row.line), [2, 4, 4, 6]);
+        fs.writeFileSync(file, original.replace('Rbase,2', 'Rbase,20'));
+        assert.equal((await complete()).items[0].value, 21);
+        const outside = await pool.projectSession({ ...request, filePath: path.join(path.dirname(file), 'outside.k'),
+            mode: 'parameter-completion', prefix: '' });
+        assert.deepEqual(outside.items, []); assert.equal(outside.incomplete, true);
+        await assert.rejects(pool.projectSession({ ...request, mode: 'parameter-navigation', name: 'BASE',
+            declaration: false, references: true, includeDeclaration: true, character: -1 }), /Invalid parameter query/);
+        assert.equal(fs.readFileSync(file, 'utf8'), original.replace('Rbase,2', 'Rbase,20'));
+    });
+    it('searches explicit current-file references without following includes and refreshes candidate metadata', async () => {
+        const { pool, file } = input(1);
+        const request = { protocolVersion: require('../../out/shared/indexPages').INDEX_PROTOCOL_VERSION,
+            action: 'source-analysis', rootFile: file, scope: 'single-file', filePath: file,
+            line: 1, character: 2, mode: 'parameter-navigation', name: 'BASE', declaration: true,
+            references: true, includeDeclaration: true };
+        fs.writeFileSync(file, '*PARAMETER\nRbase,2\n*NODE\n1,0,0,0\n*INCLUDE\nmissing.k\n*END');
+        assert.deepEqual((await pool.projectSession(request)).items.map(row => row.line), [1]);
+        fs.writeFileSync(file, '*PARAMETER\nRbase,2\n*NODE\n1,&base,0,0\n*INCLUDE\nmissing.k\n*END');
+        const updated = await pool.projectSession(request);
+        assert.equal(updated.incomplete, false);
+        assert.deepEqual(updated.items.map(row => row.line), [1,3]);
+        assert.ok(updated.items.every(row => row.filePath === file));
+        const definition = await pool.projectSession({ ...request, references: false });
+        assert.ok(definition.reasons.includes('parameter-project-context-unavailable'),
+            'file-only reference search does not relax definition or completion scope checks');
+    });
     it('matches the complete scanner when switching demanded curve, part and node namespaces', async () => {
         const { pool, file } = input(1);
         fs.writeFileSync(file, '*KEYWORD\n*NODE\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n' +

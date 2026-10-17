@@ -27,6 +27,10 @@ class Selection extends Range {
         super(anchor, active);
         this.anchor = anchor;
         this.active = active;
+        if (anchor.line > active.line || anchor.line === active.line && anchor.character > active.character) {
+            this.start = active;
+            this.end = anchor;
+        }
     }
 }
 

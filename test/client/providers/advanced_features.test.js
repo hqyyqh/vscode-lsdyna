@@ -793,6 +793,61 @@ describe('Phase 7 Features', () => {
     });
 
     describe('handleTabAlignment', () => {
+        it('continues from the verified caret when a pending paste repair moves it', async () => {
+            const document = fakeDoc('*NODE\n12345678' + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2));
+            document.languageId = 'lsdyna';
+            document.version = 1;
+            const editor = { document, selection: new vscodeMock.Selection(
+                new vscodeMock.Position(1, 12), new vscodeMock.Position(1, 12)),
+                edit: async () => { throw Error('An aligned row must not be rewritten'); } };
+            const previous = vscodeMock.window.activeTextEditor;
+            vscodeMock.window.activeTextEditor = editor;
+            const release = require('../../../src/extension')._internals.beginCardCellPostEditBarrier(document);
+            const guard = ensureCardCellEditGuard();
+            try {
+                const pending = handleTabAlignment(editor, 1);
+                document.version++;
+                editor.selection = new vscodeMock.Selection(new vscodeMock.Position(1, 24), new vscodeMock.Position(1, 24));
+                guard.markAp(document, 1, 1, 24);
+                release();
+                await pending;
+                assert.deepEqual([editor.selection.start.character, editor.selection.end.character], [25, 40]);
+            } finally {
+                release();
+                guard.clearNav();
+                vscodeMock.window.activeTextEditor = previous;
+            }
+        });
+
+        for (const direction of [1, -1]) {
+            for (const state of ['new', 'edited', 'moved', 'stale']) {
+                it(`selects the current field or continues a valid edit (${direction}, ${state})`, async () => {
+                    const document = fakeDoc('*NODE\n12345678' + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2));
+                    document.languageId = 'lsdyna';
+                    document.version = 1;
+                    const guard = ensureCardCellEditGuard();
+                    // A typed NID ends exactly where X starts. Only a valid edit
+                    // mark owns that boundary; a newly placed caret belongs to X.
+                    if (state !== 'new') guard.markAp(document, 1, 0, 8);
+                    if (state === 'stale') document.version++;
+                    const caret = new vscodeMock.Position(1, state === 'moved' ? 30 : 8);
+                    const editor = { document, selection: new vscodeMock.Selection(caret, caret),
+                        edit: async () => { throw Error('An aligned row must not be rewritten'); } };
+                    const previous = vscodeMock.window.activeTextEditor;
+                    vscodeMock.window.activeTextEditor = editor;
+                    try {
+                        await handleTabAlignment(editor, direction);
+                        const range = state === 'edited' && direction === -1 ? [65, 72]
+                            : state === 'moved' ? [25, 40] : [9, 24];
+                        assert.deepEqual([editor.selection.start.character, editor.selection.end.character], range);
+                    } finally {
+                        guard.clearNav();
+                        vscodeMock.window.activeTextEditor = previous;
+                    }
+                });
+            }
+        }
+
         for (const scenario of ['readonly', 'closed-during-permission', 'replaced-during-permission']) {
             it(`does not align or move the cursor when ${scenario}`, async () => {
                 const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
@@ -1004,7 +1059,8 @@ describe('Phase 7 Features', () => {
                 assert.ok(editedText);
                 assert.equal(editedText.slice(0, 10).trim(), '1');
                 assert.equal(editedText.slice(10, 20).trim(), '7.85000-9');
-                assert.equal(selectionVal.active.character, 11);
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 10);
             } finally {
                 clearInlineEditChoiceSession();
                 vscodeMock.commands.executeCommand = originalExecuteCommand;
@@ -1012,7 +1068,7 @@ describe('Phase 7 Features', () => {
             }
         });
 
-        it('aligns the line and moves the cursor to the next field (with +1 offset for separation if prev field is not empty)', async () => {
+        it('aligns the line and selects the current field before advancing', async () => {
             const document = fakeDoc('*NODE\n12323\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
@@ -1041,7 +1097,10 @@ describe('Phase 7 Features', () => {
                 assert.ok(editCalled);
                 // Width of NID is 8 in mock *NODE
                 assert.equal(editVal.slice(0, 8), '   12323');
-                // The next field start position is column 8. Since prev field is not empty, offset is 1 -> col 9
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
+                await handleTabAlignment(editor);
+                // Continued navigation keeps the separator before X.
                 assert.equal(selectionVal.active.character, 9);
                 assert.equal(selectionVal.active.line, 1);
             } finally {
@@ -1083,7 +1142,8 @@ describe('Phase 7 Features', () => {
                 await tabPromise;
 
                 assert.equal(selectionVal.active.line, 1);
-                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
@@ -1115,7 +1175,8 @@ describe('Phase 7 Features', () => {
                 await handleTabAlignment(editor, 1);
                 assert.equal(editCalled, true);
                 assert.equal(delegatedCommand, 'setContext');
-                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
                 vscodeMock.commands.executeCommand = originalExecuteCommand;
@@ -1184,7 +1245,10 @@ describe('Phase 7 Features', () => {
             try {
                 await handleTabAlignment(editor);
                 assert.ok(editCalled);
-                // The next field start position is column 8. Since prev field is empty, offset is 0 -> col 8
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
+                await handleTabAlignment(editor);
+                // Empty previous field needs no separator offset.
                 assert.equal(selectionVal.active.character, 8);
                 assert.equal(selectionVal.active.line, 1);
             } finally {
@@ -1221,14 +1285,15 @@ describe('Phase 7 Features', () => {
                 assert.ok(editCalled);
                 // The subsequent fields (X, Y) should not be deleted, so editVal should contain '0'
                 assert.ok(editVal.includes('0'));
-                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.active.character, 0);
+                assert.equal(selectionVal.anchor.character, 8);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             }
         });
 
         it('loops cursor back to the first field of the current line on the last field', async () => {
-            const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
+            const document = fakeDoc('*NODE\n' + '12323'.padStart(8) + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2) + '\n       0       0       0\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
             // Cursor placed in the last field (col 65, i.e., field index 5)
@@ -1249,7 +1314,9 @@ describe('Phase 7 Features', () => {
 
             try {
                 await handleTabAlignment(editor);
-                // Cursor should have looped back to line 1, character 0 (first field start)
+                assert.equal(selectionVal.active.character, 65);
+                await handleTabAlignment(editor);
+                // Continued navigation wraps to line 1, character 0 (first field start)
                 assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
@@ -1258,10 +1325,10 @@ describe('Phase 7 Features', () => {
         });
 
         it('loops cursor back to the first field of the current line when cursor is at the end of the last field', async () => {
-            const document = fakeDoc('*NODE\n   12323               0               0\n       0       0       0\n', '/project/main.k');
+            const document = fakeDoc('*NODE\n' + '12323'.padStart(8) + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2) + '\n       0       0       0\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
-            // The card has 8 fields of width 8. The end of the last field (field index 7) is column 80.
+            // The NODE card ends at column 72; a caret beyond it still selects the last field.
             let selectionVal = new vscodeMock.Selection(new vscodeMock.Position(1, 80), new vscodeMock.Position(1, 80));
 
             const editor = {
@@ -1279,7 +1346,9 @@ describe('Phase 7 Features', () => {
 
             try {
                 await handleTabAlignment(editor);
-                // Cursor should have looped back to line 1, character 0
+                assert.equal(selectionVal.active.character, 65);
+                await handleTabAlignment(editor);
+                // Continued navigation wraps to line 1, character 0
                 assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
@@ -1288,7 +1357,7 @@ describe('Phase 7 Features', () => {
         });
 
         it('does not insert a newline and loops cursor back to the first field of the current line when tabbing at the last field and the next line is a keyword', async () => {
-            const document = fakeDoc('*NODE\n   12323               0               0\n*ELEMENT\n', '/project/main.k');
+            const document = fakeDoc('*NODE\n' + '12323'.padStart(8) + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2) + '\n*ELEMENT\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let editCalled = false;
             let editVal = '';
@@ -1318,9 +1387,11 @@ describe('Phase 7 Features', () => {
 
             try {
                 await handleTabAlignment(editor);
-                assert.ok(editCalled);
+                assert.equal(editCalled, false);
                 assert.equal(editVal, ''); // should not insert a newline
-                // Cursor should have looped back to line 1, character 0
+                assert.equal(selectionVal.active.character, 65);
+                await handleTabAlignment(editor);
+                // Continued navigation wraps to line 1, character 0
                 assert.equal(selectionVal.active.line, 1);
                 assert.equal(selectionVal.active.character, 0);
             } finally {
@@ -1370,9 +1441,8 @@ describe('Phase 7 Features', () => {
 
         it('Tab from full previous exclusive end advances to next field (does not skip)', async () => {
             // *NODE: NID w=8, X w=16. Full NID exclusive end = col 8 = X start.
-            // Without tab-nav ownership, fieldIndexAt(8)=1 → Tab would land on Y (skip X).
-            // With ownership, current=NID → Tab selects X (keep-separator start 9, end 24).
-            const document = fakeDoc('*NODE\n12345678               0               0\n', '/project/main.k');
+            // A newly placed caret at this boundary selects X without skipping it.
+            const document = fakeDoc('*NODE\n12345678' + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2) + '\n', '/project/main.k');
             document.languageId = 'lsdyna';
             let selectionVal = new vscodeMock.Selection(
                 new vscodeMock.Position(1, 8),
@@ -1402,8 +1472,7 @@ describe('Phase 7 Features', () => {
         });
 
         it('Tab from empty previous field start still advances (no loop)', async () => {
-            // Empty NID; caret at X start (col 8) after Tab into empty X.
-            // Geometric current = X → Tab must advance to Y (not re-select X).
+            // Empty NID; first Tab selects X, second Tab advances to Y.
             // *NODE X ends at 24; Y starts at 24; prev X may be empty → sel at 24.
             const document = fakeDoc('*NODE\n                                 0\n', '/project/main.k');
             document.languageId = 'lsdyna';
@@ -1426,7 +1495,10 @@ describe('Phase 7 Features', () => {
             try {
                 await handleTabAlignment(editor, 1);
                 assert.equal(selectionVal.active.line, 1);
-                // Y is field 2 at p=24; empty X → no keep-separator → active at 24
+                assert.equal(selectionVal.active.character, 8);
+                assert.equal(selectionVal.anchor.character, 24);
+                await handleTabAlignment(editor, 1);
+                // Y is field 2 at p=24; empty X needs no separator.
                 assert.equal(selectionVal.active.character, 24);
             } finally {
                 vscodeMock.window.activeTextEditor = originalActiveTextEditor;
@@ -1434,9 +1506,9 @@ describe('Phase 7 Features', () => {
         });
 
         it('Shift+Tab at next-field start after full previous goes to previous field', async () => {
-            const document = fakeDoc('*NODE\n12345678               0               0\n', '/project/main.k');
+            const document = fakeDoc('*NODE\n12345678' + '0'.padStart(16).repeat(3) + '0'.padStart(8).repeat(2) + '\n', '/project/main.k');
             document.languageId = 'lsdyna';
-            // Caret at col 8: geometric field X; Shift+Tab must select NID [0,8), not skip past it.
+            // Caret at col 8: first select X, then move back to NID [0,8).
             let selectionVal = new vscodeMock.Selection(
                 new vscodeMock.Position(1, 8),
                 new vscodeMock.Position(1, 8)
@@ -1456,7 +1528,10 @@ describe('Phase 7 Features', () => {
             try {
                 await handleTabAlignment(editor, -1);
                 assert.equal(selectionVal.active.line, 1);
-                // First field: Selection(selEnd=8, selStart=0) → active 0, anchor 8
+                assert.equal(selectionVal.active.character, 9);
+                assert.equal(selectionVal.anchor.character, 24);
+                await handleTabAlignment(editor, -1);
+                // Continued reverse navigation selects NID.
                 assert.equal(selectionVal.active.character, 0);
                 assert.equal(selectionVal.anchor.character, 8);
             } finally {

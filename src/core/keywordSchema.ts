@@ -972,7 +972,11 @@ const PARAMETER_MANUAL_HELP: Record<string, Record<string, string>> = {
     },
 };
 
-function parameterFieldHelp(canonicalName: string, fieldName: string): string | null {
+export function parameterFieldHelp(keyword: string, fieldName: string): string | null {
+    const classification = classifyParameterKeyword(keyword);
+    if (!classification) return null;
+    const canonicalName = classification.kind === 'parameter-type' ? 'PARAMETER_TYPE'
+        : classification.kind === 'definition' ? classification.expression ? 'PARAMETER_EXPRESSION' : 'PARAMETER' : '';
     const family = PARAMETER_MANUAL_HELP[canonicalName];
     if (!family) return null;
     const normalizedField = normalizeFieldLabel(fieldName).replace(/[1-4]$/, '');
