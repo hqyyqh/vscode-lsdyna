@@ -5265,7 +5265,7 @@
     {
       "path": "test/core/references/nativeConditionalFileReferences.test.js",
       "role": "editable-source",
-      "sha256": "8173fdecdcd5e9f8eb28eeee170bae633bc49855cd344cb5d312254fa7b1971d",
+      "sha256": "cd41243558121ddf2f213b9c403e306dce1968ffe1c1ab291b4ffd0737e132c6",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5277,7 +5277,7 @@
     {
       "path": "test/core/references/nativeContactOriginalReferences.test.js",
       "role": "editable-source",
-      "sha256": "8e2e7726fa849d5e0247fe823a7af65fd405260030436465ffcb05238b7f129c",
+      "sha256": "a59fdb956f48067eff79cb5e41ce0d9679ea58d0daef4352f143a3bef9fc9095",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

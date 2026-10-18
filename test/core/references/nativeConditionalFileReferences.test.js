@@ -375,8 +375,8 @@ describe('native conditional file references',function(){
    }
   }
  });
- it('queries CPG part selectors and signed gas and nozzle targets on every repeated record',async()=>{
-  for(const maxReferenceBlockBytes of [undefined,1])for(const format of ['standard','comma','long','i10']){
+ for(const maxReferenceBlockBytes of [undefined,1])for(const format of ['standard','comma','long','i10']){
+  it(`queries CPG part selectors and signed gas and nozzle targets on every repeated record (${format}, ${maxReferenceBlockBytes === 1 ? 'disk' : 'ordinary'})`,async()=>{
    const lines=['*KEYWORD','*PART','fixture','73,0,0,0','*SET_PART_LIST','73','73',
     '*NODE','73,0,0,0','*ELEMENT_SHELL_THICKNESS','73,0,73,73,73,73','1,1,1,1',
     '*SET_SHELL_LIST','73','73','*DEFINE_CPG_GAS_PROPERTIES','73,1,1,1',
@@ -410,8 +410,8 @@ describe('native conditional file references',function(){
      JSON.stringify({format,maxReferenceBlockBytes,kind,reasons:result.reasons}));
     assert.equal(result.referenceIndex.registryReferenceOccurrences.filter(row=>row.fieldName==='HLENV').length,0);
    }
-  }
- });
+  });
+ }
  it('queries EM connection header targets and signed curve/function selection without namespace collisions',async()=>{
   for(const maxReferenceBlockBytes of [undefined,1])for(const format of ['standard','comma','long','i10']){
    const lines=['*KEYWORD','*DEFINE_CURVE','        73','         0         0','         1         1',

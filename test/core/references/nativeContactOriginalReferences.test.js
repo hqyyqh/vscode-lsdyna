@@ -61,8 +61,8 @@ describe('original CONTACT reference owners',function(){
    }
   }
  });
- it('queries true CONTACT owners through ordinary and disk paths with same-ID target isolation',async()=>{
-  for(const format of ['standard','comma','long','i10'])for(const maxReferenceBlockBytes of [undefined,1]){
+ for(const format of ['standard','comma','long','i10'])for(const maxReferenceBlockBytes of [undefined,1]){
+  it(`queries true CONTACT owners through ordinary and disk paths with same-ID target isolation (${format}, ${maxReferenceBlockBytes === 1 ? 'disk' : 'ordinary'})`,async()=>{
    const lines=['*KEYWORD','*NODE','73,0,0,0','*DEFINE_CURVE','73','0,0','1,1',
     '*DEFINE_FUNCTION','73','f(x)=x','*DEFINE_TABLE_2D','73','0,0',
     '*PART','part','73,0,0,0,0,0,0,0','*DEFINE_BOX','73,0,1,0,1,0,1'];
@@ -103,8 +103,8 @@ describe('original CONTACT reference owners',function(){
       !result.referenceLookup?.resolvedGaps.has(gap));
     assert.equal(gaps.length,0,JSON.stringify({format,maxReferenceBlockBytes,kind,gaps:gaps.map(gap=>({keyword:gap.keyword,reason:gap.reason}))}));
    }
-  }
- });
+  });
+ }
  it('keeps unknown NBEAD and unsafe fractional reference IDs partial',async()=>{
   for(const maxReferenceBlockBytes of [undefined,1]){
    const snapshot=await indexed(['*KEYWORD','*NODE','73,0,0,0','*CONTACT_DRAWBEAD','0,0,0,0,0,0,0,0',
