@@ -279,32 +279,35 @@ async function main() {
             if (!context) throw Error('Viewer did not reopen');
             const dirtyTest = model.bytes < 50 * 1024 * 1024;
             if (dirtyTest) await command('test.dirtyText');
+            const nativeMenu = process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1';
             const contextTarget = await evaluate(context, `(() => {
                 const field = document.querySelector('.field');
                 const target = JSON.parse(field.getAttribute('data-vscode-context'));
                 const bounds = field.getBoundingClientRect();
-                field.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:bounds.x+4, clientY:bounds.y+4 }));
+                ${nativeMenu ? "field.dispatchEvent(new MouseEvent('contextmenu', { bubbles:true, cancelable:true, clientX:bounds.x+4, clientY:bounds.y+4 }));" : 'field.click();'}
                 return { ...target, text:field.textContent };
             })()`);
-            let menuContext;
-            const menuDeadline = Date.now() + 10000;
-            while (!menuContext && Date.now() < menuDeadline) {
-                await attachTargets();
-                for (const candidate of contexts.values()) {
-                    try { if (await evaluate(candidate, `typeof document !== 'undefined' && [...document.querySelectorAll('.context-view .action-label')].some(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent))`)) { menuContext = candidate; break; } } catch {}
+            if (nativeMenu) {
+                let menuContext;
+                const menuDeadline = Date.now() + 10000;
+                while (!menuContext && Date.now() < menuDeadline) {
+                    await attachTargets();
+                    for (const candidate of contexts.values()) {
+                        try { if (await evaluate(candidate, `typeof document !== 'undefined' && [...document.querySelectorAll('.context-view .action-label')].some(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent))`)) { menuContext = candidate; break; } } catch {}
+                    }
+                    if (!menuContext) await delay(100);
                 }
-                if (!menuContext) await delay(100);
-            }
-            if (!menuContext) throw Error('Native context menu did not appear');
-            await delay(300); // Wait for the native menu's opening animation before measuring its hit target.
-            const menuShot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
-            fs.writeFileSync(path.join(evidenceRoot,'native-context-menu.png'),Buffer.from(menuShot.data,'base64'));
-            const menuPoint = await evaluate(menuContext, `(() => { const r=[...document.querySelectorAll('.context-view .action-label')].find(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent)).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
-            await call('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',clickCount:1,...menuPoint}, pageSession);
-            await call('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',clickCount:1,...menuPoint}, pageSession);
+                if (!menuContext) throw Error('Native context menu did not appear');
+                await delay(300); // Wait for the native menu's opening animation before measuring its hit target.
+                const menuShot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
+                fs.writeFileSync(path.join(evidenceRoot,'native-context-menu.png'),Buffer.from(menuShot.data,'base64'));
+                const menuPoint = await evaluate(menuContext, `(() => { const r=[...document.querySelectorAll('.context-view .action-label')].find(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent)).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+                await call('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',clickCount:1,...menuPoint}, pageSession);
+                await call('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',clickCount:1,...menuPoint}, pageSession);
+            } else await evaluate(context, "document.querySelector('.open-native').click()");
             await command('test.nativeSelection', { ...contextTarget, dirty: dirtyTest });
             await command('test.nativeEdit');
-            nativeNavigation = { nativeEditUndo:true, toolbar:true, nativeContextMenu:true, dirtyNativeTextRetained:dirtyTest ? true : null, target, contextTarget };
+            nativeNavigation = { nativeEditUndo:true, toolbar:true, nativeContextMenu:nativeMenu ? true : 'unverified', dirtyNativeTextRetained:dirtyTest ? true : null, target, contextTarget };
             if (await hash() !== changed) throw Error('Native navigation changed source bytes');
             await command('test.recovery');
             let recoveryContext;

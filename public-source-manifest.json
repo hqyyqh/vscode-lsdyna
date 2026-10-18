@@ -2739,7 +2739,7 @@
     {
       "path": "scripts/host/run-large-file-viewer-host.cjs",
       "role": "editable-source",
-      "sha256": "35c230e1d3e66b8cbb07efeabc16a19ab3993bc2c695e9c2af6b349fec61e722",
+      "sha256": "859ab9571f8b28e0cb4095bc1620fad96e8b5334ef5f43b593bd264fe545c5e0",
       "reason": "installed-product-host-acceptance"
     },
     {
