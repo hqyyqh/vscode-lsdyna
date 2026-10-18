@@ -447,7 +447,7 @@
     {
       "path": "CHANGELOG.md",
       "role": "editable-source",
-      "sha256": "b931bf5d78e919efdab5e057de10eba9204a69970ceaae94a9af9f946205e22b",
+      "sha256": "95f200a3cc0da7a4d5b7bca9757ebd1b7123c42d23be0a24efddb96059360b71",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -465,13 +465,13 @@
     {
       "path": "README.md",
       "role": "editable-source",
-      "sha256": "7e81a05168dce3f78509b16d56b6e96fb5a7deeb9fd0d4808baee757b4dd5029",
+      "sha256": "c98eae28a9b714a35612195f80cbe7a3e52d000089ea35e0c30dd71eccb993c2",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "README_zh.md",
       "role": "editable-source",
-      "sha256": "f51587292cbc548f9fea93d12199e903b1bada2d6d6abc2eee9635f7a778f7fc",
+      "sha256": "fe411b70929906158dabc998a9efca10a42aeee3030c32e5ae392c42eab85621",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2481,13 +2481,13 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "a72768cd309edbafa9f142a12656ecd214ce10affa6b19ae23d0ec8c5e21f49c",
+      "sha256": "0d8214041dfd805c7d36a47e11945404943f7a2e74b89389e1fdae989d5a1b46",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "afde1ab2e405f1e8ba649c663d5f2528047bbb40214d086e6d8632c434ffc0bb",
+      "sha256": "4f9ac578282063283d06455cf5ca994bde47321f99b23b525e0c8c607ae51eda",
       "reason": "editable-product-source-or-resource"
     },
     {

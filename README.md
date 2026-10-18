@@ -11,7 +11,7 @@
 
 </div>
 
-[English Version](README.md) | [中文说明](README_zh.md)
+[English Version](README.md) | [中文说明](README_zh.md) | [Product website](https://pencilq.com/dynasense/)
 
 ---
 
@@ -82,6 +82,8 @@ Official PDF manuals can be viewed locally offline:
 | :--- | :--- |
 | **Bilingual** | [Download lsdyna-manual-pack-bilingual.zip](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-bilingual.zip) |
 | **English** | [Download lsdyna-manual-pack-en.zip](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-en.zip) |
+
+Manual packs updated: 2026-10-18.
 
 **Official documentation:** The [Ansys LS-DYNA manuals download page](https://lsdyna.ansys.com/manuals-download/) provides the official original documents. The ZIP files above are local manual packs for use with the extension.
 

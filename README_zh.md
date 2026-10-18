@@ -11,7 +11,7 @@
 
 </div>
 
-[English Version](README.md) | [中文说明](README_zh.md)
+[English Version](README.md) | [中文说明](README_zh.md) | [产品介绍](https://pencilq.com/dynasense/)
 
 ---
 
@@ -81,6 +81,8 @@ DynaSense 为 LS-DYNA 标准卡片提供了专用的定宽保护机制：
 | :--- | :--- |
 | **双语版** | [下载 lsdyna-manual-pack-bilingual.zip](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-bilingual.zip) |
 | **英文版** | [下载 lsdyna-manual-pack-en.zip](https://github.com/hqyyqh/vscode-lsdyna/releases/download/2.0.7.3/lsdyna-manual-pack-en.zip) |
+
+手册包更新日期：2026-10-18。
 
 **官方文档：** [Ansys LS-DYNA 官方手册下载页](https://lsdyna.ansys.com/manuals-download/)提供官方原版文档；上方 ZIP 为供插件使用的本地手册包。
 

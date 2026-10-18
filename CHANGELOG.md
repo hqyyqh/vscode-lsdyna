@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-10-18
+
+### Changed / 改进
+
+- Complete visible parameters in supported numeric fields and navigate definitions and usages across the scanned main deck and its included files, respecting parameter scope and incomplete results.
+- 在支持的数值字段中补全当前可见的参数，并在已扫描主文件及其引用文件间定位定义和使用位置，保留参数作用域与扫描不完整的提示。
+- Improve large-file browsing and hand off supported field edits to the text editor while preserving unsaved content and stale-position checks.
+- 改进大文件浏览，将支持的字段编辑交给文本编辑器处理，并保留未保存内容与过期位置检查。
+- Let automatic manual reading follow the UI language while retaining explicit reading-language choices; English-only packs remain in English.
+- 手册阅读的自动语言跟随界面语言，并保留用户明确选择的阅读语言；英文手册包仍使用英文。
+
+### Fixed / 修复
+
+- Preserve the scanned main deck context for curve previews in included files, and use a refresh icon for reloading a keyword instance.
+- 保留已扫描主文件的上下文，使引用文件中的曲线悬停预览正常显示；关键字实例重新读取按钮改用刷新图标。
+
+### Documentation / 文档
+
+- Add a product website link and record the manual-pack update date in both READMEs.
+- 在中英文 README 中添加产品介绍链接，并注明手册包更新日期。
+
 ## [3.2.0] - 2026-10-13
 
 ### Added / 新增
@@ -50,8 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 继续支持兼容的 schema-v1 手册包及已有 PDF 目录。中英对照阅读需要含对齐数据的兼容双语包；更新插件不会为英文包自动补充中文内容。
 - Index caches may be rebuilt when their format or rule identity changes. Source model files do not require migration. Performance depends on the model and cache state; no fixed speed-up factor is promised.
 - 索引格式或规则身份变化时，缓存可能需要重建，源模型无需迁移。实际性能取决于模型及缓存状态，不承诺固定提速倍数。
-- This entry describes the pending **3.2.0** release. Publication date, platform acceptance and final package hashes will be recorded when released; this entry does not imply a tag, publication or master merge.
-- 本条记录描述待发布的 **3.2.0**。正式发布时再记录发布日期、平台验收及最终安装包摘要；当前记录不表示已打标签、发布或合并到 master。
+- **3.2.0** was published on 2026-10-13. See the [GitHub release](https://github.com/hqyyqh/vscode-lsdyna/releases/tag/v3.2.0) for its release assets.
+- **3.2.0** 已于 2026-10-13 发布，安装包见 [GitHub Release](https://github.com/hqyyqh/vscode-lsdyna/releases/tag/v3.2.0)。
 
 ## [3.1.5] - 2026-08-06
 

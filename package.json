@@ -11,7 +11,7 @@
         "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
     "icon": "images/extension-icon.png",
-    "version": "3.2.0",
+    "version": "3.2.1",
     "engines": {
         "vscode": "^1.100.0"
     },
