@@ -2721,7 +2721,7 @@
     {
       "path": "scripts/host/run-keyword-manager-gui.cjs",
       "role": "editable-source",
-      "sha256": "037bfd53167a073bb9a0c902e9ebe655d102395408b2afda5761519022b83609",
+      "sha256": "38841085cdd97cd325a968fc84b635eaa52fa08acaaf39a35cf7717f3ea74b7c",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -7011,7 +7011,7 @@
     {
       "path": "test/scripts/host/managerGuiCompletion.test.js",
       "role": "editable-source",
-      "sha256": "7fae834379d13d67f647597b202661c4867ed0f4c1ca9ea2a7b8f056425d4fdc",
+      "sha256": "6c1485ff08a934a44c92046e6924f5da4d6ad87af997e2ba6c244173bda2ecec",
       "reason": "public-build-or-package-regression"
     },
     {

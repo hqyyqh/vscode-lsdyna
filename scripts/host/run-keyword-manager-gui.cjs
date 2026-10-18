@@ -142,7 +142,7 @@ async function main() {
         const until = Date.now() + 90000;
         while (!context && Date.now() < until) {
             if (hostError) throw hostError;
-            if (instanceSelector && !fs.existsSync(path.join(root, 'selector-ready.json'))) { await delay(100); continue; }
+            if (!fs.existsSync(path.join(root, instanceSelector ? 'selector-ready.json' : 'gui-ready.json'))) { await delay(100); continue; }
             const { targetInfos } = await call('Target.getTargets');
             for (const target of targetInfos.filter(t => ['page', 'iframe'].includes(t.type))) {
                 if (attached.has(target.targetId)) continue;

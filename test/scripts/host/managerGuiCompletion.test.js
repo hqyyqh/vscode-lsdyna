@@ -101,3 +101,29 @@ describe('drag coordinates after document Undo', () => {
     }
 });
 
+
+describe('manager renderer waits for host readiness', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../../scripts/host/run-keyword-manager-gui.cjs'), 'utf8');
+    const start = source.indexOf('const findManagerContext = async');
+    const end = source.indexOf('const context = await findManagerContext();', start);
+    assert.ok(start > 0 && end > start);
+    for (const instanceSelector of [false, true]) {
+        it(`waits for ${instanceSelector ? 'selector' : 'GUI'} host metadata even when the renderer is ready`, async () => {
+            let now = 0;
+            const result = await vm.runInNewContext('(async () => {' + source.slice(start, end) + 'return findManagerContext();})()', {
+                root: '/fixture', path, instanceSelector, hostError: null,
+                Date: { now: () => now }, delay: async ms => { now += ms; },
+                fs: { existsSync(file) {
+                    assert.equal(path.basename(file), instanceSelector ? 'selector-ready.json' : 'gui-ready.json');
+                    return now >= 200;
+                } },
+                attached: new Set(), contexts: new Map([[1, 'ready-renderer']]),
+                call: async () => ({ targetInfos: [] }),
+                evaluate: async () => { assert.ok(now >= 200, 'Do not use renderer before host metadata'); return true; },
+                unverified: false, prefixHelp: false, standardRepeat: false, repeated: false, incomplete: false, comments: false,
+            });
+            assert.equal(result, 'ready-renderer');
+            assert.equal(now, 200);
+        });
+    }
+});
