@@ -418,6 +418,12 @@ function getMainDeckContextForDocumentPath(documentPath) {
     });
 }
 
+async function refreshScannedProjectStructure(indexClient, rootFile) {
+    // A worker's single-file query is not a user-selected main deck.
+    if (!activeProjectScopeCache.has(normalizeSnapshotRootKey(rootFile))) return null;
+    return (indexClient.loadProjectStructure || indexClient.loadProjectSnapshot)(rootFile);
+}
+
 function setMainDeckContextForDocument(documentPath, rootFile) {
     return activeMainDeckContextSelector.select(
         documentPath,
@@ -9176,11 +9182,16 @@ let keywordOptionsModel = null;
         )
     );
     const enqueueProjectSnapshotRefresh = createProjectSnapshotRefreshQueue({
-        loadProjectSnapshot: indexClient.loadProjectStructure || indexClient.loadProjectSnapshot,
+        loadProjectSnapshot: rootFile => refreshScannedProjectStructure(indexClient, rootFile),
         onError(error, rootFile) {
             console.error(`[lsdyna] Failed to refresh project snapshot for ${rootFile}:`, error);
         },
     });
+    const originalAffectedProjectRoots = indexClient.affectedProjectRoots?.bind(indexClient);
+    if (originalAffectedProjectRoots) indexClient.affectedProjectRoots = async filePath => [...new Set([
+        ...await originalAffectedProjectRoots(filePath),
+        ...getContainingReferenceProjects(filePath).map(projectRootFile),
+    ])];
     const invalidateChangedProjectRoots = createBatchedManifestInvalidator({
         indexClient,
         onError(error, changedFilePath) {
@@ -16224,6 +16235,7 @@ module.exports._internals = {
     clearReferenceIndexCacheForTesting,
     clearReferenceIndexForRoot,
     getMainDeckContextForDocumentPath,
+    refreshScannedProjectStructure,
     setMainDeckContextForDocument,
     clearMainDeckContextForDocument,
     handleSelectMainDeckContextCommand,

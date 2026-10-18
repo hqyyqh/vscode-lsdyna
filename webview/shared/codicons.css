@@ -17,3 +17,4 @@
 
 .ui-icon--globe { mask-image: url('@vscode/codicons/src/icons/globe.svg'); }
 .ui-icon--split-horizontal { mask-image: url('@vscode/codicons/src/icons/split-horizontal.svg'); }
+.ui-icon--refresh { mask-image: url('@vscode/codicons/src/icons/refresh.svg'); }

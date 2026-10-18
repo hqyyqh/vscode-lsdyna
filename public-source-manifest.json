@@ -22,6 +22,7 @@
       "test/client/entityReferenceCursorFollow.test.js",
       "test/client/entityReferencesWebviewProvider.test.js",
       "test/client/hover/knownKeywordHoverFallback.test.js",
+      "test/client/hover/mainDeckCurveHover.test.js",
       "test/client/hover/nativeContactIdMppHover.test.js",
       "test/client/hover/nativeContactMppTailHover.test.js",
       "test/client/hover/nativeCountedOccurrenceHover.test.js",
@@ -4070,7 +4071,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "7d06055ef47f6a305f6aab58adf512517794c4bfe6b693fbe7093b12708eb52a",
+      "sha256": "86b0b58de057d26edf16ed9b8c7297e7bcb1605a492889ff2f9ae80126d918ad",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4341,6 +4342,12 @@
       "path": "test/client/hover/knownKeywordHoverFallback.test.js",
       "role": "editable-source",
       "sha256": "bf17d10b72642b239ca29a91e045c7bf30223c329aee729265c8f021c850b8e2",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/hover/mainDeckCurveHover.test.js",
+      "role": "editable-source",
+      "sha256": "04da304b9c775dc4d7b2d9c9f28b31b6ff813547e631c16003085c5e0455500c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7394,7 +7401,7 @@
     {
       "path": "webview/keyword-options/src/ManagerIcon.tsx",
       "role": "editable-source",
-      "sha256": "f310560ff4d3b2e2ff62a00579a85ee6cc170354438099bcc8f9f679ca545ea7",
+      "sha256": "a26ec74ec383b57d11c7df7b625b624dc8a3aa19822a9a6eb8a8ce7f4a41371a",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7778,7 +7785,7 @@
     {
       "path": "webview/shared/Codicon.tsx",
       "role": "editable-source",
-      "sha256": "48e35acc51e4b8a6530e99dc6e6312447a305b6dc3e57c0e6f777830b2cd7c2e",
+      "sha256": "0c374bd3fff14832ac9fa945977f3c5b4bf1c73752fd93cba8d221083f275fd4",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7790,7 +7797,7 @@
     {
       "path": "webview/shared/codicons.css",
       "role": "editable-source",
-      "sha256": "a94ca4f732185a4affff97c825b475d4bb0e69d65410df6f3fa7f9d73cb4f81d",
+      "sha256": "1ac6685cd84db1333ec679af557e418abe94f31da7f869152e5c82c484067654",
       "reason": "editable-product-source-or-resource"
     }
   ],
