@@ -304,7 +304,17 @@ async function main() {
                 const menuPoint = await evaluate(menuContext, `(() => { const r=[...document.querySelectorAll('.context-view .action-label')].find(e => /Open in Text Editor|在文本编辑器中打开/.test(e.textContent)).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
                 await call('Input.dispatchMouseEvent', {type:'mousePressed',button:'left',clickCount:1,...menuPoint}, pageSession);
                 await call('Input.dispatchMouseEvent', {type:'mouseReleased',button:'left',clickCount:1,...menuPoint}, pageSession);
-            } else await evaluate(context, "document.querySelector('.open-native').click()");
+            } else {
+                // Field selection changes the host revision asynchronously; wait for its rendered acknowledgement.
+                await evaluate(context, `(async () => {
+                    const selected = () => [...document.querySelectorAll('.field.selected')].some(field =>
+                        JSON.parse(field.getAttribute('data-vscode-context')).token === ${JSON.stringify(contextTarget.token)});
+                    const deadline = Date.now() + 15000;
+                    while (!selected() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+                    if (!selected()) throw Error('Field selection was not acknowledged');
+                    document.querySelector('.open-native').click();
+                })()`);
+            }
             await command('test.nativeSelection', { ...contextTarget, dirty: dirtyTest });
             await command('test.nativeEdit');
             nativeNavigation = { nativeEditUndo:true, toolbar:true, nativeContextMenu:nativeMenu ? true : 'unverified', dirtyNativeTextRetained:dirtyTest ? true : null, target, contextTarget };
