@@ -106,25 +106,19 @@ describe('Category EFV Native Reader 100% Full Closure', () => {
         });
     });
 
-    it('achieves 100.0% native closure across all 114 Category EFV registrations', function() {
-        this.timeout(10000);
-        const data = { registrations: require("../../fixtures/public-behavior/category-registration-keywords.json") };
-        const regs = data.registrations.filter(r => r.category === 'EFV');
-        assert.equal(regs.length, 114, 'Category EFV should have strictly 114 registrations');
-
-        let resolved = 0;
-        const failures = [];
-        for (const reg of regs) {
-            const kw = reg.name.startsWith('EFV') ? reg.name : `EFV_${reg.name}`;
+    const efvRegistrations = require("../../fixtures/public-behavior/category-registration-keywords.json")
+        .filter(reg => reg.category === 'EFV');
+    it('retains all 114 Category EFV registrations', () => {
+        assert.equal(efvRegistrations.length, 114);
+    });
+    for (const reg of efvRegistrations) {
+        const kw = reg.name.startsWith('EFV') ? reg.name : `EFV_${reg.name}`;
+        it(`resolves native Category EFV registration ${kw}`, () => {
             const doc = fakeDoc(['*' + kw, '         1         2         3         4'].join('\n'));
             const res = resolve(doc, 1);
-            if (res?.cardInfo?.resolutionSource === 'native-file-reader' || res?.reason === 'native-reader-has-no-data-fields') {
-                resolved++;
-            } else {
-                failures.push({ kw, source: res?.cardInfo?.resolutionSource, reason: res?.reason });
-            }
-        }
-        assert.equal(failures.length, 0, `Category EFV had unresolved keywords: ${JSON.stringify(failures)}`);
-        assert.equal(resolved, 114, 'Category EFV closure is not 100%');
-    });
+            assert.ok(res?.cardInfo?.resolutionSource === 'native-file-reader' ||
+                res?.reason === 'native-reader-has-no-data-fields',
+                JSON.stringify({ kw, source: res?.cardInfo?.resolutionSource, reason: res?.reason }));
+        }).timeout(10000);
+    }
 });

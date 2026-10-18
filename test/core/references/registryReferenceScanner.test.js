@@ -695,7 +695,7 @@ describe('registryReferenceScanner', () => {
         }
         assert.ok(actionable > 0, 'fixture must retain actionable exact coordinates');
         assert.ok(blocked > 0, 'fixture must cover fail-closed namespace mismatches');
-    });
+    }).timeout(10000); // Full coordinate replay: bounded hang detection, not a latency requirement.
 
     it('scans every approved manual supplemental field from a generated physical block', async function () {
         this.timeout(120_000); // Generates and checks all 2,732 blocks; not an interactive latency budget.

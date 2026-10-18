@@ -865,8 +865,8 @@ describe('native conditional file references',function(){
     .map(r=>[r.keyword,r.fieldName,r.line]),expected,JSON.stringify({format,maxReferenceBlockBytes,reasons:result.reasons}));
   }
  });
- it('queries exact original TSHELL and MODE definitions without mixing another same-ID namespace',async()=>{
-  for(const maxReferenceBlockBytes of [undefined,1])for(const format of ['standard','comma','long','i10']){
+ for(const maxReferenceBlockBytes of [undefined,1])for(const format of ['standard','comma','long','i10']){
+  it(`queries exact original TSHELL and MODE definitions without mixing another same-ID namespace (${format}, ${maxReferenceBlockBytes === 1 ? 'disk' : 'ordinary'})`,async()=>{
    const lines=['*KEYWORD','*NODE','      73'+[0,0,0].map(v=>String(v).padStart(16)).join(''),
     '*MAT_ELASTIC','        73         1       100       0.3'],expected={'tshell-set':[],'mode-set':[]};
    for(const [kind,bases]of [['tshell-set',['SET_TSHELL','SET_TSHELL_LIST','SET_TSHELL_GENERATE','SET_TSHELL_GENERAL']],
@@ -880,8 +880,8 @@ describe('native conditional file references',function(){
     assert.deepEqual(result.locations.filter(r=>r.role==='definition').map(r=>[r.keyword,r.fieldName,r.line]),expected[kind],
      JSON.stringify({kind,format,maxReferenceBlockBytes,reasons:result.reasons}));
    }
-  }
- });
+  });
+ }
  it('streams the last weld pair after the byte and occurrence limits without inventing a GUI WID definition',async function(){
   this.timeout(60000);
   const count=140000,lines=['*KEYWORD','*NODE','      73'+[0,0,0].map(v=>String(v).padStart(16)).join(''),

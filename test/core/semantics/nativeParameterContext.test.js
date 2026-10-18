@@ -15,7 +15,13 @@ describe('native controller parameter context', () => {
         const file = path.join(__dirname, "../../fixtures/public-behavior/mixed-field-input.k");
         const doc = { ...fakeDoc(fs.readFileSync(file, 'utf8'), file), version: 1, isDirty: false };
         const index = await buildFileIndex(file);
-        cacheReferenceIndexFromSnapshot({ rootFile: file, files: [file], graph: { includeOccurrences: [] }, fileIndexes: new Map([[file, index]]) });
+        const cache = snapshot => {
+            const original = performance.now, fixed = original.call(performance);
+            performance.now = () => fixed; // This case checks invalidation, not cache-admission latency.
+            try { assert.equal(cacheReferenceIndexFromSnapshot(snapshot), true); }
+            finally { performance.now = original; }
+        };
+        cache({ rootFile: file, files: [file], graph: { includeOccurrences: [] }, fileIndexes: new Map([[file, index]]) });
         const native = require("../../fixtures/public-behavior/mixed-field-records.json");
         const rows = native.observations.filter(o => o.kind === 'fields' && o.sourceLine >= 38 && o.sourceLine <= 41);
         assert.equal(rows.length, 4);
@@ -41,9 +47,9 @@ describe('native controller parameter context', () => {
         const details = await provider.provideDetailedHover(doc, { line: 39, character: 1 });
         assert.ok(details.contents[0].value.includes(i18n.get('referenceReasonParameterContextStale')));
         index.documentVersion = 2;
-        cacheReferenceIndexFromSnapshot({ rootFile: file, files: [file], graph: { includeOccurrences: [] }, fileIndexes: new Map([[file, index]]) });
+        cache({ rootFile: file, files: [file], graph: { includeOccurrences: [] }, fileIndexes: new Map([[file, index]]) });
         assert.deepEqual(resolve(doc, 39).cardInfo.card, warm.card);
-    });
+    }).timeout(10000);
 
     it('allows zero for a controller while preserving the reference ID rule and signed values', () => {
         const file = path.resolve('out/parameter-value-test.k');

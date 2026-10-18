@@ -230,24 +230,26 @@ describe('CONTACT thermal composition across consumers', function () {
             }
         }
     });
-    it('retains native controls instead of filtering them with manual applicability',()=> {
-        const source=require('../../../keywords/runtime/engineering/contactThermal.json');
-        for(const [keyword,capability] of Object.entries(source.applicability)) {
+    const thermalSource=require('../../../keywords/runtime/engineering/contactThermal.json');
+    for(const [keyword,capability] of Object.entries(thermalSource.applicability)) {
+        it(`retains native controls instead of filtering them with manual applicability (${keyword})`,()=> {
             const form=getCatalogInputFormCatalogV4().formForKeyword(keyword);
-            if(!form)continue;
+            if(!form)return;
             const selectors=(form.reference.selectorRuleIds||[]).flatMap(id=>form.rules[id].selectors);
             const raw=getCatalogInputFormCatalogV4().formForKeyword(keyword,false);
             const native=(raw?.reference.selectorRuleIds||[]).flatMap(id=>raw.rules[id].selectors);
             for(const selector of native) assert.ok(selectors.some(s=>s.controlId===selector.controlId),keyword);
-            if(!capability.thermal)assert.equal(source.spellings[keyword+'_THERMAL_FRICTION'],undefined,keyword);
-        }
+            if(!capability.thermal)assert.equal(thermalSource.spellings[keyword+'_THERMAL_FRICTION'],undefined,keyword);
+        });
+    }
+    it('rejects unsupported thermal drafts while preserving native selectors',()=> {
         for(const family of ['CONTACT_NODES_TO_SURFACE','CONTACT_AIRBAG_SINGLE_SURFACE','CONTACT_AUTOMATIC_GENERAL','CONTACT_SPOTWELD']) {
             const e=editor('*'+family+'\n11,22\n0,0\n1,1\n*END');
             const m=api.buildKeywordOptionViewModel(e,0,{});
             const raw=getCatalogInputFormCatalogV4().formForKeyword(family,false);
             assert.equal(m.controls.some(c=>c.choices.some(v=>v.value==='Thermal')),
-                (raw.reference.selectorRuleIds||[]).some(id=>raw.rules[id].selectors.some(s=>s.controlId===source.controlId)),family);
-            const staged=api.buildKeywordOptionViewModel(e,0,{draftControlState:{[source.controlId]:'Thermal'}});
+                (raw.reference.selectorRuleIds||[]).some(id=>raw.rules[id].selectors.some(s=>s.controlId===thermalSource.controlId)),family);
+            const staged=api.buildKeywordOptionViewModel(e,0,{draftControlState:{[thermalSource.controlId]:'Thermal'}});
             assert.equal(api.buildKeywordOptionsViewState(staged).canApply,false,family);
         }
     });

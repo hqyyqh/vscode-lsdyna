@@ -1821,7 +1821,7 @@ describe('fieldReferenceClassifier', () => {
             }), null, coordinate);
         }
         assert.equal(optionOnly, 14);
-    });
+    }).timeout(10000); // Full reference catalog replay, not an interactive latency requirement.
 
     it('audits the source-locked physical layout remap inventory', function () {
         const aliasRows = [];

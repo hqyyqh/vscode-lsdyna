@@ -4455,7 +4455,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerContactThermal.test.js",
       "role": "editable-source",
-      "sha256": "af05e241aa2fe2f3eaaba11e0aad55cb09022fc3f638ad7fdca8ecc0c6936a3e",
+      "sha256": "2681eb7a70055a503e7a9e583f5298159c7251f3db756fc722cf61961ce37b76",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5217,7 +5217,7 @@
     {
       "path": "test/core/references/fieldReferenceClassifier.test.js",
       "role": "editable-source",
-      "sha256": "95c9186e5d794fb9644bdda00caff38a39bc182fb52fbd755c5fe31b3706731c",
+      "sha256": "b4764c9b03dac4c4c09a7b9e00a1110134b00c817041b9cec03b78dc050a2506",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5265,7 +5265,7 @@
     {
       "path": "test/core/references/nativeConditionalFileReferences.test.js",
       "role": "editable-source",
-      "sha256": "cd41243558121ddf2f213b9c403e306dce1968ffe1c1ab291b4ffd0737e132c6",
+      "sha256": "85033df689fff8e577f90b1827f37cccdf3f1bf03905d420cd0df1b9b2bbd19d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5451,7 +5451,7 @@
     {
       "path": "test/core/references/registryReferenceScanner.test.js",
       "role": "editable-source",
-      "sha256": "9d3237c5b1b52a31ea642566b2f220c9ee41d9df6d87b6df7cf986924b9f8546",
+      "sha256": "2aacd74dffd4ce5fcef624fbf33bdf9bc4ed459da4cffecaa6de18559e844384",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5601,7 +5601,7 @@
     {
       "path": "test/core/semantics/nativeEfvClosure.test.js",
       "role": "editable-source",
-      "sha256": "d5287e1ee36cd0dc30d50d91ec8fde66191207070792d736c37f32f7ff95fed2",
+      "sha256": "f3e08245c86b4c02d0bb0534452b6a41eaeea443b10c0d24bcf42db6455dd7ea",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5661,7 +5661,7 @@
     {
       "path": "test/core/semantics/nativeKeywordTemplates.test.js",
       "role": "editable-source",
-      "sha256": "cab709867fe3933764f2a14013d7be682224b29b6c831e78cfb4dfc478862000",
+      "sha256": "699ef5faea52bc622b9cd1e27b7d0355d01351c37d0f6ac117b2b9d1ce9d0756",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5703,7 +5703,7 @@
     {
       "path": "test/core/semantics/nativeParameterContext.test.js",
       "role": "editable-source",
-      "sha256": "72206994b26506c5044fb24ac45ca41e2e74b702a3def989f8cee35116a8c323",
+      "sha256": "fbc0b191b04f844fd42ef325fb26e0362a6a70ca5d489a42299c5449415824d3",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
