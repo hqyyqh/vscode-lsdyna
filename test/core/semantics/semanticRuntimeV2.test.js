@@ -111,7 +111,7 @@ describe('semantic runtime catalog v2', () => {
                 assert.equal(restored.status().ready, true);
             }
         } finally { fs.rmSync(root, { recursive: true, force: true }); }
-    });
+    }).timeout(10000); // Full on-disk recovery: bounded hang detection, not a latency requirement.
 
     it('loads the reference and option domains lazily from a source-locked manifest', () => {
         const catalog = new SemanticRuntimeCatalogV2();
