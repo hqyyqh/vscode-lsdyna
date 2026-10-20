@@ -9000,6 +9000,8 @@ let keywordOptionsModel = null;
             )
             : { dispose() {} },
         vscode.commands.registerCommand('extension.openLargeFileInTextEditor', target => largeFileViewerProvider.openNative(target)),
+        vscode.commands.registerCommand('extension.copyLargeFileField', target => largeFileViewerProvider.copy(target, true)),
+        vscode.commands.registerCommand('extension.copyLargeFileLine', target => largeFileViewerProvider.copy(target, false)),
         vscode.commands.registerCommand('extension.openLsdynaLargeFileViewer', async target => {
             const uri = target instanceof vscode.Uri ? target
                 : target?.uri instanceof vscode.Uri ? target.uri

@@ -565,6 +565,97 @@ test('disables native navigation for stale content', async () => {
     expect(await screen.findByRole('button', { name: '在文本编辑器中打开' })).toBeDisabled();
 });
 
+test('copies visible source text across fields and rows without gutters or truncation markers', async () => {
+    const state = viewState({ lines: [
+        viewState().lines[0],
+        { lineNumber: 101, text: '', fields: [], keyword: false, truncated: false },
+        { lineNumber: 102, text: '  &density', fields: [], keyword: false, truncated: true },
+    ] });
+    render(<LargeFileViewerApp transport={transport(state)} />);
+    await screen.findByDisplayValue('101');
+    const rows = document.querySelectorAll('.line-text');
+    const range = document.createRange();
+    range.setStart(rows[0].firstChild!, 2);
+    range.setEndAfter(rows[2]);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const setData = vi.fn();
+    fireEvent.copy(document.querySelector('.viewport')!, { clipboardData: { setData } });
+    expect(setData).toHaveBeenCalledWith('text/plain', state.lines[0].text.slice(2) + '\n\n  &density');
+    selection.removeAllRanges();
+});
+
+test.each([false, true])('offers copy targets only for complete current rows (stale=%s)', async stale => {
+    render(<LargeFileViewerApp transport={transport(viewState({ stale, lines: [
+        viewState().lines[0], { lineNumber: 101, text: 'prefix', fields: [], keyword: false, truncated: true },
+    ] }))} />);
+    await screen.findByDisplayValue('101');
+    const context = (selector: string) => JSON.parse(document.querySelector(selector)!.getAttribute('data-vscode-context')!);
+    expect(context('.field')).toMatchObject({ largeFileCanCopy: !stale, largeFileField: true, token: 'mid-token' });
+    expect(context('.line')).toMatchObject({ largeFileCanCopy: !stale, largeFileField: false });
+    expect(context('.line:last-child').largeFileCanCopy).toBe(false);
+    expect(context('.line').preventDefaultContextMenuItems).toBe(true);
+    expect(context('.field').preventDefaultContextMenuItems).toBe(true);
+});
+
+test('copies a partial field text selection and leaves an empty selection alone', async () => {
+    render(<LargeFileViewerApp transport={transport(viewState())} />);
+    await screen.findByDisplayValue('101');
+    const text = document.querySelector('.field .syntax-number')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 1);
+    range.setEnd(text, 5);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const setData = vi.fn();
+    fireEvent.copy(document.querySelector('.viewport')!, { clipboardData: { setData } });
+    expect(setData).toHaveBeenCalledWith('text/plain', '0001');
+    selection.removeAllRanges();
+    setData.mockClear();
+    fireEvent.copy(document.querySelector('.viewport')!, { clipboardData: { setData } });
+    expect(setData).not.toHaveBeenCalled();
+});
+
+test('copies the highlighted field on Ctrl+C and gives a text selection priority', async () => {
+    const initial = viewState();
+    const api = transport(initial);
+    let notify!: (state: LargeFileViewerState) => void;
+    api.onStateChanged = handler => { notify = handler; return () => undefined; };
+    render(<LargeFileViewerApp transport={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: '2000101' }));
+    await act(async () => notify({ ...initial, revision: 5, selectedField: {
+        token: 'mid-token', label: 'MID', value: '2000101', keyword: '*PART', cardIndex: 1,
+        localizedHelp: '', englishHelp: '', type: '', defaultValue: '', choices: [], queryable: true,
+    } }));
+    const field = document.querySelector('.field.selected')!;
+    const setData = vi.fn();
+    window.getSelection()!.removeAllRanges();
+    fireEvent.copy(field, { clipboardData: { setData } });
+    expect(setData).toHaveBeenLastCalledWith('text/plain', '2000101');
+    const text = field.querySelector('.syntax-number')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 1); range.setEnd(text, 5);
+    window.getSelection()!.addRange(range);
+    fireEvent.copy(field, { clipboardData: { setData } });
+    expect(setData).toHaveBeenLastCalledWith('text/plain', '0001');
+    window.getSelection()!.removeAllRanges();
+    for (const next of [
+        { ...initial, revision: 6, stale: true },
+        { ...initial, revision: 7, lines: [{ ...initial.lines[0], truncated: true }] },
+        { ...initial, revision: 8, anchorLine: 101, lines: [initial.lines[0], { lineNumber: 101, text: '*END', fields: [], keyword: true, truncated: false }] },
+    ]) {
+        await act(async () => notify({ ...next, selectedField: {
+            token: 'mid-token', label: 'MID', value: '2000101', keyword: '*PART', cardIndex: 1,
+            localizedHelp: '', englishHelp: '', type: '', defaultValue: '', choices: [], queryable: true,
+        } }));
+        setData.mockClear();
+        fireEvent.copy(document.querySelector('.viewport')!, { clipboardData: { setData } });
+        expect(setData).not.toHaveBeenCalled();
+    }
+});
+
 test('a new line jump supersedes a previously clicked field', async () => {
     const api = transport(viewState({ lines: [viewState().lines[0], { lineNumber: 101, text: '*END', fields: [], keyword: true, truncated: false }] }));
     render(<LargeFileViewerApp transport={api} />);

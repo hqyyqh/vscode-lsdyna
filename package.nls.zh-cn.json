@@ -1,5 +1,7 @@
 {
     "commands.openLargeFileInTextEditor.title": "在文本编辑器中打开",
+    "commands.copyLargeFileField.title": "复制字段值",
+    "commands.copyLargeFileLine.title": "复制当前行",
     "commands.keywordIndexChooseScope.title": "选择索引范围",
     "commands.keywordIndexRefresh.title": "刷新关键字索引",
     "extension.description": "LS-DYNA (.k) 关键字文件辅助编辑，官方手册与参数说明快捷查询。",

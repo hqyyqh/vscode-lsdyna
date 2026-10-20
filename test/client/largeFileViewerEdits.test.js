@@ -33,6 +33,40 @@ describe('large viewer recovery and native editing', () => {
         provider.sessions.clear(); await document.edits.dispose(); provider.dispose();
     });
     const request = { viewer: 'viewer', revision: 3, line: 2, token: 'mid' };
+    it('copies source field values and exact lines, rejects stale targets and reports clipboard failures', async () => {
+        const writeText = vscode.env.clipboard.writeText;
+        const errors = [];
+        const copied = [];
+        vscode.window.showErrorMessage = async message => { errors.push(message); };
+        vscode.env.clipboard.writeText = async text => { copied.push(text); };
+        session.state.lines[0].text = '         7   -210000  ';
+        try {
+            assert.equal(await provider.copy(request, true), true);
+            assert.equal(copied.pop(), '-210000');
+            assert.equal(await provider.copy(request, false), true);
+            assert.equal(copied.pop(), session.state.lines[0].text);
+            for (const value of ['&density', '0', '']) {
+                session.state.lines[0].text = '         7' + value.padStart(10);
+                assert.equal(await provider.copy(request, true), true);
+                assert.equal(copied.pop(), value);
+            }
+            for (const invalid of [undefined, { ...request, viewer: 'other' }, { ...request, revision: 2 },
+                { ...request, line: 99 }, { ...request, token: 'other' }]) {
+                assert.equal(await provider.copy(invalid, true), false);
+            }
+            session.state.stale = true;
+            assert.equal(await provider.copy(request, false), false);
+            session.state.stale = false;
+            session.state.lines[0].truncated = true;
+            assert.equal(await provider.copy(request, false), false);
+            assert.equal(copied.length, 0);
+            session.state.lines[0].truncated = false;
+            vscode.env.clipboard.writeText = async () => { throw Error('clipboard unavailable'); };
+            assert.equal(await provider.copy(request, true), false);
+            assert.equal(errors.length, 1);
+            assert.equal(await fs.readFile(file, 'utf8'), original);
+        } finally { vscode.env.clipboard.writeText = writeText; }
+    });
     it('uses the native editor explicitly, preserves dirty buffers and passes exact field coordinates', async () => {
         vscode.workspace.textDocuments = [{ uri: document.uri, isDirty: true }];
         assert.equal(await provider.openNative(request), true);

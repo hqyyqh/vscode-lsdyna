@@ -87,6 +87,8 @@
         "onCommand:extension.keywordIndexToggleFollowActive",
         "onCommand:extension.openLsdynaLargeFileViewer",
         "onCommand:extension.openLargeFileInTextEditor",
+        "onCommand:extension.copyLargeFileField",
+        "onCommand:extension.copyLargeFileLine",
         "onCustomEditor:lsdyna.largeFileViewer",
         "onCommand:extension.keywordOptions.apply",
         "onCommand:extension.keywordOptions.reset",
@@ -357,6 +359,14 @@
                 "command": "extension.openLargeFileInTextEditor",
                 "title": "%commands.openLargeFileInTextEditor.title%",
                 "icon": "$(edit)"
+            },
+            {
+                "command": "extension.copyLargeFileField",
+                "title": "%commands.copyLargeFileField.title%"
+            },
+            {
+                "command": "extension.copyLargeFileLine",
+                "title": "%commands.copyLargeFileLine.title%"
             },
             {
                 "command": "extension.openIncludeFile",
@@ -1135,6 +1145,14 @@
                     "when": "false"
                 },
                 {
+                    "command": "extension.copyLargeFileField",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.copyLargeFileLine",
+                    "when": "false"
+                },
+                {
                     "command": "extension.keywordIndexToggleFollowActive",
                     "when": "false"
                 },
@@ -1256,6 +1274,16 @@
                 }
             ],
             "webview/context": [
+                {
+                    "command": "extension.copyLargeFileField",
+                    "when": "webviewId == lsdyna.largeFileViewer && webviewSection == largeFileRecord && largeFileCanCopy && largeFileField",
+                    "group": "1_copy@1"
+                },
+                {
+                    "command": "extension.copyLargeFileLine",
+                    "when": "webviewId == lsdyna.largeFileViewer && webviewSection == largeFileRecord && largeFileCanCopy",
+                    "group": "1_copy@2"
+                },
                 {
                     "command": "extension.openLargeFileInTextEditor",
                     "when": "webviewId == lsdyna.largeFileViewer && webviewSection == largeFileRecord",

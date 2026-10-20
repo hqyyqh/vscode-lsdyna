@@ -6,6 +6,7 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type ClipboardEvent,
     type FormEvent,
     type KeyboardEvent,
     type ReactNode,
@@ -20,6 +21,33 @@ import type { LargeFileViewerTransport } from './transport';
 type ViewerAction = (current: LargeFileViewerState) => Promise<boolean>;
 // ponytail: cap native scroll coordinates; windowed reads and exact line jumps cover files beyond browser pixel limits.
 const MAX_SCROLL_HEIGHT = 4_000_000;
+
+function copyVisibleSelection(event: ClipboardEvent<HTMLDivElement>, state: LargeFileViewerState) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) {
+        if (state.stale || !state.selectedField || !event.currentTarget.querySelector('.field.selected')) return;
+        const row = state.lines.find(line => line.fields.some(field => field.token === state.selectedField!.token));
+        const field = row?.fields.find(field => field.token === state.selectedField!.token);
+        if (!row || row.truncated || !field) return;
+        event.preventDefault();
+        event.clipboardData.setData('text/plain', row.text.slice(field.startColumn, field.endColumn).trim());
+        return;
+    }
+    const selected = selection.getRangeAt(0);
+    if (!event.currentTarget.contains(selected.startContainer) || !event.currentTarget.contains(selected.endContainer)) return;
+    // ponytail: copy only mounted text; add file-coordinate selection only if cross-screen copying is requested.
+    const parts: string[] = [];
+    for (const text of event.currentTarget.querySelectorAll('.line-text')) {
+        if (!selected.intersectsNode(text)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        if (selected.compareBoundaryPoints(Range.START_TO_START, range) > 0) range.setStart(selected.startContainer, selected.startOffset);
+        if (selected.compareBoundaryPoints(Range.END_TO_END, range) < 0) range.setEnd(selected.endContainer, selected.endOffset);
+        parts.push(range.toString());
+    }
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', parts.join('\n'));
+}
 
 export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTransport }) {
     const [cursor, setCursor] = useState<{ line: number; token?: string } | null>(null);
@@ -372,7 +400,7 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
                 <span className="codicon codicon-close" aria-hidden="true" /></button>
         </form>
         </header>
-        <div className="viewport" ref={viewport} tabIndex={0} title={state.labels.noField} onKeyDown={onViewportKey} onScroll={event => {
+        <div className="viewport" data-vscode-context='{"preventDefaultContextMenuItems":true}' ref={viewport} tabIndex={0} title={state.labels.noField} onCopy={event => copyVisibleSelection(event, state)} onKeyDown={onViewportKey} onScroll={event => {
             if (event.currentTarget.scrollTop === assignedScrollTop.current) { assignedScrollTop.current = null; return; }
             assignedScrollTop.current = null;
             if (state.stale) {
@@ -415,7 +443,7 @@ function LineRow({ line, state, select, query, point }: {
     fields.forEach((field, index) => {
         if (field.startColumn > cursor) content.push(renderText(line.text.slice(cursor, field.startColumn), cursor));
         content.push(<FieldSpan key={field.token} field={field} text={renderText(line.text.slice(field.startColumn, field.endColumn), field.startColumn)}
-            context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, token: field.token, preventDefaultContextMenuItems: true })}
+            context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, token: field.token, largeFileCanCopy: !state.stale && !line.truncated, largeFileField: true, preventDefaultContextMenuItems: true })}
             selected={state.selectedField?.token === field.token}
             target={!state.stale && state.navigationTarget?.line === line.lineNumber && field.endColumn > state.navigationTarget.startColumn && field.startColumn < state.navigationTarget.endColumn}
             select={select} query={query} />);
@@ -430,10 +458,10 @@ function LineRow({ line, state, select, query, point }: {
             syntaxText(line.text.slice(target.endColumn)));
         else content.push(renderText(line.text, 0));
     }
-    return <div data-vscode-context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, preventDefaultContextMenuItems: true })}
+    return <div data-vscode-context={JSON.stringify({ webviewSection: "largeFileRecord", viewer: state.viewer, revision: state.revision, line: line.lineNumber, largeFileCanCopy: !state.stale && !line.truncated, largeFileField: false, preventDefaultContextMenuItems: true })}
         onClick={event => { if (!(event.target as HTMLElement).closest('.field')) point({ line: line.lineNumber }); }} className={`line ${line.keyword ? 'keyword-line' : line.text.trimStart().startsWith('$') ? 'comment-line' : ''} ${!state.stale && state.navigationTarget?.line === line.lineNumber || matchStart >= 0 ? 'navigation-line' : ''}`}>
         <span className="line-number">{line.lineNumber + 1}</span>
-        <span className="line-text">{content}{line.truncated && <span className="truncated" title={state.labels.truncatedLine}>{'\u2026'}</span>}</span>
+        <span className="line-text">{content}</span>{line.truncated && <span className="truncated" title={state.labels.truncatedLine}>{'\u2026'}</span>}
     </div>;
 }
 

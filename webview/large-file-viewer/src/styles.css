@@ -57,16 +57,16 @@ main { container-type: inline-size; display: grid; grid-template-rows: auto auto
 .line { display: flex; font-variant-ligatures: none !important; letter-spacing: 0 !important; font-family: var(--vscode-editor-font-family), monospace; font-size: var(--vscode-editor-font-size); font-weight: var(--vscode-editor-font-weight); line-height: var(--vscode-editor-line-height, 20px); min-height: var(--vscode-editor-line-height, 20px); white-space: pre; }
 .line:hover { background: var(--vscode-editor-hoverHighlightBackground, var(--vscode-list-hoverBackground)); }
 .line-number { background: var(--vscode-editorGutter-background); border-right: 1px solid var(--vscode-panel-border); color: var(--vscode-editorLineNumber-foreground); flex: 0 0 auto; padding: 0 10px 0 8px; text-align: right; user-select: none; width: calc((var(--line-digits) + 3) * 1ch); }
-.line-text { padding-right: 24px; }
+.line-text { padding-right: 24px; user-select: text; }
 .keyword-line .line-text { color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground)); font-weight: 600; }
 
 /* Field interactions preserve the source character columns. */
-.field { background: transparent; border: 0; border-radius: 0; color: inherit; display: inline-block; font: inherit; line-height: inherit; min-height: 0; padding: 0; margin: 0; white-space: pre; }
+.field { background: transparent; border: 0; border-radius: 0; color: inherit; display: inline-block; font: inherit; line-height: inherit; min-height: 0; padding: 0; margin: 0; white-space: pre; user-select: text; }
 .field:hover { background: var(--vscode-editor-hoverHighlightBackground) !important; box-shadow: inset 0 0 0 1px var(--vscode-panel-border); }
 .field.queryable { cursor: pointer; }
 .field.queryable:hover { text-decoration: underline solid var(--vscode-textLink-foreground); }
 .field.selected { background: var(--vscode-editor-selectionBackground) !important; color: var(--vscode-editor-selectionForeground, inherit); }
-.truncated { color: var(--vscode-editorWarning-foreground); }
+.truncated { color: var(--vscode-editorWarning-foreground); user-select: none; }
 
 /* Field help footer */
 .field-help { background: var(--vscode-editorWidget-background); border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); max-height: min(35vh, 240px); overflow: auto; padding: 7px 10px 8px; }

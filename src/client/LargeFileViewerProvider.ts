@@ -245,6 +245,23 @@ vscode.CustomEditorProvider<LargeFileDocument>, vscode.Disposable {
         if (!/^largeFile(?:Edit[A-Za-z]+|RecoverySaveAs)$/.test(key)) console.error('[lsdyna] Large-file edit operation failed:', error);
         return new Error(/^largeFile(?:Edit[A-Za-z]+|RecoverySaveAs)$/.test(key) ? i18n.get(key) : i18n.get('largeFileEditFailed'));
     }
+    async copy(request: { viewer?: string; revision?: number; line?: number; token?: string } | undefined, fieldOnly: boolean): Promise<boolean> {
+        const session = [...this.sessions.values()].find(value => value.state.viewer === request?.viewer);
+        const row = session?.state.lines.find(value => value.lineNumber === request?.line);
+        const field = fieldOnly ? row?.fields.find(value => value.token === request?.token) : undefined;
+        if (!session || !this.accepts(session, request?.revision!) || !row || row.truncated || (fieldOnly && !field)) {
+            await vscode.window.showWarningMessage(i18n.get('largeFileCopyUnavailable'));
+            return false;
+        }
+        try {
+            await vscode.env.clipboard.writeText(field ? row.text.slice(field.startColumn, field.endColumn).trim() : row.text);
+            return true;
+        } catch {
+            await vscode.window.showErrorMessage(i18n.get('largeFileCopyFailed'));
+            return false;
+        }
+    }
+
     async openNative(request: { viewer?: string; revision?: number; line?: number; token?: string }): Promise<boolean> {
         const session = [...this.sessions.values()].find(value => value.state.viewer === request?.viewer);
         if (!session || !this.accepts(session, request.revision!)) return false;

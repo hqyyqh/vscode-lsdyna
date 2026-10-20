@@ -3,7 +3,7 @@
   "kind": "dynasense-public-source",
   "dataPolicy": "publicly-regenerable-with-source-snapshots",
   "generatorVersion": 2,
-  "generatorSha256": "784a0c9d3021e89bf944ca24f0eab302ddfc750fd351a758c1da51cc0a03a4eb",
+  "generatorSha256": "95ccfd8c450292265d2831334709afa3ead28258cb29a3a174a9a568af83ae7a",
   "acceptance": {
     "status": "requires-independent-validation",
     "unresolvedInternalEvidenceCount": 0,
@@ -2487,19 +2487,19 @@
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "4f9ac578282063283d06455cf5ca994bde47321f99b23b525e0c8c607ae51eda",
+      "sha256": "abf81e6925632bd2bb27ff0a2e386feb0e9b299c26713cfcdbbd0e99500b55db",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.json",
       "role": "editable-source",
-      "sha256": "0b895ea2fc2a09ec98ba0b8b19fccf5f2fd25bd9a75c81b08ce824445fe0bfa6",
+      "sha256": "e1fefb1ec3885f7364b51759706e4810a6ec567dc6ac25cc408ae9436fbaace0",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.zh-cn.json",
       "role": "editable-source",
-      "sha256": "d4febf062c1dec62b498ee9cf5ccd8689234ad6012a78fadc63cb8d68fadaf8c",
+      "sha256": "c55e19c771b2e3c3d8f312bdd22ea43338e43a03524b16d9f79824d8a388e79b",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2973,7 +2973,7 @@
     {
       "path": "src/client/LargeFileViewerProvider.ts",
       "role": "editable-source",
-      "sha256": "137b978858e90322ce689ab2c833411b47882465a3bd7a41701e9880654e2325",
+      "sha256": "0f77e3a27c683b9faaccb7f7b1092d7f1f29c70282fb1ec865f63d3411c56be4",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3357,7 +3357,7 @@
     {
       "path": "src/core/i18n.ts",
       "role": "editable-source",
-      "sha256": "9354dd2f90702e20cf69e40e6771e8a23bceeb19dae5b1bf3d8be839fe3414bd",
+      "sha256": "db04fc0b3d5f3d955835a61ae0d5d6bffc6579d56beeace02774c4ff0f4c3e1d",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4071,7 +4071,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "86b0b58de057d26edf16ed9b8c7297e7bcb1605a492889ff2f9ae80126d918ad",
+      "sha256": "edfb56ec57a25b2058b69f7a6f246d81af0d6603c700a92845ddc9c98f71203c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4551,7 +4551,7 @@
     {
       "path": "test/client/largeFileViewerEdits.test.js",
       "role": "editable-source",
-      "sha256": "b02c3df9f5d117d9853942bdb97be271c3e5e9a39269c5075cb7b0a7d125e874",
+      "sha256": "37fbcdd1c033ef1af2e95537bf8ae007f7f478e5dd361e5f3800e009b27730c0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7485,7 +7485,7 @@
     {
       "path": "webview/large-file-viewer/src/LargeFileViewerApp.tsx",
       "role": "editable-source",
-      "sha256": "cb8d00732a1fd485ae93bd0b39db0945e83f9a09b0a504e86ea0d0e5ac01510f",
+      "sha256": "f146860e019077fcfaac018802b7cfaf721d6d60df8aa290d06f3efac2812e5c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7497,7 +7497,7 @@
     {
       "path": "webview/large-file-viewer/src/styles.css",
       "role": "editable-source",
-      "sha256": "73146d7035d92e9b9f43ea0c9a7d2ebfa4cd9b537642833a2cfdd6e31ee85167",
+      "sha256": "6edc1bb341960902e718de0e620514fc5034c755699754d6dd6ba1812b7bf3de",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7515,7 +7515,7 @@
     {
       "path": "webview/large-file-viewer/test/LargeFileViewerApp.test.tsx",
       "role": "editable-source",
-      "sha256": "5e0773974d33495e8af3008c2d4ea40d55d25ab08bb3acfabbec8605c856e068",
+      "sha256": "efb22a9a1e2b6a42ac8ac9f9e505d652114795ce698ca5686612e94a26f51830",
       "reason": "editable-product-source-or-resource"
     },
     {

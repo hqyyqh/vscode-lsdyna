@@ -1,5 +1,7 @@
 {
     "commands.openLargeFileInTextEditor.title": "Open in Text Editor",
+    "commands.copyLargeFileField.title": "Copy Field Value",
+    "commands.copyLargeFileLine.title": "Copy Current Line",
     "commands.keywordIndexChooseScope.title": "Choose Index Scope",
     "commands.keywordIndexRefresh.title": "Refresh Keyword Index",
     "extension.description": "LS-DYNA (.k) deck editing assistant, with quick keyword and manual lookup.",
