@@ -25,6 +25,7 @@ exports.run = async () => {
         const memoryBefore = process.memoryUsage(), start = performance.now();
         let peakRss = memoryBefore.rss;
         const memoryTimer = setInterval(() => { peakRss = Math.max(peakRss, process.memoryUsage().rss); }, 2);
+        console.log(`Release host step started: ${name}`);
         try {
             return await operation();
         }
@@ -35,6 +36,7 @@ exports.run = async () => {
             const memoryAfter = process.memoryUsage();
             peakRss = Math.max(peakRss, memoryAfter.rss, process.resourceUsage().maxRSS * 1024);
             metrics.push({ name, durationMs, maxEventLoopGapMs, peakRss, peakRssScope: 'extension-host process high-water mark', memoryBefore, memoryAfter, ...(gaps.length ? { gaps } : {}) });
+            console.log(`Release host step finished: ${name}`);
         }
     });
     const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
@@ -239,29 +241,29 @@ exports.run = async () => {
             await delay(100);
             editor.selection = new vscode.Selection(2, 0, 2, 0);
             await delay(30);
-            await vscode.commands.executeCommand('extension.lsdynaTab');
+            await measure('field-navigation', () => vscode.commands.executeCommand('extension.lsdynaTab'));
             assert.equal(editor.selection.start.line, 2);
             assert.ok(editor.selection.end.character > editor.selection.start.character);
-            await vscode.commands.executeCommand('type', { text: '2' });
-            await require(path.join(extension.extensionPath, 'out/extension'))._internals.waitForPendingCardCellPostEdit(document);
+            await measure('field-type', () => vscode.commands.executeCommand('type', { text: '2' }));
+            await measure('field-post-edit', () => require(path.join(extension.extensionPath, 'out/extension'))._internals.waitForPendingCardCellPostEdit(document));
             const changed = document.getText();
             assert.notEqual(changed, original.toString());
             for (const [command, expected] of [['undo', original.toString()], ['redo', changed]]) {
                 await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-                await vscode.commands.executeCommand(command);
+                await measure(command, () => vscode.commands.executeCommand(command));
                 const deadline = Date.now() + 5000;
                 while (document.getText() !== expected && Date.now() < deadline) await delay(10);
                 assert.equal(document.getText(), expected, `${command} must restore exact bytes`);
             }
-            assert.ok(await document.save());
-            await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+            assert.ok(await measure('save', () => document.save()));
+            await measure('close-editors', () => vscode.commands.executeCommand('workbench.action.closeAllEditors'));
             const reopened = await vscode.workspace.openTextDocument(file);
             assert.equal(reopened.getText(), changed);
             checks.push('field-edit-undo-redo-save-reopen');
             const main = await vscode.workspace.openTextDocument(path.join(root, 'workspace', 'main.k'));
             await vscode.window.showTextDocument(main);
-            await vscode.commands.executeCommand('extension.scanIncludeTree');
-            await vscode.commands.executeCommand('extension.scanKeywordIndex');
+            await measure('include-index', () => vscode.commands.executeCommand('extension.scanIncludeTree'));
+            await measure('keyword-index', () => vscode.commands.executeCommand('extension.scanKeywordIndex'));
             checks.push('project-and-keyword-index');
             const manualRoot = path.join(root, 'workspace', 'lsdyna_manual_pack');
             if (fs.existsSync(path.join(manualRoot, 'manifest.json'))) {

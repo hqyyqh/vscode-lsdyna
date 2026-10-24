@@ -6939,7 +6939,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "fc1d9834b58681beee4470181a93c1e0ddef4e0ecd9d8819085fa8b790276cf5",
+      "sha256": "097f0e3ace2f4ca11d41d788e798fa9f5f9d6182d6e797955d8595e973608bb4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
