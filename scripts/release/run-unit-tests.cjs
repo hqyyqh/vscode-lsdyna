@@ -21,7 +21,8 @@ function run(root, args, spawn = spawnSync) {
     for (const files of batches) {
         console.log(`Unit tests: ${path.dirname(files[0])} (${files.length} files)`);
         const result = spawn(process.execPath, [require.resolve('mocha/bin/mocha.js'),
-            '--require', 'test/support/register-out.js', ...files, ...args],
+            // Each directory cold-loads source data; keep a bounded watchdog, not Mocha's 2 s default.
+            '--timeout', '30000', '--require', 'test/support/register-out.js', ...files, ...args],
         { cwd: root, stdio: 'inherit', windowsHide: true });
         if (result.error) throw result.error;
         if (result.status !== 0) return result.status || 1;

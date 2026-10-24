@@ -25,10 +25,18 @@ describe('isolated unit test directories', () => {
         assert.equal(calls.length, 2);
         assert.equal(new Set(calls.flatMap(call => call[1].filter(arg => arg.endsWith('.test.js')))).size, 3);
         for (const call of calls) {
+            assert.deepEqual(call[1].slice(1, 3), ['--timeout', '30000']);
             assert.deepEqual(call[1].slice(-3), ['--grep', 'example', '--invert']);
             assert.equal(call[2].cwd, root);
             assert.equal(call[2].windowsHide, true);
         }
+    });
+    it('lets explicit watchdog overrides take precedence over the cold-start default', () => {
+        assert.equal(run(root, ['--timeout', '5000'], (_executable, args) => {
+            assert.deepEqual(args.slice(1, 3), ['--timeout', '30000']);
+            assert.deepEqual(args.slice(-2), ['--timeout', '5000']);
+            return { status: 0 };
+        }), 0);
     });
     it('stops and fails on a test failure, signal or spawn error', () => {
         let calls = 0;

@@ -2931,7 +2931,7 @@
     {
       "path": "scripts/release/run-unit-tests.cjs",
       "role": "editable-source",
-      "sha256": "113e0d5873336cadb43f7191afe1cb925c04f201a336fdbe381cffe8fc5d39a2",
+      "sha256": "3ea0dae3cd0d38ecec4161d00b8adb2deb02c87c1ac02b5d7d22dd5acb0fb9c5",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -7263,7 +7263,7 @@
     {
       "path": "test/scripts/release/unitRunner.test.js",
       "role": "editable-source",
-      "sha256": "93de22e8ab6a6f5bc8716f2d95a282753b39052deac9606aeb07f7454999a9c8",
+      "sha256": "513b4767a7119a313572be8a50ae1a0b9016ba355617862c48eef5ad3ece2c57",
       "reason": "public-build-or-package-regression"
     },
     {
