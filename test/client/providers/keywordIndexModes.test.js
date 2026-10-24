@@ -679,6 +679,124 @@ describe('keyword sidebar on-demand work', () => {
     let previous;
     beforeEach(() => { previous = vscodeMock.window.activeTextEditor; });
     afterEach(() => { vscodeMock.window.activeTextEditor = previous; });
+    it('finishes the loading state when returning to a changed live document', async () => {
+        const document = mutableDocument(path.resolve('changed-live.k'), ['*NODE', '1,0,0,0']);
+        const provider = new LsdynaKeywordIndexProvider({ asyncDocumentIndexThreshold: 1 });
+        try {
+            await provider.refreshFromDocument(document);
+            await provider.refreshFromDocument(modelDocument(path.resolve('other.k')));
+            document.replace(['*PART', 'title', '1']);
+            await provider.refreshFromDocument(document);
+            assert.equal(provider.findOccurrence(document.uri.fsPath, 0)?.keyword, 'PART');
+            assert.equal(provider.scanState, 'complete');
+        } finally { provider.dispose(); }
+    });
+    it('refreshes local sidebar text after a language switch without reading the document again', async () => {
+        const i18n = require('../../../src/core/i18n');
+        const getConfiguration = vscodeMock.workspace.getConfiguration;
+        const document = mutableDocument(path.resolve('language.k'), ['*NODE', '1,0,0,0']);
+        const provider = new LsdynaKeywordIndexProvider(), view = { visible: true };
+        provider.attachTreeView(view);
+        try {
+            await provider.refreshFromDocument(document);
+            const reads = document.lineReadCount;
+            for (const language of ['en', 'zh-cn']) {
+                vscodeMock.workspace.getConfiguration = () => ({ get: (key, fallback) => key === 'language' ? language : fallback });
+                i18n.updateLanguage(); provider.refresh();
+                assert(view.message.includes(i18n.get('keywordIndexScopeCurrentFile')));
+                assert.equal(provider.roots[0].description, language === 'en' ? 'Keywords: 1 · Blocks: 1' : '1 个关键字 · 1 个块');
+                for (const count of [0, 1, 2]) assert.equal(i18n.get('keywordIndexCategorySummary', count, count),
+                    language === 'en' ? `Keywords: ${count} · Blocks: ${count}` : `${count} 个关键字 · ${count} 个块`);
+            }
+            assert.equal(document.lineReadCount, reads);
+        } finally {
+            provider.dispose(); vscodeMock.workspace.getConfiguration = getConfiguration; i18n.updateLanguage();
+        }
+    });
+    it('uses the selected tab instead of a stale editor for local refresh', async () => {
+        const tabs = vscodeMock.window.tabGroups;
+        const old = modelDocument(path.resolve('previous.k'));
+        const active = vscodeMock.Uri.file(path.resolve('selected-large.k'));
+        vscodeMock.window.activeTextEditor = { document: old };
+        vscodeMock.window.tabGroups = { activeTabGroup: { activeTab: { input: { uri: active } } } };
+        const provider = new LsdynaKeywordIndexProvider({ resolveProjectUri: () => old.uri });
+        let target;
+        provider.refreshFromUriOrDocument = async value => { target = value; };
+        try {
+            assert.equal(provider.resolveActiveUri().fsPath, active.fsPath);
+            assert.equal(provider.resolveProjectUri().fsPath, old.uri.fsPath);
+            await provider.refreshScope();
+            assert.equal((target.uri || target).fsPath, active.fsPath);
+            assert.equal(provider.isCurrentDocument(old), false);
+        } finally { provider.dispose(); vscodeMock.window.tabGroups = tabs; }
+    });
+    it('indexes an unsynchronized active file without an Include scan and ignores late disk results', async () => {
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        const old = modelDocument(path.resolve('previous.k'));
+        let active = old.uri;
+        const provider = new LsdynaKeywordIndexProvider({ resolveActiveUri: () => active });
+        provider.attachTreeView({ visible: true });
+        vscodeMock.window.activeTextEditor = { document: old };
+        await provider.refreshAutomatically(old);
+        const scans = [];
+        provider._createDocumentIndex = ({ uri }) => {
+            const { BlockIndex } = require('../../../src/core/incremental/blockIndex');
+            const index = new BlockIndex(uri.fsPath);
+            index.buildIndexFromFile = (_file, options) => new Promise(resolve => {
+                scans.push({ file: uri.fsPath, token: options.cancellationToken, finish() {
+                    index.blocks = [{ keyword: '*NODE', startLine: 0, endLine: 1 }]; resolve();
+                } });
+            });
+            return index;
+        };
+        vscodeMock.window.withProgress = async (_options, task) => task({}, { isCancellationRequested: false });
+        vscodeMock.ProgressLocation = { Window: 1 };
+        try {
+            active = vscodeMock.Uri.file(path.resolve('large-a.k'));
+            // Tab notification can arrive while the previous editor still exists.
+            const first = provider.refreshAutomatically(active);
+            const duplicate = provider.refreshAutomatically(vscodeMock.Uri.file(active.fsPath));
+            assert.equal(scans.length, 1);
+            assert.equal(provider.findOccurrence(old.uri.fsPath, 0), null, 'old file results clear before the disk scan finishes');
+            active = vscodeMock.Uri.file(path.resolve('large-b.k'));
+            const second = provider.refreshAutomatically(active);
+            assert.equal(scans.length, 2);
+            assert.equal(scans[0].token.isCancellationRequested, true);
+            scans[1].finish(); await second;
+            scans[0].finish(); await Promise.all([first, duplicate]);
+            assert.equal(provider.findOccurrence(active.fsPath, 0)?.keyword, 'NODE');
+            assert.equal(provider.findOccurrence(scans[0].file, 0), null);
+            assert.equal(provider.scanState, 'complete');
+        } finally {
+            scans.forEach(scan => scan.finish()); provider.dispose();
+            vscodeMock.window.withProgress = progress; vscodeMock.ProgressLocation = location;
+        }
+    });
+    it('defers unsynchronized files while hidden and cancels their scan when hidden again', async () => {
+        const progress = vscodeMock.window.withProgress, location = vscodeMock.ProgressLocation;
+        const active = vscodeMock.Uri.file(path.resolve('large-hidden.k'));
+        const provider = new LsdynaKeywordIndexProvider({ resolveActiveUri: () => active });
+        const view = { visible: false }; provider.attachTreeView(view);
+        vscodeMock.window.activeTextEditor = undefined;
+        let token, finish;
+        provider._createDocumentIndex = () => ({ blocks: [], buildIndexFromFile: (_file, options) => {
+            token = options.cancellationToken; return new Promise(resolve => { finish = resolve; });
+        } });
+        vscodeMock.ProgressLocation = { Window: 1 };
+        vscodeMock.window.withProgress = async (_options, task) => task({}, { isCancellationRequested: false });
+        try {
+            await provider.refreshAutomatically(active); assert.equal(token, undefined);
+            view.visible = true;
+            const pending = provider.refreshAutomatically(active);
+            assert.equal(token.isCancellationRequested, false);
+            view.visible = false; provider.stopAutomaticWork();
+            assert.equal(token.isCancellationRequested, true);
+            finish(); await pending;
+            assert.equal(provider.documentIndices.size, 0);
+        } finally {
+            finish?.(); provider.dispose(); vscodeMock.window.withProgress = progress; vscodeMock.ProgressLocation = location;
+        }
+    });
     it('does no hidden scanning and refreshes only the latest document version when shown', async () => {
         const document = mutableDocument(path.resolve('hidden.k'), ['*PART', 'title', '1']);
         const editor = { document, selection: { active: { line: 0, character: 0 } } };

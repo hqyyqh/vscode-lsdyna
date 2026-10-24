@@ -61,7 +61,31 @@ describe('automatic object-reference queries', () => {
 });
 
 describe('object-reference query recovery', () => {
-    for (const outcome of ['cancel', 'throw', 'superseded']) it(`finishes only its own loading state on ${outcome}`, async () => {
+    it('keeps progressive matches when the user cancels an active scan', async () => {
+        const model = new LsdynaEntityReferenceProvider();
+        const filePath = path.resolve('progressive-cancel.k');
+        const token = { isCancellationRequested: false };
+        const location = { role: 'reference', filePath, line: 1, startCharacter: 0, endCharacter: 1 };
+        const result = await handleIndexedEntityIdQueryCommand({
+            loadProjectSnapshot() { throw Error('unexpected snapshot'); },
+            queryEntity() { throw Error('unexpected legacy query'); },
+            async queryEntityProgressive(_request, progress) {
+                progress({ status: 'ready', result: { state: 'partial', scanning: true, locations: [location], reasons: [] } });
+                token.isCancellationRequested = true;
+                throw Object.assign(Error('cancelled'), { name: 'CancellationError' });
+            },
+        }, { targetKind: 'curve', id: 1 }, {
+            scope: { kind: 'single-file', filePath, snapshot: { structureOnly: true } },
+            entityReferenceProvider: model, presentResult: false, silentStatus: true,
+            runWithProgress: operation => operation(null, token),
+        });
+        assert.equal(result.state, 'partial');
+        assert.deepEqual(model.getActiveSession().locations, [location]);
+        assert.deepEqual(model.getActiveSession().reasons, ['entity-query-cancelled']);
+        assert.equal(model.getActiveSession().scanning, false);
+        model.dispose();
+    });
+    for (const outcome of ['cancel', 'changed-then-cancel', 'throw', 'superseded']) it(`finishes only its own loading state on ${outcome}`, async () => {
         const model = new LsdynaEntityReferenceProvider();
         const scope = { kind: 'single-file', filePath: path.resolve('recovery.k') };
         const identity = { targetKind: 'curve', id: 1, scope };
@@ -72,6 +96,7 @@ describe('object-reference query recovery', () => {
             query: async () => {
                 if (outcome === 'throw') throw Error('query failed');
                 if (outcome === 'superseded') model.publish(identity, { state: 'loading', locations: [] });
+                if (outcome === 'changed-then-cancel') model.markStaleForPath(scope.filePath);
                 token.isCancellationRequested = true;
                 return { state: 'cancelled', locations: [] };
             },
@@ -79,8 +104,9 @@ describe('object-reference query recovery', () => {
             runWithProgress: operation => operation(null, token),
         });
         if (outcome === 'throw') await assert.rejects(task, /query failed/);
+        else if (outcome.includes('cancel')) assert.deepEqual((await task).reasons, ['entity-query-cancelled']);
         else assert.equal(await task, null);
-        assert.equal(model.getActiveSession().state, outcome === 'superseded' ? 'loading' : 'needs-refresh');
+        assert.equal(model.getActiveSession().state, outcome === 'superseded' ? 'loading' : outcome.includes('cancel') ? 'partial' : 'needs-refresh');
         model.dispose();
     });
 });

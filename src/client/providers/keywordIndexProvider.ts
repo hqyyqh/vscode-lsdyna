@@ -62,6 +62,7 @@ type KeywordOccurrence = {
 type KeywordIndexProviderOptions = {
     projectSession?: (request: any, token?: any) => Promise<any>;
     resolveActiveUri?: () => any;
+    resolveProjectUri?: () => any;
     onSelectProject?: (rootFile: string) => void;
     collectIncludeFiles?: (rootFile: string, onProgress?: (count: number) => void) => Promise<string[]>;
     loadProjectSnapshot?: (rootFile: string, options?: object, onProgress?: (snapshot: any) => void, cancellationToken?: any) => Promise<any>;
@@ -111,14 +112,13 @@ function makeTreeId(...parts) {
 }
 
 function getActiveUri() {
-    const editor = vscode.window.activeTextEditor;
-    if (editor) return editor.document.uri;
     const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
     if (activeTab?.input) {
         const input = activeTab.input;
-        return input.uri || input.resource || input.modified || input.original || null;
+        const uri = input.uri || input.resource || input.modified || input.original;
+        if (uri) return uri;
     }
-    return null;
+    return vscode.window.activeTextEditor?.document.uri || null;
 }
 
 function isLsdynaUri(uri) {
@@ -596,10 +596,12 @@ class LsdynaKeywordIndexProvider {
     _projectFileOrderByKey: Map<string, number>;
     _localRefreshGeneration: number;
     resolveActiveUri: () => any;
+    resolveProjectUri: () => any;
     onSelectProject?: (rootFile: string) => void;
 
     constructor({
         resolveActiveUri = getActiveUri,
+        resolveProjectUri = resolveActiveUri,
         onSelectProject,
         collectIncludeFiles,
         projectSession,
@@ -614,6 +616,7 @@ class LsdynaKeywordIndexProvider {
         maxIncrementalRescanLines,
     }: KeywordIndexProviderOptions = {}) {
         this.resolveActiveUri = resolveActiveUri;
+        this.resolveProjectUri = resolveProjectUri;
         this.onSelectProject = onSelectProject;
         this.collectIncludeFiles = collectIncludeFiles;
         this.projectSession = projectSession;
@@ -714,14 +717,12 @@ class LsdynaKeywordIndexProvider {
 
     private pendingAutomaticDocuments = new Map<string, any>();
     private changedAutomaticDocuments = new WeakSet<object>();
-    private automaticRefresh: { document: any; version: number; promise: Promise<void> } | undefined;
+    private automaticRefresh: { target: any; version: number | undefined; promise: Promise<void> } | undefined;
     private automaticEpoch = 0;
     private projectionDirty = false;
 
     private isCurrentDocument(document) {
-        const editor = vscode.window.activeTextEditor;
-        return editor ? editor.document === document
-            : normalizeFileKey(this.resolveActiveUri()?.fsPath) === normalizeFileKey(document?.uri?.fsPath);
+        return normalizeFileKey(this.resolveActiveUri()?.fsPath) === normalizeFileKey(document?.uri?.fsPath);
     }
 
     stopAutomaticWork() {
@@ -732,7 +733,10 @@ class LsdynaKeywordIndexProvider {
     }
 
     async refreshAutomatically(uriOrDoc) {
-        const document = uriOrDoc?.uri ? uriOrDoc : vscode.window.activeTextEditor?.document ||
+        const activeDocument = vscode.window.activeTextEditor?.document;
+        const document = uriOrDoc?.uri ? uriOrDoc :
+            (activeDocument && normalizeFileKey(activeDocument.uri?.fsPath) === normalizeFileKey(uriOrDoc?.fsPath)
+                ? activeDocument : undefined) ||
             (vscode.workspace.textDocuments || []).find(doc => !doc.isClosed &&
                 normalizeFileKey(doc.uri?.fsPath) === normalizeFileKey(uriOrDoc?.fsPath));
         if (document && isLsdynaFile(document)) {
@@ -757,20 +761,25 @@ class LsdynaKeywordIndexProvider {
             }
             return;
         }
-        if (!document || !this.isCurrentDocument(document)) return;
-        const version = document.version;
-        if (this.automaticRefresh?.document === document && this.automaticRefresh.version === version)
-            return this.automaticRefresh.promise;
+        const target = document || uriOrDoc;
+        if (!target || (!document && !isLsdynaUri(target))) return;
+        const version = document?.version;
         const current = () => epoch === this.automaticEpoch && this._treeView?.visible === true &&
-            this.isCurrentDocument(document) && !document.isClosed && document.version === version;
-        const promise = this.refreshFromUriOrDocument(document, current);
-        this.automaticRefresh = { document, version, promise };
+            this._mode === 'local' && (document
+                ? this.isCurrentDocument(document) && !document.isClosed && document.version === version
+                : normalizeFileKey(this.resolveActiveUri()?.fsPath) === normalizeFileKey(target.fsPath));
+        if (!current()) return;
+        const pending = this.automaticRefresh;
+        if (pending && pending.version === version && (document ? pending.target === document
+            : normalizeFileKey(pending.target?.fsPath) === normalizeFileKey(target.fsPath))) return pending.promise;
+        const promise = this.refreshFromUriOrDocument(target, current);
+        this.automaticRefresh = { target, version, promise };
         try {
             await promise;
-            if (current() && this.getDocumentBlockIndexIfReady(document))
+            if (document && current() && this.getDocumentBlockIndexIfReady(document))
                 this.pendingAutomaticDocuments.delete(documentIndexKey(document));
         } finally {
-            if ((!current() || !this.getDocumentBlockIndexIfReady(document)) && this.automaticRefresh?.promise === promise)
+            if ((!document || !current() || !this.getDocumentBlockIndexIfReady(document)) && this.automaticRefresh?.promise === promise)
                 this.automaticRefresh = undefined;
         }
     }
@@ -809,6 +818,8 @@ class LsdynaKeywordIndexProvider {
     }
 
     refresh() {
+        this._updateTreeDescription();
+        this._rebuildProjection();
         this._onDidChangeTreeData.fire(undefined);
     }
 
@@ -830,7 +841,7 @@ class LsdynaKeywordIndexProvider {
             : i18n.get('keywordIndexFollowOff');
         this._treeView.description = scopeLabel(this._mode);
         const file = this._mode === 'recursive' ? this.projectRoot : this.scopeFile;
-        const status = this.scanState === 'scanning' ? i18n.get('sidebarScanning')
+        const status = ['scanning', 'indexing'].includes(this.scanState) ? i18n.get('sidebarScanning')
             : this.scanState === 'incomplete' ? i18n.get('sidebarIncomplete')
             : !file ? i18n.get('sidebarOpenFile')
             : !this.projectPages && !this._occurrences.length ? i18n.get('sidebarNoKeywords') : '';
@@ -1241,6 +1252,7 @@ class LsdynaKeywordIndexProvider {
             if (this._mode === 'recursive') {
                 this._applyDocumentOverlay(document, blockIndex);
             } else if (localRefreshGeneration === this._localRefreshGeneration) {
+                this.scanState = 'complete';
                 this._setOccurrences(
                     this._occurrencesFromBlockIndex(blockIndex),
                     path.dirname(document.uri.fsPath),
@@ -1385,7 +1397,13 @@ class LsdynaKeywordIndexProvider {
             return;
         }
 
+        const changedFile = normalizeFileKey(this.scopeFile) !== normalizeFileKey(uri.fsPath);
         this.scopeFile = uri.fsPath;
+        if (changedFile) {
+            this.scanState = 'indexing';
+            this._setOccurrences([], path.dirname(uri.fsPath));
+            this._onDidChangeTreeData.fire(undefined);
+        }
         this._updateTreeDescription();
         const localRefreshGeneration = ++this._localRefreshGeneration;
         const sourceVersion = isDocument ? uriOrDoc.version : null;
@@ -1435,14 +1453,14 @@ class LsdynaKeywordIndexProvider {
             } else if (isLarge) {
                 blockIndex = this._createDocumentIndex({ uri, lineCount: 0 });
                 try {
-                    await vscode.window.withProgress(
-                        {
-                            location: vscode.ProgressLocation.Window,
-                            title: i18n.get('indexingKeywordsProgress'),
-                            cancellable: true,
-                        },
+                    await require('../services/viewScanProgress').withViewScanProgress(
+                        'lsdynaKeywordIndex', i18n.get('indexingKeywordsProgress'),
                         async (_progress, cancellationToken) =>
-                            blockIndex.buildIndexFromFile(filePath, { cancellationToken }),
+                            blockIndex.buildIndexFromFile(filePath, { cancellationToken: {
+                                get isCancellationRequested() {
+                                    return cancellationToken?.isCancellationRequested || !isCurrentLocalRefresh();
+                                },
+                            } }),
                     );
                 } catch (error) {
                     if (!isCurrentLocalRefresh()) return;
@@ -1471,10 +1489,9 @@ class LsdynaKeywordIndexProvider {
 
     async scan(scanOptions: any = {}) {
         if (this.scanState === 'scanning' && !scanOptions.replace) {
-            void vscode.window.showInformationMessage(i18n.get('indexingKeywords'));
             return false;
         }
-        const uri = scanOptions.rootFile ? vscode.Uri.file(scanOptions.rootFile) : this.resolveActiveUri();
+        const uri = scanOptions.rootFile ? vscode.Uri.file(scanOptions.rootFile) : this.resolveProjectUri();
         if (!uri || !isLsdynaUri(uri)) {
             const editor = vscode.window.activeTextEditor;
             const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
@@ -1497,9 +1514,8 @@ class LsdynaKeywordIndexProvider {
         this._updateContexts();
         this._updateTreeDescription();
         try {
-            await vscode.window.withProgress(
-                { location: scanOptions.quiet ? vscode.ProgressLocation.Window : vscode.ProgressLocation.Notification,
-                    title: i18n.get('indexingKeywords'), cancellable: true },
+            await require('../services/viewScanProgress').withViewScanProgress(
+                'lsdynaKeywordIndex', i18n.get('indexingKeywords'),
                 async (progress, cancellationToken) => {
                     activeCancellationToken = cancellationToken;
                     let nextRoots;
@@ -1573,7 +1589,7 @@ class LsdynaKeywordIndexProvider {
 
     async updateProjectStructure(snapshot) {
         if (this.scanState === 'scanning' || !this.projectPages || this._mode !== 'recursive' || normalizeFileKey(this.projectRoot) !== normalizeFileKey(snapshot.rootFile)) return;
-        await this.scan({ rootFile: snapshot.rootFile, quiet: true, replace: true });
+        await this.scan({ rootFile: snapshot.rootFile, replace: true });
     }
 
     setLocal() {
@@ -1586,7 +1602,9 @@ class LsdynaKeywordIndexProvider {
         this._projectFileOrderByKey = new Map();
         this._documentOverlays.clear();
         const editor = vscode.window.activeTextEditor;
-        const uri = editor?.document || this.resolveActiveUri();
+        const activeUri = this.resolveActiveUri();
+        const uri = editor && normalizeFileKey(editor.document.uri.fsPath) === normalizeFileKey(activeUri?.fsPath)
+            ? editor.document : activeUri;
         if (uri && (isLsdynaUri(uri.uri || uri) || uri.languageId === 'lsdyna')) return this.refreshFromUriOrDocument(uri);
         this._setOccurrences([], '');
         this._onDidChangeTreeData.fire(undefined);

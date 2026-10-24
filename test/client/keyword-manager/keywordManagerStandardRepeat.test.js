@@ -115,7 +115,9 @@ describe('native repeated records and format boundaries', () => {
                         })));
                         assert.deepEqual(card.fields.map(field => field.name), seatbeltNames);
                         assert.deepEqual(card.fields.map(field => field.value), seatbeltValues(ids[index], index));
-                        assert.deepEqual(card.fields.map(field => [field.position, field.width]), nativeFields.map(field => [field.position, field.width]));
+                        assert.deepEqual(card.fields.map(field => [field.position, field.width]), format === 'comma'
+                            ? nativeFields.map(field => [field.position, field.width])
+                            : positions.map((position, field) => [position, widths[field]]));
                     }
                     return;
                 }

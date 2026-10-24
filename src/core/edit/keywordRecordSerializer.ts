@@ -1,6 +1,9 @@
 'use strict';
 
 export type RecordField = { name?: string; type?: string | number; position: number; width: number; nativeReadWidth?: number; nativeLongWidth?: number;
+    nativeRecordFormat?: 'standard' | 'raw' | 'input';
+    nativeInputFormat?: 'standard' | 'long' | 'i10';
+    nativeWriteGeometry?: { long: { position: number; width: number }; i10: { position: number; width: number } };
     nativeReadGeometry?: { long: { position: number; width: number }; i10: { position: number; width: number } } };
 export type RecordFormat = 'standard' | 'long' | 'i10' | 'comma' | 'free' | 'raw';
 
@@ -96,6 +99,9 @@ export function commaRecordSpans(text: string): RecordReadRange[] {
 export function detectRecordFormat(
     text: string, requested: 'standard' | 'long' | 'i10', fields: RecordField[],
 ): RecordFormat {
+    const nativeFormat = fields[0]?.nativeRecordFormat;
+    if (nativeFormat && fields.every(field => field.nativeRecordFormat === nativeFormat))
+        return nativeFormat === 'input' ? text.includes(',') ? 'comma' : fields[0].nativeInputFormat || requested : nativeFormat;
     if (fields.length === 1 && String(fields[0].type) === 'raw-text') return 'raw';
     if (fields.length === 1 && isStringField(fields[0])) return requested;
     if (text.includes(',')) return 'comma';
@@ -130,6 +136,10 @@ export function formattedFields(
         ...field, position: 0, width: Math.max(1, text.length),
     }));
     if (format === 'long' || format === 'i10') {
+        if (fields.length && fields.every(field => field.nativeWriteGeometry?.[format])) {
+            const projected = fields.map(field => ({ ...field, ...field.nativeWriteGeometry[format] }));
+            return safeRecordGeometry(projected) ? projected : [];
+        }
         // Expand physical fields, not byte offsets. In particular E20 stays
         // E20 in LONG, and NODE's I8/E16 mixture becomes I10/E16 in I10.
         // Gaps/overlaps do not tell us how many native slots were omitted.

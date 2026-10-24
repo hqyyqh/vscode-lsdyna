@@ -64,6 +64,7 @@ function entityQueryKey(identity) {
 }
 
 function estimateLocationsBytes(locations) {
+    if (!locations?.length) return 0;
     let bytes = 256;
     for (const location of locations || []) {
         bytes += 192;
@@ -187,6 +188,7 @@ class LsdynaEntityReferenceProvider {
     publish(identityInput, result) {
         const identity = normalizeIdentity(identityInput);
         if (!identity) return null;
+        require('../services/entityQueryDiagnostics').recordEntityQueryState(identity, result);
         const key = entityQueryKey(identity);
         let session = this.sessions.get(key);
         if (!session) {
@@ -203,7 +205,9 @@ class LsdynaEntityReferenceProvider {
             this.currentKey = key;
         }
         session.identity = identity;
+        session.publishRevision = (session.publishRevision || 0) + 1;
         const continuing = result?.release && session.release === result.release &&
+            session.page?.epoch === result.page?.epoch &&
             session.page?.revision === result.revision;
         const previousPage = continuing ? session.page : undefined;
         const previousLocations = continuing ? session.locations : [];
@@ -295,6 +299,18 @@ class LsdynaEntityReferenceProvider {
         session.estimatedBytes = 0;
         session.lastAccessedAt = this.clock();
         this.activeKey = session.key;
+        this.refreshTree();
+        return session;
+    }
+
+    markStopped(target) {
+        const session = this.getSession(target);
+        if (!session) return null;
+        session.release?.(); session.release = undefined;
+        session.page = undefined;
+        session.scanning = false;
+        session.state = 'partial';
+        session.reasons = [...new Set([...session.reasons, 'entity-query-cancelled'])];
         this.refreshTree();
         return session;
     }
@@ -394,6 +410,10 @@ class LsdynaEntityReferenceProvider {
             const resultContainsPath = session.locations.some(location => normalizePath(location.filePath) === key);
             const sameSingleFile = scope.kind === 'single-file' && normalizePath(scope.filePath) === key;
             if (!resultContainsPath && !sameSingleFile) continue;
+            if (session.scanning || session.state === 'loading') {
+                session.state = 'loading'; session.locations = []; session.page = undefined;
+                changed = true; continue;
+            }
             session.release?.(); session.release = undefined;
             session.state = 'stale';
             this.referenceCursorByKey.delete(session.key);
@@ -409,6 +429,10 @@ class LsdynaEntityReferenceProvider {
         for (const session of this.sessions.values()) {
             if (session.identity.scope.kind !== 'project' ||
                 normalizePath(session.identity.scope.rootFile) !== key) continue;
+            if (session.scanning || session.state === 'loading') {
+                session.state = 'loading'; session.locations = []; session.page = undefined;
+                changed = true; continue;
+            }
             session.release?.(); session.release = undefined;
             session.state = 'stale';
             this.referenceCursorByKey.delete(session.key);

@@ -127,7 +127,7 @@ jobs:
           UNIT_RESUME_RUN: ${{ inputs.resume_run }}
           EXPECTED_TARGET: ${{ matrix.target }}
           GH_TOKEN: ${{ github.token }}
-          # Full source-data replay shares one test process; installed hosts keep their default heap.
+          # Each test directory gets a fresh process; installed hosts keep their default heap.
           NODE_OPTIONS: --max-old-space-size=4096
       - run: npm run test:webview
       - name: Public Python regression tests

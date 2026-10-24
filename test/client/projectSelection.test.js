@@ -43,7 +43,8 @@ describe('explicit shared project selection', () => {
             for (const changed of changes) await changed(editor);
             assert.equal(scans.length, 2, 'editor changes must not rescan either structure consumer');
             assert.equal(entities.scopeContext.projectRoot, files[0]);
-            assert.equal(views.get('lsdynaKeywordIndex').resolveActiveUri().fsPath, files[0]);
+            assert.equal(views.get('lsdynaKeywordIndex').resolveProjectUri().fsPath, files[0]);
+            assert.equal(views.get('lsdynaKeywordIndex').resolveActiveUri().fsPath, files[1]);
             await commands.get('extension.scanKeywordIndex')();
             assert.deepEqual(scans.slice(2), [['keywords', files[1]], ['includes', files[1]]]);
             assert.equal(entities.scopeContext.projectRoot, files[1]);

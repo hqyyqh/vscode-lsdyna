@@ -461,6 +461,18 @@ describe('native conditional file references',function(){
    const reopened=await queryIndexedEntityId({snapshot,id:173,targetKind:'part-set'});
    assert.deepEqual(reopened.locations.filter(row=>row.role==='reference'&&row.keyword==='*AIRBAG_CPG')
     .map(row=>[row.fieldName,row.line]),[['SID1',8]]);
+   // The manual ADAID on the second card requires the ordinary supplemental
+   // replay. Its native SID1 controller must keep each Include's own parameters.
+   fs.writeFileSync(main,fs.readFileSync(main,'utf8').replace('ITYPE,1','ITYPE,&MISSING').replace('ITYPE,0','ITYPE,1'));
+   const childLines=fs.readFileSync(child,'utf8').split('\n');childLines[9]='0,0,73,0,0,0,0,0';
+   fs.writeFileSync(child,childLines.join('\n'));
+   for(const file of snapshot.files)snapshot.fileIndexes.set(file,await buildFileIndex(file,{maxReferenceBlockBytes}));
+   const partial=await queryIndexedEntityId({snapshot,id:73,targetKind:'part-set'});
+   assert.equal(partial.state,'partial',JSON.stringify(partial.reasons));
+   assert.deepEqual(partial.locations.filter(row=>row.role==='reference'&&row.keyword==='*AIRBAG_CPG')
+    .map(row=>row.line).sort(),[8,9],JSON.stringify(partial.reasons));
+   assert.ok(partial.reasons.some(reason=>/registry-reference-(native-layout-unavailable|sibling-discriminator-indeterminate)/.test(reason)),
+    JSON.stringify(partial.reasons));
   }
  });
  it('uses committed EM control order for later connection payloads in ordinary and disk queries',async()=>{

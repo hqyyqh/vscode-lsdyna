@@ -44,11 +44,11 @@ export class EntityQueryWorker {
         private maxAgeMs = 30 * 24 * 60 * 60 * 1000,
         private loadStructure?: (root: string, options: any, token?: any) => Promise<any>,
         private liveSource?: any) {
-        if (!Number.isSafeInteger(memoryBytes) || memoryBytes < 32 * 1024 * 1024) throw new Error('Invalid worker entity memory budget');
+        if (!Number.isSafeInteger(memoryBytes) || (memoryBytes !== 0 && memoryBytes < 32 * 1024 * 1024)) throw new Error('Invalid worker entity memory budget');
         // Reserve one eighth for restoring physical-file facts; do not add a second cache budget.
         this.service = new EntityReferenceQueryService(Math.floor(memoryBytes / 4));
         this.fallback = new EntityQueryCache(Math.floor(memoryBytes / 16));
-        this.snapshots = createIndexClient({ buildProjectIndex: (root, options, progress, token) =>
+        this.snapshots = memoryBytes === 0 ? undefined : createIndexClient({ buildProjectIndex: (root, options, progress, token) =>
             buildProjectIndex(root, { ...options, referenceScanCache: this.fallback }, progress, token),
             getFileSignature: entityFileSignature,
             maxSnapshotBytes: Math.floor(memoryBytes / 4), cacheSingleFileSnapshots: true });
@@ -69,6 +69,7 @@ export class EntityQueryWorker {
             !Number.isSafeInteger(request.line) || request.line < 0 ||
             !['project', 'single-file'].includes(request.scope)) throw new TypeError('Invalid source analysis request');
         await this.initialize(token);
+        if (this.memoryBytes === 0) return { status: 'limited', reasons: ['entity-query-low-memory'] };
         const { analyzeReference, attachResolvedTableChildren } = require('../core/references/projectReferenceIndex');
         const { runtimeDefinitionKeywords, mergeOnDemandDefinitions } = require('../core/references/onDemandDefinitionScanner');
         const { queryFromReferenceSource, definitionAtPosition } = require('../core/references/registryReferenceNetwork');
@@ -84,7 +85,7 @@ export class EntityQueryWorker {
             const completion = request.mode === 'parameter-completion';
             if (!Number.isSafeInteger(request.character) || request.character < 0 ||
                 (completion ? typeof request.prefix !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,8}$|^$/.test(request.prefix)
-                    : typeof request.name !== 'string' || !/^[A-Z_][A-Z0-9_]{0,8}$/.test(request.name) ||
+                    : typeof request.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,8}$/.test(request.name) ||
                         typeof request.declaration !== 'boolean' || typeof request.references !== 'boolean' ||
                         typeof request.includeDeclaration !== 'boolean')) throw new TypeError('Invalid parameter query');
             if ((completion || !request.references) && request.scope === 'single-file' && [...snapshot.fileIndexes.values()].some((file: any) =>
@@ -207,16 +208,23 @@ export class EntityQueryWorker {
     async projectQuery(request: any, token?: any) {
         if (!this.progressive) this.progressive = new ProgressiveEntityQueries(() => this.indexStore(),
             async (query, cancellationToken, accept, sources) => {
+                if (this.memoryBytes === 0) {
+                    sources({ fileIndexes: new Map() });
+                    return { state: 'partial', reasons: ['entity-query-low-memory'] };
+                }
                 await this.initialize(cancellationToken);
                 const snapshot = await this.loadStructure(query.rootFile,
-                    { singleFileOnly: query.scope === 'single-file', excludeMeshEntities: query.excludeMeshEntities }, cancellationToken);
+                    { singleFileOnly: query.scope === 'single-file', excludeMeshEntities: query.excludeMeshEntities,
+                        reconcileChanges: true }, cancellationToken);
                 if (query.excludeMeshEntities && require('../core/scanner/scannerContracts').isMeshEntityKind(query.targetKind)) {
                     sources(snapshot); return { state: 'unsupported', reasons: ['mesh-entity-index-disabled'] };
                 }
                 // ID queries use the shared typed definition store, not every definition preview.
                 sources(snapshot);
+                const referenceIndex = await this.service.indexAsync(snapshot, cancellationToken);
+                if (query.diagnostics) sources(snapshot, referenceIndex);
                 return require('../core/references/indexedEntityQuery').queryIndexedEntityId({ snapshot,
-                    referenceIndex: await this.service.indexAsync(snapshot, cancellationToken),
+                    referenceIndex,
                     id: query.id, targetKind: query.targetKind, targetDefinitions: query.targetDefinitions, cancellationToken,
                     ...(this.liveSource ? { scanBlockLines: this.liveSource.scanBlockLines } : {}),
                     scanDefinitions: this.definitions?.scan || (options => require('../core/references/entityTypeDefinitionIndex')
@@ -266,7 +274,7 @@ export class EntityQueryWorker {
     private async initializeStore() {
         if (this.initialized) return;
         this.initialized = true;
-        if (!this.storageDirectory) return;
+        if (!this.storageDirectory || this.memoryBytes === 0) return;
         try {
             this.store = await EntityIndexStore.open(this.storageDirectory,
                 { memoryBytes: Math.floor(this.memoryBytes / 8), diskBytes: this.diskBytes });
@@ -302,7 +310,9 @@ export class EntityQueryWorker {
     }
 
     private async execute(request: WorkerEntityQuery, token: any, onProgress?: (event: any) => void) {
-        throwIfCancellationRequested(token); await this.initialize(token);
+        throwIfCancellationRequested(token);
+        if (this.memoryBytes === 0) return { status: 'ready', result: { state: 'partial', locations: [], reasons: ['entity-query-low-memory'] } };
+        await this.initialize(token);
         const query = createHash('sha256').update(JSON.stringify([request.id, request.targetKind])).digest('hex');
         if (this.pages) {
             try {
@@ -383,7 +393,7 @@ export class EntityQueryWorker {
         return { status: 'stale' };
     }
 
-    invalidate(rootFile: string) { this.snapshots.invalidate(rootFile); this.service.markStale(rootFile); }
+    invalidate(rootFile: string) { this.snapshots?.invalidate(rootFile); this.service.markStale(rootFile); }
     control(action: 'stats' | 'clear') {
         if (this.disposed) return Promise.reject(new Error('Entity query worker is disposed'));
         if (!['stats', 'clear'].includes(action)) return Promise.reject(new Error('Invalid entity index operation'));
@@ -392,7 +402,7 @@ export class EntityQueryWorker {
         const operation = this.tail.then(async () => {
             await this.progressive?.clear();
             await this.initialize(); this.service.clear(); this.fallback.clear();
-            await this.snapshots.clearCaches();
+            await this.snapshots?.clearCaches();
             const cleared = this.store ? await this.store.clear() : null;
             const legacy = this.store ? await this.store.cleanLegacy() : null;
             if (cleared && legacy) {
@@ -406,7 +416,7 @@ export class EntityQueryWorker {
         this.tail = operation.catch(() => {});
         return operation;
     }
-    async stats() { return { snapshots: this.snapshots.getCacheStats(), memory: this.service.cacheStats(), fallback: this.fallback.stats(),
+    async stats() { return { snapshots: this.snapshots?.getCacheStats(), memory: this.service.cacheStats(), fallback: this.fallback.stats(),
         sqlite: this.store ? await this.store.stats() : null, memoryBudget: this.memoryBytes }; }
     async dispose() {
         if (this.disposed) return;

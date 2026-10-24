@@ -1575,6 +1575,9 @@ function resolveReferenceValueSemantics(infoOrRelation, rawValue) {
     if (!relation || typeof relation !== 'object') {
         return { state: 'indeterminate', reason: 'reference-relation-unavailable' };
     }
+    if (rawValue === 0 && relation.kind === 'entity-reference' && !relation.branches?.length) {
+        return { state: 'non-reference', role: 'zero-id' };
+    }
     const resolved = resolveValueRole(relation, rawValue);
     if (resolved.state !== 'resolved') {
         return {
@@ -1660,6 +1663,7 @@ function parseFieldReferenceValue(rawValue, info = null) {
             raw: input.raw,
             isSignedSwitch: input.kind === 'parameter' && input.negated,
             input,
+            fieldType: info.fieldType,
             semanticRelation: info.relation,
             ...targets,
         };
@@ -1671,7 +1675,7 @@ function parseFieldReferenceValue(rawValue, info = null) {
         const branches = Array.isArray(info.relation?.branches) ? info.relation.branches : [];
         const labelAllowed = info.relation?.kind === 'entity-reference' && branches.length === 0 &&
             targets.targetDefinitions.some(target => labelTargets.has(normalizeTargetKeyword(target))) &&
-            !raw.startsWith('&') && numberInput.kind === 'invalid' &&
+            !/^(?:-?&|<)/.test(raw) && numberInput.kind === 'invalid' &&
             numberInput.reason === 'unsupported-numeric-input';
         if (!labelAllowed) return null;
         return {

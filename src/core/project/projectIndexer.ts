@@ -805,8 +805,9 @@ function createProjectIndexer({
                 stopped = true;
                 await Promise.allSettled([...pending]);
                 throwIfCancellationRequested(options.cancellationToken);
-                if (error?.name !== 'ScanChangedError' || attempt >= 1) throw error;
+                if (error?.name !== 'ScanChangedError' || (attempt >= 1 && !options.reconcileChanges)) throw error;
                 await options.onStructureRestart?.();
+                if (options.reconcileChanges) await new Promise(resolve => setTimeout(resolve, 100));
                 onProgress?.({ type: 'progress', rootFile: resolveProjectFile(rootFile), phase: 'restarting' });
             }
         }

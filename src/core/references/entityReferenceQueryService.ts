@@ -56,6 +56,7 @@ function result(state: EntityReferenceQueryState, request: any, additions: any =
 
 export class EntityReferenceQueryService {
     private readonly cache: EntityQueryCache;
+    private indexBuildTail: Promise<void> = Promise.resolve();
     constructor(maxBytes = 512 * 1024 * 1024) { this.cache = new EntityQueryCache(maxBytes); }
     clear() { this.cache.clear(); }
     cacheStats() { return this.cache.stats(); }
@@ -200,11 +201,17 @@ export class EntityReferenceQueryService {
 
     async indexAsync(snapshot: any, token: any) {
         const key = 'async-index:' + this.cache.revision(snapshot);
-        const completed: any = await this.cache.run(key, token, async cancellationToken => {
-            const reservation = this.cache.reserveResult();
-            try { return { state: 'complete', value: await require('./projectReferenceIndex')
-                .buildProjectReferenceIndexAsync(snapshot, cancellationToken, reservation.bytes) }; }
-            finally { reservation.release(); }
+        const completed: any = await this.cache.run(key, token, cancellationToken => {
+            const build = this.indexBuildTail.then(async () => {
+                require('../scanner/scannerContracts').throwIfCancellationRequested(cancellationToken);
+                // Project context uses the service's budget, not a single result's quarter share.
+                const reservation = this.cache.reserveResult(this.cache.maxBytes);
+                try { return { state: 'complete', value: await require('./projectReferenceIndex')
+                    .buildProjectReferenceIndexAsync(snapshot, cancellationToken, reservation.bytes) }; }
+                finally { reservation.release(); }
+            });
+            this.indexBuildTail = build.then(() => undefined, () => undefined);
+            return build;
         });
         return completed.value;
     }

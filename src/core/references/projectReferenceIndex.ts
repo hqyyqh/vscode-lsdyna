@@ -645,14 +645,16 @@ function* buildProjectReferenceIndexSteps(snapshot) {
         yield;
         const fileIndex = getFileIndex(fileIndexes, filePath);
         const registryReferences = fileIndex?.registryReferences;
-        index.registryReferenceOccurrences.push(...(registryReferences?.referenceOccurrences || []).map(occurrence => ({
-            ...occurrence,
-            filePath: occurrence.filePath || filePath,
-        })));
-        index.registryValueDomainOccurrences.push(...(registryReferences?.valueDomainOccurrences || []).map(occurrence => ({
-            ...occurrence,
-            filePath: occurrence.filePath || filePath,
-        })));
+        for (const occurrence of registryReferences?.referenceOccurrences || []) {
+            const located = { ...occurrence, filePath: occurrence.filePath || filePath };
+            index.registryReferenceOccurrences.push(located);
+            yield located;
+        }
+        for (const occurrence of registryReferences?.valueDomainOccurrences || []) {
+            const located = { ...occurrence, filePath: occurrence.filePath || filePath };
+            index.registryValueDomainOccurrences.push(located);
+            yield located;
+        }
 
         let gaps;
         if (registryReferences?.referenceCoverage &&
@@ -705,13 +707,20 @@ async function buildProjectReferenceIndexAsync(snapshot, token, budget = 64 * 10
     const steps = buildProjectReferenceIndexSteps(snapshot);
     let started = performance.now(), retained = 0;
     const { estimateMemorySize } = require('../cache/memorySize');
+    const { EntityQueryBudgetError } = require('./entityQueryBudgetError');
+    const accounting = { seen: new WeakSet(), strings: new Set() };
     for (;;) {
         require('../scanner/scannerContracts').throwIfCancellationRequested(token);
         const next = steps.next();
-        if (next.done) return next.value;
+        if (next.done) {
+            // Recount the final graph to include containers that grew after their first yield.
+            if (estimateMemorySize(next.value, budget) > budget)
+                throw new EntityQueryBudgetError('entity-query-index-budget', budget);
+            return next.value;
+        }
         if (next.value) {
-            retained += estimateMemorySize(next.value, budget - retained);
-            if (retained > budget) throw new RangeError(`Reference context exceeds build budget (${budget} bytes; ${Object.keys(next.value).join(',')})`);
+            retained += estimateMemorySize(next.value, budget - retained, accounting);
+            if (retained > budget) throw new EntityQueryBudgetError('entity-query-index-budget', budget);
         }
         if (performance.now() - started >= 8) {
             await new Promise(resolve => setImmediate(resolve));
@@ -989,7 +998,7 @@ function analyzeParameterReferenceAtLocation(
     parameterName,
     options: { documentPath?: string; lineIndex?: number } = {}
 ) {
-    const normalizedName = String(parameterName || '').replace(/^&/, '').trim().toUpperCase();
+    const normalizedName = String(parameterName || '').replace(/^&/, '').trim();
     if (!normalizedName) {
         return {
             resolved: false,
@@ -1156,7 +1165,8 @@ function analyzeReference(
         parameterResolution = resolveParameterReferenceAtLocation(
             referenceIndex,
             referenceValue.kind === 'expression' ? { ...referenceValue, expression: referenceValue.raw.slice(1, -1) } : referenceValue,
-            options
+            referenceValue.semanticRelation ? { ...options, allowZero: true,
+                allowRealValue: ['real', 'float'].includes(referenceValue.fieldType) } : options
         );
         if (!parameterResolution.resolved) {
             return {
@@ -1277,8 +1287,8 @@ function analyzeReference(
             raw: referenceValue.raw,
             parameterResolution,
             transformResolution,
-            ...(targetSearch ? { targetSearch, targetSelection, targetKinds: effectiveTargetKinds,
-                targetDefinitions: effectiveTargetDefinitions } : {}),
+            targetKinds: effectiveTargetKinds, targetDefinitions: effectiveTargetDefinitions,
+            ...(targetSearch ? { targetSearch, targetSelection } : {}),
         };
     }
     return {
@@ -1297,8 +1307,8 @@ function analyzeReference(
         raw: referenceValue.raw,
         parameterResolution,
         transformResolution,
-        ...(targetSearch ? { targetSearch, targetSelection, targetKinds: effectiveTargetKinds,
-            targetDefinitions: effectiveTargetDefinitions } : {}),
+        targetKinds: effectiveTargetKinds, targetDefinitions: effectiveTargetDefinitions,
+        ...(targetSearch ? { targetSearch, targetSelection } : {}),
     };
 }
 

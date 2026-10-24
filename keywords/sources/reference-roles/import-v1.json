@@ -1,0 +1,3947 @@
+{
+  "schemaVersion": 1,
+  "kind": "manual-reference-role-supplement",
+  "source": {
+    "manualSemanticsSha256": "233567446e28a9dc39b373958170488263ccf061a42e0ddd7f0246e25b3167d7",
+    "semanticV2Sha256": "52e6d4f0c511db88491e0ed1f000621901dd05e715a86caf780bc5b48f278994",
+    "authority": "reviewed-manual-supplement",
+    "nativeReadWriteApproval": false,
+    "extraction": "PyMuPDF 1.26.6 get_text(sort=True)",
+    "documents": [
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "title": "LS-DYNA dev Keyword Manual Vol I",
+        "sourceDocumentId": "6e09b4f6f0b4bca305923030c723582480c5af8696829b3cce5ecf62e3cc29dd",
+        "revision": "master@82cac4671 (06/12/26)",
+        "pages": 4315,
+        "artifactSha256": "e6e6c696a98cab037dc7004590912c585811de53e727e469f4d01cca9046f302",
+        "artifactBytes": 34763447,
+        "pdfFile": "pdf/LS-DYNA dev Keyword Manual Vol I.pdf"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "title": "LS-DYNA dev Keyword Manual Vol II – Material Models",
+        "sourceDocumentId": "1fa4f9dacd6cd01d6e63c8b2d7c3e1b3800f45d70abbad7552023052895ac522",
+        "revision": "master@96ae93b45 (06/11/26)",
+        "pages": 2246,
+        "artifactSha256": "5538d1b8e32d5e6e743496a4c48575549ddb1854d424de559ed3f19fa772ccf3",
+        "artifactBytes": 14842989,
+        "pdfFile": "pdf/LS-DYNA dev Keyword Manual Vol II – Material Models.pdf"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "title": "LS-DYNA dev Keyword Manual Vol III – Multiphysics Solvers",
+        "sourceDocumentId": "c0a0dc2499bf0144f61678000a5abded4566f2b3da9b3d78fe53878595c5b28b",
+        "revision": "master@2878033ed (03/19/26)",
+        "pages": 826,
+        "artifactSha256": "3f17ea1c4511030dbc24981af6e4ecd718d700b2b519021fa82c5d1a0ad0ef77",
+        "artifactBytes": 4460313,
+        "pdfFile": "pdf/LS-DYNA dev Keyword Manual Vol III – Multiphysics Solvers.pdf"
+      }
+    ],
+    "pages": [
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1012,
+        "textSha256": "ea7f7ac965986e1ab45c582f2362e1d9ea903feaf51c12adb8185934e7aa5bcd"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1016,
+        "textSha256": "f8052e6bb85044aa573b20c0db4ef815eb20fdd49f556aecc9a69f62647e37ac"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1138,
+        "textSha256": "b2fc8dec098b0623ee50c8f131680522f6ca70c9f10cfb1a2191bba074b3a77e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1141,
+        "textSha256": "5a6b99e9641dbc49c399e897bfbdb2426eb22cb2d325b36344dc23e5c09bc1be"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1139,
+        "textSha256": "e7794a870a18998210d9d76249ea549486ec8e5a11c1835ad6b7e1076e929795"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1436,
+        "textSha256": "bdd0bfb18a61619cd7b7455cff5a03d1dc03d72984cd9766d5cda61d7249b6e0"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 504,
+        "textSha256": "3d6acc277f859878bb1d179b7d29d613a66284d1d765ea17575238714b641fd6"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1608,
+        "textSha256": "d4049e17bc5ddab5f69ca0d5e742224c65a8c7d750e4da73852f3599c3a6924e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1915,
+        "textSha256": "57e64942e61c970be301fdddb809ad335c422aec0ab4411b77c7271ea7d41758"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 945,
+        "textSha256": "39f7a0630a54135fc1925edcb71b6abaab5f1cc50341c092a5983256aa0dfa8a"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 2228,
+        "textSha256": "4b59edf49403f77afd0b31b63dfa9859739e4b20005233bf02d0b20728edead2"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 402,
+        "textSha256": "36c5facf8f9a0e207187fd578bb1fadb679ec8a5488638c1591879d686b6ecfa"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 609,
+        "textSha256": "f35140b3f835a10474b5db81342a0a73b863c8d3285eaab2006d3a0819f169e5"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 428,
+        "textSha256": "5f7a700b7b9adf8d144c990367494f160f7f95a57a2ec654d433dcbea89fb3fc"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 429,
+        "textSha256": "267f03782ce9519180ba37c74e0744f59e97f1db70b9f786bc88cea61acbf359"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1068,
+        "textSha256": "95bec8733b8a7d6f8be07767b33a10c2247cbb0cec9b5bb005f9441e1f8a02fa"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 943,
+        "textSha256": "2a52538d2c124275d8d422736f089c7745acf79d3f7487a0db6ce39f0ec71f61"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 945,
+        "textSha256": "f0874800b4b869c89fb010cf7fd52440777797c009149b416b4b73290bc49a9d"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 489,
+        "textSha256": "99b40d509d7035ab0e15d6db8f5bb807ea4cd91e30897f63092d6b30c48c6d19"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 531,
+        "textSha256": "8f4c4fc5af7f95560d0285f9270dc716b5e0fbb93eab44cac8915cf97b8c45fc"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 539,
+        "textSha256": "3369ec84ac8420823854175c0612310d87273c050b9a7c76fe53f70e736e111c"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1889,
+        "textSha256": "a7a3fa7ebb708cda4fe5c0b563890f70be066b63e410cd978c9fa263370f1b76"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1431,
+        "textSha256": "7e42a7fe43854430da130d7064c5fbb58ce29b162bc113799296d5c033ec5001"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 515,
+        "textSha256": "28220d3ef55ff6620862ee522a93bd6c60d04fb5946d991cd2682ed03b4f972b"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1826,
+        "textSha256": "cdd56e955124517aa32f72d0aa7a4b6cacbfbf56be6fe95fa25adcbf8b65b318"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 604,
+        "textSha256": "c9fcf07ff49f9a9c0d3530b5c44edd58188529346f0eed50755e11845c31dd6a"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 601,
+        "textSha256": "2f4efde538947995029b1f10ef59b7f023df69ed4650c1905a0ea809cebb83ee"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 605,
+        "textSha256": "30a9b18e978c2a6931c643ee1234e9b4bf4dbec108d7a8911bcb15334704fb8f"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 633,
+        "textSha256": "aceb4ef22c6210c5e58255067ce57cd2bb0cbd22a9ea4e7a941af01a3759d049"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1895,
+        "textSha256": "fd20a84868114def4ab47a6b7c351558e5594fd266d0b6aab268393af8a609c0"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 586,
+        "textSha256": "0f4471eeb00d6129dd6c2afcfc11ab4d8bcfe0a1413623138df1e9e5de500b4b"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 170,
+        "textSha256": "5725f185760cbb8827e766579d921b3416f6c2ea2922ef2b0def7c5d63ff38af"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 394,
+        "textSha256": "18f55cc60813bbd1fcb8a157012e3847f80990455206fd2a891225840be9dd17"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1264,
+        "textSha256": "52443f3142dc24d3877e44a579f726010ac7777b5696b92ab3ddde15b6652b4e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 470,
+        "textSha256": "f89784ada7560c60e54e2544101b3fcb8cf5b4703e1e49c20cf4bf966587d40b"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 535,
+        "textSha256": "bfd9fa8880757863074d341a138b25dba555c889e39e8b2665fb3978452fa730"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 742,
+        "textSha256": "b518010b70829a39625299e5343b7e7bbd4d2825b3dbe0f378183b58ebb77da0"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1313,
+        "textSha256": "66514660bdc251e1dfa4d844b39cf6f0c1239f417e9adb87848a83966985c9ed"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 526,
+        "textSha256": "8db0879b4c0ea375c18afef2500c8cd00cce91ecd40f3ba600acc56ad5e95c85"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1675,
+        "textSha256": "1b238931b1a35f15bf978b0e3046714b494ea6a05f2e031f86851461aa77dec7"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 444,
+        "textSha256": "b16da91f44b0ef1972d2202dad696021c72702b669bb60411d16abf9c604424f"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 449,
+        "textSha256": "a4a26254abd3b5444c9f540df01f4e488deee2b5e30e231f4498bfecb9d6761e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 408,
+        "textSha256": "6b68a5a72f98fe29c7db5be3047566f2dc0d5c218cef46d90af3da2efcc466f8"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 946,
+        "textSha256": "79e8ea1cac74620f3fce90522c920d30c62ebf6dbbe46f89900d310f971f6b76"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1609,
+        "textSha256": "8b1c0f2fd559b9fe604ecb15ee6dc54a61f99d09ab4fe6e5bb4c83f3462e50bd"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1687,
+        "textSha256": "e1a4cfeac34bc9394ed990513ce372965482d6fc60c9efbda0bf58da66803548"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1907,
+        "textSha256": "d63f379838d2b049042bcb2f43e703d8e42b111bb34b798d282b3c3333540a53"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1911,
+        "textSha256": "03094861da0bfe6c00e5642957078094c76cbef945b35ecca6856fd90cc48593"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+        "physicalPage": 1912,
+        "textSha256": "1c2b63fb42f133605d400130cd8b9b7691ce19423bd23c4ddb1f31d9491f2718"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 585,
+        "textSha256": "e426ad524f5cd881b6cb351133623cf3759bd14097de10588734546d8c5e2e7e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 602,
+        "textSha256": "df35b851b50b3055d2aad7154a64b0220df251bf905cf00f9f30c7a93134c75e"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 944,
+        "textSha256": "4790742ae8993e4555edae4c9c0ee8ff4b23ba53818046c79272f092c94a7ff2"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 1314,
+        "textSha256": "e348cedf0eea426011e9c834bae6cdfccbfbc276ee36b4eefa858c4229c8e2ed"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 786,
+        "textSha256": "11c6f9b1fe1405f3bc114a9b831a00212c792efc1da6aae699904ab87bcefd21"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+        "physicalPage": 787,
+        "textSha256": "d85aee0fbbd7f42ed62b877f899a7cc25643d8af5f85c2e147fb1a590099fcd0"
+      },
+      {
+        "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+        "physicalPage": 516,
+        "textSha256": "f9b2e443cbe7638dd19bca325bb8e34cbeb323e04204adaece49439c249db2fe"
+      }
+    ]
+  },
+  "review": {
+    "scope": "All 419 manual conditional reference rules and all published native conditional rules were inventoried. This import adds only confirmed non-reference ranges; unsupported branches remain unknown.",
+    "method": "AI semantic review of the hash-matching original manuals, including adjacent pages; independent agent review of Volumes I and III. This is not native-consumer or solver certification.",
+    "retained": "Original checkpoints, evidence identities, reference branches, targets and read/write permissions are unchanged."
+  },
+  "records": [
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "E",
+      "ruleId": "rule:e6993f17f8978e1e7334efac",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "E",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "1ab2b924309de3b0626527c716f09ecaac205acddaec40b1e2d94cfd9de9c3c3",
+      "evidence": [
+        {
+          "evidenceId": "evidence:1b2752c0114b2fe41107ce77",
+          "quoteSha256": "2279014c282db409b4448ef007ff80dddb49d79622807622456876aa22041b5d",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1012
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 994
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "E denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "PR",
+      "ruleId": "rule:7c0e397d6be31d40fc1a836d",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "PR",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "4853a3b36bf4fac979e34f8990724c2d6b5ed842780a0d52050218cc8b23e811",
+      "evidence": [
+        {
+          "evidenceId": "evidence:3f71f8bad7712ad069a2e4e8",
+          "quoteSha256": "007f8e8b84899a0a76bdc9cdfe6d119904df1a6658f675d1bb6ba8cec983586c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1012
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 994
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "PR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "R00",
+      "ruleId": "rule:923069425d3e99db9d9fe07c",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 3,
+        "fieldName": "R00",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:9e805104006f5126ff84b533",
+          "quoteSha256": "3b9547369317a1c4d26e8ab30703c37715f5a4ddc03c79e0e4175ffec60e7cdc",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "R00 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "R45",
+      "ruleId": "rule:742774ce6a0c719b99b30595",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 4,
+        "fieldName": "R45",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a30f94d58f825e53b289c147",
+          "quoteSha256": "6cfd84bec232ef96f578a3e1b6fd384642511820a9bc324b918c2abad50f40ec",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "R45 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "R90",
+      "ruleId": "rule:87995f00ea52f2d23b737b5b",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 5,
+        "fieldName": "R90",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:471df77362fa56db75ed7fb1",
+          "quoteSha256": "0a37e572d0548a7aa27d263348eaa57c57fc3857241de5caec2f0713bcf234c8",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "R90 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "SIG00",
+      "ruleId": "rule:88cc0a2805f9ec2f583b6c01",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 0,
+        "fieldName": "SIG00",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:05ccff7f66cb25220e6e7077",
+          "quoteSha256": "d52a9764a2cf1d4eb74de03f9550a2e5fc7a99115617437863e074bcd66a7e7e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIG00 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "SIG45",
+      "ruleId": "rule:6f50e267686d835491bf73e0",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 1,
+        "fieldName": "SIG45",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a7833f1423b6cd2fb19c3060",
+          "quoteSha256": "a264f727f3b07f56aeb9e73f60c72a97d5be3487c3dbfee98e68f2d38df97a97",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIG45 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2000",
+      "field": "SIG90",
+      "ruleId": "rule:4e7d160ba35363e2d3e61d8a",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 2,
+        "fieldName": "SIG90",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:8baee98c625c0764a7805293",
+          "quoteSha256": "a19dcd78896fdb665dc3236c54454c43ed161ec757736ae5b7fa8ada41ff353b",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1016
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 998
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIG90 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "E",
+      "ruleId": "rule:159dc7ece1e52d8b76ff5740",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "E",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:5816b7ddfe7f27105322645a",
+          "quoteSha256": "1e2032f87e5f214e539c26c7ab53941dcb40f9fc9015d4f046a4a10c45ca7caf",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1138
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "E denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "GAMMA4",
+      "ruleId": "rule:21573b82d609efbb947ab1e1",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 1,
+        "fieldName": "GAMMA4",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:33a363aac477821ee5c7a17b",
+          "quoteSha256": "0b20cafc1abf3f9a66f999e0238fed7f80bc6eb8e955489d88b2320cc6366d31",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1141
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GAMMA4 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "HARDK4",
+      "ruleId": "rule:b530bd825f7ebe34c2c649b1",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 0,
+        "fieldName": "HARDK4",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:3f8fccdd7e241c0e93d48955",
+          "quoteSha256": "4b7675ce51c70ff90dfce904d13b72d41d00f0e8869387c4bdbe41f3e3148bb0",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1141
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "HARDK4 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "PR",
+      "ruleId": "rule:8be85873d0c2883b0444031a",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "PR",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:f0b5c0b1899355ab50c0e3d0",
+          "quoteSha256": "fc3e20eeb846454d58f91ecd2516d009a156c45341ad9b141a11191e4fc7c60d",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1138
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "PR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "SRC",
+      "ruleId": "rule:17b0d4f53c67fd75fb3e3e27",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 4,
+        "fieldName": "SRC",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:7e31bddb9d8d0f2d96b0ae01",
+          "quoteSha256": "7eed2295319cc9e706e67850d34cf3e1228bed4489e5d4377276bb70f7bd364c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1139
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SRC denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_DAMAGE_3",
+      "field": "SRP",
+      "ruleId": "rule:28fe8559bd9b397a7d9859a9",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 5,
+        "fieldName": "SRP",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:4bd592468d074a843a72c531",
+          "quoteSha256": "04ce6d557056102ecef96cc73fb62ed9a9c2684a42f255eb2ca773ef779ddbf5",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1139
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SRP denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2004_27P",
+      "field": "E",
+      "ruleId": "rule:7628bd5b36a8ededa50c0fed",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "E",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "6a8906b0313dcf64a4bf70c8b8e54b3e5fe870c9eb7f55bc21320c449bdff717",
+      "evidence": [
+        {
+          "evidenceId": "evidence:801920a189a8669cde7148a6",
+          "quoteSha256": "e1249bc10db43bc106bbb03ea57c3d2a194dd10fe7df45744ed950876fe5ed1e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1436
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "E denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_IMPLICIT_AUTO",
+      "field": "DTMAX",
+      "ruleId": "rule:d2368da3710aa573f7a4880a",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "DTMAX",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:108cc01de22d2f760d279b6b",
+          "quoteSha256": "31a1d06f6986c635bd5cfb56727a220e1649a2eabb9f0a7fcceb96626d0860f4",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1608
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DTMAX denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_TIMESTEP",
+      "field": "TSSFAC",
+      "ruleId": "rule:4ba9383a209d82d7d4c360b6",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 1,
+        "fieldName": "TSSFAC",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "975f36cbe9420e41d075fdcffe4fa0a33fb70ad0ee41e6818134f0c149268813",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6a3314ab342ed7e5f800160a",
+          "quoteSha256": "afdc25f9b1daabbd5891bc0878e4979b083ff97cd48d3c0b87c00b75906c4d23",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1915
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1907
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TSSFAC denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONSTRAINED_INTERPOLATION_SPOTWELD",
+      "field": "SCARN",
+      "ruleId": "rule:65170b5cf40338ae3c859c63",
+      "selector": {
+        "cardIndex": 7,
+        "fieldIndex": 0,
+        "fieldName": "SCARN",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:dcd964bc1cd4d8bd913c7f9b",
+          "quoteSha256": "4f053c29142657c5cf0653e0c9818daa38436a10127fc93d1212d1c9c2da0819",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 941
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SCARN denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONSTRAINED_INTERPOLATION_SPOTWELD",
+      "field": "SCARS",
+      "ruleId": "rule:dea1ade26962b9675e496e93",
+      "selector": {
+        "cardIndex": 7,
+        "fieldIndex": 1,
+        "fieldName": "SCARS",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:e649987ba5afea0f656be355",
+          "quoteSha256": "b1087aa598aad130e2b1370c82bdb454317ac494df16a9b1f23be1caf7edfee2",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 941
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SCARS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*DEFINE_CPM_NPDATA",
+      "field": "HCONV",
+      "ruleId": "rule:2de426ae572789a5aaa3ef0c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 1,
+        "fieldName": "HCONV",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "691942003c41ceb22e0f498e5264529fd04de2c5e5c4a89390305087d80f3a9e",
+      "evidence": [
+        {
+          "evidenceId": "evidence:379c6668d25d9c165c19e946",
+          "quoteSha256": "745f18238d420e12bb71dfc8f67e7ecfeb46e8974f09d1b128b60d34ac14367c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 2228
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 2208
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "HCONV denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_SID_DAMPER_DISCRETE_BEAM",
+      "field": "K",
+      "ruleId": "rule:f79b1543d3ec12c0c8b25505",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "K",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "4c348319078d7fd7a91557e126c2326faaee562e211c9370d21b189bfa1a7147",
+      "evidence": [
+        {
+          "evidenceId": "evidence:b1e72c7b5e338630f5f1dfd4",
+          "quoteSha256": "84a66d254af8dfac8ac81a924a72700ba3a9538a9e2c6b789e261b203d2bade3",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 609
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 591
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "K denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_CONTROL_SOLUTION",
+      "field": "ANG",
+      "ruleId": "rule:e3a94115adc3ccd3781ea497",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 6,
+        "fieldName": "ANG",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:5c92064ee0ff0a19a404a170",
+          "quoteSha256": "ed7bcd81b26fea34f15b8a769e0369abc76c487cf1fb5e3e27278e802b707763",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 428
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 428
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "ANG denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_CONTROL_SOLUTION",
+      "field": "DIST",
+      "ruleId": "rule:b6e877b742b9e4590f4f16b6",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 7,
+        "fieldName": "DIST",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:e6f875d68a3900b1365f1143",
+          "quoteSha256": "355374108451a971702737976dbd5af60c8bd9961ebd738fd84e76bc02889cbc",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 429
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 429
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DIST denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_COHESIVE_MIXED_MODE",
+      "field": "GIC",
+      "ruleId": "rule:76a4c9afbaa44bf0816e1bc4",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "GIC",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:db4fa43c9cf50f886a137415",
+          "quoteSha256": "51b03e07afbebbfd8062d0ca32817790573b7c1e97f87134e21e6ef4ce5f5ee5",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1068
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1050
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GIC denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_COHESIVE_MIXED_MODE",
+      "field": "GIIC",
+      "ruleId": "rule:6242caeb9bb499677b3228ea",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "GIIC",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6e71700ab8f94f5ca70f6a9d",
+          "quoteSha256": "492b1f2ba7c7a05dc73ca9578dc0c7320ea3182c3fa690c24db571cf0665e181",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1068
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1050
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GIIC denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "EX",
+      "ruleId": "rule:ec7cd45a59ff85532fff460e",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "EX",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:e361195a205b08dece5de725",
+          "quoteSha256": "3c62ebf7c2975e914cfab781d8a73159bab1b0ccea5f02bd7346ba36ddcd8a14",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "EX denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "EY",
+      "ruleId": "rule:634d24d62145f448f916f27c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "EY",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:afb5c9d901fc49029b198291",
+          "quoteSha256": "7025be05c1c296a739991bfa7b2bf1a278793b2b0741da69f4706a3e5c25c3d8",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "EY denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "EZ",
+      "ruleId": "rule:ec164d4e3e81dc39c4cb7e6e",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "EZ",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:decefa9537537f8784faebb8",
+          "quoteSha256": "8e83c4069e001679e6b4b5ef1b3811545fd5c19fcf3db6dd5d4761593bbec484",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "EZ denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "F",
+      "ruleId": "rule:b1ba7ed60c7f69affc2eac99",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 3,
+        "fieldName": "F",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:f06856dcd061dc4d477444b0",
+          "quoteSha256": "b957a2efb4bd6554980b8c26376f90f5d08a8ec2931e5e864466a156bb5ac99e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "F denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "G",
+      "ruleId": "rule:053b8588d48566d873d10820",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 4,
+        "fieldName": "G",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:59312d75e073d79fccb5cc6c",
+          "quoteSha256": "f3a726056414eb1d99472b1a0a8a6f91da2d4660baa694510c3724ecfc3348e8",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "G denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "GXY",
+      "ruleId": "rule:daeba8df59e38b6ee1225731",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 0,
+        "fieldName": "GXY",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:952992bc42acb78fe60c2d50",
+          "quoteSha256": "6fc6eaf3e545c1a8ae83d99157f33e70549997360cff83fed50980d9963b87de",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GXY denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "GXZ",
+      "ruleId": "rule:435c0ecac78b484df6ff9a0a",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 2,
+        "fieldName": "GXZ",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:da756efa36b1bdb5db416287",
+          "quoteSha256": "e8b2f1b020dd3d980bc0465f185886c4c8c64cbf8163015e9a9d03d9596783ed",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GXZ denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "GYZ",
+      "ruleId": "rule:3a023ed9bb5ac533942b0fad",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 1,
+        "fieldName": "GYZ",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:cab0c5bc20fcb818e1fa46e5",
+          "quoteSha256": "321ce111496e36fc0c167bb810fb2b830be675e1cd614cf1913b2485099116c3",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "GYZ denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "H",
+      "ruleId": "rule:c31ee8515e3ad90e66ed3bf1",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 5,
+        "fieldName": "H",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:34c5334c045664177bab78a0",
+          "quoteSha256": "e98543e491f651e255326f472daf55e34181bd448252c17e272e472312c5efe0",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "H denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "L",
+      "ruleId": "rule:d1acd645d41f70db57a64bb7",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 6,
+        "fieldName": "L",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:436ac38ac5f617914cc2c096",
+          "quoteSha256": "4c79ed0e249b4daff3bccf15c001e0dc6a14c2c55ef866179e1e804ffca57963",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "L denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "M",
+      "ruleId": "rule:27b361a9ae1fffa8f4b334fe",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 7,
+        "fieldName": "M",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:c06c0bcb629de39330b6edd1",
+          "quoteSha256": "4cc6730e224b76a1397316f772fc46fc8cb0ed8e59fdb9a8c5093019cb772836",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "M denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "N",
+      "ruleId": "rule:3fbb2fc68ac4575c371d053d",
+      "selector": {
+        "cardIndex": 3,
+        "fieldIndex": 0,
+        "fieldName": "N",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:1a358989c823604d413131ce",
+          "quoteSha256": "ff032c74eb6bcd43ea8800d9d73591e493ecee545b090a49635e5b49b56440cc",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 945
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 927
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "N denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "PRXY",
+      "ruleId": "rule:a0025c64a2c2078e7a105daa",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "PRXY",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:69b98606f872e900abbe5575",
+          "quoteSha256": "ee28d2d9a5511726ceec1cdf56282b4e6ece1c1e9857603237a3bbb37b72aebf",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "PRXY denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "PRXZ",
+      "ruleId": "rule:dbca9130e369930394303c3c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "PRXZ",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:ed4e16be9a2216b1c9708359",
+          "quoteSha256": "c9816eba697c4e6546c943abbeddcc2d3525e9620d8dae1b99485935e434a682",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "PRXZ denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_HILL_3R_3D",
+      "field": "PRYZ",
+      "ruleId": "rule:e9555fdd78a5677ffb319d5c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "PRYZ",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:3cf49f1d1d4a4655aee5a3f3",
+          "quoteSha256": "22bf2f819ecc1f03a9638e208495b1d9a548e0a180441144895f0ec73f85805b",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 943
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 925
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "PRYZ denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*AIRBAG_INTERACTION",
+      "field": "SF",
+      "ruleId": "rule:3b125d6e458ce9f831a054e9",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "SF",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:27846cccd3a6536d1bf28756",
+          "quoteSha256": "5db94d8f2af0e821a91ad9192dd1c88a350b0b005271529fcb85c58f23c3a7a1",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 489
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 489
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SF denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_OUTPUT_FORCES",
+      "field": "OUTDT",
+      "ruleId": "rule:ca720d669f8b81d251828829",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 1,
+        "fieldName": "OUTDT",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:1c5e14827eefe7c379cd22d7",
+          "quoteSha256": "af6b7222f5625cd8f80badbd1b5057690a601390d40fdb5feb2168e0f7b9fe4e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 531
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 531
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "OUTDT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_LOW_DENSITY_FOAM",
+      "field": "DAMP",
+      "ruleId": "rule:78c66f223a8ab23eb01ac37c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "DAMP",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:1f74d9bacb99fa3f940848dd",
+          "quoteSha256": "6b632ce7c0cb0382a2af56082d65182f487e5b2a31c03efbb7f7fc0cf45ef56c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 539
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 521
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DAMP denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_TERMINATION",
+      "field": "ENDMAS",
+      "ruleId": "rule:63a8d02bd6dedfd01b4484ec",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "ENDMAS",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:19a439b8acbc3bef8c254eec",
+          "quoteSha256": "d6b72f0f057c2d9ceebe56609bca26ac3e2b81d1535942fc19e7d334bbc49be5",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1889
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1881
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "ENDMAS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_BARLAT_YLD2004",
+      "field": "E",
+      "ruleId": "rule:8f07cf210d0831a406c9eba3",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "E",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "6a8906b0313dcf64a4bf70c8b8e54b3e5fe870c9eb7f55bc21320c449bdff717",
+      "evidence": [
+        {
+          "evidenceId": "evidence:084b50bbbdf0e38f7b91d7a1",
+          "quoteSha256": "47c6be2e701a92af5dee7e2f9b6b495ce7c5b6cd8f8ccadff7e4b93b029a1533",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1431
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "E denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_MAT_003",
+      "field": "SIGMA11",
+      "ruleId": "rule:9c80a527fd8be20c31609c50",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "SIGMA11",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6b3eb595443d4a6962811948",
+          "quoteSha256": "7e0bc28ae88ea8b1c4530e3c9621ece12f6d6c4bc015c3568814d515988e5ce2",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIGMA11 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_MAT_003",
+      "field": "SIGMA12",
+      "ruleId": "rule:6bb5ad35ccdebce634b30208",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 0,
+        "fieldName": "SIGMA12",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:523c1b8473f2d95437e425f3",
+          "quoteSha256": "565085ef52a9b8c608e27818f883dd48abfbe504279e6e82696feb3c1f1fad8f",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIGMA12 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_MAT_003",
+      "field": "SIGMA33",
+      "ruleId": "rule:288ac572286b41963dd9c497",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "SIGMA33",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:121a92284fd2e7f3dcd0375a",
+          "quoteSha256": "0e70367e7208e26e53653d34f6e10b4a0871383cd1389f7bc5ccd4b07415ddb7",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 515
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIGMA33 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_REMESHING",
+      "field": "RMIN",
+      "ruleId": "rule:b64045a76e9b2da9881e65d9",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 0,
+        "fieldName": "RMIN",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:608533c131ef86482f0d5871",
+          "quoteSha256": "274679b75a60eb206502c1e45909315cf5a89f742884aee23a4e55b24f8bcc53",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1826
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1818
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "RMIN denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "FFAILR",
+      "ruleId": "rule:48bba463f80bc7c2f47df12b",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 0,
+        "fieldName": "FFAILR",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:511e2f04329154d86f7fd6ae",
+          "quoteSha256": "8477f14216911b695e317a06bd3cae503969a94bbe7aee52ad8a28905ccc3baa",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "FFAILR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "FFAILS",
+      "ruleId": "rule:f95a6124f0ee9d1933a708c7",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 1,
+        "fieldName": "FFAILS",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:4b25c80f2c34c0ff775ddf3c",
+          "quoteSha256": "6f30b97362e70b8ee8ff8d9fea21018e86613f13e2b30269fad50dc3279a216c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "FFAILS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "FFAILT",
+      "ruleId": "rule:f7f30a26c1316d3dc47d9d1d",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 2,
+        "fieldName": "FFAILT",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:f3f2a61e32c731d6060704ee",
+          "quoteSha256": "4d49746f8d46d140686a2738331a914c1a4fd4528a02551d16ef723eedb15624",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "FFAILT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "MFAILR",
+      "ruleId": "rule:947f5b46f0740d227408046d",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 3,
+        "fieldName": "MFAILR",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:dea7e6c7b9b37b69a68ab5b6",
+          "quoteSha256": "cd905fb6a85997538b696c5f70df911ebf14f57e47ab861e4fb3889804cfd6a6",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "MFAILR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "MFAILS",
+      "ruleId": "rule:c35f4f7bf1eed743df3689de",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 4,
+        "fieldName": "MFAILS",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:3587304776dee9e1625288b4",
+          "quoteSha256": "7b65efe6f7c96b0e7731b18f3bc6df6ee139e1cfac40c934c5fd699952a74662",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "MFAILS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "MFAILT",
+      "ruleId": "rule:4cc906c9a22990db0c11f909",
+      "selector": {
+        "cardIndex": 4,
+        "fieldIndex": 5,
+        "fieldName": "MFAILT",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:62ca3fc2cb1841efabd4acf2",
+          "quoteSha256": "e4bdb03880263107a42494c6383070e956956913f46fffcfb2f5ddb22e5d64fa",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 604
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "MFAILT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "RKR",
+      "ruleId": "rule:17361ad373958e2f6dae15e1",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "RKR",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:75337b25e0dd577fcd10da09",
+          "quoteSha256": "d7a55818e4ba09fa2f2aab1ef67f19a63f11de25fe47046467c40c5c99a94ba3",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "RKR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "RKS",
+      "ruleId": "rule:ac06db6f4c50d9b5f77223ed",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "RKS",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a2497b79e1d6f11deb7c1d15",
+          "quoteSha256": "d6b952b4dfba70af4e1956bd904ce94e88ab80d8a651f8a0d87f214798109b8c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "RKS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "RKT",
+      "ruleId": "rule:ab0396a17c297fe20151edc5",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "RKT",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:19b2275c57033b958eaa9fde",
+          "quoteSha256": "eb19ff424e7490f9cb07db176b3e3d271cda51b23465f739e62ecdeb42909b22",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "RKT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TFAILR",
+      "ruleId": "rule:fcdf4e1f39011b0eeb1f597f",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 3,
+        "fieldName": "TFAILR",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:8869972b269c884817c92e00",
+          "quoteSha256": "2713237088291cc7363e4ede2f1f9f8cf18c6f14819ce3bf799cbbbdad76a666",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TFAILR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TFAILS",
+      "ruleId": "rule:eacf0f599f901f8773e2ac7f",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 4,
+        "fieldName": "TFAILS",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:504891d917ee5c8a6d4eefe3",
+          "quoteSha256": "be42b7e3082c1c6388deb1c026b09b7398b1e3dc07854ef004fc6f8b8bbe5a87",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TFAILS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TFAILT",
+      "ruleId": "rule:3e42f7fa0722563a4a5955be",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 5,
+        "fieldName": "TFAILT",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:4eeb30ff0b881208f4f8f2ae",
+          "quoteSha256": "6a7062b7462dedb4da21b00cd331f88253845af938b7ff6257aa9eff33b8aa56",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TFAILT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TKR",
+      "ruleId": "rule:defda6fa2bd61d4d721c5073",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 2,
+        "fieldName": "TKR",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:eec04368ae2e812c774aaad1",
+          "quoteSha256": "77b4aceb584a0410bad0dd2b74e2ea94403a00a820a87063449d4054c2148dce",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TKR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TKS",
+      "ruleId": "rule:e6f76fc2c0ce39fb32616d5b",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "TKS",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a11cbadbd639d7894e5ea030",
+          "quoteSha256": "6c1d56a7ce3e03f8505f238db69ff76da738534812ad4aaae0d826338c4ee00a",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TKS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "TKT",
+      "ruleId": "rule:aefcb2179c0fc954cec6464e",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "TKT",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a4d8da9cfab3c06bda1b4f25",
+          "quoteSha256": "ebf075a6c28dbe636f320ede7e76f2f80cc3447c587103c6f141671b7ba1c44b",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 601
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 583
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "TKT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "UFAILR",
+      "ruleId": "rule:5940c4a18bb9df27c5d0c0a1",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 0,
+        "fieldName": "UFAILR",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:3f86f7345ab8d32c9913d349",
+          "quoteSha256": "8697c8bb278d953a3abfc55fd23cb491e0afb065e29fe3c345c49e1f2a1c7a1f",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "UFAILR denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "UFAILS",
+      "ruleId": "rule:45b2d76c5f45a3059f77f0d4",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 1,
+        "fieldName": "UFAILS",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:ca639c7c614c0ddd94e61567",
+          "quoteSha256": "b36ab62fdff8cf166917d5efa25285378090cf154f54800dd1d0dd86272d09ee",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "UFAILS denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_NONLINEAR_PLASTIC_DISCRETE_BEAM",
+      "field": "UFAILT",
+      "ruleId": "rule:b6a063795ff5f8d89c99c8d5",
+      "selector": {
+        "cardIndex": 5,
+        "fieldIndex": 2,
+        "fieldName": "UFAILT",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:eac51bf348c9848fe2c76abc",
+          "quoteSha256": "5dd97b1edeffd297e36b10040ca8c3b765b0c02416fbcdc0f8b7c2adc7e75d18",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 605
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 587
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "UFAILT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_LOW_DENSITY_VISCOUS_FOAM",
+      "field": "DAMP",
+      "ruleId": "rule:1fd8f76e1bc1cd9ac4d5119e",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "DAMP",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:a1f905a5f585e221c7be6354",
+          "quoteSha256": "ce8ad44305bb697048a53d0a10ed952e77e35e13925daa9fc1892793173f532e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 633
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 615
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DAMP denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_THERMAL_FORMING",
+      "field": "LMIN",
+      "ruleId": "rule:73ae7687da1a9e8c2933702a",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 3,
+        "fieldName": "LMIN",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:7948d8e39d2fcb7a2697b23d",
+          "quoteSha256": "e10eb5cf138d1fdb7f5af0a1e8a7e5db2fed15b46adf9b78dbeff6b6ce48bd0f",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1895
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1887
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "LMIN denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_RATE_SENSITIVE_POWERLAW_PLASTICITY",
+      "field": "K",
+      "ruleId": "rule:4224c7ff4c20a7029518b9fd",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "K",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:e5e51a9115feaa8ffcfcde79",
+          "quoteSha256": "dfad1c960eaec828c9bf63f452449cf2409c2db59a43c247987b0a431baa324f",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 568
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "K denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_RATE_SENSITIVE_POWERLAW_PLASTICITY",
+      "field": "M",
+      "ruleId": "rule:09e4a9dd6c94ee71e5c933c8",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "M",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:878d63ebca5ab5b65e388871",
+          "quoteSha256": "2bbc5f67658419b5c9e3eae67a9e963a7fda23628ceca28a5562ebf2e32b0a6d",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 568
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "M denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_RATE_SENSITIVE_POWERLAW_PLASTICITY",
+      "field": "N",
+      "ruleId": "rule:7bb26a12517bde59f07753b1",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "N",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:f4a315411fffa48904b79995",
+          "quoteSha256": "37766fe840a507f96c6bfa5e0e07bc1c2d823834ee359d03e6b1f4f5174f1976",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 586
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 568
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "N denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_ADD_EROSION",
+      "field": "SIGP1",
+      "ruleId": "rule:a1c3a148e06aaa426c745d97",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 1,
+        "fieldName": "SIGP1",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:007cbab30caae780ac1f3b92",
+          "quoteSha256": "195ceb7184bd9e0fab7718b2d3b025641eb0a44e54d7a1e1d4aefbf0374b0062",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 170
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIGP1 denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_ADD_EROSION",
+      "field": "SIGVM",
+      "ruleId": "rule:bc434525b8a6eaf507c22259",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 2,
+        "fieldName": "SIGVM",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "96f1208f57f98960048842b8f38ac999465d0fed73dc2b3a1bcef0e40e20350b",
+      "evidence": [
+        {
+          "evidenceId": "evidence:ffb9842739c2cd8b34259e8d",
+          "quoteSha256": "75f2ca3dd94202c3eea4415e7cec32863bb81de744630bd73959fa6475060c91",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 170
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "SIGVM denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_EP_CREATEFIBERORIENTATION",
+      "field": "ALPHA",
+      "ruleId": "rule:d7c3c4d17610e7fa33b5aebc",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "ALPHA",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:d01d930ea029b88cc3dcfa01",
+          "quoteSha256": "4b98cd9e41fdf41e1961b1dae90893c7f23c527e5ea883770d155c640b757f44",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 470
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 470
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "ALPHA denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_EP_CREATEFIBERORIENTATION",
+      "field": "BETA",
+      "ruleId": "rule:0354217cafe56e3eb6555e29",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "BETA",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:c18af578174c3edfc6ad2ac2",
+          "quoteSha256": "02b91f2bf7e8ca7f096c4435f6172a5cd673ac03f4b76787b698f902d2cf4208",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 470
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 470
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "BETA denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_PERMANENT_MAGNET",
+      "field": "HC",
+      "ruleId": "rule:280a9a318ddd7a4feeedccf5",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "HC",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:625c81328998d4506889738c",
+          "quoteSha256": "616b20127ba804f5b69596609be8b6e4f45fba2de13eb02350dd9f53704bda44",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 535
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 535
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "HC denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*ICFD_INITIAL_TURBULENCE",
+      "field": "EW",
+      "ruleId": "rule:c9ee75399423eb98f73b651c",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "EW",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6b7240b4747c0f62d394abe5",
+          "quoteSha256": "3f081be10dff764c909c3abaf643af324c39cfe0f9f11718eddfdad482bbdc30",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 742
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 742
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "EW denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*ICFD_INITIAL_TURBULENCE",
+      "field": "K",
+      "ruleId": "rule:256dd2b7c2dfb81c27a7441d",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "K",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:70bf84c0ba1dde6f0214e38b",
+          "quoteSha256": "cc45817d37f781b80ba7b4df485899803b5d6e15ea2a23bebc065022ea5d3637",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 742
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 742
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "K denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_LOW_DENSITY_SYNTHETIC_FOAM",
+      "field": "DAMP",
+      "ruleId": "rule:c84ac8bed27c3d208eba6bdd",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 7,
+        "fieldName": "DAMP",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:80e25eb83297e1b7bba63194",
+          "quoteSha256": "6ee43e101878acc3510e3da6a82b664271bdfe881ba08e255a04f8dfe3d6294e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1313
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DAMP denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*EM_MAT_006",
+      "field": "DEATHT",
+      "ruleId": "rule:1413637305e81e8cd4d508db",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "DEATHT",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "db3c5f3b0b850d9e67b3be0b1e2c5b81773ecb9e4a008a8cfc3173e757befb77",
+      "evidence": [
+        {
+          "evidenceId": "evidence:7bf069d7510b111509632df6",
+          "quoteSha256": "2dcd99f681c878e718ef673d357202c53e6cd8ce46f210ed7882f6139bc2acb0",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 526
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-iii-multiphysics-solvers",
+              "page": 526
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "DEATHT denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_KINEMATIC_HARDENING_BARLAT2000",
+      "field": "EA",
+      "ruleId": "rule:d37848f9223661b8665f682f",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "EA",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:16b396ebe24840551e352467",
+          "quoteSha256": "b39b223c86b4983e5bc2e432ed70451809ee703dae2b97aa69c6a57bc8cbc47f",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1675
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1655
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "EA denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*MAT_KINEMATIC_HARDENING_BARLAT2000",
+      "field": "M",
+      "ruleId": "rule:b06ed6e6cb90d74fea9fbca6",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 6,
+        "fieldName": "M",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:ba96c30c798884ca20ab5fb9",
+          "quoteSha256": "aecd674f4af3eb8b7af314bf5d1e327635db07a014f136fe75c921254de3a56e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1675
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 1655
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "M denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*AIRBAG_HYBRID_JETTING",
+      "field": "BETA",
+      "ruleId": "rule:a4c5a8e9cf3f3fbe1482265a",
+      "selector": {
+        "cardIndex": 7,
+        "fieldIndex": 7,
+        "fieldName": "BETA",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:4fe4f7450d82e77f311d6575",
+          "quoteSha256": "3a964e26f7573434c9a622e16294064135b8a913352b7041addde65dd631b571",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 449
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 449
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "BETA denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*AIRBAG_SIMPLE_PRESSURE_VOLUME",
+      "field": "CN",
+      "ruleId": "rule:9d1a2107b5bf5f793f010013",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 0,
+        "fieldName": "CN",
+        "position": 0,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "053c63e277dc689ebd832a45f2a07c47fb711b019792dcefea3d2fbeb215c51c",
+      "evidence": [
+        {
+          "evidenceId": "evidence:ca1642cb8e27854742f14f70",
+          "quoteSha256": "48aa096c72e134c369256c491e1ba13e2b45662da856eb7207aa151f2facd6c9",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 408
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 408
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "ge",
+        "value": 0
+      },
+      "basis": "CN denotes the documented scalar quantity outside the explicitly signed ID branch; this closes only that numeric non-reference range."
+    },
+    {
+      "keyword": "*CONTROL_THERMAL_TIMESTEP",
+      "field": "DTEMP",
+      "ruleId": "rule:f88317e26da9dafb278a61aa",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "DTEMP",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "33d967a3a67ebc1a429b4ce5b37092fa367fb945d5b376057cf9536d1d7fbd12",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6493c318bae96eb95a153f84",
+          "quoteSha256": "93312f361b39c6cd9a2ce5bae8508fddb6520c44f5b77a05a5c48fed8a024c3e",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1912
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1904
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "Positive values directly set the thermal time-step control quantity. The existing zero and negative branches are retained."
+    },
+    {
+      "keyword": "*CONTROL_THERMAL_TIMESTEP",
+      "field": "TMIN",
+      "ruleId": "rule:53249417ffbea902cc58b99f",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 3,
+        "fieldName": "TMIN",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "a17536da56e705b4c729d74dc9ee5d5a6622a951cc5b42395bff8f225731df3e",
+      "evidence": [
+        {
+          "evidenceId": "evidence:abac0aebe848be97a2727b65",
+          "quoteSha256": "89cfd32d351649bd219f5c20f7ea993ab0f1abf489df90c702bb17001cb25d7c",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1911
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1903
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "Positive values directly set the thermal time-step control quantity. The existing zero and negative branches are retained."
+    },
+    {
+      "keyword": "*CONTROL_THERMAL_TIMESTEP",
+      "field": "TMAX",
+      "ruleId": "rule:d5565840546fd52e3a49b927",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 4,
+        "fieldName": "TMAX",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "a17536da56e705b4c729d74dc9ee5d5a6622a951cc5b42395bff8f225731df3e",
+      "evidence": [
+        {
+          "evidenceId": "evidence:f4f9b7a84158339e71273192",
+          "quoteSha256": "006d79543901e5b8f8906ee7050cb162fbb5fc5c416107e4b44191713a804b85",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1911
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1903
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "Positive values directly set the thermal time-step control quantity. The existing zero and negative branches are retained."
+    },
+    {
+      "keyword": "*CONTROL_IMPLICIT_AUTO",
+      "field": "DTEXP",
+      "ruleId": "rule:c17b45135843c9189f11439d",
+      "selector": {
+        "cardIndex": 1,
+        "fieldIndex": 5,
+        "fieldName": "DTEXP",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "33d967a3a67ebc1a429b4ce5b37092fa367fb945d5b376057cf9536d1d7fbd12",
+      "evidence": [
+        {
+          "evidenceId": "evidence:87ff4ac4652d2f2aa856f748",
+          "quoteSha256": "516ca14209e6428b03f83a04f41c85cbd6224cc40f2c1b95bd9264e190363a42",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1609
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "Positive values set the relative time-step increase; zero retains the default and negative values retain the curve branch."
+    },
+    {
+      "keyword": "*CONTROL_THERMAL_SOLVER",
+      "field": "TSF",
+      "ruleId": "rule:4f301b7e838b6f6bcb79e441",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 7,
+        "fieldName": "TSF",
+        "position": 70,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "787de0572657b53bbadfb4ecc0485298ed01ae7a9135147e063ba27c182d9c30",
+      "evidence": [
+        {
+          "evidenceId": "evidence:6dee71ed478df37ff715022b",
+          "quoteSha256": "b003b7422cddf1418f787b10e6a97949ec9af7a87afdd9cfc0f585353192f6d4",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1907
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1899
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 0
+      },
+      "basis": "Positive values are a thermal time scaling factor; the documented example uses 1000. Existing zero and negative roles are retained."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "MRR",
+      "ruleId": "rule:93ff49d028c55fb63b500aeb",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 4,
+        "fieldName": "MRR",
+        "position": 40,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:54e0314426db92ded220c584",
+          "quoteSha256": "dcb9c39d6faff4581476429a68597b4354a2ec1b4038a84d090a7ce1503a97db",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:858b713fd4a9e1d4ff93be08",
+          "quoteSha256": "dcb9c39d6faff4581476429a68597b4354a2ec1b4038a84d090a7ce1503a97db",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "MSS",
+      "ruleId": "rule:756d72371364eb7c16429e1e",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 5,
+        "fieldName": "MSS",
+        "position": 50,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:486d9a81914fb75ea10a4742",
+          "quoteSha256": "b2bb6bf51e068f36fc17c19d49bfc95ef9708c2bb743dd510829d9651de4f568",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 787
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 769
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:7c479a8be0450f536952fa7e",
+          "quoteSha256": "b2bb6bf51e068f36fc17c19d49bfc95ef9708c2bb743dd510829d9651de4f568",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 787
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 769
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "MTT",
+      "ruleId": "rule:9e9a444f5246b8b401d7a938",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 6,
+        "fieldName": "MTT",
+        "position": 60,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:175200b006b0d70e8890fb49",
+          "quoteSha256": "0c8228fa7d1b453ed2d60bf9dd45a931ba64380e74def6dd5514a180a5256ed8",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 787
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 769
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:a0adcafcbbe6c0275169521c",
+          "quoteSha256": "0c8228fa7d1b453ed2d60bf9dd45a931ba64380e74def6dd5514a180a5256ed8",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 787
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 769
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "NRR",
+      "ruleId": "rule:222e014d757ff98fe70f2115",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 1,
+        "fieldName": "NRR",
+        "position": 10,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:20db18a9799e17e828a99498",
+          "quoteSha256": "8971b458fbb665d98d3edfb87fb7450a9b28c487c3caf086b4b39b5a749e2f52",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:92ca0e68a55fc3c9312186ff",
+          "quoteSha256": "8971b458fbb665d98d3edfb87fb7450a9b28c487c3caf086b4b39b5a749e2f52",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "NRS",
+      "ruleId": "rule:eb466566b24d91db14688321",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 2,
+        "fieldName": "NRS",
+        "position": 20,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:0384021bb1220f861b7fcb03",
+          "quoteSha256": "5c5389023c38331f2708963f3afb4972cda259b7101daeed412eb5de8646aa00",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:5f9aa3d9da6c0ebedeeb7335",
+          "quoteSha256": "5c5389023c38331f2708963f3afb4972cda259b7101daeed412eb5de8646aa00",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*MAT_SPOTWELD",
+      "field": "NRT",
+      "ruleId": "rule:961dc540d0069fe5a21dae05",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 3,
+        "fieldName": "NRT",
+        "position": 30,
+        "width": 10,
+        "fieldType": "real"
+      },
+      "sourceRelationSha256": "51fbb2ad84137e2d2180e85fc78a57102c8442eb288be1ed439666c1c866f1c1",
+      "evidence": [
+        {
+          "evidenceId": "evidence:813cc1f6483b5e741736d35e",
+          "quoteSha256": "5d25bc8403d837a5682360de045e8171ef566e6af0f850d95815712b659e5dde",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        },
+        {
+          "evidenceId": "evidence:8c35d273bf860c588820a277",
+          "quoteSha256": "5d25bc8403d837a5682360de045e8171ef566e6af0f850d95815712b659e5dde",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 786
+            },
+            {
+              "sourceProfileId": "b4dfa3ef1f41ba19eee0a48679031c7bfb24081f4ef9ff523b42d6cec4e543b3",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-ii-material-models",
+              "page": 768
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "eq",
+        "value": 0
+      },
+      "basis": "Zero excludes this force or moment component from failure; positive constants and negative curve IDs are unchanged."
+    },
+    {
+      "keyword": "*CONTROL_IMPLICIT_SOLUTION",
+      "field": "ISTIF",
+      "ruleId": "rule:2fa14831a6347b167514b7f5",
+      "selector": {
+        "cardIndex": 2,
+        "fieldIndex": 2,
+        "fieldName": "ISTIF",
+        "position": 20,
+        "width": 10,
+        "fieldType": "integer"
+      },
+      "sourceRelationSha256": "50a9c0e184c07fe6f8b1aaa82e27e7104c5cb2d3eafca3dec3ba10c2ae38e414",
+      "evidence": [
+        {
+          "evidenceId": "evidence:05ff73d5de12307f8ba45427",
+          "quoteSha256": "f265f4c0b7740abe2bc9a00efc1f8ff4af3331bfbc5ff6c4a30384caccbf6a34",
+          "locations": [
+            {
+              "sourceProfileId": "7228f3a1ffa8d305ed8800136c8447f288d95090cb540b170c52d7acef6be1e6",
+              "manualId": "ls-dyna-dev-keyword-manual-vol-i",
+              "page": 1687
+            }
+          ]
+        }
+      ],
+      "nonReferenceWhen": {
+        "op": "gt",
+        "value": 1
+      },
+      "basis": "The integer field specifies stiffness reformation every n steps. Positive integers greater than one are step intervals, not curve IDs; zero remains unresolved and the original negative curve branch is retained."
+    }
+  ]
+}

@@ -140,7 +140,7 @@ DynaSense 为 LS-DYNA 标准卡片提供了专用的定宽保护机制：
 | `lsdyna.unknownKeywordSeverity` | `"error"` | 不在内置库或自定义有效列表中的关键字所使用的诊断级别。不影响以 ** 开头的格式错误或小写关键字警告。 |
 | `lsdyna.warnLowercaseKeyword` | `false` | 当关键字含小写字母（如 *node）时给出警告。LS-DYNA 关键字大小写不敏感，故默认关闭；若团队约定关键字全大写可开启。 |
 | `lsdyna.include.pathCaseCheck` | `"crossPlatform"` | 如何检查 `*INCLUDE` 和 `*INCLUDE_PATH` 的路径大小写。Windows 常能打开大小写不一致的路径，Linux 上的 LS-DYNA 通常不能。 |
-| `lsdyna.cache.entityIndexMemoryMaxMiB` | `512` | 模型索引的内存管理预算（MiB），由查询缓存、未保存文档索引、结果页、索引构建和恢复批次及 SQLite 共用。此值不是 VS Code 进程总内存上限。重启扩展后生效。 |
+| `lsdyna.cache.entityIndexMemoryMaxMiB` | `"auto"` | 模型索引的内存管理预算（MiB），由查询缓存、未保存文档索引、结果页、索引构建和恢复批次及 SQLite 共用。此值不是 VS Code 进程总内存上限。重启扩展后生效。 |
 | `lsdyna.cache.entityIndexDiskMaxMiB` | `4096` | 模型索引共用的磁盘预算（MiB），包括数据库、日志和临时构建文件。预算不足时，查询回退到扫描方式。重启扩展后生效。 |
 | `lsdyna.cache.memoryMaxMiB` | `48` | 后台项目快照的内存缓存上限（MiB），最高为 64 MiB。界面另保留最多 32 MiB 的项目摘要缓存。内存不足时可调低此值。重启扩展后生效。 |
 | `lsdyna.cache.fileScanMemoryMaxMiB` | `16` | 后台扫描结果的内存缓存上限（MiB），最高为 16 MiB。重启扩展后生效。 |

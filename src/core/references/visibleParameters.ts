@@ -55,7 +55,7 @@ export async function parameterCompletionPage(index: any, file: string, line: nu
     const items = [];
     let incomplete = false;
     for (const [name, first] of scopes[0] || []) {
-        if (!name.startsWith(prefix.toUpperCase()) || !scopes.every(scope => scope.has(name))) continue;
+        if (!name.toUpperCase().startsWith(prefix.toUpperCase()) || !scopes.every(scope => scope.has(name))) continue;
         if (items.length >= 200) { incomplete = true; break; }
         const bindings = scopes.map(scope => scope.get(name));
         if (bindings.some(binding => !parameterBindingId(binding)))

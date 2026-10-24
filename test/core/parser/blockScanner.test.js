@@ -30,8 +30,8 @@ describe('blockScanner', () => {
         const blocks = collectBlocksFromLineReader(lines.length, i => lines[i]);
 
         assert.deepStrictEqual(blocks, [
-            { keyword: 'KEYWORD', startLine: 0, endLine: 1 },
-            { keyword: 'NODE', startLine: 2, endLine: 3 },
+            { keyword: 'KEYWORD', startLine: 0, endLine: 1, keywordStartChar: 2 },
+            { keyword: 'NODE', startLine: 2, endLine: 3, keywordStartChar: 1 },
         ]);
     });
 

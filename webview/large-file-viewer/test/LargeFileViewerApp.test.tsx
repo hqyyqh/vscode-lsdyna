@@ -29,7 +29,7 @@ function viewState(overrides: Partial<LargeFileViewerState> = {}): LargeFileView
             openNative: '在文本编辑器中打开',
             goto: '跳转', line: '行', keyword: '关键字', previous: '上一个', next: '下一个',
             textMode: '全文查找模式；切换关键字', keywordMode: '关键字模式；切换全文查找', searchHint: '全文查找提示', clearSearch: '清除查找', searchText: '全文查找', searching: '查找中…', matchLines: '匹配行', keywordHint: '关键字跳转提示', gotoHint: '行号跳转提示', search: '搜索', reload: '重新加载', indexing: '索引中', stale: '已失效',
-            truncatedLine: '截断', english: '原文', queryObject: '对象引用', noField: '选择字段',
+            truncatedLine: '截断', fieldHelp: '字段说明', english: '原文', queryObject: '对象引用', noField: '选择字段',
             failed: '操作未完成，请重试。', retry: '重试', card: '卡片', defaultValue: '默认值',
             readOnlyShort: '只读', navigationTarget: '跳转目标', readOnly: '只读查看；不能在此修改文件。', previousKeyword: '上一个匹配的关键字', nextKeyword: '下一个匹配的关键字',
             previousMatch: '上一个搜索匹配项', nextMatch: '下一个搜索匹配项',
@@ -280,19 +280,69 @@ test('accumulates wheel movement and sizes keyboard paging to the viewport', asy
     } finally { vi.useRealTimers(); }
 });
 
-test('shows the object identity beside field actions and keeps detailed help expandable', async () => {
+test('shows field help immediately with the manager language and collapse controls', async () => {
     const api = transport(viewState({ selectedField: { token: 'mid-token', label: 'MID', value: '7',
         keyword: '*PART', cardIndex: 1, localizedHelp: '材料编号', englishHelp: 'Material identifier', type: 'integer',
         defaultValue: '', choices: [], queryable: true, object: { kind: 'material', kindLabel: '材料', id: '7', name: 'Steel' } } }));
     render(<LargeFileViewerApp transport={api} />);
     expect(await screen.findByText('材料 7')).toBeInTheDocument();
     expect(screen.getByText('Steel')).toHaveAttribute('title', '当前文件中的对象名称');
-    const details = screen.getByText('字段详情').closest('details');
-    expect(details).not.toHaveAttribute('open');
-    await userEvent.click(screen.getByText('字段详情'));
-    expect(details).toHaveAttribute('open');
+    expect(screen.getByText('材料编号')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: '切换至英文' }));
+    expect(screen.getByText('Material identifier')).toBeVisible();
+    expect(screen.queryByText('材料编号')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '切换至中文' }));
+    expect(screen.getByText('材料编号')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: '收起字段说明' }));
+    expect(screen.getByText('材料编号')).not.toBeVisible();
+    expect(screen.getByRole('button', { name: '展开字段说明' })).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(screen.getByRole('button', { name: '字段说明' }));
+    expect(screen.getByRole('button', { name: '收起字段说明' })).toHaveAttribute('aria-expanded', 'true');
     await userEvent.click(screen.getByRole('button', { name: '对象引用' }));
     expect(api.queryField).toHaveBeenCalledWith(4, 'mid-token');
+});
+
+test('keeps language preference across field selection while falling back to the available help', async () => {
+    const selectedField = { token: 'mid-token', label: 'MID', value: '7', keyword: '*PART', cardIndex: 1,
+        localizedHelp: '材料编号', englishHelp: 'Material identifier', type: 'integer', defaultValue: '', choices: [], queryable: true };
+    const initial = viewState({ selectedField });
+    const api = transport(initial);
+    let notify!: (state: LargeFileViewerState) => void;
+    api.onStateChanged = handler => { notify = handler; return () => undefined; };
+    render(<LargeFileViewerApp transport={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: '切换至英文' }));
+    const body = document.querySelector('.field-help .detailViewport')!;
+    body.scrollTop = 100;
+    await act(async () => notify({ ...initial, revision: 5, selectedField: { ...selectedField,
+        token: 'ro-token', label: 'RO', localizedHelp: '质量密度', englishHelp: '' } }));
+    expect(screen.getByText('质量密度')).toBeVisible();
+    expect(screen.queryByRole('button', { name: /切换至/ })).not.toBeInTheDocument();
+    expect(body.scrollTop).toBe(0);
+    await act(async () => notify({ ...initial, revision: 6 }));
+    expect(screen.getByText('Material identifier')).toBeVisible();
+});
+
+test.each([
+    ['en', 'Chinese description', 'Material identifier\nEQ.0: Unassigned', 'Material identifier', 'Collapse field help'],
+    ['zh', '', 'Material identifier\nEQ.0: Unassigned', 'Material identifier', '收起字段说明'],
+    ['zh', '', '', '暂无字段说明。', '收起字段说明'],
+    ['en', '', '', 'No field description is available.', 'Collapse field help'],
+] as const)('renders %s help, metadata and empty help without an unnecessary language toggle', async (locale, localizedHelp, englishHelp, description, collapse) => {
+    const state = viewState({ locale, selectedField: { token: 'mid-token', label: 'MID', value: '-7',
+        keyword: '*PART', cardIndex: 1, localizedHelp, englishHelp, type: 'integer',
+        defaultValue: '0', choices: ['0', '-7'], queryable: false } });
+    state.labels.fieldHelp = locale === 'zh' ? '字段说明' : 'Field help';
+    render(<LargeFileViewerApp transport={transport(state)} />);
+    expect(await screen.findByText(description)).toBeVisible();
+    expect(screen.getByText('0, -7', { selector: 'code' })).toBeVisible();
+    expect(document.querySelector('.helpMeta')).toHaveTextContent(locale === 'zh' ? '默认值0' : 'Default0');
+    expect(screen.queryByRole('button', { name: /切换至/ })).not.toBeInTheDocument();
+    if (englishHelp) expect(screen.getByText('EQ.0: Unassigned')).toBeVisible();
+    const button = screen.getByRole('button', { name: collapse });
+    button.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByText(description)).not.toBeVisible();
+    expect(button).toHaveFocus();
 });
 
 test('keeps a signed source value distinct from the referenced object ID', async () => {
@@ -322,7 +372,7 @@ test('blocks stale field selection, double-click and Enter and names controls by
     expect(screen.queryByLabelText('只读查看；不能在此修改文件。')).not.toBeInTheDocument();
     expect(document.querySelector('main')).toHaveAttribute('lang', 'zh');
     expect(screen.getByText(/卡片 1/)).toBeInTheDocument();
-    expect(screen.getByText('默认值: 0')).toBeInTheDocument();
+    expect(document.querySelector('.helpMeta')).toHaveTextContent('默认值0');
 });
 
 test('renders a bounded no-wrap window and sends opaque field tokens', async () => {

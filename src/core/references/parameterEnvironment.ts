@@ -35,7 +35,7 @@ function findVisibleLocal(state, name) {
 }
 
 function getVisibleParameterBinding(state, name) {
-    const normalizedName = String(name || '').toUpperCase();
+    const normalizedName = String(name || '');
     return findVisibleLocal(state, normalizedName) ||
         state.globals.get(normalizedName) ||
         null;
@@ -150,7 +150,7 @@ function snapshotVisibleParameterBindings(state) {
 }
 
 function resolveIntegerParameter(bindings, name, negated = false, allowRealInteger = false) {
-    const binding = bindings && bindings.get(String(name || '').toUpperCase());
+    const binding = bindings && bindings.get(String(name || ''));
     if (!binding || (binding.valueState !== 'integer' && !(allowRealInteger && binding.valueState === 'real')) || !Number.isSafeInteger(binding.value)) {
         return {
             resolved: false,
@@ -182,7 +182,7 @@ function resolveIntegerParameterInput(bindings, input, allowRealInteger = false)
 
 /** Layout values may be real; this does not relax integer reference IDs. */
 function resolveNumericParameter(bindings, name, negated = false) {
-    const binding = bindings && bindings.get(String(name || '').toUpperCase());
+    const binding = bindings && bindings.get(String(name || ''));
     if (!binding || !['integer', 'real'].includes(binding.valueState) || !Number.isFinite(binding.value)) {
         return { resolved: false, binding: binding || null, reason: binding?.reason || 'parameter-unresolved' };
     }

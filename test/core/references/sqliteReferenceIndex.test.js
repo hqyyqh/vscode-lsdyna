@@ -37,6 +37,34 @@ describe('SQLite reference candidates', function() {
     const deck = '*KEYWORD\n*BOUNDARY_SPC_NODE\n1,0,1,1,1,0,0,0\n*BOUNDARY_SPC_NODE\n2,0,1,1,1,0,0,0\n*END\n';
     const comparable = value => ({ state: value.state, locations: value.locations, reasons: value.reasons });
 
+    it('keeps conditional real parameters consistent through memory and reopened disk shards', async () => {
+        for (const raw of ['&DAMP', '<DAMP>']) for (const value of ['0.0', '0.3', '-17.0', '&MISSING']) {
+            const { root, options, reads } = await fixture(['*KEYWORD', '*PARAMETER', `rDAMP,${value}`,
+                '*MAT_LOW_DENSITY_FOAM', `1,1,1,0,0,0,0,${raw}`, '1,0,0,0,0,0,0', '*END'].join('\n'));
+            const request = { ...options, query: { id: 17, targetKinds: ['curve'], targetDefinitions: [] } };
+            const expected = await queryRegistryReferences(request);
+            assert.equal(expected.state, value === '&MISSING' ? 'partial' : 'complete', `${raw}, ${value}: ${expected.reasons}`);
+            assert.equal(expected.locations.length, value === '-17.0' ? 1 : 0, `${raw}, ${value}`);
+            const memory = await queryIndexedTypeReferences(request, new EntityQueryCache());
+            assert.equal(memory.state, expected.state);
+            assert.deepEqual(memory.locations, expected.locations);
+            if (value === '&MISSING') {
+                assert.ok(expected.reasons.some(reason => reason.endsWith(':on-demand-reference-scan-incomplete')));
+                assert.ok(memory.reasons.some(reason => reason.endsWith(':parameter-undefined')));
+            } else {
+                assert.deepEqual(expected.reasons, []);
+                assert.deepEqual(memory.reasons, []);
+            }
+            const stored = await open(root);
+            assert.deepEqual(comparable(await stored.query(request)), comparable(memory));
+            await stores.pop().close();
+            const reopened = await open(root);
+            const before = reads();
+            assert.deepEqual(comparable(await reopened.query(request)), comparable(memory));
+            assert.equal(reads(), before, 'reopened disk shards retain the resolved semantic facts without rescanning');
+        }
+    });
+
     it('keeps a shared type scan alive after its first result subscriber leaves', async () => {
         const { root, options } = await fixture(deck);
         const stored = await open(root);

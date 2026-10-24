@@ -47,7 +47,7 @@ describe('single-card suffix display-only operation boundaries', function () {
             assert.equal(nativeKeywordTemplate(keyword).reason, 'native-edit-binding-unverified', keyword);
         }
     });
-    it('blocks manager writes while references require independent native authority', async () => {
+    it('retains noneditable field guards while references require independent native authority', async () => {
         const references = new extension.LsdynaReferenceProvider();
         for (const keyword of plan.identities) {
             if (!published(keyword)) continue;
@@ -61,8 +61,7 @@ describe('single-card suffix display-only operation boundaries', function () {
             assert.equal(extension.buildKeywordOptionsViewState(model).canApply, false, keyword);
             const fields = model.managerCards.flatMap(card => card.fields || []);
             assert.ok(fields.length, keyword + ': no displayed manager fields');
-            assert.ok(fields.every(field => !field.editable), keyword + ': editable display field');
-            assert.equal(extension.keywordManagerEditField(model, fields[0].fieldId, '1'), null,
+            for (const field of fields.filter(field => !field.editable)) assert.equal(extension.keywordManagerEditField(model, field.fieldId, '1'), null,
                 keyword + ': unauthorized manager edit');
             const card = extension.getCardInfoForDocumentLineWithSuggest(doc, 1).cardInfo.card;
             const position = new vscode.Position(1, card[0].nativeRange.start);

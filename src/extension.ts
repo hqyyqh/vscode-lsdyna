@@ -1129,6 +1129,7 @@ function collectLineLengthDiagnostics(document) {
         if (isKeywordCommentLine(line.text) || line.text.length <= 80) {
             continue;
         }
+        if (keywordInputFormat(keywordLine === null ? '' : document.lineAt(keywordLine).text, globalMode) !== 'standard') continue;
         const cardInfo = keywordSchema.getCardInfoForDocumentLine(document, i, getFieldData(), {
             keywordLine, dataLineOrdinal: ordinal, observedDataLines: records, globalInputFormat: globalMode,
         });
@@ -1406,7 +1407,7 @@ function getScopedParameterAtCursor(document, position) {
     const word = /[A-Za-z_][A-Za-z0-9_]{0,8}/g;
     let candidate;
     for (const match of text.matchAll(word)) if (position.character >= match.index &&
-        position.character < match.index + match[0].length) candidate = match[0].toUpperCase();
+        position.character < match.index + match[0].length) candidate = match[0];
     const { createParameterLineScanner } = require('./core/parser/parameterScanner');
     const { scanBareParameterReferences } = require('./core/parser/parameterSyntax');
     const scan = createParameterLineScanner(false);
@@ -1616,10 +1617,10 @@ class LsdynaRenameProvider {
         ) {
             throw new Error(i18n.get('invalidParameterName'));
         }
-        const nameUpper = param.name.toUpperCase();
+        const parameterName = param.name;
         const edit = new vscode.WorkspaceEdit();
 
-        const definitions = findParameterDefinitions(document).get(nameUpper) || [];
+        const definitions = findParameterDefinitions(document).get(parameterName) || [];
         for (const def of definitions) {
             if (def.format === 'fixed' || def.format === 'long-fixed') {
                 const width = def.format === 'long-fixed' ? 20 : 10;
@@ -1639,7 +1640,7 @@ class LsdynaRenameProvider {
 
         const cards = new Map();
         for (const ref of findParameterReferences(document)) {
-            if (ref.name === nameUpper) {
+            if (ref.name === parameterName) {
                 const text = document.lineAt(ref.lineIndex).text;
                 if (ref.syntax === 'ampersand' && !text.includes(',') && !text.includes('\t')) {
                     if (!cards.has(ref.lineIndex)) cards.set(ref.lineIndex,
@@ -2385,23 +2386,16 @@ class LsdynaKeywordOptionsCodeLensProvider {
             const classification = classifyKeywordLine(text);
             if (!classification.isKeyword || classification.rawKeyword.startsWith('**')) continue;
             const lookup = lookupKeywordInfo(keywordLineNameFromText(text));
-            if (!lookup) continue;
-
-            const hasOptions = writableKeywordOptions(
-                lookup.entry,
-                lookup.canonicalName,
-            ).length > 0;
+            if (!require('./core/keywordRecognition').isBuiltInKeywordName(keywordLineNameFromText(text))) continue;
 
             const range = new vscode.Range(lineNum, 0, lineNum, 0);
 
-            if (hasOptions) {
-                const summary = keywordOptionSummary(lookup.entry, lookup.canonicalName);
-                lenses.push(new vscode.CodeLens(range, {
-                    title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
-                    command: 'extension.lsdynaChooseKeywordOptions',
-                    arguments: [lineNum],
-                }));
-            }
+            const summary = lookup ? keywordOptionSummary(lookup.entry, lookup.canonicalName) : '';
+            lenses.push(new vscode.CodeLens(range, {
+                title: summary ? i18n.get('keywordOptionsCodeLensWithSummary', summary) : i18n.get('keywordOptionsCodeLens'),
+                command: 'extension.lsdynaChooseKeywordOptions',
+                arguments: [lineNum],
+            }));
 
             lenses.push(new vscode.CodeLens(range, {
                 title: i18n.get('selectKeywordCodeLens'),
@@ -2418,10 +2412,10 @@ class LsdynaKeywordOptionsCodeLensProvider {
     }
 }
 
-function appendKeywordHoverActions(md, lookup, lineNum, document, advice) {
+function appendKeywordHoverActions(md, lineNum, document) {
     const args = encodeURIComponent(JSON.stringify([lineNum]));
     const actions = [];
-    if (writableKeywordOptions(lookup.entry, lookup.canonicalName).length > 0 || groupConditionalAdvice(advice).length > 0) {
+    if (require('./core/keywordRecognition').isBuiltInKeywordName(keywordLineNameFromText(document.lineAt(lineNum).text))) {
         const managerArgs = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: lineNum }]));
         actions.push(
             `[${i18n.get('keywordHoverConfigureOptions')}](command:extension.lsdynaChooseKeywordOptions?${managerArgs} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`,
@@ -3324,7 +3318,7 @@ class LsdynaFieldHoverProvider {
                 field.nativeRange && position.character >= field.nativeRange.start && position.character < field.nativeRange.end) : null;
             const parameterName = parameterAtCursor.name;
             const sourceDefinitions = findParameterDefinitions(document)
-                .get(parameterName.toUpperCase()) || [];
+                .get(parameterName) || [];
             const mainDeckContext = getMainDeckContextForDocumentPath(document.uri.fsPath);
             const referenceIndexState = mainDeckContext.project
                 ? {
@@ -3443,8 +3437,9 @@ class LsdynaFieldHoverProvider {
             }
 
             const lookup = lookupKeywordInfo(kwName);
-            if (!lookup && !detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, previewMd, kwName, request));
-            if (!lookup) {
+            const knownKeyword = require('./core/keywordRecognition').isBuiltInKeywordName(kwName);
+            if (!knownKeyword && !detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, previewMd, kwName, request));
+            if (!knownKeyword) {
                 const cleanKw = manualIndexer.cleanKeyword(kwName);
                 const manuals = manualIndexer.getManualLocations(cleanKw);
                 const fileCount = manualIndexer.getManualFilesCount();
@@ -3476,7 +3471,7 @@ class LsdynaFieldHoverProvider {
             const prefixRecords = collectBoundedPrefixDataRecords(document, position.line);
             const prefixDataLines = prefixRecords.map(record => record.text);
             const parameterContext = prefixDataLines.some(text => text.includes('&')) ? nativeParameterContextForDocument(document) : undefined;
-            const nativeCards = require('./core/semantics/nativeFieldResolution').hasNativeFileReader(lookup.inputName)
+            const nativeCards = require('./core/semantics/nativeFieldResolution').hasNativeFileReader(lookup?.inputName || kwName)
                 ? prefixDataLines.flatMap((currentText, index) => {
                     const result = keywordSchema.resolveCardFromContext({
                         keywordLine: position.line, keywordText: text, currentText,
@@ -3490,7 +3485,7 @@ class LsdynaFieldHoverProvider {
                 const id = previewDefinition ? ` · ${inlineSemanticLabel(String(previewDefinition.id ?? previewDefinition.idRaw ?? ''))}` : '';
                 const title = `**$(symbol-keyword) ${new vscode.MarkdownString().appendText('*' + kwName).value}**${id}` +
                     (hasUncertainTableChildren(previewDefinition) ? ` · ${i18n.get('hoverCandidate')}` : '');
-                const cards = nativeCards?.length ? nativeCards : keywordSchema.getRenderedCardsForLookup(lookup, prefixDataLines, undefined, { keywordText: text, globalInputFormat: documentGlobalInputFormat(document), parameterContext });
+                const cards = nativeCards?.length ? nativeCards : lookup ? keywordSchema.getRenderedCardsForLookup(lookup, prefixDataLines, undefined, { keywordText: text, globalInputFormat: documentGlobalInputFormat(document), parameterContext }) : [];
                 const body = previewMd || (previewDefinition ? i18n.get('hoverUnavailable') : compactFieldGrid(cards));
                 const args = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: position.line }]));
                 const manager = `[$(settings-gear)](command:extension.lsdynaChooseKeywordOptions?${args} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`;
@@ -3498,7 +3493,7 @@ class LsdynaFieldHoverProvider {
                 const update = maintenance ? ` &nbsp; [$(comment)](command:extension.updateKeywordCards?${encodeURIComponent(JSON.stringify([maintenance.request]))} "${maintenance.title}")` : '';
                 return new vscode.Hover(compactHoverCard(title, body, kwName, request, manager + update));
             }
-            let hoverContent = keywordHoverMarkdown(
+            let hoverContent = lookup ? keywordHoverMarkdown(
                 kwName,
                 lookup.entry,
                 lookup.activeOptions,
@@ -3507,7 +3502,7 @@ class LsdynaFieldHoverProvider {
                 nativeCards,
                 {keywordText:text, globalInputFormat:documentGlobalInputFormat(document), parameterContext,
                     recordLines:prefixRecords.map(record => record.line)},
-            );
+            ) : `**${inlineSemanticLabel('*' + kwName)}**\n\n${compactFieldGrid(nativeCards || [])}`;
             const semanticAdvice = getKeywordSemanticAdviceForDocument(document, position.line, lookup);
             const semanticMarkdown = buildKeywordSemanticAdviceMarkdown(semanticAdvice);
             if (semanticMarkdown) hoverContent += `\n\n${semanticMarkdown}`;
@@ -3539,7 +3534,7 @@ class LsdynaFieldHoverProvider {
             md.supportThemeIcons = true;
             md.supportHtml = true;
             if (!classifyOpaqueCommentDirective(text)) {
-                appendKeywordHoverActions(md, lookup, position.line, document, semanticAdvice);
+                appendKeywordHoverActions(md, position.line, document);
             }
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);
@@ -7702,6 +7697,8 @@ let largeFileViewerProvider = null;
         debugChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
     }
     logDebug("Extension activated.");
+    require('./client/services/viewScanProgress').registerViewScanCancellation(context);
+    require('./client/services/entityQueryDiagnostics').registerEntityQueryDiagnostics(context, entityBudget);
 
     const diagnostics = vscode.languages.createDiagnosticCollection('lsdyna');
     context.subscriptions.push(diagnostics);
@@ -8336,7 +8333,7 @@ let keywordOptionsModel = null;
             const control = keywordOptionsModel?.controls?.find(candidate => candidate.controlId === controlId);
             const validBoolean = control?.kind === 'boolean' && typeof value === 'boolean';
             const validChoice = control?.kind !== 'boolean' &&
-                control?.kind !== 'field' && typeof value === 'string' && (value === '' ||
+                control?.kind !== 'field' && typeof value === 'string' && (value === '' && control.emptyEnabled !== false ||
                 control?.choices?.some(candidate => candidate.value === value && candidate.enabled));
             if (!editor || !control || !control.enabled || (!validBoolean && !validChoice)) {
                 return false;
@@ -8834,14 +8831,11 @@ let keywordOptionsModel = null;
                 !entityReferencesWebviewProvider?.isFollowingCursor()) return;
             if (isEntityReferenceNavigationPosition(editor, objectReferenceNavigation)) return;
             objectReferenceNavigation = null;
-            const version = editor.document.version;
-            const position = editor.selection.active;
             const cancellation = new vscode.CancellationTokenSource();
             objectFollowCancellation = cancellation;
             const isCurrent = () => generation === objectFollowGeneration &&
                 !cancellation.token.isCancellationRequested && editor === vscode.window.activeTextEditor &&
-                !editor.document.isClosed && editor.document.version === version &&
-                editor.selection.active.line === position.line && editor.selection.active.character === position.character &&
+                !editor.document.isClosed &&
                 entityReferencesWebviewProvider?.isFollowingCursor();
             try { await prepareReferenceDirectory(); } catch (error) { logDebug(`Object reference preparation failed: ${error}`); return; }
             if (!isCurrent()) return;
@@ -9087,6 +9081,8 @@ let keywordOptionsModel = null;
             if (event.textEditor === vscode.window.activeTextEditor &&
                 isLsdynaFile(event.textEditor.document)) {
                 lastEntityReferenceCursorEditor = event.textEditor;
+                // Edits can move the cursor; keep the active query until its changed sources reconcile.
+                if (!event.kind && entityReferenceProvider.getActiveSession()?.scanning) return;
                 scheduleObjectReferenceFollow();
             }
         }),
@@ -9111,7 +9107,7 @@ let keywordOptionsModel = null;
     refreshEntityReferenceScopeContext();
     const markEntityReferenceQueriesStaleForFile = filePath => {
         if (!filePath) return;
-        stopObjectReferenceFollow();
+        if (!entityReferenceProvider.getActiveSession()?.scanning) stopObjectReferenceFollow();
         entityReferenceProvider.markStaleForPath(filePath);
         const contextState = getMainDeckContextForDocumentPath(filePath);
         if (contextState?.state !== 'ambiguous' && contextState?.rootFile) {
@@ -9237,7 +9233,7 @@ let keywordOptionsModel = null;
         refreshEntityReferenceScopeContext(true);
         const reportError = error => logDebug(`Shared project selection failed: ${error?.message || error}`);
         if (source !== 'includes') void includeTreeProvider?.scan(rootFile).catch(reportError);
-        if (source !== 'keywords') void keywordIndexProvider?.scan({ rootFile, quiet: true, replace: true }).catch(reportError);
+        if (source !== 'keywords') void keywordIndexProvider?.scan({ rootFile, replace: true }).catch(reportError);
     };
     includeTreeProvider = new LsdynaIncludeTreeProvider({
         workspaceState: context.workspaceState,
@@ -9346,7 +9342,7 @@ let keywordOptionsModel = null;
     );
 
     keywordIndexProvider = new LsdynaKeywordIndexProvider({
-        resolveActiveUri: () => selectedProjectRoot ? vscode.Uri.file(selectedProjectRoot) : resolveScanUri(),
+        resolveProjectUri: () => selectedProjectRoot ? vscode.Uri.file(selectedProjectRoot) : resolveScanUri(),
         onSelectProject: rootFile => selectProject(rootFile, 'keywords'),
         projectSession: indexClient.projectSession?.bind(indexClient),
         shouldSkipAutomaticDocumentScan,
@@ -9378,12 +9374,20 @@ keywordIndexProvider.attachTreeView(keywordTreeView);
         keywordIndexProvider.stopAutomaticWork();
         if (keywordTreeView.visible) {
             const editor = vscode.window.activeTextEditor;
-            void keywordIndexProvider.refreshAutomatically(editor?.document || getActiveUri())
+            void keywordIndexProvider.refreshAutomatically(keywordIndexProvider.resolveActiveUri())
                 .then(() => keywordIndexProvider.scheduleReveal(editor)).catch(reportKeywordIndexError);
         }
     }) || { dispose() {} }, { dispose: () => keywordIndexProvider.stopAutomaticWork() });
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.keywordIndexChooseScope', () => keywordIndexProvider.chooseScope()),
+        vscode.commands.registerCommand('extension.foldKeywordBlock', item =>
+            require('./client/services/foldKeywordBlock').foldKeywordBlock(item)),
+        vscode.commands.registerCommand('extension.foldKeywordAtCursor', () =>
+            require('./client/services/foldKeywordBlock').foldKeywordAtCursor()),
+        vscode.commands.registerCommand('extension.foldAllKeywordBlocks', () =>
+            require('./client/services/foldKeywordBlock').foldAllKeywordBlocks()),
+        vscode.commands.registerCommand('extension.unfoldAllKeywordBlocks', () =>
+            require('./client/services/foldKeywordBlock').unfoldAllKeywordBlocks()),
         vscode.commands.registerCommand('extension.keywordIndexRefresh', () => keywordIndexProvider.refreshScope())
     );
 context.subscriptions.push(
@@ -9438,32 +9442,23 @@ context.subscriptions.push(
             keywordIndexProvider.stopAutomaticWork();
             includeTreeProvider.refresh();
             logDebug(`onDidChangeActiveTextEditor: editor=${editor ? editor.document.uri.toString() : 'none'}, languageId=${editor ? editor.document.languageId : 'none'}`);
-            if (editor) {
-                Promise.resolve(keywordIndexProvider.refreshAutomatically(editor.document))
-                    .finally(() => keywordIndexProvider.scheduleReveal(editor)).catch(reportKeywordIndexError);
-            } else {
-                const uri = getActiveUri();
-                logDebug(`onDidChangeActiveTextEditor callback fallback: getActiveUri=${uri ? uri.toString() : 'null'}`);
-                if (uri) {
-                    void keywordIndexProvider.refreshAutomatically(uri).catch(reportKeywordIndexError);
-                }
-            }
+            const uri = keywordIndexProvider.resolveActiveUri();
+            if (uri) void keywordIndexProvider.refreshAutomatically(uri)
+                .then(() => { if (editor) keywordIndexProvider.scheduleReveal(editor); }).catch(reportKeywordIndexError);
         })
     );
     if (vscode.window.tabGroups && typeof vscode.window.tabGroups.onDidChangeTabs === 'function') {
+        const refreshActiveKeywordTab = () => {
+            const uri = keywordIndexProvider.resolveActiveUri();
+            if (uri) void keywordIndexProvider.refreshAutomatically(uri).catch(reportKeywordIndexError);
+        };
         context.subscriptions.push(
-            vscode.window.tabGroups.onDidChangeTabs(() => {
-                const uri = getActiveUri();
-                const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-                logDebug(`onDidChangeTabs: activeTab=${activeTab ? activeTab.label : 'none'}, inputType=${activeTab?.input?.constructor?.name || 'none'}, getActiveUri=${uri ? uri.toString() : 'null'}`);
-                if (uri) {
-                    void keywordIndexProvider.refreshAutomatically(uri).catch(reportKeywordIndexError);
-                }
-            })
+            vscode.window.tabGroups.onDidChangeTabs(refreshActiveKeywordTab),
+            vscode.window.tabGroups.onDidChangeTabGroups?.(refreshActiveKeywordTab) || { dispose() {} }
         );
     }
     const scheduleKeywordIndexRefresh = createActiveDocumentDebouncer(
-        () => vscode.window.activeTextEditor?.document || getActiveUri(),
+        () => keywordIndexProvider.resolveActiveUri(),
         uriOrDoc => {
             logDebug(`Debounced keyword index refresh triggered`);
             void keywordIndexProvider.refreshAutomatically(uriOrDoc).catch(reportKeywordIndexError);
@@ -9480,7 +9475,7 @@ context.subscriptions.push(
             }
         })
     );
-    const initialUri = getActiveUri();
+    const initialUri = keywordIndexProvider.resolveActiveUri();
     logDebug(`initialUri: ${initialUri ? initialUri.toString() : 'null'}`);
     if (initialUri) {
         void keywordIndexProvider.refreshAutomatically(initialUri).catch(reportKeywordIndexError);
@@ -10545,17 +10540,19 @@ context.subscriptions.push(
             }
         })
     );
+    context.subscriptions.push(vscode.commands.registerCommand('extension.compareFiles', uri =>
+        require('./client/services/compareFiles').compareFiles(uri)));
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.changeMarks.diffSinceOpened', async () => {
             const editor = vscode.window.activeTextEditor;
-            if (!editor) return;
+            if (!editor) { await vscode.window.showWarningMessage(i18n.get('compareHistoryUnavailable')); return; }
             await changeMarksController.showDiffSinceOpened(editor);
         })
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.changeMarks.diffUnsaved', async () => {
             const editor = vscode.window.activeTextEditor;
-            if (!editor) return;
+            if (!editor) { await vscode.window.showWarningMessage(i18n.get('compareHistoryUnavailable')); return; }
             await changeMarksController.showDiffUnsaved(editor);
         })
     );
@@ -11044,7 +11041,7 @@ const MAX_TABLE_PREVIEW_VIEW_STATES = 256;
 const tablePreviewViewByReference = new Map();
 
 const { entityIndexBudget } = require('./core/cache/entityIndexBudget');
-const entityBudget = entityIndexBudget(getLsdynaConfigurationValue('cache.entityIndexMemoryMaxMiB', 512),
+const entityBudget = entityIndexBudget(getLsdynaConfigurationValue('cache.entityIndexMemoryMaxMiB', 'auto'),
     getLsdynaConfigurationValue('cache.entityIndexDiskMaxMiB', 4096));
 const entityReferenceQueryService = new EntityReferenceQueryService(entityBudget.hostBytes);
 const { EntityQueryCache } = require('./core/references/entityQueryCache');
@@ -12077,7 +12074,7 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
     const targetKind = normalizedTarget.targetKind;
     const entityId = normalizedTarget.id;
 
-    let loadingSession, loadingLocations;
+    let loadingSession, loadingLocations, loadingPublication;
     const operation = async (_progress = null, cancellationToken = null) => {
         if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
         const documentVersions = new Map((vscode.workspace.textDocuments || []).map(document =>
@@ -12097,10 +12094,10 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
             (typeof indexClient.queryEntityProgressive === 'function' ||
                 !(vscode.workspace.textDocuments || []).some(document => document.isDirty));
         const scope = await resolveIndexedEntityQueryScope(
-            target, indexClient, cancellationToken, { ...options, identityOnly: background },
+            target, indexClient, cancellationToken, { ...options, identityOnly: background || entityBudget.blocked },
         );
         if (!isCurrentRequest() || cancellationToken?.isCancellationRequested) return null;
-        if (scope?.unavailableReason || (!background && !scope?.snapshot) || !scope || cancellationToken?.isCancellationRequested) {
+        if (scope?.unavailableReason || (!background && !entityBudget.blocked && !scope?.snapshot) || !scope || cancellationToken?.isCancellationRequested) {
             if (scope?.unavailableReason && !cancellationToken?.isCancellationRequested &&
                 options.silentStatus !== true) {
                 vscode.window.showWarningMessage(i18n.get(
@@ -12123,17 +12120,27 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         const identityScope = scope.kind === 'project'
             ? { kind: 'project', rootFile: scope.rootFile }
             : { kind: 'single-file', filePath: scope.filePath };
+        if (entityBudget.blocked) {
+            const result = { state: 'partial', locations: [], reasons: ['entity-query-low-memory'] };
+            const querySession = options.entityReferenceProvider?.publish({ targetKind, id: entityId, scope: identityScope }, result);
+            if (!options.entityReferenceProvider && options.silentStatus !== true)
+                vscode.window.showWarningMessage(i18n.get('referenceReasonEntityLowMemory'));
+            return { ...result, querySession };
+        }
         if (!options.preserveResultsWhileLoading) loadingSession = options.entityReferenceProvider?.publish(
             { targetKind, id: entityId, scope: identityScope },
             { state: 'loading', locations: [], reasons: [] },
         );
         loadingLocations = loadingSession?.locations;
+        loadingPublication = loadingSession?.publishRevision;
         if (background) {
             const request = { rootFile: scope.rootFile || scope.filePath, scope: scope.kind,
                 id: entityId, targetKind, excludeMeshEntities: true };
             const publishProgress = response => {
                 if (!isCurrentRequest() || cancellationToken?.isCancellationRequested || !documentsCurrent() || response?.status !== 'ready') return;
                 options.entityReferenceProvider.publish({ targetKind, id: entityId, scope: identityScope }, response.result);
+                loadingLocations = loadingSession?.locations;
+                loadingPublication = loadingSession?.publishRevision;
             };
             const response = progressive ? await indexClient.queryEntityProgressive(request, publishProgress, cancellationToken, isCurrentRequest)
                 : await indexClient.queryEntity(request, cancellationToken);
@@ -12223,14 +12230,24 @@ async function handleIndexedEntityIdQueryCommand(indexClient, target: any = null
         return { ...result, querySession };
     };
 
+    const cancellableOperation = async (progress, token) => {
+        let result;
+        try { result = await operation(progress, token); }
+        catch (error) { if (!token?.isCancellationRequested) throw error; }
+        if (token?.isCancellationRequested && isCurrentRequest() && loadingSession &&
+            loadingSession.publishRevision === loadingPublication &&
+            options.entityReferenceProvider?.getSession(loadingSession) === loadingSession) {
+            const session = options.entityReferenceProvider?.markStopped(loadingSession);
+            return { state: 'partial', locations: session?.locations || [],
+                reasons: ['entity-query-cancelled'], querySession: session };
+        }
+        return result;
+    };
     try {
-        if (typeof options.runWithProgress === 'function') return await options.runWithProgress(operation);
+        if (typeof options.runWithProgress === 'function') return await options.runWithProgress(cancellableOperation);
         if (typeof vscode.window.withProgress === 'function') {
-            return await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: i18n.get('entityIdQueryScanning'),
-                cancellable: true,
-            }, operation);
+            return await require('./client/services/viewScanProgress').withViewScanProgress(
+                'lsdynaEntityReferences', i18n.get('entityIdQueryScanning'), cancellableOperation);
         }
         return await operation();
     } finally {

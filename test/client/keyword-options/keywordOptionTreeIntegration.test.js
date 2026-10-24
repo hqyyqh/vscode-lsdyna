@@ -1014,7 +1014,8 @@ describe('persistent official keyword option integration', () => {
 
     });
 
-    it('round-trips protected MPP2 syntax and unified identity without shifting base fields', () => {
+    it('round-trips protected MPP2 syntax and unified identity without shifting base fields', function () {
+        this.timeout(10000); // Four families, each checking every offered transition across repeated full model builds.
         for (const keyword of ['CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', 'CONTACT_AUTOMATIC_SINGLE_SURFACE',
             'CONTACT_AUTOMATIC_NODES_TO_SURFACE', 'CONTACT_SURFACE_TO_SURFACE']) {
             const cards = fieldData[keyword].c;
@@ -1495,7 +1496,8 @@ describe('persistent official keyword option integration', () => {
         assert.equal(view.canApply, false);
         assert.match(view.message, /源文件内容已变化|source changed/i);
         const relocated = buildKeywordOptionsViewState({ ...model, sourceAnchorInvalid: true });
-        assert.equal(relocated.message, '');
+        assert.match(relocated.message, /无法确认原关键字位置|original keyword location can no longer be confirmed/i);
+        assert.match(relocated.message, /未应用的修改未写入|Unapplied changes were not written/i);
         assert.equal(relocated.status, 'stale');
         assert.equal(relocated.hasDrafts, true);
         assert.equal(relocated.canApply, false);

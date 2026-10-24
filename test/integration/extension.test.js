@@ -596,32 +596,33 @@ describe('findParameterDefinitions', () => {
         const doc = fakeDoc('  *parameter\nR  tEnd  5.0\n\t*parameter_expression\nR  dtPlot  tEnd/100.0\n');
         const defs = findParameterDefinitions(doc);
 
-        assert.ok(defs.has('TEND'));
-        assert.ok(defs.has('DTPLOT'));
-        assert.equal(findParameterReferences(doc).filter(ref => ref.name === 'TEND').length, 1);
+        assert.ok(defs.has('tEnd'));
+        assert.ok(defs.has('dtPlot'));
+        assert.equal(findParameterReferences(doc).filter(ref => ref.name === 'tEnd').length, 1);
     });
 
     it('finds basic *PARAMETER definitions', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\nI  count  10\n');
         const defs = findParameterDefinitions(doc);
         assert.equal(defs.size, 2);
-        assert.ok(defs.has('TEND'));
-        assert.equal(defs.get('TEND')[0].value, '5.0');
-        assert.equal(defs.get('COUNT')[0].value, '10');
+        assert.ok(defs.has('tEnd'));
+        assert.equal(defs.get('tEnd')[0].value, '5.0');
+        assert.equal(defs.get('count')[0].value, '10');
     });
 
     it('finds *PARAMETER_EXPRESSION definitions', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n*PARAMETER_EXPRESSION\nR  dtPlot  tEnd/100.0\n');
         const defs = findParameterDefinitions(doc);
-        assert.ok(defs.has('DTPLOT'));
-        assert.equal(defs.get('DTPLOT')[0].value, 'tEnd/100.0');
+        assert.ok(defs.has('dtPlot'));
+        assert.equal(defs.get('dtPlot')[0].value, 'tEnd/100.0');
     });
 
-    it('is case-insensitive on key lookup', () => {
+    it('preserves exact spelling on key lookup', () => {
         const doc = fakeDoc('*PARAMETER\nR  MyParam  42.0\n');
         const defs = findParameterDefinitions(doc);
-        assert.ok(defs.has('MYPARAM'));
-        assert.equal(defs.get('MYPARAM')[0].name, 'MyParam');
+        assert.ok(defs.has('MyParam'));
+        assert.equal(defs.has('MYPARAM'), false);
+        assert.equal(defs.get('MyParam')[0].name, 'MyParam');
     });
 
     it('skips comment lines inside *PARAMETER block', () => {
@@ -639,7 +640,7 @@ describe('findParameterDefinitions', () => {
     it('records correct line and column for definition', () => {
         const doc = fakeDoc('*PARAMETER\nR   tEnd   5.0\n');
         const defs = findParameterDefinitions(doc);
-        const def = defs.get('TEND')[0];
+        const def = defs.get('tEnd')[0];
         assert.equal(def.lineIndex, 1);
         assert.equal(doc.lineAt(def.lineIndex).text.slice(def.startChar, def.startChar + def.length), 'tEnd');
     });
@@ -649,9 +650,9 @@ describe('findParameterDefinitions', () => {
         const text = fs.readFileSync(path.join(FIXTURE_DIR, 'mainboltaexpl.k'), 'utf8');
         const doc = fakeDoc(text, path.join(FIXTURE_DIR, 'mainboltaexpl.k'));
         const defs = findParameterDefinitions(doc);
-        assert.ok(defs.has('TEND'));
-        assert.ok(defs.has('DTPLOT'));
-        assert.ok(defs.has('BLTFORCE'));
+        assert.ok(defs.has('tEnd'));
+        assert.ok(defs.has('dtPlot'));
+        assert.ok(defs.has('bltForce'));
     });
 });
 
@@ -663,33 +664,33 @@ describe('findParameterReferences', () => {
     it('finds &name references', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n*CONTROL_TERMINATION\n     &tEnd\n');
         const refs = findParameterReferences(doc);
-        const r = refs.filter(r => r.name === 'TEND');
+        const r = refs.filter(r => r.name === 'tEnd');
         assert.equal(r.length, 1);
         assert.equal(r[0].lineIndex, 3);
     });
 
     it('finds multiple references to same parameter', () => {
         const doc = fakeDoc('*PARAMETER\nR  t  5.0\n*KEYWORD\n&t  &t\n');
-        const refs = findParameterReferences(doc).filter(r => r.name === 'T');
+        const refs = findParameterReferences(doc).filter(r => r.name === 't');
         assert.equal(refs.length, 2);
     });
 
     it('finds bare name references in *PARAMETER_EXPRESSION values', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n*PARAMETER_EXPRESSION\nR  dtPlot  tEnd/100.0\n');
-        const refs = findParameterReferences(doc).filter(r => r.name === 'TEND');
+        const refs = findParameterReferences(doc).filter(r => r.name === 'tEnd');
         assert.equal(refs.length, 1);
         assert.equal(refs[0].lineIndex, 3);
     });
 
     it('does not treat expression definition name as a reference', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n*PARAMETER_EXPRESSION\nR  dtPlot  tEnd/100.0\n');
-        const refs = findParameterReferences(doc).filter(r => r.name === 'DTPLOT');
+        const refs = findParameterReferences(doc).filter(r => r.name === 'dtPlot');
         assert.equal(refs.length, 0);
     });
 
     it('skips comment lines', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n$ &tEnd this is a comment\n');
-        const refs = findParameterReferences(doc).filter(r => r.name === 'TEND');
+        const refs = findParameterReferences(doc).filter(r => r.name === 'tEnd');
         assert.equal(refs.length, 0);
     });
 });
@@ -716,18 +717,18 @@ describe('parameter completion edit boundaries', () => {
         for (const [width, negative] of [[10, false], [10, true], [20, true]]) {
             const record = 'Ruse'.padStart(width) + `${negative ? '-' : ''}&lo`.padStart(width) +
                 'Rother'.padStart(width) + '3'.padStart(width);
-            const doc = fakeDoc(['*PARAMETER', 'Rlong,2,Rlongname9,4',
+            const doc = fakeDoc(['*PARAMETER', 'Rlong,2,RlongName9,4',
                 width === 20 ? '*PARAMETER+' : '*PARAMETER', record].join('\n'));
             useScopedParameterDocument(doc);
             const result = await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, width * 2));
-            assert.ok(result.items.some(item => item.label === 'LONG'));
-            const item = result.items.find(item => item.label === 'LONGNAME9');
+            assert.ok(result.items.some(item => item.label === 'long'));
+            const item = result.items.find(item => item.label === 'longName9');
             if (width === 10 && negative) { assert.equal(item, undefined); continue; }
             assert.ok(item);
             assert.equal(item.range.start.character, width);
             assert.equal(item.range.end.character, width * 2);
             const edited = record.slice(0, item.range.start.character) + item.insertText + record.slice(item.range.end.character);
-            assert.equal(edited, record.slice(0, width) + `${negative ? '-' : ''}&LONGNAME9`.padStart(width) + record.slice(width * 2));
+            assert.equal(edited, record.slice(0, width) + `${negative ? '-' : ''}&longName9`.padStart(width) + record.slice(width * 2));
             assert.equal(doc.lineAt(3).text, record);
         }
     });
@@ -737,14 +738,14 @@ describe('parameter completion edit boundaries', () => {
         assert.equal(await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, 24)), null);
     });
     it('keeps comma parameter expression completion token-based', async () => {
-        const doc = fakeDoc('*PARAMETER\nRlongname9,4\n*PARAMETER_EXPRESSION\nRuse,lo+1');
+        const doc = fakeDoc('*PARAMETER\nRlongName9,4\n*PARAMETER_EXPRESSION\nRuse,lo+1');
         useScopedParameterDocument(doc);
         const result = await new Provider().provideCompletionItems(doc, new vscodeMock.Position(3, 7));
-        const item = result.items.find(item => item.label === 'LONGNAME9');
+        const item = result.items.find(item => item.label === 'longName9');
         assert.ok(item);
         assert.equal(item.range.start.character, 5);
         assert.equal(item.range.end.character, 7);
-        assert.equal(item.insertText, 'LONGNAME9');
+        assert.equal(item.insertText, 'longName9');
     });
     it('rejects multiple cursors before and during a completion query', async () => {
         const doc = fakeDoc('*PARAMETER\nRbase,2\n*PARAMETER\nRuse,&ba');
@@ -752,7 +753,7 @@ describe('parameter completion edit boundaries', () => {
         vscodeMock.window.activeTextEditor = editor;
         useScopedParameterDocument(doc);
         const provider = new Provider(), position = new vscodeMock.Position(3, 8);
-        assert.ok((await provider.provideCompletionItems(doc, position)).items.some(item => item.label === 'BASE'));
+        assert.ok((await provider.provideCompletionItems(doc, position)).items.some(item => item.label === 'base'));
         const client = require('../support/parameter-project.cjs').parameterDocumentQueryClient(doc);
         extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: async request => {
             editor.selections = [{}, {}];
@@ -770,7 +771,7 @@ describe('parameter navigation and rename providers', () => {
         const doc = fakeDoc('*PARAMETER\nRbase,2\n*NODE\n1,&base,0,0');
         const before = doc.getText();
         extensionModule._internals.setReferenceQueryClientForTesting({ sourceAnalysis: async request => {
-            assert.equal(request.mode, 'parameter-navigation'); assert.equal(request.name, 'BASE');
+            assert.equal(request.mode, 'parameter-navigation'); assert.equal(request.name, 'base');
             doc.version++;
             return { status: 'ready', items: [{ filePath: doc.uri.fsPath, line: 1, startCharacter: 1, endCharacter: 5 }] };
         } });
@@ -944,7 +945,7 @@ describe('parameter navigation and rename providers', () => {
             assert.equal(result.slice(i * 20, i * 20 + 10), 'Ilongname9');
             assert.equal(result.slice(i * 20 + 10, i * 20 + 20), row.slice(i * 20 + 10, i * 20 + 20));
         }
-        assert.equal(findParameterDefinitions(fakeDoc('*PARAMETER\n' + result)).get('LONGNAME9').length, 4);
+        assert.equal(findParameterDefinitions(fakeDoc('*PARAMETER\n' + result)).get('longname9').length, 4);
     });
 
     it('preserves negative references and rejects overflow without returning partial edits', () => {
@@ -1744,7 +1745,8 @@ describe('LsdynaIncludeTreeProvider', () => {
             assert.equal(scanResult.rootFile, rootFile);
             assert.ok(scanResult.snapshot.graph);
             assert.deepEqual(provider.root.children.map(child => child.filePath), [aFile]);
-            assert.equal(progressOptions.cancellable, true);
+            assert.deepEqual(progressOptions.location, { viewId: 'lsdynaIncludeTree' });
+            assert.equal(progressOptions.cancellable, undefined);
         } finally {
             vscodeMock.window.activeTextEditor = originalActiveTextEditor;
             vscodeMock.window.withProgress = originalWithProgress;
@@ -3334,7 +3336,7 @@ describe('getParameterAtCursor', () => {
         const doc = fakeDoc('*PARAMETER\nR  tEnd  5.0\n*PARAMETER_EXPRESSION\nR  dtPlot  tEnd/100.0\n');
         const result = getParameterAtCursor(doc, new Position(3, 11));
         assert.ok(result);
-        assert.equal(result.name.toUpperCase(), 'TEND');
+        assert.equal(result.name, 'tEnd');
     });
 
     it('returns null outside any parameter context', () => {
@@ -4337,6 +4339,7 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
             '*NODE',
             '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE',
         ].join('\n'));
+        doc.version = 7;
 
         const ordinaryHover = await provider.provideDetailedHover(doc, { line: 0, character: 3 });
         const optionHover = await provider.provideDetailedHover(doc, { line: 1, character: 3 });
@@ -4347,7 +4350,9 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         const optionValue = optionHover.contents[0].value;
         assert.ok(ordinaryValue.includes('command:extension.selectKeyword?%5B0%5D'));
         assert.ok(ordinaryValue.includes('command:extension.lsdynaFormatSelection?%5B0%5D'));
-        assert.ok(!ordinaryValue.includes('command:extension.lsdynaChooseKeywordOptions'));
+        const ordinaryTarget = JSON.parse(decodeURIComponent(ordinaryValue.match(/command:extension\.lsdynaChooseKeywordOptions\?([^ ]+)/)[1]));
+        assert.deepEqual(ordinaryTarget, [{ uri: extensionModule._internals.documentUriIdentity(doc),
+            documentVersion: doc.version, keywordLine: 0 }]);
         assert.ok(optionValue.includes('command:extension.selectKeyword?%5B1%5D'));
         assert.ok(optionValue.includes('command:extension.lsdynaFormatSelection?%5B1%5D'));
         assert.ok(optionValue.includes('command:extension.lsdynaChooseKeywordOptions?'));
@@ -4744,6 +4749,7 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
             assert.ok(!value.includes('>$(info)</span>'));
             assert.ok(value.includes('command:extension.addCustomValidKeyword'));
             assert.ok(!value.includes('command:extension.manageCustomValidKeywords'));
+            assert.ok(!value.includes('command:extension.lsdynaChooseKeywordOptions'));
         } finally {
             workspace.getConfiguration = originalGetConfiguration;
             manualIndexer.getManualFilesCount = originalGetManualFilesCount;
@@ -6269,12 +6275,16 @@ describe('LS-DYNA keyword option interactions', () => {
 
         try {
             const provider = new LsdynaKeywordOptionsCodeLensProvider();
-            const doc = fakeDoc('*NODE\n*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n');
+            const doc = fakeDoc('*NODE\n*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n*NOT_A_VERIFIED_KEYWORD\n');
             const lenses = provider.provideCodeLenses(doc);
             const nodeLenses = lenses.filter(lens => lens.range.start.line === 0);
             const optionLenses = lenses.filter(lens => lens.range.start.line === 1);
 
-            assert.equal(nodeLenses.length, 2);
+            assert.equal(nodeLenses.length, 3);
+            const nodeManagerLens = nodeLenses.find(lens => lens.command.command === 'extension.lsdynaChooseKeywordOptions');
+            assert.ok(nodeManagerLens);
+            assert.deepEqual(nodeManagerLens.command.arguments, [0]);
+            assert.equal(lenses.some(lens => lens.range.start.line === 2), false);
             assert.ok(nodeLenses.some(lens => lens.command.command === 'extension.selectKeyword'));
             assert.ok(nodeLenses.some(lens => lens.command.command === 'extension.lsdynaFormatSelection'));
             assert.equal(optionLenses.length, 3);

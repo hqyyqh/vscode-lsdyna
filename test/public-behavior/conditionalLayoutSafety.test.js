@@ -245,7 +245,10 @@ describe("conditional layout reading, editing and uncertainty boundaries", funct
             const head = row([0, 0, solver, 0, 8, 1, 1, 0]);
             const reading = nativeFileReadContext(rule, '*CONTROL_THERMAL_SOLVER', [head], 'standard');
             assert.equal(reading.select(false).complete, true);
-            assert.deepEqual(reading.select(false).target.map(r => r.cardIndex), [1, solver === 17 ? 4 : 2, 3]);
+            assert.deepEqual(reading.select(false).target.map(r => r.cardIndex), [1]);
+            const full = nativeFileReadContext(rule, '*CONTROL_THERMAL_SOLVER', [head, '', ''], 'standard').select(false);
+            assert.deepEqual(full.current.map(r => r.cardIndex), [1, solver === 17 ? 4 : 2, 3]);
+            assert.deepEqual(full.target, full.current);
         }
     });
     it("reads repeated tails with distinct occurrences", async () => {
@@ -270,11 +273,24 @@ describe("conditional layout reading, editing and uncertainty boundaries", funct
         const rows = [row([1, 1, 0, 1, 1, 1, 1, 0]), row(Array(8).fill(0)), row(Array(8).fill(0))];
         const select = rows => nativeFileReadContext(rule, '*MAT_240', rows, 'standard').select(true);
         assert.equal(select(rows).complete, true);
+        assert.deepEqual(select(rows).target, select(rows).current, 'ordinary edits preserve omitted optional cards');
         assert.equal(select(rows.slice(0, 2)).complete, false);
         assert.equal(select([...rows, row([0, 0, 0, 0, 0, 0])]).complete, true);
+        const optional = [...rows, row([0, 0, 0, 0, 0, 0])];
+        const changed = nativeFileReadContext(rule, '*MAT_240', optional, 'standard').select(false,
+            (record, field, raw) => record.cardIndex === 4 && field === 5 ? '1' : raw);
+        assert.deepEqual(changed.target.map(record => record.cardIndex), [1, 2, 3, 4, 5, 6], 'USRFAIL requires the omitted cards');
         const required = [...rows, row([0, 0, 0, 0, 0, 1])];
         assert.equal(select(required).complete, false);
         assert.equal(select([...required, row(Array(8).fill(0)), row(Array(8).fill(0))]).complete, true);
+    });
+    it('preserves an omitted optional tail when a preceding native branch changes', () => {
+        const rule = sourceRule('CONTROL_THERMAL_SOLVER');
+        const rows = [row([0, 0, 1, 0, 0, 0, 0, 0]), row(Array(8).fill(0))];
+        const reading = nativeFileReadContext(rule, '*CONTROL_THERMAL_SOLVER', rows, 'standard');
+        assert.deepEqual(reading.select(false).target.map(record => record.cardIndex), [1, 2]);
+        assert.deepEqual(reading.select(false, (record, field, raw) => record.cardIndex === 1 && field === 2 ? '17' : raw)
+            .target.map(record => record.cardIndex), [1, 4]);
     });
     it("selects residual-vector branches from source controls", async () => {
         const rule = sourceRule('CONTROL_IMPLICIT_RESIDUAL_VECTOR');

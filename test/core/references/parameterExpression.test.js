@@ -3,6 +3,31 @@ const { evaluateParameterExpression: evaluate } = require('../../../out/core/ref
 const environment = require('../../../out/core/references/parameterEnvironment');
 
 describe('bounded parameter expressions', () => {
+    it('keeps case-only names separate in definitions, expressions and numeric lookup', () => {
+        const { scanParameterDefinitionBlock } = require('../../../out/core/references/parameterDefinitionScanner');
+        const state = environment.createParameterRuntimeState();
+        environment.enterParameterFile(state, 'root', 'case.k');
+        const events = [
+            ...scanParameterDefinitionBlock({ keyword: 'PARAMETER', startLine: 0 }, '*PARAMETER\nIfoo,2\nIFOO,8'),
+            ...scanParameterDefinitionBlock({ keyword: 'PARAMETER_EXPRESSION', startLine: 3 }, '*PARAMETER_EXPRESSION\nIsum,foo+FOO'),
+        ];
+        events.forEach(event => environment.applyParameterEvent(state, event));
+        const bindings = environment.snapshotVisibleParameterBindings(state);
+        assert.equal(environment.resolveIntegerParameter(bindings, 'foo').value, 2);
+        assert.equal(environment.resolveNumericParameter(bindings, 'FOO').value, 8);
+        assert.equal(environment.resolveIntegerParameter(bindings, 'sum').value, 10);
+        assert.equal(environment.resolveNumericParameter(bindings, 'Foo').resolved, false);
+        assert.equal(evaluate('foo+&FOO', name => bindings.get(name)).value, 10);
+        assert.equal(evaluate('Foo+1', name => bindings.get(name)).reason, 'parameter-undefined');
+        environment.enterParameterFile(state, 'child', 'child.k');
+        scanParameterDefinitionBlock({ keyword: 'PARAMETER_LOCAL', startLine: 0 }, '*PARAMETER_LOCAL\nIfoo,5')
+            .forEach(event => environment.applyParameterEvent(state, event));
+        const local = environment.snapshotVisibleParameterBindings(state);
+        assert.equal(environment.resolveIntegerParameter(local, 'foo', true).value, -5);
+        assert.equal(environment.resolveIntegerParameter(local, 'FOO').value, 8);
+        environment.leaveParameterFile(state);
+        assert.equal(environment.getVisibleParameterBinding(state, 'foo').value, 2);
+    });
     it('uses the declaration name rules when reading a parameter-valued field', () => {
         const { parseNumericInput } = require('../../../out/core/references/referenceInputValue');
         for (const name of ['foo-bar', 'TIME', 'ABCDEFGHIJ', '2start']) {
@@ -86,7 +111,9 @@ describe('bounded parameter expressions', () => {
             fileIndexes: new Map([[file, { parameterEvents: events, keywordBlocks: [] }]]) };
         const service = new EntityReferenceQueryService(16 * 1024 * 1024);
         await assert.rejects(require('../../../out/core/references/projectReferenceIndex')
-            .buildProjectReferenceIndexAsync(snapshot, undefined, 1024), /build budget/);
+            .buildProjectReferenceIndexAsync(snapshot, undefined, 1024), error =>
+            error instanceof require('../../../out/core/references/entityQueryBudgetError').EntityQueryBudgetError &&
+            error.reason === 'entity-query-index-budget' && error.budgetBytes === 1024);
         const token = { isCancellationRequested: false };
         setImmediate(() => { token.isCancellationRequested = true; });
         await assert.rejects(service.indexAsync(snapshot, token), error => error.name === 'CancellationError');

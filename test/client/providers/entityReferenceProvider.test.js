@@ -38,6 +38,41 @@ function memoryState(initial = []) {
 }
 
 describe('LsdynaEntityReferenceProvider', () => {
+    it('retains found locations after stopping and keeps later invalidation active', () => {
+        const provider = new LsdynaEntityReferenceProvider();
+        const session = provider.publish(identity(1), { ...result(), state: 'partial', scanning: true });
+        const locations = session.locations;
+        provider.markStopped(session);
+        assert.equal(session.locations, locations);
+        assert.equal(session.scanning, false);
+        assert.equal(session.state, 'partial');
+        assert.deepEqual(session.reasons, ['entity-query-cancelled']);
+        provider.markStaleForPath(path.resolve('deck.key'));
+        assert.equal(session.state, 'stale');
+        provider.dispose();
+    });
+    it('retains an empty low-memory explanation with a zero result budget', () => {
+        const provider = new LsdynaEntityReferenceProvider({ resultBudgetBytes: 0 });
+        try {
+            const session = provider.publish(identity(1), { state: 'partial', locations: [], reasons: ['entity-query-low-memory'] });
+            assert.equal(session.state, 'partial');
+            assert.deepEqual(session.reasons, ['entity-query-low-memory']);
+            assert.equal(session.estimatedBytes, 0);
+            assert.equal(provider.publish(identity(2), result()).state, 'needs-refresh');
+        } finally { provider.dispose(); }
+    });
+    it('keeps a scanning query attached across edits but hides obsolete positions', () => {
+        const provider = new LsdynaEntityReferenceProvider();
+        let released = 0;
+        try {
+            const session = provider.publish(identity(1), { ...result(), state: 'partial', scanning: true,
+                release: () => released++ });
+            provider.markStaleForPath(identity(1).scope.filePath);
+            assert.equal(session.state, 'loading'); assert.equal(released, 0);
+            assert.deepEqual(session.locations, []);
+            assert.equal(provider.nextReference(), null);
+        } finally { provider.dispose(); }
+    });
     it('retains the in-flight query when the same identity is searched again', () => {
         const provider = new LsdynaEntityReferenceProvider(), released = [];
         try {

@@ -31,6 +31,20 @@ function actions(calls) {
 }
 
 describe('EntityReferencesWebviewProvider', () => {
+    it('explains index, result and internal failures without showing raw reason codes', () => {
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['material'], actions([]));
+        try {
+            for (const reason of ['entity-query-cancelled', 'entity-query-index-budget', 'entity-query-result-budget', 'entity-query-incomplete', 'entity-query-low-memory']) {
+                model.publish({ targetKind: 'material', id: 1, scope: { kind: 'single-file', filePath: path.resolve('main.k') } },
+                    { state: 'partial', locations: [], reasons: [reason] });
+                const state = provider.viewState();
+                assert.equal(state.reasonDetails.length, 1);
+                assert.notEqual(state.reasonDetails[0], reason);
+                assert.equal(state.status, 'partial');
+            }
+        } finally { provider.dispose(); model.dispose(); }
+    });
     it('keeps partial coverage in both languages without rendering repetitive reason warnings', () => {
         const i18n = require('../../out/core/i18n'), original = i18n.getLanguage;
         const model = new LsdynaEntityReferenceProvider();

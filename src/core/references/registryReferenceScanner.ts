@@ -168,7 +168,8 @@ function nativeReferenceCoversField({ keyword, cardIndex, field }) {
     return [...lsppReferenceRecordsForKeyword(keyword), ...lsppBlockedRecordsForKeyword(keyword)].some(record => (record.cardIndex === cardIndex || record.nativeLayout) &&
         normalizeKeyword(record.fieldName) === normalizeKeyword(field?.n) &&
         record.position === field?.p && record.width === field?.w &&
-        (record.fieldType === field?.t || record.nativeFieldType === -1 && field?.t === 'real'));
+        (record.fieldType === field?.t || ['real', 'float'].includes(field?.t) &&
+            (record.fieldType === 'real' || record.nativeFieldType === -1)));
 }
 
 const SEMANTIC_REFERENCE_CATALOG = {
@@ -446,7 +447,7 @@ function semanticOccurrence({
     options,
     formatMode,
     entries,
-    parameters = undefined,
+    parameters = options.nativeParameters,
 }) {
     const infoKey = [normalizeKeyword(keyword), cardIndex, field.n, field.t, field.p, field.w,
         field.referenceRecord?.nativeLayout?.fieldRecordId || ''].join(':');
@@ -470,7 +471,8 @@ function semanticOccurrence({
         ? { state: 'not-applicable', info: sibling.info || info }
         : resolveContextualReferenceBranch(sibling.info || info, entries, formatMode, range.raw);
     const effectiveInfo = contextual.info || sibling.info || info;
-    const input = parseNumericInput(range.raw, { integerOnly: field.t !== 'real', nonZero: false });
+    const input = parseNumericInput(range.raw, { integerOnly: !['real', 'float'].includes(field.t), nonZero: false });
+    const numericInput = input.kind === 'invalid' ? parseNumericInput(range.raw, { integerOnly: false }) : input;
     let semantic;
     let referenceValue = sibling.state === 'indeterminate' ||
         contextual.state === 'indeterminate' || contextual.state === 'excluded'
@@ -501,10 +503,7 @@ function semanticOccurrence({
         semantic = { state: 'non-reference', role: 'context-excluded',
             reason: contextual.reason };
     } else if (input.kind === 'numeric') {
-        const relation = effectiveInfo.relation || effectiveInfo;
-        semantic = input.value === 0 && relation.kind === 'entity-reference' &&
-            !relation.branches?.length ? { state: 'non-reference', role: 'zero-id' }
-            : resolveReferenceValueSemantics(effectiveInfo, input.value);
+        semantic = resolveReferenceValueSemantics(effectiveInfo, input.value);
         if (semantic.state === 'reference' && !referenceValue) {
             semantic = { state: 'indeterminate', reason: 'reference-id-zero-or-unsafe' };
         }
@@ -519,6 +518,9 @@ function semanticOccurrence({
         if (!referenceValue) addReferenceCoverageGap(result, semantic.reason, block, effectiveInfo, lineIndex);
     } else if (referenceValue?.kind === 'label') {
         semantic = { state: 'reference', role: 'reference', idTransform: 'identity' };
+    } else if (/^(?:-?&|<)/.test(range.raw) || numericInput.kind === 'invalid' && numericInput.reason === 'non-finite-or-non-integer' ||
+        field.t === 'integer' && numericInput.kind === 'numeric') {
+        semantic = { state: 'indeterminate', reason: 'reference-value-unresolved' };
     } else {
         // An opaque value in one relation field must not invalidate the whole
         // file scan. It is simply not an object reference for this occurrence;
@@ -733,7 +735,8 @@ function nativeRepeatedReferenceField(record, line = null, formatMode = 'standar
             .formattedReadFields(record.nativeReadFields, line, line.includes(',') ? 'comma' : formatMode)[record.nativeReadFieldIndex] } : {}) };
 }
 
-function scanNativeLayoutRelations({ block, keyword, entries, relations, result, options, formatMode, parameters = undefined, nativeReadLayout = undefined }) {
+function scanNativeLayoutRelations({ block, keyword, entries, relations, result, options, formatMode,
+    parameters = options.nativeParameters, nativeReadLayout = options.nativeReadLayout }) {
     const nativeRelations = relations.filter(record => record.nativeLayout);
     if (!nativeRelations.length || options.referenceCatalog.infoForField !== getCatalogFieldReferenceInfo) return;
     const form = require("../semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4().formForKeyword(keyword, false);
@@ -799,7 +802,11 @@ function scanNativeRepeatedBlock({ block, keyword, entries, relations, result, o
     const { nativeReadInputFormat, nativeReadInputFailure } = require('../semantics/nativeInputFormat');
     const readMode = nativeReadInputFormat(layout.rule, block.rawKeyword || block.keyword, formatMode);
     if (nativeReadInputFailure(layout.rule, block.rawKeyword || block.keyword, formatMode)) return false;
-    const reader = nativeRepeatedReferenceReader(layout, keyword, readMode);
+    const reader = nativeRepeatedReferenceReader(layout, keyword, readMode, (raw, lineIndex) => {
+        if (!raw.includes('&') && !raw.trim().startsWith('<')) return raw;
+        const value = options.nativeParameters?.resolve(raw, lineIndex);
+        return value?.resolved ? String(value.value) : raw;
+    });
     const deferredEntries = [];
     for (let index = 0; index < entries.length; index++) {
         if (result.referenceOccurrences.length >= options.maxReferenceOccurrences ||
@@ -1022,6 +1029,8 @@ async function scanRegistryReferenceOccurrencesFromFileIndex(
         targetKinds?: string[];
         excludeMeshEntities?: boolean;
         sharedCache?: any;
+        nativeParameters?: import('../semantics/nativeParameterContext').NativeParameterContext;
+        nativeReadLayout?: any;
         referenceCatalog?: {
             recordsForKeyword: (keyword: string) => any[];
             blockedForKeyword?: (keyword: string) => any[];
@@ -1041,6 +1050,8 @@ async function scanRegistryReferenceOccurrencesFromFileIndex(
     };
     // Each source keeps its own rule, target namespace, predicates and selector cache.
     const scans = catalogs.map(referenceCatalog => ({
+        nativeParameters: options.nativeParameters,
+        nativeReadLayout: options.nativeReadLayout,
         maxReferenceOccurrences: Number.isInteger(options.maxReferenceOccurrences)
             ? Math.max(1, options.maxReferenceOccurrences)
             : DEFAULT_MAX_REFERENCE_OCCURRENCES,
@@ -1193,6 +1204,7 @@ module.exports = {
     getCatalogFieldReferenceInfo,
     nativeReferenceCoversField,
     lsppReferenceRecordsForKeyword,
+    semanticReferenceRecordsForKeyword,
     lsppBlockedRecordsForKeyword,
     resolveSiblingTargetBinding,
     nativeRepeatedReferenceLayout,

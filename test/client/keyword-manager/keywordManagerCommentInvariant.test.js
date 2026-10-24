@@ -83,7 +83,7 @@ describe('manager comments never confer layout or write authority', () => {
             const models = ['none', 'correct', 'wrong'].map(comments => build(specimen(missing, comments, format)));
             assert.deepEqual(semantic(models[1]), semantic(models[0]));
             assert.deepEqual(semantic(models[2]), semantic(models[0]));
-            assert.equal(models[0].plan.status === 'blocked', missing || format === 'comma');
+            assert.equal(models[0].plan.status === 'blocked', missing);
         });
     it('reports counts without claiming a missing-record location', () => {
         const model = build(specimen(true));

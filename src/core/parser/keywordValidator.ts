@@ -1,6 +1,6 @@
 const vscode = require('vscode');
 const i18n = require('../i18n');
-const { getAliases } = require('../keywordUtils');
+const { isBuiltInKeywordName, setKnownKeywordSnippets } = require('../keywordRecognition');
 const keywordSchema = require('../keywordSchema');
 const { classifyKeywordLine } = require('./keywordLine');
 const {
@@ -13,6 +13,7 @@ const DEFAULT_CUSTOM_VALID_KEYWORDS = ['*END', '*TITLE', '*CASE_BEGIN', '*CASE_E
 
 function init(validKeywordsSet) {
     validKeywords = validKeywordsSet;
+    setKnownKeywordSnippets(validKeywordsSet);
 }
 
 function normalizeKeyword(keyword) {
@@ -41,12 +42,7 @@ function customKeywordMatches(keyword, customValidKeywords) {
 }
 
 function builtInKeywordMatches(keyword, schema) {
-    if (/^CASE_(BEGIN|END)_\d+$/.test(keyword)) return true;
-    if (validKeywords.has(keyword) || keywordSchema.lookupKeywordSchema(keyword, schema)) return true;
-    for (const alias of getAliases(keyword)) {
-        if (validKeywords.has(alias) || schema[alias]) return true;
-    }
-    return false;
+    return isBuiltInKeywordName(keyword, schema);
 }
 
 /**
@@ -163,7 +159,7 @@ function collectKeywordValidationDiagnostics(document, shouldSkipAutomaticDocume
         }
         
         // Extract the keyword part (up to the first space or comma)
-        const fullKeywordMatch = classification.rawKeyword.match(/^\*([A-Za-z0-9_+\-]+)$/);
+        const fullKeywordMatch = classification.rawKeyword.match(/^\*([A-Za-z0-9_+%\/\-]+)$/);
         if (!fullKeywordMatch) continue;
         
         const rawKeyword = fullKeywordMatch[1];

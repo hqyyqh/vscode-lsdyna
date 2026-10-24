@@ -309,8 +309,8 @@ export function scorePathFields(
  * "con en" disappeared from the keyword list. Multi-word results always need
  * alwaysShow + optional underline fallback.
  *
- * Single-token queries: true when label has contiguous word match or ordered
- * alnum subsequence (covers "con", "conen", "rgv").
+ * Only contiguous matches are safe: native filtering can reject separator-crossing
+ * subsequences such as mat83 → MAT_83.k even when our scorer accepts them.
  */
 export function builtinFilterLikelyMatches(query: string, label: string): boolean {
     const q = String(query || '').trim().toLowerCase();
@@ -323,17 +323,7 @@ export function builtinFilterLikelyMatches(query: string, label: string): boolea
         return false;
     }
 
-    if (L.includes(q)) {
-        return true;
-    }
-
-    const qSticky = fuzzyChars(q);
-    const lSticky = fuzzyChars(L);
-    if (qSticky && lSticky && isSubsequence(qSticky, lSticky)) {
-        return true;
-    }
-
-    return false;
+    return L.includes(q);
 }
 
 // --- Compatibility helpers ---

@@ -520,7 +520,10 @@ export function createChangeMarksController(deps: ChangeMarksControllerDeps) {
 
     async function showDiff(editor: any, kind: 'origin' | 'savepoint'): Promise<void> {
         const document = editor?.document;
-        if (!document || !isEligible(document)) return;
+        if (!document || !isEligible(document)) {
+            await vscode.window.showWarningMessage(deps.getMessage?.('compareHistoryUnavailable'));
+            return;
+        }
         const session = ensureSession(document);
         if (!session) return;
         const text = safeGetText(document);

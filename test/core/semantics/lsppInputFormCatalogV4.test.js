@@ -262,6 +262,31 @@ describe("keyword catalog Input Form catalog v4", () => {
         assert.equal(catalog.formForKeyword('*IMPLICIT_MODES'), null);
     });
 
+    it('copies only consumed rules and preserves enumeration, replacement and consumer isolation', () => {
+        const catalog = new CatalogInputFormCatalogV4({ rootDir: catalogFixture() });
+        const v8 = require('node:v8'), original = v8.deserialize;
+        let copies = 0;
+        v8.deserialize = (...args) => { copies++; return original(...args); };
+        try {
+            const first = catalog.formForKeyword('MAT_BARLAT_YLD2000');
+            assert.deepEqual(Object.keys(first.rules), ['form', 'state']);
+            assert.equal(copies, 0, 'unconsumed GUI states must not be copied for file reads');
+            const rule = first.rules.form;
+            assert.equal(copies, 1);
+            assert.equal(first.rules.form, rule);
+            first.rules.state = { consumerOnly: true };
+            assert.equal(copies, 1, 'replacement must not read the old rule');
+            rule.cards[0].fields[0].name = 'consumer-only';
+            const next = catalog.formForKeyword('MAT_BARLAT_YLD2000');
+            assert.equal(next.rules.form.cards[0].fields[0].name, 'FIT');
+            assert.equal(copies, 2);
+            const snapshot = JSON.parse(JSON.stringify(next.rules));
+            assert.equal(copies, 3);
+            assert.equal(snapshot.state.ruleId, 'lspp-native-field-layout-states');
+            assert.equal(snapshot.form.cards[0].fields[0].name, 'FIT');
+        } finally { v8.deserialize = original; }
+    });
+
     it('isolates returned references and nested rules from a shared shard cache', async () => {
         for (const prepare of [false, true]) {
             const catalog = new CatalogInputFormCatalogV4({ rootDir: catalogFixture() });

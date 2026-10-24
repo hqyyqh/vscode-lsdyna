@@ -141,9 +141,9 @@ async function main() {
             if (!target || target.textContent.trim() !== expectedId) throw Error('Missing exact navigation target');
             const field=document.querySelector('.viewport .field.queryable');
             if(!field)throw Error('No queryable field in the small material block after the deep NODE location');
-            field.click();await until(()=>document.querySelector('.field-help strong'));
-            const fieldName=document.querySelector('.field-help strong').textContent;
-            const value=document.querySelector('.field-help code')?.textContent || document.querySelector('.field-object strong')?.textContent;
+            field.click();await until(()=>document.querySelector('.field-help .fieldHelpName'));
+            const fieldName=document.querySelector('.field-help .fieldHelpName').textContent;
+            const value=document.querySelector('.field-heading code')?.textContent || document.querySelector('.field-object strong')?.textContent;
             document.querySelector('.field-heading button').click();
             document.querySelector('.search-mode').click();await wait(50);
             set('.search-float input','B07_TARGET_MARKER');await wait(50);document.querySelector('.search-float').requestSubmit();

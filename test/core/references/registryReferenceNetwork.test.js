@@ -148,6 +148,111 @@ function completeSnapshot(rootFile, sourceFile, definitionFile, occurrence, defi
 }
 
 describe('registryReferenceNetwork', () => {
+    it('limits resolved conditional parameters and expressions to their active reference branch', () => {
+        const filePath = path.resolve('conditional-role.k');
+        const relation = { kind: 'value-branch', otherwise: 'unknown', branches: [
+            { when: { op: 'lt', value: 0 }, role: 'reference', idTransform: 'abs', targetKinds: ['curve'] },
+            { when: { op: 'gt', value: 0 }, role: 'reference', idTransform: 'identity', targetKinds: ['table'] },
+            { when: { op: 'eq', value: 0 }, role: 'literal' },
+        ] };
+        for (const raw of ['&CHOICE', '<CHOICE>']) {
+            const occurrence = { ...signedPartOccurrence(filePath),
+                referenceValue: { kind: raw[0] === '&' ? 'parameter' : 'expression', parameterName: 'CHOICE',
+                    raw, semanticRelation: relation, targetKinds: ['curve', 'table'] },
+                targetKinds: ['curve', 'table'] };
+            const index = buildProjectReferenceIndex(completeSnapshot(filePath, filePath, filePath, occurrence,
+                { curves: [curve(filePath)], tables: [], genericDefinitions: [] }));
+            const context = index.parameterContextsByFile.get(filePath)[0];
+            const query = kind => collectRegistryReferenceMatches(index, { id: 17, targetKinds: [kind] },
+                { retainVerifiedMatchesOnIncomplete: true });
+            for (const value of [0, -17, 17]) {
+                context.initialBindings = new Map([['CHOICE', { valueState: 'integer', value }]]);
+                for (const kind of ['curve', 'table']) {
+                    const result = query(kind);
+                    assert.equal(result.state, 'complete', `${raw}, ${value}, ${kind}: ${result.reasons}`);
+                    assert.equal(result.locations.length, value < 0 && kind === 'curve' || value > 0 && kind === 'table' ? 1 : 0,
+                        `${raw}, ${value}, ${kind}`);
+                }
+            }
+            const original = { ...context, initialBindings: new Map([['CHOICE', { valueState: 'integer', value: 0 }]]) };
+            index.parameterContextsByFile.set(filePath, [original,
+                { ...context, occurrenceId: 'child', initialBindings: new Map([['CHOICE', { valueState: 'integer', value: -17 }]]) }]);
+            assert.equal(query('curve').state, 'complete', 'a confirmed constant inclusion must not taint an active inclusion');
+            assert.equal(query('curve').locations.length, 1);
+            index.parameterContextsByFile.get(filePath)[1].initialBindings.clear();
+            assert.equal(query('curve').state, 'partial', 'a different unresolved inclusion must remain visible');
+            assert.equal(query('curve').locations.length, 0);
+        }
+    });
+    it('evaluates real parameter branches and D exponents without relaxing reference IDs', () => {
+        const filePath = path.resolve('conditional-real-role.k');
+        const info = { fieldType: 'real', relation: { kind: 'value-branch', otherwise: 'literal', branches: [
+            { when: { op: 'lt', value: 0 }, role: 'reference', idTransform: 'abs', targetKinds: ['curve'] },
+        ] } };
+        assert.equal(parseFieldReferenceValue('-1.7D+1', info)?.id, 17);
+        assert.equal(parseFieldReferenceValue('-1.7d+1', info)?.id, 17);
+        assert.equal(parseFieldReferenceValue('1.7D+1', info), null);
+        assert.equal(parseFieldReferenceValue('-1.7D+1', { ...info, fieldType: 'integer' }), null);
+        for (const raw of ['&CHOICE', '<CHOICE>']) {
+            const occurrence = { ...signedPartOccurrence(filePath), referenceValue: parseFieldReferenceValue(raw, info) };
+            const index = buildProjectReferenceIndex(completeSnapshot(filePath, filePath, filePath, occurrence,
+                { curves: [curve(filePath)], tables: [], genericDefinitions: [] }));
+            const context = index.parameterContextsByFile.get(filePath)[0];
+            for (const value of [0, 0.3, -17, -0.3]) {
+                context.initialBindings = new Map([['CHOICE', { valueState: 'real', value }]]);
+                const result = collectRegistryReferenceMatches(index, { id: 17, targetKinds: ['curve'] },
+                    { retainVerifiedMatchesOnIncomplete: true });
+                assert.equal(result.state, value === -0.3 ? 'partial' : 'complete', `${raw}, ${value}: ${result.reasons}`);
+                assert.equal(result.locations.length, value === -17 ? 1 : 0);
+            }
+        }
+    });
+    it('treats a resolved zero in an unconditional ID field like a literal zero', () => {
+        const filePath = path.resolve('zero-reference.k');
+        const info = { fieldType: 'integer', relation: { kind: 'entity-reference', targetKinds: ['curve'] } };
+        for (const raw of ['&ZERO', '<ZERO>']) {
+            const occurrence = { ...signedPartOccurrence(filePath), referenceValue: parseFieldReferenceValue(raw, info) };
+            const index = buildProjectReferenceIndex(completeSnapshot(filePath, filePath, filePath, occurrence,
+                { curves: [], tables: [], genericDefinitions: [] }));
+            index.parameterContextsByFile.get(filePath)[0].initialBindings = new Map([['ZERO', { valueState: 'integer', value: 0 }]]);
+            const result = collectRegistryReferenceMatches(index, { id: 17, targetKinds: ['curve'] },
+                { retainVerifiedMatchesOnIncomplete: true });
+            assert.equal(result.state, 'complete', `${raw}: ${result.reasons}`);
+            assert.deepEqual(result.locations, []);
+        }
+    });
+    it('retains uncertainty for fractional values in integer conditional fields', async () => {
+        const schema = require('../../../out/core/keywordSchema');
+        const { scanRegistryReferenceOccurrencesFromFileIndex } = require('../../../out/core/references/registryReferenceScanner');
+        const keyword = 'CONTROL_IMPLICIT_SOLUTION';
+        const cards = schema.getRenderedCardsForLookup(schema.lookupKeywordSchema(keyword, schema.loadKeywordSchema(() => 'en')));
+        const row = cards.findIndex(card => card.some(field => field.n === 'ISTIF'));
+        assert.ok(row >= 0);
+        const text = ['*' + keyword, ...cards.map(card => {
+            const line = ' '.repeat(200).split('');
+            for (const field of card) line.splice(field.p, field.w,
+                ...String(field.n === 'ISTIF' ? '1.5' : '0').padStart(field.w));
+            return line.join('');
+        })].join('\n');
+        const scanned = await scanRegistryReferenceOccurrencesFromFileIndex({ filePath: 'integer-role.k',
+            keywordBlocks: [{ keyword: '*' + keyword, startLine: 0, endLine: cards.length }] }, async () => text);
+        assert.ok(scanned.referenceCoverage.gaps.some(gap => gap.startLine === row + 1 && gap.reason === 'reference-value-unresolved'),
+            'a fractional integer token must not fall through to an opaque non-reference value');
+        const filePath = path.resolve('integer-role.k');
+        const relation = { kind: 'value-branch', otherwise: 'unknown', branches: [
+            { when: { op: 'lt', value: 0 }, role: 'reference', idTransform: 'abs', targetKinds: ['curve'] },
+            { when: { op: 'gt', value: 1 }, role: 'literal' },
+        ] };
+        for (const raw of ['&CHOICE', '<CHOICE>']) {
+            const occurrence = { ...signedPartOccurrence(filePath),
+                referenceValue: parseFieldReferenceValue(raw, { fieldType: 'integer', relation }) };
+            const index = buildProjectReferenceIndex(completeSnapshot(filePath, filePath, filePath, occurrence,
+                { curves: [], tables: [], genericDefinitions: [] }));
+            index.parameterContextsByFile.get(filePath)[0].initialBindings = new Map([['CHOICE', { valueState: 'real', value: 1.5 }]]);
+            assert.equal(collectRegistryReferenceMatches(index, { id: 17, targetKinds: ['curve'] },
+                { retainVerifiedMatchesOnIncomplete: true }).state, 'partial', raw);
+        }
+    });
     it('selects the primary namespace, then the fallback, without mixing same-ID definitions', () => {
         const { analyzeReference } = require('../../../src/core/references/projectReferenceIndex');
         const { mergeOnDemandDefinitions } = require('../../../src/core/references/onDemandDefinitionScanner');
@@ -188,6 +293,36 @@ describe('registryReferenceNetwork', () => {
         assert.deepEqual(mergeOnDemandDefinitions(analysis, lookup, unresolved).definitions.map(item => item.targetKind), ['curve']);
         assert.deepEqual(mergeOnDemandDefinitions(analysis, { ...lookup, definitions: [alternateDefinition] }, unresolved)
             .definitions.map(item => item.targetKind), ['function']);
+    });
+    it('does not let a different unshifted numeric ID make an ID query incomplete', () => {
+        const filePath = path.resolve('unrelated-default-transform.k');
+        const { initialIncludeOffsets } = require('../../../out/core/references/nativeIncludeOffsets');
+        const context = { occurrenceId: 'child', includeOffsets: initialIncludeOffsets(),
+            idfoffOffset: 0, uncertaintyReasons: [], occurrencePath: [], occurrencePathLabels: [] };
+        const index = { indexedTargetKinds: new Set(), indexedTargetDefinitions: new Set(),
+            completenessReasons: [], registryReferenceCoverageGaps: [],
+            parameterContextsByFile: new Map([[filePath, [context]]]),
+            registryReferenceOccurrences: [{ filePath, lineIndex: 3, startCharacter: 0, endCharacter: 2,
+                referenceValue: { kind: 'numeric', id: 73, raw: '73', targetSearch: [
+                    { targetKinds: ['curve'], targetKeywords: ['*DEFINE_CURVE'] },
+                    { targetKinds: ['function'], targetKeywords: ['*DEFINE_FUNCTION'] }] },
+                targetKinds: ['curve', 'function'], targetDefinitions: [] }] };
+        const query = id => collectRegistryReferenceMatches(index, { id, targetKinds: ['curve'] },
+            { retainVerifiedMatchesOnIncomplete: true });
+        assert.equal(query(99).state, 'complete');
+        assert.equal(query(99).locations.length, 0);
+        assert.equal(query(73).state, 'partial', 'same ID must retain missing target coverage');
+        context.includeOffsets.idfoff = 26;
+        assert.equal(query(99).state, 'partial', 'offset could turn 73 into 99');
+        context.includeOffsets.idfoff = null;
+        assert.equal(query(99).state, 'partial', 'unknown offset must remain uncertain');
+        context.includeOffsets.idfoff = 0;
+        context.uncertaintyReasons = ['include-transform-unresolved'];
+        assert.equal(query(99).state, 'partial', 'uncertain context must not be excluded');
+        context.uncertaintyReasons = [];
+        index.parameterContextsByFile.get(filePath).push({ ...context,
+            occurrenceId: 'shifted-child', includeOffsets: { ...context.includeOffsets, idfoff: 26 } });
+        assert.equal(query(99).state, 'partial', 'another inclusion may shift this ID into the query');
     });
     it('retains known reference matches without claiming target definition coverage', () => {
         const filePath = path.resolve('native-unavailable-definition.k');
@@ -651,7 +786,8 @@ describe('registryReferenceNetwork', () => {
     });
 
     it('ignores unrelated scoped coverage gaps and retains verified relevant matches explicitly', () => {
-        const occurrence = { ...signedPartOccurrence('/fixture/source.k'), targetKinds: ['part'] };
+        const occurrence = { ...signedPartOccurrence('/fixture/source.k'), targetKinds: ['part'],
+            referenceValue: { kind: 'numeric', id: 17, raw: '17', targetKinds: ['part'] } };
         const index = {
             registryReferenceScanComplete: false,
             registryReferenceScanReasons: ['/fixture/source.k:registry-reference-preview-byte-limit'],

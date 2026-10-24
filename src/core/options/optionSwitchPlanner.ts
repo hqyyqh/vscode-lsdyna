@@ -20,6 +20,7 @@ export type OptionRecordLayout = {
     occurrence?: { kind: 'exactly-once' | 'repeat' | 'conditional'; [key: string]: unknown };
     fields: OptionFieldLayout[];
     sharedByteEditing?: 'native-shared-bytes-v1';
+    sharedByteInputFormat?: 'i10';
     removalDisposition?: 'official-target-absent';
 };
 
@@ -221,7 +222,8 @@ export function planOptionSwitch(input: OptionSwitchPlannerInput): OptionSwitchP
         return blankPlan(input, 'blocked', 'non-standard-input');
     }
     if (input.inputFormat && input.inputFormat !== 'standard' &&
-        [...input.currentLayout.records, ...input.targetLayout.records].some(record => record.sharedByteEditing)) {
+        [...input.currentLayout.records, ...input.targetLayout.records].some(record => record.sharedByteEditing &&
+            record.sharedByteInputFormat !== input.inputFormat)) {
         return blankPlan(input, 'blocked', 'shared-byte-format-unproven');
     }
     const sourceError = validateLayout(input.currentLayout);

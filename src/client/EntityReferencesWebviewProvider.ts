@@ -192,7 +192,6 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
         if (scope === 'file' ? !this.scopeContext.filePath : !this.scopeContext.projectRoot) {
             const message = i18n.get(!this.scopeContext.filePath ? 'entityReferencesFileScopeUnavailable' : 'entityReferencesProjectScopeUnavailable');
             this.setMessage(message);
-            void vscode.window.showInformationMessage(message);
             return false;
         }
         this.input.scopePreference = scope;
@@ -532,7 +531,9 @@ export class EntityReferencesWebviewProvider implements vscode.WebviewViewProvid
             hasMoreDefinitions: allDefinitions.length > counts.definition || !!active?.page?.next?.definition,
             hasMoreReferences: allReferences.length > counts.reference || !!active?.page?.next?.reference,
             reasons: [...(active?.reasons || [])],
-            reasonDetails: [],
+            reasonDetails: [...(active?.reasons || [])]
+                .filter(reason => ['entity-query-cancelled', 'entity-query-low-memory', 'entity-query-index-budget', 'entity-query-result-budget', 'entity-query-incomplete'].includes(reason))
+                .map(reason => require('../core/references/fieldReferenceHover').uncertaintyReasonLabel(reason)),
             pinnedSessions: (this.model.pinnedKeys || [])
                 .map((key: string) => this.model.getSession(key))
                 .filter(Boolean)

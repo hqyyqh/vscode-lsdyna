@@ -25,6 +25,9 @@ export type IncludeDirectiveRule = {
 export function getIncludeDirectiveRule(keyword: string): IncludeDirectiveRule | null {
     const kw = String(keyword || '').trim().toUpperCase();
 
+    // This INCLUDE-family card defines symmetry parameters, not a filename.
+    if (kw === '*INCLUDE_COMPENSATION_SYMMETRIC_LINES') return null;
+
     if (kw === '*INCLUDE') {
         return { repeatable: true, filenameCard: 1 };
     }

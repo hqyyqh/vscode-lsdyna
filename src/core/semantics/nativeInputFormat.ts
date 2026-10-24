@@ -3,7 +3,7 @@ import { keywordInputFormat, stripKeywordInputFormatMarker, type KeywordInputFor
 
 const rules = require(keywordDataPath("native-readers/lspp-native-input-format.json"));
 const constrained = require(keywordDataPath("native-readers/lspp-constrained-input-format.json"));
-const sourceSha256 = "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168";
+const sourceSha256 = "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5";
 
 function boundReader(rule: any, keywordText: string): any {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();

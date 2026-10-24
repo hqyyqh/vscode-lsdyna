@@ -540,6 +540,9 @@ async function main() {
     const extensionsDir = path.join(root, 'extensions');
     fs.mkdirSync(userDataDir);
     fs.mkdirSync(extensionsDir);
+    // Built-in chat onboarding can steal focus between an edit and Undo.
+    fs.mkdirSync(path.join(userDataDir, 'User'));
+    fs.writeFileSync(path.join(userDataDir, 'User/settings.json'), JSON.stringify({ 'chat.disableAIFeatures': true }));
     const devToolsPort = await reserveLoopbackPort();
     let passed = false;
     let retainRuntime = false;

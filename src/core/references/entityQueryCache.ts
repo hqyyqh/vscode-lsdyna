@@ -74,9 +74,9 @@ export class EntityQueryCache {
             if (!released) { this.reservedBytes -= bytes; released = true; }
         } };
     }
-    reserveResult() {
+    reserveResult(maximum = Math.floor(this.maxBytes / 4)) {
         if (this.maxBytes) {
-            const wanted = Math.floor(this.maxBytes / 4);
+            const wanted = Math.min(maximum, this.maxBytes);
             while (this.maxBytes - this.bytes - this.reservedBytes < wanted && this.entries.size) {
                 const key = this.entries.keys().next().value;
                 this.bytes -= this.entries.get(key).bytes; this.entries.delete(key);

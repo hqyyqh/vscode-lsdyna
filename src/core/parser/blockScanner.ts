@@ -66,6 +66,7 @@ function createLineReaderCollector(options: BlockScannerOptions = {}) {
                 startLine: lineIndex,
                 endLine: lineIndex,
             };
+            if (classification.indent > 0) currentBlock.keywordStartChar = classification.indent;
             const opaqueDirective = classifyOpaqueCommentDirective(line);
             if (opaqueDirective) {
                 currentBlock.opaqueKind = opaqueDirective.kind;
@@ -183,6 +184,7 @@ async function collectBlocksFromFile(filePath, options: BlockScannerOptions = {}
             startLine: block.startLine,
             endLine: block.endLine,
         };
+        if (block.keywordStartChar > 0) result.keywordStartChar = block.keywordStartChar;
         if (typeof options.createBlockSummaryAccumulator === 'function') {
             result.dataLineCount = block.dataLineCount || 0;
             if (block.displayIdentity) result.displayIdentity = block.displayIdentity;

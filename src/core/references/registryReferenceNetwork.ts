@@ -1,7 +1,8 @@
 'use strict';
 
 const path = require('node:path');
-const { analyzeReference, resolveReferenceDefinitions } = require('./projectReferenceIndex');
+const { analyzeReference, resolveReferenceDefinitions, parameterContextsForDocument } = require('./projectReferenceIndex');
+const { INCLUDE_OFFSET_KEYS } = require('./nativeIncludeOffsets');
 const { entityIdentityEquals, isEntityIdentity } = require('./entityIdentity');
 
 const NON_BINDING_COVERAGE_REASONS = new Set([
@@ -155,16 +156,24 @@ function queryFromReferenceSource(
     };
 }
 
+function bindingExcluded(analysis, query) {
+    return analysis.semanticResolution?.state === 'non-reference' || Boolean(query &&
+        (analysis.targetKinds?.length || analysis.targetDefinitions?.length) && !namespaceMatches(query, analysis));
+}
+
 function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false, query = null } = {} as any) {
     if (query && occurrence.occurrenceId === undefined) {
         const contexts = require('./projectReferenceIndex').parameterContextsForDocument(referenceIndex, occurrence.filePath);
         if (contexts.length > 1) {
-            const bindings = contexts.map(context => occurrenceBinding(referenceIndex,
-                { ...occurrence, occurrenceId: context.occurrenceId }, { bindingOnly }));
-            const selected = bindings.find(binding => binding.ready && entityIdentityEquals(binding.analysis.id, query.id) &&
-                (!binding.analysis.targetSelection || namespaceMatches(query, binding.analysis))) ||
-                bindings.find(binding => binding.ready) || bindings[0];
-            return { ...selected, unresolvedOccurrenceReasons: [...new Set(bindings.filter(binding => !binding.ready)
+            const bindings = contexts.map(context => {
+                const binding = occurrenceBinding(referenceIndex,
+                    { ...occurrence, occurrenceId: context.occurrenceId }, { bindingOnly });
+                return { ...binding, excluded: bindingExcluded(binding.analysis, query) };
+            });
+            const selected = bindings.find(binding => !binding.excluded && binding.ready && entityIdentityEquals(binding.analysis.id, query.id) &&
+                namespaceMatches(query, binding.analysis)) ||
+                bindings.find(binding => !binding.excluded && binding.ready) || bindings.find(binding => !binding.excluded) || bindings[0];
+            return { ...selected, unresolvedOccurrenceReasons: [...new Set(bindings.filter(binding => !binding.ready && !binding.excluded)
                 .flatMap(binding => binding.blockingReasons.length ? binding.blockingReasons : ['reference-binding-indeterminate']))] };
         }
     }
@@ -195,7 +204,8 @@ function occurrenceBinding(referenceIndex, occurrence, { bindingOnly = false, qu
     const ready = isEntityIdentity(analysis.id) &&
         blockingReasons.length === 0 && analysis.transformResolution?.resolved !== false &&
         (!['parameter', 'expression'].includes(occurrence.referenceValue.kind) || analysis.parameterResolution?.resolved === true);
-    return { ready, analysis, blockingReasons };
+    return { ready, analysis, blockingReasons,
+        excluded: bindingExcluded(analysis, query) };
 }
 
 function collectRegistryReferenceMatches(
@@ -267,11 +277,19 @@ function collectRegistryReferenceMatches(
         }
         result.inspected += 1;
         if (!namespaceMatches(query, occurrence)) continue;
+        if (options.retainVerifiedMatchesOnIncomplete === true && occurrence.referenceValue?.kind === 'numeric' &&
+            !entityIdentityEquals(occurrence.referenceValue.id, query.id)) {
+            const contexts = parameterContextsForDocument(referenceIndex, occurrence.filePath, occurrence.occurrenceId);
+            // ID-scoped definition coverage cannot resolve other IDs; exclude only proven unshifted non-matches.
+            if (contexts.length && contexts.every(context => !context.uncertaintyReasons?.length &&
+                INCLUDE_OFFSET_KEYS.every(key => context.includeOffsets?.[key] === 0))) continue;
+        }
         result.namespaceCandidates += 1;
         const binding = occurrenceBinding(referenceIndex, occurrence, {
             bindingOnly: options.retainVerifiedMatchesOnIncomplete === true,
             query,
         });
+        if (binding.excluded && !binding.unresolvedOccurrenceReasons?.length) continue;
         if (binding.unresolvedOccurrenceReasons?.length) {
             result.state = 'incomplete';
             result.reasons.push(...binding.unresolvedOccurrenceReasons);
@@ -287,7 +305,7 @@ function collectRegistryReferenceMatches(
             continue;
         }
         if (!entityIdentityEquals(binding.analysis.id, query.id)) continue;
-        if (binding.analysis.targetSelection && !namespaceMatches(query, binding.analysis)) continue;
+        if (!namespaceMatches(query, binding.analysis)) continue;
         if (occurrence.targetDefinitionUnavailable) {
             result.state = 'incomplete';
             result.reasons.push('lspp-target-definition-layout-unresolved');

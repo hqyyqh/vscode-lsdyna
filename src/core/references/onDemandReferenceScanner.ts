@@ -12,7 +12,8 @@ const { DEFAULT_MAX_MATCHES, namespaceMatches, coverageGapMatches, occurrenceBin
 const { nativeRepeatedReferenceLayout, semanticOccurrence, LSPP_REFERENCE_CATALOG,
     getCatalogFieldReferenceInfo, formatTokenRange, relationNamespaces, nativeRepeatedReferenceField,
     nativeRepeatedReferenceRecord, nativeRepeatedReferenceReader,
-    scanNativeLayoutRelations, lsppReferenceRecordsForKeyword, scanRegistryReferenceOccurrencesFromFileIndex } =
+    scanNativeLayoutRelations, lsppReferenceRecordsForKeyword, lsppBlockedRecordsForKeyword,
+    nativeReferenceCoversField, semanticReferenceRecordsForKeyword, scanRegistryReferenceOccurrencesFromFileIndex } =
     require('./registryReferenceScanner');
 const { nativeOccurrenceOffset } = require('./nativeIncludeOffsets');
 const MAX_ORDINARY_BLOCK_BYTES = 256 * 1024;
@@ -40,8 +41,9 @@ function retainMatches(scratch, referenceIndex, query, result, seen, maxMatches,
         if (!collectAllIds) {
             const binding = occurrenceBinding(referenceIndex, occurrence, { bindingOnly: true, query });
             if (binding.unresolvedOccurrenceReasons?.length) failed = true;
+            if (binding.excluded) continue;
             if (!binding.ready) { failed = true; continue; }
-            if (binding.analysis.id !== query.id) continue;
+            if (binding.analysis.id !== query.id || !namespaceMatches(query, binding.analysis)) continue;
         }
         const key = [pathKey(occurrence.filePath), occurrence.lineIndex,
             occurrence.startCharacter, occurrence.endCharacter,
@@ -153,12 +155,30 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
                 startLine: sourceBlock.startLine, scope: 'namespaces',
                 targetKinds: query.targetKinds, targetDefinitions: query.targetDefinitions });
             const relations = lsppReferenceRecordsForKeyword(keyword);
+            const { lookupKeywordSchema, loadKeywordSchema, getRenderedCardsForLookup } = require('../keywordSchema');
+            const lookup = lookupKeywordSchema(keyword, loadKeywordSchema(() => 'en'));
+            const { getRegistryApprovedFieldReferenceInfo } = require('./fieldReferenceClassifier');
+            // Source records can flatten later cards. Use the same rendered
+            // field coordinates and approvals as the ordinary manual scanner.
+            const hasSupplement = lookup ? getRenderedCardsForLookup(lookup).some((card, index) =>
+                card.some(field => {
+                    const request = { keyword, cardIndex: index + 1, field };
+                    const info = !nativeReferenceCoversField(request) && getRegistryApprovedFieldReferenceInfo(request);
+                    return info && namespaceMatches(query, info);
+                })) : semanticReferenceRecordsForKeyword(keyword).some(record => namespaceMatches(query, relationNamespaces(record)));
+            let blocked = lsppBlockedRecordsForKeyword(keyword);
+            if (!blocked.length && lookup?.canonicalName) blocked = lsppBlockedRecordsForKeyword(lookup.canonicalName);
+            const needsFullScan = hasSupplement ||
+                blocked.some(record => {
+                    const namespaces = relationNamespaces({ ...record, targetKinds: record.targetKind ? [record.targetKind] : [] });
+                    return !namespaces.targetKinds.length && !namespaces.targetDefinitions.length || namespaceMatches(query, namespaces);
+                }) || !require('../semantics/semanticRuntimeV2').getSemanticRuntimeCatalogV2().status().ready;
             if (blockGaps.every(item => item.reason === 'registry-reference-scan-deferred') &&
-                !relations.some(record => namespaceMatches(query, relationNamespaces(record)))) {
+                !needsFullScan && !relations.some(record => namespaceMatches(query, relationNamespaces(record)))) {
                 for (const item of blockGaps) result.resolvedGaps.add(item);
                 continue;
             }
-            if (keyword === 'EM_ISOPOTENTIAL_CONNECT' && relations.length &&
+            if (!needsFullScan && keyword === 'EM_ISOPOTENTIAL_CONNECT' && relations.length &&
                 relations.every(record => record.nativeLayout?.kind === 'em-connection-records')) {
                 const { prefix, read } = await scanReferencePrefix(block, 3, scanBlockLines, result, cancellationToken);
                 if (read?.cancelled || cancellationToken?.isCancellationRequested) return { ...result, cancelled: true };
@@ -191,7 +211,7 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
             // saved suffix grammars likewise have a finite maximum branch length.
             const prefixBound = finiteBound ? finiteBound + Number(!!spelling.prefixCard) :
                 relations.length && relations.every(record => record.nativeLayout?.kind === 'user-material-records') ? 9 : null;
-            if (prefixBound) {
+            if (prefixBound && !needsFullScan) {
                 const { prefix, read } = await scanReferencePrefix(block, prefixBound, scanBlockLines, result, cancellationToken);
                 if (read?.cancelled || cancellationToken?.isCancellationRequested) return { ...result, cancelled: true };
                 if (!await fileUnchanged()) { result.gaps.push(gap('on-demand-file-changed')); continue; }
@@ -206,7 +226,7 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
                 else for (const item of blockGaps) result.resolvedGaps.add(item);
                 continue;
             }
-            const layout = nativeRepeatedReferenceLayout(keyword);
+            const layout = needsFullScan ? null : nativeRepeatedReferenceLayout(keyword);
             if (!layout) {
                 // ponytail: 256 KiB ordinary block replay; add verified streaming readers for larger blocks.
                 if (block.endOffset - block.startOffset > MAX_ORDINARY_BLOCK_BYTES) continue;
@@ -226,7 +246,10 @@ async function scanOnDemandReferences({ referenceIndex, fileIndexes, query,
                 }
                 const scratch = await scanRegistryReferenceOccurrencesFromFileIndex(
                     { ...fileIndex, keywordBlocks: [block] }, async () => lines.join('\n'),
-                    { cancellationToken, initialInputFormatMode: globalFormat });
+                    { cancellationToken, initialInputFormatMode: globalFormat,
+                        nativeParameters: require('../semantics/nativeParameterContext').createNativeParameterContext(referenceIndex, filePath, 0),
+                        nativeReadLayout: require('./projectReferenceIndex').nativeEmReadLayoutAtLocation(
+                            referenceIndex, filePath, sourceBlock.startLine, contexts[0].occurrenceId) });
                 if (scratch.cancelled || cancellationToken?.isCancellationRequested) return { ...result, cancelled: true };
                 if (!await fileUnchanged()) { result.gaps.push(gap('on-demand-file-changed')); continue; }
                 const failed = retainMatches(scratch, referenceIndex, query, result, seen, maxMatches, collectAllIds, acceptOccurrence, retainOccurrences);

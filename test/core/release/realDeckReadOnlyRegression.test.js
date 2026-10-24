@@ -100,8 +100,8 @@ describe('release regression: real DYNAmore deck remains read-only', function ()
 
         const includeContext = referenceIndex.parameterContextsByFile
             .get(path.join(FIXTURE_ROOT, 'includes.k'))[0];
-        assert.equal(includeContext.initialBindings.get('TEND').rawValue, '5.0');
-        assert.equal(includeContext.initialBindings.get('BLTFORCE').rawValue, '28.8');
+        assert.equal(includeContext.initialBindings.get('tEnd').rawValue, '5.0');
+        assert.equal(includeContext.initialBindings.get('bltForce').rawValue, '28.8');
 
         const knownMaterial = analyzeReference(
             referenceIndex,

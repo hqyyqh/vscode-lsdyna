@@ -36,14 +36,21 @@ export async function followEntityQuery(request: (params: any, token?: any) => P
             // The producer can finish between the two reads. Never combine a new final count
             // with an older empty definition page and accidentally report no target.
             if (definitions.state !== references.state ||
+                definitions.result.page.epoch !== references.result.page.epoch ||
                 definitions.result.page.counts.definition !== references.result.page.counts.definition) continue;
             const firstReferences = references.result.locations;
             const next = { ...definitions.result.page.next, ...references.result.page.next };
-            const response = { ...references, result: { ...references.result,
+            const diagnostics = query.diagnostics === true
+                ? await request({ action: 'query-diagnostics', ...handle }, token) : undefined;
+            if (!isCurrent()) release(true);
+            if (detached) return { status: 'stale' };
+            throwIfCancellationRequested(token);
+            if (diagnostics?.epoch !== undefined && diagnostics.epoch !== references.result.page.epoch) continue;
+            const response = { ...references, ...(diagnostics ? { diagnostics } : {}), result: { ...references.result,
                 locations: [...firstDefinitions, ...firstReferences], release, loadPage,
                 revision: handle.revision, page: { ...references.result.page, next } } };
-            const signature = JSON.stringify([response.state, response.result.page.counts,
-                response.result.locations, response.result.reasons]);
+            const signature = JSON.stringify([response.state, response.result.page.epoch, response.result.page.counts,
+                response.result.locations, response.result.reasons, response.diagnostics]);
             if (signature !== previous) { previous = signature; onProgress?.(response); }
             if (response.state !== 'scanning') { retained = true; return response; }
             await new Promise(resolve => setTimeout(resolve, 200));

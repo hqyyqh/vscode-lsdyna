@@ -10,6 +10,36 @@ const { entityFileSignature } = require('../../out/core/cache/entityFileRevision
 const { INDEX_PROTOCOL_VERSION, INDEX_MESSAGE_BYTES, indexJsonBytes, boundedIndexPage } = require('../../out/shared/indexPages');
 
 describe('bounded project sessions', () => {
+    it('reports a source change between structure completion and query handoff as retryable', async () => {
+        const root = path.resolve('handoff.k');
+        const sessions = new ProjectSessions(async () => ({ rootFile: root, fileIndexes: new Map(), missingFiles: [] }),
+            undefined, async () => false);
+        try {
+            await assert.rejects(sessions.loadStructure(root, { reconcileChanges: true }), { name: 'ScanChangedError' });
+        } finally { await sessions.clear(); }
+    });
+    it('cancels polling-token structure waiters without cancelling a remaining subscriber', async () => {
+        const root = path.resolve('cancel-reconciliation.k');
+        let finish, buildToken;
+        const gate = new Promise(resolve => { finish = resolve; });
+        const sessions = new ProjectSessions(async (_, options) => {
+            buildToken = options.cancellationToken;
+            await gate;
+            return { rootFile: root, fileIndexes: new Map(), missingFiles: [] };
+        });
+        const firstToken = { isCancellationRequested: false }, secondToken = { isCancellationRequested: false };
+        const first = sessions.loadStructure(root, { reconcileChanges: true }, firstToken);
+        const second = sessions.loadStructure(root, { reconcileChanges: true }, secondToken);
+        try {
+            await tick(); sessions.invalidate(root);
+            firstToken.isCancellationRequested = true;
+            await assert.rejects(first, { name: 'CancellationError' });
+            assert.equal(buildToken.isCancellationRequested, false);
+            secondToken.isCancellationRequested = true;
+            await assert.rejects(second, { name: 'CancellationError' });
+            assert.equal(buildToken.isCancellationRequested, true);
+        } finally { finish(); await sessions.clear(); }
+    });
     it('reopens one invalidated subscription, clears old projection rows and releases every lease', async () => {
         const { followProjectStructure } = require('../../out/client/services/projectSessionClient');
         for (const continuouslyChanging of [false,true]) {
@@ -360,6 +390,23 @@ describe('bounded project sessions', () => {
         await assert.rejects(indexer.buildProjectIndex(root, { structureOnly: true,
             onStructureRestart: () => { restarts++; } }), error => error.name === 'ScanChangedError');
         assert.equal(scans, 2); assert.equal(restarts, 1);
+    });
+
+    it('reconciles repeated changes for an entity scan and reuses unchanged physical files', async () => {
+        const directory = temporary(path.join(os.tmpdir(), 'dynasense-reconcile-source-'));
+        const root = path.join(directory, 'main.k'), child = path.join(directory, 'child.k');
+        fs.writeFileSync(root, '*INCLUDE\nchild.k\n'); fs.writeFileSync(child, '*NODE\n1,0,0,0\n');
+        const scans = new Map();
+        const indexer = createProjectIndexer({ getFileSignature: entityFileSignature, loadFileStructure: async (file, options) => {
+            scans.set(file, (scans.get(file) || 0) + 1);
+            const result = await require('../../out/core/scanner/fileIndexBuilder').buildFileStructure(file, options);
+            if (file === child && scans.get(file) <= 2) fs.appendFileSync(file, '$ changed\n');
+            return result;
+        } });
+        const snapshot = await indexer.buildProjectIndex(root, { structureOnly: true, reconcileChanges: true });
+        assert.equal(snapshot.fileIndexes.size, 2);
+        assert.equal(scans.get(root), 1, 'unchanged main deck must not be scanned again');
+        assert.equal(scans.get(child), 3);
     });
 
     it('rejects wrong protocol versions and malformed cursors', async () => {

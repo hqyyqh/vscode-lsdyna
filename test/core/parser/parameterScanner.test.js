@@ -9,7 +9,7 @@ function scan(text) {
 }
 
 function firstDefinition(index, name) {
-    const definitions = index.definitions.get(name.toUpperCase()) || [];
+    const definitions = index.definitions.get(name) || [];
     assert.ok(definitions.length > 0, `missing definition ${name}`);
     return definitions[0];
 }
@@ -23,23 +23,35 @@ function permutations(values) {
 }
 
 describe('parameterScanner', () => {
+    it('preserves case-sensitive names in every supported parameter record format', () => {
+        for (const width of [10, 20]) {
+            const definitions = ['foo', 'FOO', 'Foo'].map((name, i) =>
+                ('R' + name).padEnd(width) + String(i + 1).padStart(width));
+            const index = scan(['*KEYWORD' + (width === 20 ? ' LONG=Y' : ''),
+                '*PARAMETER', ...definitions, '*PARAMETER_EXPRESSION',
+                'Rsum,foo+FOO+Foo', '*NODE', '1,&foo,-&FOO,&Foo'].join('\n'));
+            assert.deepEqual([...index.definitions.keys()], ['foo', 'FOO', 'Foo', 'sum']);
+            assert.deepEqual(index.references.map(ref => ref.name), ['foo', 'FOO', 'Foo', 'foo', 'FOO', 'Foo']);
+            assert.equal(index.definitions.has('fOO'), false);
+        }
+    });
     it('keeps function commas inside fixed and comma-format expressions, including continuations', () => {
         for (const width of [10, 20]) {
             const index = scan(['*KEYWORD' + (width === 20 ? ' LONG=Y' : ''),
                 '*PARAMETER_EXPRESSION', 'Rresult'.padEnd(width) + 'min(1,max(2,3))',
                 ' '.repeat(width) + '+sign(4,-1)', 'Rother,min(5,6)',
                 'Rpadded'.padEnd(width) + ',min(7,8)'].join('\n'));
-            assert.equal(firstDefinition(index, 'RESULT').value, 'min(1,max(2,3))\n+sign(4,-1)');
-            assert.equal(firstDefinition(index, 'OTHER').value, 'min(5,6)');
-            assert.equal(firstDefinition(index, 'PADDED').value, 'min(7,8)');
+            assert.equal(firstDefinition(index, 'result').value, 'min(1,max(2,3))\n+sign(4,-1)');
+            assert.equal(firstDefinition(index, 'other').value, 'min(5,6)');
+            assert.equal(firstDefinition(index, 'padded').value, 'min(7,8)');
         }
     });
 
     it('does not treat character expression text as bare or inline numeric references', () => {
         const index = scan(['*PARAMETER', 'Rbase,2', '*PARAMETER_EXPRESSION',
             'Clabel,base', '          base', 'Cmarkup,<base>,', 'Rnumber,base+1'].join('\n'));
-        assert.equal(firstDefinition(index, 'LABEL').value, 'base\nbase');
-        assert.deepEqual(index.references.map(ref => [ref.name, ref.lineIndex]), [['BASE', 6]]);
+        assert.equal(firstDefinition(index, 'label').value, 'base\nbase');
+        assert.deepEqual(index.references.map(ref => [ref.name, ref.lineIndex]), [['base', 6]]);
     });
 
     it('suppresses definitions and references inside COMMENT ranges', () => {
@@ -68,10 +80,10 @@ describe('parameterScanner', () => {
             'R  dtPlot  tEnd/100.0\n'
         );
 
-        assert.equal(firstDefinition(index, 'TEND').value, '5.0');
-        assert.equal(firstDefinition(index, 'DTPLOT').value, 'tEnd/100.0');
-        assert.equal(index.references.filter(ref => ref.name === 'TEND').length, 1);
-        assert.equal(index.references.find(ref => ref.name === 'TEND').syntax, 'bare');
+        assert.equal(firstDefinition(index, 'tEnd').value, '5.0');
+        assert.equal(firstDefinition(index, 'dtPlot').value, 'tEnd/100.0');
+        assert.equal(index.references.filter(ref => ref.name === 'tEnd').length, 1);
+        assert.equal(index.references.find(ref => ref.name === 'tEnd').syntax, 'bare');
     });
 
     it('accepts 1, 7, 8, and 9 character names and rejects a 10 character name', () => {
@@ -162,8 +174,8 @@ describe('parameterScanner', () => {
 
         assert.equal(firstDefinition(index, 'FIXED').format, 'fixed');
         assert.equal(firstDefinition(index, 'COMMA').format, 'comma');
-        assert.equal(firstDefinition(index, 'LABEL').value, 'steel material name');
-        assert.equal(firstDefinition(index, 'LABEL').format, 'whitespace');
+        assert.equal(firstDefinition(index, 'label').value, 'steel material name');
+        assert.equal(firstDefinition(index, 'label').format, 'whitespace');
     });
 
     it('supports per-keyword and global long physical layouts', () => {
@@ -289,7 +301,7 @@ describe('parameterScanner', () => {
             'R duplicate 3.0\n'
         );
 
-        assert.deepEqual([...index.definitions.keys()], ['SHOWN']);
+        assert.deepEqual([...index.definitions.keys()], ['shown']);
         assert.equal(index.references.length, 0);
     });
 });

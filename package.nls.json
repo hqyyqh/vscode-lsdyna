@@ -1,4 +1,12 @@
 {
+    "commands.cancelModuleScan.title": "Cancel Scan",
+    "commands.compareFiles.title": "Compare with Another File…",
+    "menus.keywordFolding": "Keyword Folding",
+    "menus.compare": "Compare",
+    "commands.foldKeywordAtCursor.title": "Fold Keyword Block at Cursor",
+    "commands.foldKeywordBlock.title": "Fold This Keyword Block",
+    "commands.foldAllKeywordBlocks.title": "Fold All Keyword Blocks",
+    "commands.unfoldAllKeywordBlocks.title": "Unfold All Keyword Blocks",
     "commands.openLargeFileInTextEditor.title": "Open in Text Editor",
     "commands.copyLargeFileField.title": "Copy Field Value",
     "commands.copyLargeFileLine.title": "Copy Current Line",
@@ -115,7 +123,7 @@
     "commands.entityReferences.openSide.title": "Open Entity Reference to the Side",
     "commands.entityReferences.openCurrent.title": "Open Entity Reference in Current Editor",
     "commands.clearProjectIndexCaches.title": "Clear Project Index Caches",
-    "config.cache.entityIndexMemoryMaxMiB.description": "Managed memory budget for model indexing in MiB, shared by query caches, unsaved document indexes, result pages, index build and restore batches and SQLite. This is not a limit on total VS Code process memory. Takes effect after the extension restarts.",
+    "config.cache.entityIndexMemoryMaxMiB.description": "Memory budget for model indexing. The default auto value uses the smallest of 10% of available memory, 5% of total physical memory and 2048 MiB at startup. A number (128–4096 MiB) overrides automatic budgeting. If the automatic budget is below 128 MiB, new entity reference queries cannot start. The budget stays fixed until the window reloads; it does not limit total VS Code process memory.",
     "config.cache.entityIndexDiskMaxMiB.description": "Shared disk budget for model indexes in MiB, including databases, journals and temporary build files. If the budget is exhausted, queries fall back to scanning. Takes effect after the extension restarts.",
     "config.cache.memoryMaxMiB.description": "Maximum memory cache for background project snapshots in MiB, up to 64 MiB. The UI keeps a separate project-summary cache of up to 32 MiB. Lower this value on memory-constrained workstations. Takes effect after the extension restarts.",
     "config.cache.projectSnapshotDiskMaxMiB.description": "Legacy setting.",
@@ -153,5 +161,8 @@
     "commands.keywordIndexCycleOrder.title": "Current layout: source order. Switch to keyword A–Z.",
     "commands.keywordIndexCycleAlphabetical.title": "Current layout: keyword A–Z. Switch to keyword category.",
     "colors.columnGuide.description": "LS-DYNA column guide color.",
-    "colors.columnGuide80.description": "LS-DYNA column 80 reference guide color."
+    "colors.columnGuide80.description": "LS-DYNA column 80 reference guide color.",
+    "commands.entityDiagnostics.start.title": "Start entity diagnostics (temporary)",
+    "commands.entityDiagnostics.stop.title": "Stop entity diagnostics",
+    "commands.entityDiagnostics.openReport.title": "Open entity diagnostic report"
 }

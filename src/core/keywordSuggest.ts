@@ -7,7 +7,8 @@
  * @module core/keywordSuggest
  */
 
-import { loadKeywordSchema, lookupKeywordSchema } from './keywordSchema';
+import { loadKeywordSchema } from './keywordSchema';
+import { isBuiltInKeywordName } from './keywordRecognition';
 
 export type SuggestTier = 'high' | 'medium' | 'none';
 
@@ -255,7 +256,7 @@ export function suggestSimilarKeywords(rawName: string, options: SuggestOptions 
         return { tier: 'none', items: [] };
     }
 
-    if (!options.candidates && lookupKeywordSchema(rawName, loadKeywordSchema(() => 'en'))) return { tier: 'none', items: [] };
+    if (!options.candidates && isBuiltInKeywordName(rawName)) return { tier: 'none', items: [] };
     const candidates = resolveCandidates(options);
     const candidateSet = new Set(candidates);
 
@@ -307,6 +308,5 @@ export function suggestSimilarKeywords(rawName: string, options: SuggestOptions 
 export function isKnownKeywordName(rawName: string, options: SuggestOptions = {}): boolean {
     const name = normalizeName(rawName);
     if (!name) return false;
-    const candidates = resolveCandidates(options);
-    return candidates.includes(name) || (!options.candidates && !!lookupKeywordSchema(rawName, loadKeywordSchema(() => 'en')));
+    return options.candidates ? resolveCandidates(options).includes(name) : isBuiltInKeywordName(rawName);
 }

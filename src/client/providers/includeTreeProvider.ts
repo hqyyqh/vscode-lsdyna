@@ -511,8 +511,8 @@ class LsdynaIncludeTreeProvider {
         let activeCancellationToken: any = null;
         let completedSnapshot = null;
         try {
-            await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Window, title: i18n.get('scanningIncludes'), cancellable: true },
+            await require('../services/viewScanProgress').withViewScanProgress(
+                'lsdynaIncludeTree', i18n.get('scanningIncludes'),
                 async (progress, cancellationToken) => {
                     const scanToken = {
                         get isCancellationRequested() { return !isCurrent() || cancellationToken?.isCancellationRequested; },

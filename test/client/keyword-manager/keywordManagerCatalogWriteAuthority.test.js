@@ -52,7 +52,7 @@ describe('manager catalog write authority', () => {
         const calls = { outer: 0, nested: 0 };
         let phase = 'outer', enter = true, nested;
         catalog.resolveFormForKeyword = function (keyword) {
-            calls[phase]++;
+            if (keyword === '*MAT_ELASTIC') calls[phase]++;
             if (enter) {
                 enter = false; phase = 'nested';
                 try { nested = api.buildKeywordOptionViewModel(nestedEditor, 0, { deferInstances: true }); }
@@ -113,7 +113,7 @@ describe('manager catalog write authority', () => {
         const originalOwn = catalog.resolveFormForKeyword;
         const owners = new Map();
         catalog.resolveFormForKeyword = prototype.resolveFormForKeyword = function (keyword) {
-            owners.set(this, (owners.get(this) || 0) + 1);
+            if (keyword === '*MAT_ELASTIC') owners.set(this, (owners.get(this) || 0) + 1);
             const form = original.call(this, keyword);
             process.env.DYNASENSE_ALLOW_UNAUDITED_CATALOG = '1';
             return form;

@@ -143,6 +143,9 @@ describe('Demanded reference namespaces', () => {
             DATABASE_HISTORY_NODE: '1,2,3,4',
             CONSTRAINED_NODAL_RIGID_BODY: '1,7,42,99,0,0,0',
             BOUNDARY_SPC_NODE: '99,7,1,1,1,1,1,1', LOAD_NODE_POINT: '99,1,123,1,7,0,0,0',
+            INITIAL_STRESS_SHELL_SET: '42,1,1,0,0,0\n0,0,0,0,0,0,0,0',
+            DATABASE_HISTORY_NODE_LOCAL: '99,7,0,0', DATABASE_HISTORY_NODE_SET: '42,0,0,0,0,0,0,0',
+            DATABASE_HISTORY_NODE_SET_LOCAL: '42,7,0,0',
         };
         const blocks = Object.keys(texts).map((name, index) => ({ keyword: '*' + name,
             rawKeyword: '*' + name, filePath: '/fixture/mixed.k', startLine: index * 4, endLine: index * 4 + 3 }));
@@ -151,8 +154,18 @@ describe('Demanded reference namespaces', () => {
             const name = block.keyword.slice(1); reads.push(name); return block.keyword + '\n' + texts[name];
         }, { excludeMeshEntities: true });
         assert.deepEqual(reads, ['SET_SEGMENT', 'INITIAL_STRESS_SHELL', 'DATABASE_HISTORY_NODE',
-            'CONSTRAINED_NODAL_RIGID_BODY', 'BOUNDARY_SPC_NODE', 'LOAD_NODE_POINT']);
-        // The combined catalog retains set/coordinate branches in these families.
+            'CONSTRAINED_NODAL_RIGID_BODY', 'BOUNDARY_SPC_NODE', 'LOAD_NODE_POINT',
+            'INITIAL_STRESS_SHELL_SET', 'DATABASE_HISTORY_NODE_LOCAL', 'DATABASE_HISTORY_NODE_SET', 'DATABASE_HISTORY_NODE_SET_LOCAL']);
+        // Retain conservative family coverage, and verify the exact SET/LOCAL
+        // spellings still expose their non-mesh fields.
+        for (const [keyword, fieldName, targetKind] of [
+            ['INITIAL_STRESS_SHELL_SET', 'SID', 'shell-set'],
+            ['DATABASE_HISTORY_NODE_LOCAL', 'CID', 'coordinate-system'],
+            ['DATABASE_HISTORY_NODE_SET', 'ID1', 'node-set'],
+            ['DATABASE_HISTORY_NODE_SET_LOCAL', 'ID', 'node-set'],
+            ['DATABASE_HISTORY_NODE_SET_LOCAL', 'CID', 'coordinate-system'],
+        ]) assert.ok(result.referenceOccurrences.some(record => record.keyword === '*' + keyword &&
+            record.fieldName === fieldName && record.targetKinds.includes(targetKind)), `${keyword}.${fieldName}:${targetKind}`);
         const pure = blocks.slice(0, 5);
         let nativeReads = 0;
         await scanRegistryReferenceOccurrencesFromFileIndex({ keywordBlocks: pure }, async () => { nativeReads++; return ''; },
@@ -599,6 +612,28 @@ describe('registryReferenceScanner', () => {
         assert.equal(result.referenceOccurrences.some(item => item.fieldName === 'ADPOPT'), false);
         assert.equal(result.valueDomainOccurrences.find(item => item.fieldName === 'ADPOPT')
             .semantic.role, 'unparsed-input');
+    });
+
+    it('keeps malformed symbolic and overflowing numeric tokens uncertain in numeric and label-capable reference fields', async () => {
+        const { coverageGapMatches } = require('../../../out/core/references/registryReferenceNetwork');
+        for (const raw of ['&TOOLONGNAME', '-&TOOLONGNAME', '<MISSING', '1e309', '-1e309']) {
+            for (const referenceCatalog of [LEGACY_REFERENCE_CATALOG, undefined]) {
+                const block = { filePath: '/fixture/main.k', keyword: '*LOAD_BODY_Z', rawKeyword: '*LOAD_BODY_Z',
+                    startLine: 0, endLine: 1 };
+                const result = await scanBlocks([block], new Map([[0, `*LOAD_BODY_Z\n${raw},9806,0,0,0,0,0`]]),
+                    undefined, { referenceCatalog });
+                assert.equal(result.complete, false, raw);
+                assert.deepEqual(result.referenceOccurrences, []);
+                assert.ok(result.referenceCoverage.gaps.some(gap => gap.reason === 'reference-value-unresolved' &&
+                    coverageGapMatches({ targetKinds: ['curve'] }, gap)));
+                assert.ok(!result.referenceCoverage.gaps.some(gap => coverageGapMatches({ targetKinds: ['node'] }, gap)));
+            }
+            const block = { filePath: '/fixture/main.k', keyword: '*PART', rawKeyword: '*PART', startLine: 0, endLine: 2 };
+            const label = await scanBlocks([block], new Map([[0, `*PART\nLabel fixture\n1,0,${raw},0,0,0,0,0`]]),
+                undefined, { referenceCatalog: undefined });
+            assert.equal(label.complete, false, raw);
+            assert.ok(!label.referenceOccurrences.some(item => item.fieldName === 'MID'), raw);
+        }
     });
 
     it('retains reference expressions for context-aware binding after physical scanning', async () => {

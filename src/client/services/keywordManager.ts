@@ -10,7 +10,7 @@ const i18n = require('../../core/i18n');
 const LARGE_DOCUMENT_LINE_THRESHOLD = 100000;
 const { generateCommentLine } = require('../../core/completion/fieldComment');
 const {
-    keywordInputFormat,
+    keywordInputFormat, stripKeywordInputFormatMarker,
 } = require('../../core/parser/inputFormat');
 const { classifyOpaqueCommentDirective } = require('../../core/parser/opaqueCommentRange');
 const {
@@ -296,7 +296,7 @@ export function createKeywordManagerServices(host: {
         };
     }
 
-    const { nativeSpellingBinding, nativeFileCatalogKeyword, nativeFileLayoutKind: nativeReaderLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding } = require("../../core/semantics/catalogNativeFileLayout");
+    const { nativeSpellingBinding, nativeFilePrefixBinding, isVerifiedNativeSpelling, nativeFileCatalogKeyword, nativeFileLayoutKind: nativeReaderLayoutKind, nativeFileLayoutCards, readNativeFileField, selectVerifiedSourceRecords, nativeBatchFixedBinding } = require("../../core/semantics/catalogNativeFileLayout");
     const { contactThermalBinding, contactThermalSource, contactThermalRecordDefinition, equivalentContactThermalSpelling, expandContactThermalRecords } = require('../../core/semantics/contactThermal');
 
     // Verified descriptor grammars use the existing record-selection and instance paths.
@@ -340,7 +340,13 @@ export function createKeywordManagerServices(host: {
                 return value;
             });
         // Read-only identities still belong in the field view and instance directory.
-        return selection?.current ? { ...selection, writeCompatible: reading.writeCompatible(selection.current) } : selection;
+        return selection?.current ? { ...selection, nativeInputFormat: reading.readInput, writeCompatible:
+            nativeSpellingWriteCompatible(keyword, targetKeyword) &&
+            reading.writeCompatible(selection.current) } : selection;
+    }
+
+    function nativeSpellingWriteCompatible(keyword, targetKeyword) {
+        return !isVerifiedNativeSpelling(keyword) || !targetKeyword || targetKeyword === keyword;
     }
 
     function keywordManagerNativeInstanceCounts(grammar, count) {
@@ -417,7 +423,7 @@ export function createKeywordManagerServices(host: {
     }
 
     function keywordManagerTypeKey(keyword) {
-        const normalized = String(keyword || '').trim().replace(/^\*/, '').toUpperCase();
+        const normalized = stripKeywordInputFormatMarker(String(keyword || '').trim().replace(/^\*/, '').toUpperCase());
         return keywordSchema.lookupKeywordSchema(normalized)?.canonicalName || normalized;
     }
 
@@ -508,7 +514,7 @@ export function createKeywordManagerServices(host: {
         let parameterDependent = false;
         const instances = [];
         for (const block of blocks) {
-            const keyword = `*${String(block.keyword || '').replace(/^\*/, '')}`.toUpperCase();
+            const keyword = `*${stripKeywordInputFormatMarker(String(block.keyword || '').replace(/^\*/, ''))}`.toUpperCase();
             yield keyword;
             const category = resolveKeywordCategory(keyword).primaryCategory;
             const startLine = Number(block.startLine);
@@ -637,8 +643,8 @@ export function createKeywordManagerServices(host: {
             source.conservationSatisfied === true && !source.isUnauditedDiagnostic;
     }
 
-    function keywordManagerCatalogRules(keyword, referenceKey) {
-        const form = keywordManagerCatalogCatalogForm(keyword);
+    function keywordManagerCatalogRules(keyword, referenceKey, exactFileForm = false) {
+        const form = exactFileForm ? getCatalogInputFormCatalogV4().formForKeyword(keyword, false) : keywordManagerCatalogCatalogForm(keyword);
         const ruleIds = Array.isArray(form?.reference?.[referenceKey]) ? form.reference[referenceKey] : [];
         return ruleIds.map(ruleId => ({
             ...form.rules[ruleId],
@@ -664,7 +670,7 @@ export function createKeywordManagerServices(host: {
 
     function keywordManagerCatalogNativeFormRules(keyword) {
         const batch = nativeBatchFixedBinding(keyword);
-        return keywordManagerCatalogRules(nativeFileCatalogKeyword(keyword), 'formRuleIds').filter(rule => !batch || rule.cardSetId === batch.cardSetId).map(rule => {
+        return keywordManagerCatalogRules(nativeFileCatalogKeyword(keyword), 'formRuleIds', isVerifiedNativeSpelling(keyword) && !contactThermalBinding(keyword)?.value).filter(rule => !batch || rule.cardSetId === batch.cardSetId).map(rule => {
             const cards = nativeFileLayoutCards(rule, keyword);
             return cards === rule.cards ? rule : { ...rule, cards, nativeForm: rule };
         });
@@ -1222,6 +1228,7 @@ export function createKeywordManagerServices(host: {
         Object.assign(result, {
             currentLayout,
             targetLayout,
+            inputFormat,
             plan,
             trailingCommentInsertIndex: targetState.records.length,
             inputFormProjection: {
@@ -1335,12 +1342,19 @@ export function createKeywordManagerServices(host: {
                     lsppCardIndex: 0 });
                 }
             }
-            const nativeSpelling = nativeSpellingBinding(spelling);
+            const nativeSpelling = nativeFilePrefixBinding(spelling);
             if (nativeSpelling) {
                 records.length = 0;
-                if (nativeSpelling.prefixCard) records.push({ ...legacyOptionRecord(nativeSpelling.prefixCard.fields.map(field => ({
+                if (nativeSpelling.prefixCard) {
+                    const record = { ...legacyOptionRecord(nativeSpelling.prefixCard.fields.map(field => ({
                     n: field.name, t: field.type, p: field.position, w: field.width,
-                })), `lspp-input:${keyword}:prefix:0`, true), lsppCardIndex: 0 });
+                    })), `lspp-input:${keyword}:prefix:0`, true), lsppCardIndex: 0 };
+                    record.fields.forEach((field, index) => {
+                        field.nativeLongWidth = nativeSpelling.prefixCard.fields[index].nativeLongWidth;
+                        field.nativeRecordFormat = nativeSpelling.prefixFormat;
+                    });
+                    records.push(record);
+                }
             }
             return records;
         };
@@ -1381,6 +1395,7 @@ export function createKeywordManagerServices(host: {
             record.lsppCardIndex = cardIndex;
             record.fields.forEach((field, index) => {
                 if (card.fields[index].nativeReadGeometry) field.nativeReadGeometry = card.fields[index].nativeReadGeometry;
+                if (isVerifiedNativeSpelling(keyword)) field.nativeLongWidth = card.fields[index].nativeLongWidth;
             });
             if (card?.sharedByteEditing?.mode === 'native-shared-bytes-v1' ||
                 keywordRecordSerializer.hasSharedByteContract(card, rule.catalogSource?.datasetSha256)) {
@@ -1569,8 +1584,25 @@ export function createKeywordManagerServices(host: {
                 const id = `lspp-input:${canonical}:${key}`;
                 const template = item.cardIndex === 0 ? prefixRecords[0] : schemaRecords.get(item.cardIndex);
                 if (!template) return null;
+                const nativeBody = isVerifiedNativeSpelling(keyword) && item.cardIndex !== 0;
+                const sourceIndex = selected.current.findIndex(record => record.key === item.key);
+                const nativeFormat = sourceRecords[sourceIndex]?.text.includes(',') ? 'comma' : selected.nativeInputFormat;
+                const standardShared = nativeBody && selected.writeCompatible && template.sharedByteEditing && nativeFormat === 'i10' &&
+                    template.fields.every(field => field.nativeReadGeometry?.i10.position === field.position && field.nativeReadGeometry.i10.width === field.width);
+                // Planner geometry follows the actual native windows; comma fields have independent slots.
+                const projected = nativeBody && selected.writeCompatible
+                    ? nativeFormat === 'comma' ? template.fields.map((field, index, fields) => ({
+                        position: fields.slice(0, index).reduce((sum, previous) => sum + previous.width, 0), width: field.width,
+                    })) : keywordRecordSerializer.formattedReadFields(template.fields, '', nativeFormat) : [];
                 return { ...template, recordMigrationId: id, lsppInstanceStart: item.instanceStart,
+                    sharedByteEditing: nativeBody && nativeFormat !== 'standard' && !standardShared ? undefined : template.sharedByteEditing,
+                    ...(standardShared ? { sharedByteInputFormat: 'i10' } : {}),
                     fields: template.fields.map((field, index) => ({ ...field,
+                        ...(projected[index] ? { position: projected[index].position, width: projected[index].width } : {}),
+                        ...(nativeBody ? {
+                            nativeRecordFormat: standardShared ? 'standard' : 'input', nativeInputFormat: selected.nativeInputFormat,
+                            ...(selected.writeCompatible && field.nativeReadGeometry ? { nativeWriteGeometry: field.nativeReadGeometry } : {}),
+                        } : {}),
                         ...(fileKind === 'mat213' && [8,12,14,16,18].includes(item.cardIndex) && index === 0
                             ? { nativeReadWidth: 10 } : {}),
                         fieldMigrationId: `${id}:field:${index}${fileKind === 'mat213' && item.cardIndex >= 8 &&
@@ -1696,6 +1728,11 @@ export function createKeywordManagerServices(host: {
         const inputFormat = keywordInputFormat(
             String(document.lineAt(keywordLine).text || ''), documentGlobalInputFormat(document),
         );
+        const conditional = nativeConditionalBinding(keyword);
+        const nativeConditionalCommaWriter = fileKind === 'conditional-sequence' &&
+            !!conditional?.reader && !conditional.displayOnly && nativeWriteCompatible;
+        const commaBody = sourceRecords.some((record, index) =>
+            currentRecords[index]?.lsppCardIndex > 0 && record.text.includes(','));
         const plan = planOptionSwitch({
             currentKeyword: keyword,
             targetKeyword: requestedKeyword,
@@ -1719,17 +1756,17 @@ export function createKeywordManagerServices(host: {
             ),
             createRecord: targetRecord => keywordRecordSerializer.blankRecord(
                 targetRecord.fields,
+                nativeConditionalCommaWriter && commaBody && targetRecord.lsppCardIndex > 0 ? 'comma' :
                 inputFormat === 'long' ? 'long' : inputFormat === 'i10' ? 'i10' : inputFormat === 'comma' ? 'comma' : inputFormat === 'free' ? 'free' : 'standard',
             ),
             maxBytes: OPTION_SWITCH_MAX_BYTES,
             analyzeComment: optionSwitchCommentAnalysis,
             generateComment: optionSwitchCommentLine,
         });
-        // Reading a comma controller correctly does not prove the conditional
-        // file-record writer. Keep this existing unsupported material path read-only.
-        // RESIDUAL_VECTOR already has verified comma-format support.
+        // Native grammars use the existing token writer and must reread the actual
+        // staged records below. GUI-only and display-only layouts keep their guard.
         const unverifiedConditionalWriter = fileKind === 'conditional-sequence'
-            ? keyword.replace(/^\*/, '') !== 'CONTROL_IMPLICIT_RESIDUAL_VECTOR' &&
+            ? !nativeConditionalCommaWriter && keyword.replace(/^\*/, '') !== 'CONTROL_IMPLICIT_RESIDUAL_VECTOR' &&
                 !nativeConditionalBinding(keyword)?.steps.some(step => step?.tagged) &&
                 keywordManagerCatalogRules(keyword, 'fieldRuleIds').some(candidate => Array.isArray(candidate.states) && Array.isArray(candidate.domains))
             : !fileKind && Array.isArray(rule.states);
@@ -1738,7 +1775,7 @@ export function createKeywordManagerServices(host: {
             plan.reason = 'conditional-comma-write-unverified';
             plan.replacementRecords = [];
         }
-        if (!nativeWriteCompatible || (nativeBatchFixedBinding(keyword)?.readWindows && (inputFormat !== 'standard' || sourceRecords.some(record => record.text.includes(',')) ||
+        if (!nativeWriteCompatible || (!isVerifiedNativeSpelling(keyword) && nativeBatchFixedBinding(keyword)?.readWindows && (inputFormat !== 'standard' || sourceRecords.some(record => record.text.includes(',')) ||
             rule.cards.some(card => card.fields.some((field, index) => index > 0 && field.position < card.fields[index - 1].position))))) {
             plan.status = 'blocked';
             plan.reason = nativeWriteCompatible ? 'native-read-window-write-unverified' : 'native-file-write-unverified';
@@ -1766,6 +1803,8 @@ export function createKeywordManagerServices(host: {
             targetPostCount: 0,
             trailingCommentInsertIndex: targetLayout.records.length,
             inputFormProjection: {
+                nativeWriteCompatible,
+                nativeConditionalCommaWriter: nativeConditionalCommaWriter && commaBody,
                 currentCardIndexes,
                 targetCardIndexes,
                 currentRecordIds: currentRecords.map(record => record.recordMigrationId),
@@ -1809,7 +1848,11 @@ export function createKeywordManagerServices(host: {
             .map(control => [String(control.controlId || ''), control]));
         const supportedFormats = ['standard', 'long', 'i10', 'comma', 'free'];
         const documentReadonly = result?.readonly === true || keywordManagerReadonlyUri(document?.uri);
-        const isReadonly = documentReadonly || readInput !== inputFormat;
+        const formatReadonly = readInput !== inputFormat &&
+            !(isVerifiedNativeSpelling(keywordSpellingFromLine(document.lineAt(keywordLine).text)) && inputFormProjection?.nativeWriteCompatible);
+        const isReadonly = documentReadonly || formatReadonly;
+        const nativeSuffixWrite = isVerifiedNativeSpelling(keywordSpellingFromLine(document.lineAt(keywordLine).text)) &&
+            inputFormProjection?.nativeWriteCompatible;
         const editableLayout = !isReadonly && supportedFormats.includes(inputFormat) &&
             (result?.plan?.status !== 'blocked' || result?.plan?.reason === 'lspp-input-form-field-draft-invalid') &&
             result?.plan?.applicationMode === 'layout-migration' &&
@@ -1822,11 +1865,12 @@ export function createKeywordManagerServices(host: {
                             w: field.width,
                             t: field.type,
                         }))) ||
-                    record.sharedByteEditing === 'native-shared-bytes-v1'
+                    record.sharedByteEditing === 'native-shared-bytes-v1' ||
+                    nativeSuffixWrite && keywordRecordSerializer.safeRecordGeometry(record.fields)
                 ));
         const readonlyReason = documentReadonly
             ? 'document-readonly'
-            : readInput !== inputFormat || !supportedFormats.includes(inputFormat)
+            : formatReadonly || !supportedFormats.includes(inputFormat)
                 ? `input-format-${inputFormat}`
                 : result?.plan?.status === 'blocked' ? result.plan.reason : 'field-geometry-unsupported';
         const physicalLines = [];
@@ -1874,7 +1918,7 @@ export function createKeywordManagerServices(host: {
                     const value = sourceRecord
                         ? keywordRecordSerializer.readRecordField(sourceRecord.text, fields, fieldIndex, sourceFormat)
                         : '';
-                    const readGeometry = field.nativeReadGeometry && sourceRecord
+                    const readGeometry = sourceRecord && (field.nativeReadGeometry || ['long', 'i10'].includes(sourceFormat))
                         ? keywordRecordSerializer.formattedReadFields(fields, sourceRecord.text, sourceFormat)[fieldIndex] : field;
                     const isSharedByte = record?.sharedByteEditing === 'native-shared-bytes-v1';
                     const overlapIndexes = isSharedByte
@@ -1905,8 +1949,8 @@ export function createKeywordManagerServices(host: {
                         (String(candidate.name || '').toUpperCase() === String(field.name || '').toUpperCase() ||
                             (String(field.name).toUpperCase() === 'UNUSED' && verifiedPlaceholder(candidate))) &&
                         String(candidate.type) === String(field.type) &&
-                        Number(candidate.position) === Number(field.position) &&
-                        Number(candidate.width) === Number(field.width));
+                        (nativeSuffixWrite || Number(candidate.position) === Number(field.position) &&
+                        Number(candidate.width) === Number(field.width)));
                     const controlState = nativeControlStates.get(
                         `card-${officialCardIndex}-field-${Number(nativeField?.fieldIndex ?? fieldIndex)}`,
                     );
@@ -2059,7 +2103,9 @@ export function createKeywordManagerServices(host: {
             message: i18n.get(messageKey),
             evidenceIds: evidence(evidenceIds),
         });
-        const hasSpellingAlternative = (model?.choices || []).some(choice =>
+        const hasSpellingAlternative = (model?.controls || []).some(control => control.kind === 'selector' && control.enabled &&
+            ((control.emptyEnabled && model.currentControlState?.[control.controlId]) ||
+                control.choices?.some(choice => choice.enabled && choice.value !== (model.currentControlState?.[control.controlId] ?? '')))) || (model?.choices || []).some(choice =>
             choice.kind === 'spelling' && choice.enabled === true &&
             String(choice.targetKeyword).toUpperCase() !== model.currentKeyword);
         const plan = model?.plan;
@@ -2136,7 +2182,7 @@ export function createKeywordManagerServices(host: {
         if (!model || typeof fieldId !== 'string') return null;
         if (['native-read-window-write-unverified', 'native-file-write-unverified'].includes(model.plan?.reason)) return null;
         const rawValue = String(value ?? '');
-        if (/[\r\n\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|,/.test(rawValue)) {
+        if (/[\r\n\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(rawValue)) {
             return null;
         }
         const flatFields = (model.managerCards || []).flatMap((c: any) => c.fields || []);
@@ -2159,6 +2205,10 @@ export function createKeywordManagerServices(host: {
         }
         if (recordIndex < 0) return null;
         const record = targetRecords[recordIndex];
+        if (rawValue.includes(',') && !(record.fields.length === 1 &&
+            (record.lsppCardIndex === 0 || record.fields[0].nativeRecordFormat === 'raw' || record.fields[0].type === 'raw-text') &&
+            ['0', 'string', 'raw-text'].includes(String(record.fields[0].type)) &&
+            !['comma', 'free'].includes(keywordRecordSerializer.detectRecordFormat(rawValue, model.inputFormat || 'standard', record.fields)))) return null;
         const isShared = record.sharedByteEditing === 'native-shared-bytes-v1';
         const fieldDrafts = { ...(model.fieldDrafts || {}) };
         const recordDrafts = { ...(model.recordDrafts || {}) };
@@ -2223,9 +2273,6 @@ export function createKeywordManagerServices(host: {
         if (!plan || !Array.isArray(plan.replacementRecords) || targetRecords.length !== plan.replacementRecords.length) {
             return null;
         }
-        if (recordEntries.length > 0) {
-            if (result.inputFormat && result.inputFormat !== 'standard') return null;
-        }
         const details = [];
         const nativeForm = result.inputFormProjection?.nativeForm;
         const nativeCards = recordEntries.length && nativeForm
@@ -2235,7 +2282,8 @@ export function createKeywordManagerServices(host: {
             const recordIndex = targetRecords.findIndex(r => r.recordMigrationId === recordId);
             if (recordIndex < 0) return null;
             const targetRecord = targetRecords[recordIndex];
-            const sourceText = result?.block?.records?.[recordIndex]?.text || plan.replacementRecords[recordIndex]?.text || '';
+            if (result.inputFormat && result.inputFormat !== 'standard' && targetRecord.sharedByteInputFormat !== result.inputFormat) return null;
+            const sourceText = result?.block?.records?.[recordIndex]?.text ?? plan.replacementRecords[recordIndex]?.text ?? '';
             
             const fields = targetRecord.fields || [];
             const recordFormat = keywordRecordSerializer.detectRecordFormat(sourceText,
@@ -2328,7 +2376,7 @@ export function createKeywordManagerServices(host: {
                 (result.block?.records?.[location.recordIndex]?.comments || []).length;
             const validationFormat = keywordRecordSerializer.detectRecordFormat(plan.replacementRecords[location.recordIndex].text,
                 result.inputFormat || 'standard', recordFields);
-            const validationField = ['comma', 'free'].includes(validationFormat) ? location.field : keywordRecordSerializer.formattedReadFields(recordFields,
+            const validationField = ['comma', 'free', 'raw'].includes(validationFormat) ? location.field : keywordRecordSerializer.formattedReadFields(recordFields,
                 plan.replacementRecords[location.recordIndex].text, validationFormat)[location.fieldIndex];
             const valueIssue = keywordManagerValueIssue({ ...location.field, width: validationField.width },
                 String(rawValue ?? ''), 'draft', result.validationDocument, sourceLine);
@@ -2338,7 +2386,9 @@ export function createKeywordManagerServices(host: {
             const targetCard = targetRecords[location.recordIndex].fields.map(field => ({
                 n: field.name, p: field.position, w: field.width, t: field.type,
             }));
-            if (!cardCellModel.isSafeCardGeometry(targetCard)) return null;
+            const forwardGeometry = cardCellModel.isSafeCardGeometry(targetCard);
+            if (!forwardGeometry && !(isVerifiedNativeSpelling(result.currentKeyword || plan.currentKeyword) &&
+                result.inputFormProjection?.nativeWriteCompatible && keywordRecordSerializer.safeRecordGeometry(recordFields))) return null;
             const replacement = plan.replacementRecords[location.recordIndex];
             const targetRecordFields = targetRecords[location.recordIndex].fields || [];
             const recordFormat = keywordRecordSerializer.detectRecordFormat(
@@ -2346,15 +2396,21 @@ export function createKeywordManagerServices(host: {
                 result?.inputFormat === 'long' ? 'long' : result?.inputFormat === 'i10' ? 'i10' : 'standard',
                 targetRecordFields,
             );
-            const before = recordFormat === 'standard' && !targetRecords[location.recordIndex].sharedByteEditing
+            const simpleFixed = recordFormat === 'standard' && !targetRecords[location.recordIndex].sharedByteEditing && forwardGeometry;
+            const before = simpleFixed
                 ? cardCellModel.readCellValue(replacement.text, targetCard, location.fieldIndex)
                 : keywordRecordSerializer.readRecordField(replacement.text, targetRecordFields, location.fieldIndex, recordFormat);
-            const writtenText = recordFormat === 'standard' && !targetRecords[location.recordIndex].sharedByteEditing
+            const writtenText = simpleFixed
                 ? cardCellModel.writeCellR1(replacement.text, targetCard, location.fieldIndex, value)
                 : keywordRecordSerializer.writeRecordField(replacement.text, targetRecordFields, location.fieldIndex, value, recordFormat);
             if (writtenText === null) return null;
+            if (isVerifiedNativeSpelling(result.currentKeyword || plan.currentKeyword) &&
+                (keywordRecordSerializer.detectRecordFormat(writtenText, result.inputFormat || 'standard', targetRecordFields) !== recordFormat ||
+                    targetRecordFields.some((_field, index) => index !== location.fieldIndex &&
+                        keywordRecordSerializer.readRecordField(writtenText, targetRecordFields, index, recordFormat) !==
+                        keywordRecordSerializer.readRecordField(replacement.text, targetRecordFields, index, recordFormat)))) return null;
             replacement.text = writtenText;
-            const after = recordFormat === 'standard' && !targetRecords[location.recordIndex].sharedByteEditing
+            const after = simpleFixed
                 ? cardCellModel.readCellValue(replacement.text, targetCard, location.fieldIndex)
                 : keywordRecordSerializer.readRecordField(replacement.text, targetRecordFields, location.fieldIndex, recordFormat);
             if (after !== value) return null;
@@ -2670,7 +2726,7 @@ export function createKeywordManagerServices(host: {
         }
     }
 
-    function buildKeywordOptionViewModelInScope(editor, requestedLine = null, staged: any = {}) {
+    function buildKeywordOptionViewModelInScope(editor, requestedLine = null, staged: any = {}, evaluateControls = true) {
         const document = editor?.document;
         if (!document || !isLsdynaFile(document)) return null;
         const line = Number.isInteger(requestedLine)
@@ -2767,6 +2823,25 @@ export function createKeywordManagerServices(host: {
             baseResult.plan.status = 'blocked';
             baseResult.plan.reason = 'lspp-input-form-field-draft-invalid';
             baseResult.plan.blockers = [baseResult.plan.reason];
+        }
+        if (baseResult.inputFormProjection?.nativeConditionalCommaWriter && baseResult.plan.status !== 'blocked') {
+            const records = baseResult.plan.replacementRecords;
+            let physical = keywordLine + 1;
+            const recordLines = records.map(record => { physical += (record.comments || []).length; return physical++; });
+            const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(
+                baseResult.inputFormProjection.nativeForm,
+                keywordLineWithTargetSpelling(document.lineAt(keywordLine).text, targetKeyword),
+                records.map(record => record.text), documentGlobalInputFormat(document), recordLines,
+                nativeParameterContextForDocument(document));
+            const reread = reading.select(false);
+            if (!reread?.current || reading.controls.reasons.size || !reading.writeCompatible(reread.current) ||
+                reread.current.length !== baseResult.targetLayout.records.length ||
+                reread.current.some((record, index) => record.cardIndex !== baseResult.targetLayout.records[index].lsppCardIndex)) {
+                baseResult.plan.status = 'blocked';
+                baseResult.plan.reason = 'native-file-write-unverified';
+                baseResult.plan.blockers = [baseResult.plan.reason];
+                baseResult.plan.replacementRecords = [];
+            }
         }
         const nativeForm = baseResult.inputFormProjection?.nativeForm || keywordManagerCatalogNativeFormRule(currentKeyword);
         const nativeSpellings = keywordManagerCatalogEquivalentSpellings(nativeForm, currentKeyword);
@@ -2965,14 +3040,42 @@ export function createKeywordManagerServices(host: {
             provisional,
         };
         model.help = keywordManagerHelpState(model);
-        if (catalogForm && !keywordManagerCatalogAllowsWrite(currentKeyword)) {
-            model.inputFormSourceError = 'The catalog source is not verified for editing.';
-        }
         model.readonly = model.readonly || !!model.inputFormSourceError;
+        if (evaluateControls) for (const control of model.controls) {
+            const available = (value: string) => {
+                if (model.readonly) return false;
+                if (value === String(currentControlState[control.controlId] ?? '')) return true;
+                const nextState = { ...resolvedTargetState, [control.controlId]: value };
+                const nextSpelling = preserveEquivalentNativeSpelling(nativeForm, currentKeyword, currentKeyword,
+                    keywordManagerCatalogSelectorSpelling(selectorRule, nextState));
+                if (!nativeSpellingWriteCompatible(currentKeyword, nextSpelling)) return false;
+                // Use the final edit plan, including source and native write guards, for every offered transition.
+                const candidate = buildKeywordOptionViewModelInScope(editor, requestedLine, {
+                    ...staged, targetKeyword: currentKeyword,
+                    draftControlState: { ...draftControlState, [control.controlId]: value },
+                }, false);
+                return candidate?.plan?.status === 'ready' && buildKeywordOptionsViewState(candidate).canApply;
+            };
+            control.emptyEnabled = available('');
+            for (const choice of control.choices) choice.enabled = available(choice.value);
+            control.enabled = !model.readonly && (control.emptyEnabled && control.value !== '' ||
+                control.choices.some(choice => choice.enabled && choice.value !== control.value));
+            control.reason = control.enabled ? undefined : i18n.get(model.readonly ? 'keywordManagerReadonly' : 'keywordManagerReasonNoAlternative');
+        }
+        // Candidate previews share this model's source snapshot; the completed model and Apply recheck authority.
+        if (evaluateControls && catalogForm && !keywordManagerCatalogAllowsWrite(currentKeyword)) {
+            model.inputFormSourceError = 'The catalog source is not verified for editing.';
+            model.readonly = true;
+        }
         if (model.readonly) {
             for (const field of model.managerCards.flatMap(card => card.fields)) {
                 field.editable = false;
                 field.reason = model.inputFormSourceError ? 'lspp-input-form-source-error' : 'document-readonly';
+            }
+            for (const control of model.controls) {
+                control.enabled = control.emptyEnabled = false;
+                control.reason = i18n.get('keywordManagerReadonly');
+                for (const choice of control.choices) choice.enabled = false;
             }
         }
         const capabilityProjection = keywordManagerCapabilityProjection(model);
@@ -3168,7 +3271,7 @@ export function createKeywordManagerServices(host: {
         if (status === 'no-options') message = i18n.get('keywordOptionsNoAlternatives');
         if (model.stale) {
             status = 'stale';
-            message = model.sourceAnchorInvalid ? '' : i18n.get('keywordManagerSourceChanged');
+            message = i18n.get(model.sourceAnchorInvalid ? 'keywordManagerSourceLocationChanged' : 'keywordManagerSourceChanged');
         } else if (dimensions.length > 0 && model.selectionState !== 'exact') {
             status = 'configuring';
             message = i18n.get('keywordOptionsChooseValid');
@@ -3319,22 +3422,22 @@ export function createKeywordManagerServices(host: {
     }
 
     function keywordLineWithTargetSpelling(originalLine, targetKeyword) {
-        const match = String(originalLine || '').match(/^(\s*)\*[A-Za-z0-9_+%\-]+(.*)$/);
-        if (!match) return String(targetKeyword || '');
-        const originalToken = classifyKeywordLine(String(originalLine || '')).rawKeyword || '';
+        const line = String(originalLine || '');
+        const { rawKeyword: originalToken, indent } = classifyKeywordLine(line);
+        if (!originalToken) return String(targetKeyword || '');
         const formatMarker = /[+%\-]$/.test(originalToken) ? originalToken.slice(-1) : '';
-        return `${match[1]}${targetKeyword}${formatMarker}${match[2] || ''}`;
+        return `${line.slice(0, indent)}${targetKeyword}${formatMarker}${line.slice(indent + originalToken.length)}`;
     }
 
     function optionSwitchReplacement(document, model, result) {
         if (result.plan.applicationMode === 'keyword-only-preserve-block') {
             const line = String(document.lineAt(model.keywordLine).text || '');
-            const match = /\*[A-Za-z0-9_]+[+%\-]?/.exec(line);
-            if (!match) throw new Error('keyword-token-unavailable');
-            const marker = /[+%\-]$/.test(match[0]) ? match[0].slice(-1) : '';
+            const { rawKeyword, indent } = classifyKeywordLine(line);
+            if (!rawKeyword) throw new Error('keyword-token-unavailable');
+            const marker = /[+%\-]$/.test(rawKeyword) ? rawKeyword.slice(-1) : '';
             return {
-                range: new vscode.Range(model.keywordLine, match.index,
-                    model.keywordLine, match.index + match[0].length),
+                range: new vscode.Range(model.keywordLine, indent,
+                    model.keywordLine, indent + rawKeyword.length),
                 text: `${result.plan.targetKeyword}${marker}`,
             };
         }

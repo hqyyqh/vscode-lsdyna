@@ -129,10 +129,11 @@ describe('lsdynaTextMatch', () => {
     });
 
     describe('builtinFilterLikelyMatches (native QuickPick paint path)', () => {
-        it('allows native path for single-token queries VS Code can highlight', () => {
+        it('allows native filtering only for contiguous matches', () => {
             assert.ok(builtinFilterLikelyMatches('con', 'CONTROL_ENERGY'));
-            assert.ok(builtinFilterLikelyMatches('conen', 'CONTROL_ENERGY'));
-            assert.ok(builtinFilterLikelyMatches('rgv', 'rogue-v3.key'));
+            assert.ok(!builtinFilterLikelyMatches('conen', 'CONTROL_ENERGY'));
+            assert.ok(!builtinFilterLikelyMatches('rgv', 'rogue-v3.key'));
+            assert.ok(!builtinFilterLikelyMatches('mat83', 'MAT_83.k'));
         });
 
         it('forces non-native path for any whitespace query (VS Code re-hides multi-word)', () => {

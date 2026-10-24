@@ -298,7 +298,7 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
     const onDemand = {};
     for (const [keyword, descriptor] of Object.entries(mergedDescriptors).sort(([a], [b]) => a.localeCompare(b))) {
         if (descriptor.targetKind === 'curve' || descriptor.targetKind === 'table') continue;
-        (ON_DEMAND_TARGET_KINDS.has(descriptor.targetKind) || ['repeat-all-data-records', 'repeat-data-record-template'].includes(descriptor.recordMode)
+        (isOnDemandDefinition(descriptor)
             ? onDemand : generic)[keyword] = descriptor;
     }
 
@@ -336,7 +336,7 @@ function buildIndex(schema, semanticRules, source = {}, lsppHandoff = null, help
 function sourceBoundDefinition(descriptor, source) {
     const address = value => require('../../out/core/semantics/descriptorIdentity').isDescriptorIdentity(value, true);
     const formats = descriptor.formatContracts || [];
-    return source?.datasetSha256 === "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168" &&
+    return source?.datasetSha256 === "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5" &&
         descriptor.source === "keyword-catalog" && descriptor.fieldType === 'integer' &&
         (descriptor.recordMode === 'exact-data-record-ordinal' || descriptor.recordMode === 'repeat-data-record-template' &&
             Number.isSafeInteger(descriptor.recordStride) && descriptor.recordStride > 0 && descriptor.dataRecordOrdinal < descriptor.recordStride) &&
@@ -350,6 +350,11 @@ function sourceBoundDefinition(descriptor, source) {
             Number.isInteger(format.width) && format.width > 0 && format.width <= 256)) &&
         formats.some(format => format.format === 'comma' && format.mode === 'comma' &&
             format.fieldIndex === descriptor.fieldIndex);
+}
+
+function isOnDemandDefinition(descriptor) {
+    return ON_DEMAND_TARGET_KINDS.has(descriptor.targetKind) ||
+        ['repeat-all-data-records', 'repeat-data-record-template'].includes(descriptor.recordMode);
 }
 
 module.exports = { readManualRuntime, buildIndex, writeBlockedRuntime };

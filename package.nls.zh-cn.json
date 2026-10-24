@@ -1,4 +1,12 @@
 {
+    "commands.cancelModuleScan.title": "取消扫描",
+    "commands.compareFiles.title": "与另一个文件对比…",
+    "menus.keywordFolding": "关键字折叠",
+    "menus.compare": "对比",
+    "commands.foldKeywordAtCursor.title": "折叠光标所在关键字块",
+    "commands.foldKeywordBlock.title": "折叠此关键字块",
+    "commands.foldAllKeywordBlocks.title": "折叠全部关键字块",
+    "commands.unfoldAllKeywordBlocks.title": "展开全部关键字块",
     "commands.openLargeFileInTextEditor.title": "在文本编辑器中打开",
     "commands.copyLargeFileField.title": "复制字段值",
     "commands.copyLargeFileLine.title": "复制当前行",
@@ -115,7 +123,7 @@
     "commands.entityReferences.openSide.title": "在侧边打开对象引用",
     "commands.entityReferences.openCurrent.title": "在当前编辑器打开对象引用",
     "commands.clearProjectIndexCaches.title": "清理项目索引缓存",
-    "config.cache.entityIndexMemoryMaxMiB.description": "模型索引的内存管理预算（MiB），由查询缓存、未保存文档索引、结果页、索引构建和恢复批次及 SQLite 共用。此值不是 VS Code 进程总内存上限。重启扩展后生效。",
+    "config.cache.entityIndexMemoryMaxMiB.description": "模型索引的内存预算。默认值 auto 在启动时取可用内存的 10%、物理内存总量的 5% 和 2048 MiB 三者中的最小值。填写数字（128–4096 MiB）可覆盖自动预算。自动预算低于 128 MiB 时，无法开始新的对象引用查询。预算在重新加载窗口前保持不变；此值不是 VS Code 进程总内存上限。",
     "config.cache.entityIndexDiskMaxMiB.description": "模型索引共用的磁盘预算（MiB），包括数据库、日志和临时构建文件。预算不足时，查询回退到扫描方式。重启扩展后生效。",
     "config.cache.memoryMaxMiB.description": "后台项目快照的内存缓存上限（MiB），最高为 64 MiB。界面另保留最多 32 MiB 的项目摘要缓存。内存不足时可调低此值。重启扩展后生效。",
     "config.cache.projectSnapshotDiskMaxMiB.description": "旧版兼容设置。",
@@ -153,5 +161,8 @@
     "commands.keywordIndexCycleOrder.title": "当前排列：源文件顺序；切换为关键字 A–Z",
     "commands.keywordIndexCycleAlphabetical.title": "当前排列：关键字 A–Z；切换为关键字分类",
     "colors.columnGuide.description": "LS-DYNA 列参考线颜色。",
-    "colors.columnGuide80.description": "LS-DYNA 第 80 列参考线颜色。"
+    "colors.columnGuide80.description": "LS-DYNA 第 80 列参考线颜色。",
+    "commands.entityDiagnostics.start.title": "开始记录对象引用诊断（临时）",
+    "commands.entityDiagnostics.stop.title": "停止记录对象引用诊断",
+    "commands.entityDiagnostics.openReport.title": "打开对象引用诊断报告"
 }

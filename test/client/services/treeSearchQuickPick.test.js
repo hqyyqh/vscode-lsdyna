@@ -291,11 +291,11 @@ describe('treeSearchQuickPick', () => {
             assert.ok(String(lastItems[0].label).includes('\u0332'));
         });
 
-        it('uses native path for rgv subsequence (leave alwaysShow false)', async () => {
+        it('keeps separator-crossing matches visible through native QuickPick filtering', async () => {
             const entries = [
                 {
-                    filePath: '/p/rogue-v3.key',
-                    label: 'rogue-v3.key',
+                    filePath: '/p/MAT_83.k',
+                    label: 'MAT_83.k',
                     description: '',
                     missing: false,
                     treeItem: {},
@@ -322,7 +322,7 @@ describe('treeSearchQuickPick', () => {
                     onDidAccept(cb) { acceptHandlers.push(cb); return { dispose() {} }; },
                     onDidHide() { return { dispose() {} }; },
                     show() {
-                        this.value = 'rgv';
+                        this.value = 'mat83';
                         for (const cb of valueHandlers) cb();
                         lastItems = this.items;
                         this.selectedItems = this.items[0] ? [this.items[0]] : [];
@@ -334,8 +334,8 @@ describe('treeSearchQuickPick', () => {
             });
 
             assert.equal(lastItems.length, 1);
-            assert.equal(lastItems[0].alwaysShow, false);
-            assert.equal(lastItems[0].label, 'rogue-v3.key');
+            assert.equal(lastItems[0].alwaysShow, true);
+            assert.equal(lastItems[0].label.replace(/\u0332/g, ''), 'MAT_83.k');
         });
     });
 

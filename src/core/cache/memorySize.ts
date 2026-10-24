@@ -1,9 +1,9 @@
 
 // Approximate retained memory, counting shared objects once. Stop work at the
 // cache budget: oversized entries are never admitted and need no exact size.
-function estimateMemorySize(value, budget = 48 * 1024 * 1024) {
-    const seen = new Set();
-    const strings = new Set();
+function estimateMemorySize(value, budget = 48 * 1024 * 1024,
+    accounting = { seen: new WeakSet<object>(), strings: new Set<string>() }) {
+    const { seen, strings } = accounting;
     const pending = [value];
     let bytes = 0;
     while (pending.length) {

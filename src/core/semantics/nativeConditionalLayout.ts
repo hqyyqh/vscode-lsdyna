@@ -45,7 +45,7 @@ export function nativeConditionalBinding(keyword: string): any {
     // scope must not reject the independently verified formats.
     const seatbelt = standardRepeatReaders.bindings[name];
     if (name === 'ELEMENT_SEATBELT' && standardRepeatReaders.sourceSha256 ===
-        "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168" &&
+        "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5" &&
         seatbelt?.kind === 'fixed-instances' && seatbelt.cardSetId === "record:1786cdc8dc093e114e364515:d23a0768da66a245c955bbc9" && seatbelt.cardCount === 1)
         return { ...seatbelt, supportedFormats: ['standard', 'comma', 'long', 'i10'] };
     
@@ -331,6 +331,12 @@ export function selectConditionalLayout(binding: any, rows: string[], title: boo
         reasons.add('record-count-mismatch'); failureKind ||= 'input-uncertain';
     }
     if (!partial && (!source.certain || !target.certain || !sourceCountMatches)) return null;
+    if (binding.optionalTail === true && source.certain && sourceCountMatches) {
+        // Preserve omitted optional records unless the draft makes them required.
+        const omitted = new Set(source.records.slice(rows.length).map(record => record.key));
+        while (target.records.length > target.minimumRecords + Number(targetTitle) &&
+            omitted.has(target.records[target.records.length - 1].key)) target.records.pop();
+    }
     // Target EOF follows the verified source grammar endpoint, even when a
     // preceding draft changes record counts. It never follows a physical offset.
     return { current: source.records.slice(0, rows.length), target: target.records,

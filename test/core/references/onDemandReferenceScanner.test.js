@@ -29,6 +29,50 @@ describe('on-demand reference scanner', function () {
         referenceIndex: value.referenceIndex, fileIndexes: value.snapshot.fileIndexes,
         query: { id: 73, targetKinds: ['node'], targetDefinitions: [] }, ...overrides });
 
+    it('replays deferred manual supplements instead of certifying them from native-only namespaces', async () => {
+        const keyword = 'BOUNDARY_PRESCRIBED_MOTION_SET_SEGMENT_ID';
+        const schema = require('../../../out/core/keywordSchema');
+        const cards = schema.getRenderedCardsForLookup(schema.lookupKeywordSchema(keyword, schema.loadKeywordSchema(() => 'en')));
+        const text = ['*KEYWORD', '*' + keyword, ...cards.map((card, row) => card.map((field, index) =>
+            row === 0 && index === 0 ? '73' : ['integer', 'real'].includes(field.t) ? '0' : '').join(',')), '*END'].join('\n');
+        const value = await fixture(text, 65536);
+        assert.ok(value.fileIndex.registryReferences.referenceOccurrences.some(item => item.fieldName === 'ID' && item.referenceValue.id === 73));
+        value.referenceIndex.registryReferenceOccurrences = [];
+        value.referenceIndex.registryReferenceCoverageGaps = [{ filePath: value.filePath, startLine: 1,
+            reason: 'registry-reference-scan-deferred', scope: 'all', targetKinds: [], targetDefinitions: [] }];
+        const result = await lookup(value, { query: { id: 73, targetKinds: ['set'], targetDefinitions: [] }, collectAllIds: true });
+        assert.deepEqual(result.occurrences.map(item => [item.fieldName, item.referenceValue.id]), [['ID', 73]]);
+        assert.equal(result.resolvedGaps.size, 1);
+    });
+
+    it('retains manual references mapped to later cards instead of matching frozen source coordinates', async () => {
+        const schema = require('../../../out/core/keywordSchema');
+        for (const [keyword, fieldName, targetKind] of [
+            ['AIRBAG_CPG', 'ADAID', 'part-set'],
+            ['CONSTRAINED_SOIL_PILE', 'LCCU', 'curve'],
+            ['CONTROL_FORMING_SCRAP_FALL', 'NEWID', 'part'],
+            ['DEFINE_SPH_INJECTION', 'NID', 'node'],
+            ['ELEMENT_SEATBELT_SLIPRING', 'FUNCID', 'function'],
+            ['AIRBAG_SALE', 'NIDI', 'node'],
+        ]) for (const cap of [65536, 1]) {
+            const cards = schema.getRenderedCardsForLookup(schema.lookupKeywordSchema(keyword, schema.loadKeywordSchema(() => 'en')));
+            const targetCard = cards.findIndex(card => card.some(field => field.n.trim() === fieldName));
+            assert.ok(targetCard >= 1, keyword);
+            const value = await fixture(['*KEYWORD', '*' + keyword, ...cards.map(card => {
+                const line = ' '.repeat(200).split('');
+                for (const field of card) line.splice(field.p, field.w,
+                    ...String(field.n.trim() === fieldName ? 73 : 0).padStart(field.w));
+                return line.join('');
+            }), '*END'].join('\n'), cap);
+            const result = await require('../../../out/core/references/onDemandReferenceScanner').queryRegistryReferences({
+                referenceIndex: value.referenceIndex, fileIndexes: value.snapshot.fileIndexes,
+                query: { id: 73, targetKinds: [targetKind], targetDefinitions: [] }, retainVerifiedMatchesOnIncomplete: true });
+            assert.ok(result.locations.some(location => location.id === 73 && location.line === targetCard + 2) &&
+                result.referenceIndex.registryReferenceOccurrences.some(occurrence => occurrence.fieldName.trim() === fieldName),
+                `${keyword}, cap=${cap}: ${JSON.stringify({ state: result.state, reasons: result.reasons, locations: result.locations })}`);
+        }
+    });
+
     it('uses exact TITLE spelling rules for no-prefix repetitions and a single keyword prefix', async () => {
         for (const format of ['standard', 'comma', 'long', 'i10']) {
             const marker = format === 'long' ? ' +' : format === 'i10' ? ' %' : '';

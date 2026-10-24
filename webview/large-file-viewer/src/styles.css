@@ -69,16 +69,13 @@ main { container-type: inline-size; display: grid; grid-template-rows: auto auto
 .truncated { color: var(--vscode-editorWarning-foreground); user-select: none; }
 
 /* Field help footer */
-.field-help { background: var(--vscode-editorWidget-background); border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border)); max-height: min(35vh, 240px); overflow: auto; padding: 7px 10px 8px; }
-.field-heading { align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
+.field-help { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.field-heading { align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; overflow-wrap: anywhere; font-size: .92em; }
 .field-heading span { color: var(--vscode-descriptionForeground); flex: 1; }
 .field-heading button { flex: 0 0 auto; min-height: 24px; padding: 1px 7px; }
-.field-help p { line-height: 1.45; margin: 5px 0; white-space: pre-wrap; }
-.field-help code { color: var(--vscode-textPreformat-foreground); }
+.field-heading code { color: var(--vscode-textPreformat-foreground); }
 .field-object { display: inline-flex; flex-wrap: wrap; gap: 4px 8px; overflow-wrap: anywhere; }
-.field-meta { color: var(--vscode-descriptionForeground); display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
-.field-help details { color: var(--vscode-descriptionForeground); margin-top: 5px; }
-.field-help summary { cursor: pointer; }
+.field-help .detailsToolbar { flex-wrap: wrap; }
 .loading { color: var(--vscode-descriptionForeground); padding: 12px; }
 .loading button { margin-inline-start: 8px; }
 

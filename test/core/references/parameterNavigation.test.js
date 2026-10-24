@@ -7,9 +7,28 @@ const root = path.resolve('main.k'), child = path.resolve('child.k'), leaf = pat
 const edge = (fromFile, filePath, line, occurrenceId) => ({ fromFile, filePath, keywordLine: line,
     lineIndex: line + 1, keyword: '*INCLUDE', occurrenceId, fileName: path.basename(filePath) });
 const query = (data, opts = {}, token, reader) => parameterNavigation(data.index, data.fileIndexes,
-    { filePath: root, line: 1, character: 2, name: 'BASE', declaration: true, references: true,
+    { filePath: root, line: 1, character: 2, name: 'base', declaration: true, references: true,
         includeDeclaration: true, ...opts }, token, reader || data.scanBlockLines);
 describe('parameter references by name and definitions by effective binding', () => {
+    it('separates case-only names across files, bare expressions and ampersand references', async () => {
+        const data = await parameterProject(root, new Map([[root,
+            '*PARAMETER\nRfoo,2\nRFOO,8\n*INCLUDE\nchild.k\n*END'], [child,
+            '*PARAMETER_EXPRESSION\nRsum,foo+FOO\n*NODE\n1,&foo,&FOO,0\n*END']]),
+        [edge(root, child, 3, 'child')]);
+        for (const [name, declarationLine, column] of [['foo', 1, 6], ['FOO', 2, 10]]) {
+            const definition = await query(data, { filePath: child, line: 1, character: column,
+                name, declaration: false, references: false });
+            assert.equal(definition.incomplete, false);
+            assert.deepEqual(definition.items.map(row => [row.filePath, row.line]), [[root, declarationLine]]);
+            const refs = await query(data, { name });
+            assert.deepEqual(refs.items.map(row => [row.filePath, row.line, row.startCharacter]),
+                [[root, declarationLine, 1], [child, 1, column - 1], [child, 3, name === 'foo' ? 2 : 7]]);
+        }
+        const missing = await query(data, { filePath: child, line: 3, character: 4,
+            name: 'Foo', declaration: false, references: false });
+        assert.equal(missing.incomplete, true);
+        assert.deepEqual(missing.items, []);
+    });
     before(async function () { this.timeout(20000); await parameterProject(root, new Map([[root, '*END']])); });
     it('finds cross-file bare and ampersand references but excludes future and literal text', async () => {
         const data = await parameterProject(root, new Map([[root,
@@ -21,7 +40,7 @@ describe('parameter references by name and definitions by effective binding', ()
         assert.deepEqual(result.items.map(x => [x.filePath, x.line]), [[root, 1], [child, 1], [child, 5]]);
         const def = await query(data, { filePath: child, line: 1, character: 6, declaration: false, references: false });
         assert.deepEqual(def.items.map(x => [x.filePath, x.line]), [[root, 1]]);
-        const future = await query(data, { filePath: child, line: 6, character: 4, name: 'FUTURE', declaration: false, references: false });
+        const future = await query(data, { filePath: child, line: 6, character: 4, name: 'future', declaration: false, references: false });
         assert.equal(future.incomplete, true); assert.deepEqual(future.items, []);
     });
     it('skips only proven empty shared blocks and retains expression continuations and exact names', async () => {
@@ -98,7 +117,7 @@ describe('parameter references by name and definitions by effective binding', ()
         const definition = await query(data, { filePath: leaf, line: 3, character: 4, declaration: false, references: false });
         assert.equal(definition.incomplete, true); assert.deepEqual(definition.items, []);
         const visible = await visibleParameters(data.index, leaf, 3, 4);
-        assert.equal(new Set(visible.scopes.map(scope => parameterBindingId(scope.get('BASE')))).size, 2);
+        assert.equal(new Set(visible.scopes.map(scope => parameterBindingId(scope.get('base')))).size, 2);
         assert.ok(visible.reasons.includes('occurrence-search-path-unavailable'));
     });
     it('deduplicates shared physical locations and preserves definition alternatives', async () => {
@@ -119,7 +138,7 @@ describe('parameter references by name and definitions by effective binding', ()
         }), /cancel/i);
         data.fileIndexes.get(root).documentVersion = 1;
         const guarded = await parameterNavigation(data.index, data.fileIndexes, {
-            filePath: root, line: 1, character: 2, name: 'BASE', declaration: true,
+            filePath: root, line: 1, character: 2, name: 'base', declaration: true,
             references: true, includeDeclaration: false });
         assert.equal(guarded.incomplete, true); assert.deepEqual(guarded.items, []);
         assert.ok(guarded.reasons.includes('parameter-live-source-unavailable'));
@@ -152,12 +171,12 @@ describe('parameter references by name and definitions by effective binding', ()
         assert.deepEqual((await query(data, { includeDeclaration: false })).items.map(row => row.line), [3]);
     });
     it('marks a truncated definition alternatives page as incomplete too', async () => {
-        const contexts = Array.from({ length: 1001 }, (_, n) => ({ timeline: [], initialBindings: new Map([['BASE', {
-            name: 'BASE', filePath: path.resolve(`origin-${n}.k`), occurrenceId: String(n), definitionLine: 1,
+        const contexts = Array.from({ length: 1001 }, (_, n) => ({ timeline: [], initialBindings: new Map([['base', {
+            name: 'base', filePath: path.resolve(`origin-${n}.k`), occurrenceId: String(n), definitionLine: 1,
             definitionStart: 1, definitionLength: 4, sequence: 0,
         }]]) }));
         const result = await parameterNavigation({ completenessReasons: [], parameterContextsByFile: new Map([[root, contexts]]) },
-            new Map(), { filePath: root, line: 3, character: 1, name: 'BASE', declaration: false, references: false });
+            new Map(), { filePath: root, line: 3, character: 1, name: 'base', declaration: false, references: false });
         assert.equal(result.items.length, 1000); assert.equal(result.incomplete, true); assert.equal(result.ambiguous, true);
     });
 });

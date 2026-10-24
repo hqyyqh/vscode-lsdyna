@@ -17,7 +17,7 @@ type ParseNumericInputOptions = {
 
 const PARAMETER_PATTERN = /^(-?)&([A-Za-z_][A-Za-z0-9_]{0,8})$/;
 const INTEGER_PATTERN = /^[+-]?\d+(?:\.0*)?$/;
-const NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?$/;
+const NUMBER_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][+-]?\d+)?$/;
 
 function parseNumericInput(rawValue, options: ParseNumericInputOptions = {}): NumericInput {
     const raw = String(rawValue ?? '').trim();
@@ -44,7 +44,7 @@ function parseNumericInput(rawValue, options: ParseNumericInputOptions = {}): Nu
         return { kind: 'invalid', raw, reason: 'unsupported-numeric-input' };
     }
 
-    const parsed = Number(raw);
+    const parsed = Number(raw.replace(/[dD]/, 'e'));
     if (!Number.isFinite(parsed)) {
         return { kind: 'invalid', raw, reason: 'non-finite-or-non-integer' };
     }

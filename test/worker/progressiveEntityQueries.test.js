@@ -6,6 +6,7 @@ const { EntityIndexStore } = require('../../out/core/cache/entityIndexStore');
 const { entityFileRevision } = require('../../out/core/cache/entityFileRevision');
 const { createWorkerPool } = require('../../out/worker/workerPool');
 const { followEntityQuery } = require('../../out/client/services/progressiveEntityClient');
+const { entityIndexBudget } = require('../../out/core/cache/entityIndexBudget');
 describe('progressive entity queries', function() {
     this.timeout(60000);
     const cleanup = [];
@@ -15,6 +16,168 @@ describe('progressive entity queries', function() {
         fs.writeFileSync(file, '*NODE\n1,0,0,0\n');
         return { root, file, query: { rootFile: file, scope: 'single-file', targetKind: 'node', id: 1 } };
     }
+    it('rejects concurrent low-memory queries before reading files or creating SQLite storage', async () => {
+        const { root, file, query } = fixture();
+        fs.unlinkSync(file);
+        const budget = entityIndexBudget('auto', undefined, { available: () => 1024 ** 3, free: () => 0, total: () => 16 * 1024 ** 3 });
+        assert.equal(budget.blocked, true);
+        const storage = path.join(root, 'storage');
+        const pool = createWorkerPool({ workerPath: path.resolve('out/worker/scanWorker.js'), entityStorageDirectory: storage,
+            entityMemoryBytes: budget.workerBytes });
+        cleanup.push(() => pool.dispose());
+        const request = params => pool.projectSession({ protocolVersion: 1, ...params });
+        const results = await Promise.all([1, 2].map(id => followEntityQuery(request, { ...query, id })));
+        for (const result of results) {
+            assert.deepEqual(result.result.reasons, ['entity-query-low-memory']);
+            assert.equal(result.result.page.complete, false);
+            assert.deepEqual(result.result.page.counts, { definition: 0, reference: 0 });
+            result.result.release();
+        }
+        assert.equal(fs.existsSync(storage), false);
+    });
+    for (const [error, reason] of [
+        [new RangeError('unrelated range error'), 'entity-query-incomplete'],
+        [new (require('../../out/core/references/entityQueryBudgetError').EntityQueryBudgetError)('entity-query-index-budget', 1024), 'entity-query-index-budget'],
+    ]) it(`classifies ${reason} without calling it a result limit`, async () => {
+        const { query } = fixture();
+        const service = new ProgressiveEntityQueries(async () => undefined, async () => { throw error; });
+        cleanup.push(() => service.clear());
+        const result = await followEntityQuery(value => service.request(value), query);
+        assert.equal(result.result.page.complete, false);
+        assert.deepEqual(result.result.reasons, [reason]);
+        result.result.release();
+    });
+    it('does not publish a superseded query after awaiting optional diagnostics', async () => {
+        let current = true, published = false;
+        const releases = [];
+        const result = await followEntityQuery(async request => {
+            if (request.action === 'query-open') return { lease: 'test', revision: 'r' };
+            if (request.action === 'query-release') { releases.push(request); return {}; }
+            if (request.action === 'query-diagnostics') { current = false; return { epoch: 1 }; }
+            return { status: 'ready', state: 'complete', result: { locations: [],
+                page: { epoch: 1, counts: { definition: 0, reference: 0 }, next: {} } } };
+        }, { diagnostics: true }, () => { published = true; }, undefined, () => current);
+        assert.equal(result.status, 'stale'); assert.equal(published, false);
+        assert.equal(releases.length, 1); assert.equal(releases[0].retain, true);
+    });
+    it('returns anonymous INCLUDE_TRANSFORM diagnostics without changing query results', async () => {
+        const { root, file } = fixture();
+        fs.writeFileSync(path.join(root, 'child.k'), '*KEYWORD\n*DEFINE_CURVE\n1\n0,0\n1,1\n*END\n');
+        fs.writeFileSync(file, '*KEYWORD\n*INCLUDE_TRANSFORM\nchild.k\n0,0,0,0,0,100,0\n0\n0\n*LOAD_BODY_Z\n101,1\n*END\n');
+        const pool = createWorkerPool({ workerPath: path.resolve('out/worker/scanWorker.js'), entityStorageDirectory: path.join(root, 'storage') });
+        cleanup.push(() => pool.dispose());
+        const request = params => pool.projectSession({ protocolVersion: 1, ...params });
+        const query = { rootFile: file, scope: 'project', id: 101, targetKind: 'curve' };
+        const ordinary = await followEntityQuery(request, query);
+        const traced = await followEntityQuery(request, { ...query, diagnostics: true });
+        assert.equal(ordinary.diagnostics, undefined);
+        assert.deepEqual(traced.result.page.counts, ordinary.result.page.counts);
+        assert.equal(traced.result.page.counts.definition, 1);
+        assert.equal(traced.result.page.counts.reference, 1);
+        assert.equal(traced.diagnostics.structure.includes[0].transform.offsets.idfoff.value, 100);
+        assert(traced.diagnostics.structure.contexts.some(row => row.offsets.idfoff === 100));
+        assert(!JSON.stringify(traced.diagnostics).includes(root));
+        ordinary.result.release(); traced.result.release();
+    });
+    it('builds inherited parameter context across 20 files without exhausting a result-sized reservation', async function () {
+        this.timeout(60000);
+        const { root, file } = fixture();
+        let directory = root;
+        for (let depth = 0; depth < 5; depth++) {
+            fs.mkdirSync(path.join(directory, 'level'));
+            fs.writeFileSync(path.join(directory, depth ? 'branch.k' : 'main.k'), '*KEYWORD\n*INCLUDE\nlevel/branch.k\n*END\n');
+            directory = path.join(directory, 'level');
+        }
+        let main = '*KEYWORD\n';
+        for (let i = 0; i < 20; i++) {
+            main += `*INCLUDE\nparameters-${i}.k\n`;
+            fs.writeFileSync(path.join(directory, `parameters-${i}.k`), '*PARAMETER\n' +
+                Array.from({ length: 600 }, (_, j) => `Ip${i * 600 + j},1\n`).join(''));
+        }
+        fs.writeFileSync(path.join(directory, 'branch.k'), main + '*DEFINE_CURVE\n&p0\n0,0\n1,1\n*LOAD_BODY_Z\n&p11999,1\n*END\n');
+        const pool = createWorkerPool({ workerPath: path.resolve('out/worker/scanWorker.js'), entityStorageDirectory: path.join(root, 'storage') });
+        cleanup.push(() => pool.dispose());
+        const result = await followEntityQuery(params => pool.projectSession({ protocolVersion: 1, ...params }),
+            { rootFile: file, scope: 'project', targetKind: 'curve', id: 1, excludeMeshEntities: true, diagnostics: true });
+        assert.equal(result.result.page.complete, true, JSON.stringify(result.result.reasons));
+        assert.deepEqual(result.result.page.counts, { definition: 1, reference: 1 });
+        assert.equal(result.diagnostics.structure.fileCount, 26);
+        assert.equal(result.diagnostics.error, undefined);
+        result.result.release();
+    });
+    for (const depth of [4, 5]) it(`resolves transformed references through ${depth} directory and Include levels`, async function () {
+        this.timeout(120000);
+        const { root, file } = fixture();
+        let directory = root;
+        for (let level = 0; level < depth; level++) {
+            fs.mkdirSync(path.join(directory, 'child'), { recursive: true });
+            fs.writeFileSync(path.join(directory, level ? 'branch.k' : 'main.k'),
+                '*KEYWORD\n*INCLUDE\nchild/branch.k\n*END\n');
+            directory = path.join(directory, 'child');
+        }
+        fs.writeFileSync(path.join(directory, 'branch.k'), '*KEYWORD\n*INCLUDE_TRANSFORM\ncurves.k\n0,0,0,0,0,100,0\n0\n0\n*INCLUDE\nloads.k\n*INCLUDE\nloads.k\n*END\n');
+        // Large physical input with small semantic rows must not consume the index budget as source text.
+        const padding = ('$ ' + 'padding '.repeat(120) + '\n').repeat(18);
+        fs.writeFileSync(path.join(directory, 'curves.k'), '*KEYWORD\n' +
+            Array.from({ length: 1200 }, (_, i) => `*DEFINE_CURVE\n${i + 1}\n0,0\n1,1\n${padding}`).join('') + '*END\n');
+        fs.writeFileSync(path.join(directory, 'loads.k'), '*KEYWORD\n' + '*LOAD_BODY_Z\n101,1\n'.repeat(250) + '*END\n');
+        let available = 8 * 1024 ** 3, reads = 0, progress = 0;
+        const budget = entityIndexBudget('auto', undefined, { available: () => { reads++; return available; },
+            free: () => 0, total: () => 16 * 1024 ** 3 });
+        const pool = createWorkerPool({ workerPath: path.resolve('out/worker/scanWorker.js'), entityStorageDirectory: path.join(root, 'storage'),
+            entityMemoryBytes: budget.workerBytes });
+        cleanup.push(() => pool.dispose());
+        const request = params => pool.projectSession({ protocolVersion: 1, ...params });
+        const results = await Promise.all([101, 102].map(id => followEntityQuery(request, { rootFile: file, scope: 'project', id,
+            targetKind: 'curve', excludeMeshEntities: true, diagnostics: true }, () => { available = 0; progress++; })));
+        const [result, second] = results;
+        assert(progress > 0); assert.equal(available, 0); assert.equal(reads, 1);
+        assert.equal(second.result.page.complete, true); assert.equal(second.result.page.counts.definition, 1);
+        second.result.release();
+        assert.equal(result.result.page.complete, true, JSON.stringify({ reasons: result.result.reasons, diagnostics: result.diagnostics }));
+        assert.equal(result.result.page.counts.definition, 1);
+        assert.equal(result.result.page.counts.reference, 250, 'physical reference locations are deduplicated across include occurrences');
+        assert.equal(result.diagnostics.structure.missingCount, 0);
+        assert.equal(result.diagnostics.structure.failedCount, 0);
+        assert(result.diagnostics.structure.contexts.some(row => row.offsets.idfoff === 100));
+        result.result.release();
+    });
+    for (const persistent of [false, true]) it(`reconciles repeated edits without cancelling the producer (${persistent ? 'SQLite' : 'memory'})`, async () => {
+        const { root, file, query } = fixture();
+        const store = persistent ? await EntityIndexStore.open(path.join(root, 'storage')) : undefined;
+        let pass = 0;
+        const gates = [], tokens = [];
+        const service = new ProgressiveEntityQueries(async () => store, async (_, token, accept, sources) => {
+            const current = ++pass;
+            tokens.push(token);
+            sources({ fileIndexes: new Map([[file, { sourceRevision: await entityFileRevision(file) }]]) });
+            await accept([{ role: 'reference', filePath: file, line: current, startCharacter: 0, endCharacter: 1 }]);
+            if (current < 3) await new Promise(resolve => gates.push(resolve));
+            return { state: 'complete', reasons: [] };
+        });
+        cleanup.push(async () => { gates.forEach(resolve => resolve()); await service.clear(); await store?.close(); });
+        const handle = await service.request({ action: 'query-open', query });
+        for (let i = 0; i < 2; i++) {
+            while (gates.length <= i) await new Promise(resolve => setTimeout(resolve, 5));
+            fs.appendFileSync(file, `$ change ${i}\n`);
+            // Exercise both explicit watcher invalidation and revision detection during paging.
+            if (i === 0) service.invalidate(file);
+            const updating = await service.request({ action: 'query-page', ...handle });
+            assert.equal(updating.status, 'ready'); assert.equal(updating.state, 'scanning');
+            assert.deepEqual(updating.result.locations, []);
+            assert.equal(tokens[i].isCancellationRequested, false);
+            gates[i]();
+        }
+        let final;
+        do {
+            await new Promise(resolve => setTimeout(resolve, 5));
+            final = await service.request({ action: 'query-page', ...handle });
+        } while (final.state === 'scanning');
+        assert.equal(final.state, 'complete');
+        assert.deepEqual(final.result.locations.map(row => row.line), [3], 'old matches must be removed');
+        assert.equal(pass, 3);
+        assert.equal((await service.request({ action: 'query-page', ...handle, epoch: 1, after: 1 })).status, 'stale');
+    });
     it('retains one switched query and reconnects without restarting its producer', async () => {
         const { file, query } = fixture();
         const tokens = [], finish = [];
@@ -39,6 +202,21 @@ describe('progressive entity queries', function() {
         service.release(resumed.lease, true); service.release(second.lease, true);
         assert.equal(tokens[0].isCancellationRequested, true, 'only one detached producer is retained');
         finish.forEach(resolve => resolve()); await service.clear();
+    });
+    it('honors user cancellation while a changed scan is waiting to reconcile', async () => {
+        const { file, query } = fixture();
+        let finish, started, producerToken, calls = 0;
+        const gate = new Promise(resolve => { finish = resolve; });
+        const ready = new Promise(resolve => { started = resolve; });
+        const service = new ProgressiveEntityQueries(async () => undefined, async (_, token, accept, sources) => {
+            calls++; producerToken = token;
+            sources({ fileIndexes: new Map([[file, { sourceRevision: await entityFileRevision(file) }]]) });
+            started(); await gate; return { state: 'complete', reasons: [] };
+        });
+        const handle = await service.request({ action: 'query-open', query });
+        await ready; service.invalidate(file); service.release(handle.lease);
+        assert.equal(producerToken.isCancellationRequested, true);
+        finish(); await service.clear(); assert.equal(calls, 1);
     });
     it('detaches a superseded query before its first page without publishing stale results', async () => {
         let current = true, pageStarted, finishPage;

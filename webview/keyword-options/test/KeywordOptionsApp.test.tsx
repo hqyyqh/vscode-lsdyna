@@ -60,6 +60,35 @@ function linkedState(changed = false): KeywordOptionsViewState {
     });
 }
 
+test.each(['zh', 'en'] as const)('preserves %s help states and read-only restrictions with the shared content', async locale => {
+    const initial = linkedState();
+    initial.locale = locale;
+    initial.selectedFieldId = 'TIMSTR';
+    initial.cards[0].fields[0] = { ...initial.cards[0].fields[0], editable: false, reason: 'document-readonly', defaultValue: '5' };
+    initial.help = { status: 'ready', fieldId: 'TIMSTR', english: 'Start time\nEQ.0: Start immediately.',
+        localized: '开始时间\nEQ.0: 立即开始。', defaultValue: '', choices: ['0'] };
+    const t = transport(initial);
+    render(<KeywordOptionsApp transport={t.api} />);
+    expect(await screen.findByText(locale === 'zh' ? '开始时间' : 'Start time')).toBeVisible();
+    expect(screen.getByText(locale === 'zh' ? '该文件只读，无法应用修改。' : 'This file is read-only. Changes cannot be applied.')).toBeVisible();
+    expect(document.querySelector('.helpMeta code')).toHaveTextContent(locale === 'zh' ? '（空）' : '(empty)');
+    expect(document.querySelector('.fieldHelpChoices')).toHaveTextContent(locale === 'zh' ? '可选值 (1)' : 'Choices (1)');
+    if (locale === 'zh') {
+        await userEvent.click(screen.getByRole('button', { name: '切换至英文' }));
+        expect(screen.getByText('Start time')).toBeVisible();
+    }
+    await act(async () => t.publish({ ...initial, revision: 2, help: { status: 'unavailable', fieldId: 'TIMSTR', reason: 'branch-unverified' } }));
+    expect(screen.getByText(locale === 'zh' ? '当前分支尚未确认。' : 'The current branch has not been verified.')).toBeVisible();
+    expect(document.querySelector('.helpMeta')).not.toBeInTheDocument();
+    expect(document.querySelector('.fieldHelpChoices')).not.toBeInTheDocument();
+    t.api.selectField = vi.fn(() => new Promise<never>(() => undefined));
+    await act(async () => t.publish({ ...initial, revision: 3, help: { status: 'loading', fieldId: 'TIMSTR' } }));
+    expect(document.querySelector('.fieldHelpText.loading')).toHaveTextContent(locale === 'zh' ? '正在加载…' : 'Loading…');
+    expect(screen.queryByText('Start time')).not.toBeInTheDocument();
+    expect(t.api.updateField).not.toHaveBeenCalled();
+    expect(t.api.apply).not.toHaveBeenCalled();
+});
+
 it('shows every field choice regardless of the current value and selects without applying the file', async () => {
     const initial = linkedState();
     initial.cards[0].fields[0].choices = ['MIRROR', 'TRANSL', 'ROTATE'];
@@ -392,6 +421,22 @@ test('clears two prefix cards sharing a physical line through three MPP2 cycles'
     }
     expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     errors.mockRestore();
+});
+
+test('keeps unverified selector transitions and clearing disabled', async () => {
+    const initial = state({ controls: [{ controlId: 'native', kind: 'selector', label: 'ID / TITLE',
+        value: 'ID', emptyEnabled: false, visible: true, enabled: false,
+        reason: '没有其他可安全应用的关键字选项组合。',
+        choices: [{ value: 'ID', label: 'ID', enabled: true }, { value: 'TITLE', label: 'TITLE', enabled: false }] }] });
+    const { api } = transport(initial);
+    render(<KeywordOptionsApp transport={api} />);
+    const select = await screen.findByLabelText('ID / TITLE');
+    expect(select).toBeDisabled();
+    expect(select).toHaveAttribute('title', '没有其他可安全应用的关键字选项组合。');
+    const options = within(select).getAllByRole('option');
+    expect(options[0]).toBeDisabled();
+    expect(options[2]).toBeDisabled();
+    expect(api.updateControl).not.toHaveBeenCalled();
 });
 
 test('does not grant layout authority through a multi-form choice', async () => {

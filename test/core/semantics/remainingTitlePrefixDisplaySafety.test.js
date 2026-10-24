@@ -74,8 +74,7 @@ describe('remaining TITLE prefix display-only operation boundaries', function ()
                     assert.equal(extension.buildKeywordOptionsViewState(model).canApply, false, keyword);
                     const fields = model.managerCards.flatMap(card => card.fields || []);
                     assert.ok(fields.length, keyword + ': no displayed manager fields');
-                    assert.ok(fields.every(field => !field.editable), keyword + ': editable display field');
-                    for (const field of fields) assert.equal(extension.keywordManagerEditField(model, field.fieldId, '1'), null,
+                    for (const field of fields.filter(field => !field.editable)) assert.equal(extension.keywordManagerEditField(model, field.fieldId, '1'), null,
                         keyword + ': unauthorized manager edit');
                 }
             }

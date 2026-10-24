@@ -318,8 +318,9 @@ function createIndexClient({
                 return (await this.projectSession({ action: 'affected', rootFile: resolveRootFile(filePath) })).roots;
             },
             async queryEntityProgressive(query, onProgress = null, cancellationToken = null, isCurrent = () => true) {
-                return require('./progressiveEntityClient').followEntityQuery(
-                    (request, token) => this.projectSession(request, token), query, onProgress, cancellationToken, isCurrent);
+                return require('./entityQueryDiagnostics').traceEntityQuery(query, (input, progress) =>
+                    require('./progressiveEntityClient').followEntityQuery(
+                        (request, token) => this.projectSession(request, token), input, progress, cancellationToken, isCurrent), onProgress);
             },
             async loadProjectStructure(rootFile, options = {}, onProgress = null, cancellationToken = null) {
                 const { followProjectStructure } = require('./projectSessionClient');

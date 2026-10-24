@@ -253,7 +253,7 @@ function parseDescriptorText(
     const nameOffset = text.indexOf(name, text.indexOf(match[1]) + 1);
     return {
         name,
-        normalizedName: name.toUpperCase(),
+        normalizedName: name, // Parameter identity is case-sensitive; only keyword/type tokens are folded.
         parameterType,
         nameStart: absoluteStart + nameOffset,
         nameLength: name.length,
@@ -500,7 +500,7 @@ export function scanAmpersandParameterReferences(
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
         references.push({
-            name: match[2].toUpperCase(),
+            name: match[2],
             lineIndex,
             startChar: match.index,
             length: match[0].length,
@@ -523,7 +523,7 @@ export function scanBareParameterReferences(
     while ((match = pattern.exec(segment.text)) !== null) {
         const absoluteStart = segment.startChar + match.index;
         if (absoluteStart > 0 && segment.text[match.index - 1] === '&') continue;
-        const name = match[1].toUpperCase();
+        const name = match[1];
         if (!definedNames.has(name)) continue;
         references.push({
             name,

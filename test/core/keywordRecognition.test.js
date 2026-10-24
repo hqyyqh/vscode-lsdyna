@@ -15,6 +15,74 @@ const cases = [
 ];
 
 describe('shared keyword recognition', () => {
+    it('recognizes attached input-format markers and validates slash spellings', () => {
+        validator.init(new Set(['NODE', 'END']));
+        for (const name of ['CONSTRAINED_JOINT_REVOLUTE_ID', 'MAT_054/055_TITLE', 'MAT_3-PARAMETER_BARLAT_TITLE'])
+            for (const marker of ['', '+', '%', '-']) {
+                const diagnostics = spelling => validator.collectKeywordValidationDiagnostics(fakeDoc('*' + spelling + '\n*END'), () => false)
+                    .filter(diagnostic => diagnostic.code === 'unknown-keyword');
+                assert.equal(isKnownKeywordName(name + marker), true, name + marker);
+                assert.equal(diagnostics(name + marker).length, 0, name + marker);
+                assert.equal(diagnostics(name + '_UNKNOWN' + marker).length, 1, name + marker);
+            }
+        for (const name of ['CONSTRAINED_JOINT_REVOLUTE_ID++', 'MAT_054/055_TITLE%%', 'MAT_034_TITLE--'])
+            assert.equal(isKnownKeywordName(name), false, name);
+    });
+    it('recognizes the exact names in other native reader catalogs without granting suffix write permission', () => {
+        const {keywordDataPath} = require('../../out/core/keywordDataPath');
+        const native = require("../../out/core/semantics/catalogNativeFileLayout");
+        for (const file of ['lspp-batch-fixed-readers.json', 'lspp-conditional-layout-readers.json',
+            'lspp-occurrence-readers.json', 'lspp-ordinal-conditional-readers.json', 'lspp-ordinal-file-readers.json', 'lspp-tail-repeat-readers.json']) {
+            const source = require(keywordDataPath('native-readers/' + file));
+            assert.equal(source.sourceSha256, native.NATIVE_FILE_SOURCE);
+            for (const name of Object.keys(source.bindings).filter(name => /_(ID|TITLE|MPP)$/.test(name))) {
+                assert.equal(isKnownKeywordName(name), true, name);
+                assert.equal(validator.builtInKeywordMatches(name), true, name);
+                assert.equal(isKnownKeywordName(name + '_UNKNOWN'), false, name);
+            }
+        }
+        for (const name of ['BOUNDARY_AMBIENT_ID', 'DATABASE_FREQUENCY_BINARY_D3SPCM_ID'])
+            assert.equal(native.isVerifiedNativeSpelling(name), false, name);
+    });
+    it('recognizes every verified native spelling without granting a schema or edit permission', () => {
+        const { keywordDataPath } = require('../../out/core/keywordDataPath');
+        const native = require("../../out/core/semantics/catalogNativeFileLayout");
+        const schema = schemaApi.loadKeywordSchema();
+        validator.init(new Set(['NODE', 'END']));
+        let checked = 0;
+        for (const file of ['lspp-spelling-file-readers.json', 'lspp-contact-id-mpp-fixed-readers.json', 'lspp-contact-mpp-tail-readers.json', 'lspp-suffix-fixed-readers.json']) {
+            const source = require(keywordDataPath('native-readers/' + file));
+            assert.equal(source.sourceSha256, native.NATIVE_FILE_SOURCE);
+            for (const name of Object.keys(source.bindings)) {
+                const before = schemaApi.lookupKeywordSchema(name, schema);
+                assert.equal(validator.builtInKeywordMatches(name, schema), true, name);
+                assert.equal(isKnownKeywordName('*' + name.toLowerCase()), true, name);
+                assert.equal(suggestSimilarKeywords(name).tier, 'none', name);
+                const diagnostics = validator.collectKeywordValidationDiagnostics(fakeDoc('*' + name + '\n*END'), () => false);
+                assert.equal(diagnostics.filter(d => d.code === 'unknown-keyword').length, 0, name);
+                assert.deepEqual(schemaApi.lookupKeywordSchema(name, schema), before, name);
+                assert.equal(native.isVerifiedNativeSpelling(name + '_UNKNOWN'), false, name);
+                checked++;
+            }
+            for (const name of Object.keys(source.gaps || {})) {
+                if (!source.bindings[name]) assert.equal(native.isVerifiedNativeSpelling(name), false, name);
+            }
+            const identity = source.sourceSha256;
+            try {
+                source.sourceSha256 = 'unverified';
+                const exclusive = Object.keys(source.bindings).find(name => !native.isVerifiedNativeSpelling(name));
+                assert.ok(exclusive, file);
+            } finally { source.sourceSha256 = identity; }
+        }
+        assert.ok(checked >= 516, String(checked));
+        for (const name of ['CONSTRAINED_JOINT_REVOLUTE_ID', 'CONSTRAINED_JOINT_CYLINDRICAL_ID', 'SET_SHELL_TITLE']) {
+            assert.equal(schemaApi.lookupKeywordSchema(name, schema), null);
+            assert.equal(native.nativeSpellingBinding(name).displayOnly, true);
+            assert.equal(require('../../out/core/semantics/nativeFieldResolution').nativeFieldDisplayOnly(name), true);
+            assert.equal(isKnownKeywordName(name, { candidates: ['NODE'] }), false);
+        }
+    });
+
     it('agrees across schema, diagnostics, spelling suggestions and manual relationships', () => {
         const schema = schemaApi.loadKeywordSchema();
         validator.init(new Set(['NODE', 'END']));

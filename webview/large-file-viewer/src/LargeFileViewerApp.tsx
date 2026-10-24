@@ -17,6 +17,7 @@ import type {
     LargeFileViewerState,
 } from '../../../src/client/largeFileViewerProtocol';
 import type { LargeFileViewerTransport } from './transport';
+import { FieldHelpContent } from '../../shared/FieldHelpContent';
 
 type ViewerAction = (current: LargeFileViewerState) => Promise<boolean>;
 // ponytail: cap native scroll coordinates; windowed reads and exact line jumps cover files beyond browser pixel limits.
@@ -484,29 +485,53 @@ function FieldSpan({ field, text, selected, target, select, query, context }: {
 }
 
 function FieldHelp({ state, query }: { state: LargeFileViewerState; query: () => void }) {
+    const [collapsed, setCollapsed] = useState(false);
+    const [showEnglish, setShowEnglish] = useState(false);
+    const body = useRef<HTMLDivElement>(null);
     const field = state.selectedField;
+    useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [field?.token, showEnglish]);
     if (!field) return null;
     const zh = state.locale === 'zh';
-    const help = zh ? field.localizedHelp || field.englishHelp : field.englishHelp;
+    const hasEnglish = zh && !!field.localizedHelp && !!field.englishHelp && field.localizedHelp !== field.englishHelp;
+    const help = zh && !(showEnglish && hasEnglish) ? field.localizedHelp || field.englishHelp : field.englishHelp;
+    const toggleLabel = zh ? (collapsed ? '展开字段说明' : '收起字段说明') : (collapsed ? 'Expand field help' : 'Collapse field help');
     const type = ({ integer: ['\u6574\u6570', 'Integer'], float: ['\u5B9E\u6570', 'Real'], real: ['\u5B9E\u6570', 'Real'], double: ['\u5B9E\u6570', 'Real'],
         string: ['\u6587\u672C', 'Text'], bool: ['\u5E03\u5C14\u503C', 'Boolean'], '1': ['\u6574\u6570', 'Integer'], '-1': ['\u6574\u6570', 'Integer'],
         '2': ['\u5B9E\u6570', 'Real'], '0': ['\u6587\u672C', 'Text'], '-2': ['\u6587\u672C', 'Text'] } as Record<string, string[]>)[field.type.toLowerCase()]?.[zh ? 0 : 1] || field.type;
-    return <footer className="field-help" aria-label={state.labels.fieldHelp}>
-        <div className="field-heading"><strong>{field.label}</strong>
-            {field.value && field.value !== field.object?.id && <code>{field.value}</code>}
-            {field.object && <span className="field-object"><strong>{field.object.kindLabel} {field.object.id}</strong>
-                {field.object.name && <span title={state.labels.objectName}>{field.object.name}</span>}</span>}
-            {field.queryable && <button type="button" disabled={state.stale} onClick={query}>{state.labels.queryObject}</button>}</div>
-        <details><summary>{state.labels.details}</summary>
-        <div className="field-meta">{field.keyword} {'\u00B7'} {state.labels.card} {field.cardIndex}{type ? ` \u00B7 ${type}` : ''}</div>
-        {help && <p>{help}</p>}
-        {(field.defaultValue || field.choices.length > 0) && <div className="field-meta">
-            {field.defaultValue && <span>{state.labels.defaultValue}: {field.defaultValue}</span>}
-            {field.choices.length > 0 && <span>{field.choices.join(' \u00B7 ')}</span>}
-        </div>}
-        {zh && field.englishHelp && field.localizedHelp && field.englishHelp !== field.localizedHelp && <details><summary>{state.labels.english}</summary>
-            <p>{field.englishHelp}</p></details>}
-        </details>
+    return <footer className="field-help detailsDock" aria-label={state.labels.fieldHelp}>
+        <div className="detailsToolbar">
+            <div className="detailTopics">
+                <button type="button" className="selected" aria-controls="large-field-help-body"
+                    onClick={() => setCollapsed(false)}>{state.labels.fieldHelp}</button>
+            </div>
+            <div className="detailsActions">
+                {hasEnglish && <>
+                    <button type="button" className="fieldHelpLangToggle"
+                        title={showEnglish ? '查看中文说明' : '查看英文原文'}
+                        aria-label={showEnglish ? '切换至中文' : '切换至英文'}
+                        onClick={() => setShowEnglish(value => !value)}>{showEnglish ? '[中] 译文' : '[EN] 原文'}</button>
+                    <span className="toolbarDivider" aria-hidden="true">|</span>
+                </>}
+                <button type="button" className="fieldHelpLangToggle" title={toggleLabel} aria-label={toggleLabel}
+                    aria-expanded={!collapsed} aria-controls="large-field-help-body" onClick={() => setCollapsed(value => !value)}>
+                    {zh ? (collapsed ? '展开' : '收起') : (collapsed ? 'Expand' : 'Collapse')}
+                </button>
+            </div>
+        </div>
+        <div ref={body} id="large-field-help-body" className="detailViewport" hidden={collapsed}>
+            <div className="fieldHelp fieldHelpBody" tabIndex={0} aria-label={zh ? '字段说明' : 'Field description'}>
+                <div className="field-heading">
+                    <span>{field.keyword} {'\u00B7'} {state.labels.card} {field.cardIndex}</span>
+                    {field.value && field.value !== field.object?.id && <code title={zh ? '当前值' : 'Current value'}>{field.value}</code>}
+                    {field.object && <span className="field-object"><strong>{field.object.kindLabel} {field.object.id}</strong>
+                        {field.object.name && <span title={state.labels.objectName}>{field.object.name}</span>}</span>}
+                    {field.queryable && <button type="button" disabled={state.stale} onClick={query}>{state.labels.queryObject}</button>}
+                </div>
+                <FieldHelpContent name={field.label} typeLabel={type} isZh={zh}
+                    description={help?.trim() || (zh ? '暂无字段说明。' : 'No field description is available.')}
+                    defaultValue={field.defaultValue || undefined} choices={field.choices} />
+            </div>
+        </div>
     </footer>;
 }
 

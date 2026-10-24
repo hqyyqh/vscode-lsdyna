@@ -12,6 +12,7 @@ import { ManagerIcon } from './ManagerIcon';
 import { ManagerDialog } from './ManagerDialog';
 import './styles.css';
 import { useFieldHelp } from './useFieldHelp';
+import { FieldHelpContent } from '../../shared/FieldHelpContent';
 
 function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, retainedValue, onSelect, onCommit, onLocalChange, isZh }: {
     isZh: boolean;
@@ -179,39 +180,18 @@ function FieldHelp({ help, field, locale, collapsed, showEnglish }: {
     const hasEnglish = isZh && matches && status === 'ready' && !!help.localized && !!help.english && help.english !== help.localized;
     const description = (showEnglish && hasEnglish) ? help.english : (isZh ? help.localized || help.english : help.english);
 
-    const textToDisplay = description || unavailable;
-    const lines = textToDisplay.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const mainDesc = lines[0] || unavailable;
-    const ruleLines = lines.slice(1);
-
     return <aside className="fieldHelp" aria-label={isZh ? '字段帮助' : 'Field help'}>
         <div id="field-help-body" className="fieldHelpBody" tabIndex={0} hidden={collapsed}
             aria-label={isZh ? '字段说明' : 'Field description'}>
             {!field.editable && <p className="fieldNotice">{field.reason === 'document-readonly'
                 ? (isZh ? '该文件只读，无法应用修改。' : 'This file is read-only. Changes cannot be applied.')
                 : <>{isZh ? '该字段只读，请在源文件中修改。' : 'This field is read-only. Edit it in the source file.'}{field.reason ? ` (${userFacingReason(field.reason, locale)})` : ''}</>}</p>}
-            <div className="fieldHelpContent">
-                <span className="fieldHelpName">{field.name}{matches && help.schemaName && help.schemaName !== field.name ? `（${help.schemaName}）` : ''}</span>
-                {typeLabel && <span className="fieldHelpType"> ({typeLabel})</span>}:{' '}
-                {status === 'loading' ? (
-                    <span className="fieldHelpText loading">{isZh ? '正在加载…' : 'Loading…'}</span>
-                ) : status === 'ready' ? (
-                    <>
-                        <span className="fieldHelpText">{mainDesc}</span>
-                        {defaultValue !== undefined && <span className="helpMeta">
-                            <span>{isZh ? '默认值' : 'Default'}</span><code>{defaultValue || (isZh ? '（空）' : '(empty)')}</code>
-                        </span>}
-                        {!!help.choices?.length && <span className="fieldHelpChoices">
-                            <span>{isZh ? '可选值' : 'Choices'} ({help.choices.length})</span>: <code>{help.choices.join(', ')}</code>
-                        </span>}
-                        {ruleLines.map((rule, idx) => (
-                            <div key={idx} className="fieldHelpRule">{rule}</div>
-                        ))}
-                    </>
-                ) : (
-                    <span className="fieldHelpText">{unavailable}</span>
-                )}
-            </div>
+            <FieldHelpContent name={field.name + (matches && help.schemaName && help.schemaName !== field.name
+                ? (isZh ? `（${help.schemaName}）` : ` (${help.schemaName})`) : '')}
+                typeLabel={typeLabel} isZh={isZh} loading={status === 'loading'}
+                description={status === 'ready' ? description?.trim() || unavailable : unavailable}
+                defaultValue={status === 'ready' ? defaultValue : undefined}
+                choices={status === 'ready' ? help.choices : undefined} />
         </div>
     </aside>;
 }
@@ -523,7 +503,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                 {(state.controls || []).filter(control => control.visible && control.kind !== 'field').map(control => {
                     const isSelector = control.kind === 'selector';
                     const isActive = isSelector && control.value != null && control.value !== '';
-                    return <div className={`dimension ${isSelector ? 'tagSelect' : ''} ${isSelector ? (isActive ? 'active' : 'inactive') : ''}`} key={control.controlId}>
+                    return <div className={`dimension ${isSelector ? 'tagSelect' : ''} ${isSelector ? (isActive ? 'active' : 'inactive') : ''}`} key={control.controlId} title={control.reason}>
                         {control.kind === 'boolean' ?
                                 <label className="dynamicToggle" title={control.label}>
                                     <input type="checkbox" checked={control.value === true} disabled={busy || state.status === 'stale' || !control.enabled}
@@ -536,13 +516,13 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                                     <span className="dimensionName">{control.label}</span>
                                     <select id={`inputForm-${control.controlId}`} value={String(control.value ?? '')}
                                         disabled={busy || state.status === 'stale' || !control.enabled}
-                                        title={`${control.label}: ${control.choices?.find(choice => choice.value === control.value)?.label || control.emptyLabel || String(control.value ?? '-')}`}
+                                        title={control.reason || `${control.label}: ${control.choices?.find(choice => choice.value === control.value)?.label || control.emptyLabel || String(control.value ?? '-')}`}
                                         aria-label={control.label}
                                         onChange={event => {
                                             const value = event.target.value;
                                             run(revision => transport.updateControl(revision, control.controlId, value));
                                         }}>
-                                        <option value="">{control.emptyLabel || '-'}</option>
+                                        <option value="" disabled={control.emptyEnabled === false}>{control.emptyLabel || '-'}</option>
                                         {(control.choices || []).map(value => <option key={value.value} value={value.value}
                                             disabled={!value.enabled}>{value.label}</option>)}
                                     </select>

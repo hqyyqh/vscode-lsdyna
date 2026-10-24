@@ -60,11 +60,42 @@ export function nativeSpellingFieldHelp(address: string): string | undefined {
 export function nativeSpellingGap(keyword: string): any {
     return spellingReaders.gaps?.[keyword.replace(/^\*/, '')];
 }
+
+/** Prefix identity comes from the exact file binding, including the older suffix catalog. */
+export function nativeFilePrefixBinding(keyword: string): any {
+    const spelling = nativeSpellingBinding(keyword);
+    if (spelling) return spelling;
+    const name = keyword.replace(/^\*/, '');
+    if (suffixFixed.sourceSha256 !== NATIVE_FILE_SOURCE || suffixFixed.bindings[name]?.prefixSemantics !== 'title') return undefined;
+    const form = require("./catalogInputFormCatalogV4").getCatalogInputFormCatalogV4().formForKeyword(name, false);
+    if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE) return undefined;
+    const prefixes = (form.reference.selectorRuleIds || []).flatMap(id => (form.rules[id]?.selectors || [])
+        .flatMap(selector => selector.values.filter(value => value.keywordSuffix === '_TITLE').flatMap(value => value.cards)));
+    return prefixes.length === 1 ? { prefixCard: { ...prefixes[0], cardIndex: 0 }, prefixFormat: 'raw' } : undefined;
+}
+
+/** Exact verified file spellings only; unresolved/rejected gaps confer no recognition. */
+export function isVerifiedNativeSpelling(keyword: string): boolean {
+    const name = nativeSpellingName(keyword);
+    return !!nativeInterfaceComponentBinding(name)?.header || [spellingReaders, contactIdMppFixed, contactMppTail, suffixFixed].some(source =>
+        source.sourceSha256 === NATIVE_FILE_SOURCE &&
+        Object.prototype.hasOwnProperty.call(source.bindings, name) && !source.gaps?.[name]);
+}
 const elementReaders = require(keywordDataPath("native-readers/lspp-element-readers.json"));
 const nodeReaders = require(keywordDataPath("native-readers/lspp-node-readers.json"));
 const partCompositeReaders = require(keywordDataPath("native-readers/lspp-part-composite-readers.json"));
 const partStandaloneReaders = require(keywordDataPath("native-readers/lspp-part-standalone-readers.json"));
 const partModularReaders = require(keywordDataPath("native-readers/lspp-part-modular-readers.json"));
+/** Recognition covers source-locked reader names; it does not extend suffix write authority. */
+export function isVerifiedNativeKeyword(keyword: string): boolean {
+    const name = nativeSpellingName(keyword);
+    return isVerifiedNativeSpelling(name) || [sectionFixed, genericReaders, optionalTailReaders, eosSpecialReaders,
+        ordinalReaders, ordinalConditional, batchFixed, elementReaders, nodeReaders, partCompositeReaders,
+        partStandaloneReaders, partModularReaders].some(source => source.sourceSha256 === NATIVE_FILE_SOURCE &&
+        [source.bindings, source.fixedBindings].some(bindings => Object.prototype.hasOwnProperty.call(bindings || {}, name)) &&
+        !source.gaps?.[name]) || nativeConditionalSource() === NATIVE_FILE_SOURCE && !!nativeConditionalBinding(name) ||
+        nativeCountedOccurrenceSource() === NATIVE_FILE_SOURCE && !!nativeCountedOccurrenceBinding(name);
+}
 export function nativePartCompositeBinding(keyword: string): any {
     return partCompositeReaders.bindings[keyword.replace(/^\*/, '')];
 }
@@ -116,6 +147,13 @@ export function nativeFileLayoutCards(rule: any, keyword: string): any[] {
             ...nativeContactOptionalCards({ cards: [] }, optional).map((card, index) => ({ ...card, cardIndex: body.length + index + 1 }))];
     }
     if (rule.contactComposition) return rule.cards;
+    const spelling = nativeSpellingBinding(keyword);
+    if (spelling) {
+        const cards = new Map(nativeFileLayoutCards(rule, spelling.baseKeyword).map(card => [card.cardIndex, card]));
+        for (const card of spelling.extraCards || []) cards.set(card.cardIndex, card);
+        return [...cards.values()].map(card => ({ ...card, fields: card.fields.map(field => ({ ...field,
+            nativeLongWidth: field.nativeLongWidth ?? Math.max(20, field.width) })) }));
+    }
     const contact = nativeContactOptionalBinding(rule, keyword, rule.nativeAuxiliaryReferenceFields);
     if (contact) return nativeContactOptionalCards(rule, contact);
     if (nativeFileLayoutKind(rule, keyword) === 'ale-trim-records') return rule.cards.map(card => ({ ...card,
@@ -182,8 +220,6 @@ export function nativeFileLayoutCards(rule: any, keyword: string): any[] {
         ...card, fields: card.fields.map(field => ({ ...field, nativeLongWidth: Math.max(20, field.width) })),
     }));
     if (spellingFileCards.has(keyword)) return spellingFileCards.get(keyword);
-    const spelling = nativeSpellingBinding(keyword);
-    if (spelling) return nativeFileLayoutCards(rule, spelling.baseKeyword);
     if (nativeConditionalBinding(keyword) && ['conditional-sequence', 'generic-fixed'].includes(nativeFileLayoutKind(rule, keyword))) return rule.cards.map(card => ({
         ...card, fields: card.fields.map(field => ({ ...field, nativeLongWidth: Math.max(20, field.width) })),
     }));
@@ -262,7 +298,7 @@ export function nativeGenericControlValue(branch: { blankValue: number }, raw: s
     const value = Number(text);
     return Number.isInteger(value) && value >= -2147483648 && value <= 2147483647 ? value : NaN;
 }
-export const NATIVE_FILE_SOURCE = "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168";
+export const NATIVE_FILE_SOURCE = "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5";
 
 // ten source bytes, before the ordinary fixed/comma/LONG field decoder.
 // The live file directory subkinds differ from the GUI directory subkinds.
@@ -963,6 +999,17 @@ export function nativeFileLayoutKind(rule: any, keyword: string): string | null 
         ['controlled-reference-records', 'reference-single'].includes(nativeFileLayoutKind(rule, original.baseKeyword))
         ? 'controlled-reference-records' : 'unsupported-source';
     if (rule?.contactComposition) return null;
+    const spelling = nativeSpellingBinding(keyword);
+    const spellingName = nativeSpellingName(keyword);
+    if (spelling) return (contactIdMppFixed.bindings[spellingName] ||
+        contactMppTail.bindings[spellingName]
+        ? (contactIdMppFixed.bindings[spellingName]
+            ? contactIdMppFixed.sourceSha256 : contactMppTail.sourceSha256) === NATIVE_FILE_SOURCE &&
+            rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
+            rule?.cardSetId === spelling.cardSetId
+        : spellingReaders.sourceSha256 === NATIVE_FILE_SOURCE) &&
+        !nativeSpellingBinding(spelling.baseKeyword)
+        ? spelling.layout ? 'conditional-sequence' : nativeFileLayoutKind(rule, spelling.baseKeyword) : 'unsupported-source';
     if (nativeContactOptionalBinding(rule, keyword, rule?.nativeAuxiliaryReferenceFields)) return 'contact-optional-records';
     if (keyword.replace(/^\*/, '') === 'EM_ISOPOTENTIAL_CONNECT') return rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
         rule.cardSetId === "record:0dc9b948cccc96167cba03df:22f8e4fa471a70245cb8e644" && rule.cards?.length === 3
@@ -1013,16 +1060,6 @@ export function nativeFileLayoutKind(rule: any, keyword: string): string | null 
     if (general) return rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
         rule.cardSetId === general.cardSetId && rule.cards?.length === general.cardCount
         ? general.kind : 'unsupported-source';
-    const spelling = nativeSpellingBinding(keyword);
-    const spellingName = nativeSpellingName(keyword);
-    if (spelling) return (contactIdMppFixed.bindings[spellingName] ||
-        contactMppTail.bindings[spellingName]
-        ? (contactIdMppFixed.bindings[spellingName]
-            ? contactIdMppFixed.sourceSha256 : contactMppTail.sourceSha256) === NATIVE_FILE_SOURCE &&
-            rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
-            rule?.cardSetId === spelling.cardSetId
-        : spellingReaders.sourceSha256 === NATIVE_FILE_SOURCE) &&
-        !nativeSpellingBinding(spelling.baseKeyword) ? nativeFileLayoutKind(rule, spelling.baseKeyword) : 'unsupported-source';
     const occurrence = nativeCountedOccurrenceBinding(keyword);
     if (occurrence) return nativeCountedOccurrenceSource() === NATIVE_FILE_SOURCE &&
         rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE && rule.cardSetId === occurrence.cardSetId &&

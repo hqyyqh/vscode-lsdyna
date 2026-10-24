@@ -65,13 +65,13 @@
   },
   "change": {
     "classification": "audit-implementation-drift",
-    "reason": "PARAMETER P1/P2 adds shared current-manual field help and regenerates tool lineage; reviewed audit inventory and attribution results are unchanged."
+    "reason": "Reviewed conditional reference role supplement and classifier update changed runtime lineage and implementation identities; audit inventory, attribution and permissions remain identical. Previous report retained in full-plugin-validation/run-ripjyL/reference-option-before.json."
   },
   "inputs": {
     "currentDataLineage": {
       "path": "keywords/provenance/current-data.json",
-      "sha256": "f1106e4fede69b733d3a6738e1992a9629e2acf5a8bf1edacc378be24a1e604c",
-      "size": 972423
+      "sha256": "7ca2dd94fd9d70efa19a39141bc5e2506d3698e1bb8c55dded5d846c8f68b3f0",
+      "size": 973004
     },
     "fieldData": {
       "path": "keywords/runtime/schema/field_data.json",
@@ -101,16 +101,16 @@
       },
       {
         "path": "src/core/references/fieldReferenceClassifier.ts",
-        "sha256": "e1b27b69b9ff1adb91e423edee813611a5c5fdee0469ff96c3eab45d7b195817",
-        "size": 89377
+        "sha256": "156245aaa6886a03e356687327ba17717eb58a4f6e323bdd07f628d0c8b74139",
+        "size": 89581
       }
     ],
     "semanticRuntimeManifest": {
-      "contentSha256": "838657998b8205ce39c2f5842ffca745782916ce7e7a9760cfacad4eef19949a",
-      "datasetReleaseId": "semantic-dataset:4e9457aab6be5ebbeebf75b9",
+      "contentSha256": "4010a2177fd4dc072fc6ac3b93feed484bccd7200162ee268ddef1f8ecdf6511",
+      "datasetReleaseId": "semantic-dataset:6d48bbd76f9c6f244c297c1f",
       "path": "keywords/runtime/semantic-v2/manifest.json",
-      "sha256": "985d58be1d090611a62693c5919454d160a3cea713feff3d912480a57486a794",
-      "size": 290907
+      "sha256": "c3548d54bd95dd3adbaf494f5d551c96a14e09469c2673b07c119fa5f858e22b",
+      "size": 291096
     }
   },
   "kind": "reference-option-attribution-audit-record",

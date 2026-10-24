@@ -50,7 +50,7 @@ function serializeError(error) {
 
 // One owner and capacity budget for physical-file facts and entity records.
 const persistentFileScanCache = new SqliteFileScanCache(() => entityQueries.indexStore(),
-    Math.floor((workerData?.entityMemoryBytes || 256 * 1024 * 1024) / 8));
+    Math.floor((workerData?.entityMemoryBytes ?? 256 * 1024 * 1024) / 8));
 
 // Create indexer with persistent cache support
 const indexer = createProjectIndexer({
@@ -68,7 +68,7 @@ const entityQueries = new EntityQueryWorker((rootFile, options, onProgress, canc
     (root, options, token) => projectSessions.loadStructure(root, options, token), liveSource);
 const requestCancellationTokens = new Map();
 const projectSessions = new ProjectSessions(buildProjectIndex,
-    Math.floor((workerData?.entityMemoryBytes || 256 * 1024 * 1024) / 4), liveSource.unchanged, () => entityQueries.indexStore());
+    Math.floor((workerData?.entityMemoryBytes ?? 256 * 1024 * 1024) / 4), liveSource.unchanged, () => entityQueries.indexStore());
 
 // Bind message listener on parent port to process requests.
 parentPort.on('message', async (message) => {

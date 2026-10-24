@@ -84,7 +84,7 @@ export function evaluateParameterExpression(source: string, lookup: (name: strin
             }
             return call(name.toLowerCase(), args);
         }
-        const normalized = name.toUpperCase();
+        const normalized = name;
         names.add(normalized);
         if (names.size > LIMITS.bindings) fail('parameter-evaluation-budget');
         const binding = lookup(normalized);

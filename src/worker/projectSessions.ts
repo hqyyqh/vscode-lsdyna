@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { entityFilesUnchanged } from '../core/cache/entityFileRevision';
 import { INDEX_PROTOCOL_VERSION, assertIndexPayload, boundedIndexPage, indexJsonBytes } from '../shared/indexPages';
-const { throwIfCancellationRequested } = require('../core/scanner/scannerContracts');
+const { throwIfCancellationRequested, createCancellationError } = require('../core/scanner/scannerContracts');
 const { estimateMemorySize } = require('../core/cache/memorySize');
 
 type State = 'scanning' | 'complete' | 'incomplete' | 'cancelled' | 'stale';
@@ -12,6 +12,7 @@ type Entry = {
     rows: Map<string, { sequence: number; value: any; bytes: number }>;
     sequence: number; bytes: number; snapshot?: any; error?: string; ready: Promise<void>;
     viewerProgress?: any;
+    reconcileChanges?: boolean;
     ownedSizes: Map<string, number>; ownedBytes: number;
     unpublishedOwnership?: Set<string>;
     lastAccess: number;
@@ -200,6 +201,7 @@ export class ProjectSessions {
                     for (const [key, row] of current.rows) { current.bytes -= row.bytes; this.publish(current, key, row.value); }
                 }
                 const snapshot = await this.build(rootFile, { singleFileOnly: options.singleFileOnly === true,
+                    get reconcileChanges() { return current.reconcileChanges === true; },
                     previousFileIndexes,
                     highWaterMark: 64 * 1024,
                     largeFileThresholdBytes: options.largeFileThresholdBytes, structureOnly: true,
@@ -261,6 +263,7 @@ export class ProjectSessions {
                 current.token.isCancellationRequested = true;
             }).finally(() => { previousFileIndexes?.clear(); });
         }
+        if (options.reconcileChanges) entry.reconcileChanges = true;
         const lease = randomUUID();
         entry.subscribers.add(lease); this.leases.set(lease, entry);
         return { protocolVersion: INDEX_PROTOCOL_VERSION, lease, generation: entry.generation,
@@ -383,7 +386,9 @@ export class ProjectSessions {
 
     invalidate(rootFile: string) {
         const roots = new Set(this.affected(rootFile));
-        for (const entry of this.entries.values()) if (roots.has(entry.rootFile)) this.retire(entry, true);
+        // In-flight structures validate sources before completion and reuse unchanged file scans.
+        for (const entry of this.entries.values()) if (roots.has(entry.rootFile) &&
+            !(entry.state === 'scanning' && entry.reconcileChanges)) this.retire(entry, true);
         return [...roots];
     }
 
@@ -393,9 +398,13 @@ export class ProjectSessions {
         await entry.ready;
         if (entry.generation !== generation || this.leases.get(lease) !== entry)
             throw new Error('Expired project session');
-        if (!entry.snapshot || !['complete', 'incomplete'].includes(entry.state) ||
-            !await this.filesUnchanged([...entry.snapshot.fileIndexes].map(([file, index]: any) =>
-                ({ file, revision: index.sourceRevision })))) throw new Error('Project structure is not current');
+        if (!entry.snapshot || !['complete', 'incomplete'].includes(entry.state))
+            throw new Error('Project structure is not current');
+        if (!await this.filesUnchanged([...entry.snapshot.fileIndexes].map(([file, index]: any) =>
+            ({ file, revision: index.sourceRevision })))) {
+            const error = new Error('Project structure is not current');
+            error.name = 'ScanChangedError'; throw error;
+        }
         if (entry.generation !== generation || this.leases.get(lease) !== entry)
             throw new Error('Expired project session');
         return entry.snapshot;
@@ -404,9 +413,16 @@ export class ProjectSessions {
     async loadStructure(rootFile: string, options: any, token?: any) {
         const handle = await this.open(rootFile, options, token);
         const registration = token?.onCancellationRequested?.(() => this.release(handle.lease));
+        let cancellationPoll: ReturnType<typeof setInterval>;
         try {
             const entry = this.leases.get(handle.lease);
-            await entry?.ready;
+            await new Promise<void>((resolve, reject) => {
+                if (token) cancellationPoll = setInterval(() => {
+                    if (token.isCancellationRequested) reject(createCancellationError());
+                }, 20);
+                Promise.resolve(entry?.ready).then(resolve, reject);
+            });
+            throwIfCancellationRequested(token);
             // Internal consumers have not published a cursor yet and can use the retried generation.
             if (entry && this.leases.get(handle.lease) === entry) handle.generation = entry.generation;
             const snapshot = await this.snapshot(handle.lease, handle.generation);
@@ -421,7 +437,7 @@ export class ProjectSessions {
                     registryReferences: { complete: gaps.length === 0, referenceOccurrences: [], valueDomainOccurrences: [],
                         referenceCoverage: { complete: gaps.length === 0, gaps } } }];
             })) };
-        } finally { registration?.dispose?.(); this.release(handle.lease); }
+        } finally { clearInterval(cancellationPoll); registration?.dispose?.(); this.release(handle.lease); }
     }
 
     private async fileView(request: any, token?: any) {

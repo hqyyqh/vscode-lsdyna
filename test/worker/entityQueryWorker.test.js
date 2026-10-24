@@ -6,6 +6,22 @@ describe('Background entity query pages', function() {
     const pools = [];
     afterEach(async () => { for (const pool of pools.splice(0)) await pool.dispose(); });
     const temporary = require('../support/tempDirectories').trackTempDirectories();
+    it('keeps validation and cancellation when low memory disables scanning', async () => {
+        const { EntityQueryWorker } = require('../../out/worker/entityQueryWorker');
+        let scans = 0;
+        const worker = new EntityQueryWorker(async () => { scans++; throw Error('unexpected scan'); }, undefined, 0);
+        pools.push(worker);
+        const file = path.resolve('missing-low-memory.k');
+        const request = { rootFile: file, filePath: file, scope: 'single-file', line: 0, id: 1, targetKind: 'curve' };
+        assert.deepEqual((await worker.query(request)).result.reasons, ['entity-query-low-memory']);
+        assert.deepEqual((await worker.sourceAnalysis(request)).reasons, ['entity-query-low-memory']);
+        await assert.rejects(worker.sourceAnalysis({ ...request, rootFile: 'relative.k' }), /Invalid source/);
+        await assert.rejects(worker.query({ ...request, id: 0 }), /Invalid entity/);
+        await assert.rejects(worker.query(request, { isCancellationRequested: true }), { name: 'CancellationError' });
+        await assert.rejects(worker.sourceAnalysis(request, { isCancellationRequested: true }), { name: 'CancellationError' });
+        worker.invalidate(file); await worker.stats();
+        assert.equal(scans, 0);
+    });
     function input(count = 450) {
         const root = temporary(path.join(os.tmpdir(), 'entity-worker-')), file = path.join(root, 'model.k');
         fs.writeFileSync(file, '*NODE\n' + '       1\n'.repeat(count));
@@ -21,12 +37,15 @@ describe('Background entity query pages', function() {
             action: 'source-analysis', rootFile: file, scope: 'single-file', filePath: file, line: 6, character: 4 };
         const complete = () => pool.projectSession({ ...request, mode: 'parameter-completion', prefix: 'ba' });
         assert.equal((await complete()).items[0].value, 3);
-        const navigate = await pool.projectSession({ ...request, mode: 'parameter-navigation', name: 'BASE',
+        const navigate = await pool.projectSession({ ...request, mode: 'parameter-navigation', name: 'base',
             declaration: false, references: false, includeDeclaration: true });
         assert.equal(navigate.status, 'ready'); assert.equal(navigate.items.length, 1);
         assert.equal(navigate.items[0].line, 4);
+        const differentCase = await pool.projectSession({ ...request, mode: 'parameter-navigation', name: 'BASE',
+            declaration: false, references: false, includeDeclaration: true });
+        assert.deepEqual(differentCase.items, [], 'parameter identity remains case-sensitive');
         const refs = await pool.projectSession({ ...request, line: 2, character: 2, mode: 'parameter-navigation',
-            name: 'BASE', declaration: true, references: true, includeDeclaration: true });
+            name: 'base', declaration: true, references: true, includeDeclaration: true });
         assert.deepEqual(refs.items.map(row => row.line), [2, 4, 4, 6]);
         fs.writeFileSync(file, original.replace('Rbase,2', 'Rbase,20'));
         assert.equal((await complete()).items[0].value, 21);
@@ -41,7 +60,7 @@ describe('Background entity query pages', function() {
         const { pool, file } = input(1);
         const request = { protocolVersion: require('../../out/shared/indexPages').INDEX_PROTOCOL_VERSION,
             action: 'source-analysis', rootFile: file, scope: 'single-file', filePath: file,
-            line: 1, character: 2, mode: 'parameter-navigation', name: 'BASE', declaration: true,
+            line: 1, character: 2, mode: 'parameter-navigation', name: 'base', declaration: true,
             references: true, includeDeclaration: true };
         fs.writeFileSync(file, '*PARAMETER\nRbase,2\n*NODE\n1,0,0,0\n*INCLUDE\nmissing.k\n*END');
         assert.deepEqual((await pool.projectSession(request)).items.map(row => row.line), [1]);

@@ -3,6 +3,17 @@ const assert = require('assert');
 const { EntityQueryCache } = require('../../../out/core/references/entityQueryCache');
 
 describe('entity query cache ownership', () => {
+    it('reserves project build space without exceeding concurrent reservations', () => {
+        const cache = new EntityQueryCache(4096);
+        cache.set('old', { text: 'old'.repeat(100) });
+        const result = cache.reserveResult();
+        const index = cache.reserveResult(cache.maxBytes);
+        assert.equal(result.bytes, 1024);
+        assert.equal(index.bytes, 3072);
+        assert.equal(cache.stats().bytes + cache.stats().reservedBytes, cache.maxBytes);
+        index.release(); result.release();
+        assert.equal(cache.stats().reservedBytes, 0);
+    });
     it('reuses serialized disk revisions but isolates replaced structure and reopened live documents', () => {
         const cache = new EntityQueryCache();
         const disk = { size: 10, mtimeMs: 1, scannerVersion: 1,

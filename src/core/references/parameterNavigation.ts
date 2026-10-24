@@ -90,7 +90,7 @@ export async function parameterNavigation(index: any, fileIndexes: Map<string, a
                     if (bytes > 64 * 1024 * 1024 || lineBytes > 64 * 1024 || items.length >= 1000) {
                         stopped = true; reasons.add('parameter-reference-limit'); throw new RangeError('Parameter reference limit');
                     }
-                    if (!parameterBlock && !text.toUpperCase().includes(name)) return;
+                    if (!parameterBlock && !text.includes(name)) return;
                     try { await step(); } catch (error) {
                         if (error.code === 'PARAMETER_QUERY_BUDGET') { stopped = true; reasons.add('parameter-reference-limit'); }
                         throw error;

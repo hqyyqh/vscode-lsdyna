@@ -159,7 +159,7 @@ describe('published conditional manager cards', function () {
         assert.equal(model.plan.reason, 'lspp-input-form-source-layout-unresolved');
     });
 
-    for (const format of ['standard', 'long', 'i10', 'comma']) it(`handles Barlat controllers in ${format} without widening write authority`, () => {
+    for (const format of ['standard', 'long', 'i10', 'comma']) it(`handles Barlat controllers in ${format} through its native file grammar`, () => {
         const keyword = 'MAT_BARLAT_YLD2000', form = getCatalogInputFormCatalogV4().formForKeyword(keyword);
         const rule = form.rules[form.reference.fieldRuleIds[0]], native = form.rules[form.reference.formRuleIds[0]];
         const from = rule.states.find(state => state.cardIndexes.join() === '1,2,4,7,8,9');
@@ -174,6 +174,6 @@ describe('published conditional manager cards', function () {
         const model = build(editorFor(documentFor(lines)), format === 'long' || format === 'i10' ? 1 : 0,
             { fieldDrafts: { [`lspp-input:${keyword}:card:1:field:4`]: '1.0' } });
         assert.deepEqual(indexes(model), [1, 2, 5, 6, 7, 8, 9]);
-        assert.equal(view(model).canApply, format !== 'comma', model.plan.reason);
+        assert.equal(view(model).canApply, true, model.plan.reason);
     });
 });

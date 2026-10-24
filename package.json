@@ -16,6 +16,12 @@
         "vscode": "^1.100.0"
     },
     "activationEvents": [
+        "onCommand:extension.entityReferences.cancel",
+        "onCommand:extension.cancelIncludeScan",
+        "onCommand:extension.cancelKeywordScan",
+        "onCommand:extension.entityDiagnostics.start",
+        "onCommand:extension.entityDiagnostics.stop",
+        "onCommand:extension.entityDiagnostics.openReport",
         "onLanguage:lsdyna",
         "onLanguage:lsprepost-command-file",
         "onCommand:extension.openIncludeFile",
@@ -84,6 +90,10 @@
         "onCommand:extension.pickOfficialFieldValue",
         "onCommand:extension.keywordIndexChooseLayout",
         "onCommand:extension.keywordIndexToggleFollow",
+        "onCommand:extension.foldKeywordBlock",
+        "onCommand:extension.foldKeywordAtCursor",
+        "onCommand:extension.foldAllKeywordBlocks",
+        "onCommand:extension.unfoldAllKeywordBlocks",
         "onCommand:extension.keywordIndexToggleFollowActive",
         "onCommand:extension.openLsdynaLargeFileViewer",
         "onCommand:extension.openLargeFileInTextEditor",
@@ -99,7 +109,8 @@
         "onCommand:extension.includeTree.cycleName",
         "onCommand:extension.keywordIndexCycleCategory",
         "onCommand:extension.keywordIndexCycleOrder",
-        "onCommand:extension.keywordIndexCycleAlphabetical"
+        "onCommand:extension.keywordIndexCycleAlphabetical",
+        "onCommand:extension.compareFiles"
     ],
     "main": "./out/client/bootstrap.js",
     "categories": [
@@ -137,8 +148,8 @@
         "data:update": "node scripts/build/keywords/data.cjs --update",
         "data:check": "node scripts/build/keywords/data.cjs --check",
         "update:source-manifest": "node scripts/release/update-source-manifest.cjs",
-        "test:unit": "mocha --require test/support/register-out.js \"test/**/*.test.js\" --ignore \"test/scripts/native/**\"",
-        "test:data": "node --test test/scripts/build/keywords/data.test.cjs"
+        "test:unit": "node scripts/release/run-unit-tests.cjs",
+        "test:data": "node --test \"test/scripts/build/keywords/*.test.cjs\""
     },
     "devDependencies": {
         "@testing-library/jest-dom": "^6.9.1",
@@ -160,7 +171,7 @@
         "js-yaml": "^5.4.3",
         "jsdom": "^29.1.1",
         "katex": "^0.19.0",
-        "markdown-it": "^15.0.2",
+        "markdown-it": "^15.0.3",
         "mocha": "^11.7.6",
         "ovsx": "^1.0.1",
         "react": "^19.2.7",
@@ -171,8 +182,8 @@
         "remark-gfm": "^4.0.1",
         "semver": "^7.8.5",
         "typescript": "^6.0.3",
-        "vite": "^8.1.4",
-        "vitest": "^4.1.10",
+        "vite": "^8.1.6",
+        "vitest": "^4.1.12",
         "vscode-messenger-webview": "^0.6.1"
     },
     "contributes": {
@@ -356,6 +367,36 @@
         ],
         "commands": [
             {
+                "command": "extension.entityReferences.cancel",
+                "title": "%commands.cancelModuleScan.title%",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "extension.cancelIncludeScan",
+                "title": "%commands.cancelModuleScan.title%",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "extension.cancelKeywordScan",
+                "title": "%commands.cancelModuleScan.title%",
+                "icon": "$(debug-stop)"
+            },
+            {
+                "command": "extension.entityDiagnostics.start",
+                "title": "%commands.entityDiagnostics.start.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.entityDiagnostics.stop",
+                "title": "%commands.entityDiagnostics.stop.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.entityDiagnostics.openReport",
+                "title": "%commands.entityDiagnostics.openReport.title%",
+                "category": "LS-DYNA"
+            },
+            {
                 "command": "extension.openLargeFileInTextEditor",
                 "title": "%commands.openLargeFileInTextEditor.title%",
                 "icon": "$(edit)"
@@ -410,6 +451,29 @@
                 "command": "extension.keywordIndexChooseScope",
                 "title": "%commands.keywordIndexChooseScope.title%",
                 "icon": "$(scope)"
+            },
+            {
+                "command": "extension.foldKeywordBlock",
+                "title": "%commands.foldKeywordBlock.title%",
+                "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.foldKeywordAtCursor",
+                "title": "%commands.foldKeywordAtCursor.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna && resourceScheme == file"
+            },
+            {
+                "command": "extension.foldAllKeywordBlocks",
+                "title": "%commands.foldAllKeywordBlocks.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna && resourceScheme == file"
+            },
+            {
+                "command": "extension.unfoldAllKeywordBlocks",
+                "title": "%commands.unfoldAllKeywordBlocks.title%",
+                "category": "LS-DYNA",
+                "enablement": "editorLangId == lsdyna && resourceScheme == file"
             },
             {
                 "command": "extension.keywordIndexRefresh",
@@ -752,9 +816,26 @@
                 "command": "extension.keywordIndexCycleAlphabetical",
                 "title": "%commands.keywordIndexCycleAlphabetical.title%",
                 "icon": "$(symbol-keyword)"
+            },
+            {
+                "command": "extension.compareFiles",
+                "title": "%commands.compareFiles.title%",
+                "category": "LS-DYNA"
             }
         ],
         "keybindings": [
+            {
+                "command": "extension.foldAllKeywordBlocks",
+                "key": "ctrl+k ctrl+0",
+                "mac": "cmd+k cmd+0",
+                "when": "editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
+            },
+            {
+                "command": "extension.unfoldAllKeywordBlocks",
+                "key": "ctrl+k ctrl+j",
+                "mac": "cmd+k cmd+j",
+                "when": "editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
+            },
             {
                 "command": "extension.jumpToNextKeyword",
                 "key": "ctrl+alt+down",
@@ -1074,8 +1155,12 @@
                     "description": "%config.include.pathCaseCheck.description%"
                 },
                 "lsdyna.cache.entityIndexMemoryMaxMiB": {
-                    "type": "number",
-                    "default": 512,
+                    "type": [
+                        "number",
+                        "string"
+                    ],
+                    "pattern": "^auto$",
+                    "default": "auto",
                     "minimum": 128,
                     "maximum": 4096,
                     "description": "%config.cache.entityIndexMemoryMaxMiB.description%"
@@ -1141,6 +1226,10 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "extension.foldKeywordBlock",
+                    "when": "false"
+                },
+                {
                     "command": "extension.openLargeFileInTextEditor",
                     "when": "false"
                 },
@@ -1162,6 +1251,21 @@
                 }
             ],
             "view/title": [
+                {
+                    "command": "extension.entityReferences.cancel",
+                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.scanRunning",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "extension.cancelIncludeScan",
+                    "when": "view == lsdynaIncludeTree && lsdynaIncludeTree.scanRunning",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "extension.cancelKeywordScan",
+                    "when": "view == lsdynaKeywordIndex && lsdynaKeywordIndex.scanRunning",
+                    "group": "navigation@0"
+                },
                 {
                     "command": "extension.searchIncludeTree",
                     "when": "view == lsdynaIncludeTree",
@@ -1292,6 +1396,16 @@
             ],
             "editor/context": [
                 {
+                    "submenu": "lsdyna.keywordFolding",
+                    "when": "editorLangId == lsdyna && resourceScheme == file",
+                    "group": "lsdyna@2.1"
+                },
+                {
+                    "submenu": "lsdyna.compare",
+                    "when": "editorLangId == lsdyna && resourceScheme == file",
+                    "group": "lsdyna@2.2"
+                },
+                {
                     "command": "extension.selectKeyword",
                     "when": "editorLangId == 'lsdyna'",
                     "group": "lsdyna@2"
@@ -1336,6 +1450,11 @@
             ],
             "view/item/context": [
                 {
+                    "command": "extension.foldKeywordBlock",
+                    "when": "view == lsdynaKeywordIndex && viewItem == file",
+                    "group": "navigation@2"
+                },
+                {
                     "command": "extension.openToSide",
                     "when": "view == lsdynaIncludeTree && viewItem == file || view == lsdynaKeywordIndex && viewItem == file",
                     "group": "inline"
@@ -1357,6 +1476,34 @@
                     "when": "resourceScheme == file && !explorerResourceIsFolder && (resourceExtname == .k || resourceExtname == .key || resourceExtname == .dyna)",
                     "group": "lsdyna@3"
                 }
+            ],
+            "lsdyna.keywordFolding": [
+                {
+                    "command": "extension.foldKeywordAtCursor",
+                    "group": "1_current"
+                },
+                {
+                    "command": "extension.foldAllKeywordBlocks",
+                    "group": "2_all@1"
+                },
+                {
+                    "command": "extension.unfoldAllKeywordBlocks",
+                    "group": "2_all@2"
+                }
+            ],
+            "lsdyna.compare": [
+                {
+                    "command": "extension.changeMarks.diffSinceOpened",
+                    "group": "1_history@1"
+                },
+                {
+                    "command": "extension.changeMarks.diffUnsaved",
+                    "group": "1_history@2"
+                },
+                {
+                    "command": "extension.compareFiles",
+                    "group": "2_files"
+                }
             ]
         },
         "customEditors": [
@@ -1376,6 +1523,16 @@
                 ],
                 "priority": "option"
             }
+        ],
+        "submenus": [
+            {
+                "id": "lsdyna.keywordFolding",
+                "label": "%menus.keywordFolding%"
+            },
+            {
+                "id": "lsdyna.compare",
+                "label": "%menus.compare%"
+            }
         ]
     },
     "dependencies": {
@@ -1386,7 +1543,10 @@
         "vscode-messenger-common": "^0.6.1"
     },
     "overrides": {
-        "serialize-javascript": "^7.0.6",
+        "serialize-javascript": "^7.1.3",
+        "@azure/identity": {
+            "@azure/msal-node": "^7.1.0"
+        },
         "diff": "^8.0.4",
         "rehype-katex": {
             "katex": "$katex"

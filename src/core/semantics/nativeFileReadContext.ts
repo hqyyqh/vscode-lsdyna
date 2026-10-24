@@ -1,4 +1,4 @@
-import { keywordInputFormat, stripKeywordInputFormatMarker, type KeywordInputFormatMode } from '../parser/inputFormat';
+import { keywordInputFormat, keywordInputFormatOverride, stripKeywordInputFormatMarker, type KeywordInputFormatMode } from '../parser/inputFormat';
 import { nativeControlResolver, type NativeParameterContext } from './nativeParameterContext';
 import { nativeConditionalBinding, selectConditionalLayout } from './nativeConditionalLayout';
 import { nativeCountedOccurrenceBinding, selectCountedOccurrenceLayout } from './nativeCountedOccurrenceLayout';
@@ -7,9 +7,10 @@ import { nativeFordFeatureEnabled } from './nativeFeatureContext';
 import { nativeContactOptionalBinding, nativeContactOptionalRecordReader } from './nativeContactOptionalReferences';
 import { keywordDataPath } from '../keywordDataPath';
 import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
-import { nativeFileCatalogKeyword, NATIVE_FILE_SOURCE } from "./catalogNativeFileLayout";
+import { nativeFileCatalogKeyword, NATIVE_FILE_SOURCE, isVerifiedNativeSpelling } from "./catalogNativeFileLayout";
+import { safeRecordGeometry, formattedReadFields, readRecordField, hasSharedByteContract } from '../edit/keywordRecordSerializer';
 const writeLayouts = require(keywordDataPath('engineering/fileWriteLayouts.json')).layouts;
-import { nativeSpellingBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
+import { nativeSpellingBinding, nativeFilePrefixBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
     selectNativeFileLayout, selectVerifiedSourceRecords, nativeReferenceTailBinding,
     nativeSoilPileRecordReader, nativeAleTrimRecordReader, nativeAleMotionRecordReader, nativeControlledReferenceRecordReader, selectNativeUserMaterialRecords } from "./catalogNativeFileLayout";
 
@@ -44,19 +45,55 @@ export function nativeAppendLayoutMatches(keywordText: string, rows: string[], a
 export function nativeFileReadContext(rule: any, keywordText: string, rows: string[],
     globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
     nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }): ReturnType<typeof baseNativeFileReadContext> {
+    const reading = nativeFileReading(rule, keywordText, rows, globalFormat, recordLines, parameters, nativeReadLayout);
+    const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
+    if (!isVerifiedNativeSpelling(keyword)) return nativeSpellingBinding(keyword)
+        ? { ...reading, writeCompatible: () => false } : reading;
+    return { ...reading, writeCompatible(records) {
+        const selected = reading.select(false);
+        if (rule.catalogSource?.datasetSha256 !== NATIVE_FILE_SOURCE ||
+            nativeFileLayoutKind(rule, keyword) === 'unsupported-source' || reading.readInputFailure ||
+            !selected?.current?.length || selected.current.length !== rows.length || records.length !== rows.length ||
+            reading.controls.reasons.size || ('uncertainty' in selected && selected.uncertainty) ||
+            ('reasons' in selected && Array.isArray(selected.reasons) && selected.reasons.length) || records.some((record, index) =>
+                record.cardIndex !== selected.current[index].cardIndex)) return false;
+        const spelling = nativeFilePrefixBinding(keyword);
+        return records.every((record, index) => {
+            const card = reading.cards.get(record.cardIndex), fields = card?.fields || [];
+            if (card?.nativeZeroFieldRecord) return !rows[index].trim();
+            const prefix = record.cardIndex === 0 && spelling?.prefixCard;
+            const format = prefix && spelling.prefixFormat !== 'input' ? spelling.prefixFormat :
+                rows[index].includes(',') ? 'comma' : reading.readInput;
+            if (format === 'raw') return safeRecordGeometry(fields) && fields.length === 1 && fields[0].position === 0 && Number(fields[0].type) === 0;
+            const geometry = format === 'comma' ? fields : formattedReadFields(fields, rows[index], format);
+            const shared = (format === 'standard' || format === 'i10' && fields.every(field =>
+                field.nativeReadGeometry?.i10.position === field.position && field.nativeReadGeometry.i10.width === field.width)) &&
+                hasSharedByteContract(card, rule.catalogSource.datasetSha256);
+            return safeRecordGeometry(geometry, format === 'comma' || shared) && fields.every((_field, fieldIndex) =>
+                prefix || reading.read(rows[index], record.cardIndex, fieldIndex) === readRecordField(rows[index], fields, fieldIndex, format));
+        });
+    } };
+}
+
+function nativeFileReading(rule: any, keywordText: string, rows: string[],
+    globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
+    nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }): ReturnType<typeof baseNativeFileReadContext> {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
     const spelling = nativeSpellingBinding(keyword);
     if (spelling && !spelling.originalContactPrefix && !spelling.interfaceComponent) {
+        const override = keywordInputFormatOverride(keywordText);
+        const baseKeywordText = '*' + spelling.baseKeyword + (override ? { standard: ' -', long: ' +', i10: ' %' }[override] : '');
         if (spelling.layout) {
-            const body = baseNativeFileReadContext(rule, '*' + spelling.baseKeyword, rows,
-                keywordInputFormat(keywordText, globalFormat), recordLines, parameters);
+            const body = baseNativeFileReadContext(rule, baseKeywordText, rows,
+                globalFormat, recordLines, parameters);
             const cards = new Map<number, any>([...body.cards].map(([index, card]) => [index,
                 spelling.strictNativeHelp ? { ...card, fields: card.fields.map(field => ({ ...field,
                     help: nativeSpellingFieldHelp(field.fieldRecordId) ?? '' })) } : card]));
             for (const card of spelling.extraCards || []) cards.set(card.cardIndex, card);
             if (spelling.prefixCard) cards.set(0, spelling.prefixCard);
             const title = !!spelling.prefixCard;
-            return { ...body, cards, fields: [...cards.values()].filter(card => card.cardIndex !== 0), writeCompatible: () => false,
+            return { ...body, kind: 'conditional-sequence', cards, fields: [...cards.values()].filter(card => card.cardIndex !== 0),
+                read: (text, card, field) => readNativeFileField(body.kind, card, cards.get(card)?.fields || [], text, field, body.readInput),
                 select(partial = false, draft?, _targetTitle?) {
                     return selectConditionalLayout(spelling.layout, rows, title,
                         (row, card, field) => body.read(rows[row] || '', card, field), body.controls.resolve,
@@ -69,11 +106,11 @@ export function nativeFileReadContext(rule: any, keywordText: string, rows: stri
                 } };
         }
         if (spelling.prefixScope === 'instance') {
-            const body = baseNativeFileReadContext(rule, '*' + spelling.baseKeyword, rows,
-                keywordInputFormat(keywordText, globalFormat), recordLines, parameters);
+            const body = baseNativeFileReadContext(rule, baseKeywordText, rows,
+                globalFormat, recordLines, parameters);
             const cards = new Map<number, any>(body.cards);
             cards.set(0, spelling.prefixCard);
-            return { ...body, cards, writeCompatible: () => false,
+            return { ...body, cards,
                 select(partial = false, draft?, _targetTitle?, draftRecord?) {
                     return selectNativeFileLayout('generic-fixed', rows, true,
                         (row, card, field) => body.read(rows[row] || '', card, field), draft,
@@ -81,14 +118,13 @@ export function nativeFileReadContext(rule: any, keywordText: string, rows: stri
                 } };
         }
         const prefix = spelling.prefixCard ? 1 : 0;
-        const body = nativeFileReadContext(rule, '*' + spelling.baseKeyword, rows.slice(prefix),
-            keywordInputFormat(keywordText, globalFormat), recordLines?.slice(prefix), parameters);
+        const body = nativeFileReadContext(rule, baseKeywordText, rows.slice(prefix),
+            globalFormat, recordLines?.slice(prefix), parameters);
         const cards = new Map<number, any>(body.cards);
         if (prefix) cards.set(0, spelling.prefixCard);
         const shift = record => ({ ...record, instanceStart: record.instanceStart ? record.instanceStart + prefix : 0,
             key: record.key.replace(/^instance:\d+/, `instance:${record.instanceStart ? record.instanceStart + prefix : 0}`) });
         return { ...body, cards,
-            writeCompatible: () => false,
             select(partial = false, draft?, _targetTitle?, draftRecord?) {
                 const selected = body.select(partial, draft && ((record, field, raw) => draft(shift(record), field, raw)),
                     false, draftRecord && ((record, raw) => draftRecord(shift(record), raw)));
@@ -111,6 +147,8 @@ function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[
     const kind = nativeFileLayoutKind(rule, keyword);
     const fields = nativeFileLayoutCards(rule, keyword);
     const cards = new Map<number, any>(fields.map(card => [Number(card.cardIndex), card]));
+    const prefix = nativeFilePrefixBinding(keyword)?.prefixCard;
+    if (prefix) cards.set(0, prefix);
     const input = keywordInputFormat(keywordText, globalFormat);
     const readInput = nativeReadInputFormat(rule, keywordText, globalFormat);
     const binding = nativeConditionalBinding(keyword);
@@ -126,6 +164,10 @@ function baseNativeFileReadContext(rule: any, keywordText: string, rows: string[
     return { kind, cards, fields, input, readInput, readInputFailure, controls, read,
         writeCompatible(records: { cardIndex: number }[]) {
             if (readInputFailure) return false;
+            // The pinned SPR3 comma reader consumes the next keyword/title when
+            // its optional fourth body record is absent. Preserve that boundary.
+            if (binding?.cardSetId === "record:046033df36da543cb96fa4bf:95eb78253fedc7fb3fedec7e" && rows.some((row, index) => records[index]?.cardIndex > 0 && row.includes(',')) &&
+                records.filter(record => record.cardIndex > 0).map(record => record.cardIndex).join(',') === '1,2,3') return false;
             // A full source-locked card match permits the existing fixed-field writer;
             // read-only catalogs elsewhere do not acquire write authority by association.
             const layout = writeLayouts.find(item => item.keywords.includes(keyword) &&

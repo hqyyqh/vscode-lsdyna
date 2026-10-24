@@ -180,6 +180,16 @@ function rebuild(root = ROOT, destination) {
     const inputs = { 'keywords/sources/manifest.json': sha(fs.readFileSync(path.join(root, 'keywords/sources/manifest.json'))) };
     for (const source of manifest.bundles) inputs[source.path] = source.sha256;
     for (const source of manifest.compilerInputs || []) inputs[source.path] = source.sha256;
+    const referenceRolesPath = 'keywords/sources/reference-roles/import-v1.json';
+    const referenceRolesSource = compilerInputs[referenceRolesPath];
+    const referenceRoles = require('../compile-reference-roles.cjs').compileReferenceRoles(referenceRolesSource,
+        bundles['manual-semantics'], bundles['semantic-v2'], {
+            manualSemanticsSha256: manifest.bundles.find(item => item.bundle === 'manual-semantics').sha256,
+            semanticV2Sha256: manifest.bundles.find(item => item.bundle === 'semantic-v2').sha256,
+            importSha256: inputs[referenceRolesPath],
+        });
+    bundles['manual-semantics'] = referenceRoles.manual;
+    bundles['semantic-v2'] = referenceRoles.semantic;
     const engineeringAuthority = compilerInputs[manifest.engineeringAuthorityInput];
     assert.equal(engineeringAuthority?.kind,'derived-approved-engineering-rule-baseline');
     assert.equal(engineeringAuthority.schemaVersion,1);
@@ -313,11 +323,13 @@ function rebuild(root = ROOT, destination) {
             if (name === 'manual-semantics') {
                 projected.fieldSchema = {file:'keywords/runtime/schema/field_data.json',sha256:sha(outputs.get('keywords/runtime/schema/field_data.json'))};
                 projected.runtimeId = sha(Buffer.from([manifest.bundles.find(item=>item.bundle===name).contentSha256,
-                    projected.fieldSchema.sha256,sha(fs.readFileSync(require.resolve('../generate-manual-semantic-runtime.cjs')))].join('\n')));
+                    projected.fieldSchema.sha256,sha(fs.readFileSync(require.resolve('../generate-manual-semantic-runtime.cjs'))),
+                    sha(fs.readFileSync(require.resolve('../compile-reference-roles.cjs'))),inputs[referenceRolesPath]].join('\n')));
             }
             if (name === 'semantic-v2') {
                 projected.source.fieldDataSha256 = sha(outputs.get('keywords/runtime/schema/field_data.json'));
                 projected.source.prefixLayoutSha256 = sha(outputs.get('keywords/runtime/schema/keyword_prefix_layouts.json'));
+                projected.source.referenceRoleSupplement = { input: referenceRolesPath, sha256: inputs[referenceRolesPath] };
                 projected.datasetReleaseId = `semantic-dataset:${sha(Buffer.from(JSON.stringify(canonical({source:projected.source,
                     referenceShards:projected.referenceShards,optionShards:projected.optionShards,
                     referenceKeywordIndex:projected.referenceKeywordIndex,optionSpellingIndex:projected.optionSpellingIndex})))).slice(0,24)}`;
@@ -392,7 +404,7 @@ function rebuild(root = ROOT, destination) {
     const compilerTools = Object.fromEntries(['keywords/data.cjs','publish-files.cjs','deterministic-gzip.cjs','generate-field-schema-runtime.cjs','generate-field-help-runtime.cjs',
         'generate-field-help-zh-delta.cjs','generate-semantic-runtime-v2.cjs','generate-manual-semantic-runtime.cjs',
         'generate-keyword-structure-runtime-v2.cjs','generate-definition-registry.cjs','generate-family-definition-scanner-runtime.cjs',
-        'generate-field-reference-index.cjs','generate-lspp-input-form-runtime.cjs','compile-contact-thermal.cjs']
+        'generate-field-reference-index.cjs','generate-lspp-input-form-runtime.cjs','compile-contact-thermal.cjs','compile-reference-roles.cjs']
         .map(file=>[`scripts/build/${file}`,sha(fs.readFileSync(path.join(__dirname,'..',file)))]));
     for (const file of Object.keys(require.cache)) if (file.startsWith(coreRoot+path.sep) && file.endsWith('.js')) {
         const relative = `src/core/${path.relative(coreRoot,file).slice(0,-3).split(path.sep).join('/')}.ts`;
@@ -402,8 +414,11 @@ function rebuild(root = ROOT, destination) {
     const lineage = { schemaVersion: 1, kind: 'dynasense-local-data-projection',
         sourceIdentity: manifest.sourceIdentity, verification: { logicalCheckpointIntegrity: true,
             externalProducerReplay: 'unverified', sourcePermissions: 'inherited-from-unchanged-verified-checkpoints',
+            externalProducerReplayReason: 'external-producers-not-executed-by-local-projection',
             supplementalImports: [{input:thermalPath,kind:thermalSource.kind,manualSourceSha256:thermalSource.source.manual.sha256,
-                verification:thermalSource.source.verification}],
+                verification:thermalSource.source.verification}, {input:referenceRolesPath,kind:referenceRolesSource.kind,
+                sha256:inputs[referenceRolesPath],recordCount:referenceRoles.recordCount,
+                authority:referenceRolesSource.source.authority,nativeReadWriteApproval:false}],
             manualBindingObservations:bindingObservations, referenceNamespaceCorrections, manualReferenceNamespaceCorrections, referenceNamespaceConflicts },
         inputs, tools: compilerTools,
         derived: Object.fromEntries([...derived].sort(([a],[b])=>a.localeCompare(b)).map(([file,bytes])=>[file,sha(bytes)])),
@@ -500,7 +515,8 @@ function main(args = process.argv.slice(2), root = ROOT) {
 }
 
 if (require.main === module) try { const result = main(); console.log(JSON.stringify({ generatedFiles: Object.keys(result.outputs).length,
-    localProjection: 'verified', externalProducerReplay: result.verification.externalProducerReplay })); }
+    localProjection: 'verified', externalProducerReplay: result.verification.externalProducerReplay,
+    externalProducerReplayReason: result.verification.externalProducerReplayReason })); }
 catch (error) { console.error(error.message); process.exitCode = 1; }
 module.exports = { rebuild, readSources, applyHelpCorrections, compare, main, canonical, encode, updateDescriptors, publish,
     obsolete, runtimeFiles, validateEngineeringSource, engineeringRuntimeBytes, rebindReferenceNamespaces };

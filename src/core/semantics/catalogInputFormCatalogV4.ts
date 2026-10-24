@@ -416,7 +416,8 @@ export class CatalogInputFormCatalogV4 {
         }
         // A shard contains many unrelated forms. Validate/project only the requested
         // rules here; eagerly joining native help for every form blocks first Hover.
-        const rules = Object.fromEntries(ruleIds.map(ruleId => {
+        const rules: Record<string, any> = {};
+        for (const ruleId of ruleIds) {
             const owner = shard.ruleOwners?.get(ruleId) || shard;
             let encoded = owner.projectedRules.get(ruleId);
             if (!encoded) {
@@ -431,8 +432,14 @@ export class CatalogInputFormCatalogV4 {
                     this.cache.set(owner.cacheKey, owner, owner.cacheBytes);
                 }
             }
-            return [ruleId, deserialize(encoded)];
-        }));
+            // Validate every projection above, but copy large GUI state tables only
+            // when consumed. Each returned form still owns its mutable rule objects.
+            const assign = (value: any) => Object.defineProperty(rules, ruleId,
+                { value, writable: true, enumerable: true, configurable: true });
+            Object.defineProperty(rules, ruleId, { enumerable: true, configurable: true,
+                get() { const value = deserialize(encoded); assign(value); return value; },
+                set: assign });
+        }
         const form: CatalogInputForm = {
             keyword: normalized,
             reference: structuredClone(reference),

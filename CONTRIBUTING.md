@@ -23,6 +23,14 @@ Thank you for your interest in contributing to DynaSense! We welcome bug fixes, 
    ```
 5. Submit a Pull Request with a clear description of your changes.
 
+If F5 reports `Could not register service worker` and Webviews stay blank, open
+the repository in an isolated VS Code process, then press F5 in that window:
+`code --new-window --user-data-dir .vscode-test/debug-user-data .`
+Run this command from the repository root. The fixed directory keeps debug
+settings between launches without clearing your regular profile. Adding
+`--user-data-dir` only to the extension-host launch arguments does not isolate
+the built-in host's existing VS Code process.
+
 ---
 
 ## 中文
@@ -43,6 +51,11 @@ Thank you for your interest in contributing to DynaSense! We welcome bug fixes, 
    npm test
    ```
 5. 提交 Pull Request，简明说明您的修改内容及使用场景即可。
+
+如果 F5 报 `Could not register service worker` 且 Webview 空白，请在仓库根目录运行
+`code --new-window --user-data-dir .vscode-test/debug-user-data .`，在新开的开发窗口
+中按 F5。固定目录会保留后续调试设置，不会清除日常配置。仅在扩展宿主的启动参数中
+添加 `--user-data-dir`，不能隔离内置宿主所在的现有 VS Code 进程。
 
 ## Development and data / 开发与数据
 

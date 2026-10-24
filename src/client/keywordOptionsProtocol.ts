@@ -40,6 +40,7 @@ export type KeywordManagerControlState = {
     value?: string | boolean;
     choices?: Array<{ value: string; label: string; enabled: boolean }>;
     emptyLabel?: string;
+    emptyEnabled?: boolean;
     visible: boolean;
     enabled: boolean;
     fieldId?: string;

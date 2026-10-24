@@ -502,6 +502,20 @@ describe('changeMarksController', () => {
         controller.dispose();
     });
 
+    it('explains unavailable history when the file exceeds the configured line limit', async () => {
+        const doc = createMockDocument('a\nb');
+        const editor = createMockEditor(doc);
+        const vscode = createMockVscode(editor);
+        const warnings = [];
+        vscode.window.showWarningMessage = async message => warnings.push(message);
+        const controller = createChangeMarksController({ vscode, isLsdynaDocument: () => true,
+            getConfig: () => fullConfig({ maxLineCount: 1 }), getMessage: key => key });
+        await controller.showDiffUnsaved(editor);
+        assert.deepStrictEqual(warnings, ['compareHistoryUnavailable']);
+        assert(!vscode._cmdHandlers.has('vscode.diff'));
+        controller.dispose();
+    });
+
     it('preserves an encoded Windows URI when loading the diff origin baseline', async () => {
         const uriString = 'file:///d%3A/Project/My%20Deck+Variant/model.k';
         const doc = createMockDocument('ORIGINAL', { uriString });

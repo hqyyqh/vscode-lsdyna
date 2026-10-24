@@ -211,10 +211,8 @@ async function runFilteredQuickPick({
     const apply = () => {
         const query = pick.value || '';
         const rows = filterEntries(allEntries, query, limit);
-        // Visibility first: after custom filter, multi-word hits MUST use alwaysShow.
-        // VS Code re-filters the list; with alwaysShow=false, "con en" rows vanish even
-        // though scoreKeywordName > 0. Single-token contiguous/subsequence can keep
-        // alwaysShow=false so native colored bold highlights still paint.
+        // Keep native highlighting for contiguous hits; bypass native filtering for
+        // fuzzy matches it can reject (mat83 → MAT_83.k, con en → CONTROL_ENERGY).
         pick.items = rows.map(entry => {
             const item = mapItem(entry, query);
             const rawLabel = typeof item.label === 'string' ? item.label : String(item.label || '');

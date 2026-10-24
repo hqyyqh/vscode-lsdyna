@@ -1,0 +1,62 @@
+.fieldHelp { min-width: 0; margin-top: 0; padding: 8px 12px; color: var(--vscode-editor-foreground); line-height: 1.5; font-size: .95em; overflow-wrap: anywhere; animation: fieldHelpFadeIn 150ms ease-out; }
+@keyframes fieldHelpFadeIn {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+}
+.fieldHelpBody:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.fieldHelpContent { line-height: 1.6; }
+.fieldHelpContent + .fieldHelpContent { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.fieldHelpText.loading { padding: 0; opacity: 0; animation: delayLoadingText 0s 150ms forwards; }
+@keyframes delayLoadingText { to { opacity: 0.6; } }
+.fieldHelpName { font-family: var(--vscode-editor-font-family); font-weight: 700; color: var(--vscode-editor-foreground); }
+.fieldHelpType { font-style: italic; color: var(--vscode-descriptionForeground); font-size: 0.9em; margin-right: 2px; }
+.fieldHelpRule {
+    margin-top: 4px;
+    padding-left: 8px;
+    border-left: 2px solid color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent);
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    font-family: var(--vscode-editor-font-family);
+}
+.fieldHelpChoices { display: inline-flex; align-items: baseline; gap: 4px; margin-left: 8px; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+.fieldHelpChoices code { font-family: var(--vscode-editor-font-family); }
+.helpMeta { display: inline-flex; align-items: baseline; gap: 4px; margin-left: 8px; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+.helpMeta code { font-family: var(--vscode-editor-font-family); }
+.fieldHelpLangToggle {
+    background: transparent;
+    border: 0;
+    padding: 0 4px;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.88em;
+    text-decoration: underline;
+    user-select: none;
+    line-height: 1.4;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+}
+.detailsToolbar .fieldHelpLangToggle, .detailsToolbar .fieldHelpLangToggle:hover:not(:disabled) { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+    .fieldHelp { animation: none; }
+}
+@media (forced-colors: active) {
+    .detailTopics button.selected { border-bottom-color: Highlight; }
+}
+.fieldHelpLangToggle:hover {
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+.toolbarDivider {
+    color: var(--vscode-widget-border, var(--vscode-panel-border));
+    font-size: 0.85em;
+    user-select: none;
+    margin: 0 2px;
+}
+.detailsToolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.detailsActions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.detailTopics { display: flex; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; gap: 2px 8px; }
+.detailTopics button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 30px; max-width: 100%; padding: 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); text-align: left; }
+.detailTopics button.selected { color: var(--vscode-editor-foreground); border-bottom-color: var(--vscode-focusBorder); }
+.detailTopics button:hover { background: color-mix(in srgb, var(--vscode-editor-foreground) 5%, transparent); }
+.detailViewport { flex: 0 1 auto; min-height: 0; max-height: min(32vh, 18rem); overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }

@@ -890,7 +890,7 @@ describe('projectReferenceIndex', () => {
             documentPath: rootFile,
             lineIndex: 3,
         });
-        const after = analyzeParameterReferenceAtLocation(index, '&cid', {
+        const after = analyzeParameterReferenceAtLocation(index, '&CID', {
             documentPath: rootFile,
             lineIndex: 6,
         });
@@ -899,6 +899,11 @@ describe('projectReferenceIndex', () => {
         assert.ok(before.reasons.includes('parameter-unresolved'));
         assert.equal(after.resolved, true);
         assert.equal(after.value, 77);
+        const differentCase = analyzeParameterReferenceAtLocation(index, '&cid', {
+            documentPath: rootFile, lineIndex: 6,
+        });
+        assert.equal(differentCase.resolved, false);
+        assert.ok(differentCase.reasons.includes('parameter-unresolved'));
     });
 
     it('does not expose a LOCAL child parameter after returning to the parent file', () => {

@@ -54,7 +54,7 @@ describe('field reference index', () => {
             if (!field && descriptor.source === "keyword-catalog") {
                 const form = require("../../../out/core/semantics/catalogInputFormCatalogV4")
                     .getCatalogInputFormCatalogV4().formForKeyword(keyword);
-                assert.equal(form?.source.datasetSha256, "99091ea6216c85df477661324f422cc6674b2b655d4d19360767ed334c671168", keyword);
+                assert.equal(form?.source.datasetSha256, "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5", keyword);
                 const nativeFields = Object.values(form.rules).filter(rule => rule.cardSetId === descriptor.nativeCardArrayAddress)
                     .flatMap(rule => (rule.cards || []).flatMap(card => card.fields.filter(candidate => candidate.fieldRecordId === descriptor.nativeFieldAddress)));
                 assert.equal(nativeFields.length, 1, `${keyword}: native field identity must be unique`);
