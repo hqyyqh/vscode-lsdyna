@@ -97,14 +97,15 @@ if(process.env.VSCODE_TEST_VERSION) assert.equal(vscode.version,process.env.VSCO
 const extension=vscode.extensions.getExtension('hqyyqh.dynasense');
  assert.ok(extension,'Installed DynaSense must be discoverable');
  assert.equal(fs.realpathSync(extension.extensionPath),fs.realpathSync(${JSON.stringify(installed)}));
+ const installedRoot=fs.realpathSync(extension.extensionPath);
+ const withinInstalled=file=>{const relative=path.relative(installedRoot,fs.realpathSync(file));
+  return relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);};
  const Module=require('node:module'),originalResolve=Module._resolveFilename;
  Module._resolveFilename=function(request,parent,...rest){
   const resolved=originalResolve.call(this,request,parent,...rest);
-  const parentRelative=parent?.filename?path.relative(extension.extensionPath,parent.filename):'..';
-  if(!parentRelative.startsWith('..')&&!path.isAbsolute(parentRelative)&&request!=='vscode'&&path.isAbsolute(resolved))
-   assert.ok(!path.relative(extension.extensionPath,resolved).startsWith('..'),'Installed runtime escaped its package: '+resolved);
-  const installedRelative=path.relative(extension.extensionPath,resolved);
-  if(process.platform==='win32'&&path.isAbsolute(resolved)&&!installedRelative.startsWith('..')&&!path.isAbsolute(installedRelative))
+  if(parent?.filename&&path.isAbsolute(parent.filename)&&request!=='vscode'&&path.isAbsolute(resolved)&&withinInstalled(parent.filename))
+   assert.ok(withinInstalled(resolved),'Installed runtime escaped its package: '+resolved);
+  if(process.platform==='win32'&&path.isAbsolute(resolved)&&withinInstalled(resolved))
    return resolved[0].toLowerCase()+resolved.slice(1);
   return resolved;
  };

@@ -2799,7 +2799,7 @@
     {
       "path": "scripts/host/vsix-host.cjs",
       "role": "editable-source",
-      "sha256": "ce7d6eea0d63f71c2f8f5888aa0c5ab5529a95b33d4cf54c3a76e666779ed140",
+      "sha256": "20c652aaa188a0c368fb4986a9faed5c3671a83d7a6b7e284a45368797c53c95",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -6939,7 +6939,7 @@
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "51336978fb3ded2dc2ae16a21aea4a51f9374612cab21f664ede872474339e2f",
+      "sha256": "097f0e3ace2f4ca11d41d788e798fa9f5f9d6182d6e797955d8595e973608bb4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7185,7 +7185,7 @@
     {
       "path": "test/scripts/host/vsixHost.test.js",
       "role": "editable-source",
-      "sha256": "5956acbcad6f23d68dcc37a4e8179587c5d40df03c94d54c3a24815c802a57f3",
+      "sha256": "93aadcfbccf7e2999c4526d4f2a72a7e32bcbef4d70196a9f16e5b5bf12c56ae",
       "reason": "public-build-or-package-regression"
     },
     {

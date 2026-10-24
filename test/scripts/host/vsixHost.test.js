@@ -6,7 +6,7 @@ const create = require(path.join(repo, 'test/support/tempDirectories.js')).track
 const script = path.join(repo, 'scripts/host/vsix-host.cjs');
 
 describe('installed host diagnostic failure propagation', () => {
-    async function scenario({ failure, hostError, development = false } = {}) {
+    async function scenario({ failure, hostError, development = false, driverCheck } = {}) {
         const root = create(path.join(os.tmpdir(), 'vsix-diagnostic-test-'));
         const executable = path.join(root, process.platform === 'darwin' ? 'Code.app/Contents/MacOS/Electron' : 'Code.exe');
         const extensions = path.join(root, 'extensions');
@@ -43,6 +43,7 @@ describe('installed host diagnostic failure propagation', () => {
                 assert.equal(received.extensionTestsEnv.NODE_PATH, '');
                 resultFile = path.join(evidence, fs.readdirSync(evidence)[0]);
                 const identity = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+                if (driverCheck) await driverCheck(received.extensionTestsPath, identity.installed, options.extensionTestsPath);
                 fs.writeFileSync(resultFile, failure === 'json' ? 'invalid JSON' : JSON.stringify({ ...identity, vscodeVersion: '1.100.0' }));
             } else assert.equal(received, options);
             hostFinished = true;
@@ -107,6 +108,37 @@ describe('installed host diagnostic failure propagation', () => {
         assert.equal(result.value, 7);
         assert.equal(result.calls, 1);
         assert.equal(result.resultFile, undefined);
+    });
+
+    it('accepts canonical installed paths through a directory alias but rejects real dependency escapes', async () => {
+        for (const canonicalParent of [false, true]) for (const escape of [false, 'outside', 'linked']) {
+            const result = await scenario({ driverCheck: async (entry, installed, host) => {
+                const alias = path.join(path.dirname(installed), 'alias');
+                fs.symlinkSync(installed, alias, process.platform === 'win32' ? 'junction' : 'dir');
+                const parent = path.join(canonicalParent ? installed : alias, 'index.js');
+                fs.writeFileSync(parent, '');
+                const inside = path.join(installed, 'dependency.js');
+                const outside = path.join(path.dirname(installed), 'outside');
+                fs.mkdirSync(outside);
+                fs.writeFileSync(inside, '');
+                fs.writeFileSync(path.join(outside, 'dependency.js'), '');
+                const link = path.join(installed, 'linked');
+                fs.symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
+                const resolved = escape === 'linked' ? path.join(link, 'dependency.js')
+                    : escape ? path.join(outside, 'dependency.js') : inside;
+                const Module = { _resolveFilename: () => resolved };
+                const context = { exports: {}, process: { platform: process.platform, env: {} }, require(name) {
+                    if (name === 'vscode') return { version: '1.100.0', extensions: { getExtension: () => ({ extensionPath: alias }) } };
+                    if (name === 'node:module') return Module;
+                    if (name === host) return { run: async () => Module._resolveFilename('dependency', { filename: parent }) };
+                    return require(name);
+                } };
+                vm.runInNewContext(fs.readFileSync(entry, 'utf8'), context);
+                await context.exports.run();
+            } });
+            if (escape) assert.match(String(result.error), /Installed runtime escaped its package/);
+            else assert.equal(result.error, undefined);
+        }
     });
 });
 
