@@ -118,6 +118,8 @@ jobs:
           name: verified-reuse-bundle
           path: .
       - name: Verify immutable release artifact and acceptance matrix
+        env:
+          REUSE_PLAN: ${{ inputs.reuse_plan }}
         run: |
           for target in win32-x64 linux-x64 darwin-arm64; do
             package="packages/candidate-$target/candidate.vsix"

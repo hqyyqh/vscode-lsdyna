@@ -2,6 +2,33 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { verify } = require("../../../scripts/release/verify-release-acceptance.cjs");
 describe('immutable release acceptance gate', () => {
+    it('binds explicit 3.2.2 local acceptance to the authorized build, source and package', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'local-release-acceptance-'));
+        const vsix = path.join(root, 'candidate.vsix'); fs.writeFileSync(vsix, 'package bytes');
+        const savedPlan = process.env.REUSE_PLAN, savedSha = process.env.GITHUB_SHA;
+        const plan = { localAcceptance: true, buildRun: '40160820298', reason: 'User confirmed local testing' };
+        process.env.REUSE_PLAN = JSON.stringify(plan); process.env.GITHUB_SHA = 'a'.repeat(40);
+        const record = { scope: 'user-confirmed-local-acceptance', version: '3.2.2', target: 'win32-x64',
+            installedCi: 'waived-by-user-not-passed', buildRun: plan.buildRun, reason: plan.reason,
+            buildCommit: '4cb6b5207bc70c3421b30eff2b46d5af329d66d7', releaseCommit: process.env.GITHUB_SHA,
+            vsixSha256: crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex') };
+        const report = path.join(root, 'local-win32-x64.json');
+        try {
+            fs.writeFileSync(report, JSON.stringify(record));
+            assert.equal(verify(vsix, root, 'win32-x64').installedCi, 'waived-by-user-not-passed');
+            for (const field of ['vsixSha256', 'releaseCommit', 'buildCommit', 'buildRun', 'target', 'reason', 'installedCi']) {
+                fs.writeFileSync(report, JSON.stringify({ ...record, [field]: 'wrong' }));
+                assert.throws(() => verify(vsix, root, 'win32-x64'), field);
+            }
+            fs.writeFileSync(report, JSON.stringify(record));
+            process.env.REUSE_PLAN = JSON.stringify({ ...plan, buildRun: '1' });
+            assert.throws(() => verify(vsix, root, 'win32-x64'));
+        } finally {
+            if (savedPlan === undefined) delete process.env.REUSE_PLAN; else process.env.REUSE_PLAN = savedPlan;
+            if (savedSha === undefined) delete process.env.GITHUB_SHA; else process.env.GITHUB_SHA = savedSha;
+            fs.unlinkSync(report); fs.unlinkSync(vsix); fs.rmdirSync(root);
+        }
+    });
     it('accepts only matching completed host jobs across original, platform and retry routes', () => {
         const { validateHostJob } = require('../../../scripts/release/reuse-release-evidence.cjs');
         const suffix = 'Same VSIX / windows-2022 / VS Code 1.100.0';

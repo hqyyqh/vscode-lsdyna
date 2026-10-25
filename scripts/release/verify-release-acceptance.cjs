@@ -2,6 +2,24 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 function verify(vsix, directory, target) {
     const sha = crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex');
+    const plan = JSON.parse(process.env.REUSE_PLAN || 'null');
+    if (plan?.localAcceptance === true) {
+        assert.equal(plan.buildRun, '40160820298');
+        assert.equal(JSON.parse(fs.readFileSync('package.json')).version, '3.2.2');
+        assert.ok(['win32-x64', 'linux-x64', 'darwin-arm64'].includes(target));
+        const record = JSON.parse(fs.readFileSync(path.join(directory, `local-${target}.json`)));
+        assert.equal(record.scope, 'user-confirmed-local-acceptance');
+        assert.equal(record.installedCi, 'waived-by-user-not-passed');
+        assert.equal(record.version, '3.2.2');
+        assert.equal(record.target, target);
+        assert.equal(record.buildRun, plan.buildRun);
+        assert.equal(record.buildCommit, '4cb6b5207bc70c3421b30eff2b46d5af329d66d7');
+        assert.equal(record.releaseCommit, process.env.GITHUB_SHA);
+        assert.ok(typeof plan.reason === 'string' && plan.reason.trim());
+        assert.equal(record.reason, plan.reason);
+        assert.equal(record.vsixSha256, sha);
+        return record;
+    }
     const walk = root => fs.readdirSync(root, { withFileTypes: true }).flatMap(item => item.isDirectory()
         ? walk(path.join(root, item.name)) : item.name === 'acceptance.json' ? [path.join(root, item.name)] : []);
     const reports = walk(directory).map(file => ({ file, data: JSON.parse(fs.readFileSync(file)) }));

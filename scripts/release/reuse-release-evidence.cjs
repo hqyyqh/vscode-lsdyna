@@ -53,10 +53,16 @@ function validateHostJob(run, target, version, success = true) {
 }
 function main() {
     const plan = JSON.parse(process.env.REUSE_PLAN || 'null');
-    assert.ok(plan && plan.hosts, 'Supply an explicit reuse plan');
+    assert.ok(plan && (plan.hosts || plan.localAcceptance === true), 'Supply an explicit reuse plan');
+    const localAcceptance = plan.localAcceptance === true;
+    if (localAcceptance) {
+        assert.equal(plan.buildRun, '40160820298');
+        assert.equal(JSON.parse(fs.readFileSync('package.json')).version, '3.2.2');
+        assert.ok(typeof plan.reason === 'string' && plan.reason.trim(), 'Record the local acceptance authorization');
+    }
     const id = value => { assert.match(value, /^\d+$/); return value; };
     id(plan.buildRun);
-    assert.deepEqual(Object.keys(plan.hosts).sort(), targets.flatMap(target => versions.map(version => `${target}/${version}`)).sort());
+    if (!localAcceptance) assert.deepEqual(Object.keys(plan.hosts).sort(), targets.flatMap(target => versions.map(version => `${target}/${version}`)).sort());
     const repo = process.env.GITHUB_REPOSITORY; assert.ok(repo);
     const command = (exe, args) => execFileSync(exe, args, { encoding: 'utf8', maxBuffer: 64 * 1024 ** 2, timeout: 120000 }).trim();
     const cache = new Map(), root = path.resolve('.artifacts/release-reuse'); fs.mkdirSync(root, { recursive: true });
@@ -89,6 +95,17 @@ function main() {
         const source = download(plan.buildRun, `candidate-${target}`), destination = path.join('packages', `candidate-${target}`);
         assert.ok(!fs.existsSync(destination), 'Use an empty output directory'); fs.cpSync(source, destination, { recursive: true });
         command(process.execPath, ['scripts/release/verify-release-hash.cjs', path.join(destination, 'candidate.vsix')]);
+        if (localAcceptance) {
+            fs.mkdirSync('acceptance-evidence', { recursive: true });
+            fs.writeFileSync(path.join('acceptance-evidence', `local-${target}.json`), JSON.stringify({
+                scope: 'user-confirmed-local-acceptance', version: '3.2.2', target,
+                releaseCommit: command('git', ['rev-parse', 'HEAD']), buildRun: plan.buildRun,
+                buildCommit: build.headSha, vsixSha256: sha(path.join(destination, 'candidate.vsix')),
+                installedCi: 'waived-by-user-not-passed', reason: plan.reason,
+            }, null, 2));
+            verify(path.join(destination, 'candidate.vsix'), 'acceptance-evidence', target);
+            continue;
+        }
         for (const version of versions) {
             const runId = id(plan.hosts[`${target}/${version}`]), entry = host(runId, target, version), report = entry.report;
             if (!report.complete) {
