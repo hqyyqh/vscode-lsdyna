@@ -158,6 +158,18 @@ describe('installed acceptance executable and measured version', () => {
         assert.equal(invalid.exitCode, 1);
         assert.equal(invalid.commands.length, 0);
     });
+    it('finds completed nested installation jobs for the exact platform and VS Code version', () => {
+        const { findCompletedHostJob } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
+        const suffix = 'Same VSIX / ubuntu-22.04 / VS Code 1.139.1';
+        for (const name of [suffix, `Platform / linux-x64 / Installed / 1.139.1 / ${suffix}`,
+            `Retry / linux-x64 / 1.139.1 / ${suffix}`, 'Selected node / Node / linux-x64 / installed / 1.139.1']) {
+            const job = { name, status: 'completed', databaseId: 123 };
+            assert.equal(findCompletedHostJob([job], 'linux-x64', '1.139.1'), job);
+            assert.throws(() => findCompletedHostJob([job], 'win32-x64', '1.139.1'));
+            assert.throws(() => findCompletedHostJob([job], 'linux-x64', '1.100.0'));
+            assert.throws(() => findCompletedHostJob([{ ...job, status: 'in_progress' }], 'linux-x64', '1.139.1'));
+        }
+    });
     it('reuses only the selected platform successful package job, without requiring unrelated platforms', () => {
         const { validateBuild } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         const run = { workflowName: 'Public collaboration / 公开协作', jobs: [

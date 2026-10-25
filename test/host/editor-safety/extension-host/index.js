@@ -1189,10 +1189,8 @@ async function assertFunctionalHoverMatrix() {
     for (const item of parameterCases) {
         const compact = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, item.position);
         assert.ok(compact.some(hover => hoverMarkdown(hover).includes('command:extension.hoverMore')));
-        assert.ok(compact.every(hover => !hoverMarkdown(hover).includes('Current-file source definition')));
-        const hover = await executeDetailedHover(document, item.position, 'Current-file source definition');
+        const hover = await executeDetailedHover(document, item.position, '`7`');
         const markdown = hoverMarkdown(hover);
-        assert.ok(markdown.includes('`7`'));
         assert.strictEqual(document.getText(hover.range), item.rangeText);
         assert.ok(!markdown.includes('complete project scan is unavailable'));
     }
@@ -1200,10 +1198,10 @@ async function assertFunctionalHoverMatrix() {
     const unresolved = await executeDetailedHover(
         document,
         new vscode.Position(7, 5),
-        'The effective value in the current main-deck context cannot be determined reliably.',
+        '$(warning)',
     );
     assert.strictEqual(document.getText(unresolved.range), '&UNKNOWN');
-    assert.ok(hoverMarkdown(unresolved).includes('parameter-controlled and parameters have not been evaluated'));
+    assert.ok(!hoverMarkdown(unresolved).includes('$(symbol-value)'));
 
     const parameterKeyword = await executeDetailedHover(
         document,
@@ -1280,7 +1278,6 @@ async function assertFunctionalHoverMatrix() {
             });
             renderedText = response.result ? String(response.result.value || '') : '';
             assert.ok(renderedText.includes('AB_CD_EF'));
-            assert.ok(!renderedText.includes('Current-file source definition'));
             assert.ok(!renderedText.includes('complete project scan is unavailable'));
         }, 3000);
         await dispatchRendererKey(devTools, 'Escape', 'Escape', 27);

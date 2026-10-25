@@ -45,6 +45,15 @@ function validateBuild(run, target) {
         job.name === `Selected node / Node / ${target} / package`
     )), `Missing passed build for ${target}`);
 }
+function findCompletedHostJob(jobs, target, version) {
+    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
+    const sameVsix = `Same VSIX / ${os} / VS Code ${version}`;
+    const names = [sameVsix, `Selected node / Node / ${target} / installed / ${version}`,
+        `Platform / ${target} / Installed / ${version} / ${sameVsix}`, `Retry / ${target} / ${version} / ${sameVsix}`];
+    const job = jobs.find(item => names.includes(item.name) && item.status === 'completed');
+    assert.ok(job, 'Previous host is not finished');
+    return job;
+}
 function reusableEditorScenarios(previous, current, required, log) {
     const ts = require('typescript');
     const parse = source => {
@@ -101,11 +110,7 @@ function main() {
     validateBuild(build, target);
     command(process.execPath, ['scripts/release/verify-release-hash.cjs', 'dist/candidate.vsix']);
     if (!previousRun) return;
-    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
-    assert.ok(previousRun.jobs.some(job => [
-        `Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`,
-    ].includes(job.name) && job.status === 'completed'),
-        'Previous host is not finished');
+    const previousJob = findCompletedHostJob(previousRun.jobs, target, version);
     const directory = path.resolve('.artifacts/previous-host');
     command('gh', ['run', 'download', resumeRun, '--repo', repo, '--name', `installed-${target}-${version}`, '--dir', directory]);
     const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -120,8 +125,7 @@ function main() {
         const { editorNames } = require('../release/reuse-release-evidence.cjs');
         const required = editorNames(current);
         assert.deepEqual(editorNames(previous), required, 'Editor scenario inventory changed');
-        const job = previousRun.jobs.find(item => [`Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(item.name));
-        const log = command('gh', ['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${job.databaseId}/logs`]);
+        const log = command('gh', ['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${previousJob.databaseId}/logs`]);
         const reused = reusableEditorScenarios(previous, current, required, log);
         const editorResume = path.join(directory, 'editor-resume.json');
         fs.writeFileSync(editorResume, JSON.stringify({ sourceRun: resumeRun, sourceCommit: previousRun.headSha,
@@ -137,5 +141,5 @@ function main() {
     fs.appendFileSync(githubEnv, `LSDYNA_ACCEPTANCE_RESUME=${resume}\n`);
     console.log(`Reuse build ${buildRun}, completed host cases from ${resumeRun}, exact package ${digest}`);
 }
-module.exports = { validateChanges, validateReport, validateBuild, reusableEditorScenarios };
+module.exports = { validateChanges, validateReport, validateBuild, findCompletedHostJob, reusableEditorScenarios };
 if (require.main === module) main();
