@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import { keywordDataPath } from '../keywordDataPath';
 import type { NativeFileRecord } from "./catalogNativeFileLayout";
 
-const executable = "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5";
+const executable = "b61593ada0d37dae30af8b4a4a5e87d403be338eda70bd5b4782ca0e0d0a1d28";
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
     ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const hash = (value: string | Buffer) => crypto.createHash('sha256').update(value).digest('hex');
@@ -18,9 +18,9 @@ export function validateNativeContactOptionalSource(input: any): any {
         previous.summary = { fields: 14, sourceBranches: 14, exactSpellings: 2, optionalDescriptors: 9 };
         const priorHash = hash(JSON.stringify(canonical(previous)));
         if (contentSha256 !== hash(JSON.stringify(canonical(core))) ||
-            priorHash !== "19079f0d445dcf6c451595082516af1b9f172ba0ff9b8351de3a75a3c000151b" ||
+            priorHash !== "f0963b779e8b4af30e84d39429e5dfbcdf5951128d5eed57a10e3e0281d57b65" ||
             proof.priorContentSha256 !== priorHash ||
-            hash(JSON.stringify(canonical(proof))) !== "5231159700aac030bf6865e2ac2168200a00b2f193114ac3013b1148ef1e40d5" ||
+            hash(JSON.stringify(canonical(proof))) !== "5df1d3f5df32056e0ea4d0bea07d4eb26e13fbf1cfed0aa04d6ed00db4310806" ||
             hash(JSON.stringify(canonical(core.contactOptionalBindings.slice(2)))) !== "505a338844254ff0fdd3bea6a3d535c3696ea792f4d89fbea02c9d5382bddd6f" ||
             hash(JSON.stringify(canonical(core.records.slice(14)))) !== "178f787e9a650d7a0819e01a9e9348dd8a08a435066be7bac9cfa6ed57eb6361" ||
             JSON.stringify(canonical(core.summary)) !== JSON.stringify(canonical({ fields: 99, sourceBranches: 99, exactSpellings: 13, optionalDescriptors: 9 }))) reject();

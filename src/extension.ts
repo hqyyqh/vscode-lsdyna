@@ -197,6 +197,7 @@ async function startLanguageServer(context) {
             entityMemoryBytes: entityBudget.workerBytes,
             entityDiskBytes: entityBudget.diskBytes,
             globalStoragePath: context.globalStorageUri ? path.join(context.globalStorageUri.fsPath, 'project-snapshots') : null,
+            // Honor existing cache limits; new profiles use internal defaults.
             maxMemoryCacheBytes: cacheLimitBytes('cache.memoryMaxMiB', 48, 16, 64),
             maxProjectSnapshotCacheBytes: cacheLimitBytes('cache.projectSnapshotDiskMaxMiB', 256, 32, 256),
             maxFileScanCacheBytes: cacheLimitBytes('cache.fileScanDiskMaxMiB', 256, 32, 256),
@@ -1348,6 +1349,9 @@ function findParameterReferences(document) {
 function getParameterAtCursor(document, position) {
     if (shouldSkipAutomaticDocumentScan(document)) return null;
     if (!isActiveLsdynaSemanticLocation(document, position)) return null;
+    const text = document.lineAt(position.line).text;
+    // Parameter symbols cannot occur in headers/comments or wholly numeric records.
+    if (classifyKeywordLine(text).isKeyword || text.trimStart().startsWith('$') || !/[A-Za-z_]/.test(text)) return null;
     const symbols = getDocumentParameterSymbols(document);
     for (const definition of symbols.definitionList) {
         if (definition.lineIndex !== position.line) continue;
@@ -3258,10 +3262,18 @@ class LsdynaFieldHoverProvider {
         if (shouldSkipAutomaticDocumentScan(document)) return null;
         if (!isActiveLsdynaSemanticLocation(document, position)) return null;
 
-        // Hover on include file paths
-        if (!shouldSkipAutomaticDocumentScan(document) && !await prepareDocumentPresentation(document)) return null;
+        // Local keyword/field help need not wait for the whole document's include directory.
+        let hoverKeywordLine = readyCardEditBlockIndex(document)?.findBlockAtLine(position.line)?.startLine;
+        if (!Number.isInteger(hoverKeywordLine)) {
+            for (let line = position.line; line >= Math.max(0, position.line - 256); line--) {
+                if (classifyKeywordLine(document.lineAt(line).text).isKeyword) { hoverKeywordLine = line; break; }
+            }
+        }
+        const needsIncludeDirectory = !Number.isInteger(hoverKeywordLine) ||
+            /^INCLUDE(?:_|$)/i.test(stripKeywordInputFormatMarker(keywordLineNameFromText(document.lineAt(hoverKeywordLine).text)));
+        if (needsIncludeDirectory && !await prepareDocumentPresentation(document)) return null;
         if (!isCurrent()) return null;
-        const includeEntries = shouldSkipAutomaticDocumentScan(document) ? [] : findIncludeFileLines(document);
+        const includeEntries = needsIncludeDirectory ? findIncludeFileLines(document) : [];
         const includeEntry = includeEntries.find(entry => includeScanner.includeEntryContainsLine(entry, position.line));
         if (includeEntry) {
             const ranges = includeScanner.getIncludeEntryRanges(includeEntry);
@@ -3298,7 +3310,7 @@ class LsdynaFieldHoverProvider {
             }
         }
 
-        if (!await prepareFieldInteraction(document, position, { cancellationToken }) || !isCurrent()) return null;
+        if (!await prepareFieldInteraction(document, position, { cancellationToken, keywordLine: hoverKeywordLine }) || !isCurrent()) return null;
         const line = document.lineAt(position.line);
         const text = line.text;
         const trimmed = text.trimStart();
@@ -7642,8 +7654,26 @@ let largeFileViewerProvider = null;
     let refreshActiveIncludeDecorations = () => {};
 
     jumpPulseController = createJumpPulseController(vscode);
+    let columnGuides;
     if (vscode.window.onDidChangeTextEditorVisibleRanges) {
-        context.subscriptions.push(require('./client/services/columnGuides').createColumnGuideController());
+        columnGuides = require('./client/services/columnGuides').createColumnGuideController((document, line) => {
+            const presentation = documentPresentationCache.get(document);
+            const block = readyCardEditBlockIndex(document)?.findBlockAtLine(line) ||
+                (presentation?.ready && presentation.version === document.version
+                    ? presentationBlockAtLine(presentation.blocks, line) : null);
+            if (!block) return [];
+            const resolved = getCardInfoForDocumentLineWithSuggest(document, line, getFieldData(), { keywordLine: block.startLine });
+            const card = resolved.cardInfo;
+            if (resolved.viaSuggest || !card || card.isTextCard || !['standard', 'long', 'i10'].includes(card.inputFormat) ||
+                !cardCellModel.isSafeCardGeometry(card.card)) return [];
+            return [...new Set<number>(card.card.flatMap(field => [field.p, field.p + field.w]))];
+        }, async document => {
+            if (shouldSkipAutomaticDocumentScan(document)) return false;
+            await keywordSchema.prepareKeywordSchema();
+            return prepareDocumentPresentation(document);
+        });
+        context.subscriptions.push(columnGuides);
+
     }
     context.subscriptions.push({ dispose: () => {
         if (jumpPulseController) {
@@ -7656,14 +7686,13 @@ let largeFileViewerProvider = null;
         vscode,
         isLsdynaDocument: isLsdynaFile,
         getConfig: (resource) => {
-            const debounceMs = Number(getLsdynaConfigurationValue('changeMarks.debounceMs', 250, resource));
             return {
                 enabled: getLsdynaConfigurationValue('changeMarks.enabled', true, resource) !== false,
                 colorScheme: getLsdynaConfigurationValue('changeMarks.colorScheme', 'adaptive', resource),
                 customUnsavedColor: getLsdynaConfigurationValue('changeMarks.customUnsavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.unsaved, resource),
                 customSavedColor: getLsdynaConfigurationValue('changeMarks.customSavedColor', DEFAULT_CHANGE_MARKS_CUSTOM_COLORS.saved, resource),
                 maxLineCount: Number(getLsdynaConfigurationValue('changeMarks.maxLineCount', 100000, resource)) || 100000,
-                debounceMs: Number.isNaN(debounceMs) ? 250 : debounceMs,
+                debounceMs: 250,
                 showOverviewRuler: getLsdynaConfigurationValue('changeMarks.showOverviewRuler', true, resource) !== false,
                 showLineBackground: getLsdynaConfigurationValue('changeMarks.showLineBackground', true, resource) !== false,
                 showMinimap: getLsdynaConfigurationValue('changeMarks.showMinimap', true, resource) !== false,
@@ -8134,10 +8163,11 @@ let keywordOptionsModel = null;
     let keywordManagerDirectoryTask = null;
     const completeKeywordManagerDirectory = (document, blockIndex) => {
         const version = document.version, epoch = activeProjectCacheEpoch;
+        const keyword = keywordOptionsModel?.currentKeyword;
         const previous = keywordManagerDirectoryTask;
         if (previous?.document === document && previous.version === version &&
-            previous.blockIndex === blockIndex && previous.epoch === epoch) return;
-        const task = { document, version, blockIndex, epoch };
+            previous.blockIndex === blockIndex && previous.epoch === epoch && previous.keyword === keyword) return;
+        const task = { document, version, blockIndex, epoch, keyword };
         keywordManagerDirectoryTask = task;
         const current = () => keywordManagerDirectoryTask === task && !document.isClosed &&
             document.version === version && activeProjectCacheEpoch === epoch &&
@@ -8146,10 +8176,11 @@ let keywordOptionsModel = null;
             await new Promise(resolve => setTimeout(resolve, 0));
             if (!current()) return;
             try {
-                if (await prepareKeywordManagerInstances(document, blockIndex, current) && current() &&
-                    completeKeywordManagerInstances(keywordOptionsModel, document, blockIndex)) {
-                    keywordOptionsWebviewProvider.publishInstances(keywordOptionsModel.managerInstances, 'ready');
-                }
+                const prepared = await prepareKeywordManagerInstances(document, blockIndex, current, keyword);
+                if (!current()) return;
+                if (!prepared || !completeKeywordManagerInstances(keywordOptionsModel, document, blockIndex))
+                    throw new Error('Keyword instance directory did not complete');
+                keywordOptionsWebviewProvider.publishInstances(keywordOptionsModel.managerInstances, 'ready');
             } catch (error) {
                 if (current()) {
                     keywordOptionsModel.directoryStatus = 'error';
@@ -8388,7 +8419,7 @@ let keywordOptionsModel = null;
                 const version = document.version, blockIndex = readyCardEditBlockIndex(document);
                 const isCurrent = () => keywordOptionsModel === model && !model.stale && !document.isClosed &&
                     document.version === version && model.documentVersion === version;
-                if (!await prepareKeywordManagerInstances(document, blockIndex, isCurrent) || !isCurrent() ||
+                if (!await prepareKeywordManagerInstances(document, blockIndex, isCurrent, model.currentKeyword) || !isCurrent() ||
                     !completeKeywordManagerInstances(model, document, blockIndex)) return false;
                 keywordOptionsWebviewProvider.publishInstances(model.managerInstances, 'ready');
             }
@@ -8409,7 +8440,7 @@ let keywordOptionsModel = null;
                 if (refreshed) {
                     const isCurrent = () => keywordOptionsModel === refreshed && !document.isClosed &&
                         document.version === refreshed.documentVersion;
-                    await prepareKeywordManagerInstances(document, readyCardEditBlockIndex(document), isCurrent);
+                    await prepareKeywordManagerInstances(document, readyCardEditBlockIndex(document), isCurrent, refreshed.currentKeyword);
                     completeKeywordManagerInstances(refreshed, document, readyCardEditBlockIndex(document));
                     if (keywordOptionsModel === refreshed) keywordOptionsWebviewProvider.publish(buildKeywordOptionsViewState(refreshed));
                 }
@@ -9120,7 +9151,7 @@ let keywordOptionsModel = null;
             if (!target?.targetKind) return inferAndQueryObjectReference();
             const normalized = normalizeIndexedEntityId(target?.id) ? target : null;
             if (normalized) return runObjectReferenceQuery(normalized, 'auto');
-            entityReferencesWebviewProvider.setMessage(i18n.get('entityReferencesCursorUnavailable'));
+            entityReferencesWebviewProvider.setMessage(() => i18n.get('entityReferencesCursorUnavailable'));
             return null;
         }),
         vscode.commands.registerCommand(
@@ -9135,6 +9166,10 @@ let keywordOptionsModel = null;
         }),
         vscode.commands.registerCommand('extension.entityReferences.toggleFollowActive', () => {
             entityReferencesWebviewProvider?.toggleFollowCursor();
+        }),
+        vscode.commands.registerCommand('extension.entityReferences.chooseScope', () => {
+            refreshEntityReferenceScopeContext();
+            return entityReferencesWebviewProvider.chooseScope();
         }),
         vscode.commands.registerCommand('extension.entityReferences.setScopeFile', () => {
             refreshEntityReferenceScopeContext();
@@ -9245,7 +9280,7 @@ let keywordOptionsModel = null;
         invalidateProjectSnapshot: indexClient.invalidate,
     });
     includeTreeView = vscode.window.createTreeView('lsdynaIncludeTree', {
-        treeDataProvider: includeTreeProvider
+        treeDataProvider: includeTreeProvider, showCollapseAll: true
     });
     includeTreeView.title = i18n.get('includeTreeTitle');
     includeTreeProvider.attachTreeView(includeTreeView);
@@ -9256,8 +9291,8 @@ let keywordOptionsModel = null;
         vscode.window.registerFileDecorationProvider(fileDecorationProvider)
     );
 
-    const scanIncludeTreeAndRefreshEntityQuery = async () => {
-        const scanResult = await includeTreeProvider.scan();
+    const scanIncludeTreeAndRefreshEntityQuery = async (rootFile?: string) => {
+        const scanResult = await includeTreeProvider.scan(typeof rootFile === 'string' ? rootFile : undefined);
         fileDecorationProvider.refresh();
         if (statusDashboardRef && typeof statusDashboardRef.scheduleRefresh === 'function') {
             statusDashboardRef.scheduleRefresh();
@@ -9294,6 +9329,16 @@ let keywordOptionsModel = null;
         )
     );
     context.subscriptions.push(
+        vscode.commands.registerCommand('extension.includeTree.chooseLayout', async () => {
+            const zh = i18n.getLanguage() === 'zh-cn';
+            const modes = [{ mode: 'tree', label: zh ? '树形结构' : 'Tree' },
+                { mode: 'flat-size', label: zh ? '按文件大小' : 'By file size' },
+                { mode: 'flat-name', label: zh ? '按文件名' : 'By file name' }];
+            const picked = await vscode.window.showQuickPick(modes.map(item => ({ ...item,
+                description: item.mode === includeTreeProvider.sortMode ? (zh ? '当前布局' : 'Current layout') : '' })),
+                { title: zh ? '选择引用文件树布局' : 'Choose Include Tree Layout' });
+            if (picked) includeTreeProvider.setSortMode(picked.mode);
+        }),
         vscode.commands.registerCommand('extension.includeTree.cycleTree', () => includeTreeProvider.setSortMode('flat-size')),
         vscode.commands.registerCommand('extension.includeTree.cycleSize', () => includeTreeProvider.setSortMode('flat-name')),
         vscode.commands.registerCommand('extension.includeTree.cycleName', () => includeTreeProvider.setSortMode('tree')),
@@ -9355,6 +9400,7 @@ let keywordOptionsModel = null;
     indexClient.setDocumentSource?.(require('./client/services/documentSource').createDocumentSource(
         () => vscode.workspace.textDocuments, document => keywordIndexProvider.ensureDocumentBlockIndex(document)));
     cardEditKeywordIndexProviderRef = keywordIndexProvider;
+    if (columnGuides) context.subscriptions.push(keywordIndexProvider.onDidChangeTreeData(() => columnGuides.scheduleRefresh()));
     context.subscriptions.push({
         dispose: () => {
             if (cardEditKeywordIndexProviderRef === keywordIndexProvider) {
@@ -9844,6 +9890,7 @@ context.subscriptions.push(
     vscode.workspace.textDocuments.forEach(updateDiagnostics);
 
     const HEALTH_NOTICE_SIGNATURE_KEY = 'lsdyna.health.lastPromptedIssueSignature';
+    const HEALTH_NOTICE_DISMISSED_KEY = 'lsdyna.health.noticeDismissed';
 
     function getHealthReportForEditor(editor = vscode.window.activeTextEditor) {
         const document = editor && editor.document ? editor.document : null;
@@ -9928,7 +9975,8 @@ context.subscriptions.push(
         const document = editor && editor.document ? editor.document : null;
         if (!isLsdynaFile(document)) return;
         const resource = document && document.uri ? document.uri : undefined;
-        const showFirstRunNotice = getLsdynaConfigurationValue('health.showFirstRunNotice', true, resource) !== false;
+        const showFirstRunNotice = !context.globalState?.get(HEALTH_NOTICE_DISMISSED_KEY, false)
+            && getLsdynaConfigurationValue('health.showFirstRunNotice', true, resource) !== false;
         const healthReport = getHealthReportForEditor(editor);
         const issues = healthReport.items.filter(item => item.state === 'warning'
             && !['manualsDir', 'pdfFiles', 'manualIndex', 'sumatra'].includes(item.id));
@@ -9951,13 +9999,18 @@ context.subscriptions.push(
 
         const btnView = i18n.get('healthNoticeViewStatus');
         const btnLater = i18n.get('healthNoticeLater');
+        const btnDismiss = i18n.get('healthNoticeDoNotRemind');
         Promise.resolve(vscode.window.showInformationMessage(
             i18n.get('healthNoticeMessage', report.issueCount),
             btnView,
-            btnLater
+            btnLater,
+            btnDismiss
         )).then(choice => {
             if (choice === btnView) {
                 return vscode.commands.executeCommand('extension.showHealthStatus');
+            }
+            if (choice === btnDismiss) {
+                return context.globalState?.update(HEALTH_NOTICE_DISMISSED_KEY, true);
             }
         }).catch(error => logDebug(`Health status action failed: ${error?.message || error}`));
     };
@@ -9966,6 +10019,7 @@ context.subscriptions.push(
         vscode.commands.registerCommand('extension.showHealthStatus', () => showHealthStatus())
     );
 
+    let fieldChoicePresentation: { text: string; tooltip: string; command: any } | undefined;
     function getStatusDashboardContext() {
         const editor = vscode.window.activeTextEditor;
         const document = editor && editor.document ? editor.document : null;
@@ -9997,6 +10051,11 @@ context.subscriptions.push(
                 : null,
             mainDeckContextState: mainDeckContext.state,
             labels: getStatusDashboardLabels(),
+            fieldChoice: fieldChoicePresentation,
+            columnGuides: { enabled: getLsdynaConfigurationValue('columnGuides.enabled', true, resource),
+                label: i18n.getLanguage() === 'zh-cn' ? '切换列辅助线' : 'Toggle column guides',
+                state: getLsdynaConfigurationValue('columnGuides.enabled', true, resource)
+                    ? (i18n.getLanguage() === 'zh-cn' ? '已开启' : 'On') : (i18n.getLanguage() === 'zh-cn' ? '已关闭' : 'Off') },
         };
     }
 
@@ -10030,6 +10089,16 @@ context.subscriptions.push(
                 );
                 statusDashboard.scheduleRefresh();
             },
+            pickFieldValue: () => fieldChoicePresentation && vscode.commands.executeCommand(fieldChoicePresentation.command.command, ...fieldChoicePresentation.command.arguments),
+            toggleColumnGuides: async () => {
+                const resource = vscode.window.activeTextEditor?.document.uri;
+                const config = vscode.workspace.getConfiguration('lsdyna', resource);
+                const setting = config.inspect('columnGuides.enabled');
+                const target = setting?.workspaceFolderValue !== undefined ? vscode.ConfigurationTarget.WorkspaceFolder
+                    : setting?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+                await config.update('columnGuides.enabled', !config.get('columnGuides.enabled', true), target);
+                statusDashboard.scheduleRefresh();
+            },
             toggleFieldHover: () => vscode.commands.executeCommand('extension.toggleFieldHover'),
             manageCustomValidKeywords: () => vscode.commands.executeCommand('extension.manageCustomValidKeywords'),
             selectMainDeckContext: () => vscode.commands.executeCommand('extension.selectMainDeckContext'),
@@ -10037,9 +10106,8 @@ context.subscriptions.push(
     });
     statusDashboardRef = statusDashboard;
     context.subscriptions.push(statusDashboard);
-    const officialChoiceStatusItem = vscode.window.createStatusBarItem(statusBarAlignment, 51);
     const activeFieldChoiceController = createActiveFieldChoiceController({
-        statusBarItem: officialChoiceStatusItem,
+        onPresentationChanged: value => { fieldChoicePresentation = value; statusDashboard.scheduleRefresh(); },
         getActiveEditor: () => vscode.window.activeTextEditor,
         isLsdynaDocument: isLsdynaFile,
         documentIdentity: documentUriIdentity,
@@ -10119,6 +10187,7 @@ context.subscriptions.push(
                 || e.affectsConfiguration('lsdyna.statusBar.level')
                 || e.affectsConfiguration('lsdyna.enableTabNavigation')
                 || e.affectsConfiguration('lsdyna.enableFieldHover')
+                || e.affectsConfiguration('lsdyna.columnGuides.enabled')
                 || e.affectsConfiguration('lsdyna.manualsDir')
                 || e.affectsConfiguration('lsdyna.language')
             ) {

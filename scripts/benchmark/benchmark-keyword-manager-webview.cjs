@@ -10,6 +10,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function main() {
     const startup = process.argv.includes('--startup');
+    const functionalOnly = process.argv.includes('--functional');
     const startupBlocks = Number(process.env.KEYWORD_STARTUP_BLOCKS || 10000);
     const { createTempRun, finishTempRun, writeEvidence } = require('../host/temp-runs.cjs');
     const root = createTempRun('dynasense-refresh-webview-');
@@ -171,7 +172,7 @@ async function main() {
                 });
                 const inputs = fields();
                 // Measure idle-host field help after the current-instance Refresh response.
-                await wait(100);
+                if (!${functionalOnly}) await wait(100);
                 for (let index = 1; index < 5; index++) {
                     const input = inputs[index];
                     const name = input.closest('.field').querySelector('span[title]').textContent;
@@ -210,8 +211,9 @@ async function main() {
         }
         writeEvidence(path.join(root, 'results.json'), JSON.stringify(results, null, 2));
         console.log(JSON.stringify(results, null, 2));
-        if (results.some(result => result.samples !== 8 || result.maxMs > 100)) {
-            throw new Error('Keyword Manager field-help spot check exceeds the 100 ms release budget');
+        if (results.some(result => result.samples !== 8)) throw new Error('Incomplete Keyword Manager field-help checks');
+        if (!functionalOnly && results.some(result => result.maxMs > 100)) {
+            throw new Error('Keyword Manager field-help benchmark exceeds 100 ms');
         }
     } finally { cdp.close(); }
     } catch (error) {

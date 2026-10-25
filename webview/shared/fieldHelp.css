@@ -24,28 +24,28 @@
 .helpMeta code { font-family: var(--vscode-editor-font-family); }
 .fieldHelpLangToggle {
     background: transparent;
-    border: 0;
-    padding: 0 4px;
-    color: var(--vscode-textLink-foreground);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 2px 6px;
+    color: var(--vscode-descriptionForeground);
     cursor: pointer;
-    font-family: var(--vscode-editor-font-family);
-    font-size: 0.88em;
-    text-decoration: underline;
+    font-size: 0.86em;
     user-select: none;
     line-height: 1.4;
     min-height: 24px;
     display: inline-flex;
     align-items: center;
+    gap: 4px;
 }
-.detailsToolbar .fieldHelpLangToggle, .detailsToolbar .fieldHelpLangToggle:hover:not(:disabled) { background: transparent; }
+.fieldHelpLangToggle:hover:not(:disabled) {
+    color: var(--vscode-editor-foreground);
+    background: color-mix(in srgb, var(--vscode-editor-foreground) 6%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
     .fieldHelp { animation: none; }
 }
 @media (forced-colors: active) {
     .detailTopics button.selected { border-bottom-color: Highlight; }
-}
-.fieldHelpLangToggle:hover {
-    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
 }
 .toolbarDivider {
     color: var(--vscode-widget-border, var(--vscode-panel-border));
@@ -53,8 +53,8 @@
     user-select: none;
     margin: 0 2px;
 }
-.detailsToolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
-.detailsActions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.detailsToolbar { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-width: 0; padding: 4px 8px; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.detailsActions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; margin-left: auto; }
 .detailTopics { display: flex; flex: 1 1 auto; flex-wrap: wrap; min-width: 0; gap: 2px 8px; }
 .detailTopics button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 30px; max-width: 100%; padding: 4px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); text-align: left; }
 .detailTopics button.selected { color: var(--vscode-editor-foreground); border-bottom-color: var(--vscode-focusBorder); }

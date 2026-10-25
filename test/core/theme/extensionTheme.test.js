@@ -119,7 +119,7 @@ describe('extensionTheme', () => {
 
     it('keeps selectable schemes and custom defaults synchronized with the manifest', () => {
         const manifest = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8'));
-        const settings = manifest.contributes.configuration.properties;
+        const settings = Object.assign({}, ...[manifest.contributes.configuration].flat().map(group => group.properties));
         assert.deepEqual(settings['lsdyna.changeMarks.colorScheme'].enum, [
             'adaptive',
             ...Object.keys(CHANGE_MARKS_COLOR_SCHEME_PALETTES),

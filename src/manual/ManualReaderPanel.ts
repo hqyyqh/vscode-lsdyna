@@ -141,7 +141,8 @@ export class ManualReaderPanel {
             previous.sentencesWarmScheduled = false;
             if (!caps.canToggleLanguage) previous.language = 'en';
             if (!caps.canToggleLanguage || !caps.features.sentenceMap) previous.comparison = false;
-            if (!caps.features.searchZh) previous.searchScope = 'en';
+            previous.searchScope = caps.features.searchZh ? 'both' : 'en';
+            previous.searchResults = repository.search(previous.searchQuery, previous.searchScope, 100, previous.searchMode);
             const section = repository.getSection(location.manualId, location.sectionId);
             if (section) location = {
                 ...location,
@@ -175,7 +176,7 @@ export class ManualReaderPanel {
             current.comparison = caps.canToggleLanguage && caps.features.sentenceMap && preference === 'bilingual';
             current.language = !caps.canToggleLanguage ? 'en'
                 : preference === 'auto' ? readerUiLocale() : preference === 'en' ? 'en' : 'zh';
-            current.searchScope = current.comparison ? 'both' : current.language;
+            current.searchScope = caps.features.searchZh ? 'both' : 'en';
             if (restored?.location && location.manualId === restored.location.manualId
                 && location.sectionId === restored.location.sectionId) {
                 ManualReaderPanel.current.scrollY = restored.scrollY;
@@ -222,7 +223,7 @@ export class ManualReaderPanel {
             this.language = this.comparison ? 'zh' : request.mode === 'en' || request.mode === 'zh'
                 ? request.mode : this.language === 'zh' ? 'en' : 'zh';
             this.languagePreference = this.comparison ? 'bilingual' : this.language;
-            this.searchScope = this.comparison ? 'both' : this.language;
+            this.searchScope = this.repository.getCapabilities().features.searchZh ? 'both' : 'en';
             if (this.location && typeof request.anchorId === 'string' && request.anchorId.length < 1024) {
                 this.location = { ...this.location, anchorId: request.anchorId };
             }
@@ -243,7 +244,7 @@ export class ManualReaderPanel {
             if (!this.accepts(request.revision)) return false;
             this.searchQuery = typeof request.query === 'string' ? request.query : '';
             let scope: ManualSearchScope = request.scope === 'en' || request.scope === 'zh' || request.scope === 'both'
-                ? request.scope : this.language;
+                ? request.scope : this.searchScope;
             // English-only packs cannot search Chinese indexes.
             if (!this.repository.getCapabilities().features.searchZh && scope !== 'en') {
                 scope = 'en';

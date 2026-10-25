@@ -55,7 +55,7 @@ jobs:
         run: >-
           npx --no-install mocha --bail --require test/support/register-out.js
           test/integration/extension.test.js --grep "official field value completions"
-      - run: npm run test:webview
+      - run: npm run test:webview:compiled
 
   contracts:
     name: Data, source inventory and dependency checks
@@ -78,4 +78,3 @@ jobs:
       - run: npm run compile
       - run: npm run check:contracts
       - run: npm audit
-      - run: npm audit --omit=dev

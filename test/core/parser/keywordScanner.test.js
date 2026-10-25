@@ -76,7 +76,7 @@ describe('keywordScanner', () => {
         );
     });
 
-    it('does not miss middle keywords in large files when fullScanLargeFiles is false', async () => {
+    it('does not miss middle keywords in large files with default or legacy scan options', async () => {
         const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-keyword-large-'));
         const filePath = path.join(tempDir, 'large.k');
         const lines = ['*KEYWORD'];
@@ -91,7 +91,10 @@ describe('keywordScanner', () => {
         lines.push('*END');
         fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
 
-        const keywords = await collectKeywordsFromFile(filePath, { fullScanLargeFiles: false });
+        const keywords = await collectKeywordsFromFile(filePath);
+        for (const fullScanLargeFiles of [false, true]) {
+            assert.deepEqual(await collectKeywordsFromFile(filePath, { fullScanLargeFiles }), keywords);
+        }
 
         assert.deepEqual(
             keywords.map(item => item.keyword),

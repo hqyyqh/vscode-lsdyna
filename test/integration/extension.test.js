@@ -3439,10 +3439,10 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         const hover = await provider.provideDetailedHover(doc, { line: 1, character: 8 });
         const value = hover.contents[0].value;
 
-        assert.ok(value.includes('Current-file source definition'));
+        assert.ok(value.includes('Current-file definition'));
         assert.ok(value.includes('`1001`'));
-        assert.ok(value.includes('not claimed as the effective value'));
-        assert.ok(!value.includes('Effective value in the current main-deck context'));
+        assert.ok(value.includes('the effective value depends on the main deck'));
+        assert.ok(!value.includes('Effective value in current main deck'));
     });
 
     it('provides the same local parameter hover from declaration, bare, and ampersand positions', async () => {
@@ -3466,7 +3466,7 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         for (const item of cases) {
             const hover = await provider.provideDetailedHover(doc, item.position);
             assert.ok(hover, JSON.stringify(item.position));
-            assert.ok(hover.contents[0].value.includes('Current-file source definition'));
+            assert.ok(hover.contents[0].value.includes('Current-file definition'));
             assert.ok(hover.contents[0].value.includes('`7`'));
             assert.equal(doc.getText(hover.range), item.text);
         }
@@ -3486,7 +3486,7 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         assert.equal(doc.getText(hover.range), '&UNKNOWN');
         assert.ok(value.includes('UNKNOWN'));
         assert.ok(value.includes('complete project scan is unavailable'));
-        assert.ok(!value.includes('Current-file source definition'));
+        assert.ok(!value.includes('Current-file definition'));
     });
 
     it('shows an inherited parameter as an effective value in a unique main-deck context', async () => {
@@ -3539,9 +3539,9 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         const hover = await provider.provideDetailedHover(doc, { line: 1, character: 8 });
         const value = hover.contents[0].value;
 
-        assert.ok(value.includes('Effective value in the current main-deck context'));
+        assert.ok(value.includes('Effective value in current main deck'));
         assert.ok(value.includes('`1001`'));
-        assert.ok(!value.includes('Current-file source definition'));
+        assert.ok(!value.includes('Current-file definition'));
     });
 
     it('does not present an unresolved parameter expression as an effective numeric value', async () => {
@@ -3582,10 +3582,10 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         const hover = await provider.provideDetailedHover(doc, { line: 3, character: 8 });
         const value = hover.contents[0].value;
 
-        assert.ok(value.includes('Current-file source definition'));
+        assert.ok(value.includes('Current-file definition'));
         assert.ok(value.includes('`&BASE+1`'));
-        assert.ok(value.includes('cannot be determined reliably'));
-        assert.ok(!value.includes('Effective value in the current main-deck context:'));
+        assert.ok(value.includes('Cannot determine the effective value'));
+        assert.ok(!value.includes('Effective value in current main deck:'));
     });
 
     it('does not borrow a parameter value from either ambiguous main deck', async () => {
@@ -3644,10 +3644,10 @@ describe('LsdynaFieldHoverProvider expanded details', () => {
         const hover = await provider.provideDetailedHover(doc, { line: 3, character: 8 });
         const value = hover.contents[0].value;
 
-        assert.ok(value.includes('Current-file source definition'));
+        assert.ok(value.includes('Current-file definition'));
         assert.ok(value.includes('`3003`'));
         assert.ok(value.includes('Choose main deck'));
-        assert.ok(!value.includes('Effective value in the current main-deck context'));
+        assert.ok(!value.includes('Effective value in current main deck'));
         assert.ok(!value.includes('`1001`'));
         assert.ok(!value.includes('`2002`'));
     });
@@ -6290,7 +6290,7 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(optionLenses.length, 3);
             const optionsLens = optionLenses.find(lens => lens.command.command === 'extension.lsdynaChooseKeywordOptions');
             assert.ok(optionsLens);
-            assert.ok(optionsLens.command.title.includes('Options'));
+            assert.ok(optionsLens.command.title.includes('Keyword Manager'));
             assert.ok(optionsLens.command.title.includes('ID, MPP, A-G'));
             assert.ok(optionLenses.some(lens => lens.command.command === 'extension.selectKeyword'));
             assert.ok(optionLenses.some(lens => lens.command.command === 'extension.lsdynaFormatSelection'));
@@ -6615,7 +6615,7 @@ describe('LS-DYNA keyword option interactions', () => {
             const provider = new LsdynaKeywordOptionsCodeLensProvider();
             const lenses = provider.provideCodeLenses(fakeDoc('*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE\n'));
             const optionsLens = lenses.find(lens => lens.command.command === 'extension.lsdynaChooseKeywordOptions');
-            assert.ok(optionsLens.command.title.includes('选项'));
+            assert.ok(optionsLens.command.title.includes('关键字管理器'));
 
             const editor = makeEditableEditor(['*NODE'], 0);
             let message = '';
@@ -6707,7 +6707,7 @@ describe('LS-DYNA keyword option interactions', () => {
 
     it('declares auto as the default extension language option', () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../../package.json"), 'utf8'));
-        const languageConfig = pkg.contributes.configuration.properties['lsdyna.language'];
+        const languageConfig = Object.assign({}, ...[pkg.contributes.configuration].flat().map(group => group.properties))['lsdyna.language'];
 
         assert.equal(languageConfig.default, 'auto');
         assert.deepEqual(languageConfig.enum, ['auto', 'zh-cn', 'en']);
@@ -6765,8 +6765,8 @@ describe('LS-DYNA keyword option interactions', () => {
 
         try {
             assert.equal(
-                i18n.get('openFileFirst', 'activeEditor=false'),
-                '请先打开一个 LS-DYNA 文件。（诊断信息：activeEditor=false）'
+                i18n.get('openFileFirst'),
+                '请先打开一个 LS-DYNA 文件。'
             );
             assert.equal(i18n.get('configureFolder'), '设置手册目录');
             assert.equal(i18n.get('howToConfigureManual'), '查看 PDF 手册配置说明');
@@ -6777,7 +6777,7 @@ describe('LS-DYNA keyword option interactions', () => {
             assert.equal(i18n.get('removeNonEmptyOptionLinesWarning'), '更改 LS-DYNA 关键字选项会删除非空的可选卡片行。');
             assert.equal(i18n.get('moreDefinitionsOmitted', 2), '悬停提示中已省略 2 个定义。');
             assert.equal(i18n.get('circularIncludeDependency', 'main.k -> child.k -> main.k'), '检测到循环引用依赖：main.k -> child.k -> main.k');
-            assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 选项：A-C');
+            assert.equal(i18n.get('keywordOptionsCodeLensWithSummary', 'A-C'), '$(gear) 关键字管理器：A-C');
             assert.equal(i18n.get('parameterCompletionValue', 2), '有效值：2');
             assert.equal(i18n.get('manualSidebarSearchModeKeyword'), '关键字与标题');
             assert.equal(i18n.get('statusDashboardShowHealthLabel'), '$(checklist) 环境与手册状态');
@@ -9445,6 +9445,7 @@ describe('LsdynaDefinitionProvider field references', () => {
     });
 
     it('keeps warm F12 lookup near a million-line tail bounded by the structural index', async () => {
+        const functionalOnly = process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1';
         const rootFile = path.resolve('definition-navigation', 'million-line-main.k');
         const lineCount = 1_000_000;
         const keywordLine = lineCount - 3;
@@ -9495,13 +9496,13 @@ describe('LsdynaDefinitionProvider field references', () => {
 
         const provider = new LsdynaDefinitionProvider();
         const position = new vscodeMock.Position(lineCount - 1, 24);
-        for (let index = 0; index < 10; index++) {
+        for (let index = 0; index < (functionalOnly ? 1 : 10); index++) {
             await provider.provideDefinition(document, position);
         }
 
         reads = 0;
         const samples = [];
-        for (let index = 0; index < 200; index++) {
+        for (let index = 0; index < (functionalOnly ? 3 : 200); index++) {
             const started = performance.now();
             const definition = await provider.provideDefinition(document, position);
             samples.push(performance.now() - started);
@@ -9510,7 +9511,7 @@ describe('LsdynaDefinitionProvider field references', () => {
         }
         samples.sort((left, right) => left - right);
         const p95 = samples[Math.floor(samples.length * 0.95)];
-        if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+        if (!functionalOnly && process.env.LSDYNA_BENCHMARK_LOG === '1') {
             const p50 = samples[Math.floor(samples.length * 0.50)];
             const p99 = samples[Math.floor(samples.length * 0.99)];
             console.log(
@@ -9520,13 +9521,14 @@ describe('LsdynaDefinitionProvider field references', () => {
             );
         }
 
-        assert.ok(reads < 8_000, `expected bounded line reads, got ${reads}`);
+        assert.ok(reads < samples.length * 40, `expected bounded line reads, got ${reads}`);
         // Release budget: retain the independent line-read bound above, and measure
         // wall time against the agreed 100 ms interaction limit on the host machine.
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+        if (!functionalOnly) assert.ok(p95 <= 100, `expected warm F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
     });
 
     it('streams a million-row NODE block once, yields, and keeps warm queries O(1)', async function () {
+        const functionalOnly = process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1';
         this.timeout(20000); // Million-row correctness fixture; explicit warm-query and yielding assertions remain below.
         const rootFile = path.resolve('definition-navigation', 'million-node-main.k');
         const nodeFile = path.resolve('definition-navigation', 'million-nodes.k');
@@ -9601,7 +9603,7 @@ describe('LsdynaDefinitionProvider field references', () => {
 
             nodeReads = 0;
             const samples = [];
-            for (let index = 0; index < 100; index++) {
+            for (let index = 0; index < (functionalOnly ? 3 : 100); index++) {
                 const started = performance.now();
                 const warm = await resolveFieldReferenceNavigation(
                     sourceDocument,
@@ -9612,14 +9614,14 @@ describe('LsdynaDefinitionProvider field references', () => {
             }
             samples.sort((left, right) => left - right);
             const p95 = samples[Math.floor(samples.length * 0.95)];
-            if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+            if (!functionalOnly && process.env.LSDYNA_BENCHMARK_LOG === '1') {
                 console.log(
                     `    million NODE F12: cold ${coldDuration.toFixed(1)} ms, ` +
                     `warm P95 ${p95.toFixed(3)} ms`,
                 );
             }
             assert.equal(nodeReads, 0, 'warm target-only cache must not rescan NODE rows');
-            if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
+            if (!functionalOnly) assert.ok(p95 <= 100, `expected warm node F12 P95 <=100 ms, got ${p95.toFixed(3)} ms`);
         } finally {
             vscodeMock.workspace.textDocuments = originalTextDocuments;
             await yieldProbe;
@@ -10282,6 +10284,7 @@ describe('manual workspace reference text search', () => {
     });
 
     it('keeps search planning bounded near the tail of an unindexed million-line deck', async () => {
+        const functionalOnly = process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1';
         const filePath = path.resolve('workspace-search', 'million-line.k');
         const lineCount = 1_000_000;
         const keywordLine = lineCount - 3;
@@ -10316,7 +10319,7 @@ describe('manual workspace reference text search', () => {
         };
 
         const samples = [];
-        for (let index = 0; index < 100; index++) {
+        for (let index = 0; index < (functionalOnly ? 3 : 100); index++) {
             const started = performance.now();
             const result = await handleWorkspaceReferenceSearchCommand();
             samples.push(performance.now() - started);
@@ -10324,7 +10327,7 @@ describe('manual workspace reference text search', () => {
         }
         samples.sort((left, right) => left - right);
         const p95 = samples[Math.floor(samples.length * 0.95)];
-        if (process.env.LSDYNA_BENCHMARK_LOG === '1') {
+        if (!functionalOnly && process.env.LSDYNA_BENCHMARK_LOG === '1') {
             const p50 = samples[Math.floor(samples.length * 0.50)];
             const p99 = samples[Math.floor(samples.length * 0.99)];
             console.log(
@@ -10334,9 +10337,9 @@ describe('manual workspace reference text search', () => {
             );
         }
 
-        assert.equal(searchCount, 100);
-        assert.ok(reads < 4_000, `expected bounded source reads, got ${reads}`);
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 < 5, `expected workspace search planning P95 <5 ms, got ${p95.toFixed(3)} ms`);
+        assert.equal(searchCount, samples.length);
+        assert.ok(reads < samples.length * 40, `expected bounded source reads, got ${reads}`);
+        if (!functionalOnly) assert.ok(p95 < 5, `expected workspace search planning P95 <5 ms, got ${p95.toFixed(3)} ms`);
     });
 });
 
@@ -11826,6 +11829,7 @@ describe('official field value completions', () => {
     });
 
     it('keeps warm official value completion bounded near the end of a million-line indexed deck', async () => {
+        const functionalOnly = process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1';
         const provider = new LsdynaFieldCompletionProvider();
         const filePath = '/project/million-line-field-choice.k';
         const lineCount = 1_000_000;
@@ -11855,13 +11859,13 @@ describe('official field value completions', () => {
         try {
             const position = { line: lineCount - 1, character: 75 };
             const context = { triggerKind: vscodeMock.CompletionTriggerKind.Invoke };
-            for (let index = 0; index < 10; index++) {
+            for (let index = 0; index < (functionalOnly ? 1 : 10); index++) {
                 await provider.provideCompletionItems(document, position, undefined, context);
             }
 
             lineAtCalls = 0;
             const samples = [];
-            for (let index = 0; index < 200; index++) {
+            for (let index = 0; index < (functionalOnly ? 3 : 200); index++) {
                 const started = performance.now();
                 const choices = officialChoices(await provider.provideCompletionItems(
                     document, position, undefined, context,
@@ -11872,8 +11876,8 @@ describe('official field value completions', () => {
             samples.sort((left, right) => left - right);
             const p95 = samples[Math.floor(samples.length * 0.95)];
 
-            assert.ok(lineAtCalls < 4_000, `expected bounded line reads, got ${lineAtCalls}`);
-            if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(p95 < 2, `expected warm completion P95 <2 ms, got ${p95.toFixed(3)} ms`);
+            assert.ok(lineAtCalls < samples.length * 20, `expected bounded line reads, got ${lineAtCalls}`);
+            if (!functionalOnly) assert.ok(p95 < 2, `expected warm completion P95 <2 ms, got ${p95.toFixed(3)} ms`);
         } finally {
             setFileIndexForTesting(filePath, null);
         }

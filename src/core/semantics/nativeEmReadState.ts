@@ -1,7 +1,7 @@
 import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
 import { keywordInputFormat, keywordInputFormatOverride, stripKeywordInputFormatMarker, type KeywordInputFormatMode } from '../parser/inputFormat';
 
-const source = "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5";
+const source = "b61593ada0d37dae30af8b4a4a5e87d403be338eda70bd5b4782ca0e0d0a1d28";
 const bindings = {
     EM_CONTROL: ["record:0dc9b948cccc96167cba03df:629c19808a3b492beed63d57", "record:0dc9b948cccc96167cba03df:1e631ae2acf8049aecfd1c29", 0, 1, 'control'],
     EM_CONTROL_CONTACT: ["record:0dc9b948cccc96167cba03df:40f5d4b263cbbb520ba38131", "record:0dc9b948cccc96167cba03df:b8224fcf2a857f0f04f4c4f5", 0, 1, 'other-control'],

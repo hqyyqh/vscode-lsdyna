@@ -19,7 +19,8 @@ button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground);
 button:disabled { opacity: .45; cursor: default; }
 button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 main { min-width: 0; padding: 0 8px 8px; display: flex; flex-direction: column; min-height: 100vh; }
-.query-editor { background: var(--vscode-sideBar-background); padding: 10px 4px; border-bottom: 1px solid var(--reference-border); }
+.query-editor { background: var(--vscode-sideBar-background); padding: 8px 6px; border-bottom: 1px solid var(--reference-border); }
+.definition-link { text-align: left; padding: 0; color: var(--vscode-textLink-foreground); }
 .target-compact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; align-items: center; }
 .target-compact-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .entity-type { color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); border-radius: 3px; padding: 1px 5px; font-size: .9em; }

@@ -61,8 +61,8 @@
     {
       "bundle": "references",
       "path": "keywords/sources/references/logical.json.gz",
-      "sha256": "0635219ad209c9a3b401d2e71b5211d7489ab118fc944fd543f34106b3cfb697",
-      "contentSha256": "4583792625e5e2ad5d06fe851e6a3dbbe8076dfd1f01408de088c6bbdd551b5c",
+      "sha256": "72902d737cdeb501be47f598e6974581b9e02592919fc069fae1bef1dee09c86",
+      "contentSha256": "a25db9c4fd33b61dca6fde4b552498b9db54cbf344df71719d0f461a751496cb",
       "outputRoot": "keywords/runtime/references"
     },
     {
@@ -75,29 +75,29 @@
     {
       "bundle": "categories",
       "path": "keywords/sources/categories/logical.json.gz",
-      "sha256": "c26353dd55fa08fd633312a363fd4298b6e5ef1bbaa5be5fbeab059e78f3696f",
-      "contentSha256": "7012e7d0be23b7eb1f1a97046942767fd4a6ef28c98a29553a4450a1fff82ebd",
+      "sha256": "8e1e0260fd7a308165cb6de3035512b0eefe2c9ecff5acf7d4d2fd03b9fd7648",
+      "contentSha256": "5377006be5c09660c4484eee89f7a55a39d1f88e1d70af6f576725abe5d62669",
       "outputRoot": "keywords/runtime/categories"
     },
     {
       "bundle": "native-readers",
       "path": "keywords/sources/native-readers/logical.json.gz",
-      "sha256": "2338361d7a3c02908523afc2acd08aa72a4235b0023b163c04a7354eab56f152",
-      "contentSha256": "1253019bffb712d250cec93f8143a1c5617ee85b8d40fb2def871e9f96a646fc",
+      "sha256": "e7800aa925c747ab4afc7472410a8c7b2229c3440c81c11ac8761959290011e2",
+      "contentSha256": "f5d181a3625b3db9b782d578c9b6bce29f5a9df24ad316d8c15dc7921da61dde",
       "outputRoot": "keywords/runtime/native-readers"
     },
     {
       "bundle": "native-help",
       "path": "keywords/sources/native-help/logical.json.gz",
-      "sha256": "a05c6a94ec79fda54b7d86063f27b62f7942f8f8fa9673a60adb752fbcd5a215",
-      "contentSha256": "d8a76403db4cfc65a57e546a123691dd4fa122c28d9c404c6a90400db672db05",
+      "sha256": "b84714a199a6f34132b54b777ebbeeead78448d3e3e54cfe467fbf92f49e9786",
+      "contentSha256": "69820fd1f64f1045897016b09e1395263e8f908909ff0ed27407fda813c7450c",
       "outputRoot": "keywords/runtime/native-help"
     },
     {
       "bundle": "input-form",
       "path": "keywords/sources/input-form/logical.json.gz",
-      "sha256": "0cb18450bb3dd232b3b24fbd6752e555c742030685b9d4b900e14b8c439da1f8",
-      "contentSha256": "d0fa31570737e5d39550d1bbed7263a13c6dcc6e5c78ed739ebeec1fa8fc333a",
+      "sha256": "7e27ebaa6de72d430dc186b44e28657450053f95cd1f6e300dcfb7b59f83c236",
+      "contentSha256": "9f2214be0bb6a58e29a41dd1903e9f24b7974e066b23538d1892a5bcf752414d",
       "outputRoot": "keywords/runtime/input-form"
     },
     {
@@ -146,14 +146,14 @@
     },
     {
       "path": "keywords/sources/contact-thermal/import-v1.json",
-      "sha256": "812e2835a579e76c79033fcc1e2ea2ae8049e2bfea4c9e2570905900e5150456",
-      "contentSha256": "812e2835a579e76c79033fcc1e2ea2ae8049e2bfea4c9e2570905900e5150456",
+      "sha256": "be7e635905617724264bf4398e21da8fea7ead2dd74c3cc5d12a180f335ef172",
+      "contentSha256": "be7e635905617724264bf4398e21da8fea7ead2dd74c3cc5d12a180f335ef172",
       "policy": "supplemental-manual-composition; preserves-original-native-checkpoints"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v2.json",
-      "sha256": "c500bddb6d8190b0e2faa5199c0e4f300d2ccfa9a4e12b99646f96d1807cc4c8",
-      "contentSha256": "c500bddb6d8190b0e2faa5199c0e4f300d2ccfa9a4e12b99646f96d1807cc4c8",
+      "sha256": "56003f549cbc0d3f207b5f24975be6064efbc9c3e24e29644f009e2b8633bf5f",
+      "contentSha256": "56003f549cbc0d3f207b5f24975be6064efbc9c3e24e29644f009e2b8633bf5f",
       "policy": "supplemental-manual-composition-and-contact-applicability; preserves-original-native-checkpoints"
     },
     {
@@ -542,8 +542,8 @@
     },
     {
       "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz",
-      "sha256": "78bb4cc0e18f22ac2fa956dc0909e81881724575fd096e4d73870124ddd57d52",
-      "contentSha256": "5857b12fb6ec5104863a450b3db639802449265019d44789a66925e9c0aef993",
+      "sha256": "fd9a6bf72fa84df7bc885ff72aee20b213477437ac1815eecb0b4b66094547d8",
+      "contentSha256": "d10f74fa4944296272abb419d567035b24797d4f069e7a12f8f8b7ba74611467",
       "policy": "Preserves v38 definitions, source partitions, blocked identities and all other relations including ANG and FRICTION. Changes only EM_CONTROL_SOLUTION/DIST to non-reference by explicit user adjudication; previous 355 bindings update only checkpoint provenance. No completeness claim."
     },
     {
@@ -554,14 +554,20 @@
     },
     {
       "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz",
-      "sha256": "4235e0e1bbf70b78441f36e71dd828402bb059246a661c3e47d9e98661a2b4fb",
-      "contentSha256": "c703c12a714ea3ba7f83040186e6bb630c2d952a9f3d6f6d1f002585f951dcb8",
+      "sha256": "2d4397dd4d0f7f21328593dfc9b06e9ae81656a9816848647bdad7d059ec6a66",
+      "contentSha256": "3713fc2dc2ca470a466e13e9a3d0e144204f861ce9b902b9c962f4393d60b46f",
       "policy": "Preserves all v1 static exclusions. Adds exact DEFINE_FRICTION/TITLE PID_I/PTYPEI and PID_J/PTYPEJ help-confirmed PART/PSET branches, with blank retaining the existing PART role. Other strings and parameters remain indeterminate; no native-consumer verification claim."
     },
     {
       "path": "keywords/sources/reference-roles/import-v1.json",
       "sha256": "010bcc1bd3e706d05dea265f8482059c76eaaddc3636c79f2c0f1da32484ebd9",
       "contentSha256": "010bcc1bd3e706d05dea265f8482059c76eaaddc3636c79f2c0f1da32484ebd9"
+    },
+    {
+      "path": "keywords/sources/native-readers/optional-card-controls.v1.json.gz",
+      "sha256": "d5bba67369c10f93a244d0e88228dbc5b9c50e10674a71311bbb6efd1adcd733",
+      "contentSha256": "a0636d5249b50a80e9741cbf409cd6f6e64f8eab89e594fdc15023621f80230b",
+      "policy": "native-optional-card-table; exact-registration-ownership; preserves-original-input-form-checkpoint"
     }
   ],
   "engineeringAuthorityInput": "keywords/sources/engineering/approved.json.gz"

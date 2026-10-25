@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const crypto = require('node:crypto'), { execFileSync } = require('node:child_process');
 
 // Reuse product builds only for these host-side changes; invalidate every affected host case.
-const retryFiles = new Set(['scripts/release/reuse-release-evidence.cjs','scripts/maintenance/validate-project-contracts.cjs', 'scripts/release/verify-release-acceptance.cjs', 'test/scripts/release/releaseAcceptanceGate.test.js', 'test/integration/extension.test.js', 'test/core/keywordIndexPerformance.test.js', 'test/core/scanner/scannerBenchmark.test.js', '.github/workflows/public-ci.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
+const retryFiles = new Set(['scripts/release/reuse-release-evidence.cjs','scripts/maintenance/validate-project-contracts.cjs', 'scripts/release/verify-release-acceptance.cjs', 'test/scripts/release/releaseAcceptanceGate.test.js', 'test/integration/extension.test.js', 'test/core/keywordIndexPerformance.test.js', 'test/core/scanner/scannerBenchmark.test.js', '.github/workflows/public-ci.yml', '.github/workflows/ci-platform.yml', '.github/workflows/ci-installed.yml', '.github/workflows/fast-ci.yml', '.github/workflows/ci-node.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml', 'public-source-manifest.json',
     'scripts/host/run-installed-acceptance.cjs', 'scripts/host/run-installed-acceptance-retry.cjs',
     'scripts/release/public-release-reports.cjs', 'test/scripts/host/installedAcceptance.test.js',
     'test/scripts/host/nativeMenu.test.js', 'test/scripts/host/managerGuiCompletion.test.js', 'test/scripts/host/viewerReload.test.js',
@@ -41,6 +41,7 @@ function validateBuild(run, target) {
     assert.equal(run.workflowName, 'Public collaboration / 公开协作');
     assert.ok(run.jobs.some(job => job.conclusion === 'success' && (
         (job.name.startsWith('Build, data, tests, audit and actual VSIX') && job.name.endsWith(`${target})`)) ||
+        job.name === `Platform / ${target} / Build, data, tests, audit and actual VSIX (${target})` ||
         job.name === `Selected node / Node / ${target} / package`
     )), `Missing passed build for ${target}`);
 }

@@ -46,6 +46,7 @@ describe('ManualSidebarProvider', () => {
             const view = createView();
             provider.resolveWebviewView(view);
             assert.ok(view.webview.html.includes('No usable manual pack was found'));
+            assert.ok(view.webview.html.includes('>Set Manuals Directory</button>'));
             provider.refresh({ listDocuments() { throw new Error('broken manifest'); } });
             assert.ok(view.webview.html.includes('Cannot load manual contents'));
             assert.ok(!view.webview.html.includes('No usable manual pack was found'));
@@ -97,6 +98,7 @@ describe('ManualSidebarProvider', () => {
     ];
 
     const repository = {
+        getCapabilities: () => ({ features: { searchZh: true } }),
         listDocuments: () => [
             { manualId: 'vol-i', title: 'Volume I', order: 1 },
             { manualId: 'vol-ii', title: 'Volume II', order: 2 },
@@ -249,7 +251,8 @@ describe('ManualSidebarProvider', () => {
             assert.ok(view.webview.html.includes('Current search: full text.'));
             assert.ok(view.webview.html.includes('Search keywords and section titles.'));
             assert.ok(view.webview.html.includes('aria-label="Current search: keywords and titles. Switch to full text."'));
-            assert.equal(view.description, '↑↓ Navigate · Enter Open manual · Esc Clear search');
+            assert.equal(view.description, undefined);
+            assert.ok(view.webview.html.includes('title="↑↓ Navigate · Enter Open manual · Esc Clear search"'));
             assert.ok(!view.webview.html.includes('search-footer'), 'shortcuts should not consume a separate webview row');
             assert.ok(!view.webview.html.includes('>KW</button>'));
             assert.ok(!view.webview.html.includes('<select'));
@@ -261,13 +264,15 @@ describe('ManualSidebarProvider', () => {
             assert.ok(view.webview.html.includes('<html lang="zh-CN">'));
             assert.ok(view.webview.html.includes('当前搜索：关键字与标题；切换为全文搜索'));
             assert.ok(view.webview.html.includes('已索引摘要'));
-            assert.equal(view.description, '↑↓ 导航 · Enter 打开手册 · Esc 清空搜索');
+            assert.equal(view.description, undefined);
+            assert.ok(view.webview.html.includes('title="↑↓ 导航 · Enter 打开手册 · Esc 清空搜索"'));
             for (const unavailable of [undefined, { listDocuments: () => [] }, { listDocuments() { throw Error('broken index'); } }]) {
                 provider.refresh(unavailable);
                 assert.equal(view.description, undefined, 'hide search shortcuts when the sidebar cannot search');
             }
             provider.refresh(repository);
-            assert.equal(view.description, '↑↓ 导航 · Enter 打开手册 · Esc 清空搜索');
+            assert.equal(view.description, undefined);
+            assert.ok(view.webview.html.includes('title="↑↓ 导航 · Enter 打开手册 · Esc 清空搜索"'));
         } finally {
             vscode.workspace.getConfiguration = originalGetConfiguration;
             i18n.updateLanguage();

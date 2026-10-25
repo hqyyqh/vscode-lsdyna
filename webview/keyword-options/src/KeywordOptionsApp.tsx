@@ -9,7 +9,6 @@ import type {
 import type { KeywordOptionsTransport } from './transport';
 import { InstanceSelector } from './InstanceSelector';
 import { ManagerIcon } from './ManagerIcon';
-import { ManagerDialog } from './ManagerDialog';
 import './styles.css';
 import { useFieldHelp } from './useFieldHelp';
 import { FieldHelpContent } from '../../shared/FieldHelpContent';
@@ -42,7 +41,7 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
         onSelect(field.fieldId);
     };
     const [typing, setTyping] = useState(false);
-    const [tip, setTip] = useState<{ left: number; top: number } | null>(null);
+    const [tip, setTip] = useState<{ left: number; top: number; bottom: number } | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const listId = useId();
     const [choicesOpen, setChoicesOpen] = useState(false);
@@ -99,7 +98,7 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
     const diagnostic = !typing && value === hostValue ? field.diagnostic : undefined;
     const showTip = () => {
         const rect = inputRef.current?.getBoundingClientRect();
-        if (rect) setTip({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.top });
+        if (rect) setTip({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.top, bottom: rect.bottom });
     };
     return <div className={`fieldEditor${value !== field.value ? ' changed' : ''}${diagnostic ? ' hasHint' : ''}`}>
         <input ref={inputRef} value={value} readOnly={!field.editable || busy}
@@ -140,7 +139,7 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
         {choices.length > 0 && <button type="button" className="fieldChoicesToggle" tabIndex={-1} disabled={!canChoose}
             aria-label={isZh ? `显示 ${field.name} 的全部选项` : `Show all choices for ${field.name}`}
             aria-expanded={choicesOpen} onMouseDown={event => event.preventDefault()}
-            onClick={() => { inputRef.current?.focus(); if (choicesOpen) setChoicesOpen(false); else openChoices(); }}>⌄</button>}
+            onClick={() => { inputRef.current?.focus(); if (choicesOpen) setChoicesOpen(false); else openChoices(); }}><ManagerIcon name="expand" /></button>}
         {choicesOpen && choicePosition && createPortal(<div id={listId} className="fieldChoices" role="listbox"
             aria-label={field.name} style={choicePosition} onMouseDown={event => event.preventDefault()}>
             {choices.map((choice, index) => <div key={`${choice}-${index}`} id={`${listId}-${index}`} role="option"
@@ -149,7 +148,8 @@ function KeywordFieldEditor({ field, busy, resetVersion, cancelBlurVersion, reta
         </div>, document.body)}
         {diagnostic && <span id={diagnosticId} className="srOnly">{diagnostic.message}</span>}
         {diagnostic && tip && createPortal(<div className="fieldHint" role="tooltip" style={{
-            left: tip.left, top: tip.top, transform: 'translateY(calc(-100% - 6px))',
+            left: tip.left, top: tip.top < 110 ? tip.bottom + 6 : tip.top,
+            transform: tip.top < 110 ? undefined : 'translateY(calc(-100% - 6px))', maxHeight: Math.max(40, tip.top < 110 ? window.innerHeight - tip.bottom - 14 : tip.top - 14), overflowY: 'auto',
         }}>{diagnostic.message}</div>, document.body)}
     </div>;
 }
@@ -170,9 +170,9 @@ function FieldHelp({ help, field, locale, collapsed, showEnglish }: {
         '1': ['整数', 'Integer'], '-1': ['整数', 'Integer'], '2': ['实数', 'Real'], '0': ['文本', 'Text'], '-2': ['文本', 'Text'],
     } as Record<string, string[]>)[field.type.toLowerCase()]?.[isZh ? 0 : 1];
     const messages: Record<string, string> = {
-        'form-unresolved': isZh ? '实际记录尚不能唯一确定字段布局。' : 'The source records do not determine a unique field layout.',
-        'branch-unverified': isZh ? '当前分支尚未确认。' : 'The current branch has not been verified.',
-        'branch-help-missing': isZh ? '当前分支尚无对应说明。' : 'Help is unavailable for the current branch.',
+        'form-unresolved': isZh ? '当前卡片内容无法唯一确定字段布局。' : 'Current card lines do not determine a unique field layout.',
+        'branch-unverified': isZh ? '当前关键字选项或卡片条件尚未确定。' : 'The current keyword option or card condition is not determined.',
+        'branch-help-missing': isZh ? '当前条件下暂无字段说明。' : 'No field help is available for the current condition.',
         'field-unmatched': isZh ? '尚未关联到该字段的帮助。' : 'Help has not been matched to this field.',
         'description-missing': isZh ? '暂无字段说明。' : 'No field description is available.',
     };
@@ -203,6 +203,14 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
     const [helpCollapsed, setHelpCollapsed] = useState(false);
     const [detailTopic, setDetailTopic] = useState<'field' | 'conditions'>('field');
     const detailBody = useRef<HTMLDivElement>(null);
+    const cardViewport = useRef<HTMLDivElement>(null);
+    const revealField = (element: HTMLElement | null) => {
+        const viewport = cardViewport.current;
+        if (!viewport || !element) return;
+        const outer = viewport.getBoundingClientRect(), inner = element.getBoundingClientRect();
+        if (inner.left < outer.left) viewport.scrollLeft += inner.left - outer.left;
+        else if (inner.right > outer.right) viewport.scrollLeft += inner.right - outer.right;
+    };
     const applicationPending = useRef(false);
     const [pendingMutations, setPendingMutations] = useState(0);
     const [localDraftCount, setLocalDraftCount] = useState(0);
@@ -212,6 +220,12 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
     const [interactionMessage, setInteractionMessage] = useState('');
     const [showEnglish, setShowEnglish] = useState(false);
     const { selectedFieldId, help, message: helpSelectionMessage, selectField } = useFieldHelp(state, transport);
+    useLayoutEffect(() => { if (cardViewport.current) cardViewport.current.scrollLeft = 0; }, [state?.selectedInstanceId]);
+    useLayoutEffect(() => {
+        const field = [...(cardViewport.current?.querySelectorAll<HTMLElement>('[data-field-id]') || [])]
+            .find(item => item.dataset.fieldId === selectedFieldId);
+        revealField(field || null);
+    }, [selectedFieldId, state?.selectedInstanceId]);
     useLayoutEffect(() => {
         setShowEnglish(false);
     }, [selectedFieldId, help.contextKey, state?.selectedInstanceId]);
@@ -398,7 +412,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
     const conditionsHasEnglish = isZh && conditions.some(group => group.summaries.some((item: any) => typeof item !== 'string' && item.localized && item.english && item.english !== item.localized));
     const conditionSummary = isZh
         ? `${conditions.length} 个说明`
-        : `${conditions.length} conditions`;
+        : `${conditions.length} ${conditions.length === 1 ? 'condition' : 'conditions'}`;
     const showingConditions = detailTopic === 'conditions' && conditions.length > 0;
     const toggleDetailLabel = showingConditions
         ? (isZh ? (helpCollapsed ? '展开卡片条件' : '折叠卡片条件') : (helpCollapsed ? 'Expand card conditions' : 'Collapse card conditions'))
@@ -416,7 +430,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                 <button className="iconButton" title={selectedInstance?.filePath || state.labels.locateSource} aria-label={state.labels.locateSource} disabled={busy} onClick={() => void transport.locateSource(state.revision)}>
                     <ManagerIcon name="locate" />
                 </button>
-                <div className="toolbarDivider" aria-hidden="true" style={{ margin: '0 2px' }}>|</div>
+                <div className="toolbarDivider" aria-hidden="true">|</div>
                 
                 <InstanceSelector state={state} transport={transport} busy={busy} onSelect={selectInstance} onReload={async () => { if (await flushLocalFields()) await reset(); }} />
                 <button className="iconButton" title={isZh ? '重新读取当前实例' : 'Reload this instance'}
@@ -426,6 +440,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                 <button className="iconButton" title={state.labels.openManual} aria-label={state.labels.openManual} disabled={busy} onClick={() => void transport.openManual(state.revision)}>
                     <ManagerIcon name="manual" />
                 </button>
+
             </div>
         </header>
 
@@ -448,7 +463,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
 
                     return <div className={`dimension ${isSingle ? 'tagSelect' : 'checkGroup'} ${isActive ? 'active' : 'inactive'}`} key={dimension.dimensionId}>
                         {isSingle ? <>
-                            {showLabel && <span className="dimensionName">{dimension.label}</span>}
+                            <span className="dimensionName">{dimension.label}</span>
                             <select value={selectedValue?.valueId || ''} disabled={busy || state.status === 'stale'}
                                 title={`${dimension.label}: ${selectedValue?.label || '-'}`}
                                 aria-label={dimension.label}
@@ -486,17 +501,11 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                 </option>)}
             </select>
         </section>}
-        {(state.formCandidates?.length ?? 0) > 0 && <section className="options" aria-label={isZh ? "表单选择" : "Form selection"}>
-            <label className="dimensionLabel" htmlFor="inputFormRule">
-                {state.locale === 'zh' ? '表单布局' : 'Form layout'}
-            </label>
-            <select id="inputFormRule" disabled value="">
-                <option value="">{state.locale === 'zh' ? '实际记录无法唯一确定布局' : 'The source records do not determine a unique layout'}</option>
-                {(state.formCandidates || []).map(candidate => <option key={candidate.ruleId} value={candidate.ruleId}>
-                    {candidate.label}
-                </option>)}
-            </select>
-        </section>}
+        {(state.formCandidates?.length ?? 0) > 0 && <details className="options candidateLayouts">
+            <summary>{isZh ? '查看候选布局（只读）' : 'View candidate layouts (read-only)'}</summary>
+            <p>{isZh ? '当前卡片内容无法唯一确定布局；查看候选项不会启用编辑。' : 'The current card lines do not determine a unique layout. Viewing candidates does not enable editing.'}</p>
+            <ul>{state.formCandidates.map(candidate => <li key={candidate.ruleId}>{candidate.label}</li>)}</ul>
+        </details>}
         {(state.controls || []).some(control => control.visible && control.kind !== 'field') &&
         <section className="options" aria-label={isZh ? "表单选项" : "Form controls"}>
             <div className="controlsGrid">
@@ -565,12 +574,14 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
             {state.unresolvedRecords!.map(record => <pre key={record.line}><span>L{record.line + 1} </span>{record.text}</pre>)}
         </section>}
         </details>}
-        {visibleCards.length > 0 && <div className="editorLayout">
+        {visibleCards.length > 0 && <>
+            <div className="editorLayout" ref={cardViewport} tabIndex={0} aria-label={isZh ? '卡片字段浏览区域' : 'Card field browser'}
+                onFocusCapture={event => revealField((event.target as HTMLElement).closest<HTMLElement>('.field'))}>
             <section className="cards" aria-label={isZh ? '卡片与字段' : 'Cards and fields'}>
                 {visibleCards.map(card => {
                     const visibleFields = card.fields.filter(field => field.visible !== false);
                     const cardTitleFull = card.title || `Card ${card.cardIndex}${card.occurrenceIndex
-                        ? ` · ${state.locale === 'zh' ? '记录' : 'Row'} ${card.occurrenceIndex}` : ''}`;
+                        ? ` · ${state.locale === 'zh' ? '行' : 'Row'} ${card.occurrenceIndex}` : ''}`;
                     const gutterShort = card.cardIndex === 0 ? 'C0' : `C${card.cardIndex}${card.occurrenceIndex ? `.${card.occurrenceIndex}` : ''}`;
                     return <div className="card" key={card.cardId || card.fields[0]?.fieldId || `source:${card.line}:${card.cardIndex}:${card.occurrenceIndex || 0}:${card.fields[0]?.name || ''}`}>
                         <div className="cardRow">
@@ -601,7 +612,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
                     </div>;
                 })}
             </section>
-        </div>}
+        </div></>}
         {visibleCards.length === 0 && (state.cards || []).length > 0 && <p className="emptyMessage">
             {state.locale === 'zh' ? '该结构暂不支持表单编辑，请在源文件中修改。' :
                 'This structure is not available for form editing; edit it in the source file.'}
@@ -616,7 +627,7 @@ export function KeywordOptionsApp({ transport }: { transport: KeywordOptionsTran
         <span className="srOnly" aria-live="polite" aria-atomic="true">{selectedField
             ? `${state.locale === 'zh' ? '字段帮助：' : 'Field help: '}${selectedField.name}` : ''}</span>
         {helpSelectionMessage && <p className="message" role="status">{helpSelectionMessage}</p>}
-        {(selectedField || conditions.length > 0) && <section className="detailsDock" aria-label={isZh ? '字段与卡片详情' : 'Field and card details'}>
+        {(selectedField || conditions.length > 0 || state.hasDrafts || localDraftCount > 0 || state.canApply) && <section className="detailsDock" aria-label={isZh ? '字段与卡片详情' : 'Field and card details'}>
         <div className="detailsToolbar">
             <div className="detailTopics" role="group" aria-label={isZh ? '详情内容' : 'Detail content'}>
                 <button className={!showingConditions ? 'selected' : ''} aria-pressed={!showingConditions}

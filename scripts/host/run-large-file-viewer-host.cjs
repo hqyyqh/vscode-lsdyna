@@ -132,6 +132,23 @@ async function main() {
         fs.writeFileSync(path.join(evidenceRoot, 'host.json'), JSON.stringify(hostIdentity));
         if (hostIdentity.language !== (process.env.LARGE_VIEWER_HOST_LANGUAGE || 'en'))
             throw Error('Host locale did not activate: ' + hostIdentity.language);
+        let commandId = 0;
+        const command = async (name, args) => {
+            const id = ++commandId;
+            const requestFile = path.join(root, `editor-command-${id}.json`);
+            fs.writeFileSync(requestFile + '.tmp', JSON.stringify({ id, command: name, args }));
+            fs.renameSync(requestFile + '.tmp', requestFile);
+            const deadline = Date.now() + 60000;
+            while (Date.now() < deadline) {
+                const responseFile = path.join(root, `editor-command-result-${id}.json`);
+                if (fs.existsSync(responseFile)) {
+                    const response = JSON.parse(fs.readFileSync(responseFile, 'utf8'));
+                    if (response.id === id) { if (response.error) throw Error(response.error); return; }
+                }
+                await delay(50);
+            }
+            throw Error('Editor command timeout: ' + name);
+        };
         const result = await evaluate(context, '(' + (async ({ rows, expectedId }) => {
             const wait=ms=>new Promise(r=>setTimeout(r,ms));
             const until=async check=>{const deadline=performance.now()+15000;while(!check()){if(performance.now()>deadline)throw Error('Viewer state timeout: '+document.querySelector('.status').innerText);await wait(25);}};
@@ -171,11 +188,43 @@ async function main() {
         const screenshot = await call('Page.captureScreenshot', { format: 'png' }, pageSession);
         fs.writeFileSync(path.join(evidenceRoot, 'viewer.png'), Buffer.from(screenshot.data, 'base64'));
         const layouts = [];
-        for (const width of [360, 480]) for (const font of [14, 20]) {
+        const toolbarLayouts = process.argv.includes('--toolbar-layouts');
+        for (const theme of toolbarLayouts ? ['Default Light Modern', 'Default Dark Modern', 'Default High Contrast', 'Default High Contrast Light'] : [process.env.LARGE_VIEWER_THEME || 'Default Dark Modern']) {
+        if (toolbarLayouts) {
+            await command('test.theme', theme);
+            const deadline = Date.now() + 15000;
+            while (await evaluate(context, 'document.body.dataset.vscodeThemeKind') !== ({ 'Default Light Modern': 'vscode-light', 'Default Dark Modern': 'vscode-dark', 'Default High Contrast': 'vscode-high-contrast', 'Default High Contrast Light': 'vscode-high-contrast-light' })[theme]) {
+                if (Date.now() > deadline) throw Error('Viewer theme did not change: ' + JSON.stringify(await evaluate(context, '({...document.body.dataset})')));
+                await delay(50);
+            }
+        }
+        for (const width of toolbarLayouts ? [360, 480, 900] : [360, 480]) for (const font of [14, 20]) {
+            if (toolbarLayouts) {
+                let viewportWidth = width + 60;
+                for (let attempt = 0; attempt < 16; attempt++) {
+                    await call('Emulation.setDeviceMetricsOverride', { width: Math.round(viewportWidth), height: 1000, deviceScaleFactor: 1, mobile: false }, pageSession);
+                    await delay(150);
+                    const actual = await evaluate(context, 'innerWidth');
+                    if (Math.abs(actual - width) <= 1) break;
+                    viewportWidth += width - actual;
+                }
+                if (Math.abs(await evaluate(context, 'innerWidth') - width) > 1) throw Error('Viewer viewport width mismatch');
+            }
+            if (toolbarLayouts) await evaluate(context, `(async () => {
+                const field = document.querySelector('.viewport .field.queryable');
+                if (!field) throw Error('Material field missing after navigation');
+                field.click();
+                const deadline = Date.now() + 15000;
+                while (!document.querySelector('.field-help .fieldHelpName')) {
+                    if (Date.now() > deadline) throw Error('Selected field help did not load');
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                }
+            })()`);
             const layout = await evaluate(context, `(() => {
                 const main=document.querySelector('main');main.style.width='${width}px';
                 document.body.style.setProperty('--vscode-editor-font-size','${font}px');
                 document.body.style.setProperty('--vscode-font-size','${font}px');
+                document.documentElement.style.setProperty('--vscode-font-size','${font}px');
                 document.body.style.setProperty('--vscode-editor-line-height','${Math.round(font*1.5)}px');
                 return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{
                     const bounds=main.getBoundingClientRect();
@@ -188,9 +237,16 @@ async function main() {
                 })));
             })()`);
             if (layout.overflow.length) throw Error('Narrow viewer overflow: '+JSON.stringify(layout));
+            if (toolbarLayouts) layout.toolbar = await evaluate(context,
+                '(' + require('../../test/support/toolbar-layout.cjs').toString() + ')(' + JSON.stringify({
+                    zh: (process.env.LARGE_VIEWER_LANGUAGE === 'auto' ? process.env.LARGE_VIEWER_HOST_LANGUAGE : process.env.LARGE_VIEWER_LANGUAGE) === 'zh-cn',
+                }) + ')');
             layouts.push(layout);
+            fs.writeFileSync(path.join(evidenceRoot,'layouts.json'),JSON.stringify(layouts,null,2));
             const shot=await call('Page.captureScreenshot',{format:'png'},pageSession);
-            fs.writeFileSync(path.join(evidenceRoot, `viewer-${width}-${font}.png`),Buffer.from(shot.data,'base64'));
+            fs.writeFileSync(path.join(evidenceRoot, `viewer-${theme.replaceAll(' ', '-')}-${width}-${font}.png`),Buffer.from(shot.data,'base64'));
+            if (layout.toolbar?.issues.length) throw Error('Viewer toolbar acceptance failed: '+JSON.stringify(layout.toolbar));
+        }
         }
         fs.writeFileSync(path.join(evidenceRoot,'layouts.json'),JSON.stringify(layouts,null,2));
         if(await hash()!==before)throw Error('Viewer changed source bytes');
@@ -227,23 +283,6 @@ async function main() {
         if(await hash()!==changed)throw Error('Reload changed source bytes');
         let nativeNavigation;
         {
-            let commandId = 0;
-            const command = async (name, args) => {
-                const id = ++commandId;
-                const requestFile = path.join(root, `editor-command-${id}.json`);
-                fs.writeFileSync(requestFile + '.tmp', JSON.stringify({ id, command: name, args }));
-                fs.renameSync(requestFile + '.tmp', requestFile);
-                const deadline = Date.now() + 60000;
-                while (Date.now() < deadline) {
-                    const responseFile = path.join(root, `editor-command-result-${id}.json`);
-                    if (fs.existsSync(responseFile)) {
-                        const response = JSON.parse(fs.readFileSync(responseFile, 'utf8'));
-                        if (response.id === id) { if (response.error) throw Error(response.error); return; }
-                    }
-                    await delay(50);
-                }
-                throw Error('Editor command timeout: ' + name);
-            };
             const target = await evaluate(context, `(() => {
                 if(document.querySelector('.record-edit,textarea')) throw Error('Record editor is still exposed');
                 const field = document.querySelector('.field');
@@ -373,7 +412,8 @@ async function main() {
             if (!early.help) throw Error('Early help did not open');
             early.layouts = [];
             for (const width of [360,480]) for (const font of [14,20]) {
-                await evaluate(progressiveContext, `document.querySelector('main').style.width='${width}px';document.body.style.setProperty('--vscode-font-size','${font}px');document.body.style.setProperty('--vscode-editor-font-size','${font}px')`);
+                await evaluate(progressiveContext, `document.querySelector('main').style.width='${width}px';document.body.style.setProperty('--vscode-font-size','${font}px');
+                document.documentElement.style.setProperty('--vscode-font-size','${font}px');document.body.style.setProperty('--vscode-editor-font-size','${font}px')`);
                 await delay(75);
                 const layout = await evaluate(progressiveContext, `(() => {const bounds=document.querySelector('main').getBoundingClientRect();const progress=document.querySelector('.index-progress');return {locale:document.querySelector('main').lang,width:${width},font:${font},status:progress.textContent,title:progress.title,overflow:progress.getBoundingClientRect().right>bounds.right+1};})()`);
                 if(layout.overflow)throw Error('Index progress overflow: '+JSON.stringify(layout));

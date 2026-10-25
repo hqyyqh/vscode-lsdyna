@@ -7,8 +7,8 @@ export function userFacingReason(reason: unknown, locale = 'en'): string {
         ? '管理器暂不支持编辑此字段布局。'
         : 'The manager cannot edit this field layout yet.';
     if (/^(input-format-|native-.*write-unverified$|conditional-comma-write-unverified$)/.test(raw)) return zh
-        ? '管理器暂不支持写入当前记录格式。'
-        : 'The manager cannot write this record format yet.';
+        ? '管理器暂不支持写入当前卡片格式。'
+        : 'The manager cannot write this card format yet.';
     const message = /link-code-target-noncanonical/i.test(raw)
         ? (zh ? '引用目标类型尚未确认，结果可能不完整。' : 'The reference target type is not confirmed. Results may be incomplete.')
         : /link-code-target-unresolved/i.test(raw)

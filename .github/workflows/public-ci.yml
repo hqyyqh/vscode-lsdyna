@@ -7,9 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       node:
-        description: 'Single node only; empty runs complete acceptance'
+        description: 'Select full for complete acceptance, or one diagnostic node'
         type: choice
-        options: ['', build, unit, webview, contracts, language, audit, package, installed]
+        options: [full, build, unit, webview, contracts, language, audit, package, installed]
+        default: full
       target:
         description: 'Platform for a single node'
         type: choice
@@ -48,13 +49,13 @@ permissions:
   actions: read
 
 concurrency:
-  group: public-${{ github.workflow }}-${{ github.ref }}-${{ inputs.node || 'full' }}-${{ inputs.target }}-${{ inputs.vscode }}-${{ inputs.host_case }}-${{ inputs.build_run || 'build' }}
-  cancel-in-progress: true
+  group: public-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'latest' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   selected-node:
     name: Selected node
-    if: ${{ inputs.node }}
+    if: ${{ inputs.node && inputs.node != 'full' }}
     uses: ./.github/workflows/ci-node.yml
     with:
       node: ${{ inputs.node }}
@@ -65,112 +66,25 @@ jobs:
       host_case: ${{ inputs.host_case }}
       build_run: ${{ inputs.build_run }}
       resume_run: ${{ inputs.resume_run }}
-  public-checks:
-    if: ${{ !inputs.node && !inputs.build_run }}
-    name: Build, data, tests, audit and actual VSIX
+  platforms:
+    if: ${{ (!inputs.node || inputs.node == 'full') && !inputs.build_run }}
+    name: Platform / ${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
-            target: win32-x64
-          - os: ubuntu-22.04
-            target: linux-x64
-          - os: macos-14
-            target: darwin-arm64
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-    # Includes native compilation, full source-data replay and both VSIX builds.
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
-      - run: npm ci
-      - name: Build and verify platform SQLite driver
-        env:
-          EXPECTED_TARGET: ${{ matrix.target }}
-        run: |
-          node -e "require('node:assert/strict').equal(process.platform + '-' + process.arch, process.env.EXPECTED_TARGET)"
-          npm run build:native-sqlite
-      - run: python -m pip install -r requirements-dev.txt
-      - name: Build all product components
-        run: npm run build
-      - name: Verify deterministic public data and source inventory
-        run: npm run check:contracts
-      - name: Test the existing build; replay the full corpus once
-        run: |
-          if [[ "$UNIT_RESUME_RUN" == "38381427448" ]]; then
-            node scripts/release/resume-field-choice-tests.cjs
-          elif [[ "$UNIT_RESUME_RUN" == "38373457591" ]]; then
-            node scripts/release/resume-viewer-tests.cjs
-          elif [[ -n "$UNIT_RESUME_RUN" ]]; then
-            node scripts/release/resume-manager-reader-tests.cjs
-            npx --no-install mocha --require test/support/register-out.js test/scripts/release/managerReaderRecovery.test.js --fail-zero
-          elif [[ "$RUNNER_OS" == "Linux" ]]; then
-            npm run test:unit
-          else
-            npm run test:unit -- --grep '\[full-corpus\]' --invert
-          fi
-          npm run test:data
-        env:
-          UNIT_RESUME_RUN: ${{ inputs.resume_run }}
-          EXPECTED_TARGET: ${{ matrix.target }}
-          GH_TOKEN: ${{ github.token }}
-          # Each test directory gets a fresh process; installed hosts keep their default heap.
-          NODE_OPTIONS: --max-old-space-size=4096
-      - run: npm run test:webview
-      - name: Public Python regression tests
-        run: python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
-      - name: Bilingual content checks
-        run: |
-          npm run check:field-data-zh
-          npm run check:native-help-zh
-          npm run check:manual-semantics-zh
-      - name: Audit development and shipped dependencies
-        run: |
-          npm audit
-          npm audit --omit=dev
-      - name: Package and inspect the actual candidate
-        run: |
-          node scripts/release/package-hover-release.cjs dist/candidate.vsix "${{ matrix.target }}"
-          node scripts/release/validate-package-contents.cjs --vsix dist/candidate.vsix
-          node scripts/release/verify-release-hash.cjs dist/candidate.vsix
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: candidate-${{ matrix.target }}
-          path: |
-            dist/candidate.vsix
-            dist/candidate.vsix.identity.json
-            dist/candidate.vsix.data-equivalence.json
-            dist/candidate.vsix.baseline.vsix
-            dist/candidate.vsix.baseline.vsix.identity.json
-            dist/candidate.vsix.baseline.vsix.data-equivalence.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Save scoped unit recovery evidence
-        if: ${{ always() && inputs.resume_run }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: unit-recovery-${{ matrix.target }}
-          path: .artifacts/unit-recovery
-          if-no-files-found: error
+          - { os: windows-2022, target: win32-x64 }
+          - { os: ubuntu-22.04, target: linux-x64 }
+          - { os: macos-14, target: darwin-arm64 }
+    uses: ./.github/workflows/ci-platform.yml
+    with:
+      os: ${{ matrix.os }}
+      target: ${{ matrix.target }}
+      resume_run: ${{ inputs.resume_run || '' }}
 
   installed-host:
-    name: Same VSIX / ${{ matrix.platform.os }} / VS Code ${{ matrix.vscode }}
-    needs: public-checks
-    if: ${{ !inputs.node && !cancelled() && (needs.public-checks.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.build_run)) }}
+    name: Retry / ${{ matrix.platform.target }} / ${{ matrix.vscode }}
+    if: ${{ (!inputs.node || inputs.node == 'full') && github.event_name == 'workflow_dispatch' && inputs.build_run }}
     strategy:
       fail-fast: false
       matrix:
@@ -179,63 +93,11 @@ jobs:
           - { os: ubuntu-22.04, target: linux-x64 }
           - { os: macos-14, target: darwin-arm64 }
         vscode: ['1.100.0', '1.139.1']
-        exclude: ${{ fromJSON(inputs.build_run && inputs.retry_exclude || '[]') }}
-    runs-on: ${{ matrix.platform.os }}
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: candidate-${{ matrix.platform.target }}
-          path: dist
-          run-id: ${{ inputs.build_run || github.run_id }}
-          github-token: ${{ github.token }}
-      - name: Verify unchanged inputs and resume completed cases
-        if: ${{ inputs.build_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_RUN: ${{ inputs.build_run }}
-          RESUME_RUN: ${{ inputs.resume_run || inputs.build_run }}
-          EXPECTED_TARGET: ${{ matrix.platform.target }}
-          VSCODE_TEST_VERSION: ${{ matrix.vscode }}
-        run: node scripts/host/run-installed-acceptance-retry.cjs
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: '3.12'
-      - name: Verify identity and exercise installed candidate
-        shell: bash
-        env:
-          LSDYNA_TEST_VSIX: dist/candidate.vsix
-          VSCODE_TEST_VERSION: ${{ matrix.vscode }}
-          LSDYNA_TEST_VSIX_EVIDENCE: .artifacts/public-host
-        run: |
-          # macOS Unix sockets cannot use the long default per-user temporary path.
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            export TMPDIR="$(mktemp -d /tmp/ds.XXXXXX)"
-          fi
-          node scripts/release/verify-release-hash.cjs "$LSDYNA_TEST_VSIX"
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            xvfb-run -a node scripts/host/run-installed-acceptance.cjs
-          else
-            node scripts/host/run-installed-acceptance.cjs
-          fi
-      - name: Prepare public acceptance evidence
-        if: always()
-        run: node scripts/release/public-release-reports.cjs .artifacts/public-host public-acceptance
-      - name: Upload results, including incomplete runs
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: installed-${{ matrix.platform.target }}-${{ matrix.vscode }}
-          path: public-acceptance
-          if-no-files-found: warn
-          retention-days: 14
-
+        exclude: ${{ fromJSON(inputs.retry_exclude || '[]') }}
+    uses: ./.github/workflows/ci-installed.yml
+    with:
+      os: ${{ matrix.platform.os }}
+      target: ${{ matrix.platform.target }}
+      vscode: ${{ matrix.vscode }}
+      build_run: ${{ inputs.build_run }}
+      resume_run: ${{ inputs.resume_run || inputs.build_run }}

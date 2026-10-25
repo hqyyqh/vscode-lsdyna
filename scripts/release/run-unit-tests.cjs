@@ -7,6 +7,8 @@ function testBatches(root) {
     const batches = new Map();
     for (const file of [...fs.globSync('test/**/*.test.js', { cwd: root })].sort()) {
         if (/^test[/\\]scripts[/\\]native[/\\]/.test(file)) continue;
+        // Disk throughput remains opt-in through test:scanner-benchmark.
+        if (file.replaceAll('\\', '/') === 'test/core/scanner/scannerBenchmark.test.js') continue;
         const directory = path.dirname(file);
         if (!batches.has(directory)) batches.set(directory, []);
         batches.get(directory).push(file);
@@ -23,7 +25,8 @@ function run(root, args, spawn = spawnSync) {
         const result = spawn(process.execPath, [require.resolve('mocha/bin/mocha.js'),
             // Each directory cold-loads source data; keep a bounded watchdog, not Mocha's 2 s default.
             '--timeout', '30000', '--require', 'test/support/register-out.js', ...files, ...args],
-        { cwd: root, stdio: 'inherit', windowsHide: true });
+        { cwd: root, stdio: 'inherit', windowsHide: true,
+            env: { ...process.env, LSDYNA_CI_FUNCTIONAL_ONLY: process.env.LSDYNA_CI_FUNCTIONAL_ONLY ?? '1' } });
         if (result.error) throw result.error;
         if (result.status !== 0) return result.status || 1;
     }

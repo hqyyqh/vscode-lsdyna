@@ -2,6 +2,20 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
 const { verify } = require("../../../scripts/release/verify-release-acceptance.cjs");
 describe('immutable release acceptance gate', () => {
+    it('accepts only matching completed host jobs across original, platform and retry routes', () => {
+        const { validateHostJob } = require('../../../scripts/release/reuse-release-evidence.cjs');
+        const suffix = 'Same VSIX / windows-2022 / VS Code 1.100.0';
+        for (const name of [suffix, `Platform / win32-x64 / Installed / 1.100.0 / ${suffix}`, `Retry / win32-x64 / 1.100.0 / ${suffix}`]) {
+            const run = { jobs: [{ name, status: 'completed', conclusion: 'success' }] };
+            assert.equal(validateHostJob(run, 'win32-x64', '1.100.0'), run.jobs[0]);
+            assert.throws(() => validateHostJob(run, 'linux-x64', '1.100.0'));
+            assert.throws(() => validateHostJob(run, 'win32-x64', '1.139.1'));
+            run.jobs[0].conclusion = 'failure';
+            assert.throws(() => validateHostJob(run, 'win32-x64', '1.100.0'));
+            run.jobs[0].status = 'in_progress';
+            assert.throws(() => validateHostJob(run, 'win32-x64', '1.100.0', false));
+        }
+    });
     it('composes editor coverage only from unchanged assertions and all remaining passes', () => {
         const { combineEditor, editorNames } = require('../../../scripts/release/reuse-release-evidence.cjs');
         const currentSource = fs.readFileSync(path.resolve(__dirname, '../../host/editor-safety/extension-host/index.js'), 'utf8');
@@ -27,7 +41,7 @@ describe('immutable release acceptance gate', () => {
             const sha = crypto.createHash('sha256').update('candidate').digest('hex');
             assert.throws(() => verify(vsix, root), /Missing/);
             const names = ['run-release-host.cjs-catalog', 'run-release-host.cjs-smoke', 'test-release-manual-renderer.cjs',
-                'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs',
+                'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs-functional',
                 'run-editor-safety-extension-host.cjs-ci-functional', 'run-large-file-viewer-host.cjs',
                 'upgrade', 'reload', 'offline', 'missing-external-manual', 'ordinary-project-f5'];
             let last;
@@ -51,6 +65,10 @@ describe('immutable release acceptance gate', () => {
             fs.writeFileSync(last, JSON.stringify({ ...data, scope: 'legacy' }));
             assert.throws(() => verify(vsix, root));
             fs.writeFileSync(last, JSON.stringify({ ...data, cases: data.cases.filter(item => item.name !== 'run-editor-safety-extension-host.cjs-ci-functional') }));
+            assert.throws(() => verify(vsix, root), /Missing acceptance case/);
+            const legacy = structuredClone(data);
+            legacy.cases.find(item => item.name === 'benchmark-keyword-manager-webview.cjs-functional').name = 'benchmark-keyword-manager-webview.cjs';
+            fs.writeFileSync(last, JSON.stringify(legacy));
             assert.throws(() => verify(vsix, root), /Missing acceptance case/);
             for (const status of [false, 'false', '0', 1, {}, []]) {
                 data.cases[0].passed = status; fs.writeFileSync(last, JSON.stringify(data));

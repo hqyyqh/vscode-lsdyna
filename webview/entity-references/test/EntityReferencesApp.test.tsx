@@ -21,11 +21,6 @@ it('appends only to the matching revision and never replays or mixes an old page
 function state(overrides: Partial<EntityReferencesViewState> = {}): EntityReferencesViewState {
     return {
         locale: 'zh', revision: 3, following: true,
-        input: { targetKind: 'curve', id: '', scopePreference: 'auto' },
-        kindOptions: [
-            { value: 'curve', label: '曲线 *DEFINE_CURVE' },
-            { value: 'material', label: '材料 *MAT' },
-        ],
         scope: { selected: 'file', fileAvailable: true, projectAvailable: true,
             fileLabel: 'part.k', projectLabel: 'main.k' },
         status: 'empty', activeSession: null, definitions: [], references: [],
@@ -71,7 +66,6 @@ function transport(initial: EntityReferencesViewState) {
 function resultState(status: EntityReferencesViewState['status'] = 'ready'): EntityReferencesViewState {
     return state({
         status,
-        input: { targetKind: 'curve', id: '1000001', scopePreference: 'project' },
         scope: { selected: 'project', fileAvailable: true, projectAvailable: true,
             fileLabel: 'wall2.key', projectLabel: 'rogue-v3.key' },
         activeSession: { key: 'session', label: '曲线 *DEFINE_CURVE · 1000001', state: status,
@@ -83,14 +77,25 @@ function resultState(status: EntityReferencesViewState['status'] = 'ready'): Ent
     });
 }
 
-test('leaves search, following, scope and pin controls in the native view title', async () => {
+test('keeps empty-view controls in the native title bar and preserves follow status', async () => {
     const { api } = transport(state());
     render(<EntityReferencesApp transport={api} />);
-    expect(await screen.findByText('请输入对象')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /查找对象|跟随光标|固定查询/ })).not.toBeInTheDocument();
+    expect(await screen.findByText('正在跟随光标')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '查找对象' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Object type' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:/选择主文件/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开启跟随光标' })).not.toBeInTheDocument();
+    expect(screen.getByText('正在跟随光标')).toBeVisible();
+});
+
+test('shows the host failure instead of the empty hint and clears it on the next state', async () => {
+    const t = transport(state({ following: false, message: '没有可用的查询来源。' }));
+    render(<EntityReferencesApp transport={t.api} />);
+    expect(await screen.findByText('没有可用的查询来源。')).toBeVisible();
+    expect(screen.queryByText('请输入对象')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开启跟随光标' })).not.toBeInTheDocument();
+    act(() => t.publish(state({ revision: 4 })));
+    expect(screen.queryByText('没有可用的查询来源。')).not.toBeInTheDocument();
 });
 
 test.each(['ready', 'partial', 'missing', 'incomplete'] as const)(
@@ -154,7 +159,6 @@ test('focuses the results when the host asks to focus the view', async () => {
 test('renders verified partial locations, paging, and safe open actions', async () => {
     const partial = state({
         status: 'partial',
-        input: { targetKind: 'curve', id: '1000001', scopePreference: 'project' },
         scope: { selected: 'project', fileAvailable: true, projectAvailable: true,
             fileLabel: 'wall2.key', projectLabel: 'rogue-v3.key' },
         activeSession: { key: 'session', label: '曲线 *DEFINE_CURVE 1000001', state: 'partial',
@@ -221,6 +225,7 @@ test('allows selecting and removing pinned sessions with the keyboard', async ()
     const { api } = transport(initial);
     render(<EntityReferencesApp transport={api} />);
     const summary = await screen.findByText('已固定查询 (1)');
+    expect(screen.getByText('已固定')).toHaveClass('result-badge');
     await userEvent.click(summary);
     const select = screen.getByRole('button', { name: initial.activeSession!.label });
     select.focus();
@@ -256,7 +261,7 @@ test('shows the source basename and keeps the full path in a tooltip', async () 
 test.each(['ready', 'partial', 'stale', 'incomplete', 'missing'] as const)('distinguishes empty results from unfinished analysis: %s', async status => {
     const initial = resultState(status);
     initial.definitions = []; initial.references = [];
-    initial.message = initial.labels.incomplete;
+    initial.message = '';
     initial.activeSession = { ...initial.activeSession!, definitionCount: 0, referenceCount: 0 };
     render(<EntityReferencesApp transport={transport(initial).api} />);
     await screen.findByRole('main');
@@ -281,7 +286,7 @@ test('explains partial coverage while retaining confirmed positions', async () =
     initial.message = '查询未完成，可重试。';
     render(<EntityReferencesApp transport={transport(initial).api} />);
     await screen.findByRole('main');
-    expect(screen.queryByText(initial.message)).not.toBeInTheDocument();
+    expect(screen.getByText(initial.message)).toBeVisible();
     expect(screen.getByText(initial.labels.partial)).toBeVisible();
     expect(screen.getByRole('heading', { name: /引用位置/ })).toBeVisible();
     expect(screen.queryByRole('heading', { name: /其他引用位置/ })).not.toBeInTheDocument();
@@ -368,6 +373,7 @@ test('shows semantic identities and grouped location counts without duplicate su
     expect(container.querySelector('.target-name')).toHaveTextContent('High Strength Steel');
     expect(container.querySelector('.target-name')).toHaveAttribute('title', 'High Strength Steel');
     expect(container.querySelector('.target-compact')).not.toHaveTextContent('102');
+    expect(container.querySelector('.target-keyword')).toHaveTextContent('*MAT_ELASTIC · wall2.key:8');
     const row = screen.getByRole('button', { name: /跳转到位置: 部件 12, Front Bumper Inner/ });
     expect(row.querySelector('.result-primary')).toHaveTextContent('12');
     expect(row.querySelector('.result-primary')).toHaveTextContent('MID');

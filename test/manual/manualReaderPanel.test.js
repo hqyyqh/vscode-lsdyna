@@ -168,7 +168,7 @@ describe('ManualReaderPanel React host', () => {
             show();
             const state = (await request('reader/ready', { revision: -1 })).result;
             assert.equal(state.language, expected);
-            assert.equal(state.search.scope, expected);
+            assert.equal(state.search.scope, 'both');
             assert.ok(state.content.chunkBaseUri.includes(`/documents/${expected}/`));
             panel.dispose();
             assert.equal(savedStates.at(-1).languagePreference, 'auto');

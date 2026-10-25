@@ -182,6 +182,7 @@ async function runFilteredQuickPick({
     createQuickPick,
     showQuickPick,
     resultLimit,
+    chooseUsage = false,
 }) {
     const limit = resultLimit == null ? DEFAULT_RESULT_LIMIT : resultLimit;
 
@@ -208,7 +209,9 @@ async function runFilteredQuickPick({
     pick.matchOnDetail = false;
     pick.canSelectMany = false;
 
+    let keywordStep;
     const apply = () => {
+        if (keywordStep) return;
         const query = pick.value || '';
         const rows = filterEntries(allEntries, query, limit);
         // Keep native highlighting for contiguous hits; bypass native filtering for
@@ -253,7 +256,36 @@ async function runFilteredQuickPick({
         pick.onDidChangeValue(() => apply());
         pick.onDidAccept(() => {
             const selected = pick.selectedItems && pick.selectedItems[0];
+            if (keywordStep) {
+                if (selected?.usage) finish({ ...keywordStep.selected, usage: selected.usage });
+                return;
+            }
+            if (chooseUsage && selected?.entry?.usages?.length > 1) {
+                keywordStep = { selected, query: pick.value, items: pick.items, activeItems: pick.activeItems };
+                pick.title = i18n.get('treeSearchKeywordUsageTitle', selected.entry.keyword);
+                pick.placeholder = i18n.get('treeSearchKeywordUsagePlaceholder');
+                pick.buttons = [vscode.QuickInputButtons.Back];
+                pick.matchOnDescription = true;
+                pick.matchOnDetail = true;
+                pick.value = '';
+                pick.items = usagePickItems(selected.entry.usages);
+                return;
+            }
             finish(selected);
+        });
+        if (chooseUsage) pick.onDidTriggerButton(button => {
+            if (button !== vscode.QuickInputButtons.Back || !keywordStep) return;
+            const previous = keywordStep;
+            keywordStep = undefined;
+            pick.keepScrollPosition = true;
+            pick.title = title;
+            pick.placeholder = placeholder;
+            pick.buttons = [];
+            pick.matchOnDescription = false;
+            pick.matchOnDetail = false;
+            pick.value = previous.query;
+            pick.items = previous.items;
+            pick.activeItems = previous.activeItems;
         });
         pick.onDidHide(() => finish(undefined));
         apply();
@@ -329,6 +361,17 @@ async function showIncludeSearchPick(options) {
     return picked.entry;
 }
 
+function usagePickItems(usages) {
+    return usages.map(usage => ({
+        label: usage.displayName
+            ? `${usage.displayName} — ${path.basename(usage.filePath)}:${usage.lineIndex + 1}`
+            : `${path.basename(usage.filePath)}:${usage.lineIndex + 1}`,
+        description: [usage.keyword, usage.category].filter(Boolean).join(' · ') || path.dirname(usage.filePath),
+        detail: usage.filePath,
+        usage,
+    }));
+}
+
 /**
  * Show keyword-index search QuickPick, with a second step when a keyword has multiple usages.
  *
@@ -375,6 +418,7 @@ async function showKeywordSearchPick(options) {
     }
 
     const picked = await runFilteredQuickPick({
+        chooseUsage: true,
         title: i18n.get('treeSearchKeywordTitle'),
         placeholder: i18n.get('treeSearchKeywordPlaceholder'),
         allEntries: workingEntries,
@@ -405,6 +449,10 @@ async function showKeywordSearchPick(options) {
         await onAcceptKeyword(entry);
     }
 
+    if (picked.usage) {
+        await onAcceptUsage?.(entry, picked.usage);
+        return { entry, usage: picked.usage };
+    }
     const usages = Array.isArray(entry.usages) ? entry.usages : [];
     if (usages.length === 0) {
         return { entry };
@@ -416,14 +464,7 @@ async function showKeywordSearchPick(options) {
         return { entry, usage: usages[0] };
     }
 
-    const usageItems = usages.map(usage => ({
-        label: usage.displayName
-            ? `${usage.displayName} — ${path.basename(usage.filePath)}:${usage.lineIndex + 1}`
-            : `${path.basename(usage.filePath)}:${usage.lineIndex + 1}`,
-        description: [usage.keyword, usage.category].filter(Boolean).join(' · ') || path.dirname(usage.filePath),
-        detail: usage.filePath,
-        usage,
-    }));
+    const usageItems = usagePickItems(usages);
     const showPick = typeof showQuickPick === 'function'
         ? showQuickPick
         : (items, opts) => vscode.window.showQuickPick(items, opts);

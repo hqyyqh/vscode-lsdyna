@@ -168,7 +168,7 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('Search workspace text for ID 1001'));
-        assert.ok(section.includes('Text matches only'));
+        assert.ok(section.includes('Text search only'));
         const match = section.match(
             /command:extension\.searchLsdynaReferenceInWorkspace\?([^\s)]+)/
         );
@@ -453,7 +453,7 @@ describe('fieldReferenceHover', () => {
 
         assert.ok(section.includes('Reference not unique'));
         assert.ok(section.includes('2 definitions with the same ID'));
-        assert.ok(section.includes('Occurrence path'));
+        assert.ok(section.includes('Include path'));
         assert.ok(section.includes('main.k:5'));
         assert.ok(section.includes('main.k:12'));
         assert.ok(!section.includes('data:image/svg+xml;base64,'));

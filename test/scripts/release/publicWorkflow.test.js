@@ -4,6 +4,63 @@ const yaml = require('js-yaml');
 const root = path.resolve(__dirname, '../../..');
 const read = file => yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8'));
 describe('platform release workflow dependency closure', () => {
+    it('builds once for standalone tests and keeps compiled test commands free of build steps', () => {
+        const scripts = require('../../../package.json').scripts;
+        const expand = name => scripts[name].split(' && ').flatMap(command => {
+            const match = /^npm run ([\w:-]+)$/.exec(command);
+            return match ? expand(match[1]) : [command];
+        });
+        const build = expand('build');
+        assert.deepEqual(expand('pretest'), build);
+        assert.deepEqual(expand('test'), expand('test:compiled'));
+        const compiled = [...expand('test:compiled'), ...expand('test:webview:compiled')];
+        assert.ok(compiled.every(command => !build.includes(command)));
+        assert.deepEqual(expand('test:webview'), [...expand('typecheck:webview'), ...expand('test:webview:compiled')]);
+    });
+    it('isolates manual requests and platform failures while retaining the complete release gate', () => {
+        const full = read('public-ci.yml'), platform = read('ci-platform.yml');
+        assert.equal(full.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
+        assert.ok(full.concurrency.group.includes("github.event_name == 'pull_request' && 'latest' || github.run_id"));
+        assert.equal(read('fast-ci.yml').concurrency['cancel-in-progress'], true);
+        assert.equal(full.jobs.platforms.uses, './.github/workflows/ci-platform.yml');
+        assert.equal(full.jobs.platforms.strategy['fail-fast'], false);
+        assert.equal(platform.jobs['public-checks'].needs, undefined);
+        assert.equal(platform.jobs['installed-host'].needs, 'public-checks');
+        assert.equal(platform.jobs['installed-host'].if, undefined, 'Failed builds must not start installation');
+        assert.equal(platform.jobs['installed-host'].strategy['fail-fast'], false);
+        assert.equal(platform.jobs['installed-host'].uses, './.github/workflows/ci-installed.yml');
+        for (const workflow of [full, platform, read('ci-installed.yml')]) {
+            for (const job of Object.values(workflow.jobs)) {
+                assert.ok(!job['continue-on-error']);
+                assert.ok((job.steps || []).every(step => !step['continue-on-error']));
+            }
+        }
+        assert.match(read('release.yml').jobs.publish.if, /needs.build.result == 'success'/);
+        const node = read('ci-node.yml').jobs.node.steps;
+        for (const step of node.filter(step => step.uses?.startsWith('actions/setup-python@') || step.run?.startsWith('python -m pip')))
+            assert.equal(step.if, "${{ inputs.node != 'audit' }}");
+        for (const workflow of [full, platform, read('ci-node.yml'), read('fast-ci.yml')]) {
+            const commands = Object.values(workflow.jobs).flatMap(job => (job.steps || []).map(step => step.run || '')).join('\n');
+            assert.ok(!commands.includes('npm audit --omit=dev'));
+            assert.ok(!commands.includes('validate-package-contents.cjs --vsix'));
+        }
+        const pack = fs.readFileSync(path.join(root, 'scripts/release/package-hover-release.cjs'), 'utf8');
+        assert.ok(pack.includes('const files = validateVsix(output)'));
+    });
+    it('records failed and skipped build stages without leaking step outputs', () => {
+        const steps = read('ci-platform.yml').jobs['public-checks'].steps;
+        const save = steps.find(step => step.name === 'Save build step outcomes');
+        assert.equal(save.if, 'always()');
+        assert.equal(steps.find(step => step.name === 'Upload build outcomes, including failed runs').if, 'always()');
+        const source = save.run.split("node <<'NODE'\n")[1].split('\nNODE')[0];
+        let report;
+        require('node:vm').runInNewContext(source, {
+            process: { env: { STEP_RESULTS: JSON.stringify({ unit: { outcome: 'failure', conclusion: 'failure', outputs: { secret: 'private' } }, package: { outcome: 'skipped', conclusion: 'skipped' } }), TARGET: 'linux-x64', GITHUB_SHA: 'a'.repeat(40) } },
+            require: name => { assert.equal(name, 'node:fs'); return { mkdirSync() {}, writeFileSync(file, bytes) { report = JSON.parse(bytes); } }; },
+        });
+        assert.deepEqual(report.steps, [{ name: 'unit', outcome: 'failure', conclusion: 'failure' }, { name: 'package', outcome: 'skipped', conclusion: 'skipped' }]);
+        assert.ok(!JSON.stringify(report).includes('private'));
+    });
     it('uses Node 24 throughout CI and pins approved dependency install scripts', () => {
         for (const file of fs.readdirSync(path.join(root, '.github/workflows'))) {
             for (const job of Object.values(read(file).jobs || {})) {
@@ -33,7 +90,7 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(commands.includes('npm run build\n'));
         assert.ok(commands.includes('--bail'));
         assert.ok(commands.includes('official field value completions'));
-        assert.ok(commands.includes('npm run test:webview'));
+        assert.ok(commands.includes('npm run test:webview:compiled'));
         const checks = quick.jobs.contracts.steps.map(step => step.run || '').join('\n');
         assert.ok(checks.indexOf('npm run compile') >= 0 && checks.indexOf('npm run compile') < checks.indexOf('check:contracts'));
         assert.ok(!commands.includes('npm run test:unit'));
@@ -41,27 +98,28 @@ describe('platform release workflow dependency closure', () => {
         assert.equal(read('release.yml').jobs.build.uses, './.github/workflows/public-ci.yml');
     });
     it('builds SQLite and a target VSIX on each matching runner and tests that artifact twice', () => {
-        const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'], host = workflow.jobs['installed-host'];
+        const workflow = read('public-ci.yml'), build = read('ci-platform.yml').jobs['public-checks'], host = read('ci-installed.yml').jobs.host;
         assert.ok('workflow_call' in workflow.on);
         const targets = ['win32-x64', 'linux-x64', 'darwin-arm64'];
-        assert.deepEqual(build.strategy.matrix.include.map(row => row.target), targets);
-        assert.deepEqual(host.strategy.matrix.platform.map(row => row.target), targets);
-        assert.equal(host.strategy.matrix.exclude, "${{ fromJSON(inputs.build_run && inputs.retry_exclude || '[]') }}");
-        assert.deepEqual(host.strategy.matrix.vscode, ['1.100.0', '1.139.1']);
+        assert.deepEqual(workflow.jobs.platforms.strategy.matrix.include.map(row => row.target), targets);
+        assert.equal(build['runs-on'], '${{ inputs.os }}');
+        assert.deepEqual(workflow.jobs['installed-host'].strategy.matrix.platform.map(row => row.target), targets);
+        assert.equal(workflow.jobs['installed-host'].strategy.matrix.exclude, "${{ fromJSON(inputs.retry_exclude || '[]') }}");
+        assert.deepEqual(read('ci-platform.yml').jobs['installed-host'].strategy.matrix.vscode, ['1.100.0', '1.139.1']);
         const commands = build.steps.map(step => step.run || '').join('\n');
         assert.ok(commands.indexOf('build:native-sqlite') < commands.indexOf('package-hover-release.cjs'));
-        assert.ok(commands.includes('dist/candidate.vsix "${{ matrix.target }}"'));
+        assert.ok(commands.includes('dist/candidate.vsix "${{ inputs.target }}"'));
         const upload = build.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'));
         const download = host.steps.find(step => step.uses?.startsWith('actions/download-artifact@'));
-        assert.equal(upload.with.name, 'candidate-${{ matrix.target }}');
-        assert.equal(download.with.name, 'candidate-${{ matrix.platform.target }}');
+        assert.equal(upload.with.name, 'candidate-${{ inputs.target }}');
+        assert.equal(download.with.name, 'candidate-${{ inputs.target }}');
         assert.ok(upload.with.path.includes('candidate.vsix.baseline.vsix'));
         const acceptance = host.steps.find(step => step.run?.includes('run-installed-acceptance.cjs'));
         assert.ok(!acceptance.run.includes('benchmark-release-hosts.cjs'));
         assert.equal(workflow.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
     });
     it('reuses the build and same-run Linux corpus check without skipping platform tests', () => {
-        const workflow = read('public-ci.yml'), build = workflow.jobs['public-checks'];
+        const workflow = read('ci-platform.yml'), build = workflow.jobs['public-checks'];
         const commands = build.steps.map(step => step.run || '').join('\n');
         assert.equal((commands.match(/^npm run build$/gm) || []).length, 1);
         assert.ok(!/npm test(?:\s|$)/.test(commands));
@@ -125,12 +183,12 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(steps.findIndex(step => step.name === 'Publish completed GitHub Release') > upload);
     });
     it('allows installation-only retries only with verified source builds and case reports', () => {
-        const workflow = read('public-ci.yml'), host = workflow.jobs['installed-host'];
+        const workflow = read('public-ci.yml'), host = read('ci-installed.yml').jobs.host;
         assert.ok(workflow.on.workflow_dispatch.inputs.build_run);
         for (const name of ['public-ci.yml', 'ci.yml', 'release.yml']) assert.equal(read(name).permissions.actions, 'read');
-        assert.equal(workflow.jobs['public-checks'].if, '${{ !inputs.node && !inputs.build_run }}');
-        assert.ok(host.if.includes("needs.public-checks.result == 'success'"));
-        assert.ok(host.if.includes("github.event_name == 'workflow_dispatch'"));
+        assert.equal(workflow.jobs.platforms.if, "${{ (!inputs.node || inputs.node == 'full') && !inputs.build_run }}");
+        assert.equal(read('ci-platform.yml').jobs['installed-host'].needs, 'public-checks');
+        assert.ok(workflow.jobs['installed-host'].if.includes("github.event_name == 'workflow_dispatch'"));
         const prepare = host.steps.findIndex(step => step.run?.includes('run-installed-acceptance-retry.cjs'));
         const run = host.steps.findIndex(step => step.run?.includes('node scripts/host/run-installed-acceptance.cjs'));
         assert.ok(prepare >= 0 && prepare < run);
@@ -141,7 +199,12 @@ describe('platform release workflow dependency closure', () => {
     it('routes a selected node away from the full build and installed matrices', () => {
         const full = read('public-ci.yml'), node = read('ci-node.yml');
         assert.equal(full.jobs['selected-node'].uses, './.github/workflows/ci-node.yml');
-        assert.ok(full.jobs['public-checks'].if.includes('!inputs.node'));
+        assert.equal(full.on.workflow_dispatch.inputs.node.default, 'full');
+        assert.ok(full.on.workflow_dispatch.inputs.node.options.every(Boolean));
+        assert.equal(full.jobs['selected-node'].if, "${{ inputs.node && inputs.node != 'full' }}");
+        for (const job of [full.jobs.platforms, full.jobs['installed-host']])
+            assert.ok(job.if.includes("(!inputs.node || inputs.node == 'full')"));
+        assert.ok(full.jobs.platforms.if.includes('!inputs.node'));
         assert.ok(full.jobs['installed-host'].if.includes('!inputs.node'));
         assert.ok(full.on.workflow_dispatch.inputs.node.options.includes('installed'));
         assert.ok(!node.on.push && !node.on.pull_request);
@@ -177,7 +240,7 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(!full.on.workflow_dispatch.inputs.node.options.includes('profile'));
         for (const workflow of [full, quick]) assert.equal(workflow.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
         assert.equal(node.jobs.node.env.LSDYNA_CI_FUNCTIONAL_ONLY, '1');
-        for (const workflow of [full, quick, node]) {
+        for (const workflow of [full, quick, node, read('ci-platform.yml'), read('ci-installed.yml')]) {
             const commands = Object.values(workflow.jobs).flatMap(job => (job.steps || []).map(step => step.run || '')).join('\n');
             assert.ok(!commands.includes('benchmark-release-hosts.cjs'));
             assert.ok(!commands.includes('mouse-context-menu'));

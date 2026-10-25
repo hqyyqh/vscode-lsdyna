@@ -51,8 +51,11 @@ await vscode.commands.executeCommand('workbench.action.quit');})();};`);
 
 async function main() {
     const instanceSelector = process.argv.includes('--instance-selector');
+    const optionalCards = process.argv.includes('--optional-cards');
     const incomplete = process.argv.includes('--incomplete');
     const acceptanceLayouts = process.argv.includes('--acceptance-layouts');
+    const toolbarEvidence = acceptanceLayouts ? require('./temp-runs.cjs').createEvidenceDirectory('manager-toolbar') : null;
+    if (toolbarEvidence) console.log(`Toolbar evidence: ${toolbarEvidence}`);
     const editorAcceptance = process.argv.includes('--editor-acceptance');
     const semanticHelp = process.argv.includes('--semantic-help');
     const prefixHelp = process.argv.includes('--prefix-help');
@@ -95,7 +98,7 @@ async function main() {
     const host = (instanceSelector ? options => runSelectorGuiHost(options, root) : runTests)({ vscodeExecutablePath: resolveVSCodeExecutable(),
         extensionDevelopmentPath: path.resolve(__dirname, "../.."),
         extensionTestsPath: path.resolve(__dirname, "../../test/host/keyword-manager/extension-host.cjs"),
-        extensionTestsEnv: { KEYWORD_MANAGER_PREFIX_HELP: prefixHelp ? '1' : '', KEYWORD_MANAGER_INSTANCE_SELECTOR: instanceSelector ? '1' : '', KEYWORD_MANAGER_SELECTOR_GUI: instanceSelector ? '1' : '', KEYWORD_MANAGER_HOST_EVIDENCE: root, KEYWORD_MANAGER_GUI: '1', KEYWORD_MANAGER_GUI_REPEAT: standardRepeat ? 'standard' : unverified ? 'unverified' : repeated ? '1' : '', KEYWORD_MANAGER_GUI_COMMENTS: comments || '', KEYWORD_MANAGER_GUI_SHARED: prefixHelp || incomplete || comments || repeated ? '' : '1', KEYWORD_MANAGER_GUI_INCOMPLETE: incomplete ? '1' : '' },
+        extensionTestsEnv: { KEYWORD_MANAGER_GUI_OPTIONAL: optionalCards ? '1' : '', KEYWORD_MANAGER_PREFIX_HELP: prefixHelp ? '1' : '', KEYWORD_MANAGER_INSTANCE_SELECTOR: instanceSelector ? '1' : '', KEYWORD_MANAGER_SELECTOR_GUI: instanceSelector ? '1' : '', KEYWORD_MANAGER_HOST_EVIDENCE: root, KEYWORD_MANAGER_GUI: '1', KEYWORD_MANAGER_GUI_REPEAT: standardRepeat ? 'standard' : unverified ? 'unverified' : repeated ? '1' : '', KEYWORD_MANAGER_GUI_COMMENTS: comments || '', KEYWORD_MANAGER_GUI_SHARED: optionalCards || prefixHelp || incomplete || comments || repeated ? '' : '1', KEYWORD_MANAGER_GUI_INCOMPLETE: incomplete ? '1' : '' },
         launchArgs: [root, '--new-window', `--locale=${locale}`, '--disable-extensions', '--disable-gpu', '--disable-workspace-trust',
             '--skip-welcome', '--skip-release-notes', `--user-data-dir=${path.join(root, 'profile')}`,
             `--extensions-dir=${path.join(root, 'extensions')}`, '--remote-debugging-address=127.0.0.1',
@@ -155,7 +158,7 @@ async function main() {
             }
             for (const candidate of contexts.values()) {
                 try {
-                    const selector = instanceSelector ? '.instanceTrigger' : unverified ? '.unresolvedRecords' : `.field span[title=${prefixHelp ? 'TITLE' : standardRepeat ? 'PID' : repeated ? 'PSID1' : incomplete || comments ? 'RO' : 'ICURV'}]`;
+                    const selector = optionalCards ? '#inputForm-optional-cards' : instanceSelector ? '.instanceTrigger' : unverified ? '.unresolvedRecords' : `.field span[title=${prefixHelp ? 'TITLE' : standardRepeat ? 'PID' : repeated ? 'PSID1' : incomplete || comments ? 'RO' : 'ICURV'}]`;
                     if (await evaluate(candidate, `typeof document !== 'undefined' && !!document.querySelector(${JSON.stringify(selector)})`)) { context = candidate; break; }
                 } catch {}
             }
@@ -170,6 +173,20 @@ async function main() {
         if (hostState.hostLanguage !== locale) throw Error(`Host language ${hostState.hostLanguage} does not match ${locale}`);
         writeEvidence(path.join(root, 'initial-render.json'), JSON.stringify(await evaluate(context,
             `({ text: document.body.innerText, busy: document.querySelector('main')?.getAttribute('aria-busy') })`), null, 2));
+        if (optionalCards) {
+            const evidence = require('./temp-runs.cjs').createEvidenceDirectory('optional-card-ui');
+            const result = await evaluate(context, '(' + require('../../test/host/keyword-manager/optional-cards-gui.cjs').toString() + ')(' +
+                JSON.stringify({ zh: (language === 'auto' ? locale : language) === 'zh-cn' }) + ')');
+            const shot = await call('Page.captureScreenshot', { format: 'png' }, pageSession);
+            writeEvidence(path.join(evidence, 'optional-cards.png'), Buffer.from(shot.data, 'base64'));
+            writeEvidence(path.join(evidence, 'result.json'), JSON.stringify({ ...result, hostState, locale, language }, null, 2));
+            writeEvidence(path.join(root, 'gui-finish.json'), JSON.stringify({ fields: { IOOPT: '2' } }));
+            cdp.close(); await host; if (hostError) throw hostError;
+            for (const name of ['optional-saved.k', 'result.json'])
+                writeEvidence(path.join(evidence, 'host-' + name), fs.readFileSync(path.join(root, name)));
+            console.log(JSON.stringify({ passed: true, evidence }));
+            return;
+        }
         if (instanceSelector) {
             const result = await require('../../test/host/keyword-manager/instance-selector-gui.cjs')({
                 root, context, evaluate, refreshContext: findManagerContext, call, pageSession, writeRequest, locale, language,
@@ -329,12 +346,17 @@ async function main() {
                 const deadline = performance.now() + 10000;
                 while (!check()) { if (performance.now() > deadline) throw new Error('UI did not reach expected state: ' + document.body.innerText.slice(-3000)); await wait(25); }
             };
-            const field = document.querySelector('.field span[title=ICURV]').closest('.field').querySelector('input');
+            let field = document.querySelector('.field span[title=ICURV]').closest('.field').querySelector('input');
             if (!field || field.readOnly) throw new Error('ICURV is not editable');
+            // Background hosts still need React's focus/blur handlers to run.
             field.focus();
+            field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+            await until(() => document.querySelector('.field.helpSelected span[title=ICURV]') && document.querySelector('main').getAttribute('aria-busy') !== 'true');
+            field = document.querySelector('.field span[title=ICURV]').closest('.field').querySelector('input');
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, '12');
             field.dispatchEvent(new Event('input', { bubbles: true }));
             await wait(50); field.blur();
+            field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
             await until(() => document.querySelector('.detailsActions button.primaryText:not(:disabled)'));
             await until(() => document.querySelector('.changePreview'));
             const preview = document.querySelector('.changePreview').innerText;
@@ -345,7 +367,22 @@ async function main() {
                 document.querySelector('.detailsActions button.primaryText').click();
                 await until(() => !document.querySelector('.changePreview') && !document.querySelector('.fieldEditor.changed'));
             }
-            return { preview, edited: 'ICURV', value: '12' };
+            if (acceptanceLayouts) {
+                const reset = document.querySelector('.detailsActions .toolbarTextAction:not(.primaryText)');
+                if (!reset) throw Error('Reset missing for shared-record draft');
+                reset.click();
+                await until(() => !document.querySelector('.changePreview') && document.querySelector('.field span[title=ICURV]').closest('.field').querySelector('input').value.trim() === '0');
+                field = document.querySelector('.field span[title=ICURV]').closest('.field').querySelector('input');
+                field.focus();
+                field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+                await until(() => document.querySelector('.field.helpSelected span[title=ICURV]') && document.querySelector('main').getAttribute('aria-busy') !== 'true');
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field, '12');
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+                await wait(50); field.blur();
+                field.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+                await until(() => document.querySelector('.changePreview') && document.querySelector('.detailsActions button.primaryText:not(:disabled)'));
+            }
+            return { preview, edited: 'ICURV', value: '12', resetAndRestage: acceptanceLayouts };
         }).toString() + ')(' + JSON.stringify(acceptanceLayouts) + ')');
         if (semanticHelp) {
             await evaluate(context, `(() => {
@@ -395,7 +432,7 @@ async function main() {
                     const shot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
                     writeEvidence(path.join(root, theme.replaceAll(' ', '-') + '.png'), Buffer.from(shot.data, 'base64'));
                 }
-                if (acceptanceLayouts && pageSession) for (const zoom of [0, 1]) for (const width of [360, 480]) {
+                if (acceptanceLayouts && pageSession) for (const zoom of [0, 1]) for (const width of [360, 480, 900]) {
                     const request = { zoom, id: `${theme}/${zoom}/${width}` };
                     await writeRequest(root, 'appearance-request.json', request);
                     const deadline = Date.now() + 15000;
@@ -413,13 +450,20 @@ async function main() {
                         if (actual === width) break;
                         viewportWidth += (width - actual) * Math.pow(1.2, zoom);
                     }
+                    await evaluate(context, `document.documentElement.style.setProperty('--vscode-font-size', '${zoom ? 20 : 14}px'); document.body.style.setProperty('--vscode-font-size', '${zoom ? 20 : 14}px')`);
                     const layout = await evaluate(context, `({ width: innerWidth, fontSize: getComputedStyle(document.body).fontSize,
                         text: document.body.innerText, scrollWidth: document.documentElement.scrollWidth,
                         controls: [...document.querySelectorAll('button,input,select')].map(el => ({
                             text: el.innerText, label: el.getAttribute('aria-label'), title: el.title,
                             disabled: el.disabled, readonly: el.readOnly, width: el.getBoundingClientRect().width,
                             color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor })) })`);
-                    result.layouts.push({ theme, zoom, requestedWidth: width, ...layout });
+                    const toolbar = result.edited === 'ICURV' ? await evaluate(context, '(' + require('../../test/support/toolbar-layout.cjs').toString() + ')(' +
+                        JSON.stringify({ zh: (language === 'auto' ? locale : language) === 'zh-cn', drafts: true }) + ')') : null;
+                    result.layouts.push({ theme, zoom, requestedWidth: width, ...layout, toolbar });
+                    writeEvidence(path.join(toolbarEvidence, 'layouts.json'), JSON.stringify(result.layouts, null, 2));
+                    const toolbarShot = await call('Page.captureScreenshot', { format: 'png' }, pageSession);
+                    writeEvidence(path.join(toolbarEvidence, `toolbar-${theme.replaceAll(' ', '-')}-${zoom}-${width}.png`), Buffer.from(toolbarShot.data, 'base64'));
+                    if (toolbar?.issues.length) throw Error('Toolbar acceptance failed: ' + JSON.stringify(toolbar));
                     if (Math.abs(layout.width - width) > 1) throw Error(`Webview width ${layout.width} does not match ${width}`);
                     if (semanticHelp) {
                         await evaluate(context, `document.querySelector('.conditionExplanation').scrollIntoView({ block: 'center', behavior: 'instant' })`);
@@ -482,7 +526,7 @@ async function main() {
                     await delay(50);
                 }
                 const prefix = theme.replaceAll(' ', '-') + '-' + zoom;
-            for (const action of [...(semanticHelp ? ['keyword-hover'] : []), 'hover', 'completion', 'choices', 'marks', 'include-created', 'include-deleted',
+            for (const action of ['keyword-hover', 'hover', 'completion', 'choices', 'marks', 'include-created', 'include-deleted',
                 'prepare-waiting', 'prepare-stale', 'prepare-failure', 'prepare-retry', 'sidebar']) {
                 const request = { action, id: `${prefix}/${action}` };
                 await writeRequest(root, 'editor-request.json', request);
@@ -577,6 +621,7 @@ async function main() {
         }
             }
         writeEvidence(path.join(root, 'renderer-result.json'), JSON.stringify(result, null, 2));
+        if (toolbarEvidence) writeEvidence(path.join(toolbarEvidence, 'renderer-result.json'), JSON.stringify(result, null, 2));
         if (repeated && pageSession) {
             const shot = await call('Page.captureScreenshot', {format:'png'}, pageSession);
             writeEvidence(path.join(root, 'repeated-' + language + '.png'), Buffer.from(shot.data, 'base64'));
@@ -587,6 +632,8 @@ async function main() {
         cdp.close();
         await host;
         if (hostError) throw hostError;
+        if (toolbarEvidence) for (const name of ['gui-ready.json', 'result.json'])
+            writeEvidence(path.join(toolbarEvidence, name), fs.readFileSync(path.join(root, name)));
         console.log(JSON.stringify({ passed: true, hostLocale: locale, pluginLanguage: language,
             layouts: result.layouts?.length, editorActions: result.editor?.length, evidence: root }));
     } catch (error) {

@@ -53,6 +53,7 @@ async function run() {
         } else
         if (process.env.KEYWORD_MANAGER_GUI === '1') {
             const comments = process.env.KEYWORD_MANAGER_GUI_COMMENTS;
+            const optional = process.env.KEYWORD_MANAGER_GUI_OPTIONAL === '1';
             const prefixHelp = process.env.KEYWORD_MANAGER_PREFIX_HELP === '1';
             const incomplete = process.env.KEYWORD_MANAGER_GUI_INCOMPLETE === '1';
             const repeated = !!process.env.KEYWORD_MANAGER_GUI_REPEAT;
@@ -79,10 +80,11 @@ async function run() {
             const prefixText = ['*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID', '         1Contact help verification'.padEnd(80),
                 ...Array.from({ length: 3 }, () => '         0'.repeat(8)), '*END'].join('\n');
             if (prefixHelp) fs.writeFileSync(uri.fsPath, prefixText);
+            if (optional) fs.writeFileSync(uri.fsPath, '*DATABASE_BINARY_D3PLOT\n     0.005\n*END\n');
             const document = await vscode.workspace.openTextDocument(uri);
             const editor = await vscode.window.showTextDocument(document);
             const line = document.getText().split(/\r?\n/).findIndex(text =>
-                text === (prefixHelp ? '*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID' : standardRepeat ? '*LOAD_POINT_UVW' : unverified ? '*MAT_DAMAGE_1' : repeated ? '*SET_PART_ADD' : comments ? '*MAT_BARLAT_YLD2000' : incomplete ? '*MAT_DAMAGE_1_TITLE' : shared ? `*${shared.keyword}` : '*DEFINE_CURVE_TITLE'));
+                text === (optional ? '*DATABASE_BINARY_D3PLOT' : prefixHelp ? '*CONTACT_AUTOMATIC_SINGLE_SURFACE_ID' : standardRepeat ? '*LOAD_POINT_UVW' : unverified ? '*MAT_DAMAGE_1' : repeated ? '*SET_PART_ADD' : comments ? '*MAT_BARLAT_YLD2000' : incomplete ? '*MAT_DAMAGE_1_TITLE' : shared ? `*${shared.keyword}` : '*DEFINE_CURVE_TITLE'));
             editor.selection = new vscode.Selection(line, 0, line, 0);
             await vscode.commands.executeCommand('extension.lsdynaChooseKeywordOptions');
             console.log('Manager GUI host: manager opened');
@@ -218,6 +220,13 @@ async function run() {
             assert.equal(fs.readFileSync(uri.fsPath, 'utf8'), document.getText());
             const view = api.buildKeywordOptionViewModel(editor, line, { provisional: true });
             const fields = view.managerCards.flatMap(card => card.fields);
+            if (optional) {
+                assert.equal(view.managerCards.length, 2);
+                assert.equal(view.controls.find(control => control.controlId === 'optional-cards').value, '1');
+                assert.equal(fields.find(field => field.name === 'IOOPT').value, '2');
+                assert.ok(!document.getText().includes('_ID'));
+                fs.writeFileSync(path.join(root, 'optional-saved.k'), document.getText());
+            }
             if (unverified) {
                 assert.equal(document.getText(), repeatedText);
                 assert.equal(view.plan.status, 'blocked');

@@ -836,9 +836,7 @@ class LsdynaKeywordIndexProvider {
 
     _updateTreeDescription() {
         if (!this._treeView) return;
-        const followLabel = this._followCursor
-            ? i18n.get('keywordIndexFollowOn')
-            : i18n.get('keywordIndexFollowOff');
+
         this._treeView.description = scopeLabel(this._mode);
         const file = this._mode === 'recursive' ? this.projectRoot : this.scopeFile;
         const status = ['scanning', 'indexing'].includes(this.scanState) ? i18n.get('sidebarScanning')
@@ -846,7 +844,7 @@ class LsdynaKeywordIndexProvider {
             : !file ? i18n.get('sidebarOpenFile')
             : !this.projectPages && !this._occurrences.length ? i18n.get('sidebarNoKeywords') : '';
         const source = file ? `${i18n.get(this._mode === 'recursive' ? 'sidebarMainFile' : 'keywordIndexScopeCurrentFile')}: ${path.basename(file)}` : '';
-        this._treeView.message = [source, status, `${layoutLabel(this._layout)} · ${followLabel}`].filter(Boolean).join('\n');
+        this._treeView.message = [source, status].filter(Boolean).join(' · ');
     }
 
     _setMode(mode) {
@@ -1493,15 +1491,8 @@ class LsdynaKeywordIndexProvider {
         }
         const uri = scanOptions.rootFile ? vscode.Uri.file(scanOptions.rootFile) : this.resolveProjectUri();
         if (!uri || !isLsdynaUri(uri)) {
-            const editor = vscode.window.activeTextEditor;
-            const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-            const debugInfo = [
-                `activeEditor=${!!editor}`,
-                `tabGroups=${!!vscode.window.tabGroups}`,
-                `activeTab=${!!activeTab}`,
-                `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
-            ].join(', ');
-            vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
+
+            vscode.window.showWarningMessage(i18n.get('openFileFirst'));
             return false;
         }
         const rootFile = uri.fsPath;
@@ -1547,8 +1538,7 @@ class LsdynaKeywordIndexProvider {
                         }
                         pages.dispose(); return;
                     } else if (this.loadProjectSnapshot) {
-                        const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
-                        const snapshot = await this.loadProjectSnapshot(rootFile, options, partialSnapshot => {
+                        const snapshot = await this.loadProjectSnapshot(rootFile, {}, partialSnapshot => {
                             const filesScanned = partialSnapshot?.files?.length || 0;
                             progress.report({ message: i18n.get('scannedFilesProgress', filesScanned) });
                             try {
@@ -1681,7 +1671,7 @@ class LsdynaKeywordIndexProvider {
                 tooltip.appendMarkdown(`\n**${i18n.get('cardDataPreview')}:**\n\n`);
                 tooltip.appendMarkdown(`\`\`\`lsdyna\n${snippet}\n\`\`\``);
                 tooltip.appendMarkdown('\n---\n');
-                tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:vscode.open?${encodeURIComponent(JSON.stringify(item.resourceUri))}) | `);
+                tooltip.appendMarkdown(`[${i18n.get('openFile')}](command:extension.openLsdynaLocation?${encodeURIComponent(JSON.stringify([occurrence.filePath, occurrence.startLine]))}) | `);
                 tooltip.appendMarkdown(`[${i18n.get('openToSide')}](command:extension.openToSide?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))}) | `);
                 tooltip.appendMarkdown(`[${i18n.get('revealInExplorer')}](command:extension.revealInExplorer?${encodeURIComponent(JSON.stringify({ resourceUri: item.resourceUri }))})`);
                 tooltip.isTrusted = true;

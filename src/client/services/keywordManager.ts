@@ -35,6 +35,7 @@ const { getLegalSelectorValues, resolveFormRulePriorScore } = require("../../cor
 const keywordRecordSerializer = require('../../core/edit/keywordRecordSerializer');
 const { parseNumericInput } = require('../../core/references/referenceInputValue');
 const { NATIVE_FILE_SOURCE } = require("../../core/semantics/catalogNativeFileLayout");
+const { nativeOptionalCardControl } = require('../../core/semantics/nativeOptionalCards');
 
 export function createKeywordManagerServices(host: {
     getKeywordSemanticAdviceForDocument?: (...args: any[]) => any;
@@ -411,13 +412,14 @@ export function createKeywordManagerServices(host: {
     }
 
     const keywordManagerInstanceDirectories = new WeakMap<object, {
-        version: number; lineCount: number; blockIndex: any; instances: any[]; parameterContext?: any;
+        version: number; lineCount: number; blockIndex: any; instances: any[]; parameterContext?: any; typeKey?: string;
     }>();
 
-    function cachedKeywordManagerDirectory(document, blockIndex) {
+    function cachedKeywordManagerDirectory(document, blockIndex, keyword = null) {
         const usableIndex = blockIndex?.lineCount === document.lineCount ? blockIndex : null;
         const cached = keywordManagerInstanceDirectories.get(document);
-        return cached && cached.version === document.version && cached.lineCount === document.lineCount &&
+        return cached && (!cached.typeKey || keyword && cached.typeKey === keywordManagerTypeKey(keyword)) &&
+            cached.version === document.version && cached.lineCount === document.lineCount &&
             cached.blockIndex === usableIndex && (!cached.parameterContext ||
                 cached.parameterContext === nativeParameterContextForDocument(document)) ? cached : null;
     }
@@ -498,7 +500,11 @@ export function createKeywordManagerServices(host: {
             message: i18n.get('keywordManagerReasonSelectInstance'),
         }));
         };
-        const cached = cachedKeywordManagerDirectory(document, usableIndex);
+        const completeCache = cachedKeywordManagerDirectory(document, usableIndex);
+        if (completeCache) return project(completeCache.instances);
+        const sourceLine = selectedBlock?.startLine ?? usableIndex?.findBlockAtLine?.(selectedLine)?.startLine ?? findKeywordLineForLine(document, selectedLine);
+        const keyword = Number.isInteger(sourceLine) ? keywordSpellingFromLine(document.lineAt(sourceLine).text) : null;
+        const cached = cachedKeywordManagerDirectory(document, usableIndex, keyword);
         if (cached) return project(cached.instances);
         const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex, selectedBlock ? [selectedBlock] : null);
         let next = iterator.next();
@@ -507,7 +513,7 @@ export function createKeywordManagerServices(host: {
         return project(next.value.instances);
     }
 
-    function* buildKeywordManagerInstanceDirectory(document, usableIndex, selectedBlocks = null) {
+    function* buildKeywordManagerInstanceDirectory(document, usableIndex, selectedBlocks = null, typeKey = null) {
         const blocks = selectedBlocks || (usableIndex
             ? usableIndex.getOccurrences()
             : collectBlocksFromLineReader(document.lineCount, line => document.lineAt(line).text));
@@ -515,6 +521,7 @@ export function createKeywordManagerServices(host: {
         const instances = [];
         for (const block of blocks) {
             const keyword = `*${stripKeywordInputFormatMarker(String(block.keyword || '').replace(/^\*/, ''))}`.toUpperCase();
+            if (typeKey && keywordManagerTypeKey(keyword) !== typeKey) continue;
             yield keyword;
             const category = resolveKeywordCategory(keyword).primaryCategory;
             const startLine = Number(block.startLine);
@@ -543,11 +550,11 @@ export function createKeywordManagerServices(host: {
         for (const instance of instances) counts.set(instance.typeKey, (counts.get(instance.typeKey) || 0) + 1);
         for (const instance of instances) instance.occurrenceCount = counts.get(instance.typeKey) || 1;
         return { version: document.version, lineCount: document.lineCount,
-            blockIndex: usableIndex, instances,
+            blockIndex: usableIndex, instances, ...(typeKey ? { typeKey } : {}),
             parameterContext: parameterDependent ? nativeParameterContextForDocument(document) : undefined };
     }
 
-    async function prepareKeywordManagerInstances(document, blockIndex, isCurrent = () => true) {
+    async function prepareKeywordManagerInstances(document, blockIndex, isCurrent = () => true, keyword = null) {
         await require('../../core/keywordSchema').prepareKeywordSchema();
         if (!document || document.isClosed || !isCurrent()) return false;
         const usableIndex = blockIndex?.lineCount === document.lineCount ? blockIndex : null;
@@ -557,7 +564,7 @@ export function createKeywordManagerServices(host: {
             nativeParameterContextForDocument(document) === parameterContext;
         const resolvedValues = await parameterContext.flush?.();
         if (!current() || nativeParameterContextForDocument(document) !== parameterContext) return false;
-        const cached = keywordManagerInstanceDirectories.get(document);
+        const cached = cachedKeywordManagerDirectory(document, usableIndex, keyword);
         if (!resolvedValues && cached && cached.version === version && cached.lineCount === document.lineCount &&
             cached.blockIndex === usableIndex && (!cached.parameterContext || cached.parameterContext === parameterContext)) return true;
         const catalog = getCatalogInputFormCatalogV4({ allowUnaudited: isKeywordManagerUnauditedCatalogAllowed() });
@@ -565,7 +572,8 @@ export function createKeywordManagerServices(host: {
         // Resolving a controller can expose another conditional card. Reuse the same
         // bounded value cache and rebuild the projection until no new values are needed.
         for (let attempt = 0; attempt < 64; attempt++) {
-            const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex);
+            const iterator = buildKeywordManagerInstanceDirectory(document, usableIndex, null,
+                keyword ? keywordManagerTypeKey(keyword) : null);
             do {
                 if (!current()) return false;
                 next = iterator.next();
@@ -594,7 +602,7 @@ export function createKeywordManagerServices(host: {
     function completeKeywordManagerInstances(model, document, blockIndex) {
         if (!model || model.stale || document.isClosed ||
             model.uri !== documentUriIdentity(document) || model.session?.documentVersion !== document.version ||
-            !cachedKeywordManagerDirectory(document, blockIndex)) return false;
+            !cachedKeywordManagerDirectory(document, blockIndex, model.currentKeyword)) return false;
         const instances = keywordManagerInstances(document, model.managerSelectionLine, blockIndex);
         const selected = instances.find(instance => instance.instanceId === model.selectedInstanceId);
         if (!selected) return false;
@@ -609,13 +617,7 @@ export function createKeywordManagerServices(host: {
     let keywordManagerModelForms: WeakMap<object, Map<string, any>> | null = null;
 
     function isKeywordManagerUnauditedCatalogAllowed(): boolean {
-        if (process.env.DYNASENSE_ALLOW_UNAUDITED_CATALOG === '1') return true;
-        try {
-            const config = vscode.workspace.getConfiguration('lsdyna');
-            return Boolean(config.get('keywordManager.allowUnauditedCatalog', false));
-        } catch {
-            return false;
-        }
+        return process.env.DYNASENSE_ALLOW_UNAUDITED_CATALOG === '1';
     }
 
     function keywordManagerCatalogCatalogForm(keyword, fresh = false) {
@@ -671,7 +673,8 @@ export function createKeywordManagerServices(host: {
     function keywordManagerCatalogNativeFormRules(keyword) {
         const batch = nativeBatchFixedBinding(keyword);
         return keywordManagerCatalogRules(nativeFileCatalogKeyword(keyword), 'formRuleIds', isVerifiedNativeSpelling(keyword) && !contactThermalBinding(keyword)?.value).filter(rule => !batch || rule.cardSetId === batch.cardSetId).map(rule => {
-            const cards = nativeFileLayoutCards(rule, keyword);
+            const optional = !nativeFileLayoutKind(rule, keyword) ? nativeOptionalCardControl(keyword, rule) : null;
+            const cards = optional ? rule.cards.slice(0, optional.cardCount) : nativeFileLayoutCards(rule, keyword);
             return cards === rule.cards ? rule : { ...rule, cards, nativeForm: rule };
         });
     }
@@ -728,9 +731,10 @@ export function createKeywordManagerServices(host: {
         const form = keywordManagerCatalogCatalogForm(nativeFileCatalogKeyword(keyword));
         const ruleIds = form?.reference?.selectorRuleIds || [];
         const rules = ruleIds.map(ruleId => form.rules[ruleId]).filter(Boolean);
-        return rules.length ? {
+        const selectors = rules.flatMap(rule => rule.selectors || []);
+        return selectors.length ? {
             ruleId: 'lspp-native-input-form-selectors',
-            selectors: rules.flatMap(rule => rule.selectors || []),
+            selectors,
             catalogRuleId: ruleIds.join('+'),
             catalogRuleIds: ruleIds,
             catalogSource: form.source,
@@ -1292,7 +1296,8 @@ export function createKeywordManagerServices(host: {
         }
         const selected = [...groups.values()][0];
         let prepared = selected.trial;
-        if (Object.keys(drafts).length || Object.keys(recordDrafts).length || result.plan.targetKeyword !== keyword) {
+        if (Object.keys(drafts).length || Object.keys(recordDrafts).length || result.plan.targetKeyword !== keyword ||
+            result.requestedOptionalCardCount !== undefined) {
             const targets = matches.map(match => {
                 const trial = { ...result, plan: { ...result.plan } };
                 const projection = keywordManagerPrepareCatalogInputFormLayoutForRule(
@@ -1386,6 +1391,7 @@ export function createKeywordManagerServices(host: {
         if ([...effectiveCards.values()].some(card => !card)) return null;
         const canonical = String(keyword).replace(/^\*/, '').toUpperCase();
         const recordSelection = rule.recordSelection;
+        const optionalCards = !fileKind ? nativeOptionalCardControl(keyword, rule) : null;
         if (recordSelection && (recordSelection.kind !== 'native-string-tail-replacement' ||
             recordSelection.keyword !== nativeFileCatalogKeyword(canonical) ||
             recordSelection.scope !== 'source-row' ||
@@ -1690,6 +1696,17 @@ export function createKeywordManagerServices(host: {
                 if (!acceptsSource(record, sourceRecords[index])) return null;
                 currentRecords.push(record); targetRecords.push(record);
             }
+        } else if (optionalCards) {
+            const required = optionalCards.firstCard - 1;
+            const currentCount = sourceRecords.length ? sourceRecords.length - required : 0;
+            const targetCount = result.requestedOptionalCardCount ?? currentCount;
+            if (!Number.isInteger(currentCount) || currentCount < 0 || currentCount > optionalCards.maximum ||
+                !Number.isInteger(targetCount) || targetCount < 0 || targetCount > optionalCards.maximum ||
+                !sourceRecords.every((source, index) => acceptsSource(currentRecords[index], source))) return null;
+            currentRecords = currentRecords.slice(0, sourceRecords.length);
+            targetRecords = targetRecords.slice(0, required + targetCount);
+            currentCardIndexes = currentRecords.map(record => record.lsppCardIndex);
+            targetCardIndexes = targetRecords.map(record => record.lsppCardIndex);
         } else if (sourceRecords.length === 0) {
             currentRecords = [];
         } else if (currentRecords.length !== sourceRecords.length) {
@@ -1813,6 +1830,9 @@ export function createKeywordManagerServices(host: {
                 targetSnapshot: targetState?.formSnapshot,
                 ruleId: rule.catalogRuleId,
                 nativeForm: rule.nativeForm || rule,
+                ...(optionalCards ? { optionalCards: { ...optionalCards,
+                    currentCount: Math.max(0, currentRecords.length - optionalCards.firstCard + 1),
+                    targetCount: targetRecords.length - optionalCards.firstCard + 1 } } : {}),
                 branchEvidence: fileKind ? 'native-file-reader' : recordSelection ? 'record-selection' :
                     (rule.states?.length || rule.cards.some(card => card.when)) ? 'predicate' : 'static',
                 controlValues: targetValues,
@@ -2011,7 +2031,7 @@ export function createKeywordManagerServices(host: {
             ...(unresolvedForm ? { reason: 'form-unresolved' } : {}) };
         const records = model.targetLayout?.records || model.currentLayout?.records || [];
         const record = records.find(record => record.fields?.some(field => field.fieldMigrationId === selected.fieldId));
-        if (context?.branchEvidence === 'record-selection' || context?.branchEvidence === 'native-file-reader' ||
+        if (context?.optionalCards || context?.branchEvidence === 'record-selection' || context?.branchEvidence === 'native-file-reader' ||
             context?.nativeForm?.nativeDescriptorExtent?.consumption === 'static-descriptor-records') {
             const nativeCards = nativeFileLayoutCards(context.nativeForm, model.currentKeyword || model.targetKeyword);
             const nativeCard = record?.lsppCardIndex === 0
@@ -2085,6 +2105,7 @@ export function createKeywordManagerServices(host: {
         if (!model) return false;
         const normalizeKeyword = value => String(value || '').trim().toUpperCase();
         return Object.keys(model.fieldDrafts || {}).length > 0 ||
+            Object.keys(model.recordDrafts || {}).length > 0 ||
             Object.keys(model.draftControlState || {}).length > 0 ||
             model.dynamicCardsSelected === true ||
             normalizeKeyword(model.targetKeyword) !== normalizeKeyword(model.currentKeyword) ||
@@ -2103,7 +2124,7 @@ export function createKeywordManagerServices(host: {
             message: i18n.get(messageKey),
             evidenceIds: evidence(evidenceIds),
         });
-        const hasSpellingAlternative = (model?.controls || []).some(control => control.kind === 'selector' && control.enabled &&
+        const hasSpellingAlternative = (model?.controls || []).some(control => control.kind === 'selector' && control.controlId !== 'optional-cards' && control.enabled &&
             ((control.emptyEnabled && model.currentControlState?.[control.controlId]) ||
                 control.choices?.some(choice => choice.enabled && choice.value !== (model.currentControlState?.[control.controlId] ?? '')))) || (model?.choices || []).some(choice =>
             choice.kind === 'spelling' && choice.enabled === true &&
@@ -2805,11 +2826,17 @@ export function createKeywordManagerServices(host: {
             ? Object.fromEntries(Object.entries(staged.recordDrafts).map(([recordId, text]) => [recordId, String(text ?? '')]))
             : {};
         const selectedFormRuleId = typeof staged.selectedFormRuleId === 'string' ? staged.selectedFormRuleId : null;
+        if (Object.prototype.hasOwnProperty.call(draftControlState, 'optional-cards')) {
+            const count = String(draftControlState['optional-cards']);
+            baseResult.requestedOptionalCardCount = count === '' ? 0 : /^[1-9]\d*$/.test(count) ? Number(count) : NaN;
+        }
         const preparedInputForm = keywordManagerPrepareCatalogInputFormLayout(
             document, keywordLine, baseResult, fieldDrafts, recordDrafts, selectedFormRuleId,
         );
         const preparedSelectors = keywordManagerPrepareCatalogSelectorLayout(
-            document, keywordLine, baseResult, resolvedTargetState, false, fieldDrafts,
+            document, keywordLine, baseResult,
+            Object.fromEntries(Object.entries(resolvedTargetState).filter(([key]) => key !== 'optional-cards')),
+            false, fieldDrafts,
         );
         if (catalogForm && !preparedInputForm && !preparedSelectors) {
             baseResult.plan.status = 'blocked';
@@ -2887,7 +2914,10 @@ export function createKeywordManagerServices(host: {
             fieldDrafts,
             staged.selectedFieldId,
         );
-        if (Object.entries(draftControlState).some(([id,value])=>value!=='' && !selectorRule?.selectors.some(s=>s.controlId===id&&s.values.some(v=>v.value===value)))) {
+        if (Object.entries(draftControlState).some(([id, value]) => id === 'optional-cards'
+            ? !baseResult.inputFormProjection?.optionalCards ||
+                baseResult.inputFormProjection.optionalCards.targetCount !== (value === '' ? 0 : Number(value))
+            : value !== '' && !selectorRule?.selectors.some(s => s.controlId === id && s.values.some(v => v.value === value)))) {
             baseResult.plan=blockedKeywordOptionSwitchPlan(currentKeyword,targetKeyword,'lspp-selector-spelling-unverified',baseResult.plan);
         }
         for (const field of fieldProjection.cards.flatMap(card => card.fields)) {
@@ -2896,11 +2926,13 @@ export function createKeywordManagerServices(host: {
                 delete field.draft;
             }
         }
-        const selectedSourceLine = staged.selectedFieldId
+        const selectedFieldLine = staged.selectedFieldId
             ? fieldProjection.cards.flatMap(card => card.fields).find(field => field.fieldId === staged.selectedFieldId)?.line ?? line : line;
+        // Newly added cards have target positions, not source lines in the next keyword.
+        const selectedSourceLine = selectedFieldLine < blockEnd ? selectedFieldLine : keywordLine;
         const directoryUnavailable = !blockIndex && document.lineCount > LARGE_DOCUMENT_LINE_THRESHOLD;
         const deferInstances = staged.deferInstances === true && !directoryUnavailable &&
-            !cachedKeywordManagerDirectory(document, blockIndex);
+            !cachedKeywordManagerDirectory(document, blockIndex, currentKeyword);
         // Use the same block descriptor and native instance reader as the complete directory.
         const selectedBlock = deferInstances ? indexed || {
             keyword: currentKeyword, startLine: keywordLine, endLine: blockEnd - 1,
@@ -2964,10 +2996,9 @@ export function createKeywordManagerServices(host: {
                 return {
                     controlId,
                     kind: 'selector',
-                    label: identity ? i18n.get('keywordManagerIdAndTitle') : String(selector.label || controlId),
+                    label: selector.values.length === 1 ? String(selector.values[0].value) : String(selector.label || controlId),
                     value: currentValue,
-                    ...(identity ? { emptyLabel: i18n.get('keywordManagerIdentityDisabled') } : {}),
-                    choices: identity ? [{ value: identityValue, label: i18n.get('keywordManagerIdentityEnabled'), enabled: true }]
+                    choices: identity ? [{ value: identityValue, label: identityValue, enabled: true }]
                         : selector.values.map(value => ({ value: value.value, label: value.value, enabled: true })),
                     visible: true,
                     enabled: !keywordManagerCatalogCatalogFailure,
@@ -3040,13 +3071,24 @@ export function createKeywordManagerServices(host: {
             provisional,
         };
         model.help = keywordManagerHelpState(model);
+        const optionalCards = baseResult.inputFormProjection?.optionalCards;
+        if (optionalCards) {
+            const zh = i18n.getLanguage() === 'zh-cn';
+            currentControlState['optional-cards'] = optionalCards.currentCount ? String(optionalCards.currentCount) : '';
+            model.controls.push({ controlId: 'optional-cards', kind: 'selector',
+                label: zh ? '可选卡片' : 'Optional cards', emptyLabel: zh ? '无' : 'None',
+                value: optionalCards.targetCount ? String(optionalCards.targetCount) : '',
+                choices: Array.from({ length: optionalCards.maximum }, (_, index) => ({
+                    value: String(index + 1), label: String(index + 1), enabled: true })),
+                visible: true, enabled: !model.readonly });
+        }
         model.readonly = model.readonly || !!model.inputFormSourceError;
         if (evaluateControls) for (const control of model.controls) {
             const available = (value: string) => {
                 if (model.readonly) return false;
                 if (value === String(currentControlState[control.controlId] ?? '')) return true;
                 const nextState = { ...resolvedTargetState, [control.controlId]: value };
-                const nextSpelling = preserveEquivalentNativeSpelling(nativeForm, currentKeyword, currentKeyword,
+                const nextSpelling = control.controlId === 'optional-cards' ? currentKeyword : preserveEquivalentNativeSpelling(nativeForm, currentKeyword, currentKeyword,
                     keywordManagerCatalogSelectorSpelling(selectorRule, nextState));
                 if (!nativeSpellingWriteCompatible(currentKeyword, nextSpelling)) return false;
                 // Use the final edit plan, including source and native write guards, for every offered transition.
@@ -3060,6 +3102,9 @@ export function createKeywordManagerServices(host: {
             for (const choice of control.choices) choice.enabled = available(choice.value);
             control.enabled = !model.readonly && (control.emptyEnabled && control.value !== '' ||
                 control.choices.some(choice => choice.enabled && choice.value !== control.value));
+            control.visible = Boolean(control.value) || control.enabled;
+            const activeChoices = control.choices.filter(choice => choice.enabled || choice.value === control.value);
+            if (control.choices.length > 1 && activeChoices.length === 1) control.label = String(activeChoices[0].label);
             control.reason = control.enabled ? undefined : i18n.get(model.readonly ? 'keywordManagerReadonly' : 'keywordManagerReasonNoAlternative');
         }
         // Candidate previews share this model's source snapshot; the completed model and Apply recheck authority.
@@ -3074,6 +3119,7 @@ export function createKeywordManagerServices(host: {
             }
             for (const control of model.controls) {
                 control.enabled = control.emptyEnabled = false;
+                control.visible = Boolean(control.value);
                 control.reason = i18n.get('keywordManagerReadonly');
                 for (const choice of control.choices) choice.enabled = false;
             }

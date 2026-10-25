@@ -396,12 +396,12 @@ export function LargeFileViewerApp({ transport }: { transport: LargeFileViewerTr
             <button type="submit" title={searchMode === 'text' ? state.labels.searchHint : state.labels.keywordHint}
                 aria-label={searchMode === 'text' ? state.labels.search : state.labels.nextKeyword} disabled={state.stale || state.indexing !== 'ready' || state.search.loading}>
                 <span className={`codicon codicon-${state.search.loading ? 'loading codicon-modifier-spin' : 'arrow-down'}`} aria-hidden="true" /></button>
-            <button type="button" title={state.labels.clearSearch} aria-label={state.labels.clearSearch}
+            <button type="button" disabled={!searchText && !state.search.query} title={state.labels.clearSearch} aria-label={state.labels.clearSearch}
                 onClick={() => { setSearchText(''); jump(next => transport.search(next.revision, '')); searchInput.current?.focus(); }}>
                 <span className="codicon codicon-close" aria-hidden="true" /></button>
         </form>
         </header>
-        <div className="viewport" data-vscode-context='{"preventDefaultContextMenuItems":true}' ref={viewport} tabIndex={0} title={state.labels.noField} onCopy={event => copyVisibleSelection(event, state)} onKeyDown={onViewportKey} onScroll={event => {
+        <div className="viewport" aria-describedby={!state.selectedField ? "viewer-hint" : undefined} data-vscode-context='{"preventDefaultContextMenuItems":true}' ref={viewport} tabIndex={0} onCopy={event => copyVisibleSelection(event, state)} onKeyDown={onViewportKey} onScroll={event => {
             if (event.currentTarget.scrollTop === assignedScrollTop.current) { assignedScrollTop.current = null; return; }
             assignedScrollTop.current = null;
             if (state.stale) {
@@ -476,7 +476,7 @@ function FieldSpan({ field, text, selected, target, select, query, context }: {
     query: (token: string) => void;
 }) {
     return <button data-vscode-context={context} type="button" className={`field ${selected ? 'selected' : ''} ${field.queryable ? 'queryable' : ''} ${target ? 'navigation-field' : ''}`}
-        title={field.label} onClick={() => select(field.token)} onDoubleClick={() => field.queryable && query(field.token)}
+        title={field.label} onClick={() => select(field.token)}
         onKeyDown={event => {
             if (event.key !== 'Enter') return;
             event.stopPropagation();
@@ -490,7 +490,7 @@ function FieldHelp({ state, query }: { state: LargeFileViewerState; query: () =>
     const body = useRef<HTMLDivElement>(null);
     const field = state.selectedField;
     useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [field?.token, showEnglish]);
-    if (!field) return null;
+    if (!field) return <footer className="viewer-hint" id="viewer-hint">{state.labels.noField}</footer>;
     const zh = state.locale === 'zh';
     const hasEnglish = zh && !!field.localizedHelp && !!field.englishHelp && field.localizedHelp !== field.englishHelp;
     const help = zh && !(showEnglish && hasEnglish) ? field.localizedHelp || field.englishHelp : field.englishHelp;

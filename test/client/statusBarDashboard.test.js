@@ -12,6 +12,17 @@ describe('DynaSense status bar dashboard', () => {
         shouldShowDashboard,
     } = require('../../src/client/statusBar/dashboard');
 
+    it('merges field choices and column guides while retaining problem priority', () => {
+        const context = {errorCount:1,manualReady:true,
+            fieldChoice:{text:'FLAG: 3 choices',tooltip:'Choose a verified value',command:{title:'Choose field value'}},
+            columnGuides:{enabled:true,label:'Toggle column guides',state:'On'}};
+        const items=buildDashboardItems(context);
+        assert.equal(items[0].id,'showDiagnostics');
+        assert.equal(items.find(item=>item.id==='pickFieldValue').description,'FLAG: 3 choices');
+        assert.equal(items.find(item=>item.id==='toggleColumnGuides').description,'On');
+        assert.ok(formatDashboardTooltip(context).includes('Choose a verified value'));
+    });
+
     it('keeps literal dollar and placeholder tokens in file and main-deck labels', () => {
         for (const token of ['$&', '$`', "$'", '$$', '{1}']) {
             const scanRootName = `cash${token}deck.k`, mainDeckRootName = `main${token}deck.k`;

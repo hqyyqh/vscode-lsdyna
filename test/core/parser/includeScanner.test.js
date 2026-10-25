@@ -166,7 +166,7 @@ describe('includeScanner', () => {
         assert.ok(result.searchPaths.includes('/extra/path'));
     });
 
-    it('does not miss middle include directives in large files when fullScanLargeFiles is false', async () => {
+    it('does not miss middle include directives in large files with default or legacy scan options', async () => {
         const tempDir = makeTempDirectory(path.join(os.tmpdir(), 'lsdyna-include-large-'));
         const filePath = path.join(tempDir, 'large.k');
         const filler = '0'.repeat(72);
@@ -183,7 +183,10 @@ describe('includeScanner', () => {
         lines.push('*END');
         fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
 
-        const result = await collectIncludeDirectivesFromFile(filePath, { fullScanLargeFiles: false });
+        const result = await collectIncludeDirectivesFromFile(filePath);
+        for (const fullScanLargeFiles of [false, true]) {
+            assert.deepEqual(await collectIncludeDirectivesFromFile(filePath, { fullScanLargeFiles }), result);
+        }
         assert.deepEqual(result.includeEntries.map(entry => entry.fileName), ['middle.k']);
     });
 

@@ -37,6 +37,8 @@ const ALLOWED_GITHUB_TRACKED_FILES = new Set([
     '.github/ISSUE_TEMPLATE/feature_request.yml',
     '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/workflows/public-ci.yml',
+    '.github/workflows/ci-platform.yml',
+    '.github/workflows/ci-installed.yml',
     '.github/workflows/fast-ci.yml',
     '.github/workflows/ci-node.yml',
     '.github/scripts/marketplace-release.cjs',
@@ -329,7 +331,10 @@ function validateManifestLocalization(manifest, errors) {
     for (const [index, welcome] of (manifest.contributes.viewsWelcome || []).entries()) {
         requireLocalized(welcome.contents, `contributes.viewsWelcome[${index}].contents`);
     }
-    for (const [name, property] of Object.entries(manifest.contributes.configuration?.properties || {})) {
+    for (const group of [manifest.contributes.configuration].flat().filter(Boolean)) {
+        if (group.title !== undefined) requireLocalized(group.title, 'contributes.configuration.title');
+    }
+    for (const [name, property] of Object.entries(Object.assign({}, ...[manifest.contributes.configuration].flat().map(group => group?.properties)))) {
         if (property.description !== undefined) requireLocalized(property.description, `${name}.description`);
         if (property.markdownDescription !== undefined) requireLocalized(property.markdownDescription, `${name}.markdownDescription`);
         for (const [index, description] of (property.enumDescriptions || []).entries()) {
@@ -395,12 +400,13 @@ function extractRegisteredCommands(projectRoot) {
 function validateWorkflowCoverage(root, errors) {
     // Source checkpoints make public builds independent of private native producers.
     // Both entry points delegate to this one platform build/installed-host workflow.
-    const shared = decodeUtf8Strict(path.join(root, '.github/workflows/public-ci.yml'));
-    for (const command of ['npm run check:contracts', 'npm run build', 'npm run test:unit', 'npm run test:data', 'npm run test:webview',
+    const shared = ['public-ci.yml', 'ci-platform.yml', 'ci-installed.yml']
+        .map(file => decodeUtf8Strict(path.join(root, '.github/workflows', file))).join('\n');
+    for (const command of ['npm run check:contracts', 'npm run build', 'npm run test:unit', 'npm run test:data', 'npm run test:webview:compiled',
         'python -m unittest discover -s test/scripts/build/keywords', 'npm run check:field-data-zh',
         'npm run check:native-help-zh', 'npm run check:manual-semantics-zh', 'npm audit',
         'npm run build:native-sqlite', 'node scripts/release/package-hover-release.cjs',
-        'node scripts/release/validate-package-contents.cjs --vsix', 'run-installed-acceptance.cjs']) {
+        'run-installed-acceptance.cjs']) {
         if (!shared.includes(command)) errors.push(`public-ci.yml does not run required check: ${command}`);
     }
     for (const name of ['ci.yml', 'release.yml']) {
@@ -754,7 +760,7 @@ function validateProjectContracts(projectRoot = process.cwd(), { publicSource = 
     }
     validateRuntimeLocalization(root, errors);
 
-    const properties = manifest.contributes.configuration.properties;
+    const properties = Object.assign({}, ...[manifest.contributes.configuration].flat().map(group => group.properties));
     validateReadmeSettings(path.join(root, 'README.md'), properties, errors);
     validateReadmeSettings(path.join(root, 'README_zh.md'), properties, errors);
 

@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { serialize, deserialize } from 'v8';
 import { contactThermalCatalogKeyword, withContactThermalForm } from './contactThermal';
+import { nativeFormSelectors } from './nativeOptionalCards';
 
 const DEFAULT_CACHE_BYTES = 64 * 1024 * 1024;
 
@@ -423,7 +424,8 @@ export class CatalogInputFormCatalogV4 {
             if (!encoded) {
                 const nativeHelp = !manifest.isUnauditedDiagnostic && this.rootDir === path.resolve(defaultRuntimeRoot())
                     ? require('./nativeDescriptorHelp').withNativeDescriptorHelp : (rule: any) => rule;
-                const projected = nativeHelp(projectNativeDescriptorExtent(shard.rules[ruleId], manifest.dataset.sha256));
+                let projected = nativeHelp(projectNativeDescriptorExtent(shard.rules[ruleId], manifest.dataset.sha256));
+                if (projected.selectors) projected = { ...projected, selectors: nativeFormSelectors(projected) };
                 encoded = serialize(projected);
                 // Projection storage shares the existing shard budget and eviction lifetime.
                 if (owner.cacheBytes + encoded.length <= this.maximumCacheBytes) {

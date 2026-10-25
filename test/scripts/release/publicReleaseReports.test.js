@@ -27,7 +27,8 @@ describe('public release report boundary', () => {
             assert.ok(workflow.includes('uses: ./.github/workflows/public-ci.yml'));
             assert.ok(!workflow.includes('path: .artifacts/'));
         }
-        const workflow = fs.readFileSync(path.resolve(__dirname, '../../../.github/workflows/public-ci.yml'), 'utf8');
+        const workflow = ['public-ci.yml', 'ci-platform.yml', 'ci-installed.yml'].map(name =>
+            fs.readFileSync(path.resolve(__dirname, '../../../.github/workflows', name), 'utf8')).join('\n');
         assert.ok(workflow.includes('node scripts/release/public-release-reports.cjs'));
         assert.ok(workflow.includes('path: public-acceptance'));
         assert.ok(!/path:.*\.vsix.*\*/.test(workflow));

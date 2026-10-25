@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 const table = require('../../../keywords/runtime/native-readers/descriptor-identities.json');
-if (createHash('sha256').update(JSON.stringify(table)).digest('hex') !== 'aa9db1be916268dda49b517902e581fcd301ffe9f917ec1403cfafee9dfbb870') throw new Error('Descriptor identity table integrity mismatch');
+if (createHash('sha256').update(JSON.stringify(table)).digest('hex') !== '7119b6a644f72a6ea25fb2357a67183cae8b737ea9e8ba496f9876fbed9b832c') throw new Error('Descriptor identity table integrity mismatch');
 export function isDescriptorIdentity(value: unknown, _ignoreHexCase = false): value is string { return typeof value === 'string' && /^record:[a-f0-9]{24}:[a-f0-9]{24}$/.test(value); }
 export function descriptorIdentityGroup(value: string): string { return isDescriptorIdentity(value) ? 'group-' + value.split(':')[1] : ''; }
 export function descriptorIdentityAt(base: string, index: number): string { const cards = table.cardSets[base]; if (!Number.isSafeInteger(index) || index < 0 || !cards || index >= cards.length) throw new Error('Invalid descriptor identity offset'); return cards[index]; }

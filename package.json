@@ -11,7 +11,7 @@
         "url": "https://github.com/hqyyqh/vscode-lsdyna"
     },
     "icon": "images/extension-icon.png",
-    "version": "3.2.1",
+    "version": "3.2.2",
     "engines": {
         "vscode": "^1.100.0"
     },
@@ -74,6 +74,7 @@
         "onCommand:extension.entityReferences.search",
         "onCommand:extension.entityReferences.toggleFollow",
         "onCommand:extension.entityReferences.toggleFollowActive",
+        "onCommand:extension.entityReferences.chooseScope",
         "onCommand:extension.entityReferences.setScopeFile",
         "onCommand:extension.entityReferences.setScopeProject",
         "onCommand:extension.entityReferences.pin",
@@ -110,7 +111,9 @@
         "onCommand:extension.keywordIndexCycleCategory",
         "onCommand:extension.keywordIndexCycleOrder",
         "onCommand:extension.keywordIndexCycleAlphabetical",
-        "onCommand:extension.compareFiles"
+        "onCommand:extension.compareFiles",
+        "onCommand:extension.includeTree.chooseLayout",
+        "onCommand:extension.includeTree.toggleSize"
     ],
     "main": "./out/client/bootstrap.js",
     "categories": [
@@ -126,12 +129,14 @@
         "check:package-contents": "node scripts/release/package-hover-release.cjs out/package-content-check.vsix",
         "build:webview": "vite build --config webview/manual-reader/vite.config.ts && vite build --config webview/entity-references/vite.config.ts && vite build --config webview/keyword-options/vite.config.ts && vite build --config webview/large-file-viewer/vite.config.ts",
         "typecheck:webview": "tsc --noEmit -p webview/manual-reader/tsconfig.json && tsc --noEmit -p webview/entity-references/tsconfig.json && tsc --noEmit -p webview/keyword-options/tsconfig.json && tsc --noEmit -p webview/large-file-viewer/tsconfig.json",
-        "test:webview": "npm run typecheck:webview && vitest run --config webview/manual-reader/vitest.config.ts && vitest run --config webview/entity-references/vitest.config.ts && vitest run --config webview/keyword-options/vitest.config.ts && vitest run --config webview/large-file-viewer/vitest.config.ts",
-        "pretest": "npm run build:webview",
+        "test:webview": "npm run typecheck:webview && npm run test:webview:compiled",
+        "test:webview:compiled": "vitest run --config webview/manual-reader/vitest.config.ts && vitest run --config webview/entity-references/vitest.config.ts && vitest run --config webview/keyword-options/vitest.config.ts && vitest run --config webview/large-file-viewer/vitest.config.ts",
+        "pretest": "npm run build",
         "watch": "tsc -watch -p .",
         "prepare:debug": "node scripts/release/build-public-runtime-data.cjs --if-current && npm run typecheck:webview:debug",
         "typecheck:webview:debug": "tsc --noEmit --incremental --tsBuildInfoFile out/debug-manual.tsbuildinfo -p webview/manual-reader/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-references.tsbuildinfo -p webview/entity-references/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-keywords.tsbuildinfo -p webview/keyword-options/tsconfig.json && tsc --noEmit --incremental --tsBuildInfoFile out/debug-large-file.tsbuildinfo -p webview/large-file-viewer/tsconfig.json",
-        "test": "npm run compile && npm run test:unit && npm run test:data",
+        "test": "npm run test:compiled",
+        "test:compiled": "npm run test:unit && npm run test:data",
         "test:editor-safety:host": "npm run compile && node scripts/host/run-editor-safety-extension-host.cjs",
         "test:editor-safety:close-dialog": "npm run compile && node scripts/host/run-editor-safety-close-dialog.cjs",
         "test:editor-safety:vehicles": "npm run compile && node scripts/host/run-editor-safety-vehicle-host.cjs",
@@ -450,7 +455,7 @@
             {
                 "command": "extension.keywordIndexChooseScope",
                 "title": "%commands.keywordIndexChooseScope.title%",
-                "icon": "$(scope)"
+                "icon": "$(filter)"
             },
             {
                 "command": "extension.foldKeywordBlock",
@@ -640,6 +645,11 @@
                 "enablement": "!lsdynaEntityReferences.pinned"
             },
             {
+                "command": "extension.entityReferences.chooseScope",
+                "title": "%commands.entityReferences.chooseScope.title%",
+                "icon": "$(filter)"
+            },
+            {
                 "command": "extension.entityReferences.setScopeFile",
                 "title": "%commands.entityReferences.setScopeFile.title%",
                 "icon": "$(library)"
@@ -770,22 +780,26 @@
             {
                 "command": "extension.keywordOptions.apply",
                 "title": "%commands.keywordOptions.apply.title%",
-                "icon": "$(check)"
+                "icon": "$(check)",
+                "enablement": "activeWebviewPanelId == lsdynaKeywordManager"
             },
             {
                 "command": "extension.keywordOptions.reset",
                 "title": "%commands.keywordOptions.reset.title%",
-                "icon": "$(discard)"
+                "icon": "$(discard)",
+                "enablement": "activeWebviewPanelId == lsdynaKeywordManager"
             },
             {
                 "command": "extension.keywordOptions.refresh",
                 "title": "%commands.keywordOptions.refresh.title%",
-                "icon": "$(refresh)"
+                "icon": "$(refresh)",
+                "enablement": "activeWebviewPanelId == lsdynaKeywordManager"
             },
             {
                 "command": "extension.keywordOptions.openEvidence",
                 "title": "%commands.keywordOptions.openEvidence.title%",
-                "icon": "$(book)"
+                "icon": "$(book)",
+                "enablement": "activeWebviewPanelId == lsdynaKeywordManager"
             },
             {
                 "command": "extension.includeTree.cycleTree",
@@ -821,6 +835,15 @@
                 "command": "extension.compareFiles",
                 "title": "%commands.compareFiles.title%",
                 "category": "LS-DYNA"
+            },
+            {
+                "command": "extension.includeTree.chooseLayout",
+                "title": "%commands.includeTree.chooseLayout.title%",
+                "icon": "$(list-tree)"
+            },
+            {
+                "command": "extension.includeTree.toggleSize",
+                "title": "%commands.includeTree.toggleSize.title%"
             }
         ],
         "keybindings": [
@@ -918,311 +941,317 @@
                 "when": "editorTextFocus && editorLangId == 'lsdyna'"
             }
         ],
-        "configuration": {
-            "title": "LS-DYNA",
-            "properties": {
-                "lsdyna.manualsDir": {
-                    "type": "string",
-                    "default": "lsdyna_manual_pack",
-                    "description": "%config.manualsDir.description%"
-                },
-                "lsdyna.enableTabNavigation": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.enableTabNavigation.description%"
-                },
-                "lsdyna.enableCellEditProtect": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.enableCellEditProtect.description%"
-                },
-                "lsdyna.enableFieldHover": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.enableFieldHover.description%"
-                },
-                "lsdyna.changeMarks.enabled": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.changeMarks.enabled.description%"
-                },
-                "lsdyna.changeMarks.colorScheme": {
-                    "type": "string",
-                    "enum": [
-                        "adaptive",
-                        "orangeBlue",
-                        "redBlue",
-                        "highContrast",
-                        "custom"
-                    ],
-                    "default": "adaptive",
-                    "enumDescriptions": [
-                        "%config.changeMarks.colorScheme.enumDescriptions.adaptive%",
-                        "%config.changeMarks.colorScheme.enumDescriptions.orangeBlue%",
-                        "%config.changeMarks.colorScheme.enumDescriptions.redBlue%",
-                        "%config.changeMarks.colorScheme.enumDescriptions.highContrast%",
-                        "%config.changeMarks.colorScheme.enumDescriptions.custom%"
-                    ],
-                    "description": "%config.changeMarks.colorScheme.description%"
-                },
-                "lsdyna.changeMarks.customUnsavedColor": {
-                    "type": "string",
-                    "default": "#e2a03a",
-                    "pattern": "^#[0-9a-fA-F]{6}$",
-                    "description": "%config.changeMarks.customUnsavedColor.description%"
-                },
-                "lsdyna.changeMarks.customSavedColor": {
-                    "type": "string",
-                    "default": "#89d185",
-                    "pattern": "^#[0-9a-fA-F]{6}$",
-                    "description": "%config.changeMarks.customSavedColor.description%"
-                },
-                "lsdyna.changeMarks.maxLineCount": {
-                    "type": "number",
-                    "default": 100000,
-                    "minimum": 1000,
-                    "maximum": 5000000,
-                    "description": "%config.changeMarks.maxLineCount.description%"
-                },
-                "lsdyna.changeMarks.debounceMs": {
-                    "type": "number",
-                    "default": 250,
-                    "minimum": 0,
-                    "maximum": 5000,
-                    "description": "%config.changeMarks.debounceMs.description%"
-                },
-                "lsdyna.changeMarks.showOverviewRuler": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.changeMarks.showOverviewRuler.description%"
-                },
-                "lsdyna.changeMarks.showLineBackground": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.changeMarks.showLineBackground.description%"
-                },
-                "lsdyna.changeMarks.showMinimap": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.changeMarks.showMinimap.description%"
-                },
-                "lsdyna.navigation.pulseOnJump": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.navigation.pulseOnJump.description%"
-                },
-                "lsdyna.statusBar.level": {
-                    "type": "string",
-                    "enum": [
-                        "off",
-                        "simple",
-                        "detail"
-                    ],
-                    "default": "simple",
-                    "enumDescriptions": [
-                        "%config.statusBar.level.enumDescriptions.off%",
-                        "%config.statusBar.level.enumDescriptions.simple%",
-                        "%config.statusBar.level.enumDescriptions.detail%"
-                    ],
-                    "description": "%config.statusBar.level.description%"
-                },
-                "lsdyna.health.showFirstRunNotice": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.health.showFirstRunNotice.description%"
-                },
-                "lsdyna.largeFile.enableRendering": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.largeFile.enableRendering.description%"
-                },
-                "lsdyna.codeLens.showOnAllKeywords": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%config.codeLens.showOnAllKeywords.description%"
-                },
-                "lsdyna.hover.previewMaxLines": {
-                    "type": "number",
-                    "default": 20,
-                    "minimum": 0,
-                    "maximum": 500,
-                    "description": "%config.hover.previewMaxLines.description%"
-                },
-                "lsdyna.autoFormat": {
-                    "type": "string",
-                    "enum": [
-                        "onBlur",
-                        "disabled"
-                    ],
-                    "default": "disabled",
-                    "enumDescriptions": [
-                        "%config.autoFormat.enumDescriptions.onBlur%",
-                        "%config.autoFormat.enumDescriptions.disabled%"
-                    ],
-                    "tags": [
-                        "experimental"
-                    ],
-                    "description": "%config.autoFormat.description%"
-                },
-                "lsdyna.language": {
-                    "type": "string",
-                    "enum": [
-                        "auto",
-                        "zh-cn",
-                        "en"
-                    ],
-                    "default": "auto",
-                    "enumDescriptions": [
-                        "%config.language.enumDescriptions.auto%",
-                        "%config.language.enumDescriptions.zh-cn%",
-                        "%config.language.enumDescriptions.en%"
-                    ],
-                    "description": "%config.language.description%"
-                },
-                "lsdyna.additionalExtensions": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+        "configuration": [
+            {
+                "id": "lsdyna.editing",
+                "title": "%config.group.editing%",
+                "order": 0,
+                "properties": {
+                    "lsdyna.enableTabNavigation": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.enableTabNavigation.description%",
+                        "order": 0
                     },
-                    "default": [
-                        ".k",
-                        ".key",
-                        ".dyna"
-                    ],
-                    "description": "%config.additionalExtensions.description%"
-                },
-                "lsdyna.scanner.fullScanLargeFiles": {
-                    "type": "boolean",
-                    "default": false,
-                    "markdownDescription": "%config.scanner.fullScanLargeFiles.markdownDescription%"
-                },
-                "lsdyna.ignoreFormattingKeywords": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+                    "lsdyna.enableCellEditProtect": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.enableCellEditProtect.description%",
+                        "order": 1
                     },
-                    "default": [],
-                    "description": "%config.ignoreFormattingKeywords.description%"
-                },
-                "lsdyna.customValidKeywords": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
+                    "lsdyna.enableFieldHover": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.enableFieldHover.description%",
+                        "order": 2
                     },
-                    "default": [
-                        "*END",
-                        "*TITLE",
-                        "*CASE_BEGIN",
-                        "*CASE_END"
-                    ],
-                    "description": "%config.customValidKeywords.description%"
-                },
-                "lsdyna.unknownKeywordSeverity": {
-                    "type": "string",
-                    "enum": [
-                        "error",
-                        "warning",
-                        "hint",
-                        "off"
-                    ],
-                    "default": "error",
-                    "enumDescriptions": [
-                        "%config.unknownKeywordSeverity.enumDescriptions.error%",
-                        "%config.unknownKeywordSeverity.enumDescriptions.warning%",
-                        "%config.unknownKeywordSeverity.enumDescriptions.hint%",
-                        "%config.unknownKeywordSeverity.enumDescriptions.off%"
-                    ],
-                    "description": "%config.unknownKeywordSeverity.description%"
-                },
-                "lsdyna.warnLowercaseKeyword": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%config.warnLowercaseKeyword.description%"
-                },
-                "lsdyna.include.pathCaseCheck": {
-                    "type": "string",
-                    "enum": [
-                        "crossPlatform",
-                        "off",
-                        "strict"
-                    ],
-                    "default": "crossPlatform",
-                    "enumDescriptions": [
-                        "%config.include.pathCaseCheck.enumDescriptions.crossPlatform%",
-                        "%config.include.pathCaseCheck.enumDescriptions.off%",
-                        "%config.include.pathCaseCheck.enumDescriptions.strict%"
-                    ],
-                    "description": "%config.include.pathCaseCheck.description%"
-                },
-                "lsdyna.cache.entityIndexMemoryMaxMiB": {
-                    "type": [
-                        "number",
-                        "string"
-                    ],
-                    "pattern": "^auto$",
-                    "default": "auto",
-                    "minimum": 128,
-                    "maximum": 4096,
-                    "description": "%config.cache.entityIndexMemoryMaxMiB.description%"
-                },
-                "lsdyna.cache.entityIndexDiskMaxMiB": {
-                    "type": "number",
-                    "default": 4096,
-                    "minimum": 128,
-                    "maximum": 65536,
-                    "description": "%config.cache.entityIndexDiskMaxMiB.description%"
-                },
-                "lsdyna.cache.memoryMaxMiB": {
-                    "type": "number",
-                    "default": 48,
-                    "minimum": 16,
-                    "maximum": 64,
-                    "description": "%config.cache.memoryMaxMiB.description%"
-                },
-                "lsdyna.cache.projectSnapshotDiskMaxMiB": {
-                    "type": "number",
-                    "default": 256,
-                    "minimum": 32,
-                    "maximum": 256,
-                    "description": "%config.cache.projectSnapshotDiskMaxMiB.description%",
-                    "deprecationMessage": "%config.cache.legacyDiskBudget.deprecationMessage%",
-                    "markdownDeprecationMessage": "%config.cache.legacyDiskBudget.markdownDeprecationMessage%"
-                },
-                "lsdyna.cache.fileScanDiskMaxMiB": {
-                    "type": "number",
-                    "default": 256,
-                    "minimum": 32,
-                    "maximum": 256,
-                    "description": "%config.cache.fileScanDiskMaxMiB.description%",
-                    "deprecationMessage": "%config.cache.legacyDiskBudget.deprecationMessage%",
-                    "markdownDeprecationMessage": "%config.cache.legacyDiskBudget.markdownDeprecationMessage%"
-                },
-                "lsdyna.cache.fileScanMemoryMaxMiB": {
-                    "type": "number",
-                    "default": 16,
-                    "minimum": 4,
-                    "maximum": 16,
-                    "description": "%config.cache.fileScanMemoryMaxMiB.description%"
-                },
-                "lsdyna.cache.maxAgeDays": {
-                    "type": "number",
-                    "default": 30,
-                    "minimum": 1,
-                    "maximum": 30,
-                    "description": "%config.cache.maxAgeDays.description%"
-                },
-                "lsdyna.clearAutoIndentOnEnter": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%config.clearAutoIndentOnEnter.description%"
-                },
-                "lsdyna.keywordManager.allowUnauditedCatalog": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%config.keywordManager.allowUnauditedCatalog.description%"
+                    "lsdyna.columnGuides.enabled": {
+                        "type": "boolean",
+                        "default": true,
+                        "scope": "resource",
+                        "description": "%config.columnGuides.enabled.description%",
+                        "order": 3
+                    }
+                }
+            },
+            {
+                "id": "lsdyna.display",
+                "title": "%config.group.display%",
+                "order": 1,
+                "properties": {
+                    "lsdyna.changeMarks.enabled": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.changeMarks.enabled.description%",
+                        "order": 0
+                    },
+                    "lsdyna.changeMarks.colorScheme": {
+                        "type": "string",
+                        "enum": [
+                            "adaptive",
+                            "orangeBlue",
+                            "redBlue",
+                            "highContrast",
+                            "custom"
+                        ],
+                        "default": "adaptive",
+                        "enumDescriptions": [
+                            "%config.changeMarks.colorScheme.enumDescriptions.adaptive%",
+                            "%config.changeMarks.colorScheme.enumDescriptions.orangeBlue%",
+                            "%config.changeMarks.colorScheme.enumDescriptions.redBlue%",
+                            "%config.changeMarks.colorScheme.enumDescriptions.highContrast%",
+                            "%config.changeMarks.colorScheme.enumDescriptions.custom%"
+                        ],
+                        "description": "%config.changeMarks.colorScheme.description%",
+                        "order": 1
+                    },
+                    "lsdyna.changeMarks.showLineBackground": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.changeMarks.showLineBackground.description%",
+                        "order": 2
+                    },
+                    "lsdyna.statusBar.level": {
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "simple",
+                            "detail"
+                        ],
+                        "default": "simple",
+                        "enumDescriptions": [
+                            "%config.statusBar.level.enumDescriptions.off%",
+                            "%config.statusBar.level.enumDescriptions.simple%",
+                            "%config.statusBar.level.enumDescriptions.detail%"
+                        ],
+                        "description": "%config.statusBar.level.description%",
+                        "order": 3
+                    },
+                    "lsdyna.codeLens.showOnAllKeywords": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "%config.codeLens.showOnAllKeywords.description%",
+                        "order": 4
+                    },
+                    "lsdyna.navigation.pulseOnJump": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.navigation.pulseOnJump.description%",
+                        "order": 5
+                    }
+                }
+            },
+            {
+                "id": "lsdyna.manuals",
+                "title": "%config.group.manuals%",
+                "order": 2,
+                "properties": {
+                    "lsdyna.manualsDir": {
+                        "type": "string",
+                        "default": "lsdyna_manual_pack",
+                        "description": "%config.manualsDir.description%",
+                        "order": 0
+                    },
+                    "lsdyna.language": {
+                        "type": "string",
+                        "enum": [
+                            "auto",
+                            "zh-cn",
+                            "en"
+                        ],
+                        "default": "auto",
+                        "enumDescriptions": [
+                            "%config.language.enumDescriptions.auto%",
+                            "%config.language.enumDescriptions.zh-cn%",
+                            "%config.language.enumDescriptions.en%"
+                        ],
+                        "description": "%config.language.description%",
+                        "order": 1
+                    }
+                }
+            },
+            {
+                "id": "lsdyna.engineering",
+                "title": "%config.group.engineering%",
+                "order": 3,
+                "properties": {
+                    "lsdyna.additionalExtensions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [
+                            ".k",
+                            ".key",
+                            ".dyna"
+                        ],
+                        "description": "%config.additionalExtensions.description%",
+                        "order": 0
+                    },
+                    "lsdyna.ignoreFormattingKeywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [],
+                        "description": "%config.ignoreFormattingKeywords.description%",
+                        "order": 1
+                    },
+                    "lsdyna.customValidKeywords": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": [
+                            "*END",
+                            "*TITLE",
+                            "*CASE_BEGIN",
+                            "*CASE_END"
+                        ],
+                        "description": "%config.customValidKeywords.description%",
+                        "order": 2
+                    },
+                    "lsdyna.unknownKeywordSeverity": {
+                        "type": "string",
+                        "enum": [
+                            "error",
+                            "warning",
+                            "hint",
+                            "off"
+                        ],
+                        "default": "error",
+                        "enumDescriptions": [
+                            "%config.unknownKeywordSeverity.enumDescriptions.error%",
+                            "%config.unknownKeywordSeverity.enumDescriptions.warning%",
+                            "%config.unknownKeywordSeverity.enumDescriptions.hint%",
+                            "%config.unknownKeywordSeverity.enumDescriptions.off%"
+                        ],
+                        "description": "%config.unknownKeywordSeverity.description%",
+                        "order": 3
+                    },
+                    "lsdyna.warnLowercaseKeyword": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "%config.warnLowercaseKeyword.description%",
+                        "order": 4
+                    },
+                    "lsdyna.include.pathCaseCheck": {
+                        "type": "string",
+                        "enum": [
+                            "crossPlatform",
+                            "off",
+                            "strict"
+                        ],
+                        "default": "crossPlatform",
+                        "enumDescriptions": [
+                            "%config.include.pathCaseCheck.enumDescriptions.crossPlatform%",
+                            "%config.include.pathCaseCheck.enumDescriptions.off%",
+                            "%config.include.pathCaseCheck.enumDescriptions.strict%"
+                        ],
+                        "description": "%config.include.pathCaseCheck.description%",
+                        "order": 5
+                    },
+                    "lsdyna.autoFormat": {
+                        "type": "string",
+                        "enum": [
+                            "onBlur",
+                            "disabled"
+                        ],
+                        "default": "disabled",
+                        "enumDescriptions": [
+                            "%config.autoFormat.enumDescriptions.onBlur%",
+                            "%config.autoFormat.enumDescriptions.disabled%"
+                        ],
+                        "tags": [
+                            "experimental"
+                        ],
+                        "description": "%config.autoFormat.description%",
+                        "order": 7
+                    },
+                    "lsdyna.clearAutoIndentOnEnter": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "%config.clearAutoIndentOnEnter.description%",
+                        "order": 8
+                    }
+                }
+            },
+            {
+                "id": "lsdyna.advanced",
+                "title": "%config.group.advanced%",
+                "order": 4,
+                "properties": {
+                    "lsdyna.changeMarks.customUnsavedColor": {
+                        "type": "string",
+                        "default": "#e2a03a",
+                        "pattern": "^#[0-9a-fA-F]{6}$",
+                        "description": "%config.changeMarks.customUnsavedColor.description%",
+                        "order": 0
+                    },
+                    "lsdyna.changeMarks.customSavedColor": {
+                        "type": "string",
+                        "default": "#89d185",
+                        "pattern": "^#[0-9a-fA-F]{6}$",
+                        "description": "%config.changeMarks.customSavedColor.description%",
+                        "order": 1
+                    },
+                    "lsdyna.changeMarks.showOverviewRuler": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.changeMarks.showOverviewRuler.description%",
+                        "order": 2
+                    },
+                    "lsdyna.changeMarks.showMinimap": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.changeMarks.showMinimap.description%",
+                        "order": 3
+                    },
+                    "lsdyna.changeMarks.maxLineCount": {
+                        "type": "number",
+                        "default": 100000,
+                        "minimum": 1000,
+                        "maximum": 5000000,
+                        "description": "%config.changeMarks.maxLineCount.description%",
+                        "order": 4
+                    },
+                    "lsdyna.largeFile.enableRendering": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "%config.largeFile.enableRendering.description%",
+                        "order": 5
+                    },
+                    "lsdyna.hover.previewMaxLines": {
+                        "type": "number",
+                        "default": 20,
+                        "minimum": 0,
+                        "maximum": 500,
+                        "description": "%config.hover.previewMaxLines.description%",
+                        "order": 6
+                    },
+                    "lsdyna.cache.entityIndexMemoryMaxMiB": {
+                        "type": [
+                            "number",
+                            "string"
+                        ],
+                        "pattern": "^auto$",
+                        "default": "auto",
+                        "minimum": 128,
+                        "maximum": 4096,
+                        "description": "%config.cache.entityIndexMemoryMaxMiB.description%",
+                        "order": 7
+                    },
+                    "lsdyna.cache.entityIndexDiskMaxMiB": {
+                        "type": "number",
+                        "default": 4096,
+                        "minimum": 128,
+                        "maximum": 65536,
+                        "description": "%config.cache.entityIndexDiskMaxMiB.description%",
+                        "order": 8
+                    }
                 }
             }
-        },
+        ],
         "menus": {
             "commandPalette": [
                 {
@@ -1248,6 +1277,94 @@
                 {
                     "command": "extension.entityReferences.toggleFollowActive",
                     "when": "false"
+                },
+                {
+                    "command": "extension.keywordIndexCycleCategory",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.pickSimilarKeywordHelp",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.revealInExplorer",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.keywordIndexSetRecursive",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.entityReferences.setScopeProject",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.includeTree.cycleName",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.keywordIndexCycleOrder",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.includeTree.cycleSize",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.keywordIndexCycleAlphabetical",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.copyIncludeTreeItem",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.openToSide",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.selectKeyword",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.includeTree.cycleTree",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.showFieldHelpEnglish",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.entityReferences.setScopeFile",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.keywordIndexSetLocal",
+                    "when": "false"
+                },
+                {
+                    "command": "extension.entityReferences.remove",
+                    "when": "focusedView == lsdynaEntityReferences"
+                },
+                {
+                    "command": "extension.entityReferences.clear",
+                    "when": "focusedView == lsdynaEntityReferences"
+                },
+                {
+                    "command": "extension.entityReferences.next",
+                    "when": "focusedView == lsdynaEntityReferences"
+                },
+                {
+                    "command": "extension.entityReferences.previous",
+                    "when": "focusedView == lsdynaEntityReferences"
+                },
+                {
+                    "command": "extension.entityReferences.openSide",
+                    "when": "focusedView == lsdynaEntityReferences"
+                },
+                {
+                    "command": "extension.entityReferences.openCurrent",
+                    "when": "focusedView == lsdynaEntityReferences"
                 }
             ],
             "view/title": [
@@ -1282,49 +1399,34 @@
                     "group": "navigation@1"
                 },
                 {
-                    "command": "extension.keywordIndexSetLocal",
-                    "when": "view == lsdynaKeywordIndex && (lsdyna.keywordIndexMode == 'recursive' || lsdyna.keywordIndexScanning)",
-                    "group": "navigation@2"
-                },
-                {
-                    "command": "extension.keywordIndexSetRecursive",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexMode == 'local' && !lsdyna.keywordIndexScanning",
-                    "group": "navigation@2"
-                },
-                {
                     "command": "extension.keywordIndexRefresh",
                     "when": "view == lsdynaKeywordIndex",
-                    "group": "navigation@3"
+                    "group": "1_view"
                 },
                 {
                     "command": "extension.entityReferences.refresh",
                     "when": "view == lsdynaEntityReferences",
-                    "group": "navigation@3"
-                },
-                {
-                    "command": "extension.entityReferences.setScopeFile",
-                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.scope == 'project'",
-                    "group": "navigation@1"
-                },
-                {
-                    "command": "extension.entityReferences.setScopeProject",
-                    "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.scope != 'project'",
-                    "group": "navigation@1"
+                    "group": "1_view"
                 },
                 {
                     "command": "extension.entityReferences.search",
+                    "when": "view == lsdynaEntityReferences",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "extension.entityReferences.chooseScope",
                     "when": "view == lsdynaEntityReferences",
                     "group": "navigation@2"
                 },
                 {
                     "command": "extension.entityReferences.toggleFollow",
                     "when": "view == lsdynaEntityReferences && !lsdynaEntityReferences.following",
-                    "group": "navigation@4"
+                    "group": "1_view"
                 },
                 {
                     "command": "extension.entityReferences.toggleFollowActive",
                     "when": "view == lsdynaEntityReferences && lsdynaEntityReferences.following",
-                    "group": "navigation@4"
+                    "group": "1_view"
                 },
                 {
                     "command": "extension.entityReferences.pin",
@@ -1339,42 +1441,32 @@
                 {
                     "command": "extension.keywordIndexToggleFollow",
                     "when": "view == lsdynaKeywordIndex && !lsdyna.keywordIndexFollowCursor",
-                    "group": "navigation@4"
+                    "group": "1_view"
                 },
                 {
                     "command": "extension.keywordIndexToggleFollowActive",
                     "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexFollowCursor",
-                    "group": "navigation@4"
+                    "group": "1_view"
                 },
                 {
-                    "command": "extension.includeTree.cycleTree",
-                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'tree'",
-                    "group": "navigation@5"
+                    "command": "extension.includeTree.chooseLayout",
+                    "when": "view == lsdynaIncludeTree",
+                    "group": "navigation@3"
                 },
                 {
-                    "command": "extension.includeTree.cycleSize",
-                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'flat-size'",
-                    "group": "navigation@5"
+                    "command": "extension.includeTree.toggleSize",
+                    "when": "view == lsdynaIncludeTree",
+                    "group": "1_view"
                 },
                 {
-                    "command": "extension.includeTree.cycleName",
-                    "when": "view == lsdynaIncludeTree && lsdyna.includeSortMode == 'flat-name'",
-                    "group": "navigation@5"
+                    "command": "extension.keywordIndexChooseScope",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "navigation@2"
                 },
                 {
-                    "command": "extension.keywordIndexCycleCategory",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'category'",
-                    "group": "navigation@5"
-                },
-                {
-                    "command": "extension.keywordIndexCycleOrder",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'order'",
-                    "group": "navigation@5"
-                },
-                {
-                    "command": "extension.keywordIndexCycleAlphabetical",
-                    "when": "view == lsdynaKeywordIndex && lsdyna.keywordIndexLayout == 'alphabetical'",
-                    "group": "navigation@5"
+                    "command": "extension.keywordIndexChooseLayout",
+                    "when": "view == lsdynaKeywordIndex",
+                    "group": "navigation@3"
                 }
             ],
             "webview/context": [

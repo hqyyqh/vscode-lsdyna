@@ -915,13 +915,15 @@ describe('project selection during keyword session opening', () => {
 });
 
 describe('keyword index title menu', () => {
-    it('keeps direct layout selection in the command palette without a duplicate title menu', () => {
+    it('uses explicit title pickers and keeps refresh/follow in overflow', () => {
         const manifest = require('../../../package.json');
         const actions = manifest.contributes.menus['view/title'].filter(item => item.when.includes('view == lsdynaKeywordIndex'));
         assert.ok(actions.length > 0);
-        assert.ok(actions.every(item => item.group.startsWith('navigation@')));
+        for (const command of ['extension.keywordIndexChooseLayout', 'extension.keywordIndexChooseScope'])
+            assert.ok(actions.some(item => item.command === command && item.group.startsWith('navigation@')));
+        assert.ok(actions.some(item => item.command === 'extension.keywordIndexRefresh' && !item.group.startsWith('navigation@')));
         assert.ok(manifest.contributes.commands.some(item => item.command === 'extension.keywordIndexChooseLayout'));
         for (const mode of ['Category', 'Order', 'Alphabetical'])
-            assert.ok(actions.some(item => item.command === 'extension.keywordIndexCycle' + mode));
+            assert.ok(!actions.some(item => item.command === 'extension.keywordIndexCycle' + mode));
     });
 });

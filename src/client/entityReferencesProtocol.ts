@@ -6,11 +6,6 @@ export type EntityReferenceScopePreference = 'auto' | 'file' | 'project';
 export type EntityReferenceViewStatus =
     'empty' | 'loading' | 'ready' | 'partial' | 'missing' | 'incomplete' | 'stale' | 'needs-refresh';
 
-export type EntityReferenceKindOption = {
-    value: string;
-    label: string;
-};
-
 export type EntityReferenceLocationItem = {
     locationId: string;
     role: 'definition' | 'reference';
@@ -51,12 +46,6 @@ export type EntityReferencesViewState = {
     appendPage?: { baseRevision: number; role: 'definition' | 'reference' };
     /** Progress updates replace matching visible positions, preserving manually requested pages. */
     retainResults?: { baseRevision: number };
-    input: {
-        targetKind: string;
-        id: string;
-        scopePreference: EntityReferenceScopePreference;
-    };
-    kindOptions: EntityReferenceKindOption[];
     scope: {
         selected: 'file' | 'project';
         fileAvailable: boolean;

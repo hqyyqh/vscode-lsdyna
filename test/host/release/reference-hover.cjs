@@ -32,9 +32,10 @@ exports.check = async (extension, root, checks) => {
     for (const scenario of cases) {
         const document = await vscode.workspace.openTextDocument(scenario.file);
         await vscode.window.showTextDocument(document);
+        await vscode.commands.executeCommand('extension.scanIncludeTree', scenario.file);
         const snapshot = (await api.getReferenceIndexForDocument(document)).snapshot;
         assert.equal(api.cacheReferenceIndexFromSnapshot(snapshot, { maxBytes: 1 }), false);
-        assert.equal(api.getMainDeckContextForDocumentPath(scenario.file).project.snapshot, undefined);
+        assert.equal(api.getMainDeckContextForDocumentPath(scenario.file).project?.snapshot, undefined);
         for (const [line, character] of scenario.positions) {
             const hover = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri,
                 new vscode.Position(line, character));

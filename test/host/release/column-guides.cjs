@@ -25,7 +25,7 @@ function measure() {
             guides.push({ side, x: rect.x + parseFloat(style.marginLeft) + prefixWidth + centre,
                 occupiedWidth: rect.width, expectedWidth: parseFloat(style.width), color: style.color });
         }
-        return { text: line.textContent, guides };
+        return { text: line.textContent.replaceAll('\u00a0', ' '), guides };
     });
     const font = getComputedStyle(editor.querySelector('.view-line'));
     return { rulers, lines, fontSize: parseFloat(font.fontSize), letterSpacing: parseFloat(font.letterSpacing) || 0 };
@@ -35,7 +35,9 @@ exports.check = async (root, checks) => {
     const evidence = createEvidenceDirectory('column-guides');
     console.log('Column guide evidence: ' + evidence);
     const file = path.join(root, 'workspace', 'guides.k');
-    const original = '*KEYWORD\n$' + '1234567890'.repeat(9).slice(1) + '\n$' + '1234567890'.repeat(8).slice(1) + '\n$1234\n\n*END\n';
+    const data = ['1', '1', '1', '0', '0', '0', '0', '0'].map(v => v.padStart(10)).join('');
+    const original = ['*KEYWORD', '*PART', 'Guide test', data, '$' + '1234567890'.repeat(9),
+        '*NODE', '1, 0.0, 1.0, 2.0', '*INCLUDE', 'a-very-long-file-name-without-any-field-boundaries.k', '', '*END', ''].join('\n');
     fs.writeFileSync(file, original);
     const document = await vscode.workspace.openTextDocument(file);
     const editor = await vscode.window.showTextDocument(document);
@@ -66,7 +68,7 @@ exports.check = async (root, checks) => {
                         assert.equal(measured.fontSize, fontSize);
                         assert.equal(measured.letterSpacing, letterSpacing);
                         for (const line of measured.lines) {
-                            const count = Math.min(8, Math.floor(line.text.length / 10));
+                            const count = line.text === data ? 8 : 0;
                             assert.equal(line.guides.length, count);
                             for (const [i, guide] of line.guides.entries()) {
                                 assert.ok(Math.abs(guide.occupiedWidth - guide.expectedWidth) < 0.1, 'alignment must not add layout width');
@@ -74,8 +76,8 @@ exports.check = async (root, checks) => {
                                 assert.ok(Math.abs(guide.x - ruler) <= 1, `Guide ${i}: ${guide.x} vs ruler ${ruler}`);
                             }
                         }
-                        assert.ok(measured.lines.some(l => l.text.length === 90));
-                        assert.ok(measured.lines.some(l => l.text.length === 80));
+                        assert.ok(measured.lines.some(l => l.text === data && l.guides.length === 8));
+                        assert.ok(measured.lines.some(l => l.text.startsWith('$') && l.guides.length === 0));
                         assert.ok(measured.lines.some(l => l.text.length === 0));
                         error = undefined;
                     } catch (e) { error = e; }
@@ -87,6 +89,11 @@ exports.check = async (root, checks) => {
                 if (error) throw error;
             }
         }
+        await vscode.workspace.getConfiguration('lsdyna', document.uri).update('columnGuides.enabled', false, vscode.ConfigurationTarget.Workspace);
+        await delay(200);
+        const disabled = (await cdp.call('Runtime.evaluate', { returnByValue: true, expression: `(${measure})()` })).result.value;
+        assert.ok(disabled.lines.every(line => line.guides.length === 0), 'resource setting disables all guides');
+        checks.push('column-guides:verified-card-only-and-resource-disable');
         assert.equal(document.getText(), original);
         assert.equal(document.isDirty, false);
         checks.push('column-guides-align-with-native-rulers:four-themes-three-font-settings');

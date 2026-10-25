@@ -17,6 +17,12 @@ describe('Runtime UI language', () => {
                     const expected = setting === 'auto' ? host : setting;
                     assert.equal(i18n.getLanguage(), expected);
                     assert.equal(i18n.get('keywordOptionsReset'), expected === 'zh-cn' ? '取消修改' : 'Discard changes');
+                    assert.equal(i18n.get('keywordOptionsTreeApplyFailed'), expected === 'zh-cn'
+                        ? '无法应用修改，文档未修改。' : 'Could not apply changes. The document was not changed.');
+                    assert.match(i18n.get('keywordManagerFieldInfoLoadFailed'), /LS-DYNA Debug/);
+                    assert.match(i18n.get('projectCacheClearFailed'), expected === 'zh-cn' ? /扩展宿主日志/ : /extension host log/);
+                    assert.equal(i18n.get('fieldHelpProvisional'), expected === 'zh-cn' ? '暂定说明' : 'Provisional');
+                    assert.equal(i18n.get('keywordOptionsProvisional'), expected === 'zh-cn' ? '暂定' : 'Provisional');
                     assert.equal(i18n.get('mainDeckContextChooseAction'), expected === 'zh-cn' ? '选择主文件' : 'Choose main deck');
                     assert.equal(i18n.get('keywordOptionsTreeDiscardWarningSingle', 1, 'UC1=0.25'), expected === 'zh-cn'
                         ? '切换关键字选项将丢弃 1 个非空字段：UC1=0.25'
@@ -26,7 +32,7 @@ describe('Runtime UI language', () => {
                         : 'Switching keyword options will discard 2 non-empty fields: UC1=0.25, UC2=0.5');
                     for (const count of [0, 1, 2]) {
                         const message = i18n.get('keywordStructureMissingCount', count);
-                        assert.equal(message, expected === 'zh-cn' ? `缺少 ${count} 条必需记录` : `Required records missing: ${count}`);
+                        assert.equal(message, expected === 'zh-cn' ? `缺少必填卡片行：${count}` : `Missing required card lines: ${count}`);
                     }
                     for (const token of ['$&', '$`', "$'", '$$', '{1}']) {
                         const deck = `D:/decks/cash${token}.k`, disk = `D:/disk/${token}.k`;

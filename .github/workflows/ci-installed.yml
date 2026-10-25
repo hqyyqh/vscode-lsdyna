@@ -1,0 +1,80 @@
+name: Installed acceptance
+
+on:
+  workflow_call:
+    inputs:
+      os: { type: string, required: true }
+      target: { type: string, required: true }
+      vscode: { type: string, required: true }
+      build_run: { type: string, default: '' }
+      resume_run: { type: string, default: '' }
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LSDYNA_CI_FUNCTIONAL_ONLY: '1'
+
+jobs:
+  host:
+    name: Same VSIX / ${{ inputs.os }} / VS Code ${{ inputs.vscode }}
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: candidate-${{ inputs.target }}
+          path: dist
+          run-id: ${{ inputs.build_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify unchanged inputs and resume completed cases
+        if: ${{ inputs.build_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          RESUME_RUN: ${{ inputs.resume_run || inputs.build_run }}
+          EXPECTED_TARGET: ${{ inputs.target }}
+          VSCODE_TEST_VERSION: ${{ inputs.vscode }}
+        run: node scripts/host/run-installed-acceptance-retry.cjs
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Verify identity and exercise installed candidate
+        shell: bash
+        env:
+          LSDYNA_TEST_VSIX: dist/candidate.vsix
+          VSCODE_TEST_VERSION: ${{ inputs.vscode }}
+          LSDYNA_TEST_VSIX_EVIDENCE: .artifacts/public-host
+        run: |
+          # macOS Unix sockets cannot use the long default per-user temporary path.
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            export TMPDIR="$(mktemp -d /tmp/ds.XXXXXX)"
+          fi
+          node scripts/release/verify-release-hash.cjs "$LSDYNA_TEST_VSIX"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a node scripts/host/run-installed-acceptance.cjs
+          else
+            node scripts/host/run-installed-acceptance.cjs
+          fi
+      - name: Prepare public acceptance evidence
+        if: always()
+        run: node scripts/release/public-release-reports.cjs .artifacts/public-host public-acceptance
+      - name: Upload results, including incomplete runs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: installed-${{ inputs.target }}-${{ inputs.vscode }}
+          path: public-acceptance
+          if-no-files-found: warn
+          retention-days: 14
+

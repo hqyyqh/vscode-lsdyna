@@ -215,8 +215,8 @@ describe('manager catalog write authority', () => {
         vscode.workspace.applyEdit = async () => { writes++; return true; };
         try {
             for (const [language, message] of [
-                ['zh-cn', '字段信息加载失败，关键字管理器保持只读。输入文件未改动；请查看“LS-DYNA Debug”输出。'],
-                ['en', 'Field information could not be loaded. The Keyword Manager is read-only. Input files are unchanged. Check the LS-DYNA Debug output.'],
+                ['zh-cn', '字段信息加载失败，关键字管理器保持只读。请查看“LS-DYNA Debug”输出。'],
+                ['en', 'Could not load field information. Keyword Manager is read-only. Check the LS-DYNA Debug output.'],
             ]) {
                 vscode.workspace.getConfiguration = (...args) => {
                     const configuration = originalConfiguration(...args);
@@ -237,8 +237,8 @@ describe('manager catalog write authority', () => {
                 assert.equal(api.keywordManagerEditField(model, field.fieldId, '2'), null);
                 assert.equal(await api.applyKeywordOptionViewModel({ getModel: () => staged, markStale() {} }, editor), null);
                 assert.equal(lastMessage, language === 'zh-cn'
-                    ? '当前无法应用修改。输入文件未改动，请刷新关键字管理器后查看提示。'
-                    : 'Changes cannot be applied. Input files are unchanged. Refresh the Keyword Manager to see its current status.');
+                    ? '当前无法应用修改，请刷新关键字管理器后重试。'
+                    : 'Cannot apply changes. Refresh the Keyword Manager and try again.');
             }
             assert.equal(writes, 0);
             assert.equal(document.getText(), text);

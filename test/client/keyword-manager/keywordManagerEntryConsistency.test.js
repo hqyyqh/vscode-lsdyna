@@ -76,8 +76,17 @@ describe('keyword manager entry and selector consistency', function () {
                 const capability = initial.capabilities.find(item => item.capabilityId === 'spelling-switch');
                 assert.equal(capability.availability, suffix ? 'view-only' : 'available');
                 assert.equal(control.enabled, !suffix);
+                assert.equal(control.visible, true);
                 assert.ok(initial.managerCards.flatMap(card => card.fields).some(field => field.editable));
             }
         }
+        const mat = api.buildKeywordOptionViewModel(editorFor(documentFor(['*MAT_ELASTIC', '1,7.8e-9,2.1e5,0.3', '*END'])), 0, {});
+        assert.equal(mat.controls[0].label, 'TITLE');
+        assert.equal(mat.controls[0].visible, true);
+        const spc = api.buildKeywordOptionViewModel(editorFor(documentFor(['*BOUNDARY_SPC_SET', '1,0,1,1,1,1,1,1', '*END'])), 0, {});
+        assert.equal(spc.controls[0].label, 'ID');
+        assert.equal(spc.controls[0].visible, true);
+        const elem = api.buildKeywordOptionViewModel(editorFor(documentFor(['*ELEMENT_SHELL', '1,1,1,2,3,4', '*END'])), 0, {});
+        assert.deepEqual(elem.controls, []);
     });
 });

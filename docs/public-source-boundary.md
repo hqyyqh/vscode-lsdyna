@@ -13,8 +13,8 @@ npm run build
 npm run data:check
 npm run update:source-manifest -- --check
 npm run check:contracts
-npm test
-npm run test:webview
+npm run test:compiled
+npm run test:webview:compiled
 python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
 npm run check:field-data-zh
 npm run check:native-help-zh

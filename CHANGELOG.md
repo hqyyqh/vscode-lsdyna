@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed / 改进
+
+- Reduce public settings from 38 to 29 and organize them into 12 everyday options and 17 advanced options. Retain existing cache-limit overrides, use a fixed change-mark update delay, and replace the setup-notice setting with a persistent dismissal action. The developer-only unaudited-catalog override now uses its existing environment variable instead of a user setting.
+- 将公开设置从 38 项精简为 29 项，分为 12 项日常选项和 17 项高级选项。保留已有缓存限制配置，统一变更标记更新延迟，并以持久化的“不再提醒”操作替代配置提示开关。仅供开发使用的未审核数据入口改为沿用现有环境变量，不再通过用户设置启用。
+
+- Remove the obsolete large-file full-scan switch and its outdated first/last-line description. Keyword and include discovery already scans through the file; cancellation and scan-budget safeguards remain in place. Document the defaults and consequences of removing legacy cache overrides.
+- 移除已失效的大文件全量扫描开关及“仅扫描首尾”的过时说明。关键字和引用指令发现本就读取整个文件，保留取消操作和扫描预算保护；补充旧缓存配置的默认值及删除配置后的影响。
+
+## [3.2.2] - 2026-10-25
+
+### Added / 新增
+
+- Add commands to fold or unfold keyword blocks in batches, fold the block at the cursor, and compare two files using project-aware file selection.
+- 新增关键字块批量折叠／展开、折叠光标所在关键字块及双文件比较命令；文件选择优先使用当前工程相关目录。
+- Support copying selected text, fields and lines in the large-file viewer, and reuse Keyword Manager field help for consistent descriptions and manual links.
+- 大文件查看器支持复制选中文本、字段和行，并复用关键字管理器的字段帮助，统一字段说明与手册链接。
+- Provide explicit optional-card controls for keywords with verified native support, including supported DATABASE binary output keywords and ALE_INJECTION; retain previews and confirmation before discarding populated fields.
+- 为已核验原生支持的关键字提供可选卡片控件，包括支持的 DATABASE 二进制输出关键字及 ALE_INJECTION；移除已填写字段前保留预览与确认。
+
+### Changed / 改进
+
+- Simplify Entity References controls and use the same scope picker as Keyword Index; move cursor following to the view menu.
+- 精简对象引用控件，查询范围沿用关键字索引的选择方式，并将光标跟随移入视图菜单。
+- Show the selected keyword option directly in Keyword Manager without repeating the group label; retain the original Apply and Discard controls.
+- 关键字管理器直接显示选中的关键字选项，不再重复显示选项组名称；保留原有的应用与放弃控件。
+- Make column guides configurable with `lsdyna.columnGuides.enabled`, showing them only at verified fixed-width field boundaries; expose field-value selection and the guide toggle in the status dashboard.
+- 通过 `lsdyna.columnGuides.enabled` 配置列辅助线，仅在已确认的固定宽度字段边界显示；在状态面板中提供字段取值选择和辅助线开关。
+- Show scan progress and cancellation in the relevant project view; retain confirmed results as partial after cancellation and reduce duplicate routine notifications.
+- 在对应工程视图中显示扫描进度与取消入口；取消后保留已确认的结果并标明不完整，减少重复的常规通知。
+- Size the entity index memory budget automatically at startup while preserving explicit numeric settings; explain low-memory query restrictions and distinguish index limits from result limits.
+- 启动时自动确定对象索引内存预算，同时保留用户明确设置的数值；说明内存不足时的查询限制，并区分索引上限与结果上限。
+- Improve narrow-panel and enlarged-text layouts, sidebar search and Chinese/English wording; avoid preparing project-wide reference data for local field help when it is not needed.
+- 改进窄面板及放大文字时的布局、侧边栏搜索与中英文文案；本地字段帮助无需工程引用数据时，不再提前准备全工程数据。
+
+### Fixed / 修复
+
+- Preserve case-sensitive parameter names in completion, expression evaluation, navigation and reference queries.
+- 在参数补全、表达式求值、跳转和引用查询中保留参数名称的大小写区别。
+- Refresh the current-file keyword index when the active tab or large-file contents change, and retain valid fuzzy-search matches.
+- 活动标签页或大文件内容变化时刷新当前文件关键字索引，并保留有效的模糊搜索匹配结果。
+- Correct conditional reference roles and Include parameter contexts; scope incomplete results to the affected query and reconcile edits during indexing without unnecessarily cancelling queries.
+- 修正条件引用角色及引用文件中的参数上下文；按受影响的查询判断结果是否完整，并在索引期间协调文档修改，避免不必要地取消查询。
+- Align recognized keyword spellings, manager entries and selector choices with verified native behavior; preserve format-specific write restrictions and include shared-record drafts when determining whether changes can be applied.
+- 使关键字识别、管理器入口及选项与已核验的原生行为一致；保留各输入格式的写入限制，并将共享数据记录的草稿纳入可应用修改的判断。
+- Fix project-session initialization when the automatic memory budget is too low to allow indexing.
+- 修复自动内存预算不足以建立索引时的工程会话初始化问题。
+- Include the optional-card control data required by the runtime in VSIX packages.
+- 将运行时所需的可选卡片控制数据纳入 VSIX 安装包。
+- Validate optional-card source and descriptor identities consistently in public source builds so that exported data remains usable without weakening integrity checks.
+- 公开源码构建统一校验可选卡片的来源与描述符身份，使导出数据可正常使用，同时保留完整性检查。
+
 ## [3.2.1] - 2026-10-18
 
 ### Changed / 改进

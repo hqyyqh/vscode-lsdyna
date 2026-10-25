@@ -41,6 +41,8 @@ export class ProjectKeywordPages {
             item.id = `project-keywords:${this.rootFile}:${layout}:${query.category || ''}:${query.groupBy}:${row.key}`;
             item.parent = parent; item.kind = query.groupBy === 'keyword' ? 'keyword' : query.groupBy;
             item.keyword = query.groupBy === 'keyword' ? row.key : undefined;
+            item.iconPath = new vscode.ThemeIcon(query.groupBy === 'filePath' ? 'file-code'
+                : query.groupBy === 'category' ? 'symbol-namespace' : 'symbol-keyword');
             item.description = page.complete ? String(row.count) : i18n.get('projectItemsDiscovered', row.count);
             item.tooltip = query.groupBy === 'filePath' ? row.key : item.label;
             item.projectPage = query.groupBy === 'category' ? { category: row.key, groupBy: 'keyword' }

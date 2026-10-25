@@ -65,13 +65,15 @@ export function EntityReferencesApp({ transport }: { transport: EntityReferences
         ? state.definitions[0] : undefined;
 
     return <main ref={mainRef} tabIndex={-1} lang={state.locale} aria-label={state.labels.title}>
-        <section className="query-editor">
+        {(state.message || error || target) && <section className="query-editor">
 
-            {error && <div className="input-error" role="alert">{error}</div>}
+            {state.message && <div className="status-row" role="status">{state.message}</div>}
+            {error && !state.message && <div className="input-error" role="alert">{error}</div>}
             {target && <div className="target-compact" aria-label={target.label}>
                 <div className="target-compact-row">
                     {target.entityKindLabel && <span className="entity-type">{target.entityKindLabel}</span>}
                     <strong className="entity-id">{target.entityId || target.label}</strong>
+                    {target.pinned && <span className="result-badge">{state.labels.fixed}</span>}
                 </div>
                 {targetDefinition && <div className="target-actions">
                     <button type="button" className="icon-button" disabled={!navigable} aria-label={state.labels.openDefinition} title={`${state.labels.openDefinition}\n${targetDefinition.detail}`} onClick={() => void run(() => transport.open(state.revision, targetDefinition.locationId, false), '', false)}>
@@ -81,18 +83,42 @@ export function EntityReferencesApp({ transport }: { transport: EntityReferences
                         <ReferenceIcon name="side" />
                     </button>
                 </div>}
-                {target.keyword && <span className="target-keyword" title={target.keyword}>{target.keyword}</span>}
+                {targetDefinition ? <button className="target-keyword definition-link" disabled={!navigable}
+                    title={targetDefinition.detail} onClick={() => void run(() => transport.open(state.revision, targetDefinition.locationId, false), '', false)}>
+                    {[target.keyword, targetDefinition.description].filter(Boolean).join(' · ')}</button>
+                    : target.keyword && <span className="target-keyword">{target.keyword}</span>}
             </div>}
             {target?.entityName && <div className="target-name" title={target.entityName}>{target.entityName}</div>}
             {target?.scopePath && resolvedScope === 'project' && <div className="source-file" title={target.scopePath}>
                     {target.scopePath.split(/[\\/]/).pop()}
             </div>}
-        </section>
+        </section>}
+
+            {state.pinnedSessions.length > 0 && <details className="pinned">
+                <summary>{state.labels.pinned} ({state.pinnedSessions.length})</summary>
+                {state.pinnedSessions.map(session => <div className="pinned-row" key={session.key}>
+                    <button type="button" className="pinned-select"
+                        disabled={busy} onClick={() => void run(() => transport.selectSession(state.revision, session.key))} title={session.scopePath}>{session.label}
+                        {session.scopePath && <small>{session.scopeLabel} · {session.scopePath}</small>}
+                    </button>
+                    <button type="button" className="icon-button" title={state.labels.remove}
+                        aria-label={state.labels.remove}
+                        disabled={busy} onClick={() => void run(() => transport.removeSession(state.revision, session.key))}><ReferenceIcon name="close" /></button>
+                </div>)}
+                <button type="button" className="clear"
+                    disabled={busy} onClick={() => void run(() => transport.clear(state.revision))}>{state.labels.clear}</button>
+            </details>}
 
         <div className="result-content">
-            {!error && statusMessage && <div className="status-row" role="status">
+            {!error && statusMessage && statusMessage !== state.message && (!state.message || state.status !== 'empty') && <div className="status-row" role="status">
                 <span>{statusMessage}</span>
             </div>}
+            {!target && state.following && <div className="status-row" role="status">
+                {zh ? '正在跟随光标' : 'Following the cursor'}
+            </div>}
+            {target && ['stale', 'needs-refresh', 'incomplete'].includes(state.status) &&
+                <button disabled={busy} onClick={() => void run(() => transport.refresh(state.revision))}>
+                    {zh ? '重新查询' : 'Run query again'}</button>}
             {!state.scanning && !!state.reasonDetails?.length && <details className="coverage-details">
                 <summary>{state.labels.details}</summary>
                 <ul>{state.reasonDetails.map((reason, index) => <li key={index}>{reason}</li>)}</ul>
@@ -122,20 +148,7 @@ export function EntityReferencesApp({ transport }: { transport: EntityReferences
                     open={(locationId, side) => run(() => transport.open(state.revision, locationId, side), '', false)} labels={state.labels} />
             </>}
 
-            {state.pinnedSessions.length > 0 && <details className="pinned">
-                <summary>{state.labels.pinned} ({state.pinnedSessions.length})</summary>
-                {state.pinnedSessions.map(session => <div className="pinned-row" key={session.key}>
-                    <button type="button" className="pinned-select"
-                        disabled={busy} onClick={() => void run(() => transport.selectSession(state.revision, session.key))} title={session.scopePath}>{session.label}
-                        {session.scopePath && <small>{session.scopeLabel} · {session.scopePath}</small>}
-                    </button>
-                    <button type="button" className="icon-button" title={state.labels.remove}
-                        aria-label={state.labels.remove}
-                        disabled={busy} onClick={() => void run(() => transport.removeSession(state.revision, session.key))}><ReferenceIcon name="close" /></button>
-                </div>)}
-                <button type="button" className="clear"
-                    disabled={busy} onClick={() => void run(() => transport.clear(state.revision))}>{state.labels.clear}</button>
-            </details>}
+
         </div>
     </main>;
 }

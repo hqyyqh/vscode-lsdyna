@@ -3,7 +3,7 @@
   "kind": "dynasense-public-source",
   "dataPolicy": "publicly-regenerable-with-source-snapshots",
   "generatorVersion": 2,
-  "generatorSha256": "713c5fa0d26c90a998ec3951c45e533b6372f405c28e7dcc2c4df17415318349",
+  "generatorSha256": "e0468bd1d69d0572dfd6a8b43bd353480b90bb535f23ba1e2f268081f98f3d4b",
   "acceptance": {
     "status": "requires-independent-validation",
     "unresolvedInternalEvidenceCount": 0,
@@ -23,6 +23,7 @@
       "test/client/entityReferenceCursorFollow.test.js",
       "test/client/entityReferencesWebviewProvider.test.js",
       "test/client/hover/knownKeywordHoverFallback.test.js",
+      "test/client/hover/localHelpPreparation.test.js",
       "test/client/hover/mainDeckCurveHover.test.js",
       "test/client/hover/nativeContactIdMppHover.test.js",
       "test/client/hover/nativeContactMppTailHover.test.js",
@@ -51,6 +52,7 @@
       "test/client/keyword-manager/keywordManagerNativeFileLayout.test.js",
       "test/client/keyword-manager/keywordManagerNativeSuffixWrite.test.js",
       "test/client/keyword-manager/keywordManagerNativeVolume.test.js",
+      "test/client/keyword-manager/keywordManagerOptionalCards.test.js",
       "test/client/keyword-manager/keywordManagerRefresh.test.js",
       "test/client/keyword-manager/keywordManagerRepeatedRecords.test.js",
       "test/client/keyword-manager/keywordManagerSourceText.test.js",
@@ -96,6 +98,7 @@
       "test/client/services/treeSearchQuickPick.test.js",
       "test/client/services/viewScanProgress.test.js",
       "test/client/services/workspaceWatcherManager.test.js",
+      "test/client/settingsSimplification.test.js",
       "test/client/similarKeywordHelpCompiled.test.js",
       "test/client/similarKeywordHelpOwnership.test.js",
       "test/client/statusBarDashboard.test.js",
@@ -345,7 +348,7 @@
       "test/worker/workerPool.test.js",
       "test/worker/workerTermination.test.js"
     ],
-    "maintenanceOnlyCount": 270
+    "maintenanceOnlyCount": 269
   },
   "files": [
     {
@@ -397,9 +400,21 @@
       "reason": "public-contribution-workflow"
     },
     {
+      "path": ".github/workflows/ci-installed.yml",
+      "role": "editable-source",
+      "sha256": "fa74d0c6c585b6e9f695b24823c60972aa5bac0b1e094e0e1e2a54f61428bcc7",
+      "reason": "public-contribution-workflow"
+    },
+    {
       "path": ".github/workflows/ci-node.yml",
       "role": "editable-source",
-      "sha256": "55fc54531ad63ee6aec9e4f4a96248bc8511e528d9f40893883d16ebaa19ffbf",
+      "sha256": "1aa1e0b442f5d848ed8eff1f3bfb57dff2e1404c893bce1fb0ad994fd97da156",
+      "reason": "public-contribution-workflow"
+    },
+    {
+      "path": ".github/workflows/ci-platform.yml",
+      "role": "editable-source",
+      "sha256": "17a19b45129138c812fbbd00f4e8dca28fdd6560b0676a01932b98370b73f07f",
       "reason": "public-contribution-workflow"
     },
     {
@@ -411,13 +426,13 @@
     {
       "path": ".github/workflows/fast-ci.yml",
       "role": "editable-source",
-      "sha256": "30033814c40a72a05d6bbebbe41f6616ea9c968145bb0bb3332ae3d95feb67b3",
+      "sha256": "1b7b807963092f7331afbde384f82a7349424412714d99b2c4e25a117c47159f",
       "reason": "public-contribution-workflow"
     },
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "85a408e4d86131565fecc295abf5c84781a74520e7c2637db5afe8fc7c89f600",
+      "sha256": "cc3acaa22391b41f08253c765330295ba8a10eb65d6c1f18581ffcb44062920c",
       "reason": "public-contribution-workflow"
     },
     {
@@ -453,19 +468,19 @@
     {
       "path": ".vscodeignore",
       "role": "editable-source",
-      "sha256": "0f651834881b9b51e4d1a70726ba3ae0c7d5f20766c90896dbf1ba882b405971",
+      "sha256": "af33cab57c25a9a716e212548dcaec32bc0797dec19daef843278963f9a1d2d3",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "CHANGELOG.md",
       "role": "editable-source",
-      "sha256": "95f200a3cc0da7a4d5b7bca9757ebd1b7123c42d23be0a24efddb96059360b71",
+      "sha256": "9c111cae2e64de0992ff09f2f8d4e44ed99998487a53a678633e0a136d8f3ddf",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "CONTRIBUTING.md",
       "role": "editable-source",
-      "sha256": "fa4aa9c13cd90a094d9868433dcf5a64321a9d45985ea208c6442a6af7a8c742",
+      "sha256": "d39575376a52aebcc58e7342dc47985b5680cee62624b9d18b4a76973126d3a4",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -477,13 +492,13 @@
     {
       "path": "README.md",
       "role": "editable-source",
-      "sha256": "af5a2fdb60ddda997a9c335d53a50948c383699c3c4ff8922678918298923fe3",
+      "sha256": "2082189788771a09e3a4411906c5f2fbf7b6bf0fb675f2d4e1ea5a4e9f8051f1",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "README_zh.md",
       "role": "editable-source",
-      "sha256": "4ce9f4bf730ed0fc85901d43afc4b8d08e829e1d77d4a43626f07e4c1f5b4e9f",
+      "sha256": "92005bc4e33e4d88bf2a4acc92c623466c8b411f7e826d025ae1aee2908be075",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -495,7 +510,7 @@
     {
       "path": "docs/public-source-boundary.md",
       "role": "editable-source",
-      "sha256": "8124c8964205996757b2d327cc52469102fce4ed9220540190b56ab33062caba",
+      "sha256": "9f07125a5422f09bb11b358e6d646d709fbb0f2d8df3046bf0b2533e178ad178",
       "reason": "public-source-maintenance-contract"
     },
     {
@@ -705,7 +720,7 @@
     {
       "path": "keywords/authoring/engineering/fileWriteLayouts.json",
       "role": "authoring-input",
-      "sha256": "9115998589b53b38194438476a811be4d47d22daacaabed1148251080c398fe8",
+      "sha256": "7506dd30b8ed2dee8f648735d596e530230e24f3bd1ad09c915e7d10f659e109",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -759,13 +774,13 @@
     {
       "path": "keywords/provenance/checkpoints/import.json",
       "role": "source-snapshot",
-      "sha256": "65a425052bcba67e8776a831babd3d0bbe573d71f58b0e589e1a2bad09ab178a",
+      "sha256": "ceb20f4f6f35686a8037cb745bdfbe5ee754c50676dfc2a7fc76873998edbc3a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/provenance/current-data.json",
       "role": "generated-artifact",
-      "sha256": "9cb246d48627ca9c11a08273cdeb531e82a3fd456df595670e48a958f8546c1f",
+      "sha256": "2d74fdc2d164096c8cea00cccc753efe5604aa93bf1bec557ac25377d96a77e7",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -837,13 +852,13 @@
     {
       "path": "keywords/runtime/categories/keyword_category_crosswalk.json",
       "role": "generated-artifact",
-      "sha256": "c15aac82f027f13c683504685694ec099c29c6d9da55672fba9c7c73eac4eeff",
+      "sha256": "fb2d3da1b5cfbd1a5f6e804472c3e704b22bc8db4d52e99f2ebe4e98f42821e4",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/categories/lspp_keyword_categories.runtime.json",
       "role": "generated-artifact",
-      "sha256": "39daec0e02610f2464a1dabee2c353d6218241eff92f1c5dcca76b0581a891a1",
+      "sha256": "300803d15343b53a4ef382792ed70d01c47a0e02bc48b7ddaa5a6ec2e3ec7c06",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -861,13 +876,13 @@
     {
       "path": "keywords/runtime/engineering/contactThermal.json",
       "role": "generated-artifact",
-      "sha256": "bb8010e0299eae34ad85416ab0e8ce4201f45ddb2d99c987b1b80c930f6f4c16",
+      "sha256": "937d7befbcd5d9bec33453618fcca9c8f9db703076acdd4b0a47ff266163c381",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/engineering/fileWriteLayouts.json",
       "role": "generated-artifact",
-      "sha256": "9115998589b53b38194438476a811be4d47d22daacaabed1148251080c398fe8",
+      "sha256": "7506dd30b8ed2dee8f648735d596e530230e24f3bd1ad09c915e7d10f659e109",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -895,183 +910,183 @@
       "reason": "final-data-or-product-language-check"
     },
     {
-      "path": "keywords/runtime/input-form/094ed277b9ef5e4e545d8cc68af470cb26bca764edcb1011f08205535b005b75.json.gz",
+      "path": "keywords/runtime/input-form/24de13e1e8152b8cfe505430a1f4ecd2fc029138e6ba39c20f2a8a619f1f08c5.json.gz",
       "role": "generated-artifact",
-      "sha256": "6d6b9f52633e268d79d31d5a88cfaccf16965b1ca347431159eb9dc538decade",
+      "sha256": "c3e75a97704d225c6b7dc23bd8d1103a35ccbf76912ec221c1e9a66df45ac52a",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/1527d3c34bd3fa4b2486a79c5d1457d823429da0d4f0c8851812e0a868cd385b.json.gz",
+      "path": "keywords/runtime/input-form/2534284ff3f9454404b6ded9a4e8c54ea773dd7dbff1f7de6118cdf2b6bcc6fe.json.gz",
       "role": "generated-artifact",
-      "sha256": "dc329ccf6f9970dc235c0bb6ade7b146fb006e9e296b31049dde88cc3d831bb1",
+      "sha256": "adf960787f9debc2025b9875324f7b4c05481e363fd4ecc96a0b7662735a2372",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/216c65df14c7fe85f88a3c54651b75075be671148b7eaf5280f979b9136eddbe.json.gz",
+      "path": "keywords/runtime/input-form/58fcd7fc1de343acffda122ac86c5d7ed63705f4d4c585d9ff50a4cde68f980d.json.gz",
       "role": "generated-artifact",
-      "sha256": "ee756ca3da6bf426d3bdad9d95706fa1644353463920d4df060de79f85a5017a",
+      "sha256": "f62fb4ef18887cf2426f692a50bb58920b2c6c1c185513352cec6ffbc30ec308",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/5e241d162b1e81e5de795d1b345620c371c13d5d6de2ce9ac41bf27ee103241f.json.gz",
+      "path": "keywords/runtime/input-form/71faba07bd275a031fc7f5d44ad206f7a84984c1cfa473fff1943bb860cb3b0f.json.gz",
       "role": "generated-artifact",
-      "sha256": "4c02e8626c44f9a7126b941277d4914aa6bcbebca48d792a79725a5c192a544c",
+      "sha256": "96c913234aae747733eb0088fbcf50c9b14f1a75ee697d51b0f3a53c51a81962",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/60a1cb97cbba2cd7c418d9b852f8ef2675919ccfb4178e7a66b90f59314a28fa.json.gz",
+      "path": "keywords/runtime/input-form/81ea415343b6872ad212c13ab9e436ce986638d9623836123dfb6f8035ea2815.json.gz",
       "role": "generated-artifact",
-      "sha256": "2e3a3dc3fc33c0b8a4830d7fbde7bcb988bbf90d2a97246ebab49aea5c5532fc",
+      "sha256": "361733c9b731f6fdf2404bdfe81af17f80b8a295960b63d1fec118b7c3cf0ce7",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/759e2f17c9f5d5dff3e422a2ad9f87a1bc4b47b33fbd75b0f7a12c985f760890.json.gz",
+      "path": "keywords/runtime/input-form/93c47c0f51f56bd229923b54cb5e0cac9d1f05d3e7e8c431edb208449823c3e2.json.gz",
       "role": "generated-artifact",
-      "sha256": "ff3670b89615828c13fb10741691fb01e324dbd3359ba32afd9b24d8a44e7b4a",
+      "sha256": "a04b520a6a28a0f0dac660590efeae81c08010ce9f64653a72f1e5d87df641c7",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/808d7f0e4e8a328db598a23c8eaae0e17769ba02b764a155a0dec3dc9fe34249.json.gz",
+      "path": "keywords/runtime/input-form/a47ba44cbf9656b701091b0df35ffe8a49029d03da510e28cd2c184f439ea6b3.json.gz",
       "role": "generated-artifact",
-      "sha256": "a71bcbd35cf832ce81e87d7ec3b2630e2a4097e6f5b9ecb3406d273bb851a3a7",
+      "sha256": "e61b55fae11409367c6d4e587f22d71f67d4652444e71ac03a6f032eb289626a",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/91ff304fe3ec7124ccfcd99616633a5d81fde87f6a9843763ba65461ad238959.json.gz",
+      "path": "keywords/runtime/input-form/a63c21715244f08ab2cc513a997e00afc7c287dffc6f1c236d76ce798c15c10c.json.gz",
       "role": "generated-artifact",
-      "sha256": "5b1c935ab200c4a1bdbb19c6dd63e0d7d2cd7855120da8491d2ffd5224b858d9",
+      "sha256": "78010fa7f0e12e2e52a39502237622ce1d24bc38f9572c44cb6b61bd6482c126",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/99afcbf4217b386b750ee50e20e2c2254e34c1a3368f694f9cd7948b0ca97ccd.json.gz",
+      "path": "keywords/runtime/input-form/b32e752b50b01b6894758df2a92372bcd6b2577b8ef53064fc6c668080b37938.json.gz",
       "role": "generated-artifact",
-      "sha256": "55bca90af3e5893302c34753e8c5657f651c0cf5be6d09d01645360e61612b49",
+      "sha256": "e5af074271a21d75d04902b261085a9825526e843523897cb35f960c035a2d32",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/9f7638a61857046ae3fb5c5fb6ebeacac048b0f16a4dadbdc9abe31f8beda0de.json.gz",
+      "path": "keywords/runtime/input-form/c7aa53ce9b745b0bf95f9e57d794e7eca6feee141864150d70a26bde564ad33b.json.gz",
       "role": "generated-artifact",
-      "sha256": "b248c1bfb888e4f646cbcf74cf2674862b3552df1f3fca6df3bff56e296d1e20",
+      "sha256": "c78e91da5ce7cd34e098017abc379407dc218b45d631544260db8153d697ff99",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/a2b67b376de4d62a289752e2500b2ce68877271978138365f6312271780f4373.json.gz",
+      "path": "keywords/runtime/input-form/cd4eac79c92a4a71b1ee376519f91e7238a5daa88f0fe014551f7fd7c3600cf3.json.gz",
       "role": "generated-artifact",
-      "sha256": "2d99d23fc470f9eb78260a56b2abc58825d98cd41ddabe7f761c1ceb7d65b382",
+      "sha256": "b1bc494d79973b25d52d4f6cced32f38ed37b8949274b4bfae9e7bdcd15cce9f",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/bc5cc07d603a77f164576a39d168304e311e0301a4bcbdcd1cca90f2989cffb6.json.gz",
+      "path": "keywords/runtime/input-form/d81dd5b43a6120b40cb2518d0a4c530a7e2bb681152e92eef2b42032ff2a9ec0.json.gz",
       "role": "generated-artifact",
-      "sha256": "72e78696bc0347f6c9fcf01b534e3694f1f2b0088148583a61cce05be8c9d968",
+      "sha256": "0f62f31a4591d6017c1301a463601e9a0fa912a697884b86885aa18885cf5085",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/cb268e94308fa1f2abc8bfd923a20b271e8edf1f3ace3cde18f7e6e015d40a51.json.gz",
+      "path": "keywords/runtime/input-form/e4225c5608fe49bc447f49d3379f819f9841e514b3c418b653d10a80803bbc11.json.gz",
       "role": "generated-artifact",
-      "sha256": "3acd8ab9ddffe3d562bc24050451f2328a32fe54cc6129bc74cc682a0e5baf37",
+      "sha256": "a434c0c03458a926fcf84aeb7ae90532690b68f1a6c9adcc9560f3ef6c39c57d",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/cce4fb338bb9086dfa3d871016bf929684323e85bd9024befcac9b968c0eefb6.json.gz",
+      "path": "keywords/runtime/input-form/e88739e09208ae6d171ed9f4cf71ddb0c3e6fbee45de7cec788cc0c58392696d.json.gz",
       "role": "generated-artifact",
-      "sha256": "ace208ad5c994404c43f8076d29b4c8f317675ab92f6f7b9105aba5ebbcea8f8",
+      "sha256": "5b72ae1d00b4ec336060b9cc4bcc937e5b83b715ec205008a9c52db4860a8cbb",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/d2b5b34c3e9f001e53fe17b99d5f13048049b49fff494c51d507e95ab425e161.json.gz",
+      "path": "keywords/runtime/input-form/f0f0b8ecc23b9ffe4640021deee3a5f78ee1ae886d0d6b1fe9564f1edff83c1f.json.gz",
       "role": "generated-artifact",
-      "sha256": "b4565a470364810cf00b55a0a87659e1672c1d6181666c8432c05e42dd5f3c6c",
+      "sha256": "cb83ba6a30ba3cf4facc0ebbd8b3bb0e0ab46d06fd1841d5d8ea72364c1243db",
       "reason": "generated-final-runtime-projection"
     },
     {
-      "path": "keywords/runtime/input-form/e066ec956af8056e82bf1339a77e3b086038ed60b3e73cbeeb720b375b9fe5a0.json.gz",
+      "path": "keywords/runtime/input-form/f572f262d1ae2c7f87452fa76228b3951b2a6373f9dafc39d589c2f85c6789b6.json.gz",
       "role": "generated-artifact",
-      "sha256": "a9da1f516e31849ff3abb9ab565873458df4ce6e1afb4e511d572b3078dd7c5a",
+      "sha256": "4b1b233c65955df52e3954c78d309b283c3564b3b2d606deb709a48c98594985",
       "reason": "generated-final-runtime-projection"
     },
     {
       "path": "keywords/runtime/input-form/manifest.json",
       "role": "generated-artifact",
-      "sha256": "048d68d1ae4f2ef2460f810755769707ecb94405de9df807611d3df7baac561e",
+      "sha256": "4eb23a0b9081a2f5977ff51aaa284dbe296eb31afe3587e9ac5387ef52d32399",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/manifest.json",
       "role": "generated-artifact",
-      "sha256": "03b0b5d04db38f2a0df4c133f0530d5f61ccc876fb0226be2e528623e4258f03",
+      "sha256": "008a5eb2ca68cb29cc420fdbaeabdc7bd2d6a2750df027b4000d068f8c93edda",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/00.json.gz",
       "role": "generated-artifact",
-      "sha256": "9e3fd579df50ad961ab23245514b50fe1ada5bea28b6c7cfda85b54e8f80835d",
+      "sha256": "a96c8625d445edfb1b3b68b2be5bc0e8873c0e848a44e48c9b4e2d6421e1c83a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/01.json.gz",
       "role": "generated-artifact",
-      "sha256": "73cefba6b888c238be1ac48b47cc60045254fa84bc4bb29914fe96632ecb5d69",
+      "sha256": "4514f69076f69f465840af98305de2a03601c4bf876bea35b1b2e4c08251de7a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/02.json.gz",
       "role": "generated-artifact",
-      "sha256": "f3a8aec2dd8a8c44158232f43069d5d4f2c7b059433b4cf18c6ddeb7ff797a5f",
+      "sha256": "d177fb0e42f177fc4ab226ccfec0b26f1fc33a6db46abfa56b9943a7dcaa2099",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/03.json.gz",
       "role": "generated-artifact",
-      "sha256": "673ad16657f9f2cdfd671d434ac73dc1e372b40e30aed30cc7b0831122abd198",
+      "sha256": "6cd876f865c4f30496b2883340ffb85ec776f9e4756f5e75f28b7c6f7cfd37ca",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/04.json.gz",
       "role": "generated-artifact",
-      "sha256": "33f0d17baaa8c5abad32d9bdbed5e8e43000ba3380be9f62cfc2903b5ff12119",
+      "sha256": "a7c36cc57febd04808ad4c336ddc33c4662acb0c91d33d2bc9109cae6298d3fe",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/05.json.gz",
       "role": "generated-artifact",
-      "sha256": "1eaadd8036412adf2003068f9c4719577b9702720a70d7c6b1a4e40c1e01b69a",
+      "sha256": "aedbf03f18ec2464b587f41a9bd32cde9350061ceb8c3c49b69ddecdc98b5dbe",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/06.json.gz",
       "role": "generated-artifact",
-      "sha256": "5208f7f335c39f56be4948cb61c1992696d647f8009be8a9a0bfe53f974eaf43",
+      "sha256": "a126b078e6120091b00bc71975d5f0e9f37e620dcfe3264dda2ce08cb65d7484",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/07.json.gz",
       "role": "generated-artifact",
-      "sha256": "c344e4e32eec659a60d8bd916edbc7e0e771f27698f3913c71fc2ad8fe63a901",
+      "sha256": "adfecde895d373afc27f0f117fc2b6a22c5200e472d1fc9c21eaa08707e719ee",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/08.json.gz",
       "role": "generated-artifact",
-      "sha256": "ca127f364720de10f55a1f719bef846b158c84791d232b71f9eb6cf3d4dd3d4c",
+      "sha256": "f329108e5d3d0fabe183a740fb2d805f7a3303b1eaa27cba1cf4e1b96c5a3517",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/09.json.gz",
       "role": "generated-artifact",
-      "sha256": "34858217ac5b90ad12ee88ff1f8ede2d91f8fc42d5106aa8e37ab2feb52af9b3",
+      "sha256": "260825b3740189380ac344ae1da1f036926a65eaa85fa3e9047f7e2f50020f3d",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/0a.json.gz",
       "role": "generated-artifact",
-      "sha256": "72c41b82c0e83e0432db21436ce72200c8e022d55f9baf80980ea212e8b30df5",
+      "sha256": "4dbdb5b1be0b255fb989725aede54fcf35d426b28ca686dd494f3ce5588cb2da",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/0b.json.gz",
       "role": "generated-artifact",
-      "sha256": "26bcf4947754fc720dbbe5e5631a014155855666d3dd707dcbac7e1e3a561d75",
+      "sha256": "c2dbe4e7f0a119616200833c8166c3235be8145a9c802ce4b17e303e2f3366a6",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1083,97 +1098,97 @@
     {
       "path": "keywords/runtime/manual-semantics/shards/0d.json.gz",
       "role": "generated-artifact",
-      "sha256": "821acdabc18641c383c2d72b0cb38cc06f92b965de605ce0630109139de9e3dc",
+      "sha256": "03837533e0394c503f8ce2a773ec7876eaa430813333aacc24fd2229b24e213e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/0e.json.gz",
       "role": "generated-artifact",
-      "sha256": "256fb70dab94ef466d2da486ee60d601f28afc8bd90aac64b808e1095d019c00",
+      "sha256": "a32bc2cf2a91190a599e75251a3eaee09eecf9c128241c65bdfbd22ee7a6de18",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/0f.json.gz",
       "role": "generated-artifact",
-      "sha256": "3c728c41e1a346d608d642ea4c838c4b0fc2e97f0cdefdd554da4878975139ba",
+      "sha256": "751f4507079f5c354219520b944eb3136620d63ddbdd5fe3a59c6f81ef2a6ef4",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/10.json.gz",
       "role": "generated-artifact",
-      "sha256": "70412f7bf752631ac5579970a3719a5022242db27ffcfd84a7542c533d578cbb",
+      "sha256": "1fcd1d12a2a1fb53707086b781259564ca3c45b0140463ad26cf8b8e9e842f25",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/11.json.gz",
       "role": "generated-artifact",
-      "sha256": "c3c0b4abd1d64153efa2037a1acdfbe80355c1005524a2d5dc2c28fca35e5e19",
+      "sha256": "9eb0e38a67727a85055290c9e01e29d8f415422ab9f9e4e7dbab7caa400e8bc0",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/12.json.gz",
       "role": "generated-artifact",
-      "sha256": "6ce71d3506b7a1ff830621be34853c9cb9b840009f1f7202dd51162b166b71ad",
+      "sha256": "f8ac8021ec574a0bad81a6fd379a0c4f82558b822101e33bc114e6c16e7dcc7a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/13.json.gz",
       "role": "generated-artifact",
-      "sha256": "5547a9a5e67339c753761fedf365f409c1fcc6fa95da0b8d13334223259986d3",
+      "sha256": "239cbcf2ae43150936254add8dd6443eb0fa78bc476c4f54db4751d809358672",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/14.json.gz",
       "role": "generated-artifact",
-      "sha256": "8cac9775ca2a62ea6dc5f6dffc490cc5247417782fd87290284b4b5ad7d0253b",
+      "sha256": "9783a9147fcf4cd8bd5507e6e00f5a927430353a75f415e1fee13648119dfb45",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/15.json.gz",
       "role": "generated-artifact",
-      "sha256": "333c525049ae620936f6d696e3d59a75149f9469d1152c66331a9c198649ead0",
+      "sha256": "14031740677f8e94453eb6e1f0ac069eae7b1d003e2b858b81e20f855a21fb09",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/16.json.gz",
       "role": "generated-artifact",
-      "sha256": "d84b71e525b837f5e1180bd3ef3c3d2490435102a736c7167a5dc33fa2d79f77",
+      "sha256": "2477c068d92df058a5cc37ca8f7d5301f384cb3abfbfc5f52a9652f54ceb2de1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/17.json.gz",
       "role": "generated-artifact",
-      "sha256": "92cf70c816db6aafbb112f515c20ca109b515cb3f93cb81e5a3d78d4db7bc325",
+      "sha256": "242bd491834dfd8f74fcb5f03e21f35930a78df27bd611f629c5a00e1acfe279",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/18.json.gz",
       "role": "generated-artifact",
-      "sha256": "473d0b1efba46b1566da931cd7611dfeb392c1a36012a65885a42cd2a852ccf7",
+      "sha256": "42009cecdd7e8c258ef8b8cc0a0c9d70be3833c214fe19560cb9a81b437c2d6b",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/19.json.gz",
       "role": "generated-artifact",
-      "sha256": "3e82a7d05a19ac906f7e9c25a0c65b4f6a1e3bbabeb255bad36f7cefb8a99508",
+      "sha256": "26f598fc2ebfc2f06afb16b922ecde887e5aeed813df466b7f704e83fcfe850b",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/1a.json.gz",
       "role": "generated-artifact",
-      "sha256": "4a22854437f21fc8d1b82d2f0d91f02aae6392b501ef5e15626dbd073833c90d",
+      "sha256": "90bc88a0549376c10415d58f3657304f127187d1f70dee2612326913ab188412",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/1b.json.gz",
       "role": "generated-artifact",
-      "sha256": "949e9228968d05f797bd9cc81982004f955bc1d62285588bac4820483c281d57",
+      "sha256": "a420da3e03f51b674f8117ac20a75d0baa913bececfeeceee7f8d80438f2f3b4",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/1c.json.gz",
       "role": "generated-artifact",
-      "sha256": "325b3326c2c9f1572477aaa4baaac0407c3237670cfa96cefd4c030e60557685",
+      "sha256": "95d12211e83cb832b52cdbf98124a94e4ded2602e90fbb5dba54e44f1e8956f7",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1185,13 +1200,13 @@
     {
       "path": "keywords/runtime/manual-semantics/shards/1e.json.gz",
       "role": "generated-artifact",
-      "sha256": "5a229035f48ffe5a34fb68bd19b937f1e5217cdd4ac7ff417e5a4cf279a68a71",
+      "sha256": "e71dd241530eae74ce1fbac45befd40239ac8d4b820830d7196ca01a33aa8f25",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/manual-semantics/shards/1f.json.gz",
       "role": "generated-artifact",
-      "sha256": "045631c02c7ba3d31e88590dcb1f8d58e0f88078fb55046622c3d4ec5fd24fb2",
+      "sha256": "b5d3f99194128033793f8d3d9a8d5ae3f9cfa925ece0766090af7acd67ccf83b",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1371,169 +1386,175 @@
     {
       "path": "keywords/runtime/native-help/manifest.json",
       "role": "generated-artifact",
-      "sha256": "3db152939a6465fbfbd7ed9d86025ce7894df5d4672bc606ed94dbbb23651321",
+      "sha256": "09fa345ace885f6642fa97eb5e79f66441152dad542a17dfd36710e0044eca32",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-help/native-null-help.json.gz",
       "role": "generated-artifact",
-      "sha256": "158c80e3bbf8ab7488b1be0fdf570b5b0850838fbdd4d3324a9a816e95413b03",
+      "sha256": "339bcb894e020ef439e82acf8e6a2cc9e31fb1112de908a05b35e045db7430a8",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-help/native-null-help.manifest.json",
       "role": "generated-artifact",
-      "sha256": "899e429957e896227adf8006769cd4f79bf1cf5ea3a95ac5cee9d1e0d7f8b509",
+      "sha256": "c9901b0d0e63daf0fb0dfa3f9a5d4fc7829aa7b818a2d5645bfc78d83d4fdf01",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/descriptor-identities.json",
       "role": "generated-artifact",
-      "sha256": "aa9db1be916268dda49b517902e581fcd301ffe9f917ec1403cfafee9dfbb870",
+      "sha256": "7119b6a644f72a6ea25fb2357a67183cae8b737ea9e8ba496f9876fbed9b832c",
       "reason": "generated-final-runtime-projection"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-batch-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "4c71d02c5a18f73df8e19081bb4071088d4ad53dae47573baf875e8ef0bc161b",
+      "sha256": "8a0e84680446a2ea13569a63a9d4ff032b95a156aa20f33038f97b18dd4f9c5e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-conditional-layout-readers.json",
       "role": "generated-artifact",
-      "sha256": "7c12c40a6252186a62bbb31b24522747f76b18cf420a822e34fa4f22fb7abcaa",
+      "sha256": "faf6dd6a96986f76b088c2f7aa32624fdee2e87e658b5c083d11f9971147fb4f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-constrained-input-format.json",
       "role": "generated-artifact",
-      "sha256": "641ed3d35070155495aed9542e3bb0ea07f6bae4f71126248935d5ec467b3bce",
+      "sha256": "892c77a20c5493dfab251864dbe7701f09e1255cf2e0c1909ff834ddfc4756ce",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-contact-id-mpp-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "f655e420e1dda212a79b4972203e6fbc4f6652403d0860bd4ec61977e9e1fd7c",
+      "sha256": "2ba3e0c7e9b1d31f1fa3b8a29b497a3541e2a164e5f0e033f4e3ed0b61106863",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-contact-mpp-tail-readers.json",
       "role": "generated-artifact",
-      "sha256": "d54b3f6a852a7f1a8e13d1de2e58a82d1b8a621e60ca520a9dcb93b8a2d7e404",
+      "sha256": "24537fc3ddd490282451b9e394f3bb3fd9a8af96e42bf43a9b2b6a4e142249f8",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-element-readers.json",
       "role": "generated-artifact",
-      "sha256": "c7d0f34028b7dc0bfe912ebfecf3004459f9f3c31bf27d628ab13e5c706efa0f",
+      "sha256": "681c9b7e95abd9514c651944705abeade7ac0aaf40726d174fcd74d2dc9b3ed0",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-eos-special-readers.json",
       "role": "generated-artifact",
-      "sha256": "2a1b4d8232052a68d0a14852c8ee9ca6ba5d94e77df3b52465c7361fc55f14e8",
+      "sha256": "507273e169c5de31a3b1db9d5572a35088f8fbe6912bf8b3fdeb88f31ada7693",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-generic-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "37ba6c22b29b621713400e9b0aba5c2a5cfa9a9703f1ebf61cd4c17de638951c",
+      "sha256": "91e83d26266b76ad32928f38c6e2e3a96ae938ede2beea8c621328391a9a0ec9",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-native-input-format.json",
       "role": "generated-artifact",
-      "sha256": "745eb685e68e1b10f1cced1551616c29336bbcd49c2c0ffed59fe002e5e2308c",
+      "sha256": "c1abecabc7e6af2ad1defea073120ff3f02e3ea14788d1f52a1787264b86a45e",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-node-readers.json",
       "role": "generated-artifact",
-      "sha256": "aab83731dacf290dc13f9b78b3ab72a7a1ab42cf0f3600c7690cea4e304ecf8d",
+      "sha256": "ae428ba646a6bebdbe39da8bc3dfe226bf88d2fc8c57f7124e7e018c38f316a9",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-occurrence-readers.json",
       "role": "generated-artifact",
-      "sha256": "99121e22a4b2a2e5a8a70c1ddcf2aa632f5a3b64a06fb4dc1a82b5d5b117c05c",
+      "sha256": "0f76570f97028492cd78f574accc68b12d8d1877100123fba5ce912e9faa4b1a",
+      "reason": "final-data-or-product-language-check"
+    },
+    {
+      "path": "keywords/runtime/native-readers/lspp-optional-card-controls.json",
+      "role": "generated-artifact",
+      "sha256": "c426e2d27517c14a4fac787dee32235dc26a69827ac7088aa0f11cce3242792d",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-optional-form-header-readers.json",
       "role": "generated-artifact",
-      "sha256": "7dab9b5c8cf3e677122614d279e045ee9192dc3075b89d1ef3b1af8f1d41b90a",
+      "sha256": "90dc8573cd40c933c3c3203216ee464a25e0671f552e2ab439512a3d5283455a",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-optional-tail-readers.json",
       "role": "generated-artifact",
-      "sha256": "e8785b00ccc48b062e103daa437c5e5a49cd02d06389f88af1a8dfd446948e51",
+      "sha256": "70e9d4bb9af5d9b2b242a34278cd52169d17c884623795f636bdbf6fe75a8d09",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-ordinal-conditional-readers.json",
       "role": "generated-artifact",
-      "sha256": "5991c26a37cc1ff2213eb9790323e4ea792b704ff86be27b1a7b5b851a921731",
+      "sha256": "b8e7a518d48d54fe04d7ab4e514420d2ec68e66e6c72a0624126ba943cc0f9af",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-ordinal-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "a077300e4a3b2f640029dc3063f49f6775c2e4be53f83b854ea37532a7edc797",
+      "sha256": "392e270d2cf303f76a7f6c21e3fda71bf01d28b26f0fdac003eac5c1e4e64802",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-composite-readers.json",
       "role": "generated-artifact",
-      "sha256": "ae60ff856d50ebf1c4c77493a3ab5bf4ac30258af724c61ad53afc3c2af66747",
+      "sha256": "fdabbbe4adf117fb79763bb1d4d534e41cd85048e72c4c2aba214acc9ae81ebf",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-modular-readers.json",
       "role": "generated-artifact",
-      "sha256": "6df2e0d6eb2f9b1105303436aef013a5daf195c2c03cf7391bc3ce5b9fa0ec82",
+      "sha256": "e385c5058ca0f57d3435f4db7e3ed228f83f918336e75add48db41b5e7bdca2c",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-part-standalone-readers.json",
       "role": "generated-artifact",
-      "sha256": "fcb33323f1ea97b79c61883a386f2f8af41aa2fa6e8e95e83ff7a473944f4f16",
+      "sha256": "de56ac6cf7b7f55e0705afa1064da3188252610d1dd258f5fd6d4ccabc2ef91f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-section-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "8da5370304f01986bd0899dcb60659b003005ab263cdb13a3cbd3be6cad71539",
+      "sha256": "9281075826714c2aec155cc2340e96d55546aab21c83bb11530cc1d8b07bf2ff",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-single-card-readers.json",
       "role": "generated-artifact",
-      "sha256": "8624a5038940515ea3d341b560fa95b205c0057e6934b419cf5c1085ffb77318",
+      "sha256": "5d76ce2341c139fff252ae6918e3fc8b29e32d8f923a7dd8f084a7fa0f5c3e50",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-spelling-file-readers.json",
       "role": "generated-artifact",
-      "sha256": "07f2a2077f1b0f5773613bbcac35b83a7a5c4b8827e099a48debe2cf399e940c",
+      "sha256": "4ea38f7cdd4cb58fad6fc7dd309e5a1035a3b9c2bf257bb9f6bc97e6cdfbb131",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-standard-repeat-readers.json",
       "role": "generated-artifact",
-      "sha256": "00f58428879e816b4dafedb40a170a442b5e78f3fdd29a206be51b9c8ffb91d1",
+      "sha256": "883ff90fac513416a1fb2608de2513138b967da993064ef484ec2080c503e3b3",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-suffix-fixed-readers.json",
       "role": "generated-artifact",
-      "sha256": "37afec8004662dc5a1f36eab61476ce46d88c7d8bef47352e2bba38e35915d46",
+      "sha256": "fab214c5f021b44a8e9fb588a0a846ecf22121b6dd1de8c1cd4a09cd88fa9222",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/native-readers/lspp-tail-repeat-readers.json",
       "role": "generated-artifact",
-      "sha256": "d112004b0319d7a45166c97f96c6ae3fac2e2709c3ab41197779d68ee7729672",
+      "sha256": "f93a15c18c7893eab3b083531df8eb5ee484a95e746bb38f2c16e94e49b1c188",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1557,7 +1578,7 @@
     {
       "path": "keywords/runtime/semantic-v2/manifest.json",
       "role": "generated-artifact",
-      "sha256": "efa54d25832c745c05b840109b2dfd9ea66f95668060a5fe16d5e3366a6bd95a",
+      "sha256": "07ebd4d9d605f055232c7f5e2a828df66dec09ff7a07dcc05b4b3b0688331f28",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1659,97 +1680,97 @@
     {
       "path": "keywords/runtime/semantic-v2/references/0.json.gz",
       "role": "generated-artifact",
-      "sha256": "b4bc8813d842f56c0c739202e1d1b4dc64c9d87aa760a5f33df5de18c7b59cdf",
+      "sha256": "a2b43eb4fbca2c755b5b4d5c788beff578007dcb966c9f2ab6cd4805eee7bfe6",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/1.json.gz",
       "role": "generated-artifact",
-      "sha256": "43714a8f0a9f5d4da1bf2f5d4f65e5447026052e385e8542e9c346097c9655d5",
+      "sha256": "24253dc640ca04200496ec43ba26a85ca23f9c6381b7b1dd922c19e2ac3aa663",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/2.json.gz",
       "role": "generated-artifact",
-      "sha256": "fb759909b74dd34326f77a649bdfe962fb434918e5d254d52cc8edbb4c8108c6",
+      "sha256": "b9544b3a878ef30d837187b46ed54dfddb8ae012b8d5fda4cadd76bb36b54e48",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/3.json.gz",
       "role": "generated-artifact",
-      "sha256": "2f3052e20bc7a5bbf976b6fb89c5f3352893f37f0f41f3b22bef9b5a038ca9b6",
+      "sha256": "a2791a3b01d744a6f2ff56f1d965a18eb766e8eb43648a08f64d082728780eab",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/4.json.gz",
       "role": "generated-artifact",
-      "sha256": "2b4aac1ab91d45cc45dbc41f81acc62615b6a3d19ea94615180b5b3396cfe729",
+      "sha256": "9ebae5082a59fbb3f15b64dfda496eecc0e63c56d2e2de38469f242a0fd04cdc",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/5.json.gz",
       "role": "generated-artifact",
-      "sha256": "2f59fb9d0ee556797c222756d0b0458064097b0d499d9144cdfcdee7d14c5d37",
+      "sha256": "6eef2bbebc339cd76cfc93e562596c734fdeb6aefcc5a233eff04aa5788417a1",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/6.json.gz",
       "role": "generated-artifact",
-      "sha256": "fe027fbf7b91508bd1faa652aea04f20ade7d369be24bd1f94b08cb6ca5a4349",
+      "sha256": "a7beec0f3da75bbfa2e82d8b4bfd19001d11e1b76edabecb3f9ca04f69079a5d",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/7.json.gz",
       "role": "generated-artifact",
-      "sha256": "a0bc37dda3244021e1ada550b4ed59b7abfbb771071028ede72c61c85d53d27b",
+      "sha256": "e26e57cb9e38e1a04e31d18d6d5b0d26e97f719793c99a358a6166b7aaa1f9e0",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/8.json.gz",
       "role": "generated-artifact",
-      "sha256": "6609407eff8c9bd89e9ad60de2a014fa3f90f7ee885d804e1627926bc106100a",
+      "sha256": "917038605c773c44a4b11af966b6a3d31c11b1322e4ffe95f914e411bf7686cb",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/9.json.gz",
       "role": "generated-artifact",
-      "sha256": "f35dc68a7f371a111112a9206dd378687e818096740534393e621b255d301b2d",
+      "sha256": "fc8e0c6bba545d84596b8ea5c5f854b3d8270869b9764378d831f5c7d64fb6ff",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/a.json.gz",
       "role": "generated-artifact",
-      "sha256": "7b3a20a526fe8713e715c7fe003fa321598c70fe102461121c9a65df7ee17ca5",
+      "sha256": "09b545770fceac090c5a8f39a62b80fe7dbe2c04a4216222ee443d616e17ee58",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/b.json.gz",
       "role": "generated-artifact",
-      "sha256": "a3ec6af501f5fe48bbbe5148f2299a4999ab2d759a2653c6eaa283d3aa7d8d6e",
+      "sha256": "398edd82537289b572cf3798eee1a498a792f218de959e71f665d3f4583130ff",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/c.json.gz",
       "role": "generated-artifact",
-      "sha256": "dad25c4f5bc00014ab5a7f97f7de5b824c6467364f120dcbf597c32f8bbe2fc5",
+      "sha256": "b452c4b9e52322f63fec89465029f1c23b0b4d977b8ee8f617999b8f8b27f75f",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/d.json.gz",
       "role": "generated-artifact",
-      "sha256": "934dc584245f743ee2f68b953875d72d17b4fabbe18d8e908c337c5d88c6f235",
+      "sha256": "9ad26b78cd1e24aa6365d677c066c903b487cc9f65b28977933b485fd8427c03",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/e.json.gz",
       "role": "generated-artifact",
-      "sha256": "72efccab0495633b94bfc1c13263ebf32f8abb4296a8ed8f22c847557db4e996",
+      "sha256": "0bea3a45630d5d5c35b091dd5ecf0307d90f506d6b9fb51093d4250b2c0aa71b",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/runtime/semantic-v2/references/f.json.gz",
       "role": "generated-artifact",
-      "sha256": "5da4bc83e77dba9c983b9a6381fe92cfe4cc67331bdb99ab08346b0f32b30f62",
+      "sha256": "8265ea78296430b54354cb56e11f02070de8d227ae40f8e0af3056c039235653",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1953,19 +1974,19 @@
     {
       "path": "keywords/sources/categories/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "c26353dd55fa08fd633312a363fd4298b6e5ef1bbaa5be5fbeab059e78f3696f",
+      "sha256": "8e1e0260fd7a308165cb6de3035512b0eefe2c9ecff5acf7d4d2fd03b9fd7648",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v1.json",
       "role": "source-snapshot",
-      "sha256": "812e2835a579e76c79033fcc1e2ea2ae8049e2bfea4c9e2570905900e5150456",
+      "sha256": "be7e635905617724264bf4398e21da8fea7ead2dd74c3cc5d12a180f335ef172",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/contact-thermal/import-v2.json",
       "role": "source-snapshot",
-      "sha256": "c500bddb6d8190b0e2faa5199c0e4f300d2ccfa9a4e12b99646f96d1807cc4c8",
+      "sha256": "56003f549cbc0d3f207b5f24975be6064efbc9c3e24e29644f009e2b8633bf5f",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -1989,13 +2010,13 @@
     {
       "path": "keywords/sources/input-form/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "0cb18450bb3dd232b3b24fbd6752e555c742030685b9d4b900e14b8c439da1f8",
+      "sha256": "7e27ebaa6de72d430dc186b44e28657450053f95cd1f6e300dcfb7b59f83c236",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/manifest.json",
       "role": "source-snapshot",
-      "sha256": "d96aaec34151415eba851405bf1a0d56f7233920d32c1d19328bec064fb66157",
+      "sha256": "7de770d3b4819bea6ba37419e6273eed36c7dc5a9f37ab6316cea4a2da76ad65",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2007,13 +2028,19 @@
     {
       "path": "keywords/sources/native-help/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "a05c6a94ec79fda54b7d86063f27b62f7942f8f8fa9673a60adb752fbcd5a215",
+      "sha256": "b84714a199a6f34132b54b777ebbeeead78448d3e3e54cfe467fbf92f49e9786",
       "reason": "final-data-or-product-language-check"
     },
     {
       "path": "keywords/sources/native-readers/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "2338361d7a3c02908523afc2acd08aa72a4235b0023b163c04a7354eab56f152",
+      "sha256": "e7800aa925c747ab4afc7472410a8c7b2229c3440c81c11ac8761959290011e2",
+      "reason": "final-data-or-product-language-check"
+    },
+    {
+      "path": "keywords/sources/native-readers/optional-card-controls.v1.json.gz",
+      "role": "source-snapshot",
+      "sha256": "d5bba67369c10f93a244d0e88228dbc5b9c50e10674a71311bbb6efd1adcd733",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2025,7 +2052,7 @@
     {
       "path": "keywords/sources/references/logical.json.gz",
       "role": "source-snapshot",
-      "sha256": "0635219ad209c9a3b401d2e71b5211d7489ab118fc944fd543f34106b3cfb697",
+      "sha256": "72902d737cdeb501be47f598e6974581b9e02592919fc069fae1bef1dee09c86",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2043,7 +2070,7 @@
     {
       "path": "keywords/sources/semantic-inputs/entity_reference_user_exclusions.v2.json.gz",
       "role": "source-snapshot",
-      "sha256": "4235e0e1bbf70b78441f36e71dd828402bb059246a661c3e47d9e98661a2b4fb",
+      "sha256": "2d4397dd4d0f7f21328593dfc9b06e9ae81656a9816848647bdad7d059ec6a66",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2427,7 +2454,7 @@
     {
       "path": "keywords/sources/semantic-inputs/lspp_reference_handoff.v39.json.gz",
       "role": "source-snapshot",
-      "sha256": "78bb4cc0e18f22ac2fa956dc0909e81881724575fd096e4d73870124ddd57d52",
+      "sha256": "fd9a6bf72fa84df7bc885ff72aee20b213477437ac1815eecb0b4b66094547d8",
       "reason": "final-data-or-product-language-check"
     },
     {
@@ -2499,25 +2526,25 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "50ab3a79ba4765243075a390e4841e3096b5834de50330471e4863508e55a426",
+      "sha256": "44796108147dfc7ab0f97e56d1220737783780a7598bbad78aa7858ccbfb3714",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "192adc33213235f3842d0c4250599feaa5de2663eb2f85c98a13eb3abb03e151",
+      "sha256": "9fa90309674fa116bdbed55fa072243c5fe7e05d658eb1948d431e76b69f0203",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.json",
       "role": "editable-source",
-      "sha256": "bc113ec5e8bacc0a4b2ac31df2138748ec6def6240594bb47d412c5ee25bae96",
+      "sha256": "a2c708682936520856bda3f3cb1f856315287bec0bf1101bcdbcc8def9333c59",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.zh-cn.json",
       "role": "editable-source",
-      "sha256": "948e7da0b029dc96d36d9a8fafcdff7a22be6283619523006aa09770c8c72dfc",
+      "sha256": "72f27e91d6fa630e85783e6f2da57fde6d84623b1440b37f74ef84fc820947b5",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2529,7 +2556,7 @@
     {
       "path": "runtime-data/lspp-input-form/manifest.json",
       "role": "generated-artifact",
-      "sha256": "fa03c4981b3cea09778ab922c0c67667554b8a4c83be725bf7016761960ab891",
+      "sha256": "dee43629261c378a6f05554c557d4eec8ea359c5a739faa66c4694142516d8f1",
       "reason": "frozen-verified-public-runtime-projection"
     },
     {
@@ -2541,7 +2568,7 @@
     {
       "path": "scripts/benchmark/benchmark-keyword-manager-webview.cjs",
       "role": "editable-source",
-      "sha256": "300318bd2e25b1261d01ec5eb2b62140cea40ef3684b7a18773d13f7cbde014a",
+      "sha256": "e6ebb329351ab7dc33c64e30464fd6605b7e51b97da3d926e31e068a1662a53a",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -2595,7 +2622,7 @@
     {
       "path": "scripts/build/generate-field-reference-index.cjs",
       "role": "editable-source",
-      "sha256": "f96c1bbb952d0de1ba58a15a60de500987642484e406fbb8d15bd0f45c7e8a36",
+      "sha256": "d6ce4c7962219c7e74a96940e19508e001de1630e048dfb2ee51b80baa6d7b7f",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2655,7 +2682,7 @@
     {
       "path": "scripts/build/keywords/data.cjs",
       "role": "editable-source",
-      "sha256": "340159b7bcb82f3dbf20aa1f95a6942a77f8574e4cd0d9862705280ddb537c35",
+      "sha256": "11e94005d08fc831c63fb5acac96d01a9b08a8a973c428e693716c978aaecde7",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2733,19 +2760,19 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "a01c06c4fbf8f40557c1d86ab40c3bcfb496f35d180df04a1e89f278504bc6a8",
+      "sha256": "166881b55f6e74b2d20861b9e7a85cb9ff47a1393bfda98eed93717f10f39bd5",
       "reason": "installed-product-host-acceptance"
     },
     {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "757a1e171ccdce3a9f6c897e7d7fbe2f7ee3f6b9dd02de8abf427d08adfddb82",
+      "sha256": "b18690c90023af2967392bbb8ced9296f69e36118eceb5b095f2d876b95dcb09",
       "reason": "installed-product-host-acceptance"
     },
     {
       "path": "scripts/host/run-keyword-manager-gui.cjs",
       "role": "editable-source",
-      "sha256": "38841085cdd97cd325a968fc84b635eaa52fa08acaaf39a35cf7717f3ea74b7c",
+      "sha256": "aa95a4ed5acd9bd8c7cca04cc9de3eee3dd840c76f0d814e70d65880086bdaf8",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -2763,7 +2790,7 @@
     {
       "path": "scripts/host/run-large-file-viewer-host.cjs",
       "role": "editable-source",
-      "sha256": "8a1d9c6cc7d23cc1b9d634c0e57f96916d7031e34572bc17b3962b11dd91e713",
+      "sha256": "61165c2e349b693771bc6d980e8199d7216234cf62a556359a60c2dafb8aeb38",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2775,7 +2802,7 @@
     {
       "path": "scripts/host/run-release-host.cjs",
       "role": "editable-source",
-      "sha256": "666570abf5116288e854364d43d561308993fd94265fb4aab6e46374311d2278",
+      "sha256": "e93f75ef5f9f14e71471284d701a2f9ed84cc4be6378050ee78b1533b04e328f",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2805,7 +2832,7 @@
     {
       "path": "scripts/maintenance/validate-project-contracts.cjs",
       "role": "editable-source",
-      "sha256": "4179593e438091a642fb45b42426d903d1999bf540d914a408e9fc58c82a8aae",
+      "sha256": "b3b292bb0cc13cced2fc798d265808da1c76e4e48228197c6b836383572fcd0d",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2925,13 +2952,13 @@
     {
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
-      "sha256": "9390850a150a1aa2bace8e67eebf0bb51b226cabce4c85c3d06afa23cd17ce6b",
+      "sha256": "6b5d60bfaa68af3816600c4d69dd0407bef37b667fca209e1354344cb1985f6f",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "scripts/release/run-unit-tests.cjs",
       "role": "editable-source",
-      "sha256": "3ea0dae3cd0d38ecec4161d00b8adb2deb02c87c1ac02b5d7d22dd5acb0fb9c5",
+      "sha256": "813fd3032bef7830a24301ac4082e70714b542d463023ecf20001e04e37c8b43",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -2967,7 +2994,7 @@
     {
       "path": "scripts/release/verify-release-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "d4069e6eb753d5bcd9670c522dc2ab905c97284da1dbef10f4532be617a526a2",
+      "sha256": "8f2983be2d0d48d42839f6f97b83ae99cbdce06058472fb085cfa26e3e167b62",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -2991,7 +3018,7 @@
     {
       "path": "src/client/EntityReferencesWebviewProvider.ts",
       "role": "editable-source",
-      "sha256": "0f369e4c27cdef52d9ca38b173c637ae307ec256ed9f6711ead7758c32b8ec81",
+      "sha256": "b63c0ff81e6aba96664bdf2858ddab26322619c8e86d2b59987e8892cf4698b2",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3063,7 +3090,7 @@
     {
       "path": "src/client/entityReferencesProtocol.ts",
       "role": "editable-source",
-      "sha256": "689104cb5531a9ca5331053a524f216c483872f7af66feae51f1eb4de42d2a7c",
+      "sha256": "e6bfa7b4a687d0fb9ed4a1ee31607f6a81d64d8b1a5adc106a69aca71ffe4019",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3087,25 +3114,25 @@
     {
       "path": "src/client/providers/includeTreeProvider.ts",
       "role": "editable-source",
-      "sha256": "db5d059e9720a085c88a773e64800253245619aa079f846aae21e13ae4e01b69",
+      "sha256": "31a1fe635cb81b5c85cbe4490dfe890b716091cf819e1e217bc86259322412fe",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/providers/keywordIndexProvider.ts",
       "role": "editable-source",
-      "sha256": "c565bd8c2eaee072727b427bc6e80a26aac3b90a995480d6b6456ac3af52497b",
+      "sha256": "a4a83165314f515d0c07c0c96f58adefe195eac23d0dd96a86db3827c09d75dd",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/providers/projectKeywordPages.ts",
       "role": "editable-source",
-      "sha256": "fc3c796aa4a3c92e024af886c02198f5505771414cf99785be4a6f0dfdb22620",
+      "sha256": "9381cbe42b1bb31d9c574d956710156a7669ad8317b60fffd0e72d3f7e82896f",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/services/activeFieldChoiceController.ts",
       "role": "editable-source",
-      "sha256": "217641310d3ba440b2c21052ded8fcec3733b0103e9d5a2a64df9b68d0b40f17",
+      "sha256": "a0b42bf1a18a768369faf952d7d346d93585ea90f1c65a19806234c9c2db07bf",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3117,7 +3144,7 @@
     {
       "path": "src/client/services/columnGuides.ts",
       "role": "editable-source",
-      "sha256": "590b1ce9a8269810be9710b68de7bbc299555dac9264ba37fbd0fcfee8be8ca2",
+      "sha256": "361cb486c9f2aa1d6e250169be07d2ee697db8a5e34d72c7109d28e9a4c0bb67",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3195,13 +3222,13 @@
     {
       "path": "src/client/services/keywordManager.ts",
       "role": "editable-source",
-      "sha256": "03f927138e196bc2a27858c55622f7d03871fee2d60e71641e0e0ee883f04d2f",
+      "sha256": "a9ec722d29bd32e4ed322c337865432dc0ba0f9612d0c1a728dbf853e83c819d",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/client/services/keywordManagerApply.ts",
       "role": "editable-source",
-      "sha256": "6c8eb0df4c431497261216a9ede619c71cab0b5a124742d267f9a9614bed0090",
+      "sha256": "8e37454b787daa330c688a21ace24d76b25f97bb64e80c5611c87244b7b20ad7",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3249,7 +3276,7 @@
     {
       "path": "src/client/services/treeSearchQuickPick.ts",
       "role": "editable-source",
-      "sha256": "53960abd277278d91f27788f58734b4c6ff8b1246aa24c18463e2f2672dccc02",
+      "sha256": "8b08be441bce71b782bec2cc654bfb6615b0b1b6a76ba750be671f61792526e9",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3267,7 +3294,7 @@
     {
       "path": "src/client/statusBar/dashboard.ts",
       "role": "editable-source",
-      "sha256": "40995021d35f69b4bd0ee342e2c15b3ab8db364cb8d5f4ae861bec4710a305f2",
+      "sha256": "8118baebe9d9b5455acc582db7cde2f14bb689a0109ce049a76923554c267e9f",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3297,7 +3324,7 @@
     {
       "path": "src/core/cache/entityIndexBudget.ts",
       "role": "editable-source",
-      "sha256": "79f84826c9bf45e922c16f7cb6450c8a851cd3b6e58f3dff44a3f0397f8fb160",
+      "sha256": "d22878cb631d5af1eb01bed1b1eb7ef2adad0c3ee1d83eaf559c5bc350943465",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3411,7 +3438,7 @@
     {
       "path": "src/core/i18n.ts",
       "role": "editable-source",
-      "sha256": "572babb3957c7c8b763764d57350b386b74579b828759b11e60128058c2e064e",
+      "sha256": "fe2d8d1feff2ac5813a987bb5ef899758cace0292bb0c32ff211fd1c259af788",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3873,13 +3900,13 @@
     {
       "path": "src/core/semantics/catalogInputFormCatalogV4.ts",
       "role": "editable-source",
-      "sha256": "bda022376cef7872afe30e4b79bc17538521fb33f0f45cd41ebfd7347989d09f",
+      "sha256": "421b02169db1e23786e8408cce58201d3cf765526376e932434fa3928420b59e",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/catalogNativeFileLayout.ts",
       "role": "editable-source",
-      "sha256": "d0f29600caefb88b1d190cddd2915cee4c8d56ae10f0381847088af2c787ba6b",
+      "sha256": "ca9321d6ce3b68acb92cd93defe35bf81a15e51c54ab1fa7e3b405916702f17a",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3909,7 +3936,7 @@
     {
       "path": "src/core/semantics/descriptorIdentity.ts",
       "role": "editable-source",
-      "sha256": "c769511021e82d1ed67e99c82f4188fd832d11370ff33e5406c10fd15b2e3b9c",
+      "sha256": "8dd2e0fd880c9dea2b3bd7344c266eb87a9040e05c29ee971d167b7945c09469",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3927,13 +3954,13 @@
     {
       "path": "src/core/semantics/nativeConditionalLayout.ts",
       "role": "editable-source",
-      "sha256": "8871fc7b705f2414c3323ff12098c84a2f012262309155c7a83ec91cbdfab62a",
+      "sha256": "658f5e97abc2c32b39c62c2a9bdad42e602041a51249ae40d65b664f911dde2f",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeContactOptionalReferences.ts",
       "role": "editable-source",
-      "sha256": "0e95f93e6fa4fc2d7f9e063edbe4c1ba48ac441302e1daf86b5080b9d336198c",
+      "sha256": "68f502fc0567404e46c0e90810368439f0796f55462bc14a33fe896ca9c389fd",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3945,13 +3972,13 @@
     {
       "path": "src/core/semantics/nativeDescriptorHelp.ts",
       "role": "editable-source",
-      "sha256": "942a33250651bedb9d1c29b19c6dbaadbe9a1e28bde1ae44d39a81138fc0ff34",
+      "sha256": "d603953da9325612a966cb0881eef61a487d8b16881aaaa546ebf363c344aa64",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/core/semantics/nativeEmReadState.ts",
       "role": "editable-source",
-      "sha256": "f72acb2debca298e9c8e10421203cf1062f847a73d79476d7e3c74e6c6172f9d",
+      "sha256": "9542a3f3670b051734f97bb52cc9766e90728236e9e7885f5874463f422b4864",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3981,7 +4008,13 @@
     {
       "path": "src/core/semantics/nativeInputFormat.ts",
       "role": "editable-source",
-      "sha256": "32c1c89c5b067a71174becb8db84adaaa9d6b35820f35dbdd715b532fb7c3caf",
+      "sha256": "fec1415b1a66e8273bdb68ec8fc80c638a1d66862b7a95935a508323615518e9",
+      "reason": "editable-product-source-or-resource"
+    },
+    {
+      "path": "src/core/semantics/nativeOptionalCards.ts",
+      "role": "editable-source",
+      "sha256": "d27793e3e61510b621f4bc6e3ef9d06c8371a47ea5f2fdffce312181b9e45888",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4131,13 +4164,13 @@
     {
       "path": "src/core/userFacingReason.ts",
       "role": "editable-source",
-      "sha256": "3865620d1a7eab14ec93b1e68df88958aeb27d3199ae1402c0fda3d03973d969",
+      "sha256": "00c77ab50822210c98cff910cf49596bb32d3ae612f3f8d297aeaedfede41337",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "3e64fd4630180a44412a39946f85557f991f37342cc2b23b2496c8146416578d",
+      "sha256": "e265b7bad7dbcea3b18b0d55869a59c18da73d3e3d98a44076f986fb44312839",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4155,13 +4188,13 @@
     {
       "path": "src/manual/ManualReaderPanel.ts",
       "role": "editable-source",
-      "sha256": "02b0e132ccf228516ec3f4ff180b1bf3a411bb15ffd20d9f9dcb45c55b97ec0a",
+      "sha256": "0411be32769129360ac874ecf2d4796612726e5cacb92c37c2d9432e012e5ee8",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "src/manual/ManualSidebarProvider.ts",
       "role": "editable-source",
-      "sha256": "f5cd8e56c4bf8c2beb414ba7d22224ae5bb772a428e8e0bac68ea028f3b59be6",
+      "sha256": "dfb1a6084a1fc3a41b51b5541a188bd16bbd1a560ed8da758bef6985d30f738b",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4287,7 +4320,7 @@
     {
       "path": "src/worker/projectSessions.ts",
       "role": "editable-source",
-      "sha256": "07e9a5a763f9b91cadfe227790ad1026912d32322133b34cd8bd72b7adc668d2",
+      "sha256": "48109d6450cbb95d9d90a597fdfbb6845102dc8a0a8675b98d55dc4b052e3b50",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4353,7 +4386,7 @@
     {
       "path": "test/client/bootstrap.test.js",
       "role": "editable-source",
-      "sha256": "2478cd1df7a48922f3858d87ea2e1a8529c67585e9b39dd41bba21dd5422da96",
+      "sha256": "2febdc245bb84027b04829d509631b6870b18a8e59150c3929908944b36b3acf",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4413,13 +4446,19 @@
     {
       "path": "test/client/entityReferencesWebviewProvider.test.js",
       "role": "editable-source",
-      "sha256": "269018972e3f6343b9d98580c3aec040599039460d76e42fa34e7491cb4f5027",
+      "sha256": "1af6ea30bcd0f2c18983adf6c46beec84fda72f65054b2ca725ab1261afc521e",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/client/hover/knownKeywordHoverFallback.test.js",
       "role": "editable-source",
       "sha256": "bf17d10b72642b239ca29a91e045c7bf30223c329aee729265c8f021c850b8e2",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/hover/localHelpPreparation.test.js",
+      "role": "editable-source",
+      "sha256": "f1d7700ad87c7fef063907e9c0f7a27271c3770ca76cabfdc4d33f7e81fc3e88",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4461,7 +4500,7 @@
     {
       "path": "test/client/hover/nativeSharedWindowHover.test.js",
       "role": "editable-source",
-      "sha256": "a897d45077647790a4dadb42d069e1d1abe66bb811f48546f3ec0f670b0f5f52",
+      "sha256": "eec124627f40451adbd2b0142f25eadb962c9b6a657d6ba9f46d87a2765c5ec9",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4515,7 +4554,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerCatalogWriteAuthority.test.js",
       "role": "editable-source",
-      "sha256": "56bc1b30b1809dc1aaa2e405f5c3d2014654be969458734fcc7882a7f278bed7",
+      "sha256": "12ca2be7703f28444e5ccfe2a348b56b9e83a947f19367b430d105ec1d593ed1",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4545,7 +4584,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerEntryConsistency.test.js",
       "role": "editable-source",
-      "sha256": "a09b1d791e2d598572ca6ce9f5d128811f79c922ee62bb5cc1e1e3e0f5fdf395",
+      "sha256": "efd99fa42dc1440c68fb9cf3e626be9ab903d52778ba322e51f658fe6bc00a5c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4591,6 +4630,12 @@
       "reason": "product-behavior-safety-or-host-test"
     },
     {
+      "path": "test/client/keyword-manager/keywordManagerOptionalCards.test.js",
+      "role": "editable-source",
+      "sha256": "37f28c331869ce14d30fa3e79fd832b3f2141899c2b0762065f4fdeace6d2bca",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
       "path": "test/client/keyword-manager/keywordManagerRefresh.test.js",
       "role": "editable-source",
       "sha256": "0be168ab8d07aa167fbb35e8e11d0d8e65309f577abf045b11e0d9addc7b603c",
@@ -4605,7 +4650,7 @@
     {
       "path": "test/client/keyword-manager/keywordManagerSourceText.test.js",
       "role": "editable-source",
-      "sha256": "e738b42a97a592292e8f920dfd9d33fd87a8fcb491a0310418d4713985854a93",
+      "sha256": "81be026e0ae5df53094b0f749e2e49d457f01e90b88e39afaf1a05496148c3a9",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4617,13 +4662,13 @@
     {
       "path": "test/client/keyword-options/keywordOptionTreeIntegration.test.js",
       "role": "editable-source",
-      "sha256": "dac5e85140d623f504c7d9ab5c50fa720447a23a221198590e22323465e959ed",
+      "sha256": "ba58255cea80563df0f761188b40ea2839bf3d40284f62d3473acf1139096d26",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/client/keywordOptionsCssContract.test.js",
       "role": "editable-source",
-      "sha256": "60a63e631e44ea9e754f035171f23ac04c2c5a600f3d8aa8eadf0058b83b6af0",
+      "sha256": "083b9e7c7df2261c8738bd02141438dfe1600c8a48651c96017f045a4a8f77ff",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4695,13 +4740,13 @@
     {
       "path": "test/client/providers/includeTreeModes.test.js",
       "role": "editable-source",
-      "sha256": "ae3c1ce928e12f137e5b0a565b36ec1e40d715bd7fb83c075cdb4892be17b4db",
+      "sha256": "f8eafa55165331f9d266f19a7956fa6aec51aabe91c6cffd06fba72610d5514b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/client/providers/keywordIndexModes.test.js",
       "role": "editable-source",
-      "sha256": "92d556ba4157a8031407c988b362700c3d02276ddb1035283388b7cf75d029a7",
+      "sha256": "a01df352b223e456aa832ab9f6848e2808cc6f0f7edf4fd4a6dad7ad1d93cdb6",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4713,7 +4758,7 @@
     {
       "path": "test/client/services/activeFieldChoiceController.test.js",
       "role": "editable-source",
-      "sha256": "f30a5f5078a59e13a952c44cbe33a22a503f5fc08d7a254c10ca0b3524dad68f",
+      "sha256": "c9eccfe3a3af7e8971b0133c317028040941921da3e2677f03491aa93d0ad3a7",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4761,7 +4806,7 @@
     {
       "path": "test/client/services/formattingRegistration.test.js",
       "role": "editable-source",
-      "sha256": "e5d361ba78be5dd6420d3fca36e21dc33daaea9f7639553b2d75855c9146007f",
+      "sha256": "80403140ebc13b7e0e2d18437676d50fa89ee9c168a1cbb24d651ec9c41b18d2",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4809,7 +4854,7 @@
     {
       "path": "test/client/services/keywordManagerPreparation.test.js",
       "role": "editable-source",
-      "sha256": "9b35405f1d1e4c9be082cfdb55eb083c2dd249a144c1561e7bd73f89691f2866",
+      "sha256": "9b4d4ba2d6bd65c36dbedae5162d86d703587a56bf5d7e2508f6eb140d4f015a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4845,7 +4890,7 @@
     {
       "path": "test/client/services/treeSearchQuickPick.test.js",
       "role": "editable-source",
-      "sha256": "58c8976e35f3bc88d757f0ce9fff91278b20e8c49cff782e8103e5e5f590b273",
+      "sha256": "74dced6385c1192060a5cd9ab18f7b536e456e8010da50ea928498f4f0e7278a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4858,6 +4903,12 @@
       "path": "test/client/services/workspaceWatcherManager.test.js",
       "role": "editable-source",
       "sha256": "e367d3441fd9cdf330fce81c3ee345c3631faf4b1015212a526b4ec0c6afea9e",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/settingsSimplification.test.js",
+      "role": "editable-source",
+      "sha256": "0c58b67e705fb531d15aa1a6f267b23a431a20bf86f6d2ec4e6f5addffe3fe6a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4881,13 +4932,13 @@
     {
       "path": "test/client/statusBarDashboard.test.js",
       "role": "editable-source",
-      "sha256": "8f6ad5db25b74e7557daf7c8534bb79f1e244a3bf79079f5a4ef388580fe517b",
+      "sha256": "44eeb4dcfd9e149d91672a18eec3323b1247af24ed0c8f3e25609b17ed92fd6b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/client/theme/columnGuides.test.js",
       "role": "editable-source",
-      "sha256": "52b1055a9375e12fd18c3414dd355e94d0b0081da0090a30ab5d5791e9149669",
+      "sha256": "9a895bc05c82de5507c9471bd6cd68f153d72fbcdb81342d906778161bbf6259",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4917,7 +4968,7 @@
     {
       "path": "test/core/cache/entityIndexBudget.test.js",
       "role": "editable-source",
-      "sha256": "fe00601e9a11e5367071dbb7b899f792d84f123482c4e0cdb66eb0f6f25ed1d7",
+      "sha256": "f06b30c74806c7d15e6e7987aebf7c51fa1d9c05134daa60bc2a5c18a536d812",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4947,7 +4998,7 @@
     {
       "path": "test/core/compactHover.test.js",
       "role": "editable-source",
-      "sha256": "e972241d797a9f164e02f78ac4c1ee061a512b76e748af4a3753f6508103efa2",
+      "sha256": "9b2db2dce2eed53ed8f97e48e492e7ebe0c9f6d4eaef4afd0a67043703ff8e1b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5037,13 +5088,13 @@
     {
       "path": "test/core/hoverLocalization.test.js",
       "role": "editable-source",
-      "sha256": "3d214dc962f1c5eafd03bcce7bde2a0163b26211d39454ea3c559114c3e0f5fa",
+      "sha256": "206d4d281859802a8c06fba0c79b32c0691c8b7d55445fec700ea3fc407066dc",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/i18n.test.js",
       "role": "editable-source",
-      "sha256": "e26ec96f5500ef37adddbc8371e6534cb348e838e47ead9ab3856d4a066b1ee1",
+      "sha256": "37e153486606db0c3ada7b9e527f0ab6914ef7f07e380c1dadc3a426dd0422f0",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5085,19 +5136,19 @@
     {
       "path": "test/core/keywordDefaults.test.js",
       "role": "editable-source",
-      "sha256": "b5326f07c6a0543eb83c8d3599c1d66266f9c152c37f5e96933cf9757c616820",
+      "sha256": "d8e00aedaa70078c91b11425ece0d706699da065e33e03d25b7ba7249ecee511",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/keywordDisplayIdentity.test.js",
       "role": "editable-source",
-      "sha256": "42b8228d6c70da4f7dbdf80ca9df7097dae2127fa754f67270e329bec04e40c5",
+      "sha256": "19a1b49e04cf52cd84053d83e37e6ba887f311df2be58d1597b4331582c228aa",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/keywordIndexPerformance.test.js",
       "role": "editable-source",
-      "sha256": "aabbe0d408e6946000235c1f32d0470a4ed80012714af6907aff8890353af1ed",
+      "sha256": "d2cf176ede469095b1123ae1781ace61d4028798e53da455f37d72e44ea22dae",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5193,7 +5244,7 @@
     {
       "path": "test/core/parser/includeScanner.test.js",
       "role": "editable-source",
-      "sha256": "1db77d4ce6667db0a2d66abf9a7851e21b91453da654ca91abc90fcb80a4b3be",
+      "sha256": "d4c1c52079b3f6eea8020da9f7507617ad3df2fb41b4d628b86b2ec2870ddd2e",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5211,7 +5262,7 @@
     {
       "path": "test/core/parser/keywordScanner.test.js",
       "role": "editable-source",
-      "sha256": "4bd58f95a895ee130f47a4e289ae9d471e55964421fd15ba5a2409a1e3701495",
+      "sha256": "88208962be2a3a95ca93e939aeb07f7efe2881561134afe5dd9d292863c70f41",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5343,13 +5394,13 @@
     {
       "path": "test/core/references/fieldReferenceHover.test.js",
       "role": "editable-source",
-      "sha256": "f2e96a76c6415990c08e0b75fb859f49bcfe8bf22c2539d68bc85c791b7af769",
+      "sha256": "98407370ab653f9ed5e882876af6f085da1512a78b061de459be76fbdb758621",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/references/fieldReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "204e99894c8ec2a90da8dbe1704e06c1f3cdf8b0fd97ab9721bc12bfd9545459",
+      "sha256": "767fbfa128f4869191643c79ef0555bc94076ea4878ca0fe3385605c2aefd0db",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6039,7 +6090,7 @@
     {
       "path": "test/core/theme/extensionTheme.test.js",
       "role": "editable-source",
-      "sha256": "31e6526ff9bcf0ee21b71e3aa71b9fb6ca673bb024ab225a2d8f7cf2b8c6cabf",
+      "sha256": "5ab35e877e717ca3f8f76c085b7cbd391e2b0b100c84be061fe123c7659b3a47",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6147,7 +6198,7 @@
     {
       "path": "test/fixtures/public-behavior/fixed-comma-blank.json.gz",
       "role": "editable-source",
-      "sha256": "81a3d670d9b0a9e2204e59e318bfc4239932648253b43d60b377d7537196fe48",
+      "sha256": "bc55669eafa757d0816a6e6d579080b850b20f027f877375f7cacb6df48dc2e9",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6201,7 +6252,7 @@
     {
       "path": "test/fixtures/public-behavior/native-conditional-comma-roundtrip.json.gz",
       "role": "editable-source",
-      "sha256": "a92a016026f6196af883e8e7384e4e9f7be87fca6935b29450193c748b8b593d",
+      "sha256": "e6f9d4ce473d29e851ab60e175daf46ebe9986acb0a591b53b9091d2cf7febe7",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6339,7 +6390,7 @@
     {
       "path": "test/fixtures/public-behavior/native-suffix-reader-crosscheck.json.gz",
       "role": "editable-source",
-      "sha256": "02189810627f44f09e7f7272d02c864f8f3e3cb92c12c891e52d8ce747c97f31",
+      "sha256": "a4dcec80f6948c86a5c3eef54363e9dede6eb18f41b3d995b0a63d8682fff7fb",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6351,7 +6402,7 @@
     {
       "path": "test/fixtures/public-behavior/native-suffix-write-matrix.json.gz",
       "role": "editable-source",
-      "sha256": "e4f572010ccbbeebb11a061b59b44ca116f408fbd16a8415280c3eafce920797",
+      "sha256": "280e3a3f73ce53463ed4d3d8bba507041d0f367a398182d08469b5400973f0e8",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6465,7 +6516,7 @@
     {
       "path": "test/fixtures/public-behavior/shared-byte-cases.json",
       "role": "editable-source",
-      "sha256": "31e12661747e226aaba51f905fe939c1efd66ee50c9dcc2cf74981f9a7459c20",
+      "sha256": "95b65600cba2e4e3226fcbdd7469b5c1a13979c08eaf8b51fdafc5b051e598d0",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6531,13 +6582,13 @@
     {
       "path": "test/fixtures/public-behavior/trim-record-selection.json",
       "role": "editable-source",
-      "sha256": "95f262df35a491707c402a9d1f980c1ccbe2965cb499e61d1e607e6286757789",
+      "sha256": "51b30c1010ac22d77660ec80f557c2881c94b5dbbff9587d4104fbf609ae367b",
       "reason": "product-test-or-build-dependency"
     },
     {
       "path": "test/fixtures/public-behavior/volume-record-selection.json",
       "role": "editable-source",
-      "sha256": "b952f4f57e242e0e7157b64c6142724f767786044be52c65d9c0168478e5a0e9",
+      "sha256": "8bcf8bc4eec735f307dfbeff4c95ba5416942916d8cd474afa72c59f7ebc752d",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6825,7 +6876,7 @@
     {
       "path": "test/host/editor-safety/large-file-viewer-host.cjs",
       "role": "editable-source",
-      "sha256": "750da6ba4130f8b39a7395936bc415f9c8ea8410790771deeef10c4ba5b2bc48",
+      "sha256": "ae20548a18f7d053d3f12a9a748c76eeb46d3de7b8f885e6aabbe7cf963e53d5",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6849,7 +6900,7 @@
     {
       "path": "test/host/keyword-manager/extension-host.cjs",
       "role": "editable-source",
-      "sha256": "ccae9cf15e1a9b3f73f27d5d5d7f95d920ab407e7793582036d1b19da54a7b76",
+      "sha256": "d9234b69f57c39328817ef04f13e0386fc01b34d3d0891964b522bff5a553f7c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6867,7 +6918,13 @@
     {
       "path": "test/host/keyword-manager/instance-selector-host.cjs",
       "role": "editable-source",
-      "sha256": "1df2cdafc2c6e8407fd032c366e582e7c342adb311cefaf633c7f8976c4564a2",
+      "sha256": "f695b51350e0a570be3b6e0100adfbc25d1925ef03112f53d98d697a653a7d82",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/host/keyword-manager/optional-cards-gui.cjs",
+      "role": "editable-source",
+      "sha256": "b435bc92e4fa654a4a5c9331019dbf59e7d40e963d119a731e717c09498c8397",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6903,13 +6960,13 @@
     {
       "path": "test/host/release/cache-settings.cjs",
       "role": "editable-source",
-      "sha256": "7f1efea8e5f3ccc4a0b17108704f743e307b3ea6862d673905a25011c8bef3f6",
+      "sha256": "7221c245a002d608c5ed93b3b19aedee3c4c85c79c87707eec2f5f4c0a5fe916",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/host/release/column-guides.cjs",
       "role": "editable-source",
-      "sha256": "355e634ff984cc66fd8d1c355ced557bad68e553e0bc96fd8855046b43990d8d",
+      "sha256": "12206b98b3de1cbfec776a66f7612cc2833bf14f5a78c641bdbb2186af394bca",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6933,13 +6990,13 @@
     {
       "path": "test/host/release/header-actions.cjs",
       "role": "editable-source",
-      "sha256": "e42b21f75c0f92755d4f0f4657639375ec17d9761af8b6365c32b642456c37f5",
+      "sha256": "07ac2af08f6c9912bf95a6233caa3a85cbf108a9fcc74fdf41260931c918297b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/host/release/host.cjs",
       "role": "editable-source",
-      "sha256": "5c4ae16296590eaa048ed56530e24763b84a9b3fc4cf69df255e412201ce9037",
+      "sha256": "097f0e3ace2f4ca11d41d788e798fa9f5f9d6182d6e797955d8595e973608bb4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6969,7 +7026,7 @@
     {
       "path": "test/host/release/reference-hover.cjs",
       "role": "editable-source",
-      "sha256": "ece04da61949f6489504816eb0f70b2081b98f482e8113fc9f9ab7f22b1df2f0",
+      "sha256": "ea4ba312d9c0e8a4250da5a815d7654833b5b1f4fe0e4889e5658ab1a4f5346c",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6981,7 +7038,7 @@
     {
       "path": "test/host/release/table-hover.cjs",
       "role": "editable-source",
-      "sha256": "1a6848e49329b4d547235f37a6a4d63333287cabbf41a270d15c6464e743d52f",
+      "sha256": "39fe33b28eff3986c686be3f88386ff5294be3f22057aa57e41f82b53e729b48",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6999,7 +7056,7 @@
     {
       "path": "test/integration/extension.test.js",
       "role": "editable-source",
-      "sha256": "6c96888a59b3f03c0b3e97ced39e6d147b72e6a5413c13ba401db9f829792d50",
+      "sha256": "4b53fdca171c483fcb7af7997680c2760b5b9d333357c3575eaf44644e0e0a0e",
       "reason": "public-product-entry-regression"
     },
     {
@@ -7023,7 +7080,7 @@
     {
       "path": "test/manual/manualReaderPanel.test.js",
       "role": "editable-source",
-      "sha256": "d22340fec1ba00b6dfb1a58f6ceb238cfb39392c60e1b61d280ff57db1b7c1cd",
+      "sha256": "16257b3ddc5e01dee0883055ea0c7584bffaa342ac9948069a395114fbe36269",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7035,7 +7092,7 @@
     {
       "path": "test/manual/manualSidebarProvider.test.js",
       "role": "editable-source",
-      "sha256": "4d19ad931e34c0a8d366d29c002e126f6d8dad27060b3bb774d66859feb5e1d0",
+      "sha256": "da54ba1ef2bcb4ed5bce0924a10c12e24bcdfa8776acbcf4ac898a2f079583f4",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7101,7 +7158,7 @@
     {
       "path": "test/scripts/build/generateFieldReferenceIndex.test.js",
       "role": "editable-source",
-      "sha256": "288afc2fca1542c5a27702c78415866366cd710c1f88f4227f04a1e1585846a1",
+      "sha256": "f47ccddfdab51c568058c906a133e44afdd6a7ce48012f59d35b513b064349a5",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7167,13 +7224,13 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "f086479fc733eeafcb263d2d7e7b2a256faa9411a28a3005c99953a824bb7e02",
+      "sha256": "08ef259bff94569cd99a85d8a3971c0640d8d54d0b15473cc4ceb1261be95027",
       "reason": "public-build-or-package-regression"
     },
     {
       "path": "test/scripts/host/managerGuiCompletion.test.js",
       "role": "editable-source",
-      "sha256": "6c1485ff08a934a44c92046e6924f5da4d6ad87af997e2ba6c244173bda2ecec",
+      "sha256": "f4e28e4d12606923a210ea02eed5595454cd211f1ea2267a229ca739a4b326cd",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7191,7 +7248,7 @@
     {
       "path": "test/scripts/maintenance/projectContracts.test.js",
       "role": "editable-source",
-      "sha256": "420fca6bb23258b6f7d11cdcbd4e5f75ef0e6d5958bee2ae2d9cbbccfdd26e97",
+      "sha256": "de24e176465f8a49935fb6f622d9bf053ffc029b11ee5ea79632f476a9882501",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7221,7 +7278,7 @@
     {
       "path": "test/scripts/release/publicReleaseReports.test.js",
       "role": "editable-source",
-      "sha256": "39258e14a7a4e54c8a9f6f9197031078063da955f117af63df7aad49ef431f8d",
+      "sha256": "94aa3da31cf9b3ce0d44b8d03fbda7d2f6202d195bf0e96c4320b10e62aff0a5",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7233,13 +7290,13 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "000b34f69dcf751c99a448df8d61c5d8ab06696e1e7dbe77c11fa4985f99a030",
+      "sha256": "1b8a067d2d4bf0e5d49543f58af47a35dc5f375b5650e9b75358275d22068252",
       "reason": "public-build-or-package-regression"
     },
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "970a7553d6fefd2ddd7270f098c563690a2f566e2ce2ec1af9a2cc587147d0f0",
+      "sha256": "dd6ae462b8316815341ef21c190d62310547dbe9e22187ebfd08e030dc25b336",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7263,7 +7320,7 @@
     {
       "path": "test/scripts/release/unitRunner.test.js",
       "role": "editable-source",
-      "sha256": "513b4767a7119a313572be8a50ae1a0b9016ba355617862c48eef5ad3ece2c57",
+      "sha256": "73135aa99e93291787ceb07cbfc384f07d62119ab51b278cf05675d017ce0225",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7365,7 +7422,7 @@
     {
       "path": "test/support/native-reference-authority.js",
       "role": "editable-source",
-      "sha256": "17e36471723d1888a7445bf50f647d5aaccf0b8947a752ff0a97355791701416",
+      "sha256": "ac78b261054465b1485ce0edf2ef01ac5633f553e109b0c87303812a4d9a7499",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7405,6 +7462,12 @@
       "reason": "product-behavior-safety-or-host-test"
     },
     {
+      "path": "test/support/toolbar-layout.cjs",
+      "role": "editable-source",
+      "sha256": "4b07bf70252a6dbb87a835227a392f9f78acbbf8cf382994dab552dd68e9fde3",
+      "reason": "product-behavior-safety-or-host-test"
+    },
+    {
       "path": "test/support/vscode-mock.js",
       "role": "editable-source",
       "sha256": "de17ebd3ccea9e21844833382f11ae9410d5685b91416414dd06405544844c86",
@@ -7437,7 +7500,7 @@
     {
       "path": "test/worker/projectSessions.test.js",
       "role": "editable-source",
-      "sha256": "aef7e01080aab658ac7cfe52f37fbe9755f0a8ef1e7394cb22d4ca2f048ed126",
+      "sha256": "74babe979b28f53f16709b43c49247cbfffc532bcaeb9df0a72145e392f90cd8",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7467,7 +7530,7 @@
     {
       "path": "webview/entity-references/src/EntityReferencesApp.tsx",
       "role": "editable-source",
-      "sha256": "d42918818ba9dedc7e8129153c561826e966d909178bfa38e5397504d08f9870",
+      "sha256": "2035b1748feda6c4a092cfbea5327d7610105f4171c17ad9e03a576a28e6be92",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7491,7 +7554,7 @@
     {
       "path": "webview/entity-references/src/styles.css",
       "role": "editable-source",
-      "sha256": "c94b016bc12c57dc03d4a8dcba179c805791e039430612cd5970422b9662def5",
+      "sha256": "487d7d59a17f2278057b3f9da8d43a0359d9eb5671aedc6f5e9e72a55a091c53",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7509,7 +7572,7 @@
     {
       "path": "webview/entity-references/test/EntityReferencesApp.test.tsx",
       "role": "editable-source",
-      "sha256": "29a701aaecb595126e185d49046d3e2a5fad922e44f10b1df5491e48e5f7bf88",
+      "sha256": "ceb2001e7df9914388ba253df7195680b5c744acbf2469878b4d09b62906dd53",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7521,7 +7584,7 @@
     {
       "path": "webview/entity-references/test/styles.test.ts",
       "role": "editable-source",
-      "sha256": "a8604359609c880c57ab7c9ac0a87f2d7fe5b2a418d2921f2b4d9e6e96643f48",
+      "sha256": "1acbc241638a8253eea87f5080d7e0d456eb43ebf52814fb01da90ebebd2a8f3",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7557,7 +7620,7 @@
     {
       "path": "webview/keyword-options/src/KeywordOptionsApp.tsx",
       "role": "editable-source",
-      "sha256": "402694d59e9f83652e677a231bb4ce9d03a171de90df0e3d0bb329228c905ef1",
+      "sha256": "a0958ebc7cc1437b94cab3f0f29b465c3a6aaf051cd17c59b16763a8eee494e8",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7567,15 +7630,9 @@
       "reason": "editable-product-source-or-resource"
     },
     {
-      "path": "webview/keyword-options/src/ManagerDialog.tsx",
-      "role": "editable-source",
-      "sha256": "4760bd5e1754fc24938f44cf5843446ab91367038568a528ec286b7dbfb3d176",
-      "reason": "editable-product-source-or-resource"
-    },
-    {
       "path": "webview/keyword-options/src/ManagerIcon.tsx",
       "role": "editable-source",
-      "sha256": "a26ec74ec383b57d11c7df7b625b624dc8a3aa19822a9a6eb8a8ce7f4a41371a",
+      "sha256": "8651fd59088113f337834525a2f83435810252db232ae1a642d0689e7f1b91d8",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7587,7 +7644,7 @@
     {
       "path": "webview/keyword-options/src/styles.css",
       "role": "editable-source",
-      "sha256": "a2ca2a0ad3960a652911da537b9fc703e2abba87126aa315bb85a723ed01faaa",
+      "sha256": "3aa5376aa5dacca9bd34a64eb21d2d7a0f281651ab759e93fd2485429607ac73",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7611,7 +7668,7 @@
     {
       "path": "webview/keyword-options/test/KeywordOptionsApp.test.tsx",
       "role": "editable-source",
-      "sha256": "d1b20dc9ae3efeda43f0c0beac9342c5879789914f004b034695cc22adffd26a",
+      "sha256": "649adce5f1bc46da0d383a21bdd333ecb3a9e796945376cc09958e8c391bfa15",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7659,7 +7716,7 @@
     {
       "path": "webview/large-file-viewer/src/LargeFileViewerApp.tsx",
       "role": "editable-source",
-      "sha256": "8d21d9f82557cce3fff88ef91ac0d39b511c6e4bae56c3ed52b92ee496cb48b1",
+      "sha256": "effc84db3cc2a5a9f4a1b5fbadc948230c6656a7fdb0e3a74e4f011a39b66c53",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7671,7 +7728,7 @@
     {
       "path": "webview/large-file-viewer/src/styles.css",
       "role": "editable-source",
-      "sha256": "3fdfdbf9bf8276e7b8d90130cfea1f09fb5ab951fdb95489328632602418d20f",
+      "sha256": "21e317ddf74f5617a9a0b33fd06c3954cdc7d20257f286725d75afee0d0bd398",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7689,7 +7746,7 @@
     {
       "path": "webview/large-file-viewer/test/LargeFileViewerApp.test.tsx",
       "role": "editable-source",
-      "sha256": "96459bcc45dc865dfeb5651c63c277c218e76e806baadbb348a6874b6d658d0e",
+      "sha256": "579978877a68650e6f22686bba9008e765bc8aa826499b837d9c5ee7c4915d76",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7737,7 +7794,7 @@
     {
       "path": "webview/manual-reader/src/ReaderApp.tsx",
       "role": "editable-source",
-      "sha256": "f44836c6a39a8e965139f48edd30c7dff6d4a5045efe7d0d87cf06fda095080e",
+      "sha256": "3100dab7264257fda15729c48111adbd5deb13ebddea303d1f92d8fb67d77ae1",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7863,7 +7920,7 @@
     {
       "path": "webview/manual-reader/test/ReaderApp.test.tsx",
       "role": "editable-source",
-      "sha256": "6f1ca10dcae4ddeebb6742ee464acf782bada6cdb1fa807aad6a4dba1443c4b6",
+      "sha256": "9dd4e47578ecae5551ae1ff062c2f6126d7beeb3c2a460831581c41306e22231",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7983,9 +8040,9 @@
     {
       "path": "webview/shared/fieldHelp.css",
       "role": "editable-source",
-      "sha256": "e1f18fc9adbffb7259f0273dcd3775f8f14c54819f729d2e39ffa575db0b96b3",
+      "sha256": "76bd376faedd89aa71b521671dd2f9613d29c8370ec9007957b20a471bbac8e5",
       "reason": "editable-product-source-or-resource"
     }
   ],
-  "excludedFileCount": 5872
+  "excludedFileCount": 5873
 }

@@ -33,7 +33,7 @@ async function main() {
     const cases = [
         ['../release/verify-release-hash.cjs', vsix], ['run-release-host.cjs', 'catalog'], ['run-release-host.cjs', 'smoke'],
         ['test-release-manual-renderer.cjs'], ['run-keyword-manager-gui.cjs'], ['run-keyword-manager-gui.cjs', '--incomplete'],
-        ['../benchmark/benchmark-keyword-manager-webview.cjs'], ['run-editor-safety-extension-host.cjs', '--ci-functional'], ['run-large-file-viewer-host.cjs'],
+        ['../benchmark/benchmark-keyword-manager-webview.cjs', '--functional'], ['run-editor-safety-extension-host.cjs', '--ci-functional'], ['run-large-file-viewer-host.cjs'],
         ...['upgrade', 'reload', 'offline', 'missing-external-manual', ...(process.platform === 'win32' ? ['ordinary-project-f5'] : [])]
             .map(name => ['run-release-lifecycle.cjs', name]),
     ];

@@ -20,11 +20,6 @@ import { useReadingPosition, useRestoreReadingPosition } from './useReadingPosit
 const SEARCH_DEBOUNCE_MS = 250;
 const FONT_SCALE_PERSIST_MS = 150;
 
-/** UI locale drives search scope: English UI → en only; Chinese UI → bilingual. */
-function scopeForUiLocale(uiLocale: ReaderViewModel['uiLocale']): ManualSearchScope {
-    return uiLocale === 'en' ? 'en' : 'both';
-}
-
 function searchKey(query: string, scope: ManualSearchScope, mode: ManualSearchMode): string {
     return `${query}\0${scope}\0${mode}`;
 }
@@ -283,7 +278,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         const current = viewRef.current;
         if (!current) return;
         const revision = current.revision;
-        const effectiveScope = current.readingMode === 'bilingual' ? 'both' : scopeForUiLocale(current.uiLocale);
+        const effectiveScope = current.search.scope;
         const effectiveMode: ManualSearchMode = mode === 'fulltext' ? 'fulltext' : 'keyword';
         const key = searchKey(query, effectiveScope, effectiveMode);
         // Skip duplicate live searches (e.g. re-open with unchanged query).
@@ -323,7 +318,7 @@ export function ReaderApp({ initialState, transport }: ReaderAppProps): React.JS
         if (!searchOpen || !viewRef.current) return;
         const handle = window.setTimeout(() => performSearch(false), SEARCH_DEBOUNCE_MS);
         return () => window.clearTimeout(handle);
-    }, [query, mode, searchOpen, performSearch]);
+    }, [query, mode, searchOpen, performSearch, view?.search.scope]);
 
     if (!view) return <>
         <RequestStatusBanner error={requestError} pending={false} messages={messages} onDismiss={() => setRequestError(null)} />

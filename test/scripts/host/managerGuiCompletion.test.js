@@ -47,7 +47,7 @@ describe('manager apply readiness', () => {
         const button = { click() { if (!busy()) { applied = true; clicks++; } } };
         const result = await vm.runInNewContext(expression + '(false)', {
             performance: { now: () => now }, setTimeout: resolve => { now += 25; resolve(); },
-            HTMLInputElement: Input, Event: class {}, document: {
+            HTMLInputElement: Input, Event: class {}, FocusEvent: class {}, document: {
                 body: { innerText: 'pending preview' }, querySelector(selector) {
                     if (selector === '.field span[title=ICURV]') return { closest: () => ({ querySelector: () => field }) };
                     if (selector === 'main') return { getAttribute: () => busy() ? 'true' : 'false' };
@@ -120,7 +120,7 @@ describe('manager renderer waits for host readiness', () => {
                 attached: new Set(), contexts: new Map([[1, 'ready-renderer']]),
                 call: async () => ({ targetInfos: [] }),
                 evaluate: async () => { assert.ok(now >= 200, 'Do not use renderer before host metadata'); return true; },
-                unverified: false, prefixHelp: false, standardRepeat: false, repeated: false, incomplete: false, comments: false,
+                optionalCards: false, unverified: false, prefixHelp: false, standardRepeat: false, repeated: false, incomplete: false, comments: false,
             });
             assert.equal(result, 'ready-renderer');
             assert.equal(now, 200);

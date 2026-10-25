@@ -136,11 +136,14 @@ describe('keyword display identity', () => {
         assert.equal(summary.identity, undefined);
     });
 
-    it('returns collection counts without retaining a giant block', () => {
+    it('stops capture at 32 lines while preserving the full collection count', () => {
         const accumulator = createKeywordIdentityAccumulator('NODE');
-        for (let index = 0; index < 100000; index++) {
-            accumulator.acceptLine(`${index + 1},0,0,0`);
+        for (let index = 0; index < 32; index++) {
+            assert.equal(accumulator.isCaptureComplete(), false);
+            assert.equal(accumulator.acceptLine(`${index + 1},0,0,0`), true);
         }
+        assert.equal(accumulator.isCaptureComplete(), true);
+        assert.equal(accumulator.acceptLine('33,0,0,0'), false);
         const summary = accumulator.finish({ dataLineCount: 100000 });
         assert.equal(summary.kind, 'collection');
         assert.deepEqual(summary.collection, { kind: 'data-lines', count: 100000 });

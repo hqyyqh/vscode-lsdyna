@@ -111,43 +111,66 @@ Most features work out of the box. Useful settings in VS Code Preferences (`Ctrl
 <details>
 <summary>All settings and defaults</summary>
 
+The Settings editor now lists 29 options: 12 everyday options and 17 advanced options. Existing explicit values for the retired cache settings remain honored within their previous bounds; new profiles use the built-in defaults. VS Code may mark the retired JSON keys as unknown. Change marks now use a fixed 250 ms update delay. To silence setup notices, choose **Do not remind me again** in the notice; an existing `lsdyna.health.showFirstRunNotice: false` is still respected. The unaudited-catalog setting no longer enables unreviewed data; development use requires the existing environment-variable override.
+
+The retired `lsdyna.scanner.fullScanLargeFiles` switch is no longer needed: keyword and include discovery already reads through the file, including the middle of large files. Existing values do not change this behavior. Cancellation, scan budgets and incomplete-result reporting still apply; this is not a guarantee of complete entity-reference analysis.
+
+To clean up old settings, open **Preferences: Open User Settings (JSON)** and check workspace settings too. You may remove `lsdyna.scanner.fullScanLargeFiles` and `lsdyna.changeMarks.debounceMs`; they no longer control behavior. Keep an existing `lsdyna.health.showFirstRunNotice: false` if you still want to suppress notices. For retired cache limits, see the [compatibility defaults and migration notes](CONTRIBUTING.md#legacy-cache-settings--旧版缓存兼容设置) before deleting an override. The extension does not rewrite your settings.
+
+### Editing
+
 | Setting | Default | Description |
 | --- | --- | --- |
-| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | Root folder of a manual pack, containing its runtime indexes and PDF manuals. Use an absolute path or a path relative to the workspace. On Windows, place SumatraPDF.exe in the pack root or its pdf subfolder to enable precise page jumps. |
 | `lsdyna.enableTabNavigation` | `true` | Enable smart Tab navigation and field overwrite selection in LS-DYNA cards. When disabled, Tab inserts spaces or tab characters normally. |
 | `lsdyna.enableCellEditProtect` | `true` | With this enabled, Delete or Backspace clears a selected fixed-width field with spaces so later fields do not shift. Typing replaces the whole field only after Tab selects it; * and `$` always use standard text editing. This setting is independent of Tab navigation. |
 | `lsdyna.enableFieldHover` | `true` | Show help when the pointer rests on a fixed-width card field. Turn this off to avoid field popups while editing; turn it back on from DynaSense quick actions. |
+| `lsdyna.columnGuides.enabled` | `true` | Show column guides at verified fixed-width field boundaries. |
+
+### Appearance
+
+| Setting | Default | Description |
+| --- | --- | --- |
 | `lsdyna.changeMarks.enabled` | `true` | Show session change marks in the editor gutter. By default, amber marks are unsaved and green marks were saved after the file was opened. A solid bar means modified, a hollow bar means inserted, and a triangle marks a nearby deletion. Git is not required. |
 | `lsdyna.changeMarks.colorScheme` | `"adaptive"` | Choose one color scheme for all session change marks. Every preset automatically adjusts for light, dark, high-contrast, and high-contrast-light themes. |
-| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | Custom color for unsaved changes, in #RRGGBB format. Used only when Change Marks: Color Scheme is Custom. |
-| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | Custom color for changes saved since the file was opened, in #RRGGBB format. Used only when Change Marks: Color Scheme is Custom. |
-| `lsdyna.changeMarks.maxLineCount` | `100000` | Skip change marks when a document has more lines than this (protects very large mesh decks). |
-| `lsdyna.changeMarks.debounceMs` | `250` | Milliseconds to wait after typing before recomputing change marks. |
-| `lsdyna.changeMarks.showOverviewRuler` | `true` | Also show change marks on the overview ruler (scrollbar). |
 | `lsdyna.changeMarks.showLineBackground` | `true` | Apply a very light background to marked lines. Turn this off to keep only the gutter marks. |
-| `lsdyna.changeMarks.showMinimap` | `true` | Show unsaved and saved-since-open marks on the minimap using the selected color scheme. Modified, inserted, and deleted shapes remain in the editor gutter. |
-| `lsdyna.navigation.pulseOnJump` | `true` | Highlight the target line briefly after jumping to a keyword usage. |
 | `lsdyna.statusBar.level` | `"simple"` | Amount of information about the current LS-DYNA file shown in the status bar. Off hides the entry; Simple shows problems or the current keyword; Detail also shows the field index and latest Include Tree scan root. |
-| `lsdyna.health.showFirstRunNotice` | `true` | Show a one-time DynaSense notice when an LS-DYNA file needs environment or manual setup. |
-| `lsdyna.largeFile.enableRendering` | `true` | Keep syntax highlighting, hover help, and completion enabled for files of any length. Disable this to save memory when working with files above 100,000 lines. Explicit formatting has separate hard safety limits. |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | Show Select Cards and Format actions above every LS-DYNA keyword. Keywords with optional suffixes also show Configure Options. When disabled, use the keyword hover actions, editor context menu, or Command Palette. |
-| `lsdyna.hover.previewMaxLines` | `20` | Maximum number of lines to display in the `*INCLUDE` file hover preview. |
-| `lsdyna.autoFormat` | `"disabled"` | Experimental: choose when automatic LS-DYNA card formatting runs. Keep this disabled unless you are comfortable with edits when the cursor leaves a line. |
+| `lsdyna.navigation.pulseOnJump` | `true` | Highlight the target line briefly after jumping to a keyword usage. |
+
+### Manuals and language
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | Root folder of a manual pack, containing its runtime indexes and PDF manuals. Use an absolute path or a path relative to the workspace. On Windows, place SumatraPDF.exe in the pack root or its pdf subfolder to enable precise page jumps. |
 | `lsdyna.language` | `"auto"` | Choose the language for the extension’s runtime UI, hover help and messages. Command names and setting descriptions follow the VS Code display language. |
+
+### Advanced: Engineering
+
+| Setting | Default | Description |
+| --- | --- | --- |
 | `lsdyna.additionalExtensions` | `[".k",".key",".dyna"]` | Additional filename extensions to treat as LS-DYNA files. |
-| `lsdyna.scanner.fullScanLargeFiles` | `false` | Perform a full scan for the Include Tree and Keyword Index. When disabled, files larger than 500 KB are scanned only at the first and last 1,000 lines for better performance.  > *`*N`ote:** Enabling this for projects with very large mesh files can increase loading time. |
 | `lsdyna.ignoreFormattingKeywords` | `[]` | Keywords or prefixes to exclude from the explicit LS-DYNA formatting command, smart Tab alignment, and field-comment completion. |
 | `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | Additional valid keywords that should not be reported as unknown. Include the leading asterisk (for example, '`*END`'). Add a trailing wildcard (for example, '`*MAT_*`') to match every keyword with that prefix. Entries can also be added from a hover or Quick Fix. |
 | `lsdyna.unknownKeywordSeverity` | `"error"` | Diagnostic severity for keywords not found in the built-in library or custom valid list. This does not affect keywords beginning with ** or lowercase-keyword warnings. |
 | `lsdyna.warnLowercaseKeyword` | `false` | Warn when a keyword contains lowercase letters (e.g. *node). LS-DYNA is case-insensitive, so this is off by default; enable it if your team keeps keywords uppercase. |
 | `lsdyna.include.pathCaseCheck` | `"crossPlatform"` | How path casing is checked for `*INCLUDE` and `*INCLUDE_PATH`. Windows can open mismatched casing; Linux LS-DYNA usually cannot. |
+| `lsdyna.autoFormat` | `"disabled"` | Experimental: choose when automatic LS-DYNA card formatting runs. Keep this disabled unless you are comfortable with edits when the cursor leaves a line. |
+| `lsdyna.clearAutoIndentOnEnter` | `false` | Remove indentation copied by the editor after Enter in LS-DYNA files. Disabled by default to preserve intentional indentation and pasted text. |
+
+### Advanced: Display and performance
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | Custom color for unsaved changes, in #RRGGBB format. Used only when Change Marks: Color Scheme is Custom. |
+| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | Custom color for changes saved since the file was opened, in #RRGGBB format. Used only when Change Marks: Color Scheme is Custom. |
+| `lsdyna.changeMarks.showOverviewRuler` | `true` | Also show change marks on the overview ruler (scrollbar). |
+| `lsdyna.changeMarks.showMinimap` | `true` | Show unsaved and saved-since-open marks on the minimap using the selected color scheme. Modified, inserted, and deleted shapes remain in the editor gutter. |
+| `lsdyna.changeMarks.maxLineCount` | `100000` | Skip change marks when a document has more lines than this (protects very large mesh decks). |
+| `lsdyna.largeFile.enableRendering` | `true` | Keep syntax highlighting, hover help, and completion enabled for files of any length. Disable this to save memory when working with files above 100,000 lines. Explicit formatting has separate hard safety limits. |
+| `lsdyna.hover.previewMaxLines` | `20` | Maximum number of lines to display in the `*INCLUDE` file hover preview. |
 | `lsdyna.cache.entityIndexMemoryMaxMiB` | `"auto"` | Managed memory budget for model indexing in MiB, shared by query caches, unsaved document indexes, result pages, index build and restore batches and SQLite. This is not a limit on total VS Code process memory. Takes effect after the extension restarts. |
 | `lsdyna.cache.entityIndexDiskMaxMiB` | `4096` | Shared disk budget for model indexes in MiB, including databases, journals and temporary build files. If the budget is exhausted, queries fall back to scanning. Takes effect after the extension restarts. |
-| `lsdyna.cache.memoryMaxMiB` | `48` | Maximum memory cache for background project snapshots in MiB, up to 64 MiB. The UI keeps a separate project-summary cache of up to 32 MiB. Lower this value on memory-constrained workstations. Takes effect after the extension restarts. |
-| `lsdyna.cache.fileScanMemoryMaxMiB` | `16` | Maximum memory cache for background file-scan results in MiB, up to 16 MiB. Takes effect after the extension restarts. |
-| `lsdyna.cache.maxAgeDays` | `30` | Maximum idle age of persistent model indexes, up to 30 days. Expired entries are cleaned up when indexing is first used after the extension starts. Takes effect after the extension restarts. |
-| `lsdyna.clearAutoIndentOnEnter` | `false` | Remove indentation copied by the editor after Enter in LS-DYNA files. Disabled by default to preserve intentional indentation and pasted text. |
-| `lsdyna.keywordManager.allowUnauditedCatalog` | `false` | For development and troubleshooting only: allow keyword form data that has not passed review to be loaded. |
+
 
 </details>
 

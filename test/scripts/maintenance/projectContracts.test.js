@@ -46,14 +46,14 @@ describe('project contracts', () => {
         const zh = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.nls.zh-cn.json'), 'utf8'));
 
         assert.equal(en['commands.scanKeywordIndex.title'], 'Scan Keyword Index');
-        assert.equal(en['commands.keywordIndexSetLocal.title'], 'Set Index Scope to Current File');
-        assert.equal(en['commands.keywordIndexSetRecursive.title'], 'Set Index Scope to Entire Project');
+        assert.equal(en['commands.keywordIndexSetLocal.title'], 'Use Current File Scope');
+        assert.equal(en['commands.keywordIndexSetRecursive.title'], 'Use Main Deck and Include Files Scope');
         assert.equal(en['commands.configureManualsDir.title'], 'Set LS-DYNA Manuals Directory');
         assert.equal(en['commands.openManualReader.title'], 'Open Manual Reader');
         assert.equal(en['commands.openCurrentKeywordManual.title'], 'Open Manual for Current Keyword');
         assert.equal(zh['commands.scanKeywordIndex.title'], '扫描关键字索引');
-        assert.equal(zh['commands.keywordIndexSetLocal.title'], '索引范围设为当前文件');
-        assert.equal(zh['commands.keywordIndexSetRecursive.title'], '索引范围设为整个项目');
+        assert.equal(zh['commands.keywordIndexSetLocal.title'], '使用当前文件范围');
+        assert.equal(zh['commands.keywordIndexSetRecursive.title'], '使用主文件及其引用文件范围');
         assert.equal(zh['commands.configureManualsDir.title'], '设置 LS-DYNA 手册目录');
         assert.equal(zh['commands.openManualReader.title'], '打开手册阅读器');
         assert.equal(zh['commands.openCurrentKeywordManual.title'], '打开当前关键字的手册');
@@ -68,6 +68,24 @@ describe('project contracts', () => {
         const enText = JSON.stringify(en);
         for (const phrase of ['file(s)', 'Full Tree', 'Plug-and-Play', 'Column-Aligned', 'optional cards']) {
             assert.ok(!enText.includes(phrase), `en NLS copy should not contain "${phrase}"`);
+        }
+    });
+
+    it('uses one scope picker per view and hides direct scope commands', () => {
+        const menus = require('../../../package.json').contributes.menus;
+        for (const [command, view] of [
+            ['extension.keywordIndexChooseScope', 'lsdynaKeywordIndex'],
+            ['extension.entityReferences.chooseScope', 'lsdynaEntityReferences'],
+        ]) {
+            const toolbar = menus['view/title'].filter(item => item.command === command);
+            assert.equal(toolbar.length, 1, command);
+            assert.equal(toolbar[0].when, `view == ${view}`, command);
+            assert.equal(toolbar[0].group, 'navigation@2', command);
+        }
+        for (const command of ['extension.keywordIndexSetLocal', 'extension.keywordIndexSetRecursive',
+            'extension.entityReferences.setScopeFile', 'extension.entityReferences.setScopeProject']) {
+            assert.ok(!menus['view/title'].some(item => item.command === command), command);
+            assert.equal(menus.commandPalette.find(item => item.command === command)?.when, 'false', command);
         }
     });
 

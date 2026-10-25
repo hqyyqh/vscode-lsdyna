@@ -19,7 +19,7 @@ const state: ReaderViewModel = {
     chrome: { volumeTitle: 'Volume I', chapterLabel: 'Control', chapterKey: '13_control' },
     content: documentContent,
     navigation: { canBack: true, canForward: false, canPreviousSection: true, canNextSection: true },
-    search: { query: '', scope: 'zh' as const, mode: 'keyword' as const, results: [] },
+    search: { query: '', scope: 'both' as const, mode: 'keyword' as const, results: [] },
     restore: { anchorId: null, scrollY: 180, scrollRatio: 0 },
 };
 
@@ -266,7 +266,7 @@ describe('ReaderApp', () => {
         await user.click(screen.getByRole('button', { name: 'Search manuals' }));
         await user.type(screen.getByRole('searchbox'), 'dt2ms');
         await act(async () => { vi.advanceTimersByTime(300); });
-        expect(client.request).toHaveBeenCalledWith('reader/search', { revision: 4, query: 'dt2ms', scope: 'en', mode: 'keyword' });
+        expect(client.request).toHaveBeenCalledWith('reader/search', { revision: 4, query: 'dt2ms', scope: 'both', mode: 'keyword' });
         vi.useRealTimers();
     });
 
@@ -279,12 +279,12 @@ describe('ReaderApp', () => {
         await user.type(screen.getByRole('searchbox'), 'material');
         await act(async () => { vi.advanceTimersByTime(300); });
         expect(client.request).toHaveBeenCalledWith('reader/search', {
-            revision: 4, query: 'material', scope: 'en', mode: 'keyword',
+            revision: 4, query: 'material', scope: 'both', mode: 'keyword',
         });
         await user.click(screen.getByRole('button', { name: /Search keywords and titles/i }));
         await act(async () => { vi.advanceTimersByTime(300); });
         expect(client.request).toHaveBeenCalledWith('reader/search', {
-            revision: 4, query: 'material', scope: 'en', mode: 'fulltext',
+            revision: 4, query: 'material', scope: 'both', mode: 'fulltext',
         });
         vi.useRealTimers();
     });
@@ -337,7 +337,7 @@ describe('ReaderApp', () => {
         const client = transport();
         const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
         // Chinese UI exposes the language toggle and bilingual search scope.
-        const zhState = { ...state, uiLocale: 'zh' as const, language: 'zh' as const, search: { query: '', scope: 'zh' as const, mode: 'keyword' as const, results: [] } };
+        const zhState = { ...state, uiLocale: 'zh' as const, language: 'zh' as const, search: { query: '', scope: 'both' as const, mode: 'keyword' as const, results: [] } };
         render(<ReaderApp initialState={zhState} transport={client} />);
 
         await waitFor(() => expect(client.request).toHaveBeenCalledWith('reader/ready', { revision: 4 }));

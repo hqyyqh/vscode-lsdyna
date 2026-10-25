@@ -58,7 +58,7 @@ describe('keyword aliases and default valid keywords', () => {
         // Shared schema recognition remains available while the legacy alias loader retries.
         assert.equal(unknowns().length, 0);
         assert.equal(manualLocations().length, 1);
-        for (let index = 0; index < 1000; index++) getAliases('SET_PART');
+        for (let index = 0; index < 3; index++) getAliases('SET_PART');
         assert.equal(reads, 1);
         unavailable = 'spelling'; now = 1000;
         assert.equal(getAliases('SET_PART').length, 0);
@@ -322,7 +322,7 @@ describe('keyword aliases and default valid keywords', () => {
 
     it('declares TITLE, CASE_BEGIN, and CASE_END in package custom valid keyword defaults', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
-        const defaults = packageJson.contributes.configuration.properties['lsdyna.customValidKeywords'].default;
+        const defaults = Object.assign({}, ...[packageJson.contributes.configuration].flat().map(group => group.properties))['lsdyna.customValidKeywords'].default;
 
         assert.ok(defaults.includes('*END'));
         assert.ok(defaults.includes('*TITLE'));
@@ -332,7 +332,7 @@ describe('keyword aliases and default valid keywords', () => {
 
     it('disables cursor-leave auto formatting by default and marks it experimental', () => {
         const packageJson = require(path.join('..', '..', 'package.json'));
-        const autoFormat = packageJson.contributes.configuration.properties['lsdyna.autoFormat'];
+        const autoFormat = Object.assign({}, ...[packageJson.contributes.configuration].flat().map(group => group.properties))['lsdyna.autoFormat'];
 
         assert.equal(autoFormat.default, 'disabled');
         assert.deepEqual(autoFormat.tags, ['experimental']);

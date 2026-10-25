@@ -76,6 +76,10 @@ export function createKeywordManagerApply(host: {
             model.targetKeyword,
             { provisional },
         );
+        if (Object.prototype.hasOwnProperty.call(model.draftControlState || {}, 'optional-cards')) {
+            const count = String(model.draftControlState['optional-cards']);
+            result.requestedOptionalCardCount = count === '' ? 0 : /^[1-9]\d*$/.test(count) ? Number(count) : NaN;
+        }
         keywordManagerPrepareCatalogInputFormLayout(
             document,
             model.keywordLine,
@@ -84,7 +88,9 @@ export function createKeywordManagerApply(host: {
             model.recordDrafts || {},
             model.selectedFormRuleId || null,
         );
-        keywordManagerPrepareCatalogSelectorLayout(document, model.keywordLine, result, model.resolvedTargetState || {}, false, model.fieldDrafts || {});
+        keywordManagerPrepareCatalogSelectorLayout(document, model.keywordLine, result,
+            Object.fromEntries(Object.entries(model.resolvedTargetState || {}).filter(([id]) => id !== 'optional-cards')),
+            false, model.fieldDrafts || {});
         const unavailableMessage = () => i18n.get(
             result.plan?.reason === 'lspp-input-form-field-draft-invalid' ? 'keywordManagerDraftLayoutUnavailable'
                 : ['unmodeled-source-text', 'source-record-coverage-unproven'].includes(result.plan?.reason)

@@ -5,7 +5,7 @@ const path = require('node:path');
 const ts = require('typescript');
 
 describe('activation dependency preparation', () => {
-    it('passes resource-scoped zero and nonzero change-mark delays through activation', () => {
+    it('uses the internal change-mark delay even when an old delay setting exists', () => {
         const root = path.resolve(__dirname, '../..');
         const entry = ts.createSourceFile('extension.ts', fs.readFileSync(path.join(root, 'src/extension.ts'), 'utf8'), ts.ScriptTarget.Latest, true);
         const getter = entry.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'getLsdynaConfigurationValue');
@@ -35,15 +35,15 @@ describe('activation dependency preparation', () => {
         const getConfig = new Function('vscode', 'DEFAULT_CHANGE_MARKS_CUSTOM_COLORS',
             `${getter.getText(entry)}; return (${mappings[0].getText(entry)});`)(vscode, DEFAULT_CHANGE_MARKS_CUSTOM_COLORS);
         for (const [value, scope, expected] of [
-            [undefined, undefined, 250], [0, { scheme: 'file', fsPath: '/zero.k' }, 0],
-            [40, { scheme: 'file', fsPath: '/other.k' }, 40], [5000, undefined, 5000],
+            [undefined, undefined, 250], [0, { scheme: 'file', fsPath: '/zero.k' }, 250],
+            [40, { scheme: 'file', fsPath: '/other.k' }, 250], [5000, undefined, 250],
             ['invalid', { scheme: 'file', fsPath: '/invalid.k' }, 250],
         ]) {
             configured = value;
             resource = scope;
             assert.equal(getConfig(resource).debounceMs, expected);
         }
-        assert.equal(delayReads, 5);
+        assert.equal(delayReads, 0);
     });
 
     it('resolves every prepared module in the development build used by F5', () => {

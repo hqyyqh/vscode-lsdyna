@@ -5,7 +5,8 @@
  * only the runtime ManualIndexRepository so it can be refreshed whenever the
  * active manual pack changes.
  *
- * Titles are always English (source labels). Search reuses the same
+ * Chinese section titles retain their English source labels; keyword names stay intact.
+ * Search reuses the same
  * ManualIndexRepository.search as the main reader.
  *
  * TOC layout: volume → chapter (chunks/<dir>) → section, with <details>
@@ -132,9 +133,7 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
     }
 
     private searchScope(): ManualSearchScope {
-        // Chinese UI: search both indexes (section titles are often English).
-        // English UI: English index only.
-        return uiLocale() === 'zh' ? 'both' : 'en';
+        return this.repo?.getCapabilities().features.searchZh ? 'both' : 'en';
     }
 
     private onMessage(message: unknown): void {
@@ -153,6 +152,7 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         // A replaced page must never search, open or copy against the new pack.
         if (data.revision !== this.pageRevision) return;
 
+        if (data.type === 'configurePack') { void vscode.commands.executeCommand('extension.configureManualsDir'); return; }
         if (data.type === 'retryLoad') {
             this.retryLoad?.();
             return;
@@ -230,7 +230,8 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         return {
             manualId: result.location.manualId,
             sectionId: result.location.sectionId,
-            title: result.titleEn || result.location.sectionId,
+            title: uiLocale() === 'zh' && result.titleZh && !this.copyableKeyword(result.titleEn)
+                ? `${result.titleZh} / ${result.titleEn}` : result.titleEn || result.location.sectionId,
             preview: result.preview || '',
             volumeTitle: result.volumeTitle || this.repo?.listDocuments()
                 .find(document => document.manualId === result.location.manualId)?.title || i18n.get('manualSidebarUnknownVolume'),
@@ -243,9 +244,8 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         if (!this.view) return;
         this.pageRevision += 1;
         const painted = this.html();
-        this.view.description = painted.tocLive
-            ? `↑↓ ${i18n.get('manualSidebarNavigate')} · Enter ${i18n.get('manualSidebarOpen')} · Esc ${i18n.get('manualSidebarClear')}`
-            : undefined;
+        this.view.description = undefined;
+
         this.view.webview.html = painted.html;
         // Full HTML replacement resets webview scroll; only mark TOC live when pack tree painted.
         this.tocLive = painted.tocLive;
@@ -254,7 +254,8 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
     private html(): { html: string; tocLive: boolean } {
         if (!this.repo) {
             if (this.loadFailed) return this.loadError();
-            return { html: this.page(`<p class="empty">${escapeHtml(this.emptyMessage)}</p>`, false), tocLive: false };
+            const configure = this.usesDefaultEmptyMessage ? `<button type="button" class="configure-pack">${escapeHtml(i18n.get('configureFolder'))}</button>` : '';
+            return { html: this.page(`<p class="empty">${escapeHtml(this.emptyMessage)}</p>${configure}`, false), tocLive: false };
         }
 
         try {
@@ -313,8 +314,9 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
         const active = this.currentLocation
             && this.currentLocation.manualId === section.manualId
             && this.currentLocation.sectionId === section.sectionId;
-        // English source titles only — no ZH secondary line.
-        return `<button type="button" class="section${active ? ' active' : ''}" data-manual-id="${escapeHtml(section.manualId)}" data-section-id="${escapeHtml(section.sectionId)}" title="${escapeHtml(section.titleEn)}">${escapeHtml(section.titleEn)}</button>`;
+        const title = uiLocale() === 'zh' && section.titleZh && !this.copyableKeyword(section.titleEn)
+            ? `${section.titleZh} / ${section.titleEn}` : section.titleEn;
+        return `<button type="button" class="section${active ? ' active' : ''}" data-manual-id="${escapeHtml(section.manualId)}" data-section-id="${escapeHtml(section.sectionId)}" title="${escapeHtml(title)}">${escapeHtml(title)}</button>`;
     }
 
     private page(content: string, enableSearch: boolean): string {
@@ -331,17 +333,18 @@ export class ManualSidebarProvider implements vscode.WebviewViewProvider {
             ['keywordToggle', 'manualSidebarSearchToggleKeyword'], ['fulltextToggle', 'manualSidebarSearchToggleFulltext'],
             ['keywordHint', 'manualSidebarSearchModeKeywordTitle'], ['fulltextHint', 'manualSidebarSearchModeFulltextTitle'],
         ].map(([key, localeKey]) => [key, i18n.get(localeKey)]));
+        const shortcutHint = `↑↓ ${i18n.get('manualSidebarNavigate')} · Enter ${i18n.get('manualSidebarOpen')} · Esc ${i18n.get('manualSidebarClear')}`;
         const searchChrome = enableSearch ? `
 <div class="search-bar">
   <div class="search-input-wrap">
     <span class="sidebar-icon search-icon" aria-hidden="true"></span>
-    <input id="sidebar-search" type="text" placeholder="${escapeHtml(i18n.get('manualReaderSearchPlaceholder'))}" aria-label="${escapeHtml(i18n.get('manualReaderSearch'))}" autocomplete="off" spellcheck="false" />
+    <input id="sidebar-search" type="text" placeholder="${escapeHtml(i18n.get('manualSidebarSearchModeKeywordTitle'))}" title="${escapeHtml(shortcutHint)}" aria-label="${escapeHtml(i18n.get('manualReaderSearch'))}" autocomplete="off" spellcheck="false" />
     <button id="search-clear" type="button" title="${escapeHtml(i18n.get('manualSidebarSearchClear'))}" aria-label="${escapeHtml(i18n.get('manualSidebarSearchClear'))}" hidden><span class="sidebar-icon close-icon" aria-hidden="true"></span></button>
   </div>
   <div class="search-modes">
     <button id="sidebar-search-mode" type="button" data-mode="keyword" title="${escapeHtml(i18n.get('manualSidebarSearchToggleKeyword'))}" aria-label="${escapeHtml(i18n.get('manualSidebarSearchToggleKeyword'))}"><span class="sidebar-icon mode-icon" aria-hidden="true"></span></button>
   </div>
-  <p id="search-mode-hint" class="search-mode-hint"></p>
+
   <div id="copy-status" class="search-mode-hint" role="status" hidden></div>
 </div>
 <div id="search-panel" class="search-panel" hidden>
@@ -404,11 +407,12 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 1px 
 body.has-focus .section.active, body.has-focus .result-row.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .empty { color: var(--vscode-descriptionForeground); line-height: 1.6; padding: 8px; }
 .load-error { margin: 0; padding: 4px 8px; }
-.retry-load, .search-retry { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid var(--vscode-contrastBorder, transparent); padding: 5px 8px; white-space: normal; }
-.retry-load:hover, .search-retry:hover { background: var(--vscode-button-hoverBackground); }
+.retry-load, .configure-pack, .search-retry { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 1px solid var(--vscode-contrastBorder, transparent); padding: 5px 8px; white-space: normal; }
+.retry-load:hover, .configure-pack:hover, .search-retry:hover { background: var(--vscode-button-hoverBackground); }
+.configure-pack, .retry-load { align-self: flex-start; margin: 0 8px 8px; }
 .search-retry { align-self: flex-start; margin: 4px; }
 .search-bar { flex: 0 0 auto; margin-bottom: 8px; }
-.search-input-wrap { display: flex; align-items: center; gap: 6px; width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 20px; background: var(--vscode-input-background); padding: 3px 8px; }
+.search-input-wrap { display: flex; align-items: center; gap: 6px; width: 100%; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 4px; background: var(--vscode-input-background); padding: 3px 8px; }
 .search-input-wrap:focus-within { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
 .sidebar-icon { display: inline-block; width: 16px; height: 16px; background-color: currentColor; flex: 0 0 auto; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
 .search-icon { mask-image: url('${iconUri('search')}'); }
@@ -423,6 +427,7 @@ body.has-focus .section.active, body.has-focus .result-row.active { background: 
 .search-modes { display: flex; flex-wrap: wrap; align-items: center; }
 .search-modes button { display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 3px; width: 28px; height: 28px; padding: 4px; }
 .search-modes button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.search-modes button[data-mode="fulltext"] { background: var(--vscode-inputOption-activeBackground, var(--vscode-toolbar-hoverBackground)); border-color: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder, transparent)); color: var(--vscode-inputOption-activeForeground, inherit); }
 .mode-icon { mask-image: url('${iconUri('symbol-keyword')}'); }
 [data-mode="fulltext"] .mode-icon { mask-image: url('${iconUri('whole-word')}'); }
 .search-mode-hint { color: var(--vscode-descriptionForeground); font-size: .85em; line-height: 1.5; margin: 7px 2px 0; overflow-wrap: anywhere; }
@@ -474,7 +479,7 @@ const toc = document.getElementById('toc');
 const searchInput = document.getElementById('sidebar-search');
 const modeButton = document.getElementById('sidebar-search-mode');
 const clearButton = document.getElementById('search-clear');
-const modeHint = document.getElementById('search-mode-hint');
+
 const copyStatus = document.getElementById('copy-status');
 const searchPanel = document.getElementById('search-panel');
 const searchStatus = document.getElementById('search-status');
@@ -493,7 +498,7 @@ function syncSearchModeButton() {
     modeButton.title = searchMode === 'keyword' ? labels.keywordToggle : labels.fulltextToggle;
     modeButton.setAttribute('aria-label', modeButton.title);
   }
-  if (modeHint) modeHint.textContent = searchMode === 'keyword' ? labels.keywordHint : labels.fulltextHint;
+  if (searchInput) searchInput.placeholder = searchMode === 'keyword' ? labels.keywordHint : labels.fulltextHint;
 }
 function clearSearch() { searchInput.value = ''; scheduleSearch(false); searchInput.focus(); }
 function scheduleSearch(immediate) {
@@ -585,6 +590,7 @@ function renderResults(data) {
 }
 
 document.addEventListener('click', event => {
+  if (event.target.closest('button.configure-pack')) { post({ type: 'configurePack' }); return; }
   if (event.target.closest('button.retry-load')) { post({ type: 'retryLoad' }); return; }
   if (event.target.closest('button.search-retry')) { scheduleSearch(true); return; }
   const copy = event.target.closest('button.result-copy');

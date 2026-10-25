@@ -43,6 +43,14 @@ function combineEditor({ prefixSource, pairSource, currentSource, log, pairRepor
     assert.ok(tail.every(item => item.status === 'passed'), 'Remaining editor safety failed');
     return required;
 }
+function validateHostJob(run, target, version, success = true) {
+    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
+    const job = run.jobs.find(job => [`Same VSIX / ${os} / VS Code ${version}`,
+        `Platform / ${target} / Installed / ${version} / Same VSIX / ${os} / VS Code ${version}`,
+        `Retry / ${target} / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(job.name));
+    assert.ok(job && job.status === 'completed' && (!success || job.conclusion === 'success'), 'Missing successful host job');
+    return job;
+}
 function main() {
     const plan = JSON.parse(process.env.REUSE_PLAN || 'null');
     assert.ok(plan && plan.hosts, 'Supply an explicit reuse plan');
@@ -67,9 +75,7 @@ function main() {
         return directory;
     };
     const host = (runId, target, version, success = true) => {
-        const run = readRun(runId), os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
-        const job = run.jobs.find(job => [`Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(job.name));
-        assert.ok(job && job.status === 'completed' && (!success || job.conclusion === 'success'), 'Missing successful host job');
+        const run = readRun(runId), job = validateHostJob(run, target, version, success);
         const directory = download(runId, `installed-${target}-${version}`);
         const report = JSON.parse(fs.readFileSync(path.join(directory, 'acceptance.json')));
         validateReport(report, { digest: sha(path.join('packages', `candidate-${target}`, 'candidate.vsix')), target, version });
@@ -114,4 +120,4 @@ function main() {
     fs.writeFileSync('reuse-verification.json', JSON.stringify({ complete: true, plan, sources: Object.fromEntries(cache) }, null, 2));
 }
 if (require.main === module) main();
-module.exports = { combineEditor, editorNames, stableEditorSource };
+module.exports = { combineEditor, editorNames, stableEditorSource, validateHostJob };

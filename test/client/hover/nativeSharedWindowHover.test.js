@@ -246,6 +246,9 @@ describe('native shared file windows', () => {
         assert.equal(next.selectedInstanceId, before.selectedInstanceId);
         assert.equal(next.plan.status, 'ready', next.plan.reason);
         assert.deepEqual(next.sharedByteChanges.map(change => change.split(':')[0]), ['ICURV', 'BESIMF']);
+        assert.equal(api.keywordManagerHasStaging(before), false);
+        assert.equal(api.keywordManagerHasStaging(next), true);
+        assert.equal(api.buildKeywordOptionsViewState(next).hasDrafts, true);
         assert.ok(next.managerCards[0].fields.filter(field => ['ICURV', 'BESIMF'].includes(field.name)).every(field => field.draft === '42'));
         assert.equal(next.plan.replacementRecords[0].text, task.lines[1]);
         assert.equal(next.plan.replacementRecords[1].text.slice(0, 30), task.lines[1].slice(0, 30));

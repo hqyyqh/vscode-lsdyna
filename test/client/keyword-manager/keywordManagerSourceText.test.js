@@ -30,8 +30,8 @@ describe('manager native branch source text conservation', () => {
                 const originalConfiguration = vscode.workspace.getConfiguration;
                 try {
                     for (const [language, message] of [
-                        ['en', 'Some record content may be lost in the selected layout. Input files are unchanged. Review the source file.'],
-                        ['zh-cn', '无法确认所选布局能保留全部记录内容。输入文件未改动，请在源文件中核对。'],
+                        ['en', 'Some card content could be lost in the selected layout. Review and edit the source file directly.'],
+                        ['zh-cn', '所选结构可能丢失部分卡片内容，请直接在源文件中核对修改。'],
                     ]) {
                         vscode.workspace.getConfiguration = (...args) => {
                             const configuration = originalConfiguration(...args);

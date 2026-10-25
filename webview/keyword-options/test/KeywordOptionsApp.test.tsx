@@ -78,7 +78,7 @@ test.each(['zh', 'en'] as const)('preserves %s help states and read-only restric
         expect(screen.getByText('Start time')).toBeVisible();
     }
     await act(async () => t.publish({ ...initial, revision: 2, help: { status: 'unavailable', fieldId: 'TIMSTR', reason: 'branch-unverified' } }));
-    expect(screen.getByText(locale === 'zh' ? '当前分支尚未确认。' : 'The current branch has not been verified.')).toBeVisible();
+    expect(screen.getByText(locale === 'zh' ? '当前关键字选项或卡片条件尚未确定。' : 'The current keyword option or card condition is not determined.')).toBeVisible();
     expect(document.querySelector('.helpMeta')).not.toBeInTheDocument();
     expect(document.querySelector('.fieldHelpChoices')).not.toBeInTheDocument();
     t.api.selectField = vi.fn(() => new Promise<never>(() => undefined));
@@ -312,7 +312,7 @@ test('retains a conflicting local input and blocks its stale shared-byte update'
 });
 
 test.each(['zh', 'en'] as const)('shows every linked change before applying the displayed revision in %s', async locale => {
-    const initial = { ...linkedState(true), locale, selectedFieldId: 'TIMSTR' };
+    const initial = { ...linkedState(true), locale };
     const { api } = transport(initial);
     render(<KeywordOptionsApp transport={api} />);
     const preview = await screen.findByRole('region', { name: locale === 'zh' ? '修改预览' : 'Change preview' });
@@ -355,7 +355,7 @@ test.each(['zh', 'en'] as const)('explains a remaining write restriction in %s',
     const { api } = transport(initial);
     render(<KeywordOptionsApp transport={api} />);
     expect(await screen.findByText(locale === 'zh'
-        ? /管理器暂不支持写入当前记录格式/ : /The manager cannot write this record format yet/)).toBeInTheDocument();
+        ? /管理器暂不支持写入当前卡片格式/ : /The manager cannot write this card format yet/)).toBeInTheDocument();
     expect(screen.queryByText(/部分信息尚未确认|Some information could not be confirmed/)).not.toBeInTheDocument();
 });
 
@@ -384,8 +384,8 @@ test('renders repeated native card records with stable row identities', async ()
     });
     const { api } = transport(initial);
     render(<KeywordOptionsApp transport={api} />);
-    expect(await screen.findByText('Card 2 · 记录 1')).toBeInTheDocument();
-    expect(screen.getByText('Card 2 · 记录 2')).toBeInTheDocument();
+    expect(await screen.findByText('Card 2 · 行 1')).toBeInTheDocument();
+    expect(screen.getByText('Card 2 · 行 2')).toBeInTheDocument();
     expect(screen.getAllByRole('textbox')).toHaveLength(2);
 });
 
@@ -398,8 +398,8 @@ test('clears two prefix cards sharing a physical line through three MPP2 cycles'
     const baseCards = [card('base1', 1, 'SURFA'), card('base2', 2, 'FS'), card('base3', 3, 'SFSA')];
     const make = (revision: number, enabled: boolean) => state({ revision, status: 'configuring', mode: 'fields',
         currentKeyword: '*CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', message: '', editLevel: 'editable',
-        controls: [{ controlId: 'identity', kind: 'selector', label: 'ID 与标题', emptyLabel: '未启用',
-            value: '', choices: [{ value: 'ID', label: '启用', enabled: true }], visible: true, enabled: true },
+        controls: [{ controlId: 'identity', kind: 'selector', label: 'ID / TITLE',
+            value: '', choices: [{ value: 'ID', label: 'ID', enabled: true }], visible: true, enabled: true },
         { controlId: 'mpp', kind: 'selector', label: 'MPP1 / MPP2', value: enabled ? 'MPP2' : '',
             choices: ['MPP1', 'MPP2'].map(value => ({ value, label: value, enabled: true })), visible: true, enabled: true }],
         cards: enabled ? [card('mpp1', 0, 'IGNORE', 'MPP 卡片 1'), card('mpp2', 0, 'PENSF', 'MPP 卡片 2'), ...baseCards] : baseCards,
@@ -408,7 +408,7 @@ test('clears two prefix cards sharing a physical line through three MPP2 cycles'
     const errors = vi.spyOn(console, 'error');
     render(<KeywordOptionsApp transport={api} />);
     await screen.findByLabelText('MPP1 / MPP2');
-    expect(within(screen.getByLabelText('ID 与标题')).getAllByRole('option').map(option => option.textContent)).toEqual(['未启用', '启用']);
+    expect(within(screen.getByLabelText('ID / TITLE')).getAllByRole('option').map(option => option.textContent)).toEqual(['-', 'ID']);
     for (let cycle = 0; cycle < 3; cycle++) {
         act(() => publish(make(cycle * 2 + 2, true)));
         expect(document.querySelectorAll('.cards .card')).toHaveLength(5);
@@ -421,6 +421,34 @@ test('clears two prefix cards sharing a physical line through three MPP2 cycles'
     }
     expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     errors.mockRestore();
+});
+
+test.each(['zh', 'en'] as const)('uses the same selector state and update flow for CONTACT and optional cards (%s)', async locale => {
+    const controls = [
+        { controlId: 'mpp', label: 'MPP1 / MPP2', selected: 'MPP1', emptyLabel: '-' },
+        { controlId: 'optional-cards', label: locale === 'zh' ? '可选卡片' : 'Optional cards', selected: '1', emptyLabel: locale === 'zh' ? '无' : 'None' },
+    ];
+    const initial = state({ locale, controls: controls.map(control => ({ ...control, kind: 'selector',
+        value: '', visible: true, enabled: true,
+        choices: [{ value: control.selected, label: control.selected, enabled: true }] })) });
+    const { api, publish } = transport(initial);
+    render(<KeywordOptionsApp transport={api} />);
+    for (const control of controls) {
+        const select = await screen.findByLabelText(control.label);
+        expect(select.closest('.tagSelect')).toHaveClass('inactive');
+        expect(within(select).getAllByRole('option').map(option => option.textContent)).toEqual([control.emptyLabel, control.selected]);
+        await userEvent.selectOptions(select, control.selected);
+        expect(api.updateControl).toHaveBeenCalledWith(initial.revision, control.controlId, control.selected);
+        expect(api.apply).not.toHaveBeenCalled();
+    }
+    act(() => publish({ ...initial, revision: 2, controls: initial.controls.map((control, index) => ({ ...control,
+        value: controls[index].selected, enabled: false, emptyEnabled: false })) }));
+    for (const control of controls) {
+        const select = screen.getByLabelText(control.label);
+        expect(select.closest('.tagSelect')).toHaveClass('active');
+        expect(select).toBeDisabled();
+        expect(within(select).getAllByRole('option')[0]).toBeDisabled();
+    }
 });
 
 test('keeps unverified selector transitions and clearing disabled', async () => {
@@ -449,7 +477,10 @@ test('does not grant layout authority through a multi-form choice', async () => 
     });
     const { api } = transport(initial);
     render(<KeywordOptionsApp transport={api} />);
-    expect(await screen.findByLabelText('表单布局')).toBeDisabled();
+    await userEvent.click(await screen.findByText('查看候选布局（只读）'));
+    expect(screen.getByText('Card 1 [ID/VALUE]')).toBeVisible();
+    expect(screen.getByText('Card 1 [ID/TITLE]')).toBeVisible();
+    expect(screen.queryByRole('combobox', { name: '表单布局' })).not.toBeInTheDocument();
     expect(api.selectForm).not.toHaveBeenCalled();
 });
 

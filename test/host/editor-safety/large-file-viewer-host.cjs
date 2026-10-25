@@ -25,7 +25,10 @@ exports.run = async () => {
             if (request.id > lastCommand) {
                 lastCommand = request.id;
                 try {
-                    if (request.command === 'test.progressiveViewer') {
+                    if (request.command === 'test.theme') {
+                        await vscode.workspace.getConfiguration('workbench').update('colorTheme', request.args, vscode.ConfigurationTarget.Global);
+                        await vscode.commands.executeCommand('notifications.clearAll');
+                    } else if (request.command === 'test.progressiveViewer') {
                         const { LargeFileViewerProvider } = require(path.join(extension.extensionPath, 'out/client/LargeFileViewerProvider.js'));
                         const { buildFileStructure } = require(path.join(extension.extensionPath, 'out/core/scanner/fileIndexBuilder.js'));
                         const source = vscode.Uri.file(path.join(root, 'progressive.k')).fsPath;

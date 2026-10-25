@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const path = require('path');
+const functionalOnly = process.env.LSDYNA_CI_FUNCTIONAL_ONLY === '1';
 const { BlockIndex } = require('../../src/core/incremental/blockIndex');
 const { createKeywordIdentityAccumulatorFactory } = require('../../src/core/keywordDisplayIdentity');
 const { LsdynaKeywordIndexProvider } = require('../../src/client/providers/keywordIndexProvider');
@@ -37,7 +38,7 @@ describe('keyword index large-deck performance', function () {
         assert.equal(nodeBlock.dataLineCount, nodeRows);
         assert.equal(nodeBlock.displayIdentity.collection.count, nodeRows);
         assert.ok(nodeBlock.displaySourceEndLine <= 33, `display prefix ended at ${nodeBlock.displaySourceEndLine}`);
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(elapsedMs < 20000, `million-row live scan took ${elapsedMs}ms`);
+        if (!functionalOnly) assert.ok(elapsedMs < 20000, `million-row live scan took ${elapsedMs}ms`);
     });
 
     it('keeps 100,000 fragmented occurrences paged and cursor lookup logarithmic', () => {
@@ -71,8 +72,9 @@ describe('keyword index large-deck performance', function () {
         assert.equal(pages[0]._children, null);
 
         const lookupStartedAt = Date.now();
-        for (let index = 0; index < 20000; index++) {
-            const occurrenceIndex = (index * 7919) % occurrenceCount;
+        const boundaries = [0, 1, 198, 199, 200, 201, 49999, 50000, 99799, 99800, 99998, 99999];
+        for (let index = 0; index < (functionalOnly ? boundaries.length : 20000); index++) {
+            const occurrenceIndex = functionalOnly ? boundaries[index] : (index * 7919) % occurrenceCount;
             const occurrence = provider.findOccurrence(filePath, occurrenceIndex * 2 + 1);
             assert.equal(occurrence.startLine, occurrenceIndex * 2);
         }
@@ -83,19 +85,19 @@ describe('keyword index large-deck performance', function () {
         provider.setLayout('category');
         const switchesMs = Date.now() - switchesStartedAt;
 
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(projectionMs < 10000, `100k occurrence projection took ${projectionMs}ms`);
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(lookupMs < 3000, `20k cursor lookups took ${lookupMs}ms`);
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(switchesMs < 10000, `two 100k layout switches took ${switchesMs}ms`);
+        if (!functionalOnly) assert.ok(projectionMs < 10000, `100k occurrence projection took ${projectionMs}ms`);
+        if (!functionalOnly) assert.ok(lookupMs < 3000, `20k cursor lookups took ${lookupMs}ms`);
+        if (!functionalOnly) assert.ok(switchesMs < 10000, `two 100k layout switches took ${switchesMs}ms`);
     });
 
-    it('caches repeated unknown LS-PrePost connection metadata lookups', async () => {
+    it('preserves repeated unknown LS-PrePost connection blocks', async () => {
         const keywords = [
             '*CONNECTION_START_SPOTWELD',
             '*CONNECTION_LAYER_PART_ID',
             '*CONNECTION_ENTITIES',
             '*CONNECTION_END_SPOTWELD',
         ];
-        const blockCount = 25000;
+        const blockCount = functionalOnly ? keywords.length * 2 : 25000;
         const index = new BlockIndex('connection-metadata.k', {
             createBlockSummaryAccumulator: createKeywordIdentityAccumulatorFactory(),
         });
@@ -110,6 +112,11 @@ describe('keyword index large-deck performance', function () {
         const elapsedMs = Date.now() - startedAt;
 
         assert.equal(index.blocks.length, blockCount);
-        if (process.env.LSDYNA_CI_FUNCTIONAL_ONLY !== '1') assert.ok(elapsedMs < 5000, `25k repeated custom blocks took ${elapsedMs}ms`);
+        index.blocks.forEach((block, ordinal) => {
+            assert.equal(block.keyword, keywords[ordinal % keywords.length].slice(1));
+            assert.equal(block.startLine, ordinal * 2);
+            assert.equal(block.dataLineCount, 1);
+        });
+        if (!functionalOnly) assert.ok(elapsedMs < 5000, `25k repeated custom blocks took ${elapsedMs}ms`);
     });
 });

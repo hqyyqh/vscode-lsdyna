@@ -262,38 +262,7 @@ exports.run = async () => {
             checks.push('field-edit-undo-redo-save-reopen');
             const main = await vscode.workspace.openTextDocument(path.join(root, 'workspace', 'main.k'));
             await vscode.window.showTextDocument(main);
-            const productRequire = require('node:module').createRequire(path.join(extension.extensionPath, 'out/extension.js'));
-            const client = productRequire('vscode-languageclient/node').BaseLanguageClient.prototype;
-            const sendRequest = client.sendRequest;
-            const progressModule = productRequire('./client/services/viewScanProgress');
-            const scanProgress = progressModule.withViewScanProgress;
-            const states = new Map();
-            let activeClient;
-            client.sendRequest = async function (method, ...args) {
-                activeClient = this;
-                const action = method === 'lsdyna/projectSession' ? args[0]?.action : undefined;
-                if (action && !states.has(action)) { states.set(action, 'sent'); console.log(`Project request started: ${action}`); }
-                const response = await sendRequest.call(this, method, ...args);
-                if (action) {
-                    const state = JSON.stringify([response?.state, response?.generation, response?.after, response?.pending]);
-                    if (states.get(action) !== state) { states.set(action, state); console.log(`Project request finished: ${action} ${state}`); }
-                }
-                return response;
-            };
-            progressModule.withViewScanProgress = (view, title, task) => scanProgress(view, title, async (...args) => {
-                console.log(`View scan task started: ${view}`);
-                try { return await task(...args); }
-                finally { console.log(`View scan task finished: ${view}`); }
-            });
-            const diagnostic = setTimeout(() => {
-                if (!activeClient) { console.log('Scan diagnostic: no language request started'); return; }
-                console.log('Scan diagnostic: requesting backend cache state');
-                void sendRequest.call(activeClient, 'lsdyna/getCacheStats').then(
-                    value => console.log('Scan diagnostic cache state: ' + JSON.stringify(value)),
-                    error => console.log('Scan diagnostic cache state failed: ' + String(error)));
-            }, 5000);
-            try { await measure('include-index', () => vscode.commands.executeCommand('extension.scanIncludeTree')); }
-            finally { clearTimeout(diagnostic); client.sendRequest = sendRequest; progressModule.withViewScanProgress = scanProgress; }
+            await measure('include-index', () => vscode.commands.executeCommand('extension.scanIncludeTree'));
             await measure('keyword-index', () => vscode.commands.executeCommand('extension.scanKeywordIndex'));
             checks.push('project-and-keyword-index');
             const manualRoot = path.join(root, 'workspace', 'lsdyna_manual_pack');

@@ -125,8 +125,10 @@ module.exports = async function checkInstanceSelector(root, api, results) {
                                 await vscode.commands.executeCommand('notifications.clearAll');
                             } else if (request.action === 'loading') {
                                 api.keywordManagerInstanceDirectories.delete(document);
+                                const loadingKeyword = provider.getState().currentKeyword.replace(/^\*/, '');
                                 catalog.prepareKeyword = async function (keyword) {
-                                    if (String(keyword).includes('MAT_ELASTIC')) await new Promise(resolve => {
+                                    if (String(keyword).replace(/^\*/, '') === loadingKeyword &&
+                                        String(new Error().stack).includes('prepareKeywordManagerInstances')) await new Promise(resolve => {
                                         preparationGate = { resolve };
                                     });
                                     return originalPrepare.call(this, keyword);

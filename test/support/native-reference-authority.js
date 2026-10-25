@@ -5,7 +5,7 @@ const { getCatalogInputFormCatalogV4 } = require("../../out/core/semantics/catal
 const { evaluatePredicate } = require('../../out/core/semantics/predicateEvaluator');
 const { nativeStringChoice } = require('../../out/core/semantics/nativeStringChoice');
 const { globalInputFormatFromKeywordLine, keywordInputFormat } = require('../../out/core/parser/inputFormat');
-const datasetSha256 = "a88ab2e74e93a959971f487c72fa62bec157a3c762c37718e5571738a3ce50b5";
+const datasetSha256 = "b61593ada0d37dae30af8b4a4a5e87d403be338eda70bd5b4782ca0e0d0a1d28";
 
 module.exports = function assertNativeReferenceAuthority(extension, document, position, field, card, keyword, format, message) {
     const actual = extension.fieldReferenceAtPosition(document, position);

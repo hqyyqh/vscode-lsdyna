@@ -54,6 +54,7 @@ out/**
 !keywords/runtime/native-readers/lspp-native-input-format.json
 !keywords/runtime/native-readers/lspp-constrained-input-format.json
 !keywords/runtime/native-readers/lspp-optional-form-header-readers.json
+!keywords/runtime/native-readers/lspp-optional-card-controls.json
 !keywords/runtime/native-readers/lspp-single-card-readers.json
 !keywords/runtime/native-readers/lspp-standard-repeat-readers.json
 !keywords/runtime/native-readers/lspp-tail-repeat-readers.json

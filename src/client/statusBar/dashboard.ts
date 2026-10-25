@@ -10,6 +10,8 @@ const vscode = require('vscode');
 type StatusBarLevel = 'off' | 'simple' | 'detail';
 
 type DashboardContext = {
+    fieldChoice?: { text: string; tooltip: string; command: any };
+    columnGuides?: { enabled: boolean; label: string; state: string };
     isLsdyna?: boolean;
     level?: StatusBarLevel | string;
     keyword?: string;
@@ -42,6 +44,8 @@ type DashboardItem = {
 };
 
 type DashboardActions = {
+    pickFieldValue?: () => Promise<void> | void;
+    toggleColumnGuides?: () => Promise<void> | void;
     showHealth?: () => Promise<void> | void;
     scanIncludes?: () => Promise<void> | void;
     scanKeywordIndex?: () => Promise<void> | void;
@@ -340,6 +344,7 @@ function formatDashboardTooltip(context: DashboardContext = {}): string {
         }
     }
 
+    if (context.fieldChoice) lines.push(context.fieldChoice.tooltip);
     lines.push(labels.tooltipClick || labels.dashboardTooltip || 'Click: quick actions');
     return lines.join('\n');
 }
@@ -467,6 +472,8 @@ function buildDashboardItems(context: DashboardContext = {}): DashboardItem[] {
     if (mainDeckContextItem) {
         items.push(mainDeckContextItem);
     }
+    if (context.fieldChoice) items.push({ id: 'pickFieldValue', label: context.fieldChoice.command.title, description: context.fieldChoice.text, detail: context.fieldChoice.tooltip });
+    if (context.columnGuides) items.push({ id: 'toggleColumnGuides', label: context.columnGuides.label, description: context.columnGuides.state, detail: '' });
     items.push(scanIncludes, scanKeywordIndex, toggleTab, toggleHover, customKw);
 
     // Manuals when already ready: mid-low (not promoted)

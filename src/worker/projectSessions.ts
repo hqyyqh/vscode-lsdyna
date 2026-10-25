@@ -184,9 +184,9 @@ export class ProjectSessions {
                 unpublishedOwnership: ownedSizes && new Set(ownedSizes.keys()),
                 fileOrder: new Map(), committed: 0 };
             this.entries.set(key, entry);
-            this.publish(entry, `file:${rootFile}`, { type: 'file', filePath: rootFile, state: 'scanning' });
             const current = entry;
             current.ready = Promise.resolve().then(async () => {
+                this.publish(current, `file:${rootFile}`, { type: 'file', filePath: rootFile, state: 'scanning' });
                 current.store = await this.getStore?.();
                 if (current.store) {
                     current.build = await current.store.begin('project-view:' + current.id, String(current.generation), current.token);

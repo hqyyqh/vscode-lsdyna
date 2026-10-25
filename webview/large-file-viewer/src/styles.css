@@ -142,3 +142,12 @@ body.vscode-high-contrast { --deck-keyword: #569cd6; --deck-comment: #7ca668; --
 
 
 .open-native { flex: 0 0 auto; background: transparent; color: var(--vscode-icon-foreground); padding: 2px 4px; }
+
+/* Navigation wraps independently of the fixed-column source viewport. */
+.titlebar { flex-wrap: wrap; overflow-x: visible; }
+.titlebar .search-float { flex: 1 1 280px; min-width: 0; flex-wrap: wrap; }
+.titlebar .search-input { flex: 1 1 120px; min-width: 80px; }
+.search-float button[type=submit] { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.search-float button[type=submit]:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+.viewer-hint { grid-row: 4; padding: 6px 10px; color: var(--vscode-descriptionForeground); font-size: .9em; overflow-wrap: anywhere; }
+@container (max-width: 480px) { .titlebar .search-float { flex-basis: 100%; border: 0; padding: 0; } }

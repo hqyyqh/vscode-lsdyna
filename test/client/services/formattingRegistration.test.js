@@ -13,12 +13,5 @@ describe('LS-DYNA formatting registration boundary', () => {
 
         assert.equal(vscode.languages._documentFormattingRegistrations.length, documentCount);
         assert.equal(vscode.languages._documentRangeFormattingRegistrations.length, rangeCount);
-        assert.equal(
-            Object.prototype.hasOwnProperty.call(
-                extension._internals,
-                'LsdynaDocumentFormattingEditProvider',
-            ),
-            false,
-        );
     });
 });

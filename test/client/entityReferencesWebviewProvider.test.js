@@ -174,13 +174,74 @@ describe('EntityReferencesWebviewProvider', () => {
                 assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesProjectScopeUnavailable'));
                 provider.setScopeContext({});
                 assert.equal(await provider.setScopePreference('project'), false);
-                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesFileScopeUnavailable'));
+                assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesProjectScopeUnavailable'));
                 assert.equal(await provider.setScopePreference('file'), false);
                 assert.equal(provider.viewState().message, require('../../out/core/i18n').get('entityReferencesFileScopeUnavailable'));
                 assert.equal(calls.length, 2);
             } finally { provider.dispose(); model.dispose(); }
         });
     }
+
+    for (const replacement of ['message', 'input', 'session']) it(`does not publish obsolete scope feedback after a newer ${replacement}`, async () => {
+        const model = new LsdynaEntityReferenceProvider();
+        let finish;
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], {
+            ...actions([]), query: () => new Promise(resolve => { finish = resolve; }),
+        });
+        const filePath = path.resolve('part.k');
+        provider.setScopeContext({ filePath, projectRoot: path.resolve('main.k') });
+        const identity = { targetKind: 'curve', id: 3, scope: { kind: 'single-file', filePath } };
+        model.publish(identity, { state: 'complete', locations: [] });
+        try {
+            const pending = provider.setScopePreference('project');
+            if (replacement === 'message') provider.setMessage('New feedback');
+            if (replacement === 'input') provider.setInput('curve', '4');
+            if (replacement === 'session') model.publish({ ...identity, id: 4 }, { state: 'complete', locations: [] });
+            const expected = provider.viewState().message;
+            finish(false); await pending;
+            assert.equal(provider.viewState().message, expected);
+        } finally { provider.dispose(); model.dispose(); }
+    });
+
+    it('relocalizes existing scope feedback when the plugin language changes', async () => {
+        const i18n = require('../../out/core/i18n'), config = vscode.workspace.getConfiguration;
+        const model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(),model,()=>[],actions([]));
+        try {
+            vscode.workspace.getConfiguration=()=>({get:()=> 'en'});i18n.updateLanguage();
+            await provider.setScopePreference('project');
+            assert.match(provider.viewState().message,/No main deck/);
+            vscode.workspace.getConfiguration=()=>({get:()=> 'zh-cn'});i18n.updateLanguage();provider.refreshUiLanguage();
+            assert.match(provider.viewState().message,/尚未确定主文件/);
+        } finally {provider.dispose();model.dispose();vscode.workspace.getConfiguration=config;i18n.updateLanguage();}
+    });
+
+    for (const current of ['file', 'project']) it(`uses the keyword-index scope picker design from ${current}`, async () => {
+        const original = vscode.window.showQuickPick, calls = [], model = new LsdynaEntityReferenceProvider();
+        const provider = new EntityReferencesWebviewProvider(process.cwd(), model, () => ['curve'], actions(calls));
+        const filePath = path.resolve('main.k'), i18n = require('../../out/core/i18n');
+        provider.setScopeContext({filePath, projectRoot:filePath});
+        model.publish({targetKind:'curve',id:3,scope:current==='file'?{kind:'single-file',filePath}:{kind:'project',rootFile:filePath}},
+            {state:'complete',locations:[]});
+        let choice;
+        vscode.window.showQuickPick = async (items, options) => {
+            assert.deepEqual(items.map(item=>item.label),[i18n.get('keywordIndexScopeCurrentFile'),i18n.get('keywordIndexScopeProject')]);
+            assert.equal(items.filter(item=>item.picked).length,1);
+            assert.equal(items.find(item=>item.picked).scope,current);
+            assert.equal(options.ignoreFocusOut,true);
+            return items.find(item=>item.scope===choice);
+        };
+        try {
+            await provider.chooseScope(); assert.equal(calls.length,0,'Escape leaves scope and results alone');
+            choice=current;await provider.chooseScope();assert.equal(calls.length,0,'Repeated selection does not query');
+            choice=current==='file'?'project':'file';await provider.chooseScope();
+            assert.deepEqual(calls,[['query','curve','3',choice]]);
+            const manifest=require('../../package.json');
+            const action=manifest.contributes.menus['view/title'].find(item=>item.command==='extension.entityReferences.chooseScope');
+            assert.equal(action.group,'navigation@2');assert.equal(action.when,'view == lsdynaEntityReferences');
+            assert.equal(manifest.contributes.commands.find(item=>item.command===action.command).icon,'$(filter)');
+        } finally {vscode.window.showQuickPick=original;provider.dispose();model.dispose();}
+    });
 
     it('shows progress until a scope query completes, then clears it', async () => {
         let finish;
@@ -293,11 +354,11 @@ describe('EntityReferencesWebviewProvider', () => {
             provider.toggleFollowCursor(); assert.equal(contexts.get('lsdynaEntityReferences.following'), false);
             const manifest = require('../../package.json');
             const menu = manifest.contributes.menus['view/title'];
-            for (const name of ['search', 'toggleFollow', 'toggleFollowActive', 'pin', 'unpin', 'setScopeFile', 'setScopeProject', 'refresh']) {
+            for (const name of ['search', 'toggleFollow', 'toggleFollowActive', 'pin', 'unpin']) {
                 const command = `extension.entityReferences.${name}`;
                 assert.ok(manifest.contributes.commands.some(item => item.command === command && item.icon && item.title));
                 assert.ok(menu.some(item => item.command === command && item.when.includes('view == lsdynaEntityReferences')
-                    && item.group.startsWith('navigation@')), `Missing title button: ${command}`);
+                    && (name.startsWith('toggleFollow') ? item.group === '1_view' : item.group.startsWith('navigation@'))), `Missing title action: ${command}`);
             }
         } finally { provider.dispose(); model.dispose(); vscode.commands.executeCommand = original; }
     });
@@ -324,8 +385,9 @@ describe('EntityReferencesWebviewProvider', () => {
             assert.equal(provider.isFollowingCursor(), true);
             const pending = provider.search();
             assert.equal(provider.isFollowingCursor(), false);
-            picker.value = '-1'; change(); assert.equal(picker.items.length, 0);
-            picker.value = '9007199254740992'; change(); assert.equal(picker.items.length, 0);
+            picker.value = '-1'; change(); assert.equal(picker.items.length, 1); assert.equal(picker.items[0].id, undefined);
+            picker.selectedItems = picker.items; accept(); assert.equal(calls.length, 0);
+            picker.value = '9007199254740992'; change(); assert.equal(picker.items[0].id, undefined);
             picker.value = '1000003'; change(); assert.equal(picker.items.length, 2);
             assert.equal(calls.length, 0, 'typing must not query or scan');
             picker.value = 'SET_NODE 1000003'; change(); assert.equal(picker.items.length, 1);
@@ -387,7 +449,7 @@ describe('EntityReferencesWebviewProvider', () => {
             change();
             assert.equal(picker.activeItems[0].targetKind, 'part', 'typing must preserve manual choice');
             type('');
-            assert.equal(picker.items.length, 0);
+            assert.equal(picker.items.length, 1); assert.equal(picker.items[0].id, undefined);
             type('10012');
             assert.equal(picker.activeItems[0].targetKind, 'part', 'replacing the ID must preserve manual choice');
             type('SET_NODE 10012');

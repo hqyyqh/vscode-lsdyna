@@ -136,6 +136,15 @@ function harness(overrides = {}) {
 }
 
 describe('active field choice controller', () => {
+    it('publishes to the dashboard without creating a second status item and clears obsolete choices', () => {
+        let presentation;
+        const h=harness({deps:{statusBarItem:undefined,onPresentationChanged:value=>{presentation=value;}}});
+        h.controller.refreshNow();
+        assert.ok(presentation.command.arguments.length);
+        assert.ok(presentation.tooltip.includes('FLAG'));
+        h.controller.scheduleRefresh();assert.equal(presentation,undefined);
+        h.controller.dispose();
+    });
     it('accepts async plans and prevents stale completion from hiding a newer result', async () => {
         let finish;
         const h = harness({ planResult: () => new Promise(resolve => { finish = resolve; }) });

@@ -366,11 +366,10 @@ class LsdynaIncludeTreeProvider {
         const status = this.scanPhase === 'structure' || this.scanPhase === 'references'
             ? i18n.get('sidebarScanning')
             : this.scanPhase === 'incomplete' ? i18n.get('sidebarIncomplete')
-            : !this.root ? i18n.get(isLsdynaUri(this.resolveActiveUri()) ? 'sidebarNotScanned' : 'sidebarOpenFile')
+            : !this.root ? ''
             : !this.root.children?.length ? i18n.get('sidebarNoIncludes') : '';
-        this.treeView.message = status || undefined; // ponytail: YAGNI, root node already shows main file name
+        this.treeView.message = status; // ponytail: YAGNI, viewsWelcome handles empty state and root node shows main file name
     }
-
 
     toggleShowSize() {
         if (this.sortMode === 'flat-size') return; // 防呆
@@ -486,16 +485,8 @@ class LsdynaIncludeTreeProvider {
     async scan(rootFile?: string) {
         const uri = rootFile ? vscode.Uri.file(rootFile) : this.resolveActiveUri();
         if (!uri || !isLsdynaUri(uri)) {
-            const editor = vscode.window.activeTextEditor;
-            const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-            const debugInfo = [
-                `activeEditor=${!!editor}`,
-                `tabGroups=${!!vscode.window.tabGroups}`,
-                `activeTab=${!!activeTab}`,
-                `inputType=${activeTab?.input?.constructor?.name || 'none'}`,
-                `inputKeys=${activeTab?.input ? JSON.stringify(Object.keys(activeTab.input)) : 'none'}`
-            ].join(', ');
-            vscode.window.showWarningMessage(i18n.get('openFileFirst', debugInfo));
+
+            vscode.window.showWarningMessage(i18n.get('openFileFirst'));
             return;
         }
         this.onSelectProject?.(uri.fsPath);
@@ -528,8 +519,7 @@ class LsdynaIncludeTreeProvider {
 
                     let nextRoot = null;
                     if (this.loadProjectStructure || this.loadProjectSnapshot) {
-                        const options = { fullScanLargeFiles: getLsdynaConfigurationValue('scanner.fullScanLargeFiles', false) };
-                        const snapshot = await (this.loadProjectStructure || this.loadProjectSnapshot)(uri.fsPath, options, (event) => {
+                        const snapshot = await (this.loadProjectStructure || this.loadProjectSnapshot)(uri.fsPath, {}, (event) => {
                             if (!isCurrent() || cancellationToken?.isCancellationRequested) return;
                             if (event?.type === 'structureProgress') {
                                 this.acceptStructure(event.snapshot, uri.fsPath);
@@ -890,12 +880,19 @@ class LsdynaIncludeTreeProvider {
                 clone.description = node.description;
                 clone.tooltip = node.tooltip;
                 clone.fileSizeVal = node.fileSizeVal;
-                clone.relDir = node.relDir;
+                clone.relDir = node.relDir || (this.root?.filePath && node !== this.root ? path.dirname(path.relative(path.dirname(this.root.filePath), node.filePath)).replace(/^\.$/, '') : '');
                 clone.collapsibleState = vscode.TreeItemCollapsibleState.None;
                 if (node === this.root) {
                     clone.iconPath = vscode.Uri.file(path.join(__dirname, '..', '..', '..', 'images', 'ls.svg'));
                 }
                 applyVividDescription(clone, clone.relDir, this.showSize);
+                if (clone.relDir) {
+                    const folder = clone.relDir.replace(/\\/g, '/');
+                    clone.description = clone.description
+                        ? `${folder} ${clone.description.startsWith('•') ? clone.description : '• ' + clone.description}`
+                        : folder;
+                }
+                if (node === this.root) clone.description = [i18n.getLanguage() === 'zh-cn' ? '主文件' : 'Main deck', clone.description].filter(Boolean).join(' · ');
                 flatMap.set(node.filePath, clone);
             }
             if (node.children) node.children.forEach(walk);

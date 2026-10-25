@@ -13,7 +13,7 @@ function verify(vsix, directory, target) {
         const { data } = matches[0]; assert.equal(data.complete, true);
         if (target) assert.equal(data.arch, target.split('-')[1], 'Acceptance architecture mismatch');
         const required = ['run-release-host.cjs-catalog', 'run-release-host.cjs-smoke', 'test-release-manual-renderer.cjs',
-            'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs',
+            'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs-functional',
             'run-editor-safety-extension-host.cjs-ci-functional', 'run-large-file-viewer-host.cjs',
             'upgrade', 'reload', 'offline', 'missing-external-manual'];
         if (platform === 'win32') required.push('ordinary-project-f5');

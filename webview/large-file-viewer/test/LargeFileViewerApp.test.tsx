@@ -128,6 +128,8 @@ test('shows failed actions and retries with the latest revision without blocking
     await act(async () => notify(viewState({ revision: 9 })));
     api.selectField = vi.fn(() => new Promise<boolean>(() => undefined));
     await userEvent.dblClick(screen.getByRole('button', { name: '2000101' }));
+    expect(api.queryField).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Enter}');
     expect(api.queryField).toHaveBeenCalledWith(9, 'mid-token');
 });
 
@@ -382,6 +384,8 @@ test('renders a bounded no-wrap window and sends opaque field tokens', async () 
     await userEvent.click(field);
     expect(api.selectField).toHaveBeenCalledWith(4, 'mid-token');
     await userEvent.dblClick(field);
+    expect(api.queryField).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Enter}');
     expect(api.queryField).toHaveBeenCalledWith(4, 'mid-token');
     expect(document.querySelectorAll('.line')).toHaveLength(1);
 });

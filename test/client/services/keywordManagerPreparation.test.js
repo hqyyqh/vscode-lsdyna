@@ -10,6 +10,23 @@ function document() {
     return result;
 }
 describe('asynchronous native manager directory preparation', () => {
+    it('prepares only the selected type and does not reuse that partial directory for another type', async () => {
+        const doc = fakeDoc('*MAT_ELASTIC\n         7    7.8e-9    210000       0.3\n*DATABASE_BINARY_D3PLOT\n     0.005\n*MAT_ELASTIC\n         8    7.8e-9    210000       0.3\n*END');
+        doc.version = 1;
+        const catalog = api.getCatalogInputFormCatalogV4({ allowUnaudited: false });
+        const original = catalog.prepareKeyword, requested = [];
+        catalog.prepareKeyword = async function(keyword) { requested.push(keyword); return original.call(this, keyword); };
+        try {
+            assert.equal(await api.prepareKeywordManagerInstances(doc, null, () => true, '*MAT_ELASTIC'), true);
+            assert.ok(requested.length > 0);
+            assert.ok(requested.every(keyword => keyword === '*MAT_ELASTIC'));
+            assert.equal(api.keywordManagerInstances(doc, 0, null).length, 2);
+            requested.length = 0;
+            assert.equal(await api.prepareKeywordManagerInstances(doc, null, () => true, '*DATABASE_BINARY_D3PLOT'), true);
+            assert.ok(requested.every(keyword => keyword === '*DATABASE_BINARY_D3PLOT'));
+            assert.equal(api.keywordManagerInstances(doc, 2, null).length, 1);
+        } finally { catalog.prepareKeyword = original; }
+    });
     it('keeps repeated native record identity when opening on a later instance or its comment', async () => {
         const { documentFor, editorFor } = require("../../support/keyword-manager/conditional-fixtures.cjs")({
             vscode: require('vscode'), generateCommentLine: api.generateCommentLine });

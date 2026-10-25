@@ -528,7 +528,8 @@ describe('persistent official keyword option integration', () => {
         const state = buildKeywordOptionsViewState(model);
         assert.equal(state.status, 'ready');
         assert.equal(state.mode, 'fields');
-        assert.equal(model.managerCards.length, 2);
+        assert.equal(model.managerCards.length, 1);
+        assert.equal(model.controls.find(control => control.controlId === 'optional-cards').value, '');
         assert.ok(model.managerCards.every(card => card.editable));
         assert.equal(state.canApply, true);
         assert.equal(state.editLevel, 'editable');
@@ -2107,9 +2108,9 @@ describe('branch-aware keyword manager help', () => {
         vscode.window.activeTextEditor = editor;
         try {
             for (const [language, message, invalidMessage] of [
-                ['zh-cn', '这些修改无法应用到当前字段布局。文件未修改，请还原修改的值后再试。',
+                ['zh-cn', '当前字段布局不支持这些修改，请还原修改后重试。',
                     '本次修改包含无效字段，请修正标记项后再应用。'],
-                ['en', 'These changes cannot be applied to the current field layout. Your file has not changed. Revert the changed values and try again.',
+                ['en', 'These changes cannot be applied to the current field layout. Revert and try again.',
                     'Some changes are invalid. Correct the marked fields before applying.'],
             ]) {
                 vscode.workspace.getConfiguration = (...args) => {

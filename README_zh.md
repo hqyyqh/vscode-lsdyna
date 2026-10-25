@@ -110,43 +110,66 @@ DynaSense 为 LS-DYNA 标准卡片提供了专用的定宽保护机制：
 <details>
 <summary>全部设置与默认值</summary>
 
+设置界面现提供 29 项选项：12 项日常选项和 17 项高级选项。退出公开设置的缓存参数仍兼容已有的明确配置，并沿用原有上下限；新用户使用内置默认值。VS Code 可能将旧 JSON 键标记为未知。变更标记统一采用 250 毫秒更新延迟。可在配置提示中选择**不再提醒**；已有的 `lsdyna.health.showFirstRunNotice: false` 仍受尊重。原有的未审核数据设置不再启用未经审核的数据，开发调试需使用已有的环境变量入口。
+
+原有的 `lsdyna.scanner.fullScanLargeFiles` 开关已退出设置：关键字和引用指令发现本就读取整个文件，包括大文件的中间部分，已有开关值不影响这一行为。取消操作、扫描预算和不完整结果提示仍然有效；这不代表对象引用分析一定完整。
+
+如需清理旧配置，请打开 **首选项：打开用户设置(JSON)**，并同时检查工作区设置。`lsdyna.scanner.fullScanLargeFiles` 和 `lsdyna.changeMarks.debounceMs` 已不再控制行为，可以移除。如果仍需关闭配置提示，请保留已有的 `lsdyna.health.showFirstRunNotice: false`。删除旧缓存上限前，请先查看[兼容默认值和迁移说明](CONTRIBUTING.md#legacy-cache-settings--旧版缓存兼容设置)。插件不会自动改写你的设置。
+
+### 编辑
+
 | 设置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 手册包的根目录，其中应包含运行时索引和 PDF 手册。可填写绝对路径或相对于工作区的路径。在 Windows 上，将 SumatraPDF.exe 放在包根目录或其 pdf 子目录中，可精确跳转到指定页。 |
 | `lsdyna.enableTabNavigation` | `true` | 启用 LS-DYNA 卡片中的智能 Tab 跳转和字段覆盖选中。关闭后，Tab 只插入普通空格或制表符。 |
 | `lsdyna.enableCellEditProtect` | `true` | 开启后，使用 Delete 或 Backspace 清空选中的定宽字段时会填充空格，后续字段不会左移。只有字段经 Tab 选中后，输入才会覆盖整个字段；输入 * 或 `$` 始终遵循普通编辑行为。此设置不依赖 Tab 跳转。 |
 | `lsdyna.enableFieldHover` | `true` | 鼠标停留在定宽卡片字段上时显示字段说明。若不希望改数时频繁弹出说明，可关闭此项，并从 DynaSense 快捷操作中重新开启。 |
+| `lsdyna.columnGuides.enabled` | `true` | 在已确认的固定宽度字段边界显示列辅助线。 |
+
+### 外观
+
+| 设置 | 默认值 | 说明 |
+| --- | --- | --- |
 | `lsdyna.changeMarks.enabled` | `true` | 在编辑器左侧标记栏显示本次编辑的变更。默认情况下，琥珀色表示未保存，绿色表示文件打开后已保存；实心条表示修改，空心条表示新增，三角形表示附近有删除行。无需 Git。 |
 | `lsdyna.changeMarks.colorScheme` | `"adaptive"` | 为所有本次变更标记选择一套配色。每个预设都会自动适配浅色、深色、高对比度和高对比度浅色主题。 |
-| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | 未保存修改的自定义颜色，格式为 #RRGGBB。仅在“变更标记: 配色方案”选择“自定义”时使用。 |
-| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | 文件打开后已保存修改的自定义颜色，格式为 #RRGGBB。仅在“变更标记: 配色方案”选择“自定义”时使用。 |
-| `lsdyna.changeMarks.maxLineCount` | `100000` | 文档行数超过此值时不计算变更标记（保护超大网格文件）。 |
-| `lsdyna.changeMarks.debounceMs` | `250` | 输入后延迟多少毫秒再重算变更标记。 |
-| `lsdyna.changeMarks.showOverviewRuler` | `true` | 同时在滚动条概览标尺上显示变更标记。 |
 | `lsdyna.changeMarks.showLineBackground` | `true` | 为有标记的行添加极淡的整行底色。关闭后仅保留标志边栏中的标记。 |
-| `lsdyna.changeMarks.showMinimap` | `true` | 使用所选配色在缩略图中显示未保存和打开文件后已保存的修改。修改、新增和删除的形状仍仅在编辑器左侧标记栏中区分。 |
-| `lsdyna.navigation.pulseOnJump` | `true` | 跳转到关键字引用后短暂高亮目标行。 |
 | `lsdyna.statusBar.level` | `"simple"` | 状态栏中显示当前 LS-DYNA 文件信息的详细程度。关闭时隐藏；简洁模式显示问题或当前关键字；详细模式还显示字段序号和最近一次引用文件树扫描根目录。 |
-| `lsdyna.health.showFirstRunNotice` | `true` | 打开 LS-DYNA 文件且环境或手册尚需配置时，显示一次 DynaSense 提示。 |
-| `lsdyna.largeFile.enableRendering` | `true` | 无论文件有多少行，都保持语法高亮、悬停说明和补全功能。处理超过 10 万行的文件时，可关闭此项以节省内存；显式格式化命令另有不可绕过的安全上限。 |
 | `lsdyna.codeLens.showOnAllKeywords` | `false` | 在每个 LS-DYNA 关键字上方显示“选中卡片”和“格式化”操作；支持可选后缀的关键字还会显示“配置选项”。关闭后仍可从关键字悬停提示、编辑器右键菜单或命令面板执行这些操作。 |
-| `lsdyna.hover.previewMaxLines` | `20` | `*INCLUDE` 文件悬停预览中显示的最大行数。 |
-| `lsdyna.autoFormat` | `"disabled"` | 实验性：选择 LS-DYNA 卡片自动格式化的触发时机。除非你接受光标离开当前行时自动改写，否则建议保持关闭。 |
+| `lsdyna.navigation.pulseOnJump` | `true` | 跳转到关键字引用后短暂高亮目标行。 |
+
+### 手册与语言
+
+| 设置 | 默认值 | 说明 |
+| --- | --- | --- |
+| `lsdyna.manualsDir` | `"lsdyna_manual_pack"` | 手册包的根目录，其中应包含运行时索引和 PDF 手册。可填写绝对路径或相对于工作区的路径。在 Windows 上，将 SumatraPDF.exe 放在包根目录或其 pdf 子目录中，可精确跳转到指定页。 |
 | `lsdyna.language` | `"auto"` | 设置插件运行时界面、悬停提示和消息的语言。命令名称和设置说明跟随 VS Code 显示语言。 |
+
+### 高级：工程规则
+
+| 设置 | 默认值 | 说明 |
+| --- | --- | --- |
 | `lsdyna.additionalExtensions` | `[".k",".key",".dyna"]` | 作为 LS-DYNA 文件处理的其他扩展名。 |
-| `lsdyna.scanner.fullScanLargeFiles` | `false` | 为引用文件树和关键字索引执行全量扫描。关闭后，大于 500 KB 的文件只扫描前 1,000 行和后 1,000 行，以提升性能。  > **提示：** 包含超大网格文件时，开启此项会增加加载时间。 |
 | `lsdyna.ignoreFormattingKeywords` | `[]` | 不执行显式 LS-DYNA 格式化命令、Tab 智能对齐和字段注释补全的关键字或前缀。 |
 | `lsdyna.customValidKeywords` | `["*END","*TITLE","*CASE_BEGIN","*CASE_END"]` | 不会被报告为未知的其他有效关键字。请包含前导星号（例如 '`*END`'）；在末尾添加通配符（例如 '`*MAT_*`'）可匹配具有该前缀的全部关键字。也可通过悬停提示或快速修复添加。 |
 | `lsdyna.unknownKeywordSeverity` | `"error"` | 不在内置库或自定义有效列表中的关键字所使用的诊断级别。不影响以 ** 开头的格式错误或小写关键字警告。 |
 | `lsdyna.warnLowercaseKeyword` | `false` | 当关键字含小写字母（如 *node）时给出警告。LS-DYNA 关键字大小写不敏感，故默认关闭；若团队约定关键字全大写可开启。 |
 | `lsdyna.include.pathCaseCheck` | `"crossPlatform"` | 如何检查 `*INCLUDE` 和 `*INCLUDE_PATH` 的路径大小写。Windows 常能打开大小写不一致的路径，Linux 上的 LS-DYNA 通常不能。 |
+| `lsdyna.autoFormat` | `"disabled"` | 实验性：选择 LS-DYNA 卡片自动格式化的触发时机。除非你接受光标离开当前行时自动改写，否则建议保持关闭。 |
+| `lsdyna.clearAutoIndentOnEnter` | `false` | 按 Enter 后清除编辑器自动复制的缩进。默认关闭，以保留有意缩进和粘贴内容。 |
+
+### 高级：显示与性能
+
+| 设置 | 默认值 | 说明 |
+| --- | --- | --- |
+| `lsdyna.changeMarks.customUnsavedColor` | `"#e2a03a"` | 未保存修改的自定义颜色，格式为 #RRGGBB。仅在“变更标记: 配色方案”选择“自定义”时使用。 |
+| `lsdyna.changeMarks.customSavedColor` | `"#89d185"` | 文件打开后已保存修改的自定义颜色，格式为 #RRGGBB。仅在“变更标记: 配色方案”选择“自定义”时使用。 |
+| `lsdyna.changeMarks.showOverviewRuler` | `true` | 同时在滚动条概览标尺上显示变更标记。 |
+| `lsdyna.changeMarks.showMinimap` | `true` | 使用所选配色在缩略图中显示未保存和打开文件后已保存的修改。修改、新增和删除的形状仍仅在编辑器左侧标记栏中区分。 |
+| `lsdyna.changeMarks.maxLineCount` | `100000` | 文档行数超过此值时不计算变更标记（保护超大网格文件）。 |
+| `lsdyna.largeFile.enableRendering` | `true` | 无论文件有多少行，都保持语法高亮、悬停说明和补全功能。处理超过 10 万行的文件时，可关闭此项以节省内存；显式格式化命令另有不可绕过的安全上限。 |
+| `lsdyna.hover.previewMaxLines` | `20` | `*INCLUDE` 文件悬停预览中显示的最大行数。 |
 | `lsdyna.cache.entityIndexMemoryMaxMiB` | `"auto"` | 模型索引的内存管理预算（MiB），由查询缓存、未保存文档索引、结果页、索引构建和恢复批次及 SQLite 共用。此值不是 VS Code 进程总内存上限。重启扩展后生效。 |
 | `lsdyna.cache.entityIndexDiskMaxMiB` | `4096` | 模型索引共用的磁盘预算（MiB），包括数据库、日志和临时构建文件。预算不足时，查询回退到扫描方式。重启扩展后生效。 |
-| `lsdyna.cache.memoryMaxMiB` | `48` | 后台项目快照的内存缓存上限（MiB），最高为 64 MiB。界面另保留最多 32 MiB 的项目摘要缓存。内存不足时可调低此值。重启扩展后生效。 |
-| `lsdyna.cache.fileScanMemoryMaxMiB` | `16` | 后台扫描结果的内存缓存上限（MiB），最高为 16 MiB。重启扩展后生效。 |
-| `lsdyna.cache.maxAgeDays` | `30` | 持久化模型索引允许的最长闲置天数，最高为 30 天。扩展启动后首次使用索引时清理过期记录。重启扩展后生效。 |
-| `lsdyna.clearAutoIndentOnEnter` | `false` | 按 Enter 后清除编辑器自动复制的缩进。默认关闭，以保留有意缩进和粘贴内容。 |
-| `lsdyna.keywordManager.allowUnauditedCatalog` | `false` | 仅供开发调试：允许加载尚未通过审核的关键字表单数据。 |
+
 
 </details>
 

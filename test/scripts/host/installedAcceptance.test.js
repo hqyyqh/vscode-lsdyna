@@ -166,6 +166,11 @@ describe('installed acceptance executable and measured version', () => {
         ] };
         validateBuild(run, 'win32-x64');
         assert.throws(() => validateBuild(run, 'linux-x64'));
+        run.jobs = [{name:'Platform / win32-x64 / Build, data, tests, audit and actual VSIX (win32-x64)',conclusion:'success'}];
+        validateBuild(run, 'win32-x64');
+        assert.throws(() => validateBuild(run, 'linux-x64'));
+        run.jobs[0].conclusion = 'failure';
+        assert.throws(() => validateBuild(run, 'win32-x64'));
         run.jobs = [{name:'Selected node / Node / win32-x64 / package',conclusion:'success'}];
         validateBuild(run, 'win32-x64');
         run.jobs[0].conclusion = 'failure';

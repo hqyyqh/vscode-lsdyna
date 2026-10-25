@@ -216,6 +216,7 @@ describe('treeSearchQuickPick', () => {
                     onDidChangeValue(cb) { valueHandlers.push(cb); return { dispose() {} }; },
                     onDidAccept(cb) { acceptHandlers.push(cb); return { dispose() {} }; },
                     onDidHide() { return { dispose() {} }; },
+                    onDidTriggerButton() { return { dispose() {} }; },
                     show() {
                         this.value = 'parts shell';
                         for (const cb of valueHandlers) cb();
@@ -273,6 +274,7 @@ describe('treeSearchQuickPick', () => {
                     onDidChangeValue(cb) { valueHandlers.push(cb); return { dispose() {} }; },
                     onDidAccept(cb) { acceptHandlers.push(cb); return { dispose() {} }; },
                     onDidHide() { return { dispose() {} }; },
+                    onDidTriggerButton() { return { dispose() {} }; },
                     show() {
                         this.value = 'ro v3';
                         for (const cb of valueHandlers) cb();
@@ -321,6 +323,7 @@ describe('treeSearchQuickPick', () => {
                     onDidChangeValue(cb) { valueHandlers.push(cb); return { dispose() {} }; },
                     onDidAccept(cb) { acceptHandlers.push(cb); return { dispose() {} }; },
                     onDidHide() { return { dispose() {} }; },
+                    onDidTriggerButton() { return { dispose() {} }; },
                     show() {
                         this.value = 'mat83';
                         for (const cb of valueHandlers) cb();
@@ -340,6 +343,37 @@ describe('treeSearchQuickPick', () => {
     });
 
     describe('showKeywordSearchPick', () => {
+        for (const cancel of [false, true]) it(`restores query and active keyword on Back, then ${cancel ? 'cancels' : 'opens an occurrence'}`, async () => {
+            const vscode = require('vscode');
+            const original = vscode.QuickInputButtons;
+            vscode.QuickInputButtons = { Back: {} };
+            let accept, change, back, hide, accepted;
+            const entry = { keyword: 'PART', usages: [{filePath:'/a.k',lineIndex:1}, {filePath:'/b.k',lineIndex:2}] };
+            const pick = {
+                value: '', items: [], selectedItems: [], activeItems: [],
+                onDidChangeValue(fn) { change = fn; }, onDidAccept(fn) { accept = fn; },
+                onDidTriggerButton(fn) { back = fn; }, onDidHide(fn) { hide = fn; },
+                hide() {}, dispose() {},
+                show() {
+                    this.value = 'par'; change();
+                    this.activeItems = [this.items[0]]; this.selectedItems = this.activeItems;
+                    const active = this.activeItems[0]; accept();
+                    assert.equal(this.items.length, 2); assert.equal(this.value, '');
+                    back(vscode.QuickInputButtons.Back);
+                    assert.equal(this.value, 'par'); assert.equal(this.activeItems[0], active);
+                    assert.equal(this.items[0], active); assert.deepEqual(this.buttons, []);
+                    if (cancel) hide();
+                    else { this.selectedItems = [active]; accept(); this.selectedItems = [this.items[1]]; accept(); }
+                },
+            };
+            try {
+                const result = await showKeywordSearchPick({ entries: [entry], createQuickPick: () => pick,
+                    onAcceptUsage: async (_, usage) => { accepted = usage; } });
+                assert.equal(accepted?.filePath, cancel ? undefined : '/b.k');
+                assert.equal(result?.usage?.filePath, cancel ? undefined : '/b.k');
+            } finally { vscode.QuickInputButtons = original; }
+        });
+
         it('jumps directly when a keyword has a single usage', async () => {
             let usageAccepted = null;
             const entry = {
@@ -413,6 +447,7 @@ describe('treeSearchQuickPick', () => {
                     onDidChangeValue(cb) { valueHandlers.push(cb); return { dispose() {} }; },
                     onDidAccept(cb) { acceptHandlers.push(cb); return { dispose() {} }; },
                     onDidHide() { return { dispose() {} }; },
+                    onDidTriggerButton() { return { dispose() {} }; },
                     show() {
                         this.value = 'con en';
                         for (const cb of valueHandlers) cb();

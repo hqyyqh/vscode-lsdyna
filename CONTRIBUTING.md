@@ -78,13 +78,29 @@ VSIX，无需安装编译器或 SQLite。
 
 ## Legacy cache settings / 旧版缓存兼容设置
 
-These settings remain registered for compatibility. Use `lsdyna.cache.entityIndexDiskMaxMiB`
-for the shared disk budget instead. They are omitted from the concise README settings list.
+Retired cache settings are no longer registered in Settings. Existing explicit values
+remain honored within their previous bounds; VS Code may label these old JSON keys
+as unknown. New profiles use internal defaults. Configure the shared model-index
+budgets with `lsdyna.cache.entityIndexMemoryMaxMiB` and `lsdyna.cache.entityIndexDiskMaxMiB`.
 
-以下设置为兼容旧版配置而保留；统一磁盘预算请使用 `lsdyna.cache.entityIndexDiskMaxMiB`。
-精简后的 README 设置列表不再列出这两项。
+退出公开设置的缓存参数不再注册到设置界面。已有明确配置仍按原有上下限生效，
+VS Code 可能将这些旧 JSON 键标记为未知。新用户使用内部默认值；模型索引的统一预算
+使用 `lsdyna.cache.entityIndexMemoryMaxMiB` 和 `lsdyna.cache.entityIndexDiskMaxMiB`。
 
-| Setting / 设置 | Default / 默认值 | Status / 状态 |
+These legacy keys still affect separate caches. The model-index budgets are not a
+one-to-one replacement. Removing an override restores the defaults below and can
+increase resource use if your previous limit was lower. Keep intentional limits;
+remove a key only when you accept its default, then reload the extension window.
+Check user, workspace and workspace-folder settings before removing a value.
+
+这些旧键仍控制各自的缓存，模型索引预算不能一一替代它们。删除已有值后会恢复下列
+默认值；若原有限制更低，资源占用可能增加。请保留有意设置的限制，仅在接受默认值时
+移除对应键，然后重新加载扩展所在窗口。移除前请检查用户、工作区及工作区文件夹设置。
+
+| Legacy key / 旧键 | Default / 默认值 | Accepted range / 有效范围 |
 | --- | --- | --- |
-| `lsdyna.cache.fileScanDiskMaxMiB` | `256` | Deprecated / 已弃用 |
-| `lsdyna.cache.projectSnapshotDiskMaxMiB` | `256` | Deprecated / 已弃用 |
+| `lsdyna.cache.memoryMaxMiB` | 48 MiB | 16–64 MiB |
+| `lsdyna.cache.projectSnapshotDiskMaxMiB` | 256 MiB | 32–256 MiB |
+| `lsdyna.cache.fileScanDiskMaxMiB` | 256 MiB | 32–256 MiB |
+| `lsdyna.cache.fileScanMemoryMaxMiB` | 16 MiB | 4–16 MiB |
+| `lsdyna.cache.maxAgeDays` | 30 days / 天 | 1–30 days / 天 |

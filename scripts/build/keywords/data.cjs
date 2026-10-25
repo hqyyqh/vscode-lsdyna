@@ -249,6 +249,12 @@ function rebuild(root = ROOT, destination) {
         { indent: 2, newline: true }).bytes;
     outputs.set('keywords/runtime/native-readers/lspp-constrained-input-format.json', constrainedFormat);
     write(destination, 'keywords/runtime/native-readers/lspp-constrained-input-format.json', constrainedFormat);
+    const optionalControls = compilerInputs['keywords/sources/native-readers/optional-card-controls.v1.json.gz'];
+    assert.equal(optionalControls.sourceSha256, bundles['input-form'].manifest.value.dataset.sha256);
+    assert.equal(optionalControls.authority, 'native-optional-card-constructor-table');
+    const optionalControlPath = 'keywords/runtime/native-readers/lspp-optional-card-controls.json';
+    outputs.set(optionalControlPath, json(optionalControls));
+    write(destination, optionalControlPath, json(optionalControls));
     const coreRoot = path.resolve(root,'out/core');
     const buildGenerators = ['generate-field-reference-index.cjs','generate-manual-semantic-runtime.cjs'];
     for (const file of Object.keys(require.cache)) if (file.startsWith(coreRoot+path.sep) ||

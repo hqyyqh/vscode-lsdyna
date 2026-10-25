@@ -8,7 +8,8 @@ import type {
 type StatusBarLevel = 'off' | 'simple' | 'detail';
 
 export type ActiveFieldChoiceControllerDeps = {
-    statusBarItem: any;
+    statusBarItem?: any;
+    onPresentationChanged?: (value?: { text: string; tooltip: string; command: any }) => void;
     getActiveEditor: () => any;
     isLsdynaDocument: (document: any) => boolean;
     documentIdentity: (document: any) => string;
@@ -70,7 +71,7 @@ export function officialFieldChoiceCommandRequest(
 
 /** Lightweight active-cell status; it never builds an index or opens the picker itself. */
 export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControllerDeps) {
-    if (!deps.statusBarItem) throw new TypeError('statusBarItem is required');
+    if (!deps.statusBarItem && !deps.onPresentationChanged) throw new TypeError('A field choice presentation consumer is required');
     const debounceMs = Number.isFinite(deps.debounceMs)
         ? Math.max(0, Math.floor(Number(deps.debounceMs)))
         : 100;
@@ -94,7 +95,8 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
 
     function hide() {
         activePlan = null;
-        try { deps.statusBarItem.hide(); } catch (_error) { /* best effort */ }
+        deps.onPresentationChanged?.();
+        try { deps.statusBarItem?.hide(); } catch (_error) { /* best effort */ }
         updateContext(false);
     }
 
@@ -183,17 +185,13 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
 
             activePlan = plan;
             updateContext(true);
-            if (statusVisible) {
-                deps.statusBarItem.text = statusText(plan);
-                deps.statusBarItem.tooltip = tooltip(plan, level);
-                deps.statusBarItem.command = {
-                    command: COMMAND_ID,
-                    title: deps.translate('officialFieldChoiceStatusCommandTitle'),
-                    arguments: [request],
-                };
-                try { deps.statusBarItem.show(); } catch (_error) { /* best effort */ }
-            } else {
-                try { deps.statusBarItem.hide(); } catch (_error) { /* best effort */ }
+            const presentation = { text: statusText(plan), tooltip: tooltip(plan, level), command: {
+                command: COMMAND_ID, title: deps.translate('officialFieldChoiceStatusCommandTitle'), arguments: [request],
+            } };
+            deps.onPresentationChanged?.(statusVisible ? presentation : undefined);
+            if (deps.statusBarItem) {
+                if (statusVisible) { Object.assign(deps.statusBarItem, presentation); deps.statusBarItem.show(); }
+                else deps.statusBarItem.hide();
             }
             return plan;
         };
@@ -239,7 +237,7 @@ export function createActiveFieldChoiceController(deps: ActiveFieldChoiceControl
             timer = null;
         }
         hide();
-        try { deps.statusBarItem.dispose?.(); } catch (_error) { /* best effort */ }
+        try { deps.statusBarItem?.dispose?.(); } catch (_error) { /* best effort */ }
     }
 
     return {

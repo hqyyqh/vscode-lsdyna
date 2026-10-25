@@ -10,7 +10,7 @@ describe('isolated unit test directories', () => {
     beforeEach(() => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'dynasense-unit-runner-'));
         for (const file of ['test/a/one.test.js', 'test/a/two.test.js', 'test/b/three.test.js',
-            'test/scripts/native/excluded.test.js', 'test/b/not-a-test.js']) {
+            'test/scripts/native/excluded.test.js', 'test/core/scanner/scannerBenchmark.test.js', 'test/b/not-a-test.js']) {
             fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
             fs.writeFileSync(path.join(root, file), '');
         }
@@ -29,6 +29,7 @@ describe('isolated unit test directories', () => {
             assert.deepEqual(call[1].slice(-3), ['--grep', 'example', '--invert']);
             assert.equal(call[2].cwd, root);
             assert.equal(call[2].windowsHide, true);
+            assert.equal(call[2].env.LSDYNA_CI_FUNCTIONAL_ONLY, process.env.LSDYNA_CI_FUNCTIONAL_ONLY ?? '1');
         }
     });
     it('lets explicit watchdog overrides take precedence over the cold-start default', () => {

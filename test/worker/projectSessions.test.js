@@ -10,6 +10,26 @@ const { entityFileSignature } = require('../../out/core/cache/entityFileRevision
 const { INDEX_PROTOCOL_VERSION, INDEX_MESSAGE_BYTES, indexJsonBytes, boundedIndexPage } = require('../../out/shared/indexPages');
 
 describe('bounded project sessions', () => {
+    it('finishes every concurrent subscription when the initial row exceeds the budget', async () => {
+        for (const bytes of [0, 1]) {
+            let builds = 0;
+            const sessions = new ProjectSessions(async () => { builds++; throw Error('must not build'); }, bytes);
+            const rootFile = path.resolve('initial-row-budget.k');
+            try {
+                const opened = await Promise.allSettled([sessions.open(rootFile), sessions.open(rootFile)]);
+                assert(opened.every(result => result.status === 'fulfilled'), 'all subscribers must receive a terminal session');
+                await tick();
+                for (const result of opened) {
+                    const page = await sessions.read(result.value);
+                    assert.equal(page.state, 'incomplete');
+                    assert.equal(page.error, 'index-budget-exceeded');
+                    assert.equal(page.pending, false);
+                    sessions.release(result.value.lease);
+                }
+                assert.equal(builds, 0);
+            } finally { await sessions.clear(); }
+        }
+    });
     it('reports a source change between structure completion and query handoff as retryable', async () => {
         const root = path.resolve('handoff.k');
         const sessions = new ProjectSessions(async () => ({ rootFile: root, fileIndexes: new Map(), missingFiles: [] }),

@@ -1,0 +1,155 @@
+name: Platform acceptance
+
+on:
+  workflow_call:
+    inputs:
+      os: { type: string, required: true }
+      target: { type: string, required: true }
+      resume_run: { type: string, default: '' }
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  LSDYNA_CI_FUNCTIONAL_ONLY: '1'
+
+jobs:
+  public-checks:
+    name: Build, data, tests, audit and actual VSIX (${{ inputs.target }})
+    runs-on: ${{ inputs.os }}
+    defaults:
+      run:
+        shell: bash
+    # Includes native compilation, full source-data replay and both VSIX builds.
+    timeout-minutes: 180
+    steps:
+      - id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+      - id: python-setup
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - id: npm-install
+        run: npm ci
+      - name: Build and verify platform SQLite driver
+        id: sqlite
+        env:
+          EXPECTED_TARGET: ${{ inputs.target }}
+        run: |
+          node -e "require('node:assert/strict').equal(process.platform + '-' + process.arch, process.env.EXPECTED_TARGET)"
+          npm run build:native-sqlite
+      - id: pip-install
+        run: python -m pip install -r requirements-dev.txt
+      - name: Build all product components
+        id: build
+        run: npm run build
+      - name: Verify deterministic public data and source inventory
+        id: contracts
+        run: npm run check:contracts
+      - name: Test the existing build; replay the full corpus once
+        id: unit
+        run: |
+          if [[ "$UNIT_RESUME_RUN" == "38381427448" ]]; then
+            node scripts/release/resume-field-choice-tests.cjs
+          elif [[ "$UNIT_RESUME_RUN" == "38373457591" ]]; then
+            node scripts/release/resume-viewer-tests.cjs
+          elif [[ -n "$UNIT_RESUME_RUN" ]]; then
+            node scripts/release/resume-manager-reader-tests.cjs
+            npx --no-install mocha --require test/support/register-out.js test/scripts/release/managerReaderRecovery.test.js --fail-zero
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            npm run test:unit
+          else
+            npm run test:unit -- --grep '\[full-corpus\]' --invert
+          fi
+          npm run test:data
+        env:
+          UNIT_RESUME_RUN: ${{ inputs.resume_run }}
+          EXPECTED_TARGET: ${{ inputs.target }}
+          GH_TOKEN: ${{ github.token }}
+          # Each test directory gets a fresh process; installed hosts keep their default heap.
+          NODE_OPTIONS: --max-old-space-size=4096
+      - id: webview
+        run: npm run test:webview:compiled
+      - name: Public Python regression tests
+        id: python
+        run: python -m unittest discover -s test/scripts/build/keywords -p "test_*.py" -v
+      - name: Bilingual content checks
+        id: language
+        run: |
+          npm run check:field-data-zh
+          npm run check:native-help-zh
+          npm run check:manual-semantics-zh
+      - name: Audit development and shipped dependencies
+        id: audit
+        run: npm audit
+      - name: Package and inspect the actual candidate
+        id: package
+        run: |
+          node scripts/release/package-hover-release.cjs dist/candidate.vsix "${{ inputs.target }}"
+          node scripts/release/verify-release-hash.cjs dist/candidate.vsix
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: candidate-${{ inputs.target }}
+          path: |
+            dist/candidate.vsix
+            dist/candidate.vsix.identity.json
+            dist/candidate.vsix.data-equivalence.json
+            dist/candidate.vsix.baseline.vsix
+            dist/candidate.vsix.baseline.vsix.identity.json
+            dist/candidate.vsix.baseline.vsix.data-equivalence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Save scoped unit recovery evidence
+        if: ${{ always() && inputs.resume_run }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: unit-recovery-${{ inputs.target }}
+          path: .artifacts/unit-recovery
+          if-no-files-found: error
+      - name: Save build step outcomes
+        if: always()
+        env:
+          STEP_RESULTS: ${{ toJSON(steps) }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const steps = Object.entries(JSON.parse(process.env.STEP_RESULTS)).map(([name, step]) =>
+            ({ name, outcome: step.outcome, conclusion: step.conclusion }));
+          fs.mkdirSync('public-build', { recursive: true });
+          fs.writeFileSync('public-build/steps.json', JSON.stringify({
+            source: process.env.GITHUB_SHA, run: process.env.GITHUB_RUN_ID,
+            attempt: process.env.GITHUB_RUN_ATTEMPT, target: process.env.TARGET, steps,
+          }, null, 2));
+          NODE
+      - name: Upload build outcomes, including failed runs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: build-outcomes-${{ inputs.target }}
+          path: public-build
+          if-no-files-found: error
+          retention-days: 14
+
+  installed-host:
+    name: Installed / ${{ matrix.vscode }}
+    needs: public-checks
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode: ['1.100.0', '1.139.1']
+    uses: ./.github/workflows/ci-installed.yml
+    with:
+      os: ${{ inputs.os }}
+      target: ${{ inputs.target }}
+      vscode: ${{ matrix.vscode }}
