@@ -2566,12 +2566,6 @@
       "reason": "product-test-or-build-dependency"
     },
     {
-      "path": "scripts/benchmark/benchmark-keyword-manager-webview.cjs",
-      "role": "editable-source",
-      "sha256": "e6ebb329351ab7dc33c64e30464fd6605b7e51b97da3d926e31e068a1662a53a",
-      "reason": "product-test-or-build-dependency"
-    },
-    {
       "path": "scripts/benchmark/benchmark-release-hosts.cjs",
       "role": "editable-source",
       "sha256": "4bcb8e08b606872b10ee5dab3500b3129b5775ceddf86db6309fabc102af6364",
@@ -2760,13 +2754,13 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "8fca67f679af44122c516a7a7c82f2c67d89948a54fc87ae3ca1573bfc2eaebf",
+      "sha256": "03b203f68bbfa7d10974a4dce641ce388fa26a496e6ae53e2344d00dead1be0f",
       "reason": "installed-product-host-acceptance"
     },
     {
       "path": "scripts/host/run-installed-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "b18690c90023af2967392bbb8ced9296f69e36118eceb5b095f2d876b95dcb09",
+      "sha256": "7513ed2b09b0b6431d685b3243247359fb5d6bbc81cff7814b92d0f7319f0014",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2994,7 +2988,7 @@
     {
       "path": "scripts/release/verify-release-acceptance.cjs",
       "role": "editable-source",
-      "sha256": "8f2983be2d0d48d42839f6f97b83ae99cbdce06058472fb085cfa26e3e167b62",
+      "sha256": "36a57b2b4ed40d2698e3403e29f7513bcd376b6f8d4e3898000f26112aaeec1b",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -6864,7 +6858,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "e87c7143a847fa117c9c1242bce2dd0933a9048371e8398f9995b2346b61b9a6",
+      "sha256": "00186d27dd4f1949c49fc73ecf59c877855552cea2bce7554e28820c1778ff73",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7296,7 +7290,7 @@
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "dd6ae462b8316815341ef21c190d62310547dbe9e22187ebfd08e030dc25b336",
+      "sha256": "a62ffb7be4b125209671912b31ab63a5672d6c0caf4b10f0228cc62e7076b66a",
       "reason": "public-build-or-package-regression"
     },
     {

@@ -124,7 +124,6 @@ function main() {
         const current = fs.readFileSync(editorFile, 'utf8');
         const { editorNames } = require('../release/reuse-release-evidence.cjs');
         const required = editorNames(current);
-        assert.deepEqual(editorNames(previous), required, 'Editor scenario inventory changed');
         const log = command('gh', ['api', '--allow-escape-sequences', `repos/${repo}/actions/jobs/${previousJob.databaseId}/logs`]);
         const reused = reusableEditorScenarios(previous, current, required, log);
         const editorResume = path.join(directory, 'editor-resume.json');

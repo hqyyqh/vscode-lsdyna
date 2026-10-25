@@ -41,7 +41,7 @@ describe('immutable release acceptance gate', () => {
             const sha = crypto.createHash('sha256').update('candidate').digest('hex');
             assert.throws(() => verify(vsix, root), /Missing/);
             const names = ['run-release-host.cjs-catalog', 'run-release-host.cjs-smoke', 'test-release-manual-renderer.cjs',
-                'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete', 'benchmark-keyword-manager-webview.cjs-functional',
+                'run-keyword-manager-gui.cjs', 'run-keyword-manager-gui.cjs-incomplete',
                 'run-editor-safety-extension-host.cjs-ci-functional', 'run-large-file-viewer-host.cjs',
                 'upgrade', 'reload', 'offline', 'missing-external-manual', 'ordinary-project-f5'];
             let last;
@@ -65,10 +65,6 @@ describe('immutable release acceptance gate', () => {
             fs.writeFileSync(last, JSON.stringify({ ...data, scope: 'legacy' }));
             assert.throws(() => verify(vsix, root));
             fs.writeFileSync(last, JSON.stringify({ ...data, cases: data.cases.filter(item => item.name !== 'run-editor-safety-extension-host.cjs-ci-functional') }));
-            assert.throws(() => verify(vsix, root), /Missing acceptance case/);
-            const legacy = structuredClone(data);
-            legacy.cases.find(item => item.name === 'benchmark-keyword-manager-webview.cjs-functional').name = 'benchmark-keyword-manager-webview.cjs';
-            fs.writeFileSync(last, JSON.stringify(legacy));
             assert.throws(() => verify(vsix, root), /Missing acceptance case/);
             for (const status of [false, 'false', '0', 1, {}, []]) {
                 data.cases[0].passed = status; fs.writeFileSync(last, JSON.stringify(data));
