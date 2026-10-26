@@ -624,6 +624,172 @@ describe('native suffix fixed-field writing', function () {
         }
     });
 
+    it('composes TITLE with dynamic bodies, edits, reopens and confirms title removal across families', async () => {
+        for (const keyword of ['DEFINE_TRANSFORMATION', 'DEFINE_TRANSFORM', 'SET_SHELL']) {
+            for (const format of keyword === 'SET_SHELL' ? ['standard', 'comma', 'long', 'i10'] : ['standard']) {
+                const row = (...values) => format === 'comma' ? values.join(',') :
+                    values.map(value => String(value).padStart(format === 'long' ? 20 : 10)).join('');
+                const marker = format === 'long' ? ' +' : format === 'i10' ? ' %' : '';
+                const body = keyword === 'SET_SHELL' ? [row(1), row(2, 3)] :
+                    [row(1), row('MATRIX'), row(1,0,0,0,0,1,0,0), row(0,0,1,0,0,0,0,1),
+                        '$ keep operation comment', row('TRANSL',1,2,3), row('ROTATE',0,0,1,0,0,0,90)];
+                const lines = ['*' + keyword + marker, '$ keep leading comment', ...body, '$ keep tail', '*END'];
+                const { editor, initial } = model(lines);
+                const control = initial.controls.find(control => control.choices.some(choice => choice.value === 'TITLE'));
+                assert.ok(control?.choices.find(choice => choice.value === 'TITLE').enabled, keyword + '/' + format);
+                const draftControlState = { [control.controlId]: 'TITLE' };
+                const titled = api.buildKeywordOptionViewModel(editor, 0, { draftControlState });
+                assert.equal(titled.managerCards[0].fields[0].name, 'TITLE');
+                assert.equal(titled.managerCards[0].fields[0].editable, true);
+                assert.deepEqual(titled.currentLayout.records, initial.currentLayout.records, 'Source identities must not move');
+                const title = '标题, transformation title';
+                const edited = api.buildKeywordOptionViewModel(editor, 0, { draftControlState,
+                    fieldDrafts: { [titled.managerCards[0].fields[0].fieldId]: title } });
+                assert.equal(api.buildKeywordOptionsViewState(edited).canApply, true, edited.plan.reason);
+                const { next } = await applyStaged(lines, editor, edited, keyword + '/' + format);
+                assert.equal(next[0], '*' + keyword + '_TITLE' + marker);
+                for (const line of lines.slice(1)) assert.ok(next.includes(line), 'Preserve original line: ' + line);
+                const reopened = model(next);
+                assert.notEqual(reopened.initial.plan.status, 'blocked', reopened.initial.plan.reason);
+                assert.equal(reopened.initial.managerCards[0].fields[0].value, title);
+                const remove = api.buildKeywordOptionViewModel(reopened.editor, 0,
+                    { draftControlState: { [control.controlId]: '' } });
+                assert.equal(remove.plan.status, 'ready', remove.plan.reason);
+                const cancelled = await applyStaged(next, reopened.editor, remove, keyword, false);
+                assert.ok(cancelled.warnings > 0, 'Removing a nonempty title requires confirmation');
+                const removed = await applyStaged(next, reopened.editor, remove, keyword);
+                assert.ok(removed.warnings > 0);
+                assert.equal(removed.next[0], lines[0]);
+                assert.deepEqual(removed.next.filter(line => !line.startsWith('$')), lines.filter(line => !line.startsWith('$')));
+                assert.notEqual(model(removed.next).initial.plan.status, 'blocked');
+            }
+        }
+    });
+
+    it('materializes static prefix options on templates and partial bodies without expanding optional tails', async () => {
+        for (const keyword of ['DEFINE_CPM_VENT', 'ALE_STRUCTURED_FSI', 'CONSTRAINED_INTERPOLATION_SPOTWELD']) {
+            for (const format of ['standard', 'comma', 'long', 'i10']) for (const partial of [false, true]) {
+                const marker = format === 'long' ? ' +' : format === 'i10' ? ' %' : '';
+                const lines = ['*' + keyword + marker, '$ keep source comment',
+                    ...(partial ? Array(keyword === 'CONSTRAINED_INTERPOLATION_SPOTWELD' ? 5 : 1)
+                        .fill(format === 'comma' ? '1,' : '1'.padStart(format === 'long' ? 20 : 10)) : []), '*END'];
+                const { editor, initial } = model(lines);
+                const control = initial.controls.find(control => control.choices.some(choice => choice.value === 'TITLE'));
+                for (const choice of control.choices) {
+                    assert.equal(choice.enabled, true, keyword + '/' + format + '/' + choice.value);
+                    const draftControlState = { [control.controlId]: choice.value };
+                    const staged = api.buildKeywordOptionViewModel(editor, 0, { draftControlState });
+                    assert.equal(staged.managerCards[0].cardIndex, 0);
+                    const title = staged.managerCards[0].fields.find(field => field.name === 'TITLE');
+                    if (keyword === 'CONSTRAINED_INTERPOLATION_SPOTWELD' && format === 'i10') {
+                        assert.equal(title.editable, false);
+                        assert.equal(title.reason, 'input-format-i10');
+                        continue;
+                    }
+                    assert.ok(title?.editable, `${keyword}/${format}/${partial}/${choice.value}: ${staged.plan.reason}`);
+                    const edited = api.buildKeywordOptionViewModel(editor, 0, { draftControlState,
+                        fieldDrafts: { [title.fieldId]: 'option title' } });
+                    const { next } = await applyStaged(lines, editor, edited, keyword);
+                    const reopened = model(next).initial;
+                    assert.equal(reopened.plan.status, 'no-change', keyword + ': ' + reopened.plan.reason);
+                    assert.deepEqual(reopened.managerCards.map(card => card.fields.map(field => field.name)),
+                        edited.managerCards.map(card => card.fields.map(field => field.name)), keyword);
+                    assert.equal(reopened.managerCards[0].fields.find(field => field.name === 'TITLE').value, 'option title');
+                    assert.ok(next.includes('$ keep source comment'));
+                    assert.equal(editor.document.getText(), lines.join('\n'));
+                    if (keyword === 'CONSTRAINED_INTERPOLATION_SPOTWELD') {
+                        const optional = reopened.controls.find(control => control.controlId === 'optional-cards');
+                        assert.equal(optional.value, '');
+                        const added = api.buildKeywordOptionViewModel(model(next).editor, 0,
+                            { draftControlState: { 'optional-cards': '2' } });
+                        assert.equal(added.managerCards.length, reopened.managerCards.length + 2);
+                        assert.equal(added.managerCards[0].fields[0].value, 'option title');
+                    }
+                }
+            }
+        }
+    });
+
+    it('rejects selector drafts whose source or target layout cannot represent the selected option', () => {
+        for (const keyword of ['CONTACT_AUTOMATIC_SURFACE_TO_SURFACE', 'ALE_COUPLING_NODAL_DRAG',
+            'ALE_COUPLING_NODAL_CONSTRAINT', 'ALE_COUPLING_NODAL_PENALTY', 'LOAD_SEGMENT']) {
+            const empty = model(['*' + keyword, '*END']);
+            for (const control of empty.initial.controls) for (const choice of control.choices) {
+                if (keyword === 'LOAD_SEGMENT' && choice.value === 'TITLE') {
+                    assert.equal(choice.enabled, true);
+                    continue;
+                }
+                assert.equal(choice.enabled, false, keyword + '/' + choice.value);
+                const staged = api.buildKeywordOptionViewModel(empty.editor, 0,
+                    { draftControlState: { [control.controlId]: choice.value } });
+                assert.equal(api.buildKeywordOptionsViewState(staged).canApply, false, keyword);
+            }
+        }
+        const fixture = JSON.parse(zlib.gunzipSync(fs.readFileSync(require.resolve('../../fixtures/public-behavior/native-suffix-write-matrix.json.gz'))));
+        const cases = fixture.cases.filter(task => ['EFV_OUTPUT_TITLE', 'EFV_COUPLING_TITLE', 'EFV_INITIAL_TITLE'].includes(task.keyword));
+        assert.equal(cases.length, 12);
+        for (const task of cases) {
+            const { editor, initial } = model([...task.lines, '*END']);
+            const control = initial.controls.find(control => control.value === 'TITLE');
+            const supported = task.id === 'EFV_INITIAL_TITLE/standard';
+            assert.equal(control.emptyEnabled, supported, task.id);
+            const staged = api.buildKeywordOptionViewModel(editor, 0, { draftControlState: { [control.controlId]: '' } });
+            assert.equal(api.buildKeywordOptionsViewState(staged).canApply, supported, task.id);
+        }
+    });
+
+    it('keeps empty prefixed seismic templates unresolved without throwing in partial reads', () => {
+        for (const suffix of ['NODE', 'SET', 'DECONV', 'POINT']) {
+            const keyword = '*LOAD_SEISMIC_SSI_' + suffix + '_ID';
+            const reading = require('../../../out/core/semantics/nativeFileReadContext').nativeKeywordReadContext(keyword, [], 'standard');
+            assert.deepEqual(reading.select(true).current, []);
+            assert.deepEqual(reading.select(true).counts, []);
+            assert.equal(reading.select(false), null);
+            const { initial } = model([keyword, '*END']);
+            assert.equal(api.buildKeywordOptionsViewState(initial).canApply, false);
+        }
+    });
+
+    it('does not let TITLE rescue an incomplete body or an unverified input format', () => {
+        for (const lines of [
+            ['*DEFINE_TRANSFORMATION', '         1', '    MATRIX', '*END'],
+            ['*DEFINE_TRANSFORMATION', '1', 'TRANSL,1,2,3', '*END'],
+            ['*DEFINE_TRANSFORMATION +', '                   1', '              TRANSL                   1', '*END'],
+        ]) {
+            const { editor, initial } = model(lines);
+            const control = initial.controls.find(control => control.choices.some(choice => choice.value === 'TITLE'));
+            const titled = api.buildKeywordOptionViewModel(editor, 0, { draftControlState: { [control.controlId]: 'TITLE' } });
+            assert.equal(titled.plan.status, 'blocked');
+            assert.equal(api.buildKeywordOptionsViewState(titled).canApply, false);
+            assert.equal(editor.document.getText(), lines.join('\n'));
+        }
+    });
+
+    it('requires verified title geometry and preserves native no-title decisions', () => {
+        const catalog = require("../../../out/core/semantics/catalogInputFormCatalogV4").getCatalogInputFormCatalogV4();
+        const original = catalog.formForKeyword;
+        const keyword = 'DEFINE_TRANSFORMATION_TITLE';
+        assert.ok(native.nativeFilePrefixBinding(keyword));
+        try {
+            for (const corrupt of [form => { form.source.datasetSha256 = 'unverified'; },
+                form => { form.rules[form.reference.selectorRuleIds[0]].selectors[0].values[0].cards[0].fields[0].width = -1; }]) {
+                catalog.formForKeyword = function (...args) {
+                    const form = original.apply(this, args);
+                    if (args[0] === keyword) corrupt(form);
+                    return form;
+                };
+                assert.equal(native.nativeFilePrefixBinding(keyword), undefined);
+            }
+        } finally { catalog.formForKeyword = original; }
+        const { keywordDataPath } = require('../../../out/core/keywordDataPath');
+        const ordinal = require(keywordDataPath('native-readers/lspp-ordinal-file-readers.json'));
+        for (const name of Object.keys(ordinal.bindings)) assert.equal(native.nativeFilePrefixBinding(name + '_TITLE'), undefined);
+        const suffixes = require(keywordDataPath('native-readers/lspp-suffix-fixed-readers.json'));
+        for (const [name, binding] of Object.entries(suffixes.bindings))
+            if (name.endsWith('_TITLE') && binding.prefixSemantics === 'none' && !native.nativeSpellingBinding(name))
+                assert.equal(native.nativeFilePrefixBinding(name), undefined);
+    });
+
     it('rejects changed native provenance and unsafe prefix geometry', () => {
         const { keywordDataPath } = require('../../../out/core/keywordDataPath');
         const source = require(keywordDataPath('native-readers/lspp-spelling-file-readers.json'));

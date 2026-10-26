@@ -66,12 +66,28 @@ export function nativeFilePrefixBinding(keyword: string): any {
     const spelling = nativeSpellingBinding(keyword);
     if (spelling) return spelling;
     const name = keyword.replace(/^\*/, '');
-    if (suffixFixed.sourceSha256 !== NATIVE_FILE_SOURCE || suffixFixed.bindings[name]?.prefixSemantics !== 'title') return undefined;
+    if (!name.endsWith('_TITLE') || nativeSpellingGap(name)) return undefined;
+    if (nativeOrdinalBinding(name) || suffixFixed.bindings[name] &&
+        (suffixFixed.sourceSha256 !== NATIVE_FILE_SOURCE || suffixFixed.bindings[name].prefixSemantics !== 'title')) return undefined;
     const form = require("./catalogInputFormCatalogV4").getCatalogInputFormCatalogV4().formForKeyword(name, false);
-    if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE) return undefined;
+    if (form?.source?.datasetSha256 !== NATIVE_FILE_SOURCE || form.source.isUnauditedDiagnostic) return undefined;
     const prefixes = (form.reference.selectorRuleIds || []).flatMap(id => (form.rules[id]?.selectors || [])
+        .filter(selector => selector.placement === 'before-base')
         .flatMap(selector => selector.values.filter(value => value.keywordSuffix === '_TITLE').flatMap(value => value.cards)));
-    return prefixes.length === 1 ? { prefixCard: { ...prefixes[0], cardIndex: 0 }, prefixFormat: 'raw' } : undefined;
+    const card = prefixes.length === 1 ? prefixes[0] : undefined;
+    const field = card?.fields?.length === 1 ? card.fields[0] : undefined;
+    return card?.parserAddress && card.descriptorAddress && field?.name === 'TITLE' && field.type === 0 &&
+        field.position === 0 && field.width === 80
+        ? { prefixCard: { ...card, cardIndex: 0 }, prefixFormat: 'raw' } : undefined;
+}
+
+/** Compose a verified leading TITLE only when no exact file reader owns the suffix. */
+export function nativeTitleBodyKeyword(rule: any, keyword: string): string | undefined {
+    if (!keyword.endsWith('_TITLE') || baseNativeFileLayoutKind(rule, keyword) !== null ||
+        !nativeFilePrefixBinding(keyword)) return undefined;
+    const base = keyword.slice(0, -6);
+    const kind = baseNativeFileLayoutKind(rule, base);
+    return kind && !kind.startsWith('unsupported-') && kind !== 'verified-source-records' ? base : undefined;
 }
 
 /** Exact verified file spellings only; unresolved/rejected gaps confer no recognition. */
@@ -134,6 +150,8 @@ export function nativeOrdinalBinding(keyword: string): any {
 }
 /** The live registration count can trim a contiguous pool or include a zero-field record. */
 export function nativeFileLayoutCards(rule: any, keyword: string): any[] {
+    const titleBody = nativeTitleBodyKeyword(rule, keyword);
+    if (titleBody) return nativeFileLayoutCards(rule, titleBody);
     const original = nativeSpellingBinding(keyword);
     if (original?.interfaceComponent) return nativeFileLayoutKind(rule, keyword) === 'unsupported-source' ? [] :
         (original.header ? rule.cards : rule.cards.slice(1)).map((card, index) => ({ ...card, cardIndex: index + 1,
@@ -980,6 +998,12 @@ export function hasNativeSectionFixedReader(keyword: string): boolean {
     return Object.prototype.hasOwnProperty.call(sectionFixed.bindings, keyword.replace(/_TITLE$/, ''));
 }
 export function nativeFileLayoutKind(rule: any, keyword: string): string | null {
+    const kind = baseNativeFileLayoutKind(rule, keyword);
+    const titleBody = kind === null ? nativeTitleBodyKeyword(rule, keyword) : undefined;
+    return titleBody ? baseNativeFileLayoutKind(rule, titleBody) : kind;
+}
+
+function baseNativeFileLayoutKind(rule: any, keyword: string): string | null {
     const component = nativeInterfaceComponentBinding(keyword);
     if (component) return rule?.catalogSource?.datasetSha256 === NATIVE_FILE_SOURCE &&
         rule.cardSetId === component.cardSetId && rule.cards?.length === 2 &&
@@ -1392,7 +1416,7 @@ export function selectNativeFileLayout(kind: string, rows: string[], title: bool
     if (kind === 'seismic-prefix-records') {
         if (!partial && (rows.length < 1 || (rows.length - 1) % 2 !== 0)) return null;
         const records = rows.map((_row, index) => nativeFixedFileRecord(kind, index + 1, false, fixedCount));
-        return { current: records, target: records.slice(), counts: [1, ...Array(Math.floor((rows.length - 1) / 2)).fill(2)] };
+        return { current: records, target: records.slice(), counts: rows.length ? [1, ...Array(Math.floor((rows.length - 1) / 2)).fill(2)] : [] };
     }
     if (kind === 'interpolation-tail' || kind === 'interpolation-local-tail') {
         const tailCount = kind === 'interpolation-local-tail' ? 2 : 1;

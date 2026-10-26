@@ -7,7 +7,7 @@ import { nativeFordFeatureEnabled } from './nativeFeatureContext';
 import { nativeContactOptionalBinding, nativeContactOptionalRecordReader } from './nativeContactOptionalReferences';
 import { keywordDataPath } from '../keywordDataPath';
 import { getCatalogInputFormCatalogV4 } from "./catalogInputFormCatalogV4";
-import { nativeFileCatalogKeyword, NATIVE_FILE_SOURCE, isVerifiedNativeSpelling } from "./catalogNativeFileLayout";
+import { nativeFileCatalogKeyword, nativeTitleBodyKeyword, NATIVE_FILE_SOURCE, isVerifiedNativeSpelling } from "./catalogNativeFileLayout";
 import { safeRecordGeometry, formattedReadFields, readRecordField, hasSharedByteContract } from '../edit/keywordRecordSerializer';
 const writeLayouts = require(keywordDataPath('engineering/fileWriteLayouts.json')).layouts;
 import { nativeSpellingBinding, nativeFilePrefixBinding, nativeSpellingFieldHelp, nativeFileLayoutKind, nativeFileLayoutCards, readNativeFileField, nativeFileControlCompatible,
@@ -45,8 +45,27 @@ export function nativeAppendLayoutMatches(keywordText: string, rows: string[], a
 export function nativeFileReadContext(rule: any, keywordText: string, rows: string[],
     globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
     nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }): ReturnType<typeof baseNativeFileReadContext> {
-    const reading = nativeFileReading(rule, keywordText, rows, globalFormat, recordLines, parameters, nativeReadLayout);
+    let reading = nativeFileReading(rule, keywordText, rows, globalFormat, recordLines, parameters, nativeReadLayout);
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
+    const title = keyword.endsWith('_TITLE');
+    const select = reading.select;
+    reading = { ...reading, select(partial = false, draft?, targetTitle = title, draftRecord?) {
+        const selected = select(partial, draft, targetTitle, draftRecord);
+        if (!selected || !('target' in selected) || targetTitle === title ||
+            selected.target.some(record => record.cardIndex === 0) === targetTitle) return selected;
+        const prefix = nativeFilePrefixBinding(title ? keyword : keyword + '_TITLE');
+        if (prefix?.prefixFormat !== 'raw' || prefix.prefixCard?.fields?.length !== 1 ||
+            prefix.prefixCard.fields[0].name !== 'TITLE') return selected;
+        const body = selected.target.filter(record => record.cardIndex !== 0);
+        const starts = new Set<number>();
+        const target = targetTitle ? body.flatMap(record => {
+            const start = prefix.prefixScope === 'instance' ? record.instanceStart : 0;
+            if (starts.has(start)) return [record];
+            starts.add(start);
+            return [{ cardIndex: 0, instanceStart: start, key: `instance:${start}:prefix:0` }, record];
+        }) : body;
+        return { ...selected, target };
+    } };
     if (!isVerifiedNativeSpelling(keyword)) return nativeSpellingBinding(keyword)
         ? { ...reading, writeCompatible: () => false } : reading;
     return { ...reading, writeCompatible(records) {
@@ -79,7 +98,9 @@ function nativeFileReading(rule: any, keywordText: string, rows: string[],
     globalFormat: KeywordInputFormatMode, recordLines?: number[], parameters?: NativeParameterContext,
     nativeReadLayout?: { state: string; cardIndexes?: number[]; reason?: string }): ReturnType<typeof baseNativeFileReadContext> {
     const keyword = stripKeywordInputFormatMarker(keywordText.trim().split(/[\s,]/)[0]).replace(/^\*/, '').toUpperCase();
-    const spelling = nativeSpellingBinding(keyword);
+    const titleBody = nativeTitleBodyKeyword(rule, keyword);
+    const spelling = nativeSpellingBinding(keyword) || (titleBody
+        ? { ...nativeFilePrefixBinding(keyword), baseKeyword: titleBody } : undefined);
     if (spelling && !spelling.originalContactPrefix && !spelling.interfaceComponent) {
         const override = keywordInputFormatOverride(keywordText);
         const baseKeywordText = '*' + spelling.baseKeyword + (override ? { standard: ' -', long: ' +', i10: ' %' }[override] : '');
@@ -125,6 +146,10 @@ function nativeFileReading(rule: any, keywordText: string, rows: string[],
         const shift = record => ({ ...record, instanceStart: record.instanceStart ? record.instanceStart + prefix : 0,
             key: record.key.replace(/^instance:\d+/, `instance:${record.instanceStart ? record.instanceStart + prefix : 0}`) });
         return { ...body, cards,
+            writeCompatible(records) {
+                return records.length === rows.length && (!prefix || records[0]?.cardIndex === 0) &&
+                    body.writeCompatible(records.slice(prefix));
+            },
             select(partial = false, draft?, _targetTitle?, draftRecord?) {
                 const selected = body.select(partial, draft && ((record, field, raw) => draft(shift(record), field, raw)),
                     false, draftRecord && ((record, raw) => draftRecord(shift(record), raw)));

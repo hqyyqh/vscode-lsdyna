@@ -33,6 +33,18 @@ describe('native optional-card controls', () => {
             assert.equal(model.plan.status, value ? 'ready' : 'no-change', model.plan.reason);
         }
     });
+    it('does not offer a generic count for cards owned by named selectors', () => {
+        for (const base of ['CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_TIED_WELD', 'CONTACT_AUTOMATIC_SURFACE_TO_SURFACE_MORTAR_TIED_WELD']) {
+            for (const suffix of ['', '_TITLE']) {
+                const keyword = '*' + base + suffix;
+                const { model } = build([keyword]);
+                assert.ok(!model.controls.some(control => control.controlId === 'optional-cards'));
+                const requested = build([keyword], '1');
+                assert.equal(requested.model.targetKeyword, keyword, 'A card-count draft must not rewrite the spelling');
+                assert.equal(requested.state.canApply, false);
+            }
+        }
+    });
     for (const keyword of ['DATABASE_BINARY_D3PLOT', 'DATABASE_BINARY_D3PART', 'DATABASE_BINARY_D3DUMP']) {
         it(`${keyword}: keeps None unchanged and adds only the requested optional card`, () => {
             const lines = ['*' + keyword, '     0.005'];

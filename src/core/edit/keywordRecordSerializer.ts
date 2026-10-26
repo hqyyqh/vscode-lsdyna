@@ -182,6 +182,8 @@ export function formattedReadFields(fields: RecordField[], text: string, format:
 export function formattedReadRanges(
     fields: RecordField[], text: string, format: RecordFormat,
 ): RecordReadRange[] {
+    if (format === 'raw') return fields.length === 1 && fields[0].position === 0 &&
+        isStringField(fields[0]) && safeRecordGeometry(fields) ? [{ start: 0, end: text.length }] : [];
     if (format === 'comma') {
         const spans = tokenSpans(text, 'comma');
         if (spans.length > fields.length) return [];

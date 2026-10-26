@@ -111,9 +111,24 @@ describe('incomplete native templates', () => {
         const extra = model(editor(text().replace('*END','garbage\n*END')),0,{});
         assert.equal(view(extra).layoutDiagnostics[0].code,'repeatUnsupported');
         assert.equal(view(extra).layoutDiagnostics[0].expectedRecords, undefined);
-        const missing = model(editor('*MAT_DAMAGE_1_TITLE\nTITLE\n*END'),0,{});
-        assert.equal(view(missing).layoutDiagnostics[0].code,'repeatUnsupported');
-        assert.equal(view(missing).layoutDiagnostics[0].expectedRecords, undefined);
+    });
+    it('opens a verified title-only template and preserves its title when filling the missing body', async () => {
+        const source = '*MAT_DAMAGE_1_TITLE\nTITLE\n*END', e = editor(source);
+        const missing = model(e,0,{});
+        assert.deepEqual(view(missing).layoutDiagnostics, []);
+        assert.equal(fields(missing).find(field => field.name === 'TITLE').value, 'TITLE');
+        const untitled = model(editor('*MAT_DAMAGE_1\n*END'),0,{});
+        assert.deepEqual(missing.managerCards.slice(1).map(card => card.fields.map(field => field.name)),
+            untitled.managerCards.map(card => card.fields.map(field => field.name)));
+        const staged = change(e, { RO: '7.85' });
+        assert.equal(view(staged).canApply, true, staged.plan.reason);
+        assert.equal(e.document.getText(), source, 'A template preview must not change the document');
+        const edit = await apply(staged, e);
+        assert.ok(edit.text.startsWith('*MAT_DAMAGE_1_TITLE\nTITLE\n'));
+        const reopened = model(editor(edit.text + '*END'),0,{});
+        assert.equal(fields(reopened).find(field => field.name === 'TITLE').value, 'TITLE');
+        assert.equal(fields(reopened).find(field => field.name === 'RO').value, '7.85');
+        assert.notEqual(reopened.plan.status, 'blocked', reopened.plan.reason);
     });
     for (const format of ['long', 'i10', 'comma']) {
         it(`preserves unfinished values and coordinates in ${format} records`, () => {

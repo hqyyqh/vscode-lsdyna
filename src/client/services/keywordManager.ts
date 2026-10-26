@@ -347,7 +347,17 @@ export function createKeywordManagerServices(host: {
     }
 
     function nativeSpellingWriteCompatible(keyword, targetKeyword) {
-        return !isVerifiedNativeSpelling(keyword) || !targetKeyword || targetKeyword === keyword;
+        if (!isVerifiedNativeSpelling(keyword) || !targetKeyword || targetKeyword === keyword) return true;
+        if (keyword.replace(/_TITLE$/, '') !== targetKeyword.replace(/_TITLE$/, '')) return false;
+        const prefix = nativeFilePrefixBinding(keyword.endsWith('_TITLE') ? keyword : targetKeyword);
+        return prefix?.prefixFormat === 'raw' && prefix.prefixCard?.fields?.length === 1 &&
+            prefix.prefixCard.fields[0].name === 'TITLE';
+    }
+
+    function nativeReadWindowWriteCompatible(keyword, cards, inputFormat, records) {
+        return isVerifiedNativeSpelling(keyword) || !nativeBatchFixedBinding(keyword)?.readWindows ||
+            inputFormat === 'standard' && records.every(record => !record.text.includes(',')) &&
+            cards.every(card => card.fields.every((field, index) => !index || field.position >= card.fields[index - 1].position));
     }
 
     function keywordManagerNativeInstanceCounts(grammar, count) {
@@ -1363,19 +1373,18 @@ export function createKeywordManagerServices(host: {
             }
             return records;
         };
-        let currentPrefixRecords: any[] = [];
-        let targetPrefixRecords: any[] = [];
+        let currentPrefixRecords: any[] = prefixRecordsFor(keyword);
+        let targetPrefixRecords: any[] = prefixRecordsFor(result.plan?.targetKeyword || keyword);
         const fileKind = nativeFileLayoutKind(rule, keyword);
         let parameterLine = keywordLine + 1;
         const parameterLines = new Map(allSourceRecords.map(record => {
             parameterLine += (record.comments || []).length;
             return [record, parameterLine++];
         }));
-        if (fileKind || (Array.isArray(rule.states) && Array.isArray(rule.domains))) {
-            currentPrefixRecords = prefixRecordsFor(keyword);
-            targetPrefixRecords = prefixRecordsFor(result.plan?.targetKeyword || keyword);
-            if (currentPrefixRecords.length > sourceRecords.length) return null;
-            if (!fileKind) sourceRecords = sourceRecords.slice(currentPrefixRecords.length);
+        if (sourceRecords.length && currentPrefixRecords.length > sourceRecords.length) return null;
+        if (!fileKind) {
+            sourceRecords = sourceRecords.slice(currentPrefixRecords.length);
+            if (!allSourceRecords.length) currentPrefixRecords = [];
         }
         const cardsByIndex = new Map<number, any>(rule.cards.map(card => [Number(card.cardIndex), card]));
         const effectiveCards = new Map([...cardsByIndex].map(([index, card]: any) => {
@@ -1584,6 +1593,10 @@ export function createKeywordManagerServices(host: {
             const selected = keywordManagerNativeFileSelection(document, keywordLine, rule, sourceRecords, drafts, recordDrafts,
                 result.plan?.targetKeyword);
             if (!selected) return null;
+            // A spelling change must materialize its prefix, not just rename the keyword.
+            if (result.plan?.targetKeyword !== keyword &&
+                (Boolean(currentPrefixRecords.length) !== selected.current.some(item => item.cardIndex === 0) ||
+                 Boolean(targetPrefixRecords.length) !== selected.target.some(item => item.cardIndex === 0))) return null;
             nativeWriteCompatible = selected.writeCompatible;
             const makeRecord = (item, prefixRecords) => {
                 const key = fileKind === 'conditional-sequence' ? item.key.replace(/^instance:0:/, '') : item.key;
@@ -1792,8 +1805,7 @@ export function createKeywordManagerServices(host: {
             plan.reason = 'conditional-comma-write-unverified';
             plan.replacementRecords = [];
         }
-        if (!nativeWriteCompatible || (!isVerifiedNativeSpelling(keyword) && nativeBatchFixedBinding(keyword)?.readWindows && (inputFormat !== 'standard' || sourceRecords.some(record => record.text.includes(',')) ||
-            rule.cards.some(card => card.fields.some((field, index) => index > 0 && field.position < card.fields[index - 1].position))))) {
+        if (!nativeWriteCompatible || !nativeReadWindowWriteCompatible(keyword, rule.cards, inputFormat, sourceRecords)) {
             plan.status = 'blocked';
             plan.reason = nativeWriteCompatible ? 'native-read-window-write-unverified' : 'native-file-write-unverified';
             plan.replacementRecords = [];
@@ -1831,8 +1843,8 @@ export function createKeywordManagerServices(host: {
                 ruleId: rule.catalogRuleId,
                 nativeForm: rule.nativeForm || rule,
                 ...(optionalCards ? { optionalCards: { ...optionalCards,
-                    currentCount: Math.max(0, currentRecords.length - optionalCards.firstCard + 1),
-                    targetCount: targetRecords.length - optionalCards.firstCard + 1 } } : {}),
+                    currentCount: Math.max(0, currentRecords.length - currentPrefixRecords.length - optionalCards.firstCard + 1),
+                    targetCount: targetRecords.length - targetPrefixRecords.length - optionalCards.firstCard + 1 } } : {}),
                 branchEvidence: fileKind ? 'native-file-reader' : recordSelection ? 'record-selection' :
                     (rule.states?.length || rule.cards.some(card => card.when)) ? 'predicate' : 'static',
                 controlValues: targetValues,
@@ -2794,7 +2806,7 @@ export function createKeywordManagerServices(host: {
             ? Object.fromEntries(Object.entries(staged.draftControlState).map(([controlId, value]) =>
                 [controlId, typeof value === 'boolean' ? value : String(value ?? '')])) : {};
         const resolvedTargetState = { ...currentControlState, ...draftControlState };
-        if (selectorRule && Object.keys(resolvedTargetState).length > 0) {
+        if (selectorRule?.selectors.some(selector => Object.prototype.hasOwnProperty.call(resolvedTargetState, selector.controlId))) {
             const selectorSpelling = keywordManagerCatalogSelectorSpelling(selectorRule, resolvedTargetState);
             // An unchanged selector must preserve a verified native alias. A real
             // form transition (for example TITLE) still determines the spelling.
@@ -2838,6 +2850,16 @@ export function createKeywordManagerServices(host: {
             Object.fromEntries(Object.entries(resolvedTargetState).filter(([key]) => key !== 'optional-cards')),
             false, fieldDrafts,
         );
+        // A selector draft needs an evaluated layout, including controls that keep the same spelling.
+        const changedSelectors = Object.entries(draftControlState).filter(([id, value]) =>
+            id !== 'optional-cards' && value !== currentControlState[id]);
+        const targetSelectors = keywordManagerCatalogSelectorRule(targetKeyword);
+        const explicitTarget = keywordManagerCatalogExplicitSpellingSelections(targetSelectors, targetKeyword);
+        if (changedSelectors.length && ((!preparedSelectors &&
+            changedSelectors.some(([id, value]) => explicitTarget?.[id] !== value)) ||
+            !targetSelectors && baseResult.inputFormProjection?.branchEvidence !== 'native-file-reader')) {
+            baseResult.plan = blockedKeywordOptionSwitchPlan(currentKeyword, targetKeyword, 'lspp-prefix-layout-unverified', baseResult.plan);
+        }
         if (catalogForm && !preparedInputForm && !preparedSelectors) {
             baseResult.plan.status = 'blocked';
             baseResult.plan.reason = baseResult.inputFormResolution?.status === 'ambiguous'
@@ -2851,17 +2873,23 @@ export function createKeywordManagerServices(host: {
             baseResult.plan.reason = 'lspp-input-form-field-draft-invalid';
             baseResult.plan.blockers = [baseResult.plan.reason];
         }
-        if (baseResult.inputFormProjection?.nativeConditionalCommaWriter && baseResult.plan.status !== 'blocked') {
+        const targetNativeForm = targetKeyword !== currentKeyword ? keywordManagerCatalogNativeFormRule(targetKeyword) : null;
+        const nativeTransition = targetKeyword !== currentKeyword && (baseResult.inputFormProjection?.branchEvidence === 'native-file-reader' ||
+            targetNativeForm && nativeFileLayoutKind(targetNativeForm, targetKeyword));
+        if ((baseResult.inputFormProjection?.nativeConditionalCommaWriter || nativeTransition) && baseResult.plan.status !== 'blocked') {
             const records = baseResult.plan.replacementRecords;
             let physical = keywordLine + 1;
             const recordLines = records.map(record => { physical += (record.comments || []).length; return physical++; });
-            const reading = require('../../core/semantics/nativeFileReadContext').nativeFileReadContext(
-                baseResult.inputFormProjection.nativeForm,
+            const { nativeFileReadContext, nativeKeywordReadContext } = require('../../core/semantics/nativeFileReadContext');
+            const args = [
                 keywordLineWithTargetSpelling(document.lineAt(keywordLine).text, targetKeyword),
                 records.map(record => record.text), documentGlobalInputFormat(document), recordLines,
-                nativeParameterContextForDocument(document));
-            const reread = reading.select(false);
+                nativeParameterContextForDocument(document)];
+            const reading = nativeTransition ? nativeKeywordReadContext(...args)
+                : nativeFileReadContext(baseResult.inputFormProjection.nativeForm, ...args);
+            const reread = reading?.select(false);
             if (!reread?.current || reading.controls.reasons.size || !reading.writeCompatible(reread.current) ||
+                !nativeReadWindowWriteCompatible(targetKeyword, [...reading.cards.values()], reading.readInput, records) ||
                 reread.current.length !== baseResult.targetLayout.records.length ||
                 reread.current.some((record, index) => record.cardIndex !== baseResult.targetLayout.records[index].lsppCardIndex)) {
                 baseResult.plan.status = 'blocked';

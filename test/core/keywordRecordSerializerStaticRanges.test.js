@@ -63,6 +63,15 @@ describe('Static descriptor read ranges', () => {
         assert.deepEqual(formattedReadRanges(fields(1), 'raw', 'raw'), []);
     });
 
+    it('covers a raw title including commas and spaces without accepting unsafe geometry', () => {
+        const title = [{ name: 'TITLE', type: 0, position: 0, width: 80 }];
+        for (const text of ['', '  标题, title  ', 'x'.repeat(90)]) {
+            assert.deepEqual(formattedReadRanges(title, text, 'raw'), [{ start: 0, end: text.length }]);
+        }
+        for (const invalid of [[{ ...title[0], position: 1 }], [{ ...title[0], width: -1 }], [...title, ...title]])
+            assert.deepEqual(formattedReadRanges(invalid, 'title', 'raw'), []);
+    });
+
     it('does not mutate the source geometry while projecting ranges', () => {
         const geometry = fields(2);
         const before = JSON.stringify(geometry);
