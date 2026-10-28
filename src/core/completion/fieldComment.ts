@@ -1,4 +1,27 @@
 import { safeRecordGeometry } from '../edit/keywordRecordSerializer';
+import { resolveCardFromContext, type CardResolution, type KeywordSchema } from '../keywordSchema';
+import type { FieldContext } from '../parser/fieldContext';
+import { keywordInputFormat } from '../parser/inputFormat';
+
+/** Comment labels do not grant permission to rewrite the corresponding data cells. */
+export function resolveCommentCard(context: FieldContext, schema: KeywordSchema): CardResolution {
+    if (keywordInputFormat(context.keywordText, context.globalInputFormat) !== 'standard') {
+        return { status: 'unsupported', reason: 'non-standard-input' };
+    }
+    const result = resolveCardFromContext(context, schema);
+    const info = result.cardInfo;
+    if (!info) return result;
+    if (info.isTextCard && info.resolutionSource !== 'native-file-reader') {
+        return { status: 'unsupported', reason: 'text-card-layout' };
+    }
+    if (info.inputFormat && !['standard', 'raw'].includes(info.inputFormat)) {
+        return { status: 'unsupported', reason: 'free-format-data' };
+    }
+    // Raw read ranges follow the title's length; headers need a stable, complete label.
+    const card = info.inputFormat === 'raw' && info.card.length === 1 && info.card[0].t === 'string'
+        ? [{ ...info.card[0], p: 0, w: 80 }] : info.card;
+    return { ...result, cardInfo: { ...info, card } };
+}
 
 export function generateCommentLine(card, style = 'dollar-hash-fixed', labelCase = 'lower') {
     if (!Array.isArray(card) || card.length === 0) return '';

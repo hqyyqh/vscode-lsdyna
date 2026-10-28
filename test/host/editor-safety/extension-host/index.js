@@ -5747,6 +5747,114 @@ async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
     }
 }
 
+async function assertFieldCommentsAreDiscoverableAndUndoable() {
+    const { document, editor } = await openFixture('field-comment-title.key');
+    const original = document.getText(), disk = fs.readFileSync(document.uri.fsPath);
+    const extension = vscode.extensions.getExtension('hqyyqh.dynasense');
+    const i18n = require(path.join(extension.extensionPath, 'out/core/i18n'));
+    const configuration = vscode.workspace.getConfiguration('lsdyna');
+    const devTools = await connectWorkbenchDevTools();
+    const evidence = process.env.LSDYNA_FIELD_COMMENT_EVIDENCE;
+    const results = [];
+    const position = new vscode.Position(1, 5);
+    const show = async detailed => {
+        await vscode.commands.executeCommand('editor.action.hideHover');
+        editor.selection = new vscode.Selection(position, position);
+        await vscode.commands.executeCommand('editor.action.showHover');
+        const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, position);
+        const markdown = hovers.map(hoverMarkdown).join('\n');
+        const command = markdown.match(/command:extension\.updateKeywordCards\?([^ )"]+)/);
+        assert.ok(command, 'field comment action missing from registered Hover');
+        const toggle = markdown.match(new RegExp('command:extension\\.hover' + (detailed ? 'More' : 'Less') + '\\?([^ )"]+)'));
+        if (toggle) await vscode.commands.executeCommand('extension.toggleHoverDetails', JSON.parse(decodeURIComponent(toggle[1]))[0]);
+        let link;
+        await waitForAssertion(async () => {
+            const response = await devTools.call('Runtime.evaluate', { returnByValue: true, expression: `(() => {
+                const link = Array.from(document.querySelectorAll('.monaco-hover a')).find(a =>
+                    (a.getAttribute('data-href') || a.getAttribute('href') || '').includes('command:extension.updateKeywordCards'));
+                if (!link) return null;
+                link.scrollIntoView({block:'nearest',inline:'nearest'});
+                const r = link.getBoundingClientRect();
+                let opacity = 1;
+                for (let node = link; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+                return {text:link.textContent,title:link.getAttribute('title'),html:link.outerHTML,
+                    x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height,
+                    left:r.left,right:r.right,viewportWidth:window.innerWidth,opacity,font:getComputedStyle(link).fontSize};
+            })()` });
+            link = response.result.value;
+            assert.ok(link?.width > 0 && link?.height > 0, 'rendered comment action unavailable');
+            assert.ok(link.opacity >= 0.99, 'Hover is still fading in');
+            assert.ok(link.left >= 0 && link.right <= link.viewportWidth, 'comment action is clipped outside the viewport');
+            if (detailed) assert.equal(link.text, i18n.get('keywordCardsUpdateComments'));
+        }, 5000);
+        return { link, request: JSON.parse(decodeURIComponent(command[1]))[0] };
+    };
+    try {
+        assert.equal(vscode.env.language, process.env.VSCODE_TEST_LOCALE || 'en');
+        await vscode.commands.executeCommand('workbench.action.closeSidebar');
+        const compact = await show(false);
+        const fixes = await vscode.commands.executeCommand('vscode.executeCodeActionProvider', document.uri, new vscode.Range(position, position));
+        assert.equal(fixes.filter(action => action.command?.command === 'extension.updateKeywordCards').length, 1);
+        await dispatchRendererMouseClick(devTools, compact.link);
+        await waitForAssertion(() => assert.equal(document.getText().split('\n').filter(line => line.startsWith('$#')).length, 4), 5000);
+        assert.deepEqual(document.getText().split('\r\n').filter(line => !line.startsWith('$#')), original.split('\r\n'));
+        await vscode.commands.executeCommand('editor.action.hideHover');
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        await vscode.commands.executeCommand('undo');
+        await waitForAssertion(() => assert.equal(document.getText(), original));
+        assert.equal(await vscode.commands.executeCommand('extension.updateKeywordCards', compact.request), false, 'old command must stay stale after undo');
+
+        await editor.edit(edit => edit.insert(new vscode.Position(2, 0), '$#\r\n'));
+        editor.selection = new vscode.Selection(2, 2, 2, 2);
+        await vscode.commands.executeCommand('editor.action.triggerSuggest');
+        await waitForAssertion(async () => assert.ok(await getRendererSuggestionWidget(devTools)), 5000);
+        await vscode.commands.executeCommand('acceptSelectedSuggestion');
+        await waitForAssertion(() => assert.equal(document.lineAt(2).text.trimEnd(), '$# title'));
+        await vscode.commands.executeCommand('undo');
+        await vscode.commands.executeCommand('undo');
+        await waitForAssertion(() => assert.equal(document.getText(), original));
+
+        const files = vscode.workspace.getConfiguration('files');
+        await files.update('readonlyInclude', { '**/field-comment-title.key': true }, vscode.ConfigurationTarget.Global);
+        try {
+            const { request } = await show(false);
+            assert.equal(await vscode.commands.executeCommand('extension.updateKeywordCards', request), false);
+            assert.equal(document.getText(), original);
+        } finally { await files.update('readonlyInclude', undefined, vscode.ConfigurationTarget.Global); }
+
+        for (const language of ['auto', 'zh-cn', 'en']) {
+            await configuration.update('language', language, vscode.ConfigurationTarget.Global);
+            i18n.updateLanguage();
+            for (const [theme, width, fontSize] of [['Default Dark Modern', 360, 14], ['Default Light Modern', 480, 20],
+                ['Default High Contrast', 360, 20], ['Default High Contrast Light', 480, 14]]) {
+                await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Global);
+                await vscode.workspace.getConfiguration('editor').update('fontSize', fontSize, vscode.ConfigurationTarget.Global);
+                await devTools.call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+                const { link } = await show(true);
+                const name = `${language}-${width}-${fontSize}-${results.length}`;
+                results.push({ language, theme, width, fontSize, label: i18n.get('keywordCardsUpdateComments'), link });
+                if (evidence) {
+                    const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+                    fs.writeFileSync(path.join(evidence, name + '.png'), Buffer.from(screenshot.data, 'base64'));
+                }
+            }
+        }
+        assert.equal(document.getText(), original);
+        assert.deepEqual(fs.readFileSync(document.uri.fsPath), disk);
+        if (evidence) fs.writeFileSync(path.join(evidence, 'result.json'), JSON.stringify({ passed: true,
+            host: vscode.version, hostLanguage: vscode.env.language, extensionPath: extension.extensionPath,
+            extensionSha256: await hashFile(path.join(extension.extensionPath, 'out/extension.js')),
+            scenarios: ['compact Hover click', 'Quick Fix', 'title completion', 'undo', 'stale request', 'read-only'], results }, null, 2));
+    } catch (error) {
+        await captureRendererDiagnostic(devTools, 'field-comments-failed');
+        throw error;
+    } finally {
+        await configuration.update('language', undefined, vscode.ConfigurationTarget.Global);
+        await devTools.call('Emulation.clearDeviceMetricsOverride');
+        devTools.close();
+    }
+}
+
 async function assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable() {
     const workspaceBefore = workspaceSnapshot();
     const { document, editor } = await openFixture('keyword-structure-winfrith-missing.key');
@@ -6643,6 +6751,7 @@ async function runScenarios() {
             'hover-functional': assertFunctionalHoverMatrix,
             'official-choice': assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable,
             'keyword-structure': assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable,
+            'field-comments': assertFieldCommentsAreDiscoverableAndUndoable,
         };
         assert.ok(scenarios[focusedScenario], `Unknown focused scenario: ${focusedScenario}`);
         await scenarios[focusedScenario]();

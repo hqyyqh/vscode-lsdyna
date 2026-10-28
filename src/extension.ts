@@ -2416,7 +2416,7 @@ class LsdynaKeywordOptionsCodeLensProvider {
     }
 }
 
-function appendKeywordHoverActions(md, lineNum, document) {
+function appendKeywordHoverActions(md, lineNum, document, maintenance) {
     const args = encodeURIComponent(JSON.stringify([lineNum]));
     const actions = [];
     if (require('./core/keywordRecognition').isBuiltInKeywordName(keywordLineNameFromText(document.lineAt(lineNum).text))) {
@@ -2429,7 +2429,9 @@ function appendKeywordHoverActions(md, lineNum, document) {
         `[${i18n.get('keywordHoverSelectCards')}](command:extension.selectKeyword?${args} "${i18n.get('keywordHoverSelectCardsTooltip')}")`,
         `[${i18n.get('keywordHoverFormatCards')}](command:extension.lsdynaFormatSelection?${args} "${i18n.get('keywordHoverFormatCardsTooltip')}")`,
     );
-    md.appendMarkdown(`\n\n---\n\n${actions.join(' &nbsp;|&nbsp; ')}`);
+    const commentAction = maintenance
+        ? `[${maintenance.title}](command:extension.updateKeywordCards?${encodeURIComponent(JSON.stringify([maintenance.request]))})\n\n` : '';
+    md.appendMarkdown(`\n\n---\n\n${commentAction}${actions.join(' &nbsp;|&nbsp; ')}`);
 }
 
 /**
@@ -3393,6 +3395,7 @@ class LsdynaFieldHoverProvider {
         // Hover on keyword lines
         const currentClassification = classifyKeywordLine(text);
         if (currentClassification.isKeyword) {
+            if (!await prepareCardCommentParameters(document, position.line, cancellationToken) || !isCurrent()) return null;
             const kwName = currentClassification.normalizedKeyword.slice(1);
             if (!kwName) return null;
 
@@ -3493,6 +3496,7 @@ class LsdynaFieldHoverProvider {
                     }, getFieldData());
                     return result.cardInfo ? [result.cardInfo.card] : [];
                 }) : undefined;
+            const maintenance = keywordCardMaintenanceAction(document, position.line);
             if (!detailed) {
                 const id = previewDefinition ? ` · ${inlineSemanticLabel(String(previewDefinition.id ?? previewDefinition.idRaw ?? ''))}` : '';
                 const title = `**$(symbol-keyword) ${new vscode.MarkdownString().appendText('*' + kwName).value}**${id}` +
@@ -3501,7 +3505,6 @@ class LsdynaFieldHoverProvider {
                 const body = previewMd || (previewDefinition ? i18n.get('hoverUnavailable') : compactFieldGrid(cards));
                 const args = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: position.line }]));
                 const manager = `[$(settings-gear)](command:extension.lsdynaChooseKeywordOptions?${args} "${i18n.get('keywordHoverConfigureOptionsTooltip')}")`;
-                const maintenance = keywordCardMaintenanceAction(document, position.line);
                 const update = maintenance ? ` &nbsp; [$(comment)](command:extension.updateKeywordCards?${encodeURIComponent(JSON.stringify([maintenance.request]))} "${maintenance.title}")` : '';
                 return new vscode.Hover(compactHoverCard(title, body, kwName, request, manager + update));
             }
@@ -3546,7 +3549,7 @@ class LsdynaFieldHoverProvider {
             md.supportThemeIcons = true;
             md.supportHtml = true;
             if (!classifyOpaqueCommentDirective(text)) {
-                appendKeywordHoverActions(md, position.line, document);
+                appendKeywordHoverActions(md, position.line, document, maintenance);
             }
             appendManualLinks(md, kwName);
             return new vscode.Hover(md);
@@ -3598,15 +3601,13 @@ class LsdynaFieldHoverProvider {
         // Field-help quiet switch: only suppress card-field hovers (not include/param/keyword).
         if (!isFieldHoverEffective(document.uri)) return null;
 
-        const cardCommentNoticeMarkdown = buildCardCommentNoticeMarkdown(
-            cardInfo,
-            document,
-            kwLine,
-            position.line,
-        );
         const col = position.character;
         const matchingFields = card.filter(f => col >= f.p && col < f.p + f.w);
         const field = matchingFields[0];
+        const sharedNativeFields = matchingFields.length > 1 && matchingFields.every(f => f.nativeIdentity);
+        const cardCommentNoticeMarkdown = buildCardCommentNoticeMarkdown(
+            cardInfo, document, kwLine, position.line, sharedNativeFields ? null : field,
+        );
         if (!field) {
             if (!cardCommentNoticeMarkdown) return null;
             if (!detailed) return new vscode.Hover(compactHoverCard(`**${inlineSemanticLabel('*' + kwName)}**`, '', kwName, request));
@@ -3626,7 +3627,7 @@ class LsdynaFieldHoverProvider {
         const boundaries = card.flatMap(f => f.nativeRange ? [f.nativeRange.start, f.nativeRange.end] : []);
         const nativeStart = field.nativeRange ? Math.max(field.nativeRange.start, ...boundaries.filter(value => value <= col)) : Math.min(text.length, field.p);
         const nativeEnd = field.nativeRange ? Math.min(field.nativeRange.end, ...boundaries.filter(value => value > col)) : Math.min(text.length, field.p + field.w);
-        if (matchingFields.length > 1 && matchingFields.every(f => f.nativeIdentity)) {
+        if (sharedNativeFields) {
             if (!detailed) return new vscode.Hover(compactHoverCard(matchingFields.map(f => `**${new vscode.MarkdownString().appendText(f.n).value}**`).join(' · '), '', kwName, request), new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
             const md = new vscode.MarkdownString(i18n.getLanguage() === 'zh-cn'
                 ? '这些原生字段读取共享字节，各自保留字段身份和类型。'
@@ -3651,13 +3652,7 @@ class LsdynaFieldHoverProvider {
             return new vscode.Hover(md, new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
         }
 
-        const fieldCardCommentNoticeMarkdown = buildCardCommentNoticeMarkdown(
-            cardInfo,
-            document,
-            kwLine,
-            position.line,
-            field,
-        );
+        const fieldCardCommentNoticeMarkdown = cardCommentNoticeMarkdown;
         const typeLabel = field.t ? ` *(${field.t})*` : '';
         const helpKeywordName = cardInfo.keywordName || resolvedCard.suggestedName || kwName;
         const formattedHelp = buildFieldHelpMarkdown(field, {
@@ -4964,7 +4959,10 @@ class LsdynaFieldCompletionProvider {
             const targetLineNum = findNextDataLineInKeywordBlock(document, position.line + 1);
             if (targetLineNum === null) return [];
 
-            const card = getCardFieldsForLine(document, targetLineNum);
+            if (!await prepareFieldInteraction(document, { line: targetLineNum, character: 0 },
+                { keywordLine, cancellationToken: token }) || !current()) return [];
+            const target = fieldContextForLine(document, targetLineNum, getFieldData(), { keywordLine });
+            const card = target.status === 'resolved' ? resolveCommentCard(target.context, getFieldData()).cardInfo?.card : null;
             if (!card || card.length === 0) return [];
 
             const commentText = generateCommentLine(card);
@@ -5112,7 +5110,7 @@ class LsdynaKeywordCompletionProvider {
 }
 
 
-const { generateCommentLine } = require('./core/completion/fieldComment');
+const { generateCommentLine, resolveCommentCard } = require('./core/completion/fieldComment');
 
 const autoIndentEditBarriers = new WeakMap<object, Promise<void>>();
 
@@ -13866,7 +13864,7 @@ function buildCardCommentNoticeMarkdown(cardInfo, document, keywordLine, line, f
             ? 'cardCommentVersionHint'
             : 'cardCommentShiftHint',
     );
-    if (!request) return `$(info) ${label}`;
+    if (!request || planKeywordCardMaintenance(document, keywordLine)?.kind !== 'comments') return `$(info) ${label}`;
     const args = encodeURIComponent(JSON.stringify([request]));
     const action = i18n.get(
         notice.kind === 'definition-mismatch'
@@ -13908,7 +13906,9 @@ function boundedCardCommentRewriteEnd(document, keywordLine, options: any = {}) 
         if (classifyKeywordLine(text).isKeyword) return line - 1;
         endLine = line;
     }
-    return endLine === document.lineCount - 1 ? endLine : null;
+    if (endLine === document.lineCount - 1) return endLine;
+    // One boundary probe does not consume another body record.
+    return classifyKeywordLine(document.lineAt(endLine + 1).text).isKeyword ? endLine : null;
 }
 
 function analyzeKeywordStructureForDocument(document, keywordLine, options: any = {}): any {
@@ -14534,7 +14534,7 @@ function mostCommonCardCommentValue(values, fallback) {
     return best;
 }
 
-function planCardCommentRewriteForDocument(document, keywordLine, options: any = {}): any {
+function collectCardCommentBlock(document, keywordLine, options: any = {}): any {
     const unsupported = reason => ({ status: 'unsupported', reason, edits: [] });
     if (!document || !Number.isInteger(keywordLine) || keywordLine < 0 ||
         keywordLine >= document.lineCount) return unsupported('invalid-keyword-line');
@@ -14546,21 +14546,16 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
     const keywordText = String(document.lineAt(keywordLine).text || '');
     const classification = classifyKeywordLine(keywordText);
     if (!classification.isKeyword) return unsupported('keyword-line-changed');
-    if (keywordInputFormat(
-        keywordText,
-        options.globalInputFormat || documentGlobalInputFormat(document),
-    ) !== 'standard') return unsupported('non-standard-input');
+    if (classifyOpaqueCommentDirective(keywordText)) return unsupported('inactive-keyword-block');
+    const globalInputFormat = options.globalInputFormat || documentGlobalInputFormat(document);
+    if (keywordInputFormat(keywordText, globalInputFormat) !== 'standard') return unsupported('non-standard-input');
 
     const schema = options.schema || getFieldData();
     const lookup = keywordSchema.lookupKeywordSchema(classification.normalizedKeyword, schema);
-    if (!lookup) return unsupported('unknown-keyword');
-    if (Array.isArray(lookup.entry.tc) && lookup.entry.tc.length > 0) {
+    const native = require('./core/semantics/nativeFieldResolution').hasNativeFileReader(classification.normalizedKeyword.slice(1));
+    if (!lookup && !native) return unsupported('unknown-keyword');
+    if (!native && lookup.entry.tc?.length) {
         return unsupported('text-card-layout');
-    }
-
-    const initialPrefix = keywordSchema.getVerifiedPrefixLayout(lookup);
-    if (initialPrefix.status !== 'none' && initialPrefix.status !== 'verified') {
-        return unsupported('prefix-layout-unverified');
     }
     const endLine = boundedCardCommentRewriteEnd(document, keywordLine, options);
     if (!Number.isInteger(endLine)) return unsupported('block-line-limit');
@@ -14574,7 +14569,6 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
             pendingComments.push({ line, text });
             continue;
         }
-        if (text.includes(',')) return unsupported('free-format-data');
         records.push({ line, text, comments: pendingComments });
         pendingComments = [];
         if (records.length > CARD_COMMENT_REWRITE_MAX_DATA_LINES) {
@@ -14584,10 +14578,48 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
     if (records.length === 0) return unsupported('no-data-records');
 
     const observedDataLines = records.map(record => record.text);
-    const prefix = keywordSchema.getVerifiedPrefixLayout(lookup, observedDataLines);
-    if (prefix.status !== 'none' && prefix.status !== 'verified') {
+    const prefix = lookup ? keywordSchema.getVerifiedPrefixLayout(lookup, observedDataLines) : { status: 'none', cards: [] };
+    if (!native && prefix.status !== 'none' && prefix.status !== 'verified') {
         return unsupported('prefix-layout-unverified');
     }
+    const parameterContext = observedDataLines.some(text => /[&<]/.test(text))
+        ? options.parameterContext || nativeParameterContextForDocument(document) : undefined;
+    const context = { keywordLine, keywordText, observedDataLines, globalInputFormat,
+        recordLines: records.map(record => record.line),
+        parameterContext: parameterContext?.documentVersion === document.version ? parameterContext : undefined };
+    return { status: 'ready', schema, lookup, native, prefix, context, records, endLine, classification };
+}
+
+function resolveCardCommentRecords(document, block) {
+    return block.records.map((record, index) => {
+        const context = keywordSchema.readCardContext(document, record.line, block.schema, {
+            ...block.context, dataLineOrdinal: index + 1,
+        });
+        return context.status === 'resolved' ? resolveCommentCard(context.context, block.schema) : context;
+    });
+}
+
+async function prepareCardCommentParameters(document, keywordLine, token?) {
+    const current = createDocumentReadGuard(document, token);
+    if (!referenceQueryClient) return current();
+    const block = collectCardCommentBlock(document, keywordLine);
+    const parameters = block.context?.parameterContext;
+    if (!parameters?.flush) return current();
+    // Queue the actual branch controls, including requests first made from a keyword Hover.
+    for (let round = 0; round < 64 && current(); round++) {
+        resolveCardCommentRecords(document, block);
+        const changed = await parameters.flush();
+        if (!current() || parameters !== nativeParameterContextForDocument(document)) return false;
+        if (!changed) return true;
+    }
+    return false;
+}
+
+function planCardCommentRewriteForDocument(document, keywordLine, options: any = {}, block = collectCardCommentBlock(document, keywordLine, options)): any {
+    const unsupported = (reason, detailReason?) => ({ status: 'unsupported', reason, ...(detailReason ? { detailReason } : {}), edits: [] });
+    if (block.status !== 'ready') return block;
+    const { schema, lookup, records, endLine, classification } = block;
+    const { observedDataLines } = block.context;
     const structure = analyzeKeywordStructureForDocument(document, keywordLine, {
         ...options,
         schema,
@@ -14603,33 +14635,38 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
             edits: [],
         };
     }
-    const finiteCards = keywordSchema.getFiniteRenderedCardsForLookup(
-        lookup,
-        observedDataLines,
-    );
-    if (finiteCards.length === 0 || records.length > finiteCards.length) {
+    const finiteCards = lookup ? keywordSchema.getFiniteRenderedCardsForLookup(lookup, observedDataLines) : [];
+    if (!block.native && (finiteCards.length === 0 || records.length > finiteCards.length)) {
         return unsupported('repeat-or-extra-data');
     }
 
+    const resolutions = resolveCardCommentRecords(document, block);
+    const nativeCards = new Set();
     for (let index = 0; index < records.length; index++) {
         const record = records[index];
-        const info = keywordSchema.getCardInfoForDocumentLine(document, record.line, schema, {
-            keywordLine,
-            dataLineOrdinal: index + 1,
-
-            observedDataLines,
-        });
-        if (!info || info.isTextCard || !Array.isArray(info.card) || info.card.length === 0 ||
+        const resolution = resolutions[index];
+        const info = resolution.cardInfo;
+        if (!info) return unsupported(['free-format-input', 'free-format-data'].includes(resolution.reason)
+            ? 'free-format-data' : 'card-layout-unresolved', resolution.reason);
+        if (info.resolutionSource === 'native-file-reader') {
+            if (info.nativeInstanceStart !== 0 || nativeCards.has(info.nativeCardIndex)) return unsupported('repeat-or-extra-data');
+            nativeCards.add(info.nativeCardIndex);
+        } else if (records.length > finiteCards.length) return unsupported('repeat-or-extra-data');
+        if (!Array.isArray(info.card) || (!info.card.length && info.resolutionSource !== 'native-file-reader') ||
             info.card.some(field => !Number.isInteger(field?.p) || !Number.isInteger(field?.w) ||
                 field.w < 1)) return unsupported('card-layout-unresolved');
         record.card = info.card;
     }
 
+    const commentCards = records.map(record => record.card).filter(card => card.length);
     const recognized = [];
     for (const record of records) {
         record.recognizedComments = [];
+        if (!record.card.length) continue;
         for (const comment of record.comments) {
-            const analysis = keywordSchema.analyzeCardCommentHeader(comment.text, finiteCards);
+            const analysis = keywordSchema.analyzeCardCommentHeader(comment.text, [record.card])
+                || keywordSchema.analyzeCardCommentHeader(comment.text, commentCards)
+                || keywordSchema.analyzeCardCommentHeader(comment.text, finiteCards);
             if (!analysis) continue;
             const item = {
                 ...comment,
@@ -14652,6 +14689,7 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
     const edits = [];
     let generatedBytes = 0;
     for (const record of records) {
+        if (!record.card.length) continue;
         const exact = record.recognizedComments.filter(comment => {
             const analysis = keywordSchema.analyzeCardCommentHeader(comment.text, [record.card]);
             return !!analysis?.exactMatch;
@@ -14721,25 +14759,18 @@ function planCardCommentRewriteForDocument(document, keywordLine, options: any =
 
 /** Context actions reuse the bounded comment/card planners; never scan a project. */
 function planKeywordCardMaintenance(document, keywordLine, options: any = {}): any {
-    if (!document || !Number.isInteger(keywordLine) || keywordLine < 0 || keywordLine >= document.lineCount) return null;
-    const endLine = boundedCardCommentRewriteEnd(document, keywordLine, options);
-    if (!Number.isInteger(endLine)) return null;
+    const block = collectCardCommentBlock(document, keywordLine, options);
+    if (block.status !== 'ready') return null;
     if (!isActiveLsdynaSemanticLocation(document, { line: keywordLine, character: 0 }, { requireLiveSnapshot: true })) return null;
-    const keywordText = document.lineAt(keywordLine).text;
-    const schema = options.schema || getFieldData();
-    const lookup = keywordSchema.lookupKeywordSchema(classifyKeywordLine(keywordText).normalizedKeyword, schema);
-    if (!lookup || keywordInputFormat(keywordText, documentGlobalInputFormat(document)) !== 'standard') return null;
-    const records = [];
-    const comments = [];
-    for (let line = keywordLine + 1; line <= endLine; line++) {
-        const text = document.lineAt(line).text;
-        if (isKeywordCommentLine(text)) { if (!records.length) comments.push(text); }
-        else records.push({ line, text });
-    }
-    if (!records.length || records.length > CARD_COMMENT_REWRITE_MAX_DATA_LINES) return null;
-    const prefix = keywordSchema.getVerifiedPrefixLayout(lookup, records.map(record => record.text));
+    const { records, prefix, schema, endLine } = block;
+    const { keywordText } = block.context;
+    const comments = records[0].comments.map(comment => comment.text);
     // Removing _TITLE leaves a real data line behind; comment rewriting cannot repair that shift.
-    if (prefix.status === 'none' && comments.some(text => /^\$\s*#?\s*TITLE\s*$/i.test(text))) return null;
+    if (prefix.status === 'none' && comments.some(text => /^\$\s*#?\s*TITLE\s*$/i.test(text))) {
+        const first = resolveCommentCard({ ...block.context, currentText: records[0].text,
+            currentLine: records[0].line, dataLineOrdinal: 1 }, schema).cardInfo;
+        if (!first?.isTextCard) return null;
+    }
     if (prefix.status === 'verified' && prefix.cards.length === 1 && prefix.cards[0].length === 1 && prefix.cards[0][0].n === 'TITLE') {
         const baseText = keywordText.replace(/_TITLE(?=\s|$|_)/i, '');
         const baseLookup = keywordSchema.lookupKeywordSchema(classifyKeywordLine(baseText).normalizedKeyword, schema);
@@ -14757,11 +14788,14 @@ function planKeywordCardMaintenance(document, keywordLine, options: any = {}): a
                 ? { kind: 'title', endLine, edits: basePlan.edits, titleCard: prefix.cards[0] } : null;
         }
         // An old data header or numeric/parameter text can signal misplaced data, not an existing title.
-        if ((hasDataHeader || /^[\s\d.+\-EeDd]+$/.test(records[0].text) || records[0].text.includes('&')) && !hasTitleHeader) return null;
+        const firstText = records[0].text.trim();
+        const looksLikeData = firstText && firstText.split(/\s+/).every(token =>
+            /^[+-]?&[A-Za-z_][A-Za-z0-9_]*$/.test(token) || /^[\d.+\-EeDd]+$/.test(token));
+        if ((hasDataHeader || looksLikeData) && !hasTitleHeader) return null;
     }
     const conditional = planVerifiedConditionalCardsForDocument(document, keywordLine, options);
     if (conditional?.status === 'ready') return { kind: 'conditional', endLine, insertion: conditional.insertion };
-    const plan = planCardCommentRewriteForDocument(document, keywordLine, options);
+    const plan = planCardCommentRewriteForDocument(document, keywordLine, options, block);
     return plan.status === 'ready' ? { ...plan, kind: 'comments' } : null;
 }
 
@@ -14783,7 +14817,7 @@ class LsdynaKeywordCardsCodeActionProvider {
         if (!await prepareFieldInteraction(document, range.start, { keywordLine, cancellationToken: token }) || !current()) return [];
         await keywordStructureCatalog.prepare();
         await new Promise(resolve => setTimeout(resolve, 0));
-        if (!current()) return [];
+        if (!current() || !await prepareCardCommentParameters(document, keywordLine, token) || !current()) return [];
         const available = keywordCardMaintenanceAction(document, keywordLine);
         if (!available || token?.isCancellationRequested) return [];
         const action = new vscode.CodeAction(available.title, vscode.CodeActionKind.QuickFix);
@@ -14799,6 +14833,8 @@ async function handleUpdateKeywordCardsCommand(request, options: any = {}) {
     if (!document || !isLsdynaFile(document) || !request || request.uri !== documentUriIdentity(document) || request.documentVersion !== document.version) {
         showCardCommentRewriteStatus('cardCommentRewriteStale'); return false;
     }
+    if (!await prepareFieldInteraction(document, { line: request.keywordLine, character: 0 }, { keywordLine: request.keywordLine }) ||
+        !await prepareCardCommentParameters(document, request.keywordLine) || !isCurrent()) return false;
     const available = keywordCardMaintenanceAction(document, request.keywordLine);
     if (!available || available.plan.kind !== request.kind) { showCardCommentRewriteStatus('cardCommentRewriteUnavailable'); return false; }
     const { plan, title } = available;
@@ -14866,6 +14902,8 @@ async function handleRebuildCardCommentsCommand(request, options: any = {}) {
         return null;
     }
 
+    if (!await prepareFieldInteraction(document, { line: request.line, character: 0 }, { keywordLine: request.keywordLine }) ||
+        !await prepareCardCommentParameters(document, request.keywordLine) || !editIsCurrent()) return null;
     const resolved = getCardInfoForDocumentLineWithSuggest(
         document,
         request.line,
@@ -14878,7 +14916,7 @@ async function handleRebuildCardCommentsCommand(request, options: any = {}) {
         return null;
     }
 
-    const plan = planCardCommentRewriteForDocument(document, request.keywordLine, {
+    const maintenance = planKeywordCardMaintenance(document, request.keywordLine, {
         ...options,
         schema: options.schema || getFieldData(),
         expectedDocumentVersion: request.documentVersion,
@@ -14886,6 +14924,7 @@ async function handleRebuildCardCommentsCommand(request, options: any = {}) {
             ? options.blockIndex
             : readyCardEditBlockIndex(document, options.keywordIndexProvider),
     });
+    const plan = maintenance?.kind === 'comments' ? maintenance : null;
     if (plan?.status !== 'ready' || plan.documentVersion !== document.version) {
         (options.showStatus || showCardCommentRewriteStatus)(
             plan?.status === 'stale' || plan?.status === 'no-change'

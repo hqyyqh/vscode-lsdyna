@@ -295,6 +295,12 @@ function createFixtureWorkspace(root) {
         ].join('\r\n'),
         'utf8',
     );
+    fs.writeFileSync(path.join(root, 'field-comment-title.key'), [
+        '*KEYWORD', '*MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_TITLE',
+        'CKE_mat_240_Thermal_Structural_Adhesive_2210_failure_scale_2',
+        '  46000014   1.94E-9                  1.      1.54      1.46',
+        '      16.4                         17.38', '      19.4                          12.2', '*END', '',
+    ].join('\r\n'));
     fs.writeFileSync(
         path.join(root, 'keyword-structure-winfrith-missing.key'),
         [
@@ -536,10 +542,15 @@ async function main() {
     const { createTempRun, finishTempRun } = require('./temp-runs.cjs');
     const root = createTempRun('dynasense-editor-safety-');
     const workspaceDir = createFixtureWorkspace(path.join(root, 'workspace'));
-    const userDataDir = path.join(root, 'user-data');
+    const userDataDir = path.join(root, 'profile');
     const extensionsDir = path.join(root, 'extensions');
     fs.mkdirSync(userDataDir);
     fs.mkdirSync(extensionsDir);
+    const locale = process.env.VSCODE_TEST_LOCALE || 'en';
+    if (!['en', 'zh-cn'].includes(locale)) throw Error('Unknown host locale');
+    if (locale === 'zh-cn' && process.env.LSDYNA_LANGUAGE_EXTENSIONS)
+        require('./language-pack.cjs').copyChineseLanguagePack(root, process.env.LSDYNA_LANGUAGE_EXTENSIONS,
+            process.env.LSDYNA_LANGUAGE_PACK_CACHE);
     // Built-in chat onboarding can steal focus between an edit and Undo.
     fs.mkdirSync(path.join(userDataDir, 'User'));
     fs.writeFileSync(path.join(userDataDir, 'User/settings.json'), JSON.stringify({ 'chat.disableAIFeatures': true }));
@@ -561,6 +572,7 @@ async function main() {
             ),
             launchArgs: [
                 workspaceDir,
+                `--locale=${locale}`,
                 '--disable-extensions',
                 '--disable-gpu',
                 '--disable-workspace-trust',

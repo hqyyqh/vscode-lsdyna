@@ -1849,7 +1849,9 @@ export function resolveCardFromContext(
     const ordinal = context.dataLineOrdinal ?? 1;
     const isTextCard = !!textCard && ordinal >= textCard.cardIndex;
     if (!isTextCard && isKeywordCommentLine(context.currentText)) return fail('unsupported', 'comment-line');
-    if (!geometryOnly && !isTextCard && context.currentText.includes(',')) return fail('unsupported', 'free-format-input');
+    const leadingText = ordinal <= (prefix?.length || 0) &&
+        prefix![ordinal - 1].every(field => field.t === 'string');
+    if (!geometryOnly && !isTextCard && !leadingText && context.currentText.includes(',')) return fail('unsupported', 'free-format-input');
     const bodyOrdinal = ordinal - (prefix?.length || 0);
     const schemaCard = isTextCard ? textCard.card
         : cardForObservedDataLine(lookup.entry, lookup.activeOptions, ordinal, prefix);
