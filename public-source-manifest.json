@@ -474,7 +474,7 @@
     {
       "path": "CHANGELOG.md",
       "role": "editable-source",
-      "sha256": "9c111cae2e64de0992ff09f2f8d4e44ed99998487a53a678633e0a136d8f3ddf",
+      "sha256": "adfcda5f30adf037c021f103ea3bc42d7c441748f1cf4320d552a33dc73ff5f3",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2526,13 +2526,13 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "f5863eb647701b2fc49655a7dae1674e7db857219619b75aaacdbca875ad7444",
+      "sha256": "5af74f12d6e0ee1c083c63c28208f93ec1662de0411da572336cd2215aba1130",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "9fa90309674fa116bdbed55fa072243c5fe7e05d658eb1948d431e76b69f0203",
+      "sha256": "debafbbc6c1077c0378bcaa1646475dc27a21e42ad187a05953243a1a9ae937e",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7302,7 +7302,7 @@
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "03b23197ff80156346275092c0b1dfefe83bc1a64caa752bbef64649f5636167",
+      "sha256": "67a23d4335d54ac772e63d175bda4ff70d6a10fa6eb9b5e7a0b8e4b3202e1748",
       "reason": "public-build-or-package-regression"
     },
     {

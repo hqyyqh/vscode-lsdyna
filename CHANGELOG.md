@@ -7,13 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-10-30
+
 ### Changed / 改进
 
-- Reduce public settings from 38 to 29 and organize them into 12 everyday options and 17 advanced options. Retain existing cache-limit overrides, use a fixed change-mark update delay, and replace the setup-notice setting with a persistent dismissal action. The developer-only unaudited-catalog override now uses its existing environment variable instead of a user setting.
-- 将公开设置从 38 项精简为 29 项，分为 12 项日常选项和 17 项高级选项。保留已有缓存限制配置，统一变更标记更新延迟，并以持久化的“不再提醒”操作替代配置提示开关。仅供开发使用的未审核数据入口改为沿用现有环境变量，不再通过用户设置启用。
+- Add a fixed-position action in curve Hover cards to switch between the curve preview and field help. Each newly opened Hover starts with the curve; switching uses a brief native Hover refresh.
+- 曲线悬停卡片顶部新增固定位置的切换按钮，可在曲线预览与字段帮助间切换。每次重新打开默认显示曲线；切换时原生悬停卡片会短暂刷新。
+- Remove the redundant “candidate” label from reference previews and use direct definition-navigation labels; retain the distinction between one definition and multiple definitions.
+- 移除引用预览中冗余的“候选”字样，使用直接的定义跳转名称，并保留单个定义与多个定义的区别。
 
-- Remove the obsolete large-file full-scan switch and its outdated first/last-line description. Keyword and include discovery already scans through the file; cancellation and scan-budget safeguards remain in place. Document the defaults and consequences of removing legacy cache overrides.
-- 移除已失效的大文件全量扫描开关及“仅扫描首尾”的过时说明。关键字和引用指令发现本就读取整个文件，保留取消操作和扫描预算保护；补充旧缓存配置的默认值及删除配置后的影响。
+### Fixed / 修复
+
+- Restore field-comment actions for supported keyword spellings, including `*MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_TITLE`, while preserving field values, record order and format-specific editing restrictions.
+- 恢复支持的关键字形式中的字段注释入口，包括 `*MAT_COHESIVE_MIXED_MODE_ELASTOPLASTIC_RATE_TITLE`，同时保留字段值、数据记录顺序及各输入格式的编辑限制。
+- Restore curve reference previews in native field layouts, including LCA, LCB and LCC in `*MAT_MODIFIED_HONEYCOMB_TITLE`. Recognize the same local curve definition consistently so duplicate scan results do not suppress its preview; genuinely distinct definitions remain separate.
+- 恢复原生字段布局中的曲线引用预览，包括 `*MAT_MODIFIED_HONEYCOMB_TITLE` 的 LCA、LCB 和 LCC。统一识别同一个本地曲线定义，避免重复扫描结果阻断预览；不同位置的定义仍分别保留。
+- Correct supported keyword-option layouts and title-prefix handling in Keyword Manager, including optional-card counts and changes that retain the keyword spelling.
+- 修正关键字管理器中支持的选项布局与标题前缀处理，包括可选卡片计数，以及不改变关键字名称的选项切换。
+
+### Maintenance / 维护
+
+- Reuse one Linux build for daily development checks, preserve platform-package release checks, and allow the parameter-context test to finish on slower runners. Update the development dependency `qs` to 6.17.1.
+- 日常开发检查复用一次 Linux 构建，保留各平台安装包的发布检查，并为参数上下文测试提供适合较慢运行环境的完成时限。开发依赖 `qs` 更新至 6.17.1。
 
 ## [3.2.2] - 2026-10-25
 
@@ -27,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 为已核验原生支持的关键字提供可选卡片控件，包括支持的 DATABASE 二进制输出关键字及 ALE_INJECTION；移除已填写字段前保留预览与确认。
 
 ### Changed / 改进
+
+- Reduce public settings from 38 to 29 and organize them into 12 everyday options and 17 advanced options. Retain existing cache-limit overrides, use a fixed change-mark update delay, and replace the setup-notice setting with a persistent dismissal action. The developer-only unaudited-catalog override now uses its existing environment variable instead of a user setting.
+- 将公开设置从 38 项精简为 29 项，分为 12 项日常选项和 17 项高级选项。保留已有缓存限制配置，统一变更标记更新延迟，并以持久化的“不再提醒”操作替代配置提示开关。仅供开发使用的未审核数据入口改为沿用现有环境变量，不再通过用户设置启用。
+
+- Remove the obsolete large-file full-scan switch and its outdated first/last-line description. Keyword and include discovery already scans through the file; cancellation and scan-budget safeguards remain in place. Document the defaults and consequences of removing legacy cache overrides.
+- 移除已失效的大文件全量扫描开关及“仅扫描首尾”的过时说明。关键字和引用指令发现本就读取整个文件，保留取消操作和扫描预算保护；补充旧缓存配置的默认值及删除配置后的影响。
 
 - Simplify Entity References controls and use the same scope picker as Keyword Index; move cursor following to the view menu.
 - 精简对象引用控件，查询范围沿用关键字索引的选择方式，并将光标跟随移入视图菜单。

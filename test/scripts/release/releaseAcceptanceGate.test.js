@@ -13,7 +13,11 @@ describe('immutable release acceptance gate', () => {
             buildCommit: '4cb6b5207bc70c3421b30eff2b46d5af329d66d7', releaseCommit: process.env.GITHUB_SHA,
             vsixSha256: crypto.createHash('sha256').update(fs.readFileSync(vsix)).digest('hex') };
         const report = path.join(root, 'local-win32-x64.json');
+        const previousDirectory = process.cwd();
+        const packageFile = path.join(root, 'package.json');
         try {
+            fs.writeFileSync(packageFile, JSON.stringify({ version: '3.2.2' }));
+            process.chdir(root);
             fs.writeFileSync(report, JSON.stringify(record));
             assert.equal(verify(vsix, root, 'win32-x64').installedCi, 'waived-by-user-not-passed');
             for (const field of ['vsixSha256', 'releaseCommit', 'buildCommit', 'buildRun', 'target', 'reason', 'installedCi']) {
@@ -23,10 +27,14 @@ describe('immutable release acceptance gate', () => {
             fs.writeFileSync(report, JSON.stringify(record));
             process.env.REUSE_PLAN = JSON.stringify({ ...plan, buildRun: '1' });
             assert.throws(() => verify(vsix, root, 'win32-x64'));
+            process.env.REUSE_PLAN = JSON.stringify(plan);
+            fs.writeFileSync(packageFile, JSON.stringify({ version: '3.2.3' }));
+            assert.throws(() => verify(vsix, root, 'win32-x64'), /3\.2\.3.*3\.2\.2/s);
         } finally {
+            process.chdir(previousDirectory);
             if (savedPlan === undefined) delete process.env.REUSE_PLAN; else process.env.REUSE_PLAN = savedPlan;
             if (savedSha === undefined) delete process.env.GITHUB_SHA; else process.env.GITHUB_SHA = savedSha;
-            fs.unlinkSync(report); fs.unlinkSync(vsix); fs.rmdirSync(root);
+            fs.unlinkSync(packageFile); fs.unlinkSync(report); fs.unlinkSync(vsix); fs.rmdirSync(root);
         }
     });
     it('accepts only matching completed host jobs across original, platform and retry routes', () => {
