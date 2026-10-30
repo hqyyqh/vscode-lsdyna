@@ -20,7 +20,7 @@ describe('descriptor reader provider replay and editing boundaries', function ()
     for (let index = 0; index < payload.fixtures.length; index++) {
         it(`[full-corpus] replays retained input ${index + 1} with complete field help and physical ranges`, async () => {
             const fixture = payload.fixtures[index];
-            const document = { ...fakeDoc(fixture.text), version: 1 };
+            const document = { ...fakeDoc(fixture.text, `/test/descriptor-replay-${index}.k`), version: 1 };
             for (const query of fixture.queries) {
                 const hover = await provider.provideDetailedHover(document, { line: query.line, character: query.character },
                     { isCancellationRequested: false });

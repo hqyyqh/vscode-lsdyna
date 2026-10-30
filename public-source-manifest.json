@@ -7146,7 +7146,7 @@
     {
       "path": "test/public-behavior/descriptorHoverReplay.test.js",
       "role": "editable-source",
-      "sha256": "c4d336bf1b811d1705530c497fd84ad8ea4f4276b122dc9c266a6d47236cf3d4",
+      "sha256": "9f213779870f93bb5d3d848cc7f6f8a55dee0a7702686f2822f4561150d01d2d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
