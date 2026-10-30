@@ -2760,7 +2760,7 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "12402d937b5d8ee5462e3339df5225dc1c11ae16d8a56037a812f6e30ea34bc7",
+      "sha256": "bf9bd5ee572a5c6fa692e932053842cc69bc72d7b742f747806ac4a8a475790b",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2952,7 +2952,7 @@
     {
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
-      "sha256": "fb8df4d6a40c4b7e80d4dd34a2f39caa0e49405f923f5b11118363a5e29570d2",
+      "sha256": "00d334de6592e428845796875b13c3d5288b9715fed5d7f3c3ea274d1562c2c1",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6870,7 +6870,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "0e88bd8f5071bf9d9e4c346ba6e7e62fa740a54b34ec3ebffa966d1132d33da1",
+      "sha256": "cc6ce65521425f99422bf59061a031cb39268b36b64bd465a66b5f3bb9367837",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7230,7 +7230,7 @@
     {
       "path": "test/scripts/host/installedAcceptance.test.js",
       "role": "editable-source",
-      "sha256": "0e015c5ea9ccdd104de8e758e6954a71157588e31d6991523323c0d595f46e53",
+      "sha256": "123379163d040c46685791a51b686225f635592c9cf025cea5beaa8e11f30218",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -7302,7 +7302,7 @@
     {
       "path": "test/scripts/release/releaseAcceptanceGate.test.js",
       "role": "editable-source",
-      "sha256": "67a23d4335d54ac772e63d175bda4ff70d6a10fa6eb9b5e7a0b8e4b3202e1748",
+      "sha256": "5fb50af16eeb21081a55ec90152d958381d797eaa9bb684607268733f7b919ee",
       "reason": "public-build-or-package-regression"
     },
     {

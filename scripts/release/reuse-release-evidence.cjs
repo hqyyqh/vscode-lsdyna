@@ -3,7 +3,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const crypto = require('node:crypto'), vm = require('node:vm'), ts = require('typescript');
 const { execFileSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
-const { validateChanges, validateBuild, validateReport } = require('../host/run-installed-acceptance-retry.cjs');
+const { validateRunSource, validateChanges, validateBuild, validateReport } = require('../host/run-installed-acceptance-retry.cjs');
 const { verify } = require('./verify-release-acceptance.cjs');
 const targets = ['win32-x64', 'linux-x64', 'darwin-arm64'], versions = ['1.100.0', '1.139.1'];
 const pair = ['assertAutoSaveFormatIsLocalAndUndoable', 'assertCommittedImeTextIsEditorLocalAndUndoable'];
@@ -45,7 +45,7 @@ function combineEditor({ prefixSource, pairSource, currentSource, log, pairRepor
 }
 function validateHostJob(run, target, version, success = true) {
     const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
-    const job = run.jobs.find(job => [`Same VSIX / ${os} / VS Code ${version}`,
+    const job = run.jobs.find(job => [`build / Platform / ${target} / Installed / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Same VSIX / ${os} / VS Code ${version}`,
         `Platform / ${target} / Installed / ${version} / Same VSIX / ${os} / VS Code ${version}`,
         `Retry / ${target} / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(job.name));
     assert.ok(job && job.status === 'completed' && (!success || job.conclusion === 'success'), 'Missing successful host job');
@@ -69,8 +69,8 @@ function main() {
     const readRun = value => {
         const runId = id(value); if (cache.has(runId)) return cache.get(runId);
         const run = JSON.parse(command('gh', ['run', 'view', runId, '--repo', repo, '--json', 'headSha,headBranch,event,jobs,workflowName,status']));
-        assert.equal(run.status, 'completed'); assert.equal(run.headBranch, 'dev');
-        assert.equal(run.workflowName, 'Public collaboration / 公开协作'); assert.equal(run.event, 'workflow_dispatch');
+        assert.equal(run.status, 'completed'); validateRunSource(run);
+        assert.equal(run.event, 'workflow_dispatch');
         command('git', ['merge-base', '--is-ancestor', run.headSha, 'HEAD']);
         validateChanges(command('git', ['diff', '--name-only', run.headSha, 'HEAD']).split('\n').filter(Boolean));
         cache.set(runId, run); return run;

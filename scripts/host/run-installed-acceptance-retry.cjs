@@ -37,18 +37,25 @@ function validateReport(report, { digest, target, version }) {
     assert.ok(!report.vscodeVersion || report.vscodeVersion === version, 'Previous actual version mismatch');
     assert.ok(Array.isArray(report.cases), 'Previous report has no case results');
 }
+function validateRunSource(run) {
+    const release = run.workflowName === 'Release extension';
+    assert.equal(run.workflowName, release ? 'Release extension' : 'Public collaboration / 公开协作');
+    assert.equal(run.headBranch, release ? 'master' : 'dev');
+    assert.ok(['push', 'workflow_dispatch'].includes(run.event), 'Untrusted workflow event');
+}
 function validateBuild(run, target) {
-    assert.equal(run.workflowName, 'Public collaboration / 公开协作');
+    assert.ok(['Public collaboration / 公开协作', 'Release extension'].includes(run.workflowName));
     assert.ok(run.jobs.some(job => job.conclusion === 'success' && (
         (job.name.startsWith('Build, data, tests, audit and actual VSIX') && job.name.endsWith(`${target})`)) ||
         job.name === `Platform / ${target} / Build, data, tests, audit and actual VSIX (${target})` ||
+        (run.workflowName === 'Release extension' && job.name === `build / Platform / ${target} / Build, data, tests, audit and actual VSIX (${target})`) ||
         job.name === `Selected node / Node / ${target} / package`
     )), `Missing passed build for ${target}`);
 }
 function findCompletedHostJob(jobs, target, version) {
     const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
     const sameVsix = `Same VSIX / ${os} / VS Code ${version}`;
-    const names = [sameVsix, `Selected node / Node / ${target} / installed / ${version}`,
+    const names = [`build / Platform / ${target} / Installed / ${version} / ${sameVsix}`, sameVsix, `Selected node / Node / ${target} / installed / ${version}`,
         `Platform / ${target} / Installed / ${version} / ${sameVsix}`, `Retry / ${target} / ${version} / ${sameVsix}`];
     const job = jobs.find(item => names.includes(item.name) && item.status === 'completed');
     assert.ok(job, 'Previous host is not finished');
@@ -101,9 +108,7 @@ function main() {
     const build = readRun(buildRun), previousRun = !resumeRun ? null : buildRun === resumeRun ? build : readRun(resumeRun);
     let invalidated;
     for (const run of [build, previousRun].filter(Boolean)) {
-        assert.equal(run.headBranch, 'dev');
-        assert.equal(run.workflowName, 'Public collaboration / 公开协作');
-        assert.ok(['push', 'workflow_dispatch'].includes(run.event));
+        validateRunSource(run);
         command('git', ['merge-base', '--is-ancestor', run.headSha, 'HEAD']);
         invalidated = validateChanges(command('git', ['diff', '--name-only', run.headSha, 'HEAD']).split('\n').filter(Boolean));
     }
@@ -140,5 +145,5 @@ function main() {
     fs.appendFileSync(githubEnv, `LSDYNA_ACCEPTANCE_RESUME=${resume}\n`);
     console.log(`Reuse build ${buildRun}, completed host cases from ${resumeRun}, exact package ${digest}`);
 }
-module.exports = { validateChanges, validateReport, validateBuild, findCompletedHostJob, reusableEditorScenarios };
+module.exports = { validateRunSource, validateChanges, validateReport, validateBuild, findCompletedHostJob, reusableEditorScenarios };
 if (require.main === module) main();

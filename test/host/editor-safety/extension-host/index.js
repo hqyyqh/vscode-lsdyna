@@ -5680,15 +5680,21 @@ async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
             activeBeforeClick.className.includes('native-edit-context'),
         );
 
-        // Exercise the intended no-shortcut path: real mouse click on the status
-        // item, followed by a native-verified value 1 QuickPick row. The manual's
+        // Exercise the intended no-shortcut path: open the status menu, select
+        // the current field, then a native-verified value 1 QuickPick row. The manual's
         // 10/11 entries are outside this native descriptor's accepted enum.
         const statusPoint = await waitForRendererVisibleTextElementCenter(
             devTools,
             '.statusbar-item',
-            'FLAG',
+            'LS-DYNA',
         );
         await dispatchRendererMouseClick(devTools, statusPoint);
+        const fieldPoint = await waitForRendererVisibleTextElementCenter(
+            devTools,
+            '.quick-input-widget .monaco-list-row',
+            'FLAG',
+        );
+        await dispatchRendererMouseClick(devTools, fieldPoint);
         await waitForRendererInput(devTools, '');
         const valuePoint = await waitForRendererVisibleTextElementCenter(
             devTools,

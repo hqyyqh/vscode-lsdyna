@@ -40,7 +40,7 @@ describe('immutable release acceptance gate', () => {
     it('accepts only matching completed host jobs across original, platform and retry routes', () => {
         const { validateHostJob } = require('../../../scripts/release/reuse-release-evidence.cjs');
         const suffix = 'Same VSIX / windows-2022 / VS Code 1.100.0';
-        for (const name of [suffix, `Platform / win32-x64 / Installed / 1.100.0 / ${suffix}`, `Retry / win32-x64 / 1.100.0 / ${suffix}`]) {
+        for (const name of [`build / Platform / win32-x64 / Installed / 1.100.0 / ${suffix}`, suffix, `Platform / win32-x64 / Installed / 1.100.0 / ${suffix}`, `Retry / win32-x64 / 1.100.0 / ${suffix}`]) {
             const run = { jobs: [{ name, status: 'completed', conclusion: 'success' }] };
             assert.equal(validateHostJob(run, 'win32-x64', '1.100.0'), run.jobs[0]);
             assert.throws(() => validateHostJob(run, 'linux-x64', '1.100.0'));

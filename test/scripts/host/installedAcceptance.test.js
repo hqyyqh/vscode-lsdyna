@@ -161,13 +161,23 @@ describe('installed acceptance executable and measured version', () => {
     it('finds completed nested installation jobs for the exact platform and VS Code version', () => {
         const { findCompletedHostJob } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
         const suffix = 'Same VSIX / ubuntu-22.04 / VS Code 1.139.1';
-        for (const name of [suffix, `Platform / linux-x64 / Installed / 1.139.1 / ${suffix}`,
+        for (const name of [`build / Platform / linux-x64 / Installed / 1.139.1 / ${suffix}`, suffix, `Platform / linux-x64 / Installed / 1.139.1 / ${suffix}`,
             `Retry / linux-x64 / 1.139.1 / ${suffix}`, 'Selected node / Node / linux-x64 / installed / 1.139.1']) {
             const job = { name, status: 'completed', databaseId: 123 };
             assert.equal(findCompletedHostJob([job], 'linux-x64', '1.139.1'), job);
             assert.throws(() => findCompletedHostJob([job], 'win32-x64', '1.139.1'));
             assert.throws(() => findCompletedHostJob([job], 'linux-x64', '1.100.0'));
             assert.throws(() => findCompletedHostJob([{ ...job, status: 'in_progress' }], 'linux-x64', '1.139.1'));
+        }
+    });
+    it('binds reused builds to the authorized workflow, branch and event', () => {
+        const { validateRunSource } = require('../../../scripts/host/run-installed-acceptance-retry.cjs');
+        for (const [workflowName, headBranch] of [['Public collaboration / 公开协作', 'dev'], ['Release extension', 'master']]) {
+            const run = { workflowName, headBranch, event: 'workflow_dispatch' };
+            validateRunSource(run);
+            validateRunSource({ ...run, event: 'push' });
+            for (const other of [{ headBranch: 'feature' }, { headBranch: headBranch === 'dev' ? 'master' : 'dev' },
+                { workflowName: 'unrelated' }, { event: 'pull_request' }]) assert.throws(() => validateRunSource({ ...run, ...other }));
         }
     });
     it('reuses only the selected platform successful package job, without requiring unrelated platforms', () => {
@@ -185,6 +195,12 @@ describe('installed acceptance executable and measured version', () => {
         assert.throws(() => validateBuild(run, 'win32-x64'));
         run.jobs = [{name:'Selected node / Node / win32-x64 / package',conclusion:'success'}];
         validateBuild(run, 'win32-x64');
+        run.jobs[0].conclusion = 'failure';
+        assert.throws(() => validateBuild(run, 'win32-x64'));
+        run.workflowName = 'Release extension';
+        run.jobs = [{ name: 'build / Platform / win32-x64 / Build, data, tests, audit and actual VSIX (win32-x64)', conclusion: 'success' }];
+        validateBuild(run, 'win32-x64');
+        assert.throws(() => validateBuild(run, 'linux-x64'));
         run.jobs[0].conclusion = 'failure';
         assert.throws(() => validateBuild(run, 'win32-x64'));
         run.jobs[0].conclusion = 'success'; run.workflowName = 'unrelated';
