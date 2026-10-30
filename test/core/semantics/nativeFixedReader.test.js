@@ -15,8 +15,8 @@ describe('inventory driven fixed EOS readers', () => {
         // Individual hover/cache latency remains covered separately.
         this.timeout(120000);
         const provider = new LsdynaFieldHoverProvider();
-        for (const bundle of fixtures) for (const job of bundle.jobs) {
-            const doc = { ...fakeDoc(job.input, path.resolve('out/fixed-regression', String(job.id), `${job.id}.k`)), version: 1 };
+        for (const [bundleIndex, bundle] of fixtures.entries()) for (const job of bundle.jobs) {
+            const doc = { ...fakeDoc(job.input, path.resolve('out/fixed-regression', String(bundleIndex), String(job.id), `${job.id}.k`)), version: 1 };
             const reads = new Map(job.reads.map(read => [read.sourceLine, read]));
             let start = 1;
             for (const id of job.tasks) {
@@ -47,7 +47,7 @@ describe('inventory driven fixed EOS readers', () => {
                             : task.format === 'long' ? i * 20 : nativeDescriptor.position;
                         const end = start + (task.format === 'comma' ? record.fields[i].value.length : width);
                         const hover = await provider.provideHover(doc, { line, character: field.p });
-                        assert.ok(hover?.contents[0].value.includes(`**${field.n}**`), `${task.keyword}: ${field.n}`);
+                        assert.ok(hover?.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`), `${task.keyword}: ${field.n}`);
                         assert.equal(hover.range.start.character, start);
                         assert.equal(hover.range.end.character, end);
                     }

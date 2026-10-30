@@ -42,7 +42,7 @@ it('uses native identities, source values and one source instance through real h
                     for (const field of info.card) {
                         if (!doc.lineAt(line).text) continue;
                         const hover = await provider.provideHover(doc, { line, character: field.p });
-                        assert.ok(hover?.contents[0].value.includes(`**${field.n}**`), field.n);
+                        assert.ok(hover?.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`), field.n);
                         assert.equal(hover.range.start.character, field.nativeRange.start);
                         assert.equal(hover.range.end.character, field.nativeRange.end);
                     }

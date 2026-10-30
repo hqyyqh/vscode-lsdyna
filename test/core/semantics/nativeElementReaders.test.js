@@ -20,7 +20,7 @@ describe('native ELEMENT instance readers',()=>{
     assert.deepEqual(info.card.map(f=>f.rawValue),record.fields.map(f=>f.value),task.keyword+' '+task.format);
     for(const field of info.card){
      const hover=await provider.provideHover(doc,{line:record.lineOffset,character:field.p});
-     assert.ok(hover?.contents[0].value.includes('**'+field.n+'**'),task.keyword+' '+field.n);
+     assert.ok(hover?.contents[0].value.replace(/`/g, '').includes('**'+field.n+'**'),task.keyword+' '+field.n);
      assert.equal(hover.range.start.character,field.p);
     }
    }

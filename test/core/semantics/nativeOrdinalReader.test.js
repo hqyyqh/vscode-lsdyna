@@ -43,7 +43,7 @@ describe('native ordinal entity reader', () => {
                         assert.equal(field.t, native.fields[index].type === 1 ? 'integer' : 'real');
                         if (position >= text.length) continue;
                         const hover = await provider.provideHover(doc, { line, character: position });
-                        assert.ok(hover?.contents[0].value.includes(`**${field.n}**`), `${task.keyword} ${field.n}`);
+                        assert.ok(hover?.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`), `${task.keyword} ${field.n}`);
                         assert.equal(hover.range.start.character, position);
                         assert.equal(hover.range.end.character, Math.min(text.length, position + (text.includes(',') ? raw.length : width)));
                     }

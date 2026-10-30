@@ -5784,7 +5784,7 @@
     {
       "path": "test/core/semantics/nativeElementReaders.test.js",
       "role": "editable-source",
-      "sha256": "ae0a0ef1086fa28b8ef7347b08fd52f577d9384000fe59042b35ee9795680ae9",
+      "sha256": "b94c2f6fe202c5bb7d668cb13053e8696b3ad0d4461a90331f47e78f9b609a6b",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5814,7 +5814,7 @@
     {
       "path": "test/core/semantics/nativeFixedReader.test.js",
       "role": "editable-source",
-      "sha256": "d2ab47ea8e90ea241179f8736341339d215291ea2b27e2fc5a69e4945e976206",
+      "sha256": "227de860d4ead6d4b923799b73bf40fc51fff627030612f7120059f9b7cfb9b5",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5826,7 +5826,7 @@
     {
       "path": "test/core/semantics/nativeGenericReader.test.js",
       "role": "editable-source",
-      "sha256": "4d72b895634500353ffef25cd91afe19c8053ab15025e14c36788db95aed2e86",
+      "sha256": "9b35fd9b5048d0e6affbe8271e53e9259df0c16c7614bbe37bcdce95f0fa65c6",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5862,19 +5862,19 @@
     {
       "path": "test/core/semantics/nativeOptionalTailReader.test.js",
       "role": "editable-source",
-      "sha256": "fb6844ad6f4b4262571e7112366209cf782d7ff274f9c5e0364c82f95f7fb706",
+      "sha256": "05944a8316955017c8b01fe72a7bf4e9595a803bf80103132eb0e21714f2e85d",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/semantics/nativeOrdinalConditional.test.js",
       "role": "editable-source",
-      "sha256": "2f53daf9d8c148e999112aad85b34031d2017895085bffeebefb7c12d305d695",
+      "sha256": "d0014389cd79a437d885de2768a379784fb5d3cb8ff896a2e7910106209ab43a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
       "path": "test/core/semantics/nativeOrdinalReader.test.js",
       "role": "editable-source",
-      "sha256": "b4bc770f60607a05e3ff6d70e8ad44880042d46ef173b8dd9b15d27dae6b1692",
+      "sha256": "778faef39474ff08ede5484c0c64f536cc6a64c27ae252212f4f4dd0364585f1",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5922,7 +5922,7 @@
     {
       "path": "test/core/semantics/nativePatchReaders.test.js",
       "role": "editable-source",
-      "sha256": "b77243f98af89933648989dce154aee45cb02f8ea24861e3566892bb4f310d6a",
+      "sha256": "0004b338ea2cedd4dc6e170e46c5dda469b4b010e79f36e65ff0cf647915f41a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

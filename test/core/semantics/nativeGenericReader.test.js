@@ -13,10 +13,10 @@ describe('shared generic native file readers', () => {
     it('matches native field identities and literal input values through real hover and manager source mapping', async function () {
         this.timeout(30000);
         const provider = new LsdynaFieldHoverProvider();
-        for (const bundle of fixtures) {
+        for (const [bundleIndex, bundle] of fixtures.entries()) {
             const tasks = new Map(bundle.tasks.map(task => [task.id, task]));
             for (const job of bundle.jobs) {
-                const documentPath = path.resolve('out/native-batch-regression', String(job.id), `job-${job.id}.k`);
+                const documentPath = path.resolve('out/native-batch-regression', String(bundleIndex), String(job.id), `job-${job.id}.k`);
                 const doc = { ...fakeDoc(job.input, documentPath), version: 1 };
                 if (job.tasks.some(id => tasks.get(id).keywordLineOffset)) {
                     const { collectBlocksFromLineReader } = require("../../../out/core/parser/blockScanner");
@@ -55,7 +55,7 @@ describe('shared generic native file readers', () => {
                             assert.equal(field.rawValue, expected.value);
                             assert.equal(field.t, expected.type === 1 ? 'integer' : expected.type === 2 ? 'real' : 'string');
                             const hover = await provider.provideHover(doc, { line, character: field.p });
-                            assert.ok(hover?.contents[0].value.includes(`**${field.n}**`), `${task.keyword} ${field.n}`);
+                            assert.ok(hover?.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`), `${task.keyword} ${field.n}`);
                             assert.equal(hover.range.start.character, field.nativeRange.start);
                             assert.equal(hover.range.end.character, field.nativeRange.end);
                         }

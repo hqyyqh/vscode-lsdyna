@@ -27,7 +27,7 @@ describe('native ordinal conditional records', () => {
                 assert.deepEqual(result.cardInfo.card.map(f=>f.nativeIdentity.fieldRecordId),native.fields.map(f=>f.descriptorAddress));
                 for (const field of result.cardInfo.card) {
                     const hover=await provider.provideHover(doc,{line,character:field.nativeRange.start});
-                    assert.ok(hover?.contents[0].value.includes(`**${field.n}**`),`${item.keyword}:${field.n}`);
+                    assert.ok(hover?.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`),`${item.keyword}:${field.n}`);
                     assert.equal(hover.range.end.character,field.nativeRange.end);
                 }
             }
