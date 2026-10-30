@@ -59,7 +59,7 @@ describe('native shared file windows', () => {
                     if (!matching.length) continue;
                     const hover = await provider.provideHover(doc, { line: record.lineOffset, character: column });
                     assert.ok(hover, task.id);
-                    for (const field of matching) assert.ok(hover.contents[0].value.includes(`**${field.n}**`), `${task.id}: ${field.n}`);
+                    for (const field of matching) assert.ok(hover.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`), `${task.id}: ${field.n}`);
                     assert.equal(hover.range.start.character, column, task.id);
                     assert.equal(hover.range.end.character, edges[edge+1], task.id);
                 }

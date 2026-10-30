@@ -4488,7 +4488,7 @@
     {
       "path": "test/client/hover/nativeFieldHover.test.js",
       "role": "editable-source",
-      "sha256": "8794625d31b7029d0acbe95cb92fc8516b6eb54f07e9ea066ee570456db34a35",
+      "sha256": "642cb3201e24efd25293595dec5343d561fcf9659d854643797e3c6cb7d781e2",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4500,7 +4500,7 @@
     {
       "path": "test/client/hover/nativeSharedWindowHover.test.js",
       "role": "editable-source",
-      "sha256": "64fe5f2f4cd500558383abbb3fa34a64a3b8038a351a7ff1ee21d56f1ac3d433",
+      "sha256": "4bba7506b4f56824b11cbe68b311bc8a72048ab8d5b0c84aed170b2d8bf0be2e",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4518,7 +4518,7 @@
     {
       "path": "test/client/hover/setListHover.test.js",
       "role": "editable-source",
-      "sha256": "9794b6451aab0ed740d9ce6fcfbba40d1863314a421b41de34f1c1c201b78c24",
+      "sha256": "89c870ecc8b83a992d845fbe6ac8cc7cd8e25ade84e4bddc27bb8fca973292fb",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

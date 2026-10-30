@@ -65,7 +65,7 @@ describe('SET list shared file reader', function () {
                     if (width && expected.name !== '-' && expected.name.toLowerCase() !== 'unused') {
                         const hover = await provider.provideHover(doc, { line, character: offset }, { isCancellationRequested: false });
                         assert.ok(hover, `${sample.keyword}/${line}/${expected.name}`);
-                        assert.ok(hover.contents.some(c => c.value?.includes(`**${expected.name}**`)));
+                        assert.ok(hover.contents.some(c => c.value?.replace(/`/g, '').includes(`**${expected.name}**`)));
                         assert.equal(hover.range.start.character, offset);
                         assert.equal(hover.range.end.character, offset + width);
                     }

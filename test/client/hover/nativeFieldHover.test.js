@@ -28,6 +28,8 @@ function source(c, { format = 'standard', title = false, comments = [] } = {}) {
 const label = value => /^[\s_-]*$/.test(value) ? 'UNUSED' : value.toUpperCase();
 
 describe('native file field hover without GUI', function () {
+    beforeEach(() => require('../../../out/extension')._internals.setFileIndexForTesting('/test/file.k', null));
+    afterEach(() => require('../../../out/extension')._internals.setFileIndexForTesting('/test/file.k', null));
     // These tests load native catalog shards and replay many real provider calls.
     // Latency budgets are asserted by the dedicated large-file benchmarks.
     this.timeout(30000);
@@ -81,7 +83,7 @@ describe('native file field hover without GUI', function () {
             for (let i = 0; i < 5; i++) {
                 const field = info.card[i], hover = await provider.provideHover(doc, { line, character: field.p });
                 assert.equal(Number(field.rawValue), native.fields[i].value);
-                assert.ok(hover.contents[0].value.includes(`**${field.n}**`));
+                assert.ok(hover.contents[0].value.replace(/`/g, '').includes(`**${field.n}**`));
                 assert.equal(hover.range.start.line, line);
                 assert.equal(hover.range.start.character, field.nativeRange.start);
                 assert.equal(hover.range.end.character, field.nativeRange.end);
@@ -123,7 +125,7 @@ describe('native file field hover without GUI', function () {
                 const field = info.card[index];
                 assert.equal(Number(field.rawValue), Number(expected.value));
                 const hover = await provider.provideHover(doc, { line: record.line, character: field.p });
-                assert.ok(hover?.contents[0].value.toUpperCase().includes(`**${label(expected.name)}**`));
+                assert.ok(hover?.contents[0].value.replace(/`/g, '').toUpperCase().includes(`**${label(expected.name)}**`));
                 assert.equal(hover.range.start.character, field.nativeRange.start);
                 assert.equal(hover.range.end.character, field.nativeRange.end);
             }
@@ -161,7 +163,7 @@ describe('native file field hover without GUI', function () {
                 const field = info.card[index];
                 assert.equal(Number(field.rawValue), Number(expected.value));
                 const hover = await provider.provideHover(doc, { line: record.line, character: field.p });
-                assert.ok(hover?.contents[0].value.toUpperCase().includes(`**${label(expected.name)}**`));
+                assert.ok(hover?.contents[0].value.replace(/`/g, '').toUpperCase().includes(`**${label(expected.name)}**`));
                 assert.equal(hover.range.start.character, field.nativeRange.start);
                 assert.equal(hover.range.end.character, field.nativeRange.end);
             }
@@ -191,7 +193,7 @@ describe('native file field hover without GUI', function () {
                 const field = info.card[index];
                 assert.equal(Number(field.rawValue), Number(expected.value));
                 const hover = await provider.provideHover(doc, { line: record.line, character: field.p });
-                assert.ok(hover?.contents[0].value.toUpperCase().includes(`**${label(expected.name)}**`), `${probe.keyword} ${expected.name}`);
+                assert.ok(hover?.contents[0].value.replace(/`/g, '').toUpperCase().includes(`**${label(expected.name)}**`), `${probe.keyword} ${expected.name}`);
                 assert.equal(hover.range.start.character, field.nativeRange.start);
                 assert.equal(hover.range.end.character, field.nativeRange.end);
             }
@@ -341,7 +343,7 @@ describe('native file field hover without GUI', function () {
         assert.equal(resolve(doc, 40).cardInfo.nativeInstanceStart, 38);
         const c = cases.find(c => c.keyword === 'SECTION_BEAM' && c.values.ELFORM === 2 && !c.values.STYPE);
         const { lines } = source(c);
-        const mutable = { ...fakeDoc([...lines, '*END'].join('\n')), version: 1,
+        const mutable = { ...fakeDoc([...lines, '*END'].join('\n'), '/test/mutable-beam.k'), version: 1,
             lineAt: line => ({ text: [...lines, '*END'][line] }) };
         assert.equal(resolve(mutable, 2).cardInfo.card[0].n, 'A');
         lines[1] = lines[1].slice(0, 10) + '1'.padStart(10) + lines[1].slice(20);
