@@ -302,7 +302,7 @@ describe('fieldReferenceHover', () => {
         const referenceLine = section.split('\n').find(line => line.includes('$(info)'));
         assert.ok(referenceLine.includes('Current-file preview'));
         assert.ok(!section.includes('*DEFINE\\_CURVE'));
-        assert.ok(section.includes('Open candidate definition'));
+        assert.ok(section.includes('Open definition'));
         assert.ok(section.includes('command:extension.openLsdynaReferenceDefinition'));
         assert.ok(section.includes('data:image/svg+xml;base64,'));
         assert.ok(section.includes('Scan Include Tree'));
@@ -413,7 +413,7 @@ describe('fieldReferenceHover', () => {
         });
 
         assert.ok(section.includes('Current-file preview'));
-        assert.ok(section.includes('Open candidate definition'));
+        assert.ok(section.includes('Open definition'));
         assert.ok(!section.includes('Open child curve candidate 1'));
         assert.ok(section.includes('Scan Include Tree'));
         assert.ok(section.includes('View:'));

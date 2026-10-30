@@ -59,6 +59,7 @@ function reserveLoopbackPort() {
 
 function createFixtureWorkspace(root) {
     fs.mkdirSync(root, { recursive: true });
+    fs.copyFileSync(path.join(__dirname, '../../test/fixtures/honeycomb-curve-preview.key'), path.join(root, 'honeycomb-curve-preview.key'));
     fs.writeFileSync(path.join(root, 'rename-alignment.key'), [
         '*PARAMETER_EXPRESSION', 'I lctmcrv  mxcrvid+8', '*CONTROL_TIMESTEP',
         '$   DTINIT    TSSFAC      ISDO    TSLIMT     DT2MS      LCTM     ERODE     MS1ST',

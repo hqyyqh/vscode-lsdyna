@@ -245,9 +245,10 @@ function parameterBindingsAtLine(context, lineIndex) {
 
 function syntheticLocalContext(filePath) {
     return {
-        occurrenceId: `local:${filePath}`,
-        occurrencePath: [`local:${filePath}`],
-        occurrencePathLabels: [`local:${filePath}`],
+        // Single-file indexing uses the root occurrence too; both readers must identify it alike.
+        occurrenceId: 'root',
+        occurrencePath: ['root'],
+        occurrencePathLabels: ['root'],
         idfoffOffset: 0,
         inputFormatMode: 'standard',
         initialBindings: new Map(),

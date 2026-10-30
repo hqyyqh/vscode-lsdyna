@@ -5747,6 +5747,85 @@ async function assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable() {
     }
 }
 
+async function assertHoneycombCurvePreview() {
+    const { document, editor } = await openFixture('honeycomb-curve-preview.key');
+    const original = document.getText();
+    const devTools = await connectWorkbenchDevTools();
+    const evidence = process.env.LSDYNA_CURVE_PREVIEW_EVIDENCE;
+    const results = [];
+    try {
+        await vscode.commands.executeCommand('workbench.action.closeSidebar');
+        for (const character of [5, 15, 25]) {
+            const position = new vscode.Position(3, character);
+            await vscode.commands.executeCommand('editor.action.hideHover');
+            editor.selection = new vscode.Selection(position, position);
+            await vscode.commands.executeCommand('editor.action.showHover');
+            let markdown;
+            await waitForAssertion(async () => {
+                const hovers = await vscode.commands.executeCommand('vscode.executeHoverProvider', document.uri, position);
+                markdown = hovers.map(hoverMarkdown).join('\n');
+                assert.ok(markdown.includes('data:image/svg+xml;base64,'), 'curve preview missing: ' + markdown.slice(0, 3000));
+            }, 10000);
+            await waitForAssertion(async () => {
+                const result = await devTools.call('Runtime.evaluate', { returnByValue: true, expression:
+                    `Array.from(document.querySelectorAll('.monaco-hover img')).some(img => img.complete && img.naturalWidth > 0 && img.getBoundingClientRect().width > 0)` });
+                assert.equal(result.result.value, true, 'curve image did not load in the actual Hover');
+            }, 5000);
+            const svg = Buffer.from(markdown.match(/data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/)[1], 'base64').toString();
+            assert.ok(svg.includes('<polyline'), 'preview has no plotted curve');
+            results.push({ character, imageLoaded: true, plotted: true });
+            if (evidence) {
+                const screenshot = await devTools.call('Page.captureScreenshot', { format: 'png' });
+                fs.writeFileSync(path.join(evidence, `curve-${character}.png`), Buffer.from(screenshot.data, 'base64'));
+            }
+        }
+        const toggleState = async () => (await devTools.call('Runtime.evaluate', { returnByValue: true, expression: `(() => {
+            const link = Array.from(document.querySelectorAll('.monaco-hover a')).find(a =>
+                (a.getAttribute('data-href') || a.getAttribute('href') || '').includes('command:extension.toggleCurveHover'));
+            if (!link) return null;
+            const r = link.getBoundingClientRect(), hover = link.closest('.monaco-hover');
+            return { x:r.x+r.width/2, y:r.y+r.height/2, title:link.title,
+                image:!!hover.querySelector('img'), text:hover.textContent, focused:hover.contains(document.activeElement) };
+        })()` })).result.value;
+        const initial = await toggleState();
+        assert.ok(initial?.image);
+        assert.ok(!/Candidate|候选/.test(initial.text), 'preview title exposes internal candidate terminology');
+        await devTools.call('Runtime.evaluate', { expression: `window.curveToggleFrames=[]; window.curveToggleUntil=performance.now()+1000;
+            requestAnimationFrame(function frame(){const h=document.querySelector('.monaco-hover');
+                window.curveToggleFrames.push({visible:!!h && h.getBoundingClientRect().height>0});
+                if(performance.now()<window.curveToggleUntil)requestAnimationFrame(frame);});` });
+        await dispatchRendererMouseClick(devTools, initial);
+        let help;
+        await waitForAssertion(async () => {
+            help = await toggleState();
+            assert.ok(help && !help.image && help.text.includes('Load curve ID'));
+            assert.ok(help.focused, 'switch lost Hover focus');
+        }, 5000);
+        assert.ok(Math.abs(help.x-initial.x)<2 && Math.abs(help.y-initial.y)<2, 'toggle button moved');
+        const firstSwitchFrames = (await devTools.call('Runtime.evaluate', {returnByValue:true,
+            expression:'window.curveToggleUntil=0; window.curveToggleFrames'})).result.value;
+        await dispatchRendererMouseClick(devTools, help);
+        await waitForAssertion(async () => assert.ok((await toggleState())?.image), 5000);
+        await dispatchRendererMouseClick(devTools, await toggleState());
+        await waitForAssertion(async () => assert.equal((await toggleState())?.image, false), 5000);
+        await vscode.commands.executeCommand('editor.action.hideHover');
+        await vscode.commands.executeCommand('editor.action.showHover');
+        await waitForAssertion(async () => assert.ok((await toggleState())?.image), 5000);
+        if (evidence) fs.writeFileSync(path.join(evidence, 'toggle.json'), JSON.stringify({initial, help,
+            frames:firstSwitchFrames},null,2));
+        const detailed = await executeDetailedHover(document, new vscode.Position(3, 5), 'data:image/svg+xml;base64,');
+        const markdown = hoverMarkdown(detailed);
+        const command = markdown.match(/command:extension\.openLsdynaReferenceDefinition\?([^ )"]+)/);
+        assert.ok(command);
+        await vscode.commands.executeCommand('extension.openLsdynaReferenceDefinition', ...JSON.parse(decodeURIComponent(command[1])));
+        assert.equal(vscode.window.activeTextEditor.document.uri.toString(), document.uri.toString());
+        assert.equal(vscode.window.activeTextEditor.selection.active.line, 7);
+        assert.equal(document.getText(), original);
+        if (evidence) fs.writeFileSync(path.join(evidence, 'result.json'), JSON.stringify({ passed: true,
+            host: vscode.version, results, detailedPreview: true, navigationLine: 7, unchanged: true }, null, 2));
+    } finally { devTools.close(); }
+}
+
 async function assertFieldCommentsAreDiscoverableAndUndoable() {
     const { document, editor } = await openFixture('field-comment-title.key');
     const original = document.getText(), disk = fs.readFileSync(document.uri.fsPath);
@@ -6752,6 +6831,7 @@ async function runScenarios() {
             'official-choice': assertOfficialFieldChoiceMouseFlowIsDiscoverableAndUndoable,
             'keyword-structure': assertKeywordStructureRepairMouseFlowIsRevalidatedAndUndoable,
             'field-comments': assertFieldCommentsAreDiscoverableAndUndoable,
+            'curve-preview': assertHoneycombCurvePreview,
         };
         assert.ok(scenarios[focusedScenario], `Unknown focused scenario: ${focusedScenario}`);
         await scenarios[focusedScenario]();

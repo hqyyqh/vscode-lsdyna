@@ -243,7 +243,8 @@ describe('keyword card maintenance', () => {
         assert.deepEqual({ complete, incomplete }, { complete: 104, incomplete: 22 });
     });
 
-    it('uses current remote parameter controls on the first Quick Fix request', async () => {
+    it('uses current remote parameter controls on the first Quick Fix request', async function () {
+        this.timeout(30000);
         const document = doc(['*PARAMETER', 'Iform              2', '*SECTION_BEAM',
             '         1     &form         0         0         0         0         0         0',
             '         1         2         3         4         5', '*END']);

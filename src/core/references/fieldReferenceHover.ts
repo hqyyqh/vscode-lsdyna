@@ -232,7 +232,6 @@ function appendTablePreview(lines, definition, renderOptions: any = { isDark: tr
 }
 
 function appendDefinition(lines, definition, renderOptions: any = { isDark: true }, candidate) {
-    const isPossibleMatch = candidate.relation === 'possible-match';
     const displayPath = String(definition.filePath ?? '').split(/(?<=[\\/])/).map(markdownCode).join('<wbr>');
     const locationLines = renderOptions.compactCurve
         ? ['']
@@ -240,7 +239,7 @@ function appendDefinition(lines, definition, renderOptions: any = { isDark: true
     if (candidate.navigable) {
         locationLines.push(definitionLink(
             definition,
-            isPossibleMatch ? i18n.get('openCandidateDefinition') : i18n.get('openDefinition'),
+            i18n.get('openDefinition'),
             renderOptions.compactCurve
         ));
     }
@@ -542,32 +541,24 @@ function buildDefinitionHoverSection(
     return lines.join('\n');
 }
 
-function hasUncertainTableChildren(definition) {
-    return definition?.kind === 'table' && (definition.rows || []).some(row =>
-        String(row.childIdRaw ?? '').trim() && row.childIdInput?.kind !== 'blank' &&
-        row.childAnalysis?.state !== 'exact');
-}
-
 function buildCompactReferenceHover(analysis, themeKind, tablePreviewContext) {
     const presentation = buildReferencePresentation(analysis);
     const candidates = presentation.candidates;
     if (candidates.length !== 1) return {
         body: '', actions: '',
-        status: candidates.length > 1 ? i18n.get('hoverCandidates', candidates.length) : '',
+        status: candidates.length > 1 ? i18n.get('hoverMultipleDefinitions', candidates.length) : '',
     };
     const candidate = candidates[0];
     const definition = candidate.definition;
-    const title = i18n.get(candidate.relation === 'possible-match' ? 'openCandidateDefinition' : 'openDefinition');
+    const title = i18n.get('openDefinition');
     return {
         body: candidate.previewAllowed ? buildDefinitionHoverSection(definition, themeKind, tablePreviewContext, true) : '',
         actions: candidate.navigable ? definitionLink(definition, title, true) : '',
-        status: candidate.relation === 'possible-match' || hasUncertainTableChildren(definition)
-            ? i18n.get('hoverCandidate') : '',
+        status: '',
     };
 }
 
 module.exports = {
-    hasUncertainTableChildren,
     buildCompactReferenceHover,
     buildReferenceHoverSection,
     buildDefinitionHoverSection,

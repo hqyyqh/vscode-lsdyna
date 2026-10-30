@@ -99,12 +99,12 @@ describe('compact native hover', () => {
         const result=buildCompactReferenceHover({state:'exact',definitions:[definition],reasons:[]},1,null);
         assert.equal(result.body,'');
     });
-    it('marks uncertain table children without restoring diagnostic paragraphs', () => {
+    it('previews uncertain table children without a candidate badge or diagnostic paragraphs', () => {
         const child={kind:'curve',points:[{x:0,y:1},{x:1,y:2}]};
         const row={childIdRaw:'3',value:1,childAnalysis:{state:'uncertain',definitions:[child],reasons:['project-scan-unavailable']}};
         const definition={kind:'table',keyword:'*DEFINE_TABLE_2D',id:1,rows:[row]};
         const uncertain=buildCompactReferenceHover({state:'exact',definitions:[definition],reasons:[]},1,null);
-        assert.equal(uncertain.status,i18n.get('hoverCandidate'));
+        assert.equal(uncertain.status,'');
         assert.ok(!uncertain.body.includes('$(warning)'));
         const encoded=uncertain.body.match(/data:image\/svg\+xml;base64,([^|)]+)/);
         assert.ok(encoded);

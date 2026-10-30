@@ -54,6 +54,7 @@ const HOVER_TRUST = { enabledCommands: [
     "extension.showFieldHelpEnglish",
     "extension.hoverMore",
     "extension.toggleHoverDetails",
+    "extension.toggleCurveHover",
     "extension.toggleFieldHelp"
 ] };
 
@@ -125,7 +126,6 @@ const {
     buildReferenceHoverSection,
     buildDefinitionHoverSection,
     buildCompactReferenceHover,
-    hasUncertainTableChildren,
     uncertaintyReasonLabel,
 } = require('./core/references/fieldReferenceHover');
 const { scanCurveTableDefinitionsFromFileIndex } = require('./core/references/curveTableDefinitionScanner');
@@ -3164,6 +3164,25 @@ function hoverRequestIsCurrent(request) {
         request.version === request.document.version && vscode.window.activeTextEditor?.document === request.document;
 }
 
+async function toggleCurveHover(id) {
+    const request = activeHoverRequest;
+    if (!request || request.id !== id || !hoverRequestIsCurrent(request) || !request.curveViews) return false;
+    request.curveViews.helpShown = !request.curveViews.helpShown;
+    request.curveRefresh = true;
+    const editor = vscode.window.activeTextEditor;
+    const position = new vscode.Position(request.position.line, request.position.character);
+    if (editor.selection.active.line !== position.line || editor.selection.active.character !== position.character)
+        editor.selection = new vscode.Selection(position, position);
+    await vscode.commands.executeCommand('editor.action.hideHover');
+    setTimeout(() => {
+        if (!hoverRequestIsCurrent(request) || editor.selection.active.line !== position.line ||
+            editor.selection.active.character !== position.character) { request.curveRefresh = false; return; }
+        void Promise.resolve(vscode.commands.executeCommand('editor.action.showHover', { focus: 'autoFocusImmediately' }))
+            .catch(error => { request.curveRefresh = false; console.warn('[lsdyna] Could not switch curve Hover', error); });
+    }, 0);
+    return true;
+}
+
 async function handleHoverAction(id, more = false, fieldHelpOnly = false) {
     const request = activeHoverRequest;
     if (!request || request.id !== id || !hoverRequestIsCurrent(request)) return false;
@@ -3244,6 +3263,12 @@ class LsdynaFieldHoverProvider {
 
     async provideHover(document, position, cancellationToken = undefined, detailed = undefined) {
         const request = beginHoverRequest(document, position);
+        if (request.curveRefresh && request.curveViews && !cancellationToken?.isCancellationRequested) {
+            request.curveRefresh = false;
+            return request.curveViews.helpShown ? request.curveViews.help : request.curveViews.preview;
+        }
+        request.curveRefresh = false;
+        request.curveViews = undefined;
         const expanded = detailed ?? request.expanded;
         const hover = await this.provideHoverContent(document, position, cancellationToken, expanded);
         if (hover && expanded) {
@@ -3499,8 +3524,7 @@ class LsdynaFieldHoverProvider {
             const maintenance = keywordCardMaintenanceAction(document, position.line);
             if (!detailed) {
                 const id = previewDefinition ? ` · ${inlineSemanticLabel(String(previewDefinition.id ?? previewDefinition.idRaw ?? ''))}` : '';
-                const title = `**$(symbol-keyword) ${new vscode.MarkdownString().appendText('*' + kwName).value}**${id}` +
-                    (hasUncertainTableChildren(previewDefinition) ? ` · ${i18n.get('hoverCandidate')}` : '');
+                const title = `**$(symbol-keyword) ${new vscode.MarkdownString().appendText('*' + kwName).value}**${id}`;
                 const cards = nativeCards?.length ? nativeCards : lookup ? keywordSchema.getRenderedCardsForLookup(lookup, prefixDataLines, undefined, { keywordText: text, globalInputFormat: documentGlobalInputFormat(document), parameterContext }) : [];
                 const body = previewMd || (previewDefinition ? i18n.get('hoverUnavailable') : compactFieldGrid(cards));
                 const args = encodeURIComponent(JSON.stringify([{ uri: documentUriIdentity(document), documentVersion: document.version, keywordLine: position.line }]));
@@ -3674,8 +3698,7 @@ class LsdynaFieldHoverProvider {
         const gridTable = compactFieldGrid([card], field.n);
         const rawFieldValue = field.rawValue ?? text.slice(field.p, field.p + field.w);
         const referenceOptions = { keyword: helpKeywordName, cardIndex: cardInfo.cardIndex, field };
-        let referenceInfo = field.nativeIdentity && !field.nativeStaticBinding ? null
-            : fieldReferenceAtPosition(document, position, { semanticScope: "keyword-catalog" })?.referenceInfo || null;
+        let referenceInfo = fieldReferenceAtPosition(document, position, { semanticScope: "keyword-catalog" })?.referenceInfo || null;
         if (!referenceInfo && !require('./core/references/registryReferenceScanner').nativeReferenceCoversField(referenceOptions) &&
             !(field.nativeIdentity && !field.nativeStaticBinding) && field.di !== 'self') {
             await getSemanticRuntimeCatalogV2().prepareDefinitionScannersForKeyword(helpKeywordName);
@@ -3751,7 +3774,18 @@ class LsdynaFieldHoverProvider {
                 const title = `**${inlineSemanticLabel(field.n)}** ${inlineSemanticLabel(String(id ?? rawFieldValue))}` +
                     (preview.status ? ` · ${preview.status}` : '');
                 const body = preview.body || `${formattedHelp}${formattedHelp ? '\n\n' : ''}${gridTable}`;
-                return new vscode.Hover(compactHoverCard(title, body, manualKw, request, preview.actions), new vscode.Range(position.line, nativeStart, position.line, nativeEnd));
+                const range = new vscode.Range(position.line, nativeStart, position.line, nativeEnd);
+                if (preview.body?.includes('data:image/svg+xml;base64,')) {
+                    const args = encodeURIComponent(JSON.stringify([request.id]));
+                    const fullHelp = buildFieldHelpMarkdown(field, { keyword: helpKeywordName,
+                        cardIndex: cardInfo.cardIndex, fieldIndex: card.indexOf(field) });
+                    const view = (help: boolean) => new vscode.Hover(compactHoverCard(title,
+                        help ? `${fullHelp}${fullHelp ? '\n\n' : ''}${gridTable}` : body, manualKw, request,
+                        `[$(${help ? 'graph-line' : 'info'})](command:extension.toggleCurveHover?${args} "${i18n.get(help ? 'hoverShowCurvePreview' : 'hoverShowFieldHelp')}")${preview.actions ? ' &nbsp; ' + preview.actions : ''}`), range);
+                    request.curveViews = { preview: view(false), help: view(true), helpShown: false };
+                    return request.curveViews.preview;
+                }
+                return new vscode.Hover(compactHoverCard(title, body, manualKw, request, preview.actions), range);
             }
             md.appendMarkdown(buildReferenceHoverSection({
                 fieldName: field.n,
@@ -7991,6 +8025,7 @@ let largeFileViewerProvider = null;
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.hoverMore', id => handleHoverAction(id, true)),
         vscode.commands.registerCommand('extension.toggleHoverDetails', id => handleHoverAction(id)),
+        vscode.commands.registerCommand('extension.toggleCurveHover', toggleCurveHover),
         vscode.commands.registerCommand('extension.toggleFieldHelp', id => handleHoverAction(id, false, true)),
         vscode.commands.registerCommand('extension.showFieldHelpEnglish', async (arg) => {
             let id = arg;
@@ -16598,6 +16633,6 @@ Object.assign(module.exports._internals, { prepareDocumentPresentation, updateDo
 
 Object.assign(module.exports._internals, { prepareFieldInteraction, planPreparedOfficialFieldChoices });
 
-Object.assign(module.exports._internals, { beginHoverRequest, handleHoverAction, compactHoverCard });
+Object.assign(module.exports._internals, { beginHoverRequest, handleHoverAction, compactHoverCard, toggleCurveHover });
 
 Object.assign(module.exports._internals, { planKeywordCardMaintenance, keywordCardMaintenanceAction, LsdynaKeywordCardsCodeActionProvider, handleUpdateKeywordCardsCommand });

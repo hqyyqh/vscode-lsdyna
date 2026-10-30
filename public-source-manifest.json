@@ -348,7 +348,7 @@
       "test/worker/workerPool.test.js",
       "test/worker/workerTermination.test.js"
     ],
-    "maintenanceOnlyCount": 269
+    "maintenanceOnlyCount": 270
   },
   "files": [
     {
@@ -426,7 +426,7 @@
     {
       "path": ".github/workflows/fast-ci.yml",
       "role": "editable-source",
-      "sha256": "1b7b807963092f7331afbde384f82a7349424412714d99b2c4e25a117c47159f",
+      "sha256": "773bc633772c7c28a7e1dea5503d394d674ad5928cef13cf7fb3105eaff495c2",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2526,7 +2526,7 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "44796108147dfc7ab0f97e56d1220737783780a7598bbad78aa7858ccbfb3714",
+      "sha256": "f5863eb647701b2fc49655a7dae1674e7db857219619b75aaacdbca875ad7444",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2736,7 +2736,7 @@
     {
       "path": "scripts/host/run-editor-safety-extension-host.cjs",
       "role": "editable-source",
-      "sha256": "8b33b4803fe15f55e584900aa9c7892c7029089c67f38688894f48de659c9057",
+      "sha256": "8b06505d263a99cb2abde1679b9b0a09471d4b99a840d7d4fe7fadde8e0f0dba",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2832,7 +2832,7 @@
     {
       "path": "scripts/maintenance/validate-project-contracts.cjs",
       "role": "editable-source",
-      "sha256": "b3b292bb0cc13cced2fc798d265808da1c76e4e48228197c6b836383572fcd0d",
+      "sha256": "e6b36e55ae010622a9e7599e59bb39fa8aff436641409dc0ac5a57191d305847",
       "reason": "independent-build-package-or-integrity-tool"
     },
     {
@@ -3438,7 +3438,7 @@
     {
       "path": "src/core/i18n.ts",
       "role": "editable-source",
-      "sha256": "fe2d8d1feff2ac5813a987bb5ef899758cace0292bb0c32ff211fd1c259af788",
+      "sha256": "b4d43b2dc1df978d4be77d613de88654cae4129a3d77350a382373d97c988e28",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3714,7 +3714,7 @@
     {
       "path": "src/core/references/fieldReferenceHover.ts",
       "role": "editable-source",
-      "sha256": "f7f26b39d331ca48721bf8c17cc8521340593c1c595b15201d1a8d883a3767d9",
+      "sha256": "051fc89a8e75aee8f4f83b98b6c82a6ce744dd9beead5e4696d5bf884bc4c57d",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -3732,7 +3732,7 @@
     {
       "path": "src/core/references/onDemandDefinitionScanner.ts",
       "role": "editable-source",
-      "sha256": "0d3f0791c1409556b21081297c75552a69db56ae80d643abe1e1542d696a0697",
+      "sha256": "8df3200cd84bc7f80b27bfab28c39aa906043c4df77b59e73a27f66de4d4063c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4170,7 +4170,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "c310111cdc89c31c37ee62deca14e222104b62f3eea91b907fa73e9c02a8fa6c",
+      "sha256": "1ea19ee621478dee85cbc3787b0346123045545b75ba1165afe409caeffa8c8d",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4998,7 +4998,7 @@
     {
       "path": "test/core/compactHover.test.js",
       "role": "editable-source",
-      "sha256": "9b2db2dce2eed53ed8f97e48e492e7ebe0c9f6d4eaef4afd0a67043703ff8e1b",
+      "sha256": "fe25b3109cd6b7296cb2e5e060794f37e09564b9cbae71a2bfc565a843ff1fd7",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5118,7 +5118,7 @@
     {
       "path": "test/core/keywordCardMaintenance.test.js",
       "role": "editable-source",
-      "sha256": "13d1e2b2f6bc71dafc7f3f07d2e4e1dd00709b2f89a354cbfa083f37d7e81f3b",
+      "sha256": "27aff905ee3f68ada127c8457c2325ac70f2493c362e6e3d491701ad09cba46a",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -5394,7 +5394,7 @@
     {
       "path": "test/core/references/fieldReferenceHover.test.js",
       "role": "editable-source",
-      "sha256": "08626b8969f1b906524d3c4ad7515b167ed04aa9ba245aab3a249cae39a917e9",
+      "sha256": "b4cbfca6d331b70811748e84c68a24c885fc0bf039a6150518bf646009665007",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -6097,6 +6097,12 @@
       "path": "test/fixtures/change-marks/legacy-budget-results.json",
       "role": "editable-source",
       "sha256": "1782dfd56f8a0785f2748b3563ce844f6e848708becbe900a806104947aac515",
+      "reason": "product-test-or-build-dependency"
+    },
+    {
+      "path": "test/fixtures/honeycomb-curve-preview.key",
+      "role": "editable-source",
+      "sha256": "439c4a71ee054fcb2cd67aa01d52a5a0cc698f9a5e00b34ecb2a56b340979e91",
       "reason": "product-test-or-build-dependency"
     },
     {
@@ -6864,7 +6870,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "e551048fd98b3b7aa7731241c6ee30de503cf6c692772f0c7bc48e0fcc0fefa5",
+      "sha256": "0e88bd8f5071bf9d9e4c346ba6e7e62fa740a54b34ec3ebffa966d1132d33da1",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7290,7 +7296,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "8ae47debab98961126efb420f1198fe2e26fe101e2af6008c5b1348b419cdfd0",
+      "sha256": "68f2de19204ac203b36655d70fdd2bd1755e3c9fb6b9e83dd67120119802c16f",
       "reason": "public-build-or-package-regression"
     },
     {
@@ -8044,5 +8050,5 @@
       "reason": "editable-product-source-or-resource"
     }
   ],
-  "excludedFileCount": 5873
+  "excludedFileCount": 5874
 }

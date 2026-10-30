@@ -127,6 +127,7 @@ const INTERNAL_COMMANDS = new Set([
     'extension.setLsdynaTablePreviewView',
     'extension.hoverMore',
     'extension.toggleHoverDetails',
+    'extension.toggleCurveHover',
     'extension.toggleFieldHelp',
     'extension.openIncludeFolder',
     'extension.openIncludeNewTab',
