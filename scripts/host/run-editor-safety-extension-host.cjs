@@ -618,6 +618,7 @@ async function main() {
 
 module.exports = {
     resolveVSCodeExecutable,
+    reserveLoopbackPort,
 };
 
 if (require.main === module) {

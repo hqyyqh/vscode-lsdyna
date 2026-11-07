@@ -97,6 +97,7 @@
       "test/client/services/projectDiagnosticStore.test.js",
       "test/client/services/treeSearchQuickPick.test.js",
       "test/client/services/viewScanProgress.test.js",
+      "test/client/services/vimInputOwnership.test.js",
       "test/client/services/workspaceWatcherManager.test.js",
       "test/client/settingsSimplification.test.js",
       "test/client/similarKeywordHelpCompiled.test.js",
@@ -474,7 +475,7 @@
     {
       "path": "CHANGELOG.md",
       "role": "editable-source",
-      "sha256": "adfcda5f30adf037c021f103ea3bc42d7c441748f1cf4320d552a33dc73ff5f3",
+      "sha256": "0f426d4e087404e5e9e26dc74ee956c0443d6a7b1b24d65b189f6e0330ffda0f",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2526,25 +2527,25 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "5af74f12d6e0ee1c083c63c28208f93ec1662de0411da572336cd2215aba1130",
+      "sha256": "9a78b25261c7bd28f3490cae1fa570d76bf38128ab4c0c7ceeffac6718566967",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "debafbbc6c1077c0378bcaa1646475dc27a21e42ad187a05953243a1a9ae937e",
+      "sha256": "6d15ebfa6bce74b59576c51c110845b515998cf007eee74cdbbaf2c35cab0c86",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.json",
       "role": "editable-source",
-      "sha256": "a2c708682936520856bda3f3cb1f856315287bec0bf1101bcdbcc8def9333c59",
+      "sha256": "a933b47f9760daba8a718e582417f079b42e58565b998553d444583ff1d1fb99",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.nls.zh-cn.json",
       "role": "editable-source",
-      "sha256": "72f27e91d6fa630e85783e6f2da57fde6d84623b1440b37f74ef84fc820947b5",
+      "sha256": "b30118dfdb7602a2fb6f610798da017638173b49207a38d7083148fbe7d19e9c",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2736,7 +2737,7 @@
     {
       "path": "scripts/host/run-editor-safety-extension-host.cjs",
       "role": "editable-source",
-      "sha256": "8b06505d263a99cb2abde1679b9b0a09471d4b99a840d7d4fe7fadde8e0f0dba",
+      "sha256": "b7d9d8ddb471e14250d8994dc7fe71ce4229a81ed0a04024bc03e4a90bf8ef63",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -3294,7 +3295,7 @@
     {
       "path": "src/client/statusBar/dashboard.ts",
       "role": "editable-source",
-      "sha256": "8118baebe9d9b5455acc582db7cde2f14bb689a0109ce049a76923554c267e9f",
+      "sha256": "4f0893c11395407ef1d3bedd139748885e6d1fb127f2dd82714caf5c1a214511",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4170,7 +4171,7 @@
     {
       "path": "src/extension.ts",
       "role": "editable-source",
-      "sha256": "1ea19ee621478dee85cbc3787b0346123045545b75ba1165afe409caeffa8c8d",
+      "sha256": "6b2774a61bab4816588d09dcc40dd0d518e1ac356c5554d7920051937df85a43",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -4392,7 +4393,7 @@
     {
       "path": "test/client/cardCellRejectedEdit.test.js",
       "role": "editable-source",
-      "sha256": "c278a301b130724c9f1c468049aad9706e5094435b1550b1d722e0ab135e4208",
+      "sha256": "e12a493a3a22d8f73b624d6ba670b9366a421da0123613d50ac2d4104f890855",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -4898,6 +4899,12 @@
       "role": "editable-source",
       "sha256": "b76fca86476cbee339fa1f6e49450a0d9b421e7a5079e8bd53da9238e0298df9",
       "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/client/services/vimInputOwnership.test.js",
+      "role": "editable-source",
+      "sha256": "21021918b4d848cb9122f65437ed8b6c760556139f2a7e695b4f449709847cc3",
+      "reason": "public-contribution"
     },
     {
       "path": "test/client/services/workspaceWatcherManager.test.js",
@@ -6870,7 +6877,7 @@
     {
       "path": "test/host/editor-safety/extension-host/index.js",
       "role": "editable-source",
-      "sha256": "cc6ce65521425f99422bf59061a031cb39268b36b64bd465a66b5f3bb9367837",
+      "sha256": "3184c44775ebf9aff29489d2ba9d41e0cbb770bcc22f85fab7020ef2fbaa1295",
       "reason": "product-behavior-safety-or-host-test"
     },
     {
@@ -7052,6 +7059,12 @@
       "role": "editable-source",
       "sha256": "c03f95b94238ff465c729ded5dd10e807db228c6789f345daf686b27274c64fb",
       "reason": "product-behavior-safety-or-host-test"
+    },
+    {
+      "path": "test/host/vim-compat.cjs",
+      "role": "editable-source",
+      "sha256": "ebd4fb14286bc2f578a07690e19d82a4c317082ce6f61c70363b75b0d58da32e",
+      "reason": "public-contribution"
     },
     {
       "path": "test/integration/compiledEntry.test.js",
@@ -7476,7 +7489,7 @@
     {
       "path": "test/support/vscode-mock.js",
       "role": "editable-source",
-      "sha256": "aaf3623c88b678c36b1da4475e90ca86a127b50a1c02318d3bef15c688fa6804",
+      "sha256": "3ceb06c210f61b9f006296c173ab0e851877c6b4abcafc8eade0e9ef385752ea",
       "reason": "product-behavior-safety-or-host-test"
     },
     {

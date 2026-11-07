@@ -24,7 +24,7 @@ type DashboardContext = {
     warningCount?: number;
     /** Environment/setup issues (manuals, Sumatra, …) — menu only except quiet fallback. */
     healthIssueCount?: number;
-    tabNavigationEnabled?: boolean;
+    tabNavigationEnabled?: boolean | null;
     /** Effective field-help state for menu description. */
     fieldHoverMenuState?: 'on' | 'offSession' | 'off';
     fieldHoverEnabled?: boolean;
@@ -474,7 +474,9 @@ function buildDashboardItems(context: DashboardContext = {}): DashboardItem[] {
     }
     if (context.fieldChoice) items.push({ id: 'pickFieldValue', label: context.fieldChoice.command.title, description: context.fieldChoice.text, detail: context.fieldChoice.tooltip });
     if (context.columnGuides) items.push({ id: 'toggleColumnGuides', label: context.columnGuides.label, description: context.columnGuides.state, detail: '' });
-    items.push(scanIncludes, scanKeywordIndex, toggleTab, toggleHover, customKw);
+    items.push(scanIncludes, scanKeywordIndex);
+    if (context.tabNavigationEnabled !== null) items.push(toggleTab);
+    items.push(toggleHover, customKw);
 
     // Manuals when already ready: mid-low (not promoted)
     if (manualReady) {

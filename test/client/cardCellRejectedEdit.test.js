@@ -25,7 +25,7 @@ describe('card cell callers preserve rejected edit state', () => {
             getNav: () => ({ line: 0, fieldIndex: 0 }) };
         const apply = async () => { effects.edits++; return outcome; };
         const compositions = new Map();
-        const context = { module: { exports: {} },
+        const context = { module: { exports: {} }, vimOwnsEditorInput: false,
             vscode: { window: { activeTextEditor: editor }, commands: { executeCommand: async (name, ...args) => {
                 if (name === 'setContext' && args[1] === true) effects.contextTrue++;
             } } },
@@ -99,7 +99,7 @@ describe('composition undo stays with its captured editor', () => {
                 activeDocument.version++;
                 if (command === 'undo') await new Promise(resolve => { releaseUndo = resolve; });
             } } };
-        const context = { module: { exports: {} }, vscode, cardCellCompositions: compositions,
+        const context = { module: { exports: {} }, vimOwnsEditorInput: false, vscode, cardCellCompositions: compositions,
             ensureCardCellEditGuard: () => ({ clearNav() {}, shouldCellEditActive: () => true, markAp() { effects.marks++; } }),
             beginCardCellPostEditBarrier: () => () => { effects.released++; },
             beginCardCellOwnedEdit: () => { effects.owned++; }, endCardCellOwnedEdit: () => { effects.owned--; },
@@ -113,6 +113,7 @@ describe('composition undo stays with its captured editor', () => {
         if (transition === 'inactive-entry') vscode.window.activeTextEditor = otherEditor;
         const pending = context.module.exports[`${flow}CardCellComposition`](document, state);
         const changeOwnership = () => {
+            if (transition.endsWith('vim')) context.vimOwnsEditorInput = true;
             if (transition.endsWith('switch-other')) vscode.window.activeTextEditor = otherEditor;
             else if (transition.endsWith('switch-same-document')) vscode.window.activeTextEditor = sameDocumentEditor;
             else if (transition.endsWith('replace-document')) editor.document = otherDocument;
@@ -152,9 +153,9 @@ describe('composition undo stays with its captured editor', () => {
     }
     for (const flow of ['cancel', 'finalize']) {
         const transitions = ['inactive-entry', 'undo-switch-other', 'undo-switch-same-document',
-            'undo-replace-document', 'undo-close', 'normal-restore', 'normal-redo'];
+            'undo-replace-document', 'undo-close', 'undo-vim', 'normal-restore', 'normal-redo'];
         if (flow === 'cancel') transitions.push('settle-switch-other', 'settle-switch-same-document',
-            'settle-replace-document', 'settle-close', 'already-restored');
+            'settle-replace-document', 'settle-close', 'settle-vim', 'already-restored');
         for (const transition of transitions) it(`${flow} preserves ownership (${transition})`, () => run(flow, transition));
     }
 });

@@ -5147,8 +5147,18 @@ class LsdynaKeywordCompletionProvider {
 const { generateCommentLine, resolveCommentCard } = require('./core/completion/fieldComment');
 
 const autoIndentEditBarriers = new WeakMap<object, Promise<void>>();
+let vimOwnsEditorInput = false;
+
+function isVimEnabledInWindow() {
+    // getExtension only sees this host. Vim's published setting also exists
+    // when Vim runs in the UI host and DynaSense runs in the workspace host.
+    // Inspect the contributed default: a saved user preference survives disabling Vim.
+    return !!vscode.extensions.getExtension('vscodevim.vim') ||
+        typeof vscode.workspace.getConfiguration('vim').inspect?.('useSystemClipboard')?.defaultValue === 'boolean';
+}
 
 async function handleEnterIndentationRemoval(event) {
+    if (vimOwnsEditorInput) return;
     if (event.document.languageId !== 'lsdyna') return;
     if (
         getLsdynaConfigurationValue(
@@ -5201,7 +5211,7 @@ async function handleEnterIndentationRemoval(event) {
     const barrier = new Promise<void>(resolve => { release = resolve; });
     autoIndentEditBarriers.set(event.document, barrier);
     try {
-        if (!await canApplyDocumentEdit(event.document, editIsCurrent)) return;
+        if (!await canApplyDocumentEdit(event.document, editIsCurrent) || vimOwnsEditorInput) return;
         await editor.edit(editBuilder => {
             for (const candidate of candidates) {
                 editBuilder.delete(new vscode.Range(
@@ -5464,7 +5474,7 @@ function isSingleEightyColumnCard(cardFields) {
 
 async function formatPathEntryIfNeeded(document, lineNum, kwLine) {
     const editIsCurrent = documentEditGuard.createDocumentEditGuard(document);
-    if (!await canApplyDocumentEdit(document, editIsCurrent)) return;
+    if (!await canApplyDocumentEdit(document, editIsCurrent) || vimOwnsEditorInput) return;
     if (!isActiveLsdynaSemanticLocation(
         document,
         { line: lineNum, character: document.lineAt(lineNum).text.length },
@@ -5551,7 +5561,7 @@ async function formatLineIfNeeded(document, lineNum) {
     if (isFormattingLine) return;
     if (lineNum >= document.lineCount) return;
     if (await isDocumentReadonlyForAutomaticEdit(document)) return;
-    if (isFormattingLine) return;
+    if (isFormattingLine || vimOwnsEditorInput) return;
     if (document.isClosed || lineNum < 0 || lineNum >= document.lineCount) return;
     if (!isActiveLsdynaSemanticLocation(
         document,
@@ -5787,6 +5797,7 @@ function cardCellASelectionGraceRemaining(nav, document) {
 }
 
 async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = null) {
+    if (vimOwnsEditorInput) return;
     if (!editor) return;
     const requestedDocument = editor.document;
     clearCardCellTypingSession(editor.document);
@@ -5821,7 +5832,7 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
     // starts. Wait for a quiet selection window, then reinstate the selection
     // that actually invoked Tab before establishing the newer A navigation.
     await waitForCellSelectionQuietPeriod();
-    if (editor.document !== requestedDocument) return;
+    if (vimOwnsEditorInput || editor.document !== requestedDocument) return;
     if (wasActiveEditor && vscode.window.activeTextEditor !== editor) return;
     if (editor.document?.isClosed) return;
     if (editor.document.version !== requestedDocumentVersion) return;
@@ -5877,7 +5888,7 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
     }
     if (referenceQueryClient) {
         await getCardInfoForDocumentLineWithSuggestAsync(document, lineNum, getFieldData());
-        if (!editIsCurrent()) return;
+        if (!editIsCurrent() || vimOwnsEditorInput) return;
     }
     if (getCardInfoForLine(document, lineNum)?.isTextCard) {
         return executeNativeTab(direction);
@@ -6004,7 +6015,7 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
 
     // 3. Edit current line when text changed
     if (alignedText !== text) {
-        if (!await canApplyDocumentEdit(document, editIsCurrent)) return;
+        if (!await canApplyDocumentEdit(document, editIsCurrent) || vimOwnsEditorInput) return;
         if (wasActiveEditor && vscode.window.activeTextEditor !== editor) return;
         const applied = await editor.edit(editBuilder => {
             const range = new vscode.Range(
@@ -6015,7 +6026,7 @@ async function handleTabAlignment(editor, direction = 1, resolvedAmbiguity = nul
         }, chosenCandidate
             ? { undoStopBefore: true, undoStopAfter: true }
             : { undoStopBefore: false, undoStopAfter: false });
-        if (applied === false || document.isClosed || editor.document !== document) return;
+        if (applied === false || vimOwnsEditorInput || document.isClosed || editor.document !== document) return;
     }
 
     // 4. Handle cursor movement
@@ -6089,6 +6100,7 @@ async function waitForCellSelectionQuietPeriod() {
 }
 
 function handleSelectionChange(e) {
+    if (vimOwnsEditorInput) return;
     const editor = e && e.textEditor ? e.textEditor : e;
     const typingDocument = editor?.document;
     const typingSession = typingDocument
@@ -6279,6 +6291,7 @@ function isDocumentStillOpenInTextTab(document) {
 }
 
 async function handleActiveEditorChangeForFormatting(editor) {
+    if (vimOwnsEditorInput) return;
     if (
         inlineEditChoiceSession &&
         (!editor || inlineEditChoiceSession.editor !== editor)
@@ -6339,7 +6352,7 @@ async function handleActiveEditorChangeForFormatting(editor) {
 async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd, undoOpts) {
     const document = editor.document;
     const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
-    if (!await canApplyDocumentEdit(document, editIsCurrent)) return false;
+    if (!await canApplyDocumentEdit(document, editIsCurrent) || vimOwnsEditorInput) return false;
     const line = document.lineAt(lineNum);
     const oldText = line.text;
     if (newText !== oldText) {
@@ -6357,7 +6370,7 @@ async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd,
                 undoStopBefore: undoOpts?.undoStopBefore !== false,
                 undoStopAfter: undoOpts?.undoStopAfter !== false,
             });
-            if (!applied) return false;
+            if (!applied || vimOwnsEditorInput) return false;
         } finally {
             endCardCellOwnedEdit(document);
         }
@@ -6374,7 +6387,7 @@ async function applyCardCellLineEdit(editor, lineNum, newText, selStart, selEnd,
 async function applyCardCellLineDelete(editor, lineNum, targetLine, selStart, selEnd, undoOpts) {
     const document = editor.document;
     const editIsCurrent = documentEditGuard.createDocumentEditGuard(document, editor);
-    if (!await canApplyDocumentEdit(document, editIsCurrent)) return false;
+    if (!await canApplyDocumentEdit(document, editIsCurrent) || vimOwnsEditorInput) return false;
     if (lineNum < 0 || lineNum >= document.lineCount) return;
     const line = document.lineAt(lineNum);
     // Prefer rangeIncludingLineBreak so the blank card row actually disappears.
@@ -6391,7 +6404,7 @@ async function applyCardCellLineDelete(editor, lineNum, targetLine, selStart, se
             undoStopBefore: undoOpts?.undoStopBefore !== false,
             undoStopAfter: undoOpts?.undoStopAfter !== false,
         });
-        if (!applied) return false;
+        if (!applied || vimOwnsEditorInput) return false;
     } finally {
         endCardCellOwnedEdit(document);
     }
@@ -6419,6 +6432,7 @@ async function handleCardCellDelete(direction) {
     const waitedForPostEdit = editor?.document
         ? await waitForPendingCardCellPostEdit(editor.document)
         : false;
+    if (vimOwnsEditorInput) return;
     if (waitedForPostEdit) {
         if (vscode.window.activeTextEditor !== editor || editor.document.isClosed) return;
     }
@@ -6646,6 +6660,7 @@ async function finalizeCardCellComposition(document, state) {
     const releaseBarrier = beginCardCellPostEditBarrier(document);
     try {
         if (
+            vimOwnsEditorInput ||
             vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed ||
@@ -6670,6 +6685,7 @@ async function finalizeCardCellComposition(document, state) {
             endCardCellOwnedEdit(document);
         }
         if (
+            vimOwnsEditorInput ||
             vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed
@@ -6764,6 +6780,7 @@ async function cancelCardCellComposition(document, state) {
         // remain behind the post-edit barrier during the wait.
         await new Promise(resolve => setTimeout(resolve, CARD_IME_CANCEL_SETTLE_MS));
         if (
+            vimOwnsEditorInput ||
             vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed ||
@@ -6781,6 +6798,7 @@ async function cancelCardCellComposition(document, state) {
             }
         }
         if (
+            vimOwnsEditorInput ||
             vscode.window.activeTextEditor !== state.editor ||
             state.editor.document !== document ||
             document.isClosed
@@ -6837,6 +6855,7 @@ async function cancelCardCellComposition(document, state) {
  * No nav / * / $ / free click-typing → default:type (never R1-pad keywords/comments).
  */
 async function handleCardCellType(args) {
+    if (vimOwnsEditorInput) return;
     const text = args && args.text != null ? String(args.text) : '';
     const editor = vscode.window.activeTextEditor;
     const pendingIndent = editor?.document && autoIndentEditBarriers.get(editor.document);
@@ -6851,6 +6870,7 @@ async function handleCardCellType(args) {
     const waitedForPostEdit = document
         ? await waitForPendingCardCellPostEdit(document)
         : false;
+    if (vimOwnsEditorInput) return;
     if (waitedForPostEdit && (
         vscode.window.activeTextEditor !== editor ||
         editor.document !== document || document.isClosed
@@ -6962,6 +6982,7 @@ async function handleCardCellType(args) {
  * navigation state; they are never guessed or rewritten.
  */
 async function handleCardCellPostEdit(event) {
+    if (vimOwnsEditorInput) return;
     const document = event?.document;
     if (
         inlineEditChoiceSession &&
@@ -7095,6 +7116,7 @@ async function handleCardCellPostEdit(event) {
         // then apply the safe fixed-width result as the sole user-visible undo unit.
         await new Promise(resolve => setTimeout(resolve, CARD_NATIVE_EDIT_SETTLE_MS));
         if (
+            vimOwnsEditorInput ||
             vscode.window.activeTextEditor !== editor ||
             editor.document !== document ||
             document.version !== plan.postEditVersion
@@ -7659,6 +7681,7 @@ async function handleLineCommentToggle(editor) {
  * @param {import('vscode').ExtensionContext} context - The extension context.
  */
 async function activate(context) {
+    vimOwnsEditorInput = isVimEnabledInWindow();
 let largeFileViewerProvider = null;
 
     let keywordOptionsWebviewProvider = null;
@@ -10075,7 +10098,7 @@ context.subscriptions.push(
             errorCount,
             warningCount,
             healthIssueCount: healthReport.issueCount,
-            tabNavigationEnabled: getLsdynaConfigurationValue('enableTabNavigation', true, resource) !== false,
+            tabNavigationEnabled: vimOwnsEditorInput ? null : getLsdynaConfigurationValue('enableTabNavigation', true, resource) !== false,
             fieldHoverMenuState: getFieldHoverMenuState(resource),
             fieldHoverEnabled: isFieldHoverEffective(resource),
             scanRootName,
@@ -10112,6 +10135,7 @@ context.subscriptions.push(
             },
             showDiagnostics: () => showStatusDashboardDiagnostics(),
             toggleTabNavigation: async () => {
+                if (vimOwnsEditorInput) return;
                 const editor = vscode.window.activeTextEditor;
                 const resource = editor && editor.document ? editor.document.uri : undefined;
                 const config = vscode.workspace.getConfiguration('lsdyna', resource);
@@ -10395,11 +10419,43 @@ context.subscriptions.push(
             'extension.lsdynaCancelInlineEditChoice',
             (sessionId = null) => cancelInlineEditChoiceSession(sessionId),
         ),
-        vscode.commands.registerCommand('type', (args) => handleCardCellType(args)),
         vscode.workspace.onDidChangeTextDocument(event => {
             void handleCardCellPostEdit(event);
         }),
     );
+
+    // The enabled extension is visible before it activates. Its current Vim mode
+    // and activation order must never decide who owns the window-wide type command.
+    let typeRegistration: import('vscode').Disposable | undefined;
+    function updateEditorInputOwner(initial = false) {
+        const vimEnabled = isVimEnabledInWindow();
+        if (!initial && vimEnabled === vimOwnsEditorInput) return;
+        vimOwnsEditorInput = vimEnabled;
+        if (vimEnabled) {
+            typeRegistration?.dispose();
+            typeRegistration = undefined;
+            clearInlineEditChoiceSession();
+            cardCellEditGuard?.clearNav();
+            ++cellSelectionSyncGeneration;
+            for (const document of vscode.workspace.textDocuments) {
+                clearCardCellTypingSession(document);
+                cardCellCompositions.delete(document);
+            }
+            lastActiveDoc = null;
+        } else {
+            typeRegistration = vscode.commands.registerCommand('type', (args) => handleCardCellType(args));
+            if (vscode.window.activeTextEditor) handleSelectionChange(vscode.window.activeTextEditor);
+        }
+        return vscode.commands.executeCommand('setContext', 'lsdyna.editorKeysEnabled', !vimEnabled);
+    }
+    context.subscriptions.push(
+        { dispose: () => typeRegistration?.dispose() },
+        vscode.extensions.onDidChange(() => updateEditorInputOwner()),
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e?.affectsConfiguration?.('vim.useSystemClipboard')) return updateEditorInputOwner();
+        }),
+    );
+    await updateEditorInputOwner(true);
 
     context.subscriptions.push(
         vscode.commands.registerCommand('extension.lsdynaFormatSelection', async (lineNumArg) => {
@@ -15762,6 +15818,7 @@ async function handleCardCellTypeWithNavigation(args, text, editor, guard) {
     const waitedForPostEdit = editor?.document
         ? await waitForPendingCardCellPostEdit(editor.document)
         : false;
+    if (vimOwnsEditorInput) return;
     if (waitedForPostEdit) {
         if (vscode.window.activeTextEditor !== editor || editor.document.isClosed) return;
     }

@@ -6998,4 +6998,5 @@ async function run() {
     finally { await writeClipboardText(originalClipboardText); }
 }
 
-module.exports = { run };
+module.exports = { run, connectWorkbenchDevTools, dispatchRendererKey, waitForRendererEditorFocus,
+    getRendererEditorPositionPoint, dispatchRendererMouseClick };

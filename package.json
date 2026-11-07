@@ -851,94 +851,94 @@
                 "command": "extension.foldAllKeywordBlocks",
                 "key": "ctrl+k ctrl+0",
                 "mac": "cmd+k cmd+0",
-                "when": "editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
             },
             {
                 "command": "extension.unfoldAllKeywordBlocks",
                 "key": "ctrl+k ctrl+j",
                 "mac": "cmd+k cmd+j",
-                "when": "editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == lsdyna && resourceScheme == file"
             },
             {
                 "command": "extension.jumpToNextKeyword",
                 "key": "ctrl+alt+down",
-                "when": "editorLangId == 'lsdyna'"
+                "when": "lsdyna.editorKeysEnabled && editorLangId == 'lsdyna'"
             },
             {
                 "command": "extension.jumpToPreviousKeyword",
                 "key": "ctrl+alt+up",
-                "when": "editorLangId == 'lsdyna'"
+                "when": "lsdyna.editorKeysEnabled && editorLangId == 'lsdyna'"
             },
             {
                 "command": "extension.changeMarks.next",
                 "key": "alt+f5",
-                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna'"
             },
             {
                 "command": "extension.changeMarks.previous",
                 "key": "shift+alt+f5",
-                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna'"
             },
             {
                 "command": "extension.lsdynaTab",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaShiftTab",
                 "key": "shift+tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && !suggestWidgetVisible && !inSnippetMode && !inlineSuggestionVisible && !inlineEditIsVisible && !isComposing && !editorTabMovesFocus && !editorHasMultipleSelections && !lsdyna.inlineEditChoiceActive && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaSelectCell",
                 "key": "shift+alt+right",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.shouldAlignTab && config.lsdyna.enableTabNavigation"
             },
             {
                 "command": "extension.lsdynaCellDeleteRight",
                 "key": "delete",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
             },
             {
                 "command": "extension.lsdynaCellDeleteLeft",
                 "key": "backspace",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.cellEditActive && !lsdyna.inlineEditChoiceActive && !editorHasMultipleSelections && config.lsdyna.enableCellEditProtect"
             },
             {
                 "command": "selectNextSuggestion",
                 "key": "tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
             },
             {
                 "command": "selectPrevSuggestion",
                 "key": "shift+tab",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
             },
             {
                 "command": "acceptSelectedSuggestion",
                 "key": "enter",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive && suggestWidgetVisible"
             },
             {
                 "command": "extension.lsdynaCancelInlineEditChoice",
                 "key": "delete",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
             },
             {
                 "command": "extension.lsdynaCancelInlineEditChoice",
                 "key": "backspace",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
             },
             {
                 "command": "extension.lsdynaCancelInlineEditChoice",
                 "key": "escape",
-                "when": "editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna' && lsdyna.inlineEditChoiceActive"
             },
             {
                 "command": "extension.lsdynaLineComment",
                 "key": "ctrl+/",
                 "mac": "cmd+/",
-                "when": "editorTextFocus && editorLangId == 'lsdyna'"
+                "when": "lsdyna.editorKeysEnabled && editorTextFocus && editorLangId == 'lsdyna'"
             }
         ],
         "configuration": [
@@ -1635,6 +1635,8 @@
         "vscode-messenger-common": "^0.6.1"
     },
     "overrides": {
+        "glob": "^14.0.4",
+        "minimatch": "^11.0.5",
         "serialize-javascript": "^7.1.3",
         "@azure/identity": {
             "@azure/msal-node": "^7.1.0"
