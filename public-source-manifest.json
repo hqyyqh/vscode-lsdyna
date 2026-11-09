@@ -395,12 +395,6 @@
       "reason": "public-contribution-workflow"
     },
     {
-      "path": ".github/scripts/marketplace-release.cjs",
-      "role": "editable-source",
-      "sha256": "898e6a0eb7b2ecea66d8ac30d1f0a0f261929cd694385741988a44e38a3d80e5",
-      "reason": "public-contribution-workflow"
-    },
-    {
       "path": ".github/workflows/ci-installed.yml",
       "role": "editable-source",
       "sha256": "fa74d0c6c585b6e9f695b24823c60972aa5bac0b1e094e0e1e2a54f61428bcc7",
@@ -439,13 +433,7 @@
     {
       "path": ".github/workflows/release.yml",
       "role": "editable-source",
-      "sha256": "2bba4e617a1328f86d6c02264522fdecd45a4895acff2869eb7d72a3a860f8fa",
-      "reason": "public-contribution-workflow"
-    },
-    {
-      "path": ".github/workflows/verify-marketplace.yml",
-      "role": "editable-source",
-      "sha256": "312e342363aeff3aa0ff07699127e1b155ef3a17611ab7d5bcce1445334b1635",
+      "sha256": "3c85a5c01a88443ddc5af980d2ef357cdeb317955c6cbc50c61365487f97b1f2",
       "reason": "public-contribution-workflow"
     },
     {
@@ -475,7 +463,7 @@
     {
       "path": "CHANGELOG.md",
       "role": "editable-source",
-      "sha256": "0f426d4e087404e5e9e26dc74ee956c0443d6a7b1b24d65b189f6e0330ffda0f",
+      "sha256": "c1905f8caef347a6994af869647d3300b0a8495f1e501e1b1680d27443068e05",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -2527,13 +2515,13 @@
     {
       "path": "package-lock.json",
       "role": "editable-source",
-      "sha256": "9a78b25261c7bd28f3490cae1fa570d76bf38128ab4c0c7ceeffac6718566967",
+      "sha256": "479498f87e3a463e93331ce26dcb779bdc2caf7500002c180fcb715f48c1710e",
       "reason": "editable-product-source-or-resource"
     },
     {
       "path": "package.json",
       "role": "editable-source",
-      "sha256": "6d15ebfa6bce74b59576c51c110845b515998cf007eee74cdbbaf2c35cab0c86",
+      "sha256": "86a22eb6d3f77e3a305cbbecaf5c80613fcbf1153077b5b2ac5a136cd9d675f9",
       "reason": "editable-product-source-or-resource"
     },
     {
@@ -7309,7 +7297,7 @@
     {
       "path": "test/scripts/release/publicWorkflow.test.js",
       "role": "editable-source",
-      "sha256": "68f2de19204ac203b36655d70fdd2bd1755e3c9fb6b9e83dd67120119802c16f",
+      "sha256": "8ab0ebb16ed22a39aeba96ec0b4378d706e405d3e8ad54419ab911170811738e",
       "reason": "public-build-or-package-regression"
     },
     {

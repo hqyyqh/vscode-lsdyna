@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.4] - 2026-11-09
+
 ### Fixed / 修复
 
 - Opening an LS-DYNA file no longer interrupts VSCodeVim in the same window. When VSCodeVim is enabled, it handles editing in every mode, including Insert. DynaSense still provides highlighting, completions and diagnostics, but does not prevent typing or deletion from shifting adjacent fields. Without VSCodeVim, or when it is disabled for the workspace, fixed-width field protection and Tab navigation work as before.

@@ -160,9 +160,9 @@ describe('platform release workflow dependency closure', () => {
         assert.ok(index('Missing repository secret: OVSX_PAT') < index('vsce publish'));
         assert.ok(steps[index('verify-release-acceptance.cjs')].run.includes('"$target"'));
         assert.ok(!JSON.stringify(release).includes('requirements-codegen'));
-        assert.ok(fs.existsSync(path.join(root, '.github/scripts/marketplace-release.cjs')));
+        assert.equal(release.jobs.publish.permissions.issues, undefined);
         assert.ok(fs.existsSync(path.join(root, '.github/release-appendix.md')));
-        assert.ok(read('verify-marketplace.yml').jobs);
+        assert.ok(!fs.existsSync(path.join(root, '.github/workflows/verify-marketplace.yml')));
     });
     it('supports GitHub-only artifact publication without rebuilding or invoking marketplace credentials', () => {
         const release = read('release.yml'), steps = release.jobs.publish.steps;
@@ -171,7 +171,7 @@ describe('platform release workflow dependency closure', () => {
         assert.equal(metadata.run, 'node scripts/release/release-plan.cjs');
         assert.equal(metadata.env.GITHUB_ONLY, '${{ inputs.github_only }}');
         for (const name of ['Verify Open VSX credentials', 'Sign in to Azure with GitHub OIDC',
-            'Publish to Visual Studio Marketplace', 'Publish to Open VSX', 'Create marketplace release verification issue']) {
+            'Publish to Visual Studio Marketplace', 'Publish to Open VSX']) {
             assert.equal(steps.find(step => step.name === name).if, '${{ !inputs.github_only }}');
         }
         const upload = steps.findIndex(step => step.name === 'Create GitHub Release');

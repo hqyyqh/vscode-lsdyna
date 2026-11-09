@@ -93,7 +93,6 @@ jobs:
     environment: release
     permissions:
       contents: write
-      issues: write
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -213,18 +212,3 @@ jobs:
           if [[ "${{ steps.destination.outputs.published }}" != "true" ]]; then
             gh release edit "$RELEASE_TAG" --tag "$RELEASE_TAG" --draft=false --latest
           fi
-
-      - name: Create marketplace release verification issue
-        if: ${{ !inputs.github_only }}
-        uses: actions/github-script@v9
-        env:
-          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
-        with:
-          script: |
-            const coordinator = require('./.github/scripts/marketplace-release.cjs');
-            const issue = await coordinator.ensureMarketplaceReleaseIssue({
-              github,
-              context,
-              version: process.env.RELEASE_VERSION
-            });
-            core.info(`Marketplace release verification issue: #${issue.number}`);
