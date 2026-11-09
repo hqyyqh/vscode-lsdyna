@@ -44,10 +44,10 @@ function combineEditor({ prefixSource, pairSource, currentSource, log, pairRepor
     return required;
 }
 function validateHostJob(run, target, version, success = true) {
-    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
+    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-15' }[target];
     const job = run.jobs.find(job => [`build / Platform / ${target} / Installed / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Same VSIX / ${os} / VS Code ${version}`,
         `Platform / ${target} / Installed / ${version} / Same VSIX / ${os} / VS Code ${version}`,
-        `Retry / ${target} / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(job.name));
+        `Retry / ${target} / ${version} / Same VSIX / ${os} / VS Code ${version}`, `Selected node / Node / ${target} / installed / ${version}`].includes(job.name.replace('Same VSIX / macos-14 /', 'Same VSIX / macos-15 /')));
     assert.ok(job && job.status === 'completed' && (!success || job.conclusion === 'success'), 'Missing successful host job');
     return job;
 }

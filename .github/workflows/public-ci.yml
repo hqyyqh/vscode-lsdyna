@@ -75,7 +75,7 @@ jobs:
         include:
           - { os: windows-2022, target: win32-x64 }
           - { os: ubuntu-22.04, target: linux-x64 }
-          - { os: macos-14, target: darwin-arm64 }
+          - { os: macos-15, target: darwin-arm64 }
     uses: ./.github/workflows/ci-platform.yml
     with:
       os: ${{ matrix.os }}
@@ -91,7 +91,7 @@ jobs:
         platform:
           - { os: windows-2022, target: win32-x64 }
           - { os: ubuntu-22.04, target: linux-x64 }
-          - { os: macos-14, target: darwin-arm64 }
+          - { os: macos-15, target: darwin-arm64 }
         vscode: ['1.100.0', '1.139.1']
         exclude: ${{ fromJSON(inputs.retry_exclude || '[]') }}
     uses: ./.github/workflows/ci-installed.yml

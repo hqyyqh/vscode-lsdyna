@@ -19,7 +19,7 @@ permissions:
 jobs:
   node:
     name: Node / ${{ inputs.target }} / ${{ inputs.node }}${{ inputs.node == 'installed' && format(' / {0}', inputs.vscode) || '' }}
-    runs-on: ${{ fromJSON('{"win32-x64":"windows-2022","linux-x64":"ubuntu-22.04","darwin-arm64":"macos-14"}')[inputs.target] }}
+    runs-on: ${{ fromJSON('{"win32-x64":"windows-2022","linux-x64":"ubuntu-22.04","darwin-arm64":"macos-15"}')[inputs.target] }}
     # Deadlock watchdog, not a product response-time gate. No full-suite work here.
     timeout-minutes: 30
     defaults:

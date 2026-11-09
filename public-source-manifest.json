@@ -403,7 +403,7 @@
     {
       "path": ".github/workflows/ci-node.yml",
       "role": "editable-source",
-      "sha256": "1aa1e0b442f5d848ed8eff1f3bfb57dff2e1404c893bce1fb0ad994fd97da156",
+      "sha256": "4ece7dbee547cc3e45f0d22de09a3ef06f8552773ce93106054e09ad2d2e5724",
       "reason": "public-contribution-workflow"
     },
     {
@@ -427,7 +427,7 @@
     {
       "path": ".github/workflows/public-ci.yml",
       "role": "editable-source",
-      "sha256": "cc3acaa22391b41f08253c765330295ba8a10eb65d6c1f18581ffcb44062920c",
+      "sha256": "46bdac0282964129013a9da9f37bd2886378ecac694eb93bd36e4ceac110b314",
       "reason": "public-contribution-workflow"
     },
     {
@@ -2749,7 +2749,7 @@
     {
       "path": "scripts/host/run-installed-acceptance-retry.cjs",
       "role": "editable-source",
-      "sha256": "bf9bd5ee572a5c6fa692e932053842cc69bc72d7b742f747806ac4a8a475790b",
+      "sha256": "91034815bd905834a1b8487d55646c3a2fbc7b676881844b9823021a46c920a5",
       "reason": "installed-product-host-acceptance"
     },
     {
@@ -2941,7 +2941,7 @@
     {
       "path": "scripts/release/reuse-release-evidence.cjs",
       "role": "editable-source",
-      "sha256": "00d334de6592e428845796875b13c3d5288b9715fed5d7f3c3ea274d1562c2c1",
+      "sha256": "85e12d8318aeeacdd23d75ff08980bf6157b2929b5c21e64313668ffc0e64b6d",
       "reason": "product-test-or-build-dependency"
     },
     {

@@ -53,11 +53,11 @@ function validateBuild(run, target) {
     )), `Missing passed build for ${target}`);
 }
 function findCompletedHostJob(jobs, target, version) {
-    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-14' }[target];
+    const os = { 'win32-x64': 'windows-2022', 'linux-x64': 'ubuntu-22.04', 'darwin-arm64': 'macos-15' }[target];
     const sameVsix = `Same VSIX / ${os} / VS Code ${version}`;
     const names = [`build / Platform / ${target} / Installed / ${version} / ${sameVsix}`, sameVsix, `Selected node / Node / ${target} / installed / ${version}`,
         `Platform / ${target} / Installed / ${version} / ${sameVsix}`, `Retry / ${target} / ${version} / ${sameVsix}`];
-    const job = jobs.find(item => names.includes(item.name) && item.status === 'completed');
+    const job = jobs.find(item => names.includes(item.name.replace('Same VSIX / macos-14 /', 'Same VSIX / macos-15 /')) && item.status === 'completed');
     assert.ok(job, 'Previous host is not finished');
     return job;
 }
